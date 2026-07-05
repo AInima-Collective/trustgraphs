@@ -1,0 +1,30 @@
+[package]
+name = "input-exporter"
+description = "Reconstruct a GuestInput/SignerInput (input.json) from on-chain accumulator + EAS state for a checkpoint"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "input-exporter"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+pagerank-core = { path = "../pagerank-core" }
+alloy-primitives = { workspace = true, features = ["serde"] }
+alloy-sol-types = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+tokio = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+# nothing extra — the reconstruction core is tested with synthetic data (no RPC)

@@ -12,6 +12,7 @@ fixed-point Trust-Aware PageRank. See `ZK_ARCHITECTURE.md` for the design and th
 | `packages/pagerank-core` | Canonical fixed-point PageRank + selection + all byte encodings. Single source of truth. No floats. |
 | `zk/program` | Two SP1 guest bins: `trustgraph-program` (root) and `trustgraph-signer-program` (signer selection). |
 | `zk/prover` | Host CLI: `execute`/`prove`/`vkey`/`paramshash` (root) and `signer-execute`/`signer-prove`/`signer-vkey`/`signer-selectionparamshash`. |
+| `packages/input-exporter` | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`. |
 | `src/contracts/eas/AttestationAccumulator.sol` | Chained-hash accumulator (mixed into `EASIndexerResolver`). |
 | `src/contracts/merkle/MerkleSnapshot.sol` | `submitProof` write-gate + two-tier timelock authority. |
 | `src/contracts/merkle/SP1TrustGraphVerifier.sol` | `IZkVerifier` → SP1 gateway adapter. |
@@ -87,15 +88,21 @@ Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its
 # 1. Anyone freezes a checkpoint:
 cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc, leafCount, block)
 
-# 2. A prover reconstructs the checkpoint's folded edges (from EdgeFolded events / EAS state),
-#    builds a GuestInput, and proves:
+# 2. Reconstruct the checkpoint's exact edge set from chain (self-checks it re-folds to `acc`):
+cargo run -p input-exporter -- \
+  --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
+  --checkpoint $CHECKPOINT_ID --params params.json --out input.json
+# $ACCUMULATOR = the EASIndexerResolver address; params.json = serialized pagerank_core::Params.
+# For a large history set --from-block <deployBlock>; RPCs that cap eth_getLogs ranges: tune --chunk.
+
+# 3. Prove:
 cd zk/prover
 cargo run --release -- prove input.json --groth16   # writes proof.bin = abi.encode(publicValues, seal)
 
-# 3. Pin the canonical blob to IPFS (raw, CIDv1 — matches the guest's ipfsHash/cid):
+# 4. Pin the canonical blob to IPFS (raw, CIDv1 — matches the guest's ipfsHash/cid):
 ipfs add --cid-version=1 --raw-leaves blob.json      # CID must equal the guest's cid
 
-# 4. Submit:
+# 5. Submit:
 cast send $MERKLE_SNAPSHOT \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
   $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 proof.bin)
@@ -126,9 +133,15 @@ cargo run --release -- signer-selectionparamshash input.json   # -> selectionPar
 MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the
 `SELECTION_PARAMS_HASH` env var (default `0` → inert until governance sets it).
 
-Validate then run the loop:
+Build the signer input, validate, then run the loop:
 
 ```bash
+# Reconstruct the SignerInput (GuestInput + selection) from chain:
+cargo run -p input-exporter -- \
+  --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
+  --checkpoint $CHECKPOINT_ID --params params.json \
+  --signer --selection selection.json --out input.json
+
 cd zk/prover
 SP1_PROVER=cpu cargo run --release -- signer-execute input.json   # guest == native (no proof)
 cargo run --release -- signer-prove input.json --groth16          # writes signer_proof.bin

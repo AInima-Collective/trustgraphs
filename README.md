@@ -130,20 +130,31 @@ The root is not produced automatically — anyone runs this loop:
 # a. Freeze a checkpoint of the current attestation set:
 cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc, leafCount, block)
 
-# b. Reconstruct that checkpoint's edges (from EdgeFolded events / EAS state) into input.json,
-#    then prove the fixed-point PageRank:
+# b. Reconstruct that checkpoint's exact edge set from chain into input.json. The exporter re-folds
+#    the reconstructed edges and refuses to emit unless they reproduce the checkpoint's `acc`:
+cargo run -p input-exporter -- \
+  --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
+  --checkpoint $CHECKPOINT_ID --params params.json --out input.json
+#    ($ACCUMULATOR is the EASIndexerResolver; params.json is the serialized pinned Params.)
+
+# c. Prove the fixed-point PageRank:
 cd zk/prover
 cargo run --release -- prove input.json --groth16     # writes proof.bin = abi.encode(publicValues, seal)
 #    (use SP1_PROVER=network for the final prove if you lack ~16–32 GiB locally)
 
-# c. Pin the canonical blob (raw CIDv1 — must equal the guest's cid):
+# d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid):
 ipfs add --cid-version=1 --raw-leaves blob.json
 
-# d. Submit:
+# e. Submit:
 cast send $MERKLE_SNAPSHOT \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
   $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 proof.bin)
 ```
+
+> **Where does `input.json` come from?** It's a serialized `GuestInput` (edges + params) — the exact
+> attestation set the checkpoint froze. `input-exporter` (in `packages/input-exporter`) reconstructs
+> it from the accumulator's `EdgeFolded` events + EAS `getAttestation`, and self-checks by re-folding
+> to the checkpoint's `acc`. Omit it and the prover/`execute` use a built-in sample instead.
 
 `submitProof` rebuilds the journal digest from the chain-pinned checkpoint + stored `paramsHash` + the
 submitted outputs and reverts unless the proof binds exactly that digest. Full detail (edge
@@ -157,7 +168,11 @@ Rotate the Safe's owners to the current top-scored accounts, proven correct:
 # a. Freeze a checkpoint (same accumulator as the root):
 cast send $MERKLE_SNAPSHOT "trigger()"
 
-# b. Prove the top-N selection + threshold for that checkpoint:
+# b. Reconstruct the SignerInput (adds --signer --selection), then prove the top-N selection:
+cargo run -p input-exporter -- \
+  --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
+  --checkpoint $CHECKPOINT_ID --params params.json \
+  --signer --selection selection.json --out input.json
 cd zk/prover
 cargo run --release -- signer-prove input.json --groth16   # writes signer_proof.bin
 
