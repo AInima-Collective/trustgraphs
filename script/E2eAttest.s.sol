@@ -6,9 +6,7 @@ import {console} from "forge-std/console.sol";
 import {
     IEAS,
     AttestationRequest,
-    AttestationRequestData,
-    RevocationRequest,
-    RevocationRequestData
+    AttestationRequestData
 } from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {
     EMPTY_UID,
@@ -16,8 +14,10 @@ import {
 } from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 
 /// @title E2eAttest
-/// @notice Creates a small vouching ring (3 attests from 3 accounts) + 1 revoke, so the accumulator
-///         folds 4 edges (3 attest, 1 revoke). Uses anvil's well-known public test keys — LOCAL ONLY.
+/// @notice Creates a small vouching ring (3 attests from 3 accounts). Uses anvil's well-known public
+///         test keys — LOCAL ONLY. The harness revokes a0's attestation afterwards via `cast`, using
+///         the REAL on-chain uid (the EAS uid depends on block.timestamp, so a uid captured during
+///         forge's local script execution wouldn't match the broadcast tx's uid — see run.sh).
 contract E2eAttest is Script {
     // Anvil default mnemonic ("test test ... junk") — PUBLIC test keys, zero value. Local use only.
     uint256 constant K0 = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
@@ -30,16 +30,11 @@ contract E2eAttest is Script {
         address a1 = vm.addr(K1);
         address a2 = vm.addr(K2);
 
-        bytes32 uid0 = _attest(eas, K0, schema, a1, "a0 -> a1", 50);
+        _attest(eas, K0, schema, a1, "a0 -> a1", 50);
         _attest(eas, K1, schema, a2, "a1 -> a2", 75);
         _attest(eas, K2, schema, a0, "a2 -> a0", 90);
 
-        // Revoke the first attestation (its attester, a0, revokes it) -> a kind=1 fold.
-        vm.startBroadcast(K0);
-        eas.revoke(RevocationRequest({schema: schema, data: RevocationRequestData({uid: uid0, value: 0})}));
-        vm.stopBroadcast();
-
-        console.log("attested 3, revoked 1 -> expected checkpoint leafCount = 4");
+        console.log("attested 3 (a0->a1, a1->a2, a2->a0); harness will revoke a0's attestation");
     }
 
     function _attest(

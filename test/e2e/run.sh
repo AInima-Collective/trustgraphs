@@ -48,10 +48,24 @@ echo "   EAS=$EAS"
 echo "   RESOLVER=$RESOLVER"
 echo "   SCHEMA=$SCHEMA"
 
-# --- attest + revoke ---------------------------------------------------------
-echo "== attest ring (3) + revoke (1) =="
+# --- attest ------------------------------------------------------------------
+echo "== attest ring (3) =="
 forge script script/E2eAttest.s.sol:E2eAttest --sig "run(address,bytes32)" "$EAS" "$SCHEMA" \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >/dev/null
+
+# --- revoke (discover the REAL on-chain uid; see E2eAttest.s.sol) -------------
+echo "== revoke a0's attestation =="
+A0=$(cast wallet address --private-key "$PK" | tr '[:upper:]' '[:lower:]')
+SIG=$(cast keccak "Attested(address,address,bytes32,bytes32)")
+A0_TOPIC="0x000000000000000000000000${A0#0x}"   # address left-padded to a 32-byte topic
+# NB: bash's $UID is a readonly builtin — use a different name.
+ATT_UID=$(cast rpc eth_getLogs \
+  "{\"address\":\"$EAS\",\"fromBlock\":\"0x0\",\"toBlock\":\"latest\",\"topics\":[\"$SIG\",null,\"$A0_TOPIC\"]}" \
+  --rpc-url "$RPC" | jq -r '.[0].data' | cut -c1-66)
+{ [ -n "$ATT_UID" ] && [ "$ATT_UID" != "null" ]; } || { echo "FATAL: could not find a0's attestation uid"; exit 1; }
+cast send "$EAS" "revoke((bytes32,(bytes32,uint256)))" "($SCHEMA,($ATT_UID,0))" \
+  --rpc-url "$RPC" --private-key "$PK" >/dev/null
+echo "   revoked uid=$ATT_UID"
 
 # --- checkpoint --------------------------------------------------------------
 echo "== freeze checkpoint 0 =="
