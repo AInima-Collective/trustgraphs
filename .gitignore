@@ -11,22 +11,14 @@ broadcast/
 node_modules/
 .pnpm-store/
 
-# WAVS
-wavs.toml
+# Env
 .env
 .env.*
 !.env.example
 .env-e
-.env.pagerank
-compiled/*.wasm
-.docker/*.json
-.docker/*.log
-wavs:worker*.wit
-wavs:worker*.wasm
 
-# WAVS infra
-.nodes
-infra/*
+# Local deploy node artifacts (incl. deployer key material)
+.nodes/
 
 # Tools
 **/.claude/settings.local.json
@@ -50,3 +42,5 @@ Cargo-component.lock
 # Deploy
 config/*_deploy_*.json
 config/networks.development.json
+.docker/*.json
+.docker/*.log

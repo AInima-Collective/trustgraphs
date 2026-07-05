@@ -15,7 +15,6 @@ import {
 import {
   ISchemaResolver
 } from '@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol';
-import { WavsAttester } from '../src/contracts/eas/WavsAttester.sol';
 import { SchemaRegistrar } from '../src/contracts/eas/SchemaRegistrar.sol';
 
 import {
@@ -27,15 +26,11 @@ import {
 import {
   AttesterEASIndexerResolver
 } from '../src/contracts/eas/resolvers/AttesterEASIndexerResolver.sol';
-import { EASAttestTrigger } from '../src/contracts/eas/EASAttestTrigger.sol';
-import {
-  IWavsServiceManager
-} from '@wavs/src/eigenlayer/ecdsa/interfaces/IWavsServiceManager.sol';
 
 import { Common } from './Common.s.sol';
 
 /// @title DeployEAS
-/// @notice Deployment script for EAS contracts and WAVS EAS integration
+/// @notice Deployment script for EAS contracts (SchemaRegistry, EAS, SchemaRegistrar, resolvers)
 contract DeployEAS is Common {
   using stdJson for string;
 
@@ -43,13 +38,9 @@ contract DeployEAS is Common {
   string public script_output_path =
     string.concat(root, '/.docker/eas_deploy.json');
 
-  /// @notice Deploy EAS contracts and WAVS integration
-  /// @param wavsServiceManagerAddr The WAVS service manager address
-  function run(string calldata wavsServiceManagerAddr) public {
+  /// @notice Deploy EAS contracts
+  function run() public {
     vm.startBroadcast(_privateKey);
-
-    address serviceManager = vm.parseAddress(wavsServiceManagerAddr);
-    require(serviceManager != address(0), 'Invalid service manager address');
 
     console.log('Deploying EAS contracts...');
 
@@ -131,29 +122,7 @@ contract DeployEAS is Common {
     );
     console.log('SchemaRegistrar deployed at:', address(schemaRegistrar));
 
-    // // 6. Deploy WavsAttester (main WAVS integration contract)
-    // WavsAttester attester = new WavsAttester(IEAS(address(eas)), IWavsServiceManager(serviceManager));
-    // _contractsJson.serialize("attester", Strings.toChecksumHexString(address(attester)));
-    // console.log("WavsAttester deployed at:", address(attester));
-
-    // // 7. Deploy AttesterEASIndexerResolver (targets WavsAttester)
-    // AttesterEASIndexerResolver attesterIndexerResolver = new AttesterEASIndexerResolver(
-    //     IEAS(address(eas)),
-    //     address(attester), // Target the WavsAttester contract
-    //     msg.sender // Owner (deployer)
-    // );
-    // _contractsJson.serialize(
-    //     "attester_indexer_resolver", Strings.toChecksumHexString(address(attesterIndexerResolver))
-    // );
-    // console.log("AttesterEASIndexerResolver deployed at:", address(attesterIndexerResolver));
-
-    // // 8. Deploy EASAttestTrigger
-    // EASAttestTrigger easAttestTrigger = new EASAttestTrigger();
-    // string memory finalContractsJson =
-    //     _contractsJson.serialize("attest_trigger", Strings.toChecksumHexString(address(easAttestTrigger)));
-    // console.log("EASAttestTrigger deployed at:", address(easAttestTrigger));
-
-    // // 9. Register basic schemas
+    // // 6. Register basic schemas
     // console.log('Registering schemas...');
 
     // // Vouching schema for weighted endorsements
@@ -180,7 +149,6 @@ contract DeployEAS is Common {
     console.log('\n=== EAS Deployment Summary ===');
     console.log('SchemaRegistry:', address(schemaRegistry));
     console.log('EAS:', address(eas));
-    // console.log('WavsAttester:', address(attester));
     console.log('SchemaRegistrar:', address(schemaRegistrar));
     // console.log('EASIndexerResolver:', address(indexerResolver));
     // console.log('PayableEASIndexerResolver:', address(payableIndexerResolver));
@@ -188,7 +156,6 @@ contract DeployEAS is Common {
     //   'AttesterEASIndexerResolver:',
     //   address(attesterIndexerResolver)
     // );
-    // console.log('EASAttestTrigger:', address(easAttestTrigger));
   }
 
   //   /// @notice Create a new schema

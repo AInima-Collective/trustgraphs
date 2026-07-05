@@ -24,7 +24,6 @@ frontend/
 │   ├── account/[address]/ # Account profile pages
 │   ├── attestations/      # Attestation management pages
 │   ├── network/[id]/      # Network pages (governance, distribute)
-│   ├── operators/         # Operator management page
 │   ├── layout.tsx         # Root layout with providers
 │   └── page.tsx           # Home page
 ├── components/            # React components (shadcn/ui primitives + feature components)
@@ -35,7 +34,6 @@ frontend/
 ├── hooks/                 # Custom React hooks
 │   ├── useAttestation.ts # EAS attestation management
 │   ├── useGovernance.ts  # Governance proposals
-│   ├── useOperators.ts   # Operator data
 ├── lib/                   # Utility libraries
 │   ├── config.ts         # Config file import and exports
 │   ├── wagmi.ts          # Wagmi/Viem setup

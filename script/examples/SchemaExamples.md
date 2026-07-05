@@ -348,13 +348,13 @@ Save the `schema_uid` for future attestation creation!
 
 ## Integration with Attestation Creation
 
-Once you have a schema UID, you can use it with the Trigger script:
+Once you have a schema UID, you can use it to create a direct EAS attestation:
 
 ```bash
 # Use your registered schema UID in attestation creation
-forge script script/EASAttestTrigger.s.sol:EASAttestTriggerScript \
-    --sig "triggerJsonAttestation(string,string,string,string)" \
-    "0x...TriggerAddress" \
+forge script script/EASAttest.s.sol:EASAttest \
+    --sig "attest(string,string,string,string)" \
+    "0x...EASAddress" \
     "0x...YourSchemaUID" \
     "0x...RecipientAddress" \
     "your,attestation,data" \

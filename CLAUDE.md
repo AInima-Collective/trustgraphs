@@ -8,16 +8,16 @@ Use `task --list-all` to see all available commands.
 
 ### Build Commands
 - `task build:forge` - Build Solidity contracts
-- `task build:wasi` - Build WASI components into compiled/ directory
-- `task build:wasi WASI_BUILD_DIR=components/component-name` - Build specific component
+- `cargo build -p pagerank-core` - Build the canonical PageRank/encoding crate
 
 ### Test Commands
 - `task test` - Run all Solidity tests
 - `forge test -vvv` - Run tests with verbose output (use forge directly for flags)
+- `cargo test -p pagerank-core` - Run the PageRank core + golden-vector tests
 
 ### Development Environment
-- `task start-all-local` - Start anvil, IPFS, WARG, Jaeger, and prometheus
-- `task deploy-full` - Complete WAVS deployment pipeline
+- `task start-all-local` - Start anvil, IPFS, WARG, and Ponder
+- `pnpm deploy:contracts` - Deploy the contracts via Foundry
 - `task setup` - Install initial dependencies (pnpm + forge)
 
 ### Lint and Format Commands
@@ -32,44 +32,45 @@ TrustGraph implements attestation-based governance using EAS (Ethereum Attestati
 > [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) for the design and [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) for
 > build/deploy/run. The canonical algorithm + encodings live in `packages/pagerank-core` (compiled to
 > the SP1 guest in `zk/program`, the host in `zk/prover`, and ported to the browser in
-> `frontend/lib/pagerank`). WAVS remains for non-producer workflows only (attestation creation, safe
-> signer sync, indexing).
+> `frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
+> EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
+> is slated to return as a ZK proof; see [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
 
 The system consists of:
 
 ### Core Components Structure
-- **Solidity Contracts** (`src/contracts/`): On-chain logic including attestation handlers, governance, rewards, and triggers
-- **WASI Components** (`components/`): Off-chain computation modules written in Rust that compile to WebAssembly
-- **Deployment Scripts** (`script/`): Foundry scripts for contract deployment and service configuration
+- **Solidity Contracts** (`src/contracts/`): On-chain logic including attestation resolvers, governance, rewards, and the merkle snapshot
+- **PageRank core** (`packages/pagerank-core/`): The canonical fixed-point Trust-Aware PageRank + all byte encodings, the single source of truth for the ZK guest, host, and frontend
+- **ZK root producer** (`zk/`): The SP1 guest (`zk/program`) and host CLI (`zk/prover`) that prove the merkle root
+- **Deployment Scripts** (`script/`): Foundry scripts for contract deployment
 - **Frontend** (`frontend/`): Next.js application for interacting with the system
+- **Indexer** (`indexer/`): Ponder indexer that reads each contract's events directly (EAS, MerkleSnapshot, gov, fund, Safe)
 
 ### Key Architectural Elements
 
-#### WASI Components (`components/`)
+#### Root producer: ZK
 
-Components that handle different aspects of the attestation and governance workflow:
-- `eas-attest/`: Creates EAS attestations based on trigger events
-- `aggregator/`: Aggregates operator responses (non-producer WAVS workflows)
-- `safe-signer-sync/`: Syncs Safe multisig signers
-- `wavs-indexer/`: Indexes blockchain events for the system
+The `{account → score}` merkle root is produced off-chain by proving correct fixed-point PageRank in
+the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified by
+`SP1TrustGraphVerifier`. The canonical algorithm + encodings live in `packages/pagerank-core`
+(compiled to the SP1 guest in `zk/program`, the host in `zk/prover`, and ported to the browser in
+`frontend/lib/pagerank`). Input completeness is proven against an on-chain `AttestationAccumulator`
+(a chained-hash mixin folded into `EASIndexerResolver`). See `ZK_ARCHITECTURE.md` and `zk/RUNBOOK.md`.
 
-> The former `trust-graph/` and `merkler-pruner/` WAVS components (the f64 merkle-root producer +
-> envelope pruner) were **removed**: the root is now produced by the ZK path above
-> (`packages/pagerank-core` → `zk/program` guest → `zk/prover` host → `MerkleSnapshot.submitProof`).
+> **WAVS has been fully removed.** The former WAVS root producer (`trust-graph` / `merkler-pruner`),
+> the non-producer WASI components (`eas-attest`, `aggregator`, `wavs-indexer`, `safe-signer-sync`),
+> the operator/aggregator infrastructure, and the service-manager contracts are all gone. Attestations
+> are created directly against EAS; indexing is done by Ponder reading contract events directly. The
+> Safe signer-sync capability is slated to return as a ZK proof — see `SIGNER_SYNC_ZK_PLAN.md`.
 
-
-#### Service Architecture
-The system operates as an AVS (Actively Validated Service) where:
-1. On-chain events trigger off-chain WASI components
-2. Components process data and make external API calls if needed
-3. Results are submitted back on-chain through aggregator services
-4. Multiple operators can participate in validation and consensus
-
-### Development Workflow Integration
-- Components are built to WebAssembly and uploaded to WASI registry
-- Service configurations are stored on IPFS
-- Eigenlayer integration provides economic security through operator staking
-- Local development uses anvil for rapid iteration
+#### Attestation & governance flow
+1. Users create/revoke EAS attestations directly against the EAS contract.
+2. `EASIndexerResolver` (an EAS `SchemaResolver`) emits index events and folds each edge into the
+   `AttestationAccumulator`.
+3. The ZK host proves PageRank over a checkpointed input set and submits the root via
+   `MerkleSnapshot.submitProof`.
+4. Governance (`MerkleGovModule` on a Safe) and rewards (`MerkleFundDistributor`) consume the proven
+   root via merkle proofs.
 
 ## Important Configuration
 
@@ -78,31 +79,12 @@ The system operates as an AVS (Actively Validated Service) where:
 - `DEPLOY_ENV`: Set to DEV or PROD
 - `RPC_URL`: RPC URL for the chain
 - `FUNDED_KEY`: Private key with funds for contract deployment
-- `WAVS_ENV_*`: Prefix for private variables accessible to WASI components
+- `PARAMS_HASH`, `SP1_PROGRAM_VKEY`, `SP1_VERIFIER_GATEWAY`: ZK deployment parameters (see `deploy/env.ts`)
 
-### Component Development Rules
-- Always use `{ workspace = true }` in component Cargo.toml dependencies
-- Never edit `bindings.rs` files - they are auto-generated
-- All API response structures must derive `Clone`
-- Use proper ABI decoding patterns, never `String::from_utf8` on ABI data
-- Add new components to workspace members in root Cargo.toml
-- Always use `#[serde(default)]` and `Option<T>` for external API response fields
-- Clone data before use to avoid ownership issues: `let data_clone = data.clone();`
-- Use `ok_or_else()` for Option types, `map_err()` for Result types
-- Always verify API endpoints with curl before implementing code that depends on them
-
-### Testing Patterns
-- Components can be tested locally using `task wasi:exec`
-- Always use string parameters for component input, even for numeric values
-- Validation script at `test_utils/validate_component.sh` checks component compliance
-- Always run validation and fix ALL errors before building components
-
-### Component Creation Workflow
-1. Research existing components in `/components/` for patterns
-2. Create component directory: `mkdir -p components/name/src`
-3. Copy template files from an existing component
-4. Implement `src/lib.rs` and `src/trigger.rs` with proper ABI decoding
-5. Create `Cargo.toml` using workspace dependencies
-6. Add component to workspace members in root `Cargo.toml`
-7. Build: `task build:wasi WASI_BUILD_DIR=components/name`
-8. Test: `task wasi:exec COMPONENT_FILENAME=name.wasm INPUT_DATA="test-string"`
+### Rust / PageRank core rules
+- `packages/pagerank-core` is the single source of truth for the algorithm and every byte encoding;
+  the SP1 guest, host, Solidity golden tests, and frontend TS port must all agree byte-for-byte
+- No floats and no non-deterministic iteration (use `BTreeMap`, not `HashMap`) — the guest must be
+  reproducible
+- When changing an encoding, update the golden vectors (`test/unit/GoldenVectors.t.sol` and the
+  frontend `golden.test.ts`) so cross-language parity stays enforced

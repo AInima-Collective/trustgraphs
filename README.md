@@ -4,7 +4,10 @@ Some next-gen attestation-based governance tools.
 
 **Status:** HIGHLY EXPERIMENTAL! Please experiment with us.
 
-Built with [WAVS](https://wavs.xyz).
+Governance weights come from **Trust-Aware PageRank** over [EAS](https://attest.org) attestations. The
+`{account → score}` merkle root is produced by a permissionless **SP1 zero-knowledge proof** of the
+computation (no operator quorum) and committed on-chain via `MerkleSnapshot.submitProof`. See
+[`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) and [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
 
 ## Usage
 
@@ -31,23 +34,18 @@ task build:forge
 task test
 ```
 
-### 3. Build WASI components
+### 3. PageRank core + ZK
 
-Now build the WASI components into the `compiled` output directory.
-
-> \[!WARNING]
-> If you get: `error: no registry configured for namespace "wavs"`
->
-> run, `wkg config --default-registry wa.dev`
-
-> \[!WARNING]
-> If you get: `failed to find the 'wasm32-wasip1' target and 'rustup' is not available`
->
-> `brew uninstall rust` & install it from <https://rustup.rs>
+The canonical Trust-Aware PageRank and every on-chain byte encoding live in `packages/pagerank-core`
+(the single source of truth for the SP1 guest, the host, and the frontend port).
 
 ```bash
-task -y build:wasi
+# Build and test the core crate (includes cross-language golden vectors)
+cargo test -p pagerank-core
 ```
+
+Generating a real proof (SP1 STARK → Groth16) requires ≥16–32 GiB of RAM or the Succinct prover
+network — see [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) for the guest/host build and proving commands.
 
 ### 4. Start backend services
 
@@ -55,9 +53,6 @@ task -y build:wasi
 > This must remain running in your terminal. Use new terminals to run other commands. You can stop the services with `ctrl+c`. Some terminals require pressing it twice.
 
 ```bash docci-background docci-delay-after=5
-# Create wavs.toml file from the example
-cp wavs.toml.example wavs.toml
-
 # Create a .env file from the example
 cp .env.example .env
 
@@ -65,9 +60,10 @@ cp .env.example .env
 task -y start-all-local
 ```
 
-### 5. Deploy and run WAVS
+### 5. Deploy contracts
 
-This script automates the complete WAVS deployment process, including contract deployments and component uploads, in a single command:
+This deploys the full contract set (EAS, resolvers, `MerkleSnapshot` + the SP1 verifier and accumulator,
+the Zodiac `MerkleGovModule` Safe, timelocks, and the reward distributor):
 
 ```bash
 pnpm deploy:full
@@ -113,8 +109,6 @@ Perfect for testing PageRank-based reward algorithms!
 ### 9. Explore other functionality
 
 ```bash
-task forge:query-attestations
-
 task forge:update-rewards
 
 task forge:query-rewards

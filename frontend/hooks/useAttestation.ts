@@ -3,18 +3,12 @@
 import { usePonderQuery } from '@ponder/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
-import {
-  Hex,
-  WatchContractEventOnLogsFn,
-  isAddressEqual,
-  keccak256,
-  stringToBytes,
-} from 'viem'
-import { useAccount, usePublicClient, useWatchContractEvent } from 'wagmi'
+import { Hex, isAddressEqual } from 'viem'
+import { useAccount, usePublicClient } from 'wagmi'
 
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
-import { easAbi, wavsIndexerAbi } from '@/lib/contract-abis'
-import { easAddress, wavsIndexerAddress } from '@/lib/contracts'
+import { easAbi } from '@/lib/contract-abis'
+import { easAddress } from '@/lib/contracts'
 import { parseErrorMessage, shouldRetryTxError } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
@@ -26,8 +20,6 @@ interface NewAttestationData {
   recipient: string
   data: Record<string, string | boolean>
 }
-
-const ATTESTATION_HASH = keccak256(stringToBytes('attestation'))
 
 /**
  * Hook to manage attestation creation and revocation. If a UID is provided, the hook will also fetch attestation data for that UID.
@@ -43,30 +35,6 @@ export function useAttestation(uid?: Hex) {
   const [isRevoked, setIsRevoked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hash, setHash] = useState<`0x${string}` | null>(null)
-
-  // Watch for EventIndexed events with eventType "attestation"
-  const handleEventIndexed: WatchContractEventOnLogsFn<typeof wavsIndexerAbi> =
-    useCallback(
-      ([event]) => {
-        if (
-          event.eventName === 'EventIndexed' &&
-          event.args.eventType === ATTESTATION_HASH
-        ) {
-          console.log(
-            '🔍 EventIndexed event detected for attestation - invalidating queries'
-          )
-          queryClient.invalidateQueries({ queryKey: attestationKeys.all })
-        }
-      },
-      [queryClient]
-    )
-
-  useWatchContractEvent({
-    address: wavsIndexerAddress,
-    abi: wavsIndexerAbi,
-    eventName: 'EventIndexed',
-    onLogs: handleEventIndexed,
-  })
 
   const createAttestation = async (attestationData: NewAttestationData) => {
     if (!isConnected || !connectedAddress) {
@@ -157,6 +125,9 @@ export function useAttestation(uid?: Hex) {
         console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
 
         setIsCreated(true)
+
+        // Invalidate queries to refresh the attestation data
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
       }
 
       // Execute transaction with retry logic

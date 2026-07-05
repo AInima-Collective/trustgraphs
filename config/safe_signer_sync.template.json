@@ -1,7 +1,0 @@
-{
-  "top_n_signers": "${get(${networks[]}.safeZodiacSignerSync.topNSigners)}",
-  "min_threshold": "${get(${networks[]}.safeZodiacSignerSync.minThreshold)}",
-  "target_threshold": "${get(${networks[]}.safeZodiacSignerSync.targetThreshold)}",
-  "signer_sync_manager": "${get(${networks[]}.contracts.safe.signerSyncManager)}",
-  "chain_name": "${getEnv(triggerChain)}"
-}

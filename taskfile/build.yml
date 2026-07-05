@@ -2,29 +2,11 @@ version: '3'
 
 tasks:
   all:
-    desc: 'Build everything (Solidity + WASI components)'
+    desc: 'Build everything (Solidity contracts)'
     cmds:
       - task: forge
-      - task: wasi
 
   forge:
     desc: 'Build Solidity contracts'
     cmds:
       - forge build {{.CLI_ARGS}}
-
-  wasi:
-    desc: 'Build WASI components (all or specific one)'
-    vars:
-      WASI_BUILD_DIR: '{{.WASI_BUILD_DIR | default ""}}'
-    cmds:
-      - |
-        warg reset || echo "warg reset failed (warg server not started), continuing..."
-
-        COMPONENT_DIRS=$(find components/* -maxdepth 1 -name "Taskfile.yml")
-
-        for path in $COMPONENT_DIRS; do
-          if [ "{{.WASI_BUILD_DIR}}" == "" ] || [[ "$path" == *"{{.WASI_BUILD_DIR}}"* ]]; then
-            parent_dir=$(dirname "$path")
-            (cd "$parent_dir" && task build)
-          fi
-        done

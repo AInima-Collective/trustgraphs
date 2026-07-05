@@ -1,5 +1,5 @@
 {
-  "name": "@wavs/trust-graph-indexer",
+  "name": "trust-graph-indexer",
   "private": true,
   "type": "module",
   "scripts": {

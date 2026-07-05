@@ -1,7 +1,0 @@
-{
-  "schema": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "recipient": "0x1234567890abcdef1234567890abcdef12345678",
-  "data": "Hello EAS from WAVS!",
-  "expiration_time": 0,
-  "revocable": true
-}

@@ -23,10 +23,6 @@ const program = new Command('deploy-contracts')
     'The deploy environment (dev or prod) (default: $DEPLOY_ENV from .env)'
   )
   .option(
-    '-s, --service-manager-address <serviceManagerAddress>',
-    'The WAVS service manager address for the service (defaults to addresses.POAStakeRegistry from .nodes/poa_deploy.json)'
-  )
-  .option(
     // Don't pass FUNDED_KEY as default here so it does not appear in the help
     // output. Instead it will be set via applyDefaultOptions().
     '-k, --funded-key <fundedKey>',
@@ -41,7 +37,7 @@ const main = async () => {
   const context = initProgram(program)
   const {
     env,
-    options: { fundedKey, serviceManagerAddress },
+    options: { fundedKey },
   } = context
 
   for (const contract of env.deployContracts) {
@@ -83,11 +79,7 @@ const main = async () => {
 
   fs.writeFileSync(
     DEPLOYMENT_SUMMARY_FILE,
-    JSON.stringify(
-      env.generateDeploymentSummary(serviceManagerAddress),
-      null,
-      2
-    )
+    JSON.stringify(env.generateDeploymentSummary(), null, 2)
   )
 
   console.log(

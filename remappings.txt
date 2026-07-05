@@ -1,8 +1,6 @@
 contracts/=src/contracts
 common/=src/common
 interfaces/=src/interfaces
-@wavs=node_modules/@wavs/solidity/contracts
-@lay3rlabs/poa-middleware=node_modules/@lay3rlabs/poa-middleware/contracts
 forge-std=node_modules/forge-std/src
 @openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
 @openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/

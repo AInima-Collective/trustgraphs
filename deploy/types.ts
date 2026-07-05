@@ -1,62 +1,6 @@
 import { DotenvParseOutput } from 'dotenv'
 import { Hex } from 'viem'
 
-export type ComponentsConfigFile = {
-  components: {
-    disabled?: boolean
-    filename: string
-    package_name: string
-    package_version: string
-    trigger:
-      | {
-          event: {
-            contract_json_path: string
-            event: string
-            chain?: string
-          }
-        }
-      | {
-          block_interval: {
-            blocks: number
-            chain?: string
-          }
-        }
-      | {
-          cron: {
-            schedule: string
-            start_time: string
-            end_time: string
-          }
-        }
-    submit: {
-      contract_json_path: string
-      chain?: string
-    }
-    config?:
-      | {
-          file: string
-        }
-      | {
-          values: Record<string, unknown>
-        }
-    env_variables?: string[]
-  }[]
-  aggregator_components: {
-    disabled?: boolean
-    filename: string
-    package_name: string
-    package_version: string
-    config?:
-      | {
-          file: string
-        }
-      | {
-          values: Record<string, unknown>
-        }
-    env_variables?: string[]
-  }[]
-}
-
 export type ContractDeployment = {
   name: string
   script: string
@@ -72,19 +16,17 @@ export type IEnv = {
   rpcUrl: string
   registry: string
   serviceName: string
-  wasiNamespace: string
   triggerChain: string
   submitChain: string
   ipfs: {
     pinApi: string
     gateway: string
   }
-  aggregatorTimerDelaySeconds: number
   networksConfigFile: string
   deployContracts: ContractDeployment[]
   postDeployContracts?: () => void | Promise<void>
   uploadToIpfs: (file: string, apiKey?: string) => Promise<string>
-  generateDeploymentSummary: (serviceManagerAddress: string) => object
+  generateDeploymentSummary: () => object
 }
 
 export type EnvOverrides = {
@@ -101,16 +43,6 @@ export type ProgramContext = {
   options: Record<string, any>
   /** The environment variables loaded from the .env file */
   dotenv: DotenvParseOutput
-}
-
-export type ProcessConfigOptions = {
-  env: IEnv
-  extraValues?: Record<string, unknown>
-  arrayUnwraps?: Record<string, number> // e.g., { "networks": 0 }
-}
-
-export type ExpandedComponent = ComponentsConfigFile['components'][number] & {
-  _arrayUnwraps?: Record<string, number>
 }
 
 export type NetworkDeploy = {

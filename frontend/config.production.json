@@ -4,10 +4,7 @@
     "ponder": "https://trust-graph.wavs.xyz/ponder",
     "ipfsGateway": "https://gateway.pinata.cloud/ipfs/"
   },
-  "wavsServiceId": "1c1018875bf736a711f47e9f43ec4d3c82269acae2d132fef8971c0a13887865",
   "contracts": {
-    "IWavsServiceManager": "0x197484faccbdb900788f50f553907bbaea20701c",
-    "WavsIndexer": "0xF56904778BcCF9B89c4B2f214eB07Fb2B9872b5E",
     "EAS": "0x4200000000000000000000000000000000000021",
     "SchemaRegistrar": "0x33b9885ac3cb1891b0bc43f55d71963bd1fee5f2",
     "SchemaRegistry": "0x4200000000000000000000000000000000000020",

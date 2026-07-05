@@ -1,6 +1,0 @@
-version: '3'
-silent: true
-includes:
-  component:
-    taskfile: ../../taskfile/component.yml
-    flatten: true

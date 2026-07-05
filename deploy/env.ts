@@ -56,14 +56,12 @@ abstract class EnvBase implements IEnv {
   rpcUrl: string
   registry: string
   serviceName: string
-  wasiNamespace: string
   triggerChain: string
   submitChain: string
   ipfs: {
     pinApi: string
     gateway: string
   }
-  aggregatorTimerDelaySeconds: number
   networksConfigFile: string
   deployContracts: ContractDeployment[]
   postDeployContracts?: () => void | Promise<void>
@@ -72,11 +70,9 @@ abstract class EnvBase implements IEnv {
     this.rpcUrl = options.rpcUrl
     this.registry = options.registry
     this.serviceName = options.serviceName
-    this.wasiNamespace = options.wasiNamespace
     this.triggerChain = options.triggerChain
     this.submitChain = options.submitChain
     this.ipfs = options.ipfs
-    this.aggregatorTimerDelaySeconds = options.aggregatorTimerDelaySeconds
     this.networksConfigFile = options.networksConfigFile
     this.deployContracts = options.deployContracts
     this.postDeployContracts = options.postDeployContracts
@@ -123,15 +119,10 @@ abstract class EnvBase implements IEnv {
   /**
    * Generate deployment summary file.
    */
-  generateDeploymentSummary(serviceManagerAddress: string): object {
+  generateDeploymentSummary(): object {
     return {
       service_id: '',
       rpc_url: this.rpcUrl,
-      wavs_service_manager: serviceManagerAddress,
-      wavs_indexer: readJsonKey(
-        '.docker/wavs_indexer_deploy.json',
-        'wavs_indexer'
-      ),
       eas: readJsonIfFileExists('.docker/eas_deploy.json'),
       networks: readJsonIfFileExists(this.networksConfigFile),
       zodiac_safes: readJsonIfFileExists('.docker/zodiac_safes_deploy.json'),
@@ -288,25 +279,24 @@ export class DevEnv extends EnvBase {
       rpcUrl,
       registry: 'http://localhost:8090',
       serviceName: 'trust-graph',
-      wasiNamespace: 'example',
       triggerChain: 'evm:31337',
       submitChain: 'evm:31337',
       ipfs: {
         pinApi: 'http://127.0.0.1:5001/api/v0/add?pin=true',
         gateway: ipfsGateway,
       },
-      aggregatorTimerDelaySeconds: 0,
       networksConfigFile,
       deployContracts: [
         {
           name: 'EAS',
           script: 'script/DeployEAS.s.sol:DeployEAS',
-          sig: 'run(string)',
-          args: (ctx) => [ctx.options.serviceManagerAddress],
+          sig: 'run()',
+          args: () => [],
         },
-        // Deploy the SP1 ZK verifier adapter that gates MerkleSnapshot root updates. Replaces the
-        // WAVS POA producer path. Points at an existing canonical SP1 gateway (SP1_VERIFIER_GATEWAY)
-        // and the guest image id (SP1_PROGRAM_VKEY); both default to zero for local scaffolding.
+        // Deploy the SP1 ZK verifier adapter that gates MerkleSnapshot root updates. This is the
+        // producer path: the root is proven by SP1 (see ZK_ARCHITECTURE.md). Points at an existing
+        // canonical SP1 gateway (SP1_VERIFIER_GATEWAY) and the guest image id (SP1_PROGRAM_VKEY);
+        // both default to zero for local scaffolding.
         {
           name: 'ZK Verifier',
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
@@ -331,24 +321,23 @@ export class DevEnv extends EnvBase {
             numNetworks,
           ],
         },
-        {
-          name: 'Safe and Zodiac Signer Sync',
-          script: 'script/DeploySafeZodiacSignerSync.s.sol:DeployScript',
-          sig: 'run(string,uint256,string,uint256,uint256)',
-          args: (ctx) => [
-            ctx.options.serviceManagerAddress,
-            BigInt(2e18).toString(),
-            'dev',
-            0,
-            numNetworks,
-          ],
-        },
-        {
-          name: 'Indexer',
-          script: 'script/DeployWavsIndexer.s.sol:DeployWavsIndexer',
-          sig: 'run(string)',
-          args: (ctx) => [ctx.options.serviceManagerAddress],
-        },
+        // Deploy one Zodiac-enabled Safe (with MerkleGovModule) per network, wired to that
+        // network's ZK-proven MerkleSnapshot root. Must run AFTER Network so the network deploy
+        // JSONs (with merkle_snapshot addresses) exist.
+        ...Array.from(
+          { length: numNetworks },
+          (_, index): ContractDeployment => ({
+            name: `Safe: ${index}`,
+            script: 'script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
+            sig: 'run(string)',
+            args: () => [
+              readJsonKey(
+                `config/network_deploy_dev_${index}.json`,
+                'contracts.merkle_snapshot'
+              ),
+            ],
+          })
+        ),
         // Deploy the two governance timelocks and hand off MerkleSnapshot authority to them
         // (deployer renounces its bootstrap roles). Must run AFTER Network so the network deploy
         // JSONs (with merkle_snapshot addresses) exist.
@@ -441,7 +430,6 @@ export class ProdEnv extends EnvBase {
       rpcUrl,
       registry: 'https://wa.dev',
       serviceName: 'trust-graph',
-      wasiNamespace: 'wavs-trust-graph',
       // optimism
       triggerChain: 'evm:10',
       submitChain: 'evm:10',
@@ -449,23 +437,22 @@ export class ProdEnv extends EnvBase {
         pinApi: 'https://uploads.pinata.cloud/v3/files',
         gateway: ipfsGateway,
       },
-      // optimism wait ~1 block
-      aggregatorTimerDelaySeconds: 3,
       networksConfigFile,
       deployContracts: [
         {
           name: 'EAS',
           script: 'script/DeployEAS.s.sol:DeployEAS',
-          sig: 'run(string)',
-          args: (ctx) => [ctx.options.serviceManagerAddress],
+          sig: 'run()',
+          args: () => [],
           // Skip if EAS is already deployed.
           skip: () =>
             readJsonKeyIfFileExists('.docker/eas_deploy.json', 'eas') !==
             undefined,
         },
-        // Deploy the SP1 ZK verifier adapter (replaces the WAVS POA producer path). Points at the
-        // canonical SP1 Groth16 gateway (SP1_VERIFIER_GATEWAY) and the guest image id
-        // (SP1_PROGRAM_VKEY) — both REQUIRED for prod; the script reverts on a zero value.
+        // Deploy the SP1 ZK verifier adapter (the root producer path; the root is proven by SP1,
+        // see ZK_ARCHITECTURE.md). Points at the canonical SP1 Groth16 gateway
+        // (SP1_VERIFIER_GATEWAY) and the guest image id (SP1_PROGRAM_VKEY) — both REQUIRED for
+        // prod; the script reverts on a zero value.
         {
           name: 'ZK Verifier',
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
@@ -494,17 +481,16 @@ export class ProdEnv extends EnvBase {
             skip: () => isNetworkComplete(network),
           },
           {
-            name: `Safe and Zodiac Signer Sync: ${network.name}`,
-            script: 'script/DeploySafeZodiacSignerSync.s.sol:DeployScript',
-            sig: 'run(string,uint256,string,uint256,uint256)',
-            args: (ctx) => [
-              ctx.options.serviceManagerAddress,
-              '0', // No funding amount for production.
-              'prod',
-              index,
-              1,
+            name: `Safe: ${network.name}`,
+            script: 'script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
+            sig: 'run(string)',
+            args: () => [
+              readJsonKey(
+                `config/network_deploy_prod_${index}.json`,
+                'contracts.merkle_snapshot'
+              ),
             ],
-            // Skip if safe and zodiac signer sync is already complete.
+            // Skip if the safe is already deployed / disabled for this network.
             skip: () =>
               isNetworkSafeZodiacSignerSyncDisabledOrComplete(network),
           },
@@ -527,18 +513,6 @@ export class ProdEnv extends EnvBase {
             skip: () => isNetworkComplete(network),
           },
         ]),
-        {
-          name: 'Indexer',
-          script: 'script/DeployWavsIndexer.s.sol:DeployWavsIndexer',
-          sig: 'run(string)',
-          args: (ctx) => [ctx.options.serviceManagerAddress],
-          // Skip if indexer is already deployed.
-          skip: () =>
-            readJsonKeyIfFileExists(
-              '.docker/wavs_indexer_deploy.json',
-              'wavs_indexer'
-            ) !== undefined,
-        },
       ],
       // After all contracts are deployed, update the networks config file.
       postDeployContracts: () => {
@@ -608,12 +582,6 @@ export class ProdEnv extends EnvBase {
 export const DEFAULT_OPTIONS: Record<string, () => string | undefined> = {
   rpcUrl: () => process.env.RPC_URL,
   fundedKey: () => process.env.FUNDED_KEY,
-  ipfsApiKey: () => process.env.WAVS_ENV_PINATA_API_KEY,
-  serviceManagerAddress: () =>
-    readJsonKeyIfFileExists(
-      '.nodes/poa_deploy.json',
-      'addresses.POAStakeRegistry'
-    ),
 }
 
 /**
@@ -621,20 +589,6 @@ export const DEFAULT_OPTIONS: Record<string, () => string | undefined> = {
  * environment and options.
  */
 export const initProgram = (program: Command): ProgramContext => {
-  // Create wavs.toml file from the example if it doesn't exist
-  const wavsTomlFile = path.resolve(path.join(__dirname, '../wavs.toml'))
-  if (!fs.existsSync(wavsTomlFile)) {
-    const exampleWavsTomlFile = path.resolve(
-      path.join(__dirname, '../wavs.toml.example')
-    )
-    if (!fs.existsSync(exampleWavsTomlFile)) {
-      throw new Error(
-        `Example wavs.toml file ${exampleWavsTomlFile} does not exist.`
-      )
-    }
-    fs.copyFileSync(exampleWavsTomlFile, wavsTomlFile)
-  }
-
   const dotenv = loadDotenv()
 
   program.parse(process.argv)

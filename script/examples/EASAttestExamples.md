@@ -132,11 +132,11 @@ trigger-statement-attestation:
         --rpc-url {{.RPC_URL}} --broadcast
 ```
 
-**Key Changes:**
+**Key points:**
 
-- Uses `EASAttest.s.sol` instead of `EASAttestTrigger.s.sol`
+- Uses `EASAttest.s.sol`
 - Calls `attestWithMilliEth` with 1 milliether (0.001 ETH)
-- Targets EAS contract directly (`{{.EAS_ADDR}}`) instead of service trigger
+- Targets the EAS contract directly (`{{.EAS_ADDR}}`)
 - Sends payment along with attestation
 
 ## Environment Variable Sources
@@ -244,9 +244,9 @@ Tests cover:
 
 ## Architecture Integration
 
-This script integrates with the broader WAVS (WASI AVS) architecture:
+This script integrates with the broader TrustGraph architecture:
 
-1. **Direct EAS Integration**: Bypasses WAVS trigger system for direct attestations
+1. **Direct EAS Integration**: Creates attestations directly against the EAS contract
 2. **Payment Support**: Enables economic models around attestations
 3. **Resolver Compatibility**: Works with all EAS resolver types
 4. **Taskfile Integration**: Seamless developer workflow

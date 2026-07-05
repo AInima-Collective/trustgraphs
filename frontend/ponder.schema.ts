@@ -1,29 +1,5 @@
 import { index, onchainTable, primaryKey } from 'ponder'
 
-export const wavsIndexerEvent = onchainTable(
-  'wavs_indexer_event',
-  (t) => ({
-    id: t.hex().primaryKey(),
-    chainId: t.text().notNull(),
-    relevantContract: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),
-    timestamp: t.bigint().notNull(),
-    type: t.text().notNull(),
-    data: t.hex().notNull(),
-    tags: t.text().array().notNull(),
-    relevantAddresses: t.hex().array().notNull(),
-    metadata: t.hex().notNull(),
-    deleted: t.boolean().notNull(),
-  }),
-  (t) => ({
-    typeIdx: index().on(t.type),
-    chainIdIdx: index().on(t.chainId),
-    relevantContractIdx: index().on(t.relevantContract),
-    blockNumberIdx: index().on(t.blockNumber),
-    timestampIdx: index().on(t.timestamp),
-  })
-)
-
 export const easAttestation = onchainTable(
   'eas_attestation',
   (t) => ({

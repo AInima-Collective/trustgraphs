@@ -20,5 +20,5 @@ hex = "0.4"
 sp1-build = "=6.3.1"
 
 # Detached from the root workspace: sp1-sdk brings its own (large) dependency graph that must not
-# be unified with the WAVS/alloy graph of the main workspace.
+# be unified with the alloy graph of the main workspace.
 [workspace]

@@ -26,23 +26,6 @@ tasks:
           "{{.CONFIDENCE}}" \
           --rpc-url {{.RPC_URL}} --broadcast
 
-  trigger-attestation:
-    desc: 'Trigger attestation creation via WAVS'
-    vars:
-      RPC_URL:
-        sh: task get-rpc
-    requires:
-      vars: [INPUT]
-    cmds:
-      - |
-        forge script script/EASAttestTrigger.s.sol:EASAttestTriggerScript \
-          --sig "triggerRawAttestation(string,string,string,string)" \
-          "{{.EAS_ATTEST_TRIGGER_ADDR}}" \
-          "{{.VOUCHING_SCHEMA_ID}}" \
-          "{{.WALLET_ADDRESS}}" \
-          "{{.INPUT}}" \
-          --rpc-url {{.RPC_URL}} --broadcast
-
   trigger-statement-attestation:
     desc: 'Create direct EAS attestation with 0.001 ETH payment'
     vars:
@@ -60,53 +43,6 @@ tasks:
           "{{.INPUT}}" \
           1 \
           --rpc-url {{.RPC_URL}} --broadcast
-
-  agent-trigger:
-    desc: 'Trigger agent event with string data'
-    vars:
-      RPC_URL:
-        sh: task get-rpc
-    requires:
-      vars: [INPUT]
-    cmds:
-      - |
-        forge script script/EASAttestTrigger.s.sol:EASAttestTriggerScript \
-          --sig "addAgentTrigger(string,string)" \
-          "{{.EAS_ATTEST_TRIGGER_ADDR}}" \
-          "{{.INPUT}}" \
-          --rpc-url {{.RPC_URL}} --broadcast
-
-  query-attestations:
-    desc: 'Query attestations for schema and recipient'
-    vars:
-      RPC_URL:
-        sh: task get-rpc
-    cmds:
-      - |
-        forge script script/EASAttestTrigger.s.sol:EASAttestTriggerScript \
-          --sig "queryAttestations(string,string,string,string,uint256)" \
-          "{{.INDEXER_ADDR}}" \
-          "{{.EAS_ADDR}}" \
-          "{{.VOUCHING_SCHEMA_ID}}" \
-          "{{.WALLET_ADDRESS}}" \
-          10 \
-          --rpc-url {{.RPC_URL}}
-
-  query-statement-attestations:
-    desc: 'Query attestations for the statement schema and recipient'
-    vars:
-      RPC_URL:
-        sh: task get-rpc
-    cmds:
-      - |
-        forge script script/EASAttestTrigger.s.sol:EASAttestTriggerScript \
-          --sig "queryAttestations(string,string,string,string,uint256)" \
-          "{{.INDEXER_ADDR}}" \
-          "{{.EAS_ADDR}}" \
-          "{{.LIKE_SCHEMA_UID}}" \
-          "{{.WALLET_ADDRESS}}" \
-          50 \
-          --rpc-url {{.RPC_URL}}
 
   query-voting-power:
     desc: 'Check voting power for recipient'

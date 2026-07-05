@@ -8,7 +8,7 @@ import dotenv, { DotenvParseOutput } from 'dotenv'
 import { get } from 'lodash'
 import { isAddress } from 'viem'
 
-import { ComponentsConfigFile, ExpandedComponent, Network } from './types'
+import { Network } from './types'
 
 /**
  * Loads the environment variables from the .env file, creating from the
@@ -217,60 +217,6 @@ export const keccak256 = (str: string): string =>
  */
 export const sleep = (seconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, seconds * 1_000))
-
-/**
- * Detect array unwrap patterns (e.g., "networks[]") in a component.
- * Returns unique array keys that use the [] syntax.
- */
-const detectArrayUnwraps = (component: object): string[] => {
-  const matches = JSON.stringify(component).matchAll(/\${(\w+)\[\]}/g)
-  return [...new Set([...matches].map((m) => m[1]))]
-}
-
-/**
- * Expand a component for all elements of arrays using the [] unwrap syntax.
- * For example, a component with "networks[].contracts.x" will be expanded
- * once for each network in the deployment summary.
- */
-export const expandArrayUnwraps = (
-  component: ComponentsConfigFile['components'][number],
-  deploymentSummary: Record<string, unknown>
-): ExpandedComponent[] => {
-  if (component.disabled) {
-    return [component]
-  }
-
-  const arrayKeys = detectArrayUnwraps(component)
-  if (arrayKeys.length === 0) {
-    return [component]
-  }
-
-  // For now, support single array unwrap (can extend to multiple later)
-  if (arrayKeys.length > 1) {
-    throw new Error(
-      `Multiple array unwraps not supported yet: ${arrayKeys.join(', ')}`
-    )
-  }
-
-  const arrayKey = arrayKeys[0]
-  const array = deploymentSummary[arrayKey] as unknown[]
-
-  if (!Array.isArray(array)) {
-    throw new Error(
-      `Array unwrap "${arrayKey}[]" used but "${arrayKey}" is not an array in deployment summary`
-    )
-  }
-
-  return array.map((_, index) => ({
-    ...JSON.parse(
-      JSON.stringify(component).replaceAll(
-        `\${${arrayKey}[]}`,
-        `${arrayKey}.${index}`
-      )
-    ),
-    _arrayUnwraps: { [arrayKey]: index },
-  }))
-}
 
 /**
  * Whether or not a network is completely configured.

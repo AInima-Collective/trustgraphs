@@ -1,5 +1,5 @@
 [workspace]
-members = ["components/*", "packages/*"]
+members = ["packages/*"]
 resolver = "2"
 
 [workspace.package]
@@ -11,18 +11,6 @@ repository = "https://github.com/Lay3rLabs/wavs"
 rust-version = "1.87.0"
 
 [workspace.dependencies]
-# WASI
-wit-bindgen-rt = { version = "0.44.0", features = ["bitflags"] }
-wit-bindgen = "0.44.0"
-wstd = "0.5.4"
-wasi = "0.14.2"
-wavs-wasi-utils = "=1.2.0"
-
-# WAVS (https://github.com/Lay3rLabs/wavs-tools/pull/123)
-wavs-llm = { git = "https://github.com/Lay3rLabs/wavs-tools", rev = "cd1c4271deb7686a7d995b5b41bc226d8185df6e", package = "wavs-llm"}
-wavs-eas = { git = "https://github.com/Lay3rLabs/wavs-tools", rev = "cd1c4271deb7686a7d995b5b41bc226d8185df6e", package = "wavs-eas" }
-wavs-indexer-api = { git = "https://github.com/Lay3rLabs/wavs-tools", rev = "cd1c4271deb7686a7d995b5b41bc226d8185df6e", package = "wavs-indexer-api" }
-
 # Other
 schemars = "1.0.4"
 serde = { version = "1.0.219", features = ["derive"] }

@@ -11,7 +11,6 @@ import {
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
-  wavsIndexerAbi,
 } from '../frontend/lib/contract-abis'
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -47,13 +46,6 @@ export default createConfig({
         }),
   },
   contracts: {
-    wavsIndexer: {
-      abi: wavsIndexerAbi,
-      startBlock: IS_PRODUCTION ? 142786355 : 1,
-      chain: {
-        [CORE_CHAIN]: { address: deploymentSummary.wavs_indexer as Hex },
-      },
-    },
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
       startBlock: IS_PRODUCTION ? 142786483 : 1,

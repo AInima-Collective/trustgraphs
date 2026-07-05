@@ -7,18 +7,11 @@ silent: true
 dotenv: [".env"]
 
 includes:
-  # Upstream common taskfiles (from wavs-taskfiles repo)
-  docker: https://raw.githubusercontent.com/Lay3rLabs/wavs-taskfiles/main/base/docker.yml
-  operator: https://raw.githubusercontent.com/Lay3rLabs/wavs-taskfiles/main/base/poa-operator.yml
-  wasi: https://raw.githubusercontent.com/Lay3rLabs/wavs-taskfiles/main/base/wasi.yml
+  # Project-specific taskfiles
   core:
-    taskfile: https://raw.githubusercontent.com/Lay3rLabs/wavs-taskfiles/main/base/core.yml
+    taskfile: ./taskfile/core.yml
     flatten: true
-
-  # Project-specific taskfiles (with customizations)
   build: ./taskfile/build.yml
-  deploy: ./taskfile/deploy.yml
-  eas: ./taskfile/eas.yml
   forge: ./taskfile/eas-forge.yml
   merkle: ./taskfile/merkle.yml
   services: ./taskfile/services.yml
@@ -28,19 +21,8 @@ includes:
     flatten: true
 
 vars:
-  # Docker configuration
-  DOCKER_IMAGE: '{{.DOCKER_IMAGE | default "ghcr.io/lay3rlabs/wavs:1.5.1"}}'
-  MIDDLEWARE_DOCKER_IMAGE: '{{.MIDDLEWARE_DOCKER_IMAGE | default "ghcr.io/lay3rlabs/wavs-middleware:0.5.0-beta.10"}}'
-
-  # Check if user is in docker group to determine if sudo is needed
-  DOCKER_SUDO:
-    sh: |
-      if groups | grep -q docker; then echo ''; else echo 'sudo'; fi
-
   # Default endpoints
   RPC_URL: '{{.RPC_URL | default "http://127.0.0.1:8545"}}'
-  WAVS_ENDPOINT: '{{.WAVS_ENDPOINT | default "http://127.0.0.1:8041"}}'
-  AGGREGATOR_URL: '{{.AGGREGATOR_URL | default "http://127.0.0.1:8040"}}'
   IPFS_ENDPOINT: '{{.IPFS_ENDPOINT | default "http://127.0.0.1:5001"}}'
   IPFS_GATEWAY: '{{.IPFS_GATEWAY | default "http://127.0.0.1:8080/ipfs/"}}'
 

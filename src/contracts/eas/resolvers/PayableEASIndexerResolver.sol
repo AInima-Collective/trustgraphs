@@ -89,10 +89,10 @@ contract PayableEASIndexerResolver is SchemaResolver, Ownable {
     /// @param value The value sent with the transaction.
     /// @return Whether the attestation is valid and payment was successful.
     function onAttest(Attestation calldata attestation, uint256 value) internal override returns (bool) {
-        // Emitted so the WAVS eas-compute component can be more generic.
+        // Emitted so off-chain indexers can consume attestation events generically.
         emit IEAS.Attested(attestation.recipient, attestation.attester, attestation.uid, attestation.schema);
 
-        // Emit the attestation indexed event for the WavsIndexer
+        // Emit the attestation indexed event for off-chain indexers
         emit AttestationAttested(address(_eas), attestation.uid);
 
         return value == _targetValue;
@@ -102,7 +102,7 @@ contract PayableEASIndexerResolver is SchemaResolver, Ownable {
     /// @param attestation The attestation being revoked.
     /// @return Whether the attestation can be revoked.
     function onRevoke(Attestation calldata attestation, uint256 /*value*/ ) internal override returns (bool) {
-        // Emit the attestation revoked event for the WavsIndexer
+        // Emit the attestation revoked event for off-chain indexers
         emit AttestationRevoked(address(_eas), attestation.uid);
         return true;
     }

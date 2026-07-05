@@ -1,0 +1,75 @@
+version: "3"
+
+silent: true
+
+tasks:
+  clean:
+    desc: "Clean up project files"
+    cmds:
+      - forge clean
+      - cargo clean
+      - rm -rf cache out broadcast
+
+  test:
+    desc: "Run forge test"
+    cmds:
+      - forge test
+
+  fmt:
+    desc: "Format Solidity and Rust code"
+    cmds:
+      - forge fmt
+      - cargo fmt
+
+  setup-env:
+    desc: "Create .env file from example if it doesn't exist"
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          if [ -f .env.example ]; then
+            echo "Creating .env file from .env.example..."
+            cp .env.example .env
+            echo ".env file created successfully!"
+          fi
+        fi
+
+  check-requirements:
+    desc: "Verify system requirements are installed"
+    cmds:
+      - |
+        echo "🔍 Validating system requirements..."
+        # Check Node.js
+        if ! command -v node >/dev/null 2>&1; then
+          echo "❌ Node.js not found. Install with: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash && nvm install --lts"
+          exit 1
+        fi
+        NODE_VERSION=$(node --version)
+        MAJOR_VERSION=$(echo $NODE_VERSION | sed 's/^v\([0-9]*\)\..*/\1/')
+        if [ $MAJOR_VERSION -lt 21 ]; then
+          echo "❌ Node.js version $NODE_VERSION is less than required v21"
+          echo "💡 Upgrade with: nvm install --lts"
+          exit 1
+        fi
+        # Check jq
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "❌ jq not found. Install with: brew install jq (macOS) or apt install jq (Linux)"
+          exit 1
+        fi
+        # Check cargo
+        if ! command -v cargo >/dev/null 2>&1; then
+          echo "❌ cargo not found. Install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+          exit 1
+        fi
+        # Check docker
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "❌ docker not found. Visit: https://docs.docker.com/get-docker/"
+          exit 1
+        fi
+        echo "✅ All requirements satisfied"
+
+  dos2unix:
+    desc: "Convert all script files to Unix line endings"
+    cmds:
+      - |
+        find script/ -type f -name "*.sh" -exec dos2unix {} \;
+        find script/ -type f -name "*.env*" -exec dos2unix {} \;

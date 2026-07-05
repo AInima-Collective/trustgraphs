@@ -36,20 +36,9 @@ try {
         : 'https://gateway.pinata.cloud/ipfs/',
   }
 
-  // Update WAVS service ID
-  configOutput.wavsServiceId = deployment.service_id
-
   // Contract name mappings to contract addresses
   configOutput.contracts = {
-    // WAVS Service Manager
-    IWavsServiceManager: deployment.wavs_service_manager,
-
-    // Indexer
-    WavsIndexer: deployment.wavs_indexer,
-
     // EAS
-    // EASAttestTrigger: deployment.eas.attest_trigger,
-    // WavsAttester: deployment.eas.attester,
     EAS: deployment.eas.eas,
     SchemaRegistrar: deployment.eas.schema_registrar,
     SchemaRegistry: deployment.eas.schema_registry,
