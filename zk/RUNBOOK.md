@@ -9,13 +9,14 @@ fixed-point Trust-Aware PageRank. See `ZK_ARCHITECTURE.md` for the design and th
 
 | Path | What it is |
 |---|---|
-| `packages/pagerank-core` | Canonical fixed-point PageRank + all byte encodings. Single source of truth. No floats. |
-| `zk/program` | SP1 guest: reads folded edges + params, runs `pagerank-core`, commits the journal. |
-| `zk/prover` | Host CLI: `execute` / `prove` / `vkey` / `paramshash`. |
+| `packages/pagerank-core` | Canonical fixed-point PageRank + selection + all byte encodings. Single source of truth. No floats. |
+| `zk/program` | Two SP1 guest bins: `trustgraph-program` (root) and `trustgraph-signer-program` (signer selection). |
+| `zk/prover` | Host CLI: `execute`/`prove`/`vkey`/`paramshash` (root) and `signer-execute`/`signer-prove`/`signer-vkey`/`signer-selectionparamshash`. |
 | `src/contracts/eas/AttestationAccumulator.sol` | Chained-hash accumulator (mixed into `EASIndexerResolver`). |
 | `src/contracts/merkle/MerkleSnapshot.sol` | `submitProof` write-gate + two-tier timelock authority. |
 | `src/contracts/merkle/SP1TrustGraphVerifier.sol` | `IZkVerifier` → SP1 gateway adapter. |
-| `test/golden/vectors.json` + `test/unit/GoldenVectors.t.sol` | Cross-language byte-format lock. |
+| `src/contracts/zodiac/SignerSyncZkModule.sol` | `submitSignerProof` write-gate + on-chain Safe owner-set diff. |
+| `test/golden/vectors.json` + `test/unit/GoldenVectors.t.sol` | Cross-language byte-format lock (root + signer). |
 
 ## Toolchain
 
@@ -104,12 +105,62 @@ cast send $MERKLE_SNAPSHOT \
 the submitted outputs, and reverts unless the proof binds exactly that digest. It files the result at
 the checkpoint's freeze block, so historical `states[...]` mean "inputs as of block N".
 
+## Rotate the Safe signer set (the signer-sync loop)
+
+A second, independent proof rotates a Zodiac Safe's owner set to the top-scored accounts. It reuses
+the same accumulator + `paramsHash` as the root (so the score root and the signer set are consistent
+by construction — same inputs, same params, same deterministic algorithm), but has its own guest,
+journal, verification key, and verifier instance — `MerkleSnapshot` is untouched. See
+`SIGNER_SYNC_ZK_PLAN.md`.
+
+Deploy constants (in addition to the root's):
+
+```bash
+cd zk/prover
+cargo run --release -- signer-vkey                              # -> programVKey for the signer guest
+cargo run --release -- signer-selectionparamshash input.json   # -> selectionParamsHash
+# input.json is a serialized pagerank_core::SignerInput (edges + params + selection). Omit for the sample.
+```
+
+`SignerSyncZkModule` is deployed + enabled by `script/DeployZodiacSafes.s.sol`, reusing the
+MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the
+`SELECTION_PARAMS_HASH` env var (default `0` → inert until governance sets it).
+
+Validate then run the loop:
+
+```bash
+cd zk/prover
+SP1_PROVER=cpu cargo run --release -- signer-execute input.json   # guest == native (no proof)
+cargo run --release -- signer-prove input.json --groth16          # writes signer_proof.bin
+```
+
+```bash
+# 1. Freeze a checkpoint (same trigger() as the root):
+cast send $MERKLE_SNAPSHOT "trigger()"
+# 2. Submit. SIGNERS must be strictly ascending + unique; THRESHOLD in [1, |SIGNERS|]:
+cast send $SIGNER_SYNC_MODULE \
+  "submitSignerProof(uint256,address[],uint256,bytes)" \
+  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 signer_proof.bin)
+```
+
+`submitSignerProof` rebuilds the signer journal digest from the chain-pinned checkpoint + stored
+`paramsHash`/`selectionParamsHash` + the submitted `signerSetRoot`/`targetThreshold`, verifies, then
+diffs the proven set against the Safe's **live** owner linked list on-chain (correct `prevOwner`
+pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/remove/swap). Signer guest
+cost ≈ **1.85M cycles**.
+
 ## Governance (two-tier)
+
+MerkleSnapshot:
 
 - **Constitutional** (long timelock): `setZkVerifier`, `setAccumulator`. Changing the guest = deploy a
   new `SP1TrustGraphVerifier(gateway, newVkey)` and `setZkVerifier` through this timelock.
 - **Operational** (short timelock): `setParamsHash`. Rotating seeds / tuning damping goes here. An
   operational-key compromise CANNOT swap the guest.
+
+`SignerSyncZkModule`: its `owner` (set a `TimelockController` in production) governs `setZkVerifier`,
+`setAccumulator`, `setParamsHash`, and `setSelectionParamsHash`. Deploy a new signer verifier +
+`setZkVerifier` when the signer guest changes.
 
 ## Proving & on-chain gas — status and requirements
 

@@ -4,116 +4,180 @@ Some next-gen attestation-based governance tools.
 
 **Status:** HIGHLY EXPERIMENTAL! Please experiment with us.
 
-Governance weights come from **Trust-Aware PageRank** over [EAS](https://attest.org) attestations. The
-`{account → score}` merkle root is produced by a permissionless **SP1 zero-knowledge proof** of the
-computation (no operator quorum) and committed on-chain via `MerkleSnapshot.submitProof`. See
-[`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) and [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+Governance weight comes from **Trust-Aware PageRank** over [EAS](https://attest.org) attestations.
+Everything that used to run on a WAVS operator set is now produced by **permissionless SP1
+zero-knowledge proofs** — anyone who can generate a valid proof can post it, no quorum:
+
+- The `{account → score}` merkle root is proven and committed via `MerkleSnapshot.submitProof`.
+- The Safe multisig's owner set (the top-scored accounts) is proven and rotated via
+  `SignerSyncZkModule.submitSignerProof`.
+
+The canonical algorithm + every on-chain byte encoding live in `packages/pagerank-core` (the single
+source of truth), compiled to the SP1 guests in `zk/program`, driven by the host in `zk/prover`, and
+ported to the browser in `frontend/lib/pagerank`. See [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md),
+[`zk/RUNBOOK.md`](./zk/RUNBOOK.md), and [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
+
+> **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
+> anywhere. Generating a real STARK→Groth16 *proof* needs ≥16–32 GiB of RAM or the Succinct prover
+> network (`SP1_PROVER=network`). For a local dev loop you can validate with `execute` and, if you
+> lack the hardware, use the network for the final `prove`. See [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
 
 ## Usage
 
 ### 1. System setup
 
-Follow the instructions in [README_SETUP.md](./README_SETUP.md) to ensure your system is setup with the necessary tools and dependencies.
-
-Then install dependencies:
+Follow [README_SETUP.md](./README_SETUP.md) for system tools, then install the SP1 toolchain and
+project dependencies:
 
 ```bash
-# Install packages (nodejs & submodules)
+# SP1 (cargo-prove + the `succinct` Rust toolchain, pinned to v6.3.1)
+curl -L https://sp1.succinct.xyz | bash && ~/.sp1/bin/sp1up
+export PATH="$HOME/.sp1/bin:$PATH"
+
+# Node deps + forge submodules
 task -y setup
 ```
 
 ### 2. Solidity
 
-This project utilizes both [submodules](./.gitmodules) and [node packages](./package.json) for Solidity dependencies.
-
 ```bash
 # Build the contracts (`forge build` also works)
 task build:forge
 
-# Run the solidity tests
+# Run the Solidity tests (contracts, submitProof/signer flows, cross-language golden vectors)
 task test
 ```
 
-### 3. PageRank core + ZK
+### 3. PageRank core + ZK guests
 
-The canonical Trust-Aware PageRank and every on-chain byte encoding live in `packages/pagerank-core`
-(the single source of truth for the SP1 guest, the host, and the frontend port).
+`packages/pagerank-core` is the canonical implementation shared by the guests, the host, and the
+frontend.
 
 ```bash
-# Build and test the core crate (includes cross-language golden vectors)
+# Native core: determinism, invariants, and the selection rule
 cargo test -p pagerank-core
+
+# (optional) Regenerate the golden vectors and re-lock them against Solidity
+cargo run -p pagerank-core --example export_golden > test/golden/vectors.json
+forge test --match-path 'test/unit/GoldenVectors.t.sol'
+
+# Build the guest ELFs (root producer + signer-sync) and the host CLI
+cd zk/program && cargo prove build && cd ../..
+cd zk/prover  && cargo build --release && cd ../..
 ```
 
-Generating a real proof (SP1 STARK → Groth16) requires ≥16–32 GiB of RAM or the Succinct prover
-network — see [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) for the guest/host build and proving commands.
+Validate that the guests match native `pagerank-core` (no proving, runs anywhere):
+
+```bash
+cd zk/prover
+cargo run --release -- execute         # root producer: guest == native
+cargo run --release -- signer-execute  # signer selection: guest == native
+cd ../..
+```
 
 ### 4. Start backend services
 
 > [!NOTE]
-> This must remain running in your terminal. Use new terminals to run other commands. You can stop the services with `ctrl+c`. Some terminals require pressing it twice.
+> Keep this running in its own terminal (stop with `ctrl+c`). Use new terminals for the steps below.
 
 ```bash docci-background docci-delay-after=5
-# Create a .env file from the example
 cp .env.example .env
-
-# Start Anvil, IPFS, and WARG registry.
-task -y start-all-local
+task -y start-all-local   # Anvil, IPFS, and the WARG registry
 ```
 
 ### 5. Deploy contracts
 
-This deploys the full contract set (EAS, resolvers, `MerkleSnapshot` + the SP1 verifier and accumulator,
-the Zodiac `MerkleGovModule` Safe, timelocks, and the reward distributor):
+Deploys the full set: EAS + resolvers (with the attestation accumulator), `MerkleSnapshot` + the SP1
+verifier + governance timelocks, the reward distributor, and a Zodiac Safe with the `MerkleGovModule`
+(governance) and `SignerSyncZkModule` (owner rotation).
 
 ```bash
+# Deploy constants read from env (see deploy/env.ts):
+#   PARAMS_HASH            = cargo run -p trustgraph-prover -- paramshash [params.json]
+#   SP1_PROGRAM_VKEY       = cargo run -p trustgraph-prover -- vkey
+#   SELECTION_PARAMS_HASH  = cargo run -p trustgraph-prover -- signer-selectionparamshash [input.json]
+#   SP1_VERIFIER_GATEWAY   = the canonical SP1 gateway on the target chain
 pnpm deploy:full
 ```
 
-### 6. Start frontend
+Deployed addresses are written to `.docker/deployment_summary.json` (and the Safe/module addresses to
+`.docker/zodiac_safes_deploy.json`). Helpers: `task config:merkle-snapshot-address`, etc.
 
-**In a new terminal**, start the frontend:
+### 6. Start the frontend and indexer
+
+**In two new terminals:**
 
 ```bash
-pnpm frontend dev
+pnpm frontend dev    # http://localhost:3000
+pnpm indexer dev     # Ponder — indexes EAS/MerkleSnapshot/gov/fund/Safe events directly
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### 7. Start indexer
-
-**In another new terminal**, start the [Ponder.sh](https://ponder.sh) indexer:
+### 7. Create a test network of attestations
 
 ```bash
-pnpm indexer dev
-```
-
-### 8. Deploy Test Network of Attestations
-
-Create a comprehensive test network with real attestations:
-
-```bash
-# Create 40+ real attestations across different network patterns
-# Set TEST_ADDRESS to your wallet address (or use the one from the config)
+# 40+ real attestations across chains, clusters, and mutual-vouching patterns
 TEST_ADDRESS=$(task config:wallet-address) task trustgraph:full-setup
 ```
 
-This creates a realistic attestation network with:
+Attestations are created **directly against EAS** (from the UI or the `task forge:*` helpers) — there
+is no off-chain trigger service anymore.
 
-- **Alice** (Central Hub) - 11 incoming connections
-- **Diana** (Authority) - 565 total vouching weight
-- **Charlie** (Bridge) - 7+ cross-group connections
-- Multiple patterns: chains, clusters, mutual relationships
+### 8. Produce a score root (the permissionless ZK loop)
 
-Perfect for testing PageRank-based reward algorithms!
+The root is not produced automatically — anyone runs this loop:
 
-### 9. Explore other functionality
+```bash
+# a. Freeze a checkpoint of the current attestation set:
+cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc, leafCount, block)
+
+# b. Reconstruct that checkpoint's edges (from EdgeFolded events / EAS state) into input.json,
+#    then prove the fixed-point PageRank:
+cd zk/prover
+cargo run --release -- prove input.json --groth16     # writes proof.bin = abi.encode(publicValues, seal)
+#    (use SP1_PROVER=network for the final prove if you lack ~16–32 GiB locally)
+
+# c. Pin the canonical blob (raw CIDv1 — must equal the guest's cid):
+ipfs add --cid-version=1 --raw-leaves blob.json
+
+# d. Submit:
+cast send $MERKLE_SNAPSHOT \
+  "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
+  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 proof.bin)
+```
+
+`submitProof` rebuilds the journal digest from the chain-pinned checkpoint + stored `paramsHash` + the
+submitted outputs and reverts unless the proof binds exactly that digest. Full detail (edge
+reconstruction, governance, gas) is in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+
+### 9. Rotate the Safe owner set (signer-sync ZK loop, optional)
+
+Rotate the Safe's owners to the current top-scored accounts, proven correct:
+
+```bash
+# a. Freeze a checkpoint (same accumulator as the root):
+cast send $MERKLE_SNAPSHOT "trigger()"
+
+# b. Prove the top-N selection + threshold for that checkpoint:
+cd zk/prover
+cargo run --release -- signer-prove input.json --groth16   # writes signer_proof.bin
+
+# c. Submit to rotate owners (SIGNERS ascending & unique; THRESHOLD in [1, |SIGNERS|]):
+cast send $SIGNER_SYNC_MODULE \
+  "submitSignerProof(uint256,address[],uint256,bytes)" \
+  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 signer_proof.bin)
+```
+
+The module verifies the proof, then diffs the proven owner set against the Safe's **live** owner list
+on-chain (correct `prevOwner` pointers and the `1 ≤ threshold ≤ ownerCount` invariant at every step).
+The selection rule (`topN` / `minThreshold` / `targetThresholdBps`) is governance-pinned as
+`selectionParamsHash` — set it at deploy (`SELECTION_PARAMS_HASH`) or later via the module owner's
+`setSelectionParamsHash`. See [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
+
+### 10. Explore other functionality
 
 ```bash
 task forge:update-rewards
-
 task forge:query-rewards
-
 task forge:claim-rewards
-
 task forge:query-rewards-balance
 ```
