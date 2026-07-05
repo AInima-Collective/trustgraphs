@@ -16,11 +16,10 @@ import {
 import { Hex, zeroAddress } from 'viem'
 
 import { useBatchEnsQuery } from '@/hooks/useEns'
-import { usePageRankComputerModule } from '@/hooks/usePageRankComputer'
-import { AttestationData } from '@/lib/attestation'
+import { AttestationData, AttestationStatus } from '@/lib/attestation'
 import { isTrustedSeed } from '@/lib/network'
+import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { Network, NetworkEntry } from '@/lib/types'
-import { PageRankGraphComputer } from '@/lib/wasm/pagerank/pagerank'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 export type NetworkSimulationConfig = {
@@ -139,68 +138,50 @@ export const NetworkProvider = ({
       maxIterations: 100,
     })
 
-  const pagerankModule = usePageRankComputerModule()
-  const [computer, setComputer] = useState<PageRankGraphComputer | null>(null)
-  const [simulatedResults, setSimulatedResults] = useState<Record<
-    string,
-    bigint
-  > | null>(null)
-  useEffect(() => {
-    if (!pagerankModule || !_networkData || !simulationConfig.enabled) {
-      return
-    }
-
-    const computer = new pagerankModule.PageRankGraphComputer(false)
-    _networkData.attestations.forEach((attestation) => {
-      computer.addEdge(
-        attestation.attester,
-        attestation.recipient,
-        Number(attestation.decodedData?.confidence || 0)
-      )
-    })
-    setComputer(computer)
-
-    return () => computer.free()
-  }, [pagerankModule, _networkData, simulationConfig.enabled])
-
-  useEffect(() => {
-    if (!pagerankModule || !computer || !simulationConfig.enabled) {
-      return
+  // Local "what-if" simulation using the CANONICAL fixed-point PageRank (the exact TS mirror of
+  // packages/pagerank-core / the zk guest). Recomputed synchronously — no WASM needed — so the
+  // previewed scores and merkle root match, byte-for-byte, what a proof would commit.
+  const simulation = useMemo(() => {
+    if (!simulationConfig.enabled || !_networkData) {
+      return null
     }
 
     try {
-      const scores = computer.calculatePagerank(
-        new pagerankModule.PageRankConfig(
-          simulationConfig.dampingFactor,
-          simulationConfig.maxIterations,
-          1e-6,
-          0,
-          100,
-          new pagerankModule.TrustConfig(
-            network.pagerank.trustedSeeds,
-            simulationConfig.trustMultiplier,
-            simulationConfig.trustShare,
-            simulationConfig.trustDecay
-          )
-        )
+      return simulateNetwork(
+        _networkData.attestations.map((attestation) => ({
+          attester: attestation.attester,
+          recipient: attestation.recipient,
+          uid: attestation.uid,
+          time: attestation.time,
+          confidence: Number(attestation.decodedData?.confidence || 0),
+          revoked: attestation.status === AttestationStatus.REVOKED,
+        })),
+        {
+          dampingFactor: simulationConfig.dampingFactor,
+          trustMultiplier: simulationConfig.trustMultiplier,
+          trustShare: simulationConfig.trustShare,
+          trustDecay: simulationConfig.trustDecay,
+          maxIterations: simulationConfig.maxIterations,
+          minWeight: network.pagerank.minWeight,
+          maxWeight: network.pagerank.maxWeight,
+          trustedSeeds: network.pagerank.trustedSeeds,
+          pointsPool: BigInt(Math.round(network.pagerank.pointsPool || 0)),
+        }
       )
-      const points = computer.distributePoints(scores, 10_000n)
-      setSimulatedResults(
-        Object.fromEntries(
-          points
-            .entries()
-            .map(([address, points]) => [address.toLowerCase(), points])
-        )
-      )
-      // Array.from(points.entries())
-      //   .sort((a, b) => Number(b[1] - a[1]))
-      //   .forEach(([address, points], index) => {
-      //     console.log(`#${index + 1} ${address}: ${points}`)
-      //   })
     } catch (error) {
-      console.error('error running pagerank computation', error)
+      console.error('error running pagerank simulation', error)
+      return null
     }
-  }, [pagerankModule, computer, simulationConfig])
+  }, [
+    simulationConfig,
+    _networkData,
+    network.pagerank.minWeight,
+    network.pagerank.maxWeight,
+    network.pagerank.trustedSeeds,
+    network.pagerank.pointsPool,
+  ])
+
+  const simulatedResults = simulation?.results ?? null
 
   // Use simulated or real data based on the simulation config
   const { networkData, merkleTreeData } = useMemo((): {
@@ -228,13 +209,18 @@ export const NetworkProvider = ({
     const merkleTreeData: typeof _merkleTreeData = _merkleTreeData && {
       tree: {
         ..._merkleTreeData.tree,
-        root: '<simulated>',
-        ipfsHash: '<simulated>',
-        ipfsHashCid: '<simulated>',
-        totalValue:
-          networkData?.accounts
-            .reduce((acc, account) => acc + BigInt(account.value), 0n)
-            .toString() || '0',
+        // Real canonical outputs from the fixed-point recompute (matches the zk guest).
+        root: simulation?.outputRoot || '<simulated>',
+        ipfsHash: simulation?.ipfsHash || '<simulated>',
+        ipfsHashCid: simulation?.cid || '<simulated>',
+        totalValue: (
+          simulation?.totalValue ??
+          networkData?.accounts.reduce(
+            (acc, account) => acc + BigInt(account.value),
+            0n
+          ) ??
+          0n
+        ).toString(),
         blockNumber: '0',
         timestamp: '0',
       },
@@ -252,6 +238,7 @@ export const NetworkProvider = ({
   }, [
     simulationConfig.enabled,
     simulatedResults,
+    simulation,
     _merkleTreeData,
     _networkData,
   ])

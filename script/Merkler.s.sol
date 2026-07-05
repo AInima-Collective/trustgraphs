@@ -23,8 +23,8 @@ contract Merkler is Common {
             payable(vm.parseAddress(merkleSnapshotAddr))
         );
 
-        uint64 triggerId = merkleSnapshot.trigger();
-        console.log("TriggerId", triggerId);
+        uint256 checkpointId = merkleSnapshot.trigger();
+        console.log("CheckpointId", checkpointId);
         vm.stopBroadcast();
     }
 

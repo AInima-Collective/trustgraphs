@@ -23,6 +23,29 @@ import {
   readJsonKeyIfFileExists,
 } from './utils'
 
+/** Placeholder address used when no SP1 gateway is configured (local/dev scaffolding). */
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+/** Placeholder bytes32 used for an unset paramsHash / program vkey (local/dev scaffolding). */
+const ZERO_BYTES32 =
+  '0x0000000000000000000000000000000000000000000000000000000000000000'
+
+/**
+ * Read a REQUIRED bytes32 env var for a production deployment; fail closed (throw) if it is unset
+ * or zero. A zero `paramsHash`/vkey would deploy a MerkleSnapshot no valid proof could ever satisfy,
+ * so prod must never fall back to the dev placeholder.
+ */
+function requireProdBytes32(name: string): string {
+  const v = process.env[name]
+  if (!v || v === ZERO_BYTES32 || /^0x0{64}$/i.test(v)) {
+    const how = name === 'PARAMS_HASH' ? 'paramshash' : 'vkey'
+    throw new Error(
+      `${name} must be set to the real guest-computed value for a production deployment ` +
+        `(got ${v ?? 'unset'}). Compute it with: cargo run -p trustgraph-prover -- ${how}`
+    )
+  }
+  return v
+}
+
 type NonFunctionPropertyNames<T> = {
   [K in keyof T]: T[K] extends Function ? never : K
 }[keyof T]
@@ -281,12 +304,25 @@ export class DevEnv extends EnvBase {
           sig: 'run(string)',
           args: (ctx) => [ctx.options.serviceManagerAddress],
         },
+        // Deploy the SP1 ZK verifier adapter that gates MerkleSnapshot root updates. Replaces the
+        // WAVS POA producer path. Points at an existing canonical SP1 gateway (SP1_VERIFIER_GATEWAY)
+        // and the guest image id (SP1_PROGRAM_VKEY); both default to zero for local scaffolding.
+        {
+          name: 'ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32)',
+          args: () => [
+            process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS,
+            process.env.SP1_PROGRAM_VKEY || ZERO_BYTES32,
+          ],
+        },
         {
           name: 'Network',
           script: 'script/DeployNetwork.s.sol:DeployScript',
-          sig: 'run(string,string,string,bool,string,uint256,uint256)',
-          args: (ctx) => [
-            ctx.options.serviceManagerAddress,
+          sig: 'run(string,bytes32,string,string,bool,string,uint256,uint256)',
+          args: () => [
+            readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
+            process.env.PARAMS_HASH || ZERO_BYTES32,
             readJsonKey('.docker/eas_deploy.json', 'eas'),
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
             true,
@@ -312,6 +348,23 @@ export class DevEnv extends EnvBase {
           script: 'script/DeployWavsIndexer.s.sol:DeployWavsIndexer',
           sig: 'run(string)',
           args: (ctx) => [ctx.options.serviceManagerAddress],
+        },
+        // Deploy the two governance timelocks and hand off MerkleSnapshot authority to them
+        // (deployer renounces its bootstrap roles). Must run AFTER Network so the network deploy
+        // JSONs (with merkle_snapshot addresses) exist.
+        {
+          name: 'Timelocks',
+          script: 'script/DeployTimelocks.s.sol:DeployTimelocks',
+          sig: 'run(string,string,uint256,uint256,string,uint256,uint256)',
+          args: () => [
+            process.env.TIMELOCK_PROPOSER || '', // '' -> deployer
+            process.env.TIMELOCK_EXECUTOR || '', // '' -> deployer
+            process.env.CONSTITUTIONAL_DELAY || '0', // 0 -> 14 days
+            process.env.OPERATIONAL_DELAY || '0', // 0 -> 2 days
+            'dev',
+            0,
+            numNetworks,
+          ],
         },
       ],
       // After all contracts are deployed, update the networks config file.
@@ -410,13 +463,26 @@ export class ProdEnv extends EnvBase {
             readJsonKeyIfFileExists('.docker/eas_deploy.json', 'eas') !==
             undefined,
         },
+        // Deploy the SP1 ZK verifier adapter (replaces the WAVS POA producer path). Points at the
+        // canonical SP1 Groth16 gateway (SP1_VERIFIER_GATEWAY) and the guest image id
+        // (SP1_PROGRAM_VKEY) — both REQUIRED for prod; the script reverts on a zero value.
+        {
+          name: 'ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32)',
+          args: () => [
+            process.env.SP1_VERIFIER_GATEWAY || '',
+            requireProdBytes32('SP1_PROGRAM_VKEY'),
+          ],
+        },
         ...networks.flatMap((network, index): ContractDeployment[] => [
           {
             name: `Network: ${network.name}`,
             script: 'script/DeployNetwork.s.sol:DeployScript',
-            sig: 'run(string,string,string,bool,string,uint256,uint256)',
-            args: (ctx) => [
-              ctx.options.serviceManagerAddress,
+            sig: 'run(string,bytes32,string,string,bool,string,uint256,uint256)',
+            args: () => [
+              readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
+              requireProdBytes32('PARAMS_HASH'),
               readJsonKey('.docker/eas_deploy.json', 'eas'),
               readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
               false,
@@ -441,6 +507,24 @@ export class ProdEnv extends EnvBase {
             // Skip if safe and zodiac signer sync is already complete.
             skip: () =>
               isNetworkSafeZodiacSignerSyncDisabledOrComplete(network),
+          },
+          // Deploy + wire the governance timelocks for this network's MerkleSnapshot, then hand off
+          // (deployer renounces bootstrap roles). Runs AFTER the network deploy JSON exists.
+          {
+            name: `Timelocks: ${network.name}`,
+            script: 'script/DeployTimelocks.s.sol:DeployTimelocks',
+            sig: 'run(string,string,uint256,uint256,string,uint256,uint256)',
+            args: () => [
+              process.env.TIMELOCK_PROPOSER || '', // '' -> deployer (set to the founding multisig)
+              process.env.TIMELOCK_EXECUTOR || '', // '' -> deployer
+              process.env.CONSTITUTIONAL_DELAY || '0', // 0 -> 14 days
+              process.env.OPERATIONAL_DELAY || '0', // 0 -> 2 days
+              'prod',
+              index,
+              1,
+            ],
+            // Skip if the network is already complete (timelocks wired as part of that network).
+            skip: () => isNetworkComplete(network),
           },
         ]),
         {

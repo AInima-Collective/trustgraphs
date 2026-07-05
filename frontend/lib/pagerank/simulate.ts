@@ -1,0 +1,102 @@
+//! Browser simulation adapter: turn indexed attestations + a network config into the canonical
+//! fixed-point PageRank result. This is what the UI calls for "what-if" previews so the numbers it
+//! shows match, byte-for-byte, what the zk guest would commit for the same inputs.
+
+import { concat, type Hex } from 'viem'
+
+import { compute } from './compute'
+import { type Params, type RawEdge } from './types'
+import { wordU256 } from './words'
+
+const S = 10n ** 18n
+
+/** Convert a JS float to a fixed-point bigint at scale 1e18 (rounded at 1e-9 precision). */
+export const toFp = (x: number): bigint => BigInt(Math.round(x * 1e9)) * 10n ** 9n
+
+export interface SimAttestation {
+  attester: Hex
+  recipient: Hex
+  uid: Hex
+  /** Fold-order timestamp (block.timestamp). */
+  time: bigint
+  /** Decoded confidence (integer weight). */
+  confidence: number
+  /** Whether this attestation is revoked (excluded from the graph, like the canonical reconcile). */
+  revoked?: boolean
+}
+
+export interface SimConfig {
+  dampingFactor: number
+  trustMultiplier: number
+  trustShare: number
+  trustDecay: number
+  maxIterations: number
+  minWeight: number
+  maxWeight: number
+  trustedSeeds: Hex[]
+  /** The reward pool to distribute (points). */
+  pointsPool: bigint
+}
+
+export interface SimResult {
+  /** `{ lowercased address -> value }` for scored accounts. */
+  results: Record<string, bigint>
+  outputRoot: Hex
+  ipfsHash: Hex
+  cid: string
+  totalValue: bigint
+}
+
+/** ABI-encode `(string comment, uint256 confidence)` head so `weightFieldIndex = 1` reads the weight. */
+const encodeConfidence = (confidence: number): Hex => {
+  const c = BigInt(Math.max(0, Math.trunc(confidence)))
+  return concat([wordU256(0n), wordU256(c)])
+}
+
+/**
+ * Run the canonical fixed-point pipeline over the given attestations. Deterministic and float-free
+ * past the params conversion; identical output to `packages/pagerank-core` / the zk guest.
+ */
+export const simulateNetwork = (
+  attestations: SimAttestation[],
+  cfg: SimConfig
+): SimResult => {
+  const edges: RawEdge[] = attestations
+    .filter((a) => !a.revoked)
+    .map((a) => ({
+      kind: 0,
+      attester: a.attester.toLowerCase() as Hex,
+      recipient: a.recipient.toLowerCase() as Hex,
+      uid: a.uid,
+      blockTimestamp: a.time,
+      data: encodeConfidence(a.confidence),
+    }))
+
+  const params: Params = {
+    dampingFp: toFp(cfg.dampingFactor),
+    toleranceFp: S / 1_000_000n, // 1e-6
+    maxIterations: cfg.maxIterations,
+    minWeightFp: toFp(cfg.minWeight),
+    maxWeightFp: toFp(cfg.maxWeight),
+    trustMultiplierFp: toFp(cfg.trustMultiplier),
+    trustShareFp: toFp(cfg.trustShare),
+    trustDecayFp: toFp(cfg.trustDecay),
+    trustedSeeds: cfg.trustedSeeds.map((a) => a.toLowerCase() as Hex),
+    totalPool: cfg.pointsPool,
+    precisionScale: S,
+    schemaUid: `0x${'00'.repeat(32)}` as Hex,
+    weightFieldIndex: 1,
+  }
+
+  const r = compute({ edges, params })
+  const results: Record<string, bigint> = {}
+  for (const [addr, v] of r.scores) results[addr.toLowerCase()] = v
+
+  return {
+    results,
+    outputRoot: r.journal.outputRoot,
+    ipfsHash: r.journal.ipfsHash,
+    cid: r.cid,
+    totalValue: r.journal.totalValue,
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "pagerank-core"
+description = "Canonical fixed-point Trust-Aware PageRank + encodings (single source of truth for zkVM guest, host, and browser)"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Keep deps minimal and zkVM-friendly. No floats, no wasm-bindgen, no async.
+alloy-primitives = { workspace = true, features = ["serde"] }
+sha2 = { version = "0.10", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+hex = { workspace = true }
+# The legacy f64 implementation, for the off-chain fixed-point-vs-f64 diff harness (WP11 acceptance).
+pagerank = { path = "../pagerank" }
+
+# NOTE: this crate must also compile for the SP1 zkVM target (riscv32im-succinct-zkvm-elf).
+# It uses std (SP1 provides a std shim) but no platform-dependent or floating-point operations.

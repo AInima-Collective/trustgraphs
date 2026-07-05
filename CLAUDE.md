@@ -25,7 +25,17 @@ Use `task --list-all` to see all available commands.
 
 ## Architecture Overview
 
-TrustGraph is a WAVS (WASI AVS) project that implements attestation-based governance using EAS (Ethereum Attestation Service) and PageRank algorithms. The system uses trust attestations between accounts to calculate governance weights and distribute rewards. The system consists of:
+TrustGraph implements attestation-based governance using EAS (Ethereum Attestation Service) and Trust-Aware PageRank. Trust attestations between accounts calculate governance weights and distribute rewards.
+
+> **Root producer: ZK (not WAVS).** The `{account → score}` merkle root is produced by a permissionless
+> **SP1 zero-knowledge proof** of correct fixed-point PageRank, not a WAVS operator quorum. See
+> [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) for the design and [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) for
+> build/deploy/run. The canonical algorithm + encodings live in `packages/pagerank-core` (compiled to
+> the SP1 guest in `zk/program`, the host in `zk/prover`, and ported to the browser in
+> `frontend/lib/pagerank`). WAVS remains for non-producer workflows only (attestation creation, safe
+> signer sync, indexing).
+
+The system consists of:
 
 ### Core Components Structure
 - **Solidity Contracts** (`src/contracts/`): On-chain logic including attestation handlers, governance, rewards, and triggers
@@ -39,11 +49,13 @@ TrustGraph is a WAVS (WASI AVS) project that implements attestation-based govern
 
 Components that handle different aspects of the attestation and governance workflow:
 - `eas-attest/`: Creates EAS attestations based on trigger events
-- `trust-graph/`: Calculates merkle trees for TrustGraph PageRank-based governance
-- `merkler-pruner/`: Prunes and maintains merkle tree data
-- `aggregator/`: Aggregates operator responses
+- `aggregator/`: Aggregates operator responses (non-producer WAVS workflows)
 - `safe-signer-sync/`: Syncs Safe multisig signers
 - `wavs-indexer/`: Indexes blockchain events for the system
+
+> The former `trust-graph/` and `merkler-pruner/` WAVS components (the f64 merkle-root producer +
+> envelope pruner) were **removed**: the root is now produced by the ZK path above
+> (`packages/pagerank-core` → `zk/program` guest → `zk/prover` host → `MerkleSnapshot.submitProof`).
 
 
 #### Service Architecture

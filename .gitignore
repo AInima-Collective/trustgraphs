@@ -1,5 +1,10 @@
 # general compile
 /target
+# Rust build dirs for the detached zk/ workspaces (guest + host) and any nested crate.
+**/target/
+# zkVM prover output artifacts
+zk/**/proof.bin
+zk/**/public_values.bin
 out/
 cache/
 broadcast/

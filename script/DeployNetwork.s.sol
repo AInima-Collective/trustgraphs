@@ -6,8 +6,11 @@ import { console } from 'forge-std/console.sol';
 
 import { Strings } from '@openzeppelin/contracts/utils/Strings.sol';
 import {
-  IWavsServiceManager
-} from '@wavs/src/eigenlayer/ecdsa/interfaces/IWavsServiceManager.sol';
+  IZkVerifier
+} from 'interfaces/merkle/IZkVerifier.sol';
+import {
+  IAttestationAccumulator
+} from 'interfaces/merkle/IAttestationAccumulator.sol';
 import {
   ISchemaResolver
 } from '@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol';
@@ -34,7 +37,10 @@ contract DeployScript is Common {
 
   /**
    * @dev Deploys the contracts and writes the results to a JSON file
-   * @param serviceManagerAddr The address of the service manager
+   * @param zkVerifierAddr The address of the ZK proof verifier gating root updates
+   * @param paramsHash The keccak256 of the canonical PageRank parameters the guest must use. Pass
+   *        bytes32(0) for local/dev; MUST be the real guest-computed value before mainnet use. It is
+   *        set at construction and thereafter mutable only through the operational timelock.
    * @param easAddr The address of the EAS contract
    * @param schemaRegistrarAddr The address of the schema registrar contract
    * @param deployFundDistributor Whether to deploy the fund distributor contract
@@ -43,7 +49,8 @@ contract DeployScript is Common {
    * @param count How many networks to deploy
    */
   function run(
-    string calldata serviceManagerAddr,
+    string calldata zkVerifierAddr,
+    bytes32 paramsHash,
     string calldata easAddr,
     string calldata schemaRegistrarAddr,
     bool deployFundDistributor,
@@ -51,9 +58,13 @@ contract DeployScript is Common {
     uint256 firstIndex,
     uint256 count
   ) public {
-    address serviceManager = vm.parseAddress(serviceManagerAddr);
+    address zkVerifier = vm.parseAddress(zkVerifierAddr);
     address eas = vm.parseAddress(easAddr);
     address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
+
+    require(zkVerifier != address(0), 'DeployNetwork: zkVerifier is zero');
+    require(eas != address(0), 'DeployNetwork: eas is zero');
+    require(schemaRegistrar != address(0), 'DeployNetwork: schemaRegistrar is zero');
 
     vm.startBroadcast(_privateKey);
 
@@ -76,12 +87,27 @@ contract DeployScript is Common {
         Strings.toString(i)
       );
 
-      // Create the merkle snapshot contract
-      MerkleSnapshot merkleSnapshot = new MerkleSnapshot(
-        IWavsServiceManager(serviceManager)
+      address deployer = vm.addr(_privateKey);
+
+      // Deploy the indexer resolver first: it IS the attestation accumulator that produces the
+      // checkpoints MerkleSnapshot consumes.
+      EASIndexerResolver indexerResolver = new EASIndexerResolver(IEAS(eas));
+      _contractsJson.serialize(
+        'eas_indexer_resolver',
+        Strings.toChecksumHexString(address(indexerResolver))
       );
 
-      address deployer = vm.addr(_privateKey);
+      // Create the merkle snapshot contract, gated by the ZK verifier and fed by the accumulator.
+      // NOTE: `paramsHash` is threaded in (bytes32(0) for local/dev) and MUST be the guest-computed
+      // value before mainnet use; thereafter it is mutable only through the operational timelock.
+      // Admin roles are the deployer at bootstrap; DeployTimelocks transfers them to the timelocks.
+      MerkleSnapshot merkleSnapshot = new MerkleSnapshot(
+        IZkVerifier(zkVerifier),
+        paramsHash,
+        IAttestationAccumulator(address(indexerResolver)),
+        deployer,
+        deployer
+      );
 
       // Create the distributor.
       if (deployFundDistributor) {
@@ -98,12 +124,6 @@ contract DeployScript is Common {
           Strings.toChecksumHexString(address(merkleFundDistributor))
         );
       }
-
-      EASIndexerResolver indexerResolver = new EASIndexerResolver(IEAS(eas));
-      _contractsJson.serialize(
-        'eas_indexer_resolver',
-        Strings.toChecksumHexString(address(indexerResolver))
-      );
 
       string memory finalContractsJson = _contractsJson.serialize(
         'merkle_snapshot',

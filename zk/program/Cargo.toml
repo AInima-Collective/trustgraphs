@@ -1,0 +1,21 @@
+[package]
+name = "trustgraph-program"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "trustgraph-program"
+path = "src/main.rs"
+
+[dependencies]
+sp1-zkvm = "=6.3.1"
+pagerank-core = { path = "../../packages/pagerank-core" }
+
+# Detach from the root workspace: the guest builds for riscv32im-succinct-zkvm-elf with the
+# `succinct` toolchain via `cargo prove build`, and must not share the root's dependency graph.
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

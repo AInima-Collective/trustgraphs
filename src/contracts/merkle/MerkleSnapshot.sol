@@ -2,37 +2,43 @@
 pragma solidity ^0.8.22;
 
 import {
-    IWavsServiceManager
-} from "@wavs/src/eigenlayer/ecdsa/interfaces/IWavsServiceManager.sol";
-import {
-    IWavsServiceHandler
-} from "@wavs/src/eigenlayer/ecdsa/interfaces/IWavsServiceHandler.sol";
-import {
     MerkleProof
 } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {ITypes} from "interfaces/ITypes.sol";
-import {IMerkler} from "interfaces/merkle/IMerkler.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
-import {UniqueEnvelope} from "./UniqueEnvelope.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
+import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 
-/// @title MerkleSnapshot - Merkle tree snapshotter that can be used by other contracts to verify merkle proofs and access history
-/// @dev Implements IWavsServiceHandler for merkle root updates via WAVS
-contract MerkleSnapshot is
-    IMerkleSnapshot,
-    IWavsServiceHandler,
-    ITypes,
-    IMerkler,
-    UniqueEnvelope
-{
-    /// @notice Service manager for WAVS integration
-    IWavsServiceManager private _serviceManager;
+/// @title MerkleSnapshot
+/// @notice Merkle-root snapshotter for TrustGraph. The `{account => score}` root is produced by a
+///         permissionless zero-knowledge proof of correct fixed-point Trust-Aware PageRank
+///         (`submitProof`) instead of a WAVS operator quorum. A proof binds:
+///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint, and
+///           (b) the governance-pinned `paramsHash`,
+///         then writes through the same historical-state path every consumer already reads.
+/// @dev Two-tier authority (AccessControl + timelocks): CONSTITUTIONAL_ROLE owns the truth-defining
+///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`. See ZK_ARCHITECTURE.md.
+contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
+    /// @notice Owns `zkVerifier` and `accumulator` — changes what "correct PageRank" means.
+    bytes32 public constant CONSTITUTIONAL_ROLE = keccak256("CONSTITUTIONAL_ROLE");
+    /// @notice Owns `paramsHash` — governance-cadence parameter changes.
+    bytes32 public constant OPERATIONAL_ROLE = keccak256("OPERATIONAL_ROLE");
 
-    /// @notice The next trigger ID
-    uint64 public nextTriggerId = 1;
+    /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
+    IAttestationAccumulator public accumulator;
 
-    /// @notice The last cron timestamp seen
-    uint64 public lastCronTimestampSeen;
+    /// @notice The proof verifier gating the write (SP1 today; swappable behind IZkVerifier).
+    IZkVerifier public zkVerifier;
+
+    /// @notice keccak256 of the canonical PageRank parameters the guest must use.
+    bytes32 public paramsHash;
+
+    /// @notice The last checkpoint id whose proof was applied (monotonic).
+    uint256 public lastAppliedCheckpoint;
+
+    /// @notice Whether any checkpoint has been applied (distinguishes "none" from "checkpoint 0").
+    bool public hasAppliedCheckpoint;
 
     /// @notice Historical merkle states, keyed by index
     mapping(uint256 stateIndex => MerkleState state) public states;
@@ -54,49 +60,153 @@ contract MerkleSnapshot is
     /// @notice The number of hooks.
     uint64 public hookCount;
 
-    constructor(IWavsServiceManager serviceManager) {
-        _serviceManager = serviceManager;
+    /// @param _zkVerifier The initial proof verifier.
+    /// @param _paramsHash The initial canonical params hash.
+    /// @param _accumulator The attestation accumulator that produces checkpoints.
+    /// @param constitutionalAdmin Authority (e.g. long-timelock) over the truth-defining knobs.
+    /// @param operationalAdmin Authority (e.g. short-timelock) over `paramsHash`.
+    constructor(
+        IZkVerifier _zkVerifier,
+        bytes32 _paramsHash,
+        IAttestationAccumulator _accumulator,
+        address constitutionalAdmin,
+        address operationalAdmin
+    ) {
+        if (address(_zkVerifier) == address(0) || address(_accumulator) == address(0)) {
+            revert ZeroAddress();
+        }
+        zkVerifier = _zkVerifier;
+        paramsHash = _paramsHash;
+        accumulator = _accumulator;
+
+        // Constitutional role administers both roles (an operational compromise cannot escalate).
+        _setRoleAdmin(CONSTITUTIONAL_ROLE, CONSTITUTIONAL_ROLE);
+        _setRoleAdmin(OPERATIONAL_ROLE, CONSTITUTIONAL_ROLE);
+        _grantRole(CONSTITUTIONAL_ROLE, constitutionalAdmin);
+        _grantRole(OPERATIONAL_ROLE, operationalAdmin);
     }
 
-    /// @notice Trigger the Merkler AVS
-    /// @return triggerId The ID of the trigger
-    function trigger() external returns (uint64 triggerId) {
-        // Get and increment the trigger ID.
-        triggerId = nextTriggerId++;
+    /*///////////////////////////////////////////////////////////////
+                        GOVERNANCE (two-tier)
+    //////////////////////////////////////////////////////////////*/
 
-        // Emit the trigger event.
-        emit MerklerTrigger(triggerId);
+    /// @notice Update the proof verifier (constitutional).
+    function setZkVerifier(IZkVerifier _zkVerifier) external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (address(_zkVerifier) == address(0)) revert ZeroAddress();
+        zkVerifier = _zkVerifier;
+        emit ZkVerifierUpdated(address(_zkVerifier));
     }
 
-    /// @notice Update the state at the current block, overriding the existing state for this block if it exists
+    /// @notice Update the accumulator (constitutional).
+    function setAccumulator(IAttestationAccumulator _accumulator)
+        external
+        onlyRole(CONSTITUTIONAL_ROLE)
+    {
+        if (address(_accumulator) == address(0)) revert ZeroAddress();
+        accumulator = _accumulator;
+        emit AccumulatorUpdated(address(_accumulator));
+    }
+
+    /// @notice Update the canonical params hash (operational).
+    function setParamsHash(bytes32 _paramsHash) external onlyRole(OPERATIONAL_ROLE) {
+        paramsHash = _paramsHash;
+        emit ParamsHashUpdated(_paramsHash);
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                        SNAPSHOT LIFECYCLE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Freeze the current accumulator as a checkpoint. Permissionless.
+    /// @return checkpointId The id of the new checkpoint (provers watch InputsCheckpointed).
+    function trigger() external returns (uint256 checkpointId) {
+        checkpointId = accumulator.checkpoint();
+        emit SnapshotTriggered(checkpointId);
+    }
+
+    /// @notice Submit a ZK proof that `outputRoot == PageRank(checkpoint inputs, params)` and write
+    ///         the resulting snapshot. Permissionless: anyone who can produce a valid proof may post.
+    /// @param checkpointId The checkpoint whose inputs the proof consumes.
+    /// @param outputRoot The scored merkle root.
+    /// @param ipfsHash The digest of the canonical scored blob.
+    /// @param ipfsHashCid The CID string pointing at that blob.
+    /// @param totalValue The summed points.
+    /// @param proof The verifier-specific proof blob.
+    function submitProof(
+        uint256 checkpointId,
+        bytes32 outputRoot,
+        bytes32 ipfsHash,
+        string calldata ipfsHashCid,
+        uint256 totalValue,
+        bytes calldata proof
+    ) external {
+        // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
+        if (hasAppliedCheckpoint && checkpointId <= lastAppliedCheckpoint) {
+            revert StaleCheckpoint(checkpointId, lastAppliedCheckpoint);
+        }
+
+        // Reverts if checkpointId is out of range.
+        IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(checkpointId);
+
+        // The journal is the ENTIRE ABI between contract and guest. Bind all of it — including the
+        // CID *string* consumers fetch by, whose 32-byte digest alone is otherwise unproven.
+        bytes32 journalDigest = keccak256(
+            abi.encode(
+                c.acc, // which inputs   (chain-pinned)
+                c.leafCount,
+                paramsHash, // which params   (governance-pinned)
+                outputRoot, // scored tree
+                ipfsHash, // canonical-blob digest
+                keccak256(bytes(ipfsHashCid)), // ...and the CID string that points at that blob
+                totalValue // summed points
+            )
+        );
+
+        // Reverts on an invalid proof.
+        zkVerifier.verify(proof, journalDigest);
+
+        lastAppliedCheckpoint = checkpointId;
+        hasAppliedCheckpoint = true;
+
+        // File at the checkpoint's INPUT-FREEZE block, not the submission block, so "score as of
+        // block N" stays honest despite permissionless, delayed, racy proving.
+        _updateStateAtBlock(c.blockNumber, outputRoot, ipfsHash, ipfsHashCid, totalValue);
+
+        emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
+        emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender);
+    }
+
+    /// @notice Update the state at a specific (input-freeze) block, overriding any existing state
+    ///         for that block.
+    /// @param blockNumber The block the snapshot's inputs were frozen at.
     /// @param root The merkle root
     /// @param ipfsHash The IPFS hash
     /// @param ipfsHashCid The IPFS hash CID
     /// @param totalValue The total value of the merkle tree
-    function _updateState(
+    function _updateStateAtBlock(
+        uint256 blockNumber,
         bytes32 root,
         bytes32 ipfsHash,
         string memory ipfsHashCid,
         uint256 totalValue
     ) internal {
-        uint256 currentBlock = block.number;
         uint256 stateIndex;
 
         // If this is a new block, add it.
         if (
             stateBlocks.length == 0 ||
-            stateBlocks[stateBlocks.length - 1] != currentBlock
+            stateBlocks[stateBlocks.length - 1] != blockNumber
         ) {
             stateIndex = stateBlocks.length;
-            blockToStateIndex[currentBlock] = stateIndex;
-            stateBlocks.push(currentBlock);
+            blockToStateIndex[blockNumber] = stateIndex;
+            stateBlocks.push(blockNumber);
         } else {
             // If this is an existing block, override the existing state.
-            stateIndex = blockToStateIndex[currentBlock];
+            stateIndex = blockToStateIndex[blockNumber];
         }
 
         states[stateIndex] = MerkleState({
-            blockNumber: currentBlock,
+            blockNumber: blockNumber,
             timestamp: block.timestamp,
             root: root,
             ipfsHash: ipfsHash,
@@ -112,6 +222,10 @@ contract MerkleSnapshot is
             hooks[i].onMerkleUpdate(states[stateIndex]);
         }
     }
+
+    /*///////////////////////////////////////////////////////////////
+                        PROOF VERIFICATION (consumers)
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Verify a merkle proof for a given root and account
     /// @param root The merkle root
@@ -133,10 +247,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof for a given account with the latest state
-    /// @param account The account to verify the proof for
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @return valid Whether the proof is valid
     function verifyProof(
         address account,
         uint256 value,
@@ -146,9 +256,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof for the sender with the latest state
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @return valid Whether the proof is valid
     function verifyMyProof(
         uint256 value,
         bytes32[] calldata proof
@@ -157,11 +264,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof against the state at a specific block number
-    /// @param account The account to verify the proof for
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @param blockNumber The maximum block number to consider
-    /// @return valid Whether the proof is valid
     function verifyProofAtBlock(
         address account,
         uint256 value,
@@ -173,10 +275,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof for the sender against the state at a specific block number
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @param blockNumber The maximum block number to consider
-    /// @return valid Whether the proof is valid
     function verifyMyProofAtBlock(
         uint256 value,
         bytes32[] calldata proof,
@@ -186,11 +284,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof against the state at a specific index
-    /// @param account The account to verify the proof for
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @param stateIndex The state index to verify against
-    /// @return valid Whether the proof is valid
     function verifyProofAtStateIndex(
         address account,
         uint256 value,
@@ -202,10 +295,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Verify a merkle proof for the sender against the state at a specific index
-    /// @param value The value to verify
-    /// @param proof The merkle proof
-    /// @param stateIndex The state index to verify against
-    /// @return valid Whether the proof is valid
     function verifyMyProofAtStateIndex(
         uint256 value,
         bytes32[] calldata proof,
@@ -213,6 +302,10 @@ contract MerkleSnapshot is
     ) public view returns (bool) {
         return verifyProofAtStateIndex(msg.sender, value, proof, stateIndex);
     }
+
+    /*///////////////////////////////////////////////////////////////
+                        STATE HISTORY (unchanged)
+    //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IMerkleSnapshot
     function getLatestState() public view returns (MerkleState memory) {
@@ -223,8 +316,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Get the state at (or before) a specific block number
-    /// @param blockNumber The target block number
-    /// @return state The merkle state at (or before) the specified block
     function getStateAtBlock(
         uint256 blockNumber
     ) public view returns (MerkleState memory state) {
@@ -249,8 +340,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Get the state at a specific index
-    /// @param index The state index
-    /// @return state The merkle state at the specified index
     function getStateAtIndex(
         uint256 index
     ) public view returns (MerkleState memory state) {
@@ -261,9 +350,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Binary search to find the state index at (or before) a given block
-    /// @param blockNumber The target block number
-    /// @return found Whether the state index was found
-    /// @return index The state index
     function _findStateIndexAtOrBeforeBlock(
         uint256 blockNumber
     ) internal view returns (bool found, uint256 index) {
@@ -292,15 +378,11 @@ contract MerkleSnapshot is
     }
 
     /// @notice Get the total number of states
-    /// @return count The number of states
     function getStateCount() public view returns (uint256 count) {
         return stateBlocks.length;
     }
 
     /// @notice Get paginated block numbers that have states
-    /// @param offset The offset to start from
-    /// @param limit The number of blocks to return
-    /// @return result_ Array of block numbers with states
     function getStateBlocks(
         uint256 offset,
         uint256 limit
@@ -318,9 +400,6 @@ contract MerkleSnapshot is
     }
 
     /// @notice Get paginated states
-    /// @param offset The offset to start from
-    /// @param limit The number of blocks to return
-    /// @return result_ Array of states
     function getStates(
         uint256 offset,
         uint256 limit
@@ -337,12 +416,12 @@ contract MerkleSnapshot is
         return result;
     }
 
-    /////////////////////////////////////////////////////////////////
-    // HOOKS
-    /////////////////////////////////////////////////////////////////
+    /*///////////////////////////////////////////////////////////////
+                                HOOKS
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Add a hook
-    function addHook(IMerkleSnapshotHook hook) external {
+    function addHook(IMerkleSnapshotHook hook) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (hookIndex[hook] != 0) {
             revert HookAlreadyAdded();
         }
@@ -354,7 +433,7 @@ contract MerkleSnapshot is
     }
 
     /// @notice Remove a hook
-    function removeHook(IMerkleSnapshotHook hook) external {
+    function removeHook(IMerkleSnapshotHook hook) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (hookIndex[hook] == 0) {
             revert HookNotAdded();
         }
@@ -378,55 +457,5 @@ contract MerkleSnapshot is
             resultIndex++;
         }
         return result;
-    }
-
-    /*///////////////////////////////////////////////////////////////
-                          WAVS INTEGRATION
-    //////////////////////////////////////////////////////////////*/
-
-    /// @inheritdoc IWavsServiceHandler
-    function handleSignedEnvelope(
-        Envelope calldata envelope,
-        SignatureData calldata signatureData
-    ) external {
-        _serviceManager.validate(envelope, signatureData);
-
-        // Decode payload.
-        MerklerAvsOutput memory avsOutput = abi.decode(
-            envelope.payload,
-            (MerklerAvsOutput)
-        );
-
-        // Validate unique envelope.
-        _validateUniqueEnvelope(envelope, avsOutput.expiresAt);
-
-        // If prune is set, prune expired envelopes and return.
-        if (avsOutput.prune > 0) {
-            _pruneExpiredEnvelopes(avsOutput.prune);
-            return;
-        }
-
-        // Update merkle root
-        _updateState(
-            avsOutput.root,
-            avsOutput.ipfsHash,
-            avsOutput.ipfsHashCid,
-            avsOutput.totalValue
-        );
-
-        emit MerkleRootUpdated(
-            avsOutput.root,
-            avsOutput.ipfsHash,
-            avsOutput.ipfsHashCid,
-            avsOutput.totalValue
-        );
-    }
-
-    /**
-     * @notice Get the service manager address
-     * @return address The address of the service manager
-     */
-    function getServiceManager() external view returns (address) {
-        return address(_serviceManager);
     }
 }

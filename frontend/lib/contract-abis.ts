@@ -765,6 +765,89 @@ export const easIndexerResolverAbi = [
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
   { type: 'error', inputs: [], name: 'NotPayable' },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'index', internalType: 'uint64', type: 'uint64', indexed: true },
+      {
+        name: 'leaf',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+    ],
+    name: 'EdgeFolded',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'id', internalType: 'uint256', type: 'uint256', indexed: true },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+      {
+        name: 'leafCount',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'blockNumber',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'InputsCheckpointed',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acc',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'leafCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpoint',
+    outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpointCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    name: 'getCheckpoint',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct IAttestationAccumulator.Checkpoint',
+        type: 'tuple',
+        components: [
+          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  { type: 'error', inputs: [], name: 'NoNewInputs' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2775,10 +2858,18 @@ export const merkleSnapshotAbi = [
     type: 'constructor',
     inputs: [
       {
-        name: 'serviceManager',
-        internalType: 'contract IWavsServiceManager',
+        name: '_zkVerifier',
+        internalType: 'contract IZkVerifier',
         type: 'address',
       },
+      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: '_accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+      { name: 'constitutionalAdmin', internalType: 'address', type: 'address' },
+      { name: 'operationalAdmin', internalType: 'address', type: 'address' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -2880,13 +2971,6 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
-    inputs: [],
-    name: 'getServiceManager',
-    outputs: [{ name: '', internalType: 'address', type: 'address' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
     inputs: [{ name: 'blockNumber', internalType: 'uint256', type: 'uint256' }],
     name: 'getStateAtBlock',
     outputs: [
@@ -2969,34 +3053,6 @@ export const merkleSnapshotAbi = [
       },
     ],
     stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [
-      {
-        name: 'envelope',
-        internalType: 'struct IWavsServiceHandler.Envelope',
-        type: 'tuple',
-        components: [
-          { name: 'eventId', internalType: 'bytes20', type: 'bytes20' },
-          { name: 'ordering', internalType: 'bytes12', type: 'bytes12' },
-          { name: 'payload', internalType: 'bytes', type: 'bytes' },
-        ],
-      },
-      {
-        name: 'signatureData',
-        internalType: 'struct IWavsServiceHandler.SignatureData',
-        type: 'tuple',
-        components: [
-          { name: 'signers', internalType: 'address[]', type: 'address[]' },
-          { name: 'signatures', internalType: 'bytes[]', type: 'bytes[]' },
-          { name: 'referenceBlock', internalType: 'uint32', type: 'uint32' },
-        ],
-      },
-    ],
-    name: 'handleSignedEnvelope',
-    outputs: [],
-    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -3090,7 +3146,9 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'trigger',
-    outputs: [{ name: 'triggerId', internalType: 'uint64', type: 'uint64' }],
+    outputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
     stateMutability: 'nonpayable',
   },
   {
@@ -3191,19 +3249,6 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
-        name: 'triggerId',
-        internalType: 'uint64',
-        type: 'uint64',
-        indexed: false,
-      },
-    ],
-    name: 'MerklerTrigger',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
         name: '_triggerInfo',
         internalType: 'bytes',
         type: 'bytes',
@@ -3246,6 +3291,176 @@ export const merkleSnapshotAbi = [
     name: 'NoMerkleStateAtIndex',
   },
   { type: 'error', inputs: [], name: 'NoMerkleStates' },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+      { name: 'outputRoot', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
+      { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
+      { name: 'proof', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'submitProof',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_zkVerifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+    ],
+    name: 'setZkVerifier',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    name: 'setAccumulator',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'setParamsHash',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'accumulator',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'zkVerifier',
+    outputs: [
+      { name: '', internalType: 'contract IZkVerifier', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'paramsHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'lastAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'hasAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      { name: 'root', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'prover',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'MerkleProofSubmitted',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+    ],
+    name: 'SnapshotTriggered',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'zkVerifier',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ZkVerifierUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'accumulator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AccumulatorUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'paramsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'ParamsHashUpdated',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+      { name: 'lastApplied', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'StaleCheckpoint',
+  },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
