@@ -34,6 +34,9 @@ toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`). The first run bu
 give it a few minutes; after that it's seconds. It stops before real Groth16 proving (which needs
 ≥16–32 GiB or the prover network) — the full loop, step by step, is in [Usage](#usage) §8–9.
 
+To run the **full stack locally with the frontend + indexer** (a mainnet-fork anvil, real proofs, and
+the UI showing the results), see [`LOCAL_TESTING.md`](./LOCAL_TESTING.md).
+
 > **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
 > anywhere. Generating a real STARK→Groth16 *proof* needs ≥16–32 GiB of RAM or the Succinct prover
 > network (`SP1_PROVER=network`). For a local dev loop you can validate with `execute` and, if you
