@@ -1,0 +1,17 @@
+{
+  "damping_fp": "0xbcbce7f1b150000",
+  "tolerance_fp": "0xe8d4a51000",
+  "max_iterations": 100,
+  "min_weight_fp": "0x0",
+  "max_weight_fp": "0x56bc75e2d63100000",
+  "trust_multiplier_fp": "0x1bc16d674ec80000",
+  "trust_share_fp": "0x214e8348c4f0000",
+  "trust_decay_fp": "0xb1a2bc2ec500000",
+  "trusted_seeds": [
+    "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  ],
+  "total_pool": "0xd3c21bcecceda1000000",
+  "precision_scale": "0xde0b6b3a7640000",
+  "schema_uid": "0xc1ee0b646fb6595cb2267ba69bc4d68cbc28cb0bc654d44fb5d46c28f51f9caf",
+  "weight_field_index": 1
+}

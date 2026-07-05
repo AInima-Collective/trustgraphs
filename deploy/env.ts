@@ -310,10 +310,12 @@ export class DevEnv extends EnvBase {
         {
           name: 'Network',
           script: 'script/DeployNetwork.s.sol:DeployScript',
-          sig: 'run(string,bytes32,string,string,bool,string,uint256,uint256)',
+          sig: 'run(string,string,string,string,bool,string,uint256,uint256)',
           args: () => [
             readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
-            process.env.PARAMS_HASH || ZERO_BYTES32,
+            // Path to the governance params; the script computes paramsHash from it on-chain after
+            // registering the schema (no precomputed PARAMS_HASH, no two-phase bootstrap).
+            process.env.PARAMS_JSON || 'params.json',
             readJsonKey('.docker/eas_deploy.json', 'eas'),
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
             true,
@@ -494,10 +496,13 @@ export class ProdEnv extends EnvBase {
           {
             name: `Network: ${network.name}`,
             script: 'script/DeployNetwork.s.sol:DeployScript',
-            sig: 'run(string,bytes32,string,string,bool,string,uint256,uint256)',
+            sig: 'run(string,string,string,string,bool,string,uint256,uint256)',
             args: () => [
               readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
-              requireProdBytes32('PARAMS_HASH'),
+              // Path to the governance params; the script computes paramsHash from it on-chain after
+              // registering the schema. For multiple networks give each its own params file
+              // (PARAMS_JSON), since each has a distinct resolver -> schema UID -> paramsHash.
+              process.env.PARAMS_JSON || 'params.json',
               readJsonKey('.docker/eas_deploy.json', 'eas'),
               readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
               false,

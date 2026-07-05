@@ -134,10 +134,19 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
     println!("ipfsHash:      0x{}", hex::encode(native.journal.ipfs_hash));
     println!("cid:           {}", native.cid);
     println!("totalValue:    {}", native.journal.total_value);
+
+    // The canonical score blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so it
+    // can be pinned (the UI/indexer fetch the {account -> score} scores from IPFS at that cid).
+    std::fs::write("blob.json", &native.blob)?;
+    println!("wrote blob.json ({} bytes) — pin at the cid above", native.blob.len());
     Ok(())
 }
 
 fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
+    // The score blob is a pure function of the input; recompute it here so `prove` emits blob.json
+    // next to proof.bin (same bytes execute writes — its sha256 is the journal's ipfsHash).
+    let native = compute(&input);
+
     let client = ProverClient::from_env();
     let mut stdin = SP1Stdin::new();
     stdin.write(&input);
@@ -159,7 +168,9 @@ fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
     let blob = abi_encode_two_bytes(&public_values, &seal);
     std::fs::write("proof.bin", &blob)?;
     std::fs::write("public_values.bin", &public_values)?;
+    std::fs::write("blob.json", &native.blob)?;
     println!("wrote proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
+    println!("wrote blob.json ({} bytes) — pin at the cid for the UI", native.blob.len());
     println!("publicValues: 0x{}", hex::encode(&public_values));
     Ok(())
 }

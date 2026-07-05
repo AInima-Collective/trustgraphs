@@ -28,6 +28,8 @@ import { SchemaRegistrar } from 'contracts/eas/SchemaRegistrar.sol';
 import {
   EASIndexerResolver
 } from 'contracts/eas/resolvers/EASIndexerResolver.sol';
+import { ParamsCodec } from 'contracts/params/ParamsCodec.sol';
+import { ParamsJson } from 'script/lib/ParamsJson.sol';
 
 /// @dev Deployment script for network contracts
 contract DeployScript is Common {
@@ -36,11 +38,13 @@ contract DeployScript is Common {
   string public root = vm.projectRoot();
 
   /**
-   * @dev Deploys the contracts and writes the results to a JSON file
+   * @dev Deploys the contracts and writes the results to a JSON file.
    * @param zkVerifierAddr The address of the ZK proof verifier gating root updates
-   * @param paramsHash The keccak256 of the canonical PageRank parameters the guest must use. Pass
-   *        bytes32(0) for local/dev; MUST be the real guest-computed value before mainnet use. It is
-   *        set at construction and thereafter mutable only through the operational timelock.
+   * @param paramsPath Path to the governance `params.json` (serialized `pagerank_core::Params`) — the
+   *        same file the prover feeds the guest. The canonical `paramsHash` is computed FROM it in
+   *        this script (after the schema is registered), so no precomputed hash is supplied. The
+   *        file's `schema_uid` field is ignored; the freshly registered UID is used instead and, for
+   *        a single-network deploy, written back into the file so the prover stays in sync.
    * @param easAddr The address of the EAS contract
    * @param schemaRegistrarAddr The address of the schema registrar contract
    * @param deployFundDistributor Whether to deploy the fund distributor contract
@@ -50,7 +54,7 @@ contract DeployScript is Common {
    */
   function run(
     string calldata zkVerifierAddr,
-    bytes32 paramsHash,
+    string calldata paramsPath,
     string calldata easAddr,
     string calldata schemaRegistrarAddr,
     bool deployFundDistributor,
@@ -97,10 +101,31 @@ contract DeployScript is Common {
         Strings.toChecksumHexString(address(indexerResolver))
       );
 
-      // Create the merkle snapshot contract, gated by the ZK verifier and fed by the accumulator.
-      // NOTE: `paramsHash` is threaded in (bytes32(0) for local/dev) and MUST be the guest-computed
-      // value before mainnet use; thereafter it is mutable only through the operational timelock.
-      // Admin roles are the deployer at bootstrap; DeployTimelocks transfers them to the timelocks.
+      // Register the vouching schema BEFORE the snapshot. Its UID = getUID(schema, resolver,
+      // revocable) is bound into `paramsHash`, so it must exist first. The dependency chain
+      // resolver -> schemaUid -> paramsHash -> MerkleSnapshot is a clean DAG; the old two-phase
+      // "deploy, read uid, recompute hash, redeploy" dance only existed because the hash used to be
+      // supplied from outside before this schema was registered.
+      bytes32 schemaUid = createSchema(
+        _schemasJson,
+        i,
+        schemaRegistrar,
+        address(indexerResolver),
+        'vouching',
+        'Vouch',
+        'Weighted endorsement',
+        'string comment,uint256 confidence',
+        true
+      );
+
+      // Compute the canonical paramsHash on-chain from the governance params + this schema UID.
+      // `ParamsCodec.hash` is byte-identical to `pagerank-core::encode::params_hash` (golden-tested),
+      // so the value the guest commits matches what MerkleSnapshot stores.
+      bytes32 paramsHash = ParamsCodec.hash(ParamsJson.read(paramsPath, schemaUid));
+
+      // Create the merkle snapshot, gated by the ZK verifier and fed by the accumulator, bound to the
+      // paramsHash just computed. Admin roles are the deployer at bootstrap; DeployTimelocks transfers
+      // them to the timelocks. paramsHash thereafter is mutable only through the operational timelock.
       MerkleSnapshot merkleSnapshot = new MerkleSnapshot(
         IZkVerifier(zkVerifier),
         paramsHash,
@@ -130,19 +155,6 @@ contract DeployScript is Common {
         Strings.toChecksumHexString(address(merkleSnapshot))
       );
 
-      // Vouching schema for weighted endorsements
-      createSchema(
-        _schemasJson,
-        i,
-        schemaRegistrar,
-        address(indexerResolver),
-        'vouching',
-        'Vouch',
-        'Weighted endorsement',
-        'string comment,uint256 confidence',
-        true
-      );
-
       string memory finalSchemasJson = vm.serializeString(
         _schemasJson,
         '_',
@@ -155,6 +167,24 @@ contract DeployScript is Common {
       rootJson = rootJson.serialize('schemas', finalSchemasJson);
 
       vm.writeFile(scriptOutputPath, rootJson);
+
+      // Keep the prover's params.json in sync: write the registered schema UID back into it so a
+      // single-network deploy needs zero manual edits. `paramsHash` is unaffected (the file's
+      // schema_uid was ignored when hashing). Multi-network runs get their UID from each
+      // network_deploy_<env>_<i>.json instead (one shared file can't hold N distinct UIDs).
+      if (count == 1) {
+        vm.writeJson(vm.toString(schemaUid), paramsPath, '.schema_uid');
+        console.log('params.json schema_uid synced ->', vm.toString(schemaUid));
+      } else {
+        console.log(
+          string.concat(
+            'network ',
+            Strings.toString(i),
+            ' schema_uid (sync into its params.json): ',
+            vm.toString(schemaUid)
+          )
+        );
+      }
     }
 
     vm.stopBroadcast();

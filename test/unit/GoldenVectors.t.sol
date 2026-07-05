@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
+import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
+
 /// @title GoldenVectors
 /// @notice Cross-language lock (Risk R2): independently recompute in Solidity every frozen byte
 ///         format that `pagerank-core` produces (via `cargo run --example export_golden`) and
@@ -87,34 +89,35 @@ contract GoldenVectorsTest is Test {
     }
 
     /// seedSetRoot: OZ standard tree over sorted seed leaves = keccak256(abi.encode(address)).
+    /// Exercised through `ParamsCodec.seedSetRoot` — the same code the deploy uses — so the on-chain
+    /// encoder is locked to the golden vector (and thus to pagerank-core), not just this test.
     function test_SeedSetRoot() public view {
-        address[] memory seeds = json.readAddressArray(".params.sortedSeeds");
-        bytes32[] memory leaves = new bytes32[](seeds.length);
-        for (uint256 i = 0; i < seeds.length; i++) {
-            leaves[i] = keccak256(abi.encode(seeds[i]));
-        }
-        assertEq(_ozRoot(leaves), json.readBytes32(".params.seedSetRoot"), "seedSetRoot mismatch");
+        assertEq(
+            ParamsCodec.seedSetRoot(json.readAddressArray(".params.sortedSeeds")),
+            json.readBytes32(".params.seedSetRoot"),
+            "seedSetRoot mismatch"
+        );
     }
 
-    /// paramsHash: the 13-field abi.encode is recomputed independently in Solidity (locks field
-    /// order + types against pagerank-core::encode::params_hash).
+    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork) must reproduce the golden vector,
+    /// locking the on-chain 13-field encoding to pagerank-core::encode::params_hash.
     function test_ParamsHashEncoding() public view {
-        bytes memory encoded = abi.encode(
-            json.readUint(".params.dampingFp"),
-            json.readUint(".params.toleranceFp"),
-            uint32(json.readUint(".params.maxIterations")),
-            json.readUint(".params.minWeightFp"),
-            json.readUint(".params.maxWeightFp"),
-            json.readUint(".params.trustMultiplierFp"),
-            json.readUint(".params.trustShareFp"),
-            json.readUint(".params.trustDecayFp"),
-            json.readBytes32(".params.seedSetRoot"),
-            json.readUint(".params.totalPool"),
-            json.readUint(".params.precisionScale"),
-            json.readBytes32(".params.schemaUid"),
-            uint32(json.readUint(".params.weightFieldIndex"))
-        );
-        assertEq(keccak256(encoded), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
+        ParamsCodec.Params memory p = ParamsCodec.Params({
+            dampingFp: json.readUint(".params.dampingFp"),
+            toleranceFp: json.readUint(".params.toleranceFp"),
+            maxIterations: uint32(json.readUint(".params.maxIterations")),
+            minWeightFp: json.readUint(".params.minWeightFp"),
+            maxWeightFp: json.readUint(".params.maxWeightFp"),
+            trustMultiplierFp: json.readUint(".params.trustMultiplierFp"),
+            trustShareFp: json.readUint(".params.trustShareFp"),
+            trustDecayFp: json.readUint(".params.trustDecayFp"),
+            trustedSeeds: json.readAddressArray(".params.sortedSeeds"),
+            totalPool: json.readUint(".params.totalPool"),
+            precisionScale: json.readUint(".params.precisionScale"),
+            schemaUid: json.readBytes32(".params.schemaUid"),
+            weightFieldIndex: uint32(json.readUint(".params.weightFieldIndex"))
+        });
+        assertEq(ParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 
     /// selectionParamsHash: keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetBps)).

@@ -71,26 +71,56 @@ commented `--fork-url` toggle if you prefer a single command.)
 
 ### 2. Deploy the full stack
 
-Compute the deploy constants and deploy. `MerkleSnapshot` gets a verifier bound to the **root** guest's
-vkey and `SignerSyncZkModule` gets one bound to the **signer** guest's vkey — both pointing at the real
-gateway.
+**Single pass — no `PARAMS_HASH`, no bootstrap.** `DeployNetwork` computes `paramsHash` on-chain from
+`params.json` *after* it registers the schema, so a lone `pnpm deploy:full` deploys and binds everything.
+`MerkleSnapshot` gets a verifier bound to the **root** guest's vkey and `SignerSyncZkModule` gets one
+bound to the **signer** guest's vkey — both pointing at the real gateway.
+
+**`params.json`** — the governance params, the same file the prover feeds the guest (serialized
+`pagerank_core::Params`). Author it from the template; leave `schema_uid` as the placeholder — the deploy
+fills it in:
+
+```bash
+cp test/e2e/params.template.json params.json    # tune seeds / pool / damping… to taste
+```
+
+**Deploy constants** (vkeys + the signer selection hash — all derived from source, no chain state):
 
 ```bash
 cd zk/prover
 export SP1_PROGRAM_VKEY=$(cargo run -q --release -- vkey)
 export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer-vkey)
-export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash)   # default selection
-export PARAMS_HASH=$(cargo run -q --release -- paramshash params.json)                 # see the note below
+export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash)   # no arg → default selection
 cd ../..
+```
 
+**Deploy** (one command):
+
+```bash
 DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 ```
 
-> **`PARAMS_HASH` ⇄ schema bootstrapping.** `PARAMS_HASH` binds `params.schema_uid`, but the schema is
-> registered *during* the deploy, so a fresh deployment is two-phase: deploy EAS + the resolver + the
-> schema first, read the schema uid, set `params.schema_uid` to it, compute `PARAMS_HASH`, then deploy
-> the rest. See [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) → "Real end-to-end on a mainnet fork". Once the
-> schema uid is a fixed governance constant you skip phase one.
+The Network step deploys the resolver, registers the schema, then computes
+`paramsHash = ParamsCodec.hash(params.json, schemaUid)` — byte-identical to the guest's Rust
+`params_hash` (locked by `test/unit/GoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
+Override the params path with `PARAMS_JSON=/path/to/params.json` if it isn't at the repo root.
+
+**Sync the prover's `schema_uid`.** The proof's params must carry the deployed schema UID. A DEV deploy
+covers every network in `config/networks.development.json`, so copy network 0's UID into `params.json`:
+
+```bash
+jq --arg s "$(jq -r '.schemas.vouching.uid' config/network_deploy_dev_0.json)" \
+  '.schema_uid=$s' params.json > tmp && mv tmp params.json
+```
+
+(A single-network **PROD** deploy skips even this — the script writes the UID straight back into
+`params.json`.)
+
+> **Why plain DEV works now.** DEV regenerates the deployer key each run, but that no longer matters:
+> the schema UID is produced *and* consumed inside the same deploy, so nothing has to reproduce across
+> runs. (Needing it to reproduce is exactly what used to force a pinned-deployer, two-pass,
+> restart-the-fork dance.) Reach for `DEPLOY_ENV=PROD` when you want the production timelock/config
+> wiring and a fixed `FUNDED_KEY` — see the note in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
 
 Addresses are written to `.docker/deployment_summary.json` (Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`), and the frontend + indexer read them from there.
@@ -104,8 +134,14 @@ the Gnosis Safe owner events (from `submitSignerProof`'s rotation). Point it at 
 # indexer/.env.local (see indexer/.env.example):
 #   PONDER_RPC_URL_1=http://localhost:8545
 #   DATABASE_URL=postgresql://ponder:ponder@localhost:6432/ponder
+#   PONDER_START_BLOCK=<fork block + 1>   # REQUIRED on a fork — else Ponder backfills all pre-fork blocks
+export PONDER_START_BLOCK=$(( $(cast rpc anvil_nodeInfo --rpc-url http://localhost:8545 | jq -r '.forkConfig.forkBlockNumber') + 1 ))
 pnpm indexer dev        # Ponder at http://127.0.0.1:65421
 ```
+
+On a mainnet-fork anvil the resolver/snapshot live just above the fork block, so their dev `startBlock`
+defaults to `1` (genesis on a plain anvil) would backfill ~25M pre-fork blocks. `PONDER_START_BLOCK`
+pins the backfill to the fork tip; contracts whose events only fire later (gov/fund/safe) use `'latest'`.
 
 ### 4. Frontend
 
@@ -118,24 +154,66 @@ deploy) and points `apis.ponder` at `http://127.0.0.1:65421`.
 
 ### 5. Produce data the UI shows
 
-Run the two permissionless loops so there's a scored root + a rotated Safe to display. The exact
-commands (checkpoint → `input-exporter` → `prove --groth16` → pin blob → `submitProof`; and the signer
-variant → `submitSignerProof`) are in [README §8–9](./README.md#8-produce-a-score-root-the-permissionless-zk-loop)
-and [`zk/RUNBOOK.md`](./zk/RUNBOOK.md). In short:
+Run the permissionless root loop (checkpoint → `input-exporter` → `execute` → `prove --groth16` → pin
+blob → `submitProof`) so there's a scored root to display. The signer variant → `submitSignerProof` is
+in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+
+**Set the addresses** (from the deploy artifacts — the doc used to leave these unset):
 
 ```bash
-cast send $MERKLE_SNAPSHOT "trigger()" --rpc-url http://localhost:8545 --private-key $PK
-cargo run -p input-exporter -- --rpc http://localhost:8545 \
-  --accumulator $EAS_INDEXER_RESOLVER --eas $EAS --checkpoint $ID --params params.json --out input.json
-( cd zk/prover && cargo run --release -- prove input.json --groth16 )   # +--features native-gnark for SP1_PROVER=cpu
-ipfs add --cid-version=1 --raw-leaves blob.json
-cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 zk/prover/proof.bin) --rpc-url http://localhost:8545 --private-key $PK
+export RPC=http://localhost:8545
+export PK=$(grep '^FUNDED_KEY=' .env | cut -d= -f2)     # any funded key — trigger()/submitProof are permissionless
+export MERKLE_SNAPSHOT=$(jq -r .contracts.merkle_snapshot config/network_deploy_dev_0.json)
+export EAS_INDEXER_RESOLVER=$(jq -r .contracts.eas_indexer_resolver config/network_deploy_dev_0.json)
+export EAS=$(jq -r .eas .docker/eas_deploy.json)
 ```
 
-`$MERKLE_SNAPSHOT` / `$EAS_INDEXER_RESOLVER` / `$EAS` come from `.docker/deployment_summary.json`
-(helpers: `task config:merkle-snapshot-address`, etc.). `$OUTPUT_ROOT` / `$IPFS_HASH` / `$CID` /
-`$TOTAL_VALUE` are printed by `cargo run -p trustgraph-prover -- execute input.json`.
+**Attest first** — `trigger()` over an empty graph checkpoints zero scores. Build a vouching ring from
+anvil's prefunded accounts:
+
+```bash
+task trustgraph:create-network NET_INDEX=0 TEST_ADDRESS=0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+```
+
+**The loop:**
+
+```bash
+# checkpoint the accumulator, then read the new checkpoint id (first = 0)
+cast send $MERKLE_SNAPSHOT "trigger()" --rpc-url $RPC --private-key $PK
+export ID=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --rpc-url $RPC) - 1 ))
+
+# reconstruct input.json from chain (writes ./input.json at the repo root).
+# --from-block starts the getLogs scan just above the fork so anvil serves the (local) EdgeFolded logs
+# itself instead of proxying pre-fork ranges to your RPC — required on rate-limited tiers (Alchemy free
+# caps getLogs at a 10-block range). The exporter re-folds edges to the checkpoint acc, so a too-high
+# value errors rather than emitting a bad input.json.
+FORK_BLOCK=$(cast rpc anvil_nodeInfo --rpc-url $RPC | jq -r '.forkConfig.forkBlockNumber')
+cargo run -p input-exporter -- --rpc $RPC \
+  --accumulator $EAS_INDEXER_RESOLVER --eas $EAS --checkpoint $ID --params params.json \
+  --from-block $(( FORK_BLOCK + 1 )) --out input.json
+
+# execute (fast, no proof) to get the submitProof args — and blob.json
+EXEC=$( ( cd zk/prover && cargo run -q --release -- execute ../../input.json ) ); echo "$EXEC"
+export OUTPUT_ROOT=$(echo "$EXEC" | awk '/outputRoot:/{print $2}')
+export IPFS_HASH=$(  echo "$EXEC" | awk '/ipfsHash:/{print $2}')
+export CID=$(        echo "$EXEC" | awk '/cid:/{print $2}')
+export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
+
+# prove — cpu Groth16 needs --features native-gnark + ~16-32 GiB RAM (drop it for SP1_PROVER=network)
+( cd zk/prover && cargo run --release --features native-gnark -- prove ../../input.json --groth16 )
+
+# pin the score blob so the UI can fetch it (kubo HTTP API — no ipfs CLI needed)
+curl -sF file=@zk/prover/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
+
+# submit (note the 0x prefix on the proof blob)
+cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
+  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE "0x$(xxd -p zk/prover/proof.bin | tr -d '\n')" \
+  --rpc-url $RPC --private-key $PK
+```
+
+`execute` and `prove` both write `zk/prover/blob.json` (the `{account → score}` blob whose sha256 is
+`ipfsHash` and whose CID is `cid`); the `curl` pins it at that CID. `submitProof` verifies from the
+journal, so it lands even if you skip the pin — but the frontend needs the blob pinned to show scores.
 
 Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend shows the scores; after
 `submitSignerProof`, the Safe's owner changes flow through the Safe indexer to the UI.

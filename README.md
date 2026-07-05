@@ -176,13 +176,15 @@ SP1_PROVER=network cargo run --release -- prove input.json --groth16
 #    local instead (needs ~16–32 GiB + a gnark/Go toolchain):
 #    SP1_PROVER=cpu cargo run --release --features native-gnark -- prove input.json --groth16
 
-# d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid):
+# d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid). `prove`/`execute` write blob.json:
 ipfs add --cid-version=1 --raw-leaves blob.json
+#    or via a running kubo daemon without the ipfs CLI:
+#    curl -sF file=@blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
-# e. Submit:
+# e. Submit (note the 0x prefix on the proof blob):
 cast send $MERKLE_SNAPSHOT \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 proof.bin)
+  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE "0x$(xxd -p proof.bin | tr -d '\n')"
 ```
 
 > **Where does `input.json` come from?** It's a serialized `GuestInput` (edges + params) — the exact

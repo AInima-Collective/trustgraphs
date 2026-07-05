@@ -26,6 +26,15 @@ if (!DEPLOY_ENV) {
 export const IS_PRODUCTION = DEPLOY_ENV.toUpperCase().trim() === 'PROD'
 const CORE_CHAIN = IS_PRODUCTION ? 'optimism' : 'local'
 
+// Dev start block for contracts that must backfill (they emit events — attestations, roots — that may
+// already exist when the indexer starts). On a plain local anvil this is ~genesis (1). On a MAINNET
+// FORK the contracts live just above the fork block, so starting at 1 would backfill millions of
+// pre-fork blocks; set PONDER_START_BLOCK=<fork block> (see LOCAL_TESTING.md §Indexer). Contracts whose
+// events only occur after the indexer starts (gov/fund/safe) use 'latest' and need no start block.
+const DEV_START_BLOCK = process.env.PONDER_START_BLOCK
+  ? Number(process.env.PONDER_START_BLOCK)
+  : 1
+
 export default createConfig({
   ordering: 'multichain',
   chains: {
@@ -48,7 +57,7 @@ export default createConfig({
   contracts: {
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
-      startBlock: IS_PRODUCTION ? 142786483 : 1,
+      startBlock: IS_PRODUCTION ? 142786483 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: deploymentSummary.networks.map(
@@ -59,7 +68,7 @@ export default createConfig({
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,
-      startBlock: IS_PRODUCTION ? 142786328 : 1,
+      startBlock: IS_PRODUCTION ? 142786328 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: deploymentSummary.networks.map(

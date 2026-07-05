@@ -602,6 +602,13 @@ export const easIndexerResolverAbi = [
   { type: 'receive', stateMutability: 'payable' },
   {
     type: 'function',
+    inputs: [],
+    name: 'acc',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
       {
         name: 'attestation',
@@ -628,9 +635,59 @@ export const easIndexerResolverAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'checkpoint',
+    outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpointCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    name: 'checkpoints',
+    outputs: [
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+      { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    name: 'getCheckpoint',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct IAttestationAccumulator.Checkpoint',
+        type: 'tuple',
+        components: [
+          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'isPayable',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'leafCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -760,11 +817,6 @@ export const easIndexerResolverAbi = [
     ],
     name: 'Attested',
   },
-  { type: 'error', inputs: [], name: 'AccessDenied' },
-  { type: 'error', inputs: [], name: 'InsufficientValue' },
-  { type: 'error', inputs: [], name: 'InvalidEAS' },
-  { type: 'error', inputs: [], name: 'InvalidLength' },
-  { type: 'error', inputs: [], name: 'NotPayable' },
   {
     type: 'event',
     anonymous: false,
@@ -801,53 +853,12 @@ export const easIndexerResolverAbi = [
     ],
     name: 'InputsCheckpointed',
   },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'acc',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'leafCount',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'checkpoint',
-    outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'checkpointCount',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
-    name: 'getCheckpoint',
-    outputs: [
-      {
-        name: '',
-        internalType: 'struct IAttestationAccumulator.Checkpoint',
-        type: 'tuple',
-        components: [
-          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
-          { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
-          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
-        ],
-      },
-    ],
-    stateMutability: 'view',
-  },
+  { type: 'error', inputs: [], name: 'AccessDenied' },
+  { type: 'error', inputs: [], name: 'InsufficientValue' },
+  { type: 'error', inputs: [], name: 'InvalidEAS' },
+  { type: 'error', inputs: [], name: 'InvalidLength' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NotPayable' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2743,8 +2754,35 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'ENVELOPE_EXPIRATION_TIME',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    name: 'CONSTITUTIONAL_ROLE',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'DEFAULT_ADMIN_ROLE',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'OPERATIONAL_ROLE',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'accumulator',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -2765,41 +2803,6 @@ export const merkleSnapshotAbi = [
     inputs: [{ name: 'blockNumber', internalType: 'uint256', type: 'uint256' }],
     name: 'blockToStateIndex',
     outputs: [{ name: 'stateIndex', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
-    name: 'envelopeExpirationQueue',
-    outputs: [{ name: 'eventId', internalType: 'bytes20', type: 'bytes20' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'envelopeExpirationQueueEnd',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'envelopeExpirationQueueSize',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'envelopeExpirationQueueStart',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: 'eventId', internalType: 'bytes20', type: 'bytes20' }],
-    name: 'envelopesSeen',
-    outputs: [{ name: 'expiresAt', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -2834,6 +2837,13 @@ export const merkleSnapshotAbi = [
         ],
       },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'role', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'getRoleAdmin',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -2923,6 +2933,33 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'grantRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'hasAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'hasRole',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'hookCount',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
@@ -2957,8 +2994,8 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'lastCronTimestampSeen',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    name: 'lastAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -2971,8 +3008,8 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'nextTriggerId',
-    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    name: 'paramsHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -2985,6 +3022,59 @@ export const merkleSnapshotAbi = [
       },
     ],
     name: 'removeHook',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'callerConfirmation', internalType: 'address', type: 'address' },
+    ],
+    name: 'renounceRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'revokeRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    name: 'setAccumulator',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'setParamsHash',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_zkVerifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+    ],
+    name: 'setZkVerifier',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -3007,6 +3097,27 @@ export const merkleSnapshotAbi = [
       { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
       { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
     ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+      { name: 'outputRoot', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
+      { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
+      { name: 'proof', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'submitProof',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'interfaceId', internalType: 'bytes4', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
   {
@@ -3086,6 +3197,48 @@ export const merkleSnapshotAbi = [
     stateMutability: 'view',
   },
   {
+    type: 'function',
+    inputs: [],
+    name: 'zkVerifier',
+    outputs: [
+      { name: '', internalType: 'contract IZkVerifier', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'accumulator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AccumulatorUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      { name: 'root', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'prover',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'MerkleProofSubmitted',
+  },
+  {
     type: 'event',
     anonymous: false,
     inputs: [
@@ -3116,157 +3269,73 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
-        name: '_triggerInfo',
-        internalType: 'bytes',
-        type: 'bytes',
-        indexed: false,
-      },
-    ],
-    name: 'NewTrigger',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'count',
-        internalType: 'uint256',
-        type: 'uint256',
-        indexed: false,
-      },
-    ],
-    name: 'PrunedExpiredEnvelopes',
-  },
-  { type: 'error', inputs: [], name: 'EnvelopeAlreadySeen' },
-  { type: 'error', inputs: [], name: 'EnvelopeExpired' },
-  { type: 'error', inputs: [], name: 'HookAlreadyAdded' },
-  { type: 'error', inputs: [], name: 'HookNotAdded' },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'requested', internalType: 'uint256', type: 'uint256' },
-      { name: 'firstBlock', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'NoMerkleStateAtBlock',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'requested', internalType: 'uint256', type: 'uint256' },
-      { name: 'total', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'NoMerkleStateAtIndex',
-  },
-  { type: 'error', inputs: [], name: 'NoMerkleStates' },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
-      { name: 'outputRoot', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
-      { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
-      { name: 'proof', internalType: 'bytes', type: 'bytes' },
-    ],
-    name: 'submitProof',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      {
-        name: '_zkVerifier',
-        internalType: 'contract IZkVerifier',
-        type: 'address',
-      },
-    ],
-    name: 'setZkVerifier',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      {
-        name: '_accumulator',
-        internalType: 'contract IAttestationAccumulator',
-        type: 'address',
-      },
-    ],
-    name: 'setAccumulator',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
-    name: 'setParamsHash',
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'accumulator',
-    outputs: [
-      {
-        name: '',
-        internalType: 'contract IAttestationAccumulator',
-        type: 'address',
-      },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'zkVerifier',
-    outputs: [
-      { name: '', internalType: 'contract IZkVerifier', type: 'address' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'paramsHash',
-    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'lastAppliedCheckpoint',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
-    name: 'hasAppliedCheckpoint',
-    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'event',
-    anonymous: false,
-    inputs: [
-      {
-        name: 'checkpointId',
-        internalType: 'uint256',
-        type: 'uint256',
+        name: 'paramsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
         indexed: true,
       },
-      { name: 'root', internalType: 'bytes32', type: 'bytes32', indexed: true },
+    ],
+    name: 'ParamsHashUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
       {
-        name: 'prover',
+        name: 'previousAdminRole',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'newAdminRole',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'RoleAdminChanged',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'sender',
         internalType: 'address',
         type: 'address',
         indexed: true,
       },
     ],
-    name: 'MerkleProofSubmitted',
+    name: 'RoleGranted',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'sender',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'RoleRevoked',
   },
   {
     type: 'event',
@@ -3294,32 +3363,34 @@ export const merkleSnapshotAbi = [
     ],
     name: 'ZkVerifierUpdated',
   },
+  { type: 'error', inputs: [], name: 'AccessControlBadConfirmation' },
   {
-    type: 'event',
-    anonymous: false,
+    type: 'error',
     inputs: [
-      {
-        name: 'accumulator',
-        internalType: 'address',
-        type: 'address',
-        indexed: true,
-      },
+      { name: 'account', internalType: 'address', type: 'address' },
+      { name: 'neededRole', internalType: 'bytes32', type: 'bytes32' },
     ],
-    name: 'AccumulatorUpdated',
+    name: 'AccessControlUnauthorizedAccount',
+  },
+  { type: 'error', inputs: [], name: 'HookAlreadyAdded' },
+  { type: 'error', inputs: [], name: 'HookNotAdded' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'firstBlock', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'NoMerkleStateAtBlock',
   },
   {
-    type: 'event',
-    anonymous: false,
+    type: 'error',
     inputs: [
-      {
-        name: 'paramsHash',
-        internalType: 'bytes32',
-        type: 'bytes32',
-        indexed: true,
-      },
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'total', internalType: 'uint256', type: 'uint256' },
     ],
-    name: 'ParamsHashUpdated',
+    name: 'NoMerkleStateAtIndex',
   },
+  { type: 'error', inputs: [], name: 'NoMerkleStates' },
   {
     type: 'error',
     inputs: [
@@ -3328,6 +3399,7 @@ export const merkleSnapshotAbi = [
     ],
     name: 'StaleCheckpoint',
   },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

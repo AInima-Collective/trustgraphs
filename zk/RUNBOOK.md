@@ -53,12 +53,18 @@ cd zk/prover && cargo build --release && cd ../..
 cd zk/prover
 # The guest verification key (imageId). Constitutional constant; pinned in the SP1 verifier.
 cargo run --release -- vkey                 # -> 0x....   (programVKey)
-# The canonical params hash. Operational constant; set on MerkleSnapshot.
-cargo run --release -- paramshash params.json   # -> 0x....
+```
+
+The canonical `paramsHash` is **not** a manual deploy input — `DeployNetwork` computes it on-chain from
+`params.json` after registering the schema (`ParamsCodec.hash`, byte-identical to the guest's
+`params_hash`, locked by `GoldenVectors.t.sol`). The CLI still computes it for verification/CI, but note
+`paramshash` deserializes a full `GuestInput` (`{edges, params}`), not a bare params file — wrap it:
+
+```bash
+jq '{edges: [], params: .}' params.json | cargo run --release -- paramshash /dev/stdin   # -> 0x....
 ```
 
 `params.json` is a serialized `pagerank_core::Params` (the governance-pinned PageRank parameters).
-Omit it to use the built-in sample.
 
 ## Validate the guest matches native (do this before every deploy)
 
@@ -169,11 +175,12 @@ verifier — without a testnet, run anvil as a **mainnet fork**: the canonical S
 part of forked state, so `submitProof` really verifies. The steps below are manual (you supply the
 fork RPC, the gateway, and the proving backend); each is a real command, not a wrapper.
 
-> **paramsHash ⇄ schema bootstrapping.** `PARAMS_HASH` binds `params.schema_uid`, but the schema is
-> registered during the deploy — so it's a two-phase bootstrap: deploy EAS + the resolver + the
-> schema first, read the schema uid, set `params.schema_uid` to it, compute `PARAMS_HASH`, *then*
-> deploy `MerkleSnapshot` with it (the EAS/resolver step and the Network step are separate in
-> `deploy/env.ts`). Once the schema uid is a known governance constant you skip phase one.
+> **paramsHash is computed by the deploy — no bootstrap.** `DeployNetwork` deploys the resolver,
+> registers the schema, then computes `paramsHash` from `params.json` + the fresh schema UID and builds
+> `MerkleSnapshot` with it — one pass, no precomputed `PARAMS_HASH`, no restart. For a single-network
+> deploy it also writes the schema UID back into `params.json`; for DEV/multi-network, copy it from
+> `config/network_deploy_<env>_<i>.json` into the prover's `params.json`. See
+> [`LOCAL_TESTING.md`](../LOCAL_TESTING.md) §"Deploy the full stack".
 
 ### Prerequisites / env
 
@@ -198,9 +205,9 @@ one, `SignerSyncZkModule` gets the signer one. Compute the deploy constants:
 cd zk/prover
 export SP1_PROGRAM_VKEY=$(cargo run -q --release -- vkey)
 export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer-vkey)
-export PARAMS_HASH=$(cargo run -q --release -- paramshash params.json)
-export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash input.json)
+export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash)   # no arg → default selection
 cd ../..
+# No PARAMS_HASH: DeployNetwork computes it on-chain from params.json after registering the schema.
 ```
 
 ### Deploy + loops
