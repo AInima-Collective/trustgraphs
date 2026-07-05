@@ -111,18 +111,24 @@ task -y start-all-local   # Anvil, IPFS, and the WARG registry
 
 ### 5. Deploy contracts
 
-Deploys the full set: EAS + resolvers (with the attestation accumulator), `MerkleSnapshot` + the SP1
-verifier + governance timelocks, the reward distributor, and a Zodiac Safe with the `MerkleGovModule`
-(governance) and `SignerSyncZkModule` (owner rotation).
+Deploys the full set: EAS + resolvers (with the attestation accumulator), `MerkleSnapshot` + **two**
+SP1 verifiers (one bound to the root guest's vkey, one to the signer guest's) + governance timelocks,
+the reward distributor, and a Zodiac Safe with the `MerkleGovModule` (governance) and
+`SignerSyncZkModule` (owner rotation).
 
 ```bash
 # Deploy constants read from env (see deploy/env.ts):
-#   PARAMS_HASH            = cargo run -p trustgraph-prover -- paramshash [params.json]
-#   SP1_PROGRAM_VKEY       = cargo run -p trustgraph-prover -- vkey
-#   SELECTION_PARAMS_HASH  = cargo run -p trustgraph-prover -- signer-selectionparamshash [input.json]
-#   SP1_VERIFIER_GATEWAY   = the canonical SP1 gateway on the target chain
+#   PARAMS_HASH             = cargo run -p trustgraph-prover -- paramshash [params.json]
+#   SP1_PROGRAM_VKEY        = cargo run -p trustgraph-prover -- vkey
+#   SP1_SIGNER_PROGRAM_VKEY = cargo run -p trustgraph-prover -- signer-vkey
+#   SELECTION_PARAMS_HASH   = cargo run -p trustgraph-prover -- signer-selectionparamshash [input.json]
+#   SP1_VERIFIER_GATEWAY    = the canonical SP1 gateway (present in a mainnet-fork anvil)
 pnpm deploy:full
 ```
+
+For a **real on-chain verify locally**, run anvil as a mainnet fork so Succinct's SP1 gateway is in
+state — see [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) → "Real end-to-end on a mainnet fork" (it also covers
+the `PARAMS_HASH` ⇄ schema bootstrapping).
 
 Deployed addresses are written to `.docker/deployment_summary.json` (and the Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`). Helpers: `task config:merkle-snapshot-address`, etc.
@@ -161,10 +167,11 @@ cargo run -p input-exporter -- \
   --checkpoint $CHECKPOINT_ID --params params.json --out input.json
 #    ($ACCUMULATOR is the EASIndexerResolver; params.json is the serialized pinned Params.)
 
-# c. Prove the fixed-point PageRank:
+# c. Prove the fixed-point PageRank (writes proof.bin = abi.encode(publicValues, seal)):
 cd zk/prover
-cargo run --release -- prove input.json --groth16     # writes proof.bin = abi.encode(publicValues, seal)
-#    (use SP1_PROVER=network for the final prove if you lack ~16–32 GiB locally)
+SP1_PROVER=network cargo run --release -- prove input.json --groth16
+#    local instead (needs ~16–32 GiB + a gnark/Go toolchain):
+#    SP1_PROVER=cpu cargo run --release --features native-gnark -- prove input.json --groth16
 
 # d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid):
 ipfs add --cid-version=1 --raw-leaves blob.json
@@ -198,7 +205,8 @@ cargo run -p input-exporter -- \
   --checkpoint $CHECKPOINT_ID --params params.json \
   --signer --selection selection.json --out input.json
 cd zk/prover
-cargo run --release -- signer-prove input.json --groth16   # writes signer_proof.bin
+SP1_PROVER=network cargo run --release -- signer-prove input.json --groth16   # writes signer_proof.bin
+#    local instead: SP1_PROVER=cpu cargo run --release --features native-gnark -- signer-prove input.json --groth16
 
 # c. Submit to rotate owners (SIGNERS ascending & unique; THRESHOLD in [1, |SIGNERS|]):
 cast send $SIGNER_SYNC_MODULE \
