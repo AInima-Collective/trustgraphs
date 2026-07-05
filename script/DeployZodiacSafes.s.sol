@@ -51,10 +51,16 @@ contract DeployZodiacSafes is Common {
   }
 
   /**
-   * @dev Deploys a Safe with the MerkleGovModule and auto-enables it.
-   * @param merkleSnapshotAddr The address of the MerkleSnapshot contract
+   * @dev Deploys a Safe with the MerkleGovModule + SignerSyncZkModule and auto-enables them.
+   * @param merkleSnapshotAddr The address of the MerkleSnapshot contract.
+   * @param signerVerifierAddr The SP1TrustGraphVerifier bound to the SIGNER guest's vkey (NOT the
+   *        root verifier — the signer proof is a different program). Pass address(0) only for a
+   *        mock-verifier local run.
    */
-  function run(string calldata merkleSnapshotAddr) public {
+  function run(
+    string calldata merkleSnapshotAddr,
+    string calldata signerVerifierAddr
+  ) public {
     address deployer = vm.addr(_privateKey);
 
     vm.startBroadcast(_privateKey);
@@ -63,17 +69,19 @@ contract DeployZodiacSafes is Common {
     MerkleSnapshot merkleSnapshot = MerkleSnapshot(
       vm.parseAddress(merkleSnapshotAddr)
     );
+    address signerVerifier = vm.parseAddress(signerVerifierAddr);
 
     // Deploy Safe singleton and factory (if needed)
     GnosisSafe safeSingleton = new GnosisSafe();
     GnosisSafeProxyFactory safeFactory = new GnosisSafeProxyFactory();
 
-    // Deploy the Safe with the MerkleGovModule
+    // Deploy the Safe with the MerkleGovModule + SignerSyncZkModule
     SafeDeployment memory safe = deployZodiacSafeWithMerkle(
       safeSingleton,
       safeFactory,
       deployer,
       merkleSnapshot,
+      signerVerifier,
       'Safe1'
     );
 
@@ -88,6 +96,7 @@ contract DeployZodiacSafes is Common {
     GnosisSafeProxyFactory safeFactory,
     address deployer,
     MerkleSnapshot merkleSnapshot,
+    address signerVerifier,
     string memory safeName
   ) internal returns (SafeDeployment memory deployment) {
     // Setup with single signer (deployer) and threshold of 1 for easy module enablement
@@ -156,7 +165,8 @@ contract DeployZodiacSafes is Common {
 
     // Deploy the SignerSyncZkModule, reusing the verifier / accumulator / paramsHash the
     // MerkleSnapshot already trusts. selectionParamsHash comes from env (default 0 => inert).
-    address signerSyncModule = _deploySignerModule(deployer, safeProxy, merkleSnapshot);
+    address signerSyncModule =
+      _deploySignerModule(deployer, safeProxy, merkleSnapshot, signerVerifier);
     bytes memory enableSignerModuleData = abi.encodeWithSignature(
       'enableModule(address)',
       signerSyncModule
@@ -197,18 +207,22 @@ contract DeployZodiacSafes is Common {
     return deployment;
   }
 
-  /// @dev Deploy the SignerSyncZkModule wired to the MerkleSnapshot's verifier/accumulator/params.
+  /// @dev Deploy the SignerSyncZkModule. It reuses the MerkleSnapshot's accumulator + paramsHash (so
+  ///      the score root and signer set stay consistent), but MUST use its OWN verifier bound to the
+  ///      SIGNER guest's vkey — reusing the MerkleSnapshot's (root-vkey) verifier would reject every
+  ///      real signer proof. `signerVerifier` is that dedicated SP1TrustGraphVerifier.
   function _deploySignerModule(
     address deployer,
     address safeProxy,
-    MerkleSnapshot merkleSnapshot
+    MerkleSnapshot merkleSnapshot,
+    address signerVerifier
   ) internal returns (address) {
     bytes32 selectionParamsHash = vm.envOr('SELECTION_PARAMS_HASH', bytes32(0));
     SignerSyncZkModule signerModule = new SignerSyncZkModule(
       deployer, // owner (transfer to a timelock for production)
       safeProxy, // avatar
       safeProxy, // target
-      IZkVerifier(address(merkleSnapshot.zkVerifier())),
+      IZkVerifier(signerVerifier),
       IAttestationAccumulator(address(merkleSnapshot.accumulator())),
       merkleSnapshot.paramsHash(),
       selectionParamsHash

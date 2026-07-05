@@ -162,6 +162,70 @@ diffs the proven set against the Safe's **live** owner linked list on-chain (cor
 pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/remove/swap). Signer guest
 cost ≈ **1.85M cycles**.
 
+## Real end-to-end on a mainnet fork (with the UI)
+
+To exercise the **real** on-chain path — a genuine Groth16 proof verified by Succinct's real SP1
+verifier — without a testnet, run anvil as a **mainnet fork**: the canonical SP1 verifier gateway is
+part of forked state, so `submitProof` really verifies. The steps below are manual (you supply the
+fork RPC, the gateway, and the proving backend); each is a real command, not a wrapper.
+
+> **paramsHash ⇄ schema bootstrapping.** `PARAMS_HASH` binds `params.schema_uid`, but the schema is
+> registered during the deploy — so it's a two-phase bootstrap: deploy EAS + the resolver + the
+> schema first, read the schema uid, set `params.schema_uid` to it, compute `PARAMS_HASH`, *then*
+> deploy `MerkleSnapshot` with it (the EAS/resolver step and the Network step are separate in
+> `deploy/env.ts`). Once the schema uid is a known governance constant you skip phase one.
+
+### Prerequisites / env
+
+```bash
+export FORK_RPC=https://eth-mainnet.<your-provider>      # archive-capable mainnet RPC to fork
+export SP1_VERIFIER_GATEWAY=0x...                        # Succinct's SP1 gateway on mainnet (docs.succinct.xyz)
+# proving backend — pick ONE:
+export SP1_PROVER=network NETWORK_PRIVATE_KEY=0x...      # Succinct prover network (no big box), OR
+export SP1_PROVER=cpu                                    # local: needs ~16-32 GiB + `--features native-gnark`
+```
+
+The gateway routes a proof to the version-specific verifier by the 4-byte selector prefixed on the
+proof, so it must be a gateway that has the verifier for the SDK version this repo pins (v6.3.1).
+
+### The two verifiers
+
+The root and the signer are **different programs with different vkeys**, so the deploy stands up
+**two** `SP1TrustGraphVerifier`s (both pointing at the same gateway) — `MerkleSnapshot` gets the root
+one, `SignerSyncZkModule` gets the signer one. Compute the deploy constants:
+
+```bash
+cd zk/prover
+export SP1_PROGRAM_VKEY=$(cargo run -q --release -- vkey)
+export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer-vkey)
+export PARAMS_HASH=$(cargo run -q --release -- paramshash params.json)
+export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash input.json)
+cd ../..
+```
+
+### Deploy + loops
+
+```bash
+# 1. Fork + deploy the full stack (EAS, both verifiers, MerkleSnapshot, the Safe with MerkleGovModule
+#    + SignerSyncZkModule, timelocks, distributor). Writes .docker/deployment_summary.json.
+anvil --fork-url "$FORK_RPC" --silent &
+DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
+
+# 2. Attest (UI or `task forge:vouch ...`), then run BOTH permissionless loops above
+#    ("Produce a root" and "Rotate the Safe signer set") against the deployed MerkleSnapshot /
+#    SignerSyncZkModule — real `prove --groth16` (add `--features native-gnark` for SP1_PROVER=cpu),
+#    real submitProof / submitSignerProof.
+
+# 3. Point the UI + indexer at the fork:
+pnpm indexer dev     # indexes MerkleRootUpdated (scores) + the Safe's owner changes directly
+pnpm frontend dev    # http://localhost:3000
+```
+
+The indexer needs **no changes**: `merkleSnapshot:MerkleRootUpdated` (scores) and the Gnosis Safe
+owner events (from `submitSignerProof`'s owner rotation) are already handled. The deploy propagates
+the MerkleSnapshot, Safe, MerkleGovModule, and SignerSyncZkModule addresses into the networks config
+the indexer + frontend read.
+
 ## Governance (two-tier)
 
 MerkleSnapshot:

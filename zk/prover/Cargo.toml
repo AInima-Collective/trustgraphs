@@ -7,6 +7,13 @@ edition = "2021"
 name = "trustgraph-prover"
 path = "src/main.rs"
 
+[features]
+# Opt-in: build the native gnark prover so `prove --groth16` can wrap Groth16 LOCALLY
+# (SP1_PROVER=cpu, needs ~16-32 GiB + a working gnark/Go toolchain). Leave OFF for `execute` and for
+# `SP1_PROVER=network` proving (the network wraps Groth16 remotely), so the default build stays light.
+#   local groth16:  cargo run --features native-gnark --release -- prove input.json --groth16
+native-gnark = ["sp1-sdk/native-gnark"]
+
 [dependencies]
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
 pagerank-core = { path = "../../packages/pagerank-core" }

@@ -75,6 +75,17 @@ export type SafeZodiacSignerSyncDeploy = {
   signer_sync_manager: Hex
 }
 
+/** Shape written by `script/DeployZodiacSafes.s.sol` to `.docker/zodiac_safes_deploy.json`. */
+export type ZodiacSafesDeploy = {
+  safe_singleton: Hex
+  safe_factory: Hex
+  safe: {
+    address: Hex
+    merkle_gov_module: Hex
+    signer_sync_module: Hex
+  }
+}
+
 export type Network = {
   id: string
   name: string
@@ -93,6 +104,7 @@ export type Network = {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
     merkleFundDistributor?: Hex
+    merkleGovModule?: Hex
     safe?: {
       factory: Hex
       singleton: Hex

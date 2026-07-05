@@ -11,7 +11,7 @@ import {
   Network,
   NetworkDeploy,
   ProgramContext,
-  SafeZodiacSignerSyncDeploy,
+  ZodiacSafesDeploy,
 } from './types'
 import {
   isNetworkComplete,
@@ -170,13 +170,13 @@ abstract class EnvBase implements IEnv {
       const deployData = readJson<NetworkDeploy>(
         path.join('config', deployFile)
       )
-      const safeZodiacSignerSyncDeployData =
-        readJsonIfFileExists<SafeZodiacSignerSyncDeploy>(
-          path.join(
-            'config',
-            `safe_zodiac_signer_sync_deploy_${env}_${index}.json`
-          )
-        )
+      // DeployZodiacSafes writes a single .docker/zodiac_safes_deploy.json (the Safe + its
+      // MerkleGovModule + SignerSyncZkModule). For a single-network deploy this is that network's
+      // Safe; a multi-network deploy reuses the file, so the last-deployed Safe wins (fine for the
+      // local fork demo — see zk/RUNBOOK for the real loop).
+      const zodiacSafesDeployData = readJsonIfFileExists<ZodiacSafesDeploy>(
+        '.docker/zodiac_safes_deploy.json'
+      )
 
       const network: Network = {
         ...networks[index],
@@ -184,12 +184,12 @@ abstract class EnvBase implements IEnv {
           merkleSnapshot: deployData.contracts.merkle_snapshot,
           easIndexerResolver: deployData.contracts.eas_indexer_resolver,
           merkleFundDistributor: deployData.contracts.fund_distributor,
-          safe: safeZodiacSignerSyncDeployData && {
-            factory: safeZodiacSignerSyncDeployData.safe_factory,
-            singleton: safeZodiacSignerSyncDeployData.safe_singleton,
-            proxy: safeZodiacSignerSyncDeployData.safe_proxy,
-            signerSyncManager:
-              safeZodiacSignerSyncDeployData.signer_sync_manager,
+          merkleGovModule: zodiacSafesDeployData?.safe?.merkle_gov_module,
+          safe: zodiacSafesDeployData && {
+            factory: zodiacSafesDeployData.safe_factory,
+            singleton: zodiacSafesDeployData.safe_singleton,
+            proxy: zodiacSafesDeployData.safe.address,
+            signerSyncManager: zodiacSafesDeployData.safe.signer_sync_module,
           },
         },
         schemas: Object.values(deployData.schemas).flatMap((data) => {
@@ -300,10 +300,11 @@ export class DevEnv extends EnvBase {
         {
           name: 'ZK Verifier',
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
-          sig: 'run(string,bytes32)',
+          sig: 'run(string,bytes32,string)',
           args: () => [
             process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS,
             process.env.SP1_PROGRAM_VKEY || ZERO_BYTES32,
+            '',
           ],
         },
         {
@@ -321,20 +322,34 @@ export class DevEnv extends EnvBase {
             numNetworks,
           ],
         },
-        // Deploy one Zodiac-enabled Safe (with MerkleGovModule) per network, wired to that
-        // network's ZK-proven MerkleSnapshot root. Must run AFTER Network so the network deploy
-        // JSONs (with merkle_snapshot addresses) exist.
+        // Deploy the SIGNER verifier adapter (bound to the signer guest's vkey — a different program
+        // than the root). Runs AFTER Network (which already consumed the root verifier), so it may
+        // reuse the zk_verifier_deploy.json output slot. The Safe step below reads it.
+        {
+          name: 'Signer ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS,
+            process.env.SP1_SIGNER_PROGRAM_VKEY || ZERO_BYTES32,
+            'signer',
+          ],
+        },
+        // Deploy one Zodiac-enabled Safe (MerkleGovModule + SignerSyncZkModule) per network, wired to
+        // that network's ZK-proven MerkleSnapshot root and the signer verifier above. Must run AFTER
+        // Network so the network deploy JSONs (with merkle_snapshot addresses) exist.
         ...Array.from(
           { length: numNetworks },
           (_, index): ContractDeployment => ({
             name: `Safe: ${index}`,
             script: 'script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
-            sig: 'run(string)',
+            sig: 'run(string,string)',
             args: () => [
               readJsonKey(
                 `config/network_deploy_dev_${index}.json`,
                 'contracts.merkle_snapshot'
               ),
+              readJsonKey('.docker/zk_verifier_signer_deploy.json', 'zk_verifier'),
             ],
           })
         ),
@@ -456,10 +471,23 @@ export class ProdEnv extends EnvBase {
         {
           name: 'ZK Verifier',
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
-          sig: 'run(string,bytes32)',
+          sig: 'run(string,bytes32,string)',
           args: () => [
             process.env.SP1_VERIFIER_GATEWAY || '',
             requireProdBytes32('SP1_PROGRAM_VKEY'),
+            '',
+          ],
+        },
+        // Deploy the SIGNER verifier (bound to the signer guest's vkey — a different program than the
+        // root) to its own output file so per-network Network steps still read the root verifier.
+        {
+          name: 'Signer ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            process.env.SP1_VERIFIER_GATEWAY || '',
+            requireProdBytes32('SP1_SIGNER_PROGRAM_VKEY'),
+            'signer',
           ],
         },
         ...networks.flatMap((network, index): ContractDeployment[] => [
@@ -483,12 +511,13 @@ export class ProdEnv extends EnvBase {
           {
             name: `Safe: ${network.name}`,
             script: 'script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
-            sig: 'run(string)',
+            sig: 'run(string,string)',
             args: () => [
               readJsonKey(
                 `config/network_deploy_prod_${index}.json`,
                 'contracts.merkle_snapshot'
               ),
+              readJsonKey('.docker/zk_verifier_signer_deploy.json', 'zk_verifier'),
             ],
             // Skip if the safe is already deployed / disabled for this network.
             skip: () =>

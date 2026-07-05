@@ -27,19 +27,28 @@ contract DeployZkVerifier is Common {
   using stdJson for string;
 
   string public root = vm.projectRoot();
-  string public script_output_path =
-    string.concat(root, '/.docker/zk_verifier_deploy.json');
 
   /// @notice Deploy the SP1 verifier adapter.
   /// @param sp1GatewayAddr The already-deployed canonical SP1 verifier gateway address. If empty,
   ///        falls back to the `SP1_VERIFIER_GATEWAY` env var.
   /// @param programVKey The SP1 guest program verification key (image id). If zero, falls back to
   ///        the `SP1_PROGRAM_VKEY` env var.
+  /// @param outLabel Output-file discriminator: '' -> `.docker/zk_verifier_deploy.json` (root
+  ///        producer), else `.docker/zk_verifier_<outLabel>_deploy.json` (e.g. 'signer'). Lets the
+  ///        root and signer verifiers coexist without clobbering each other's output.
   /// @return verifier The deployed `SP1TrustGraphVerifier` address.
   function run(
     string calldata sp1GatewayAddr,
-    bytes32 programVKey
+    bytes32 programVKey,
+    string calldata outLabel
   ) public returns (address verifier) {
+    string memory script_output_path = string.concat(
+      root,
+      '/.docker/zk_verifier',
+      bytes(outLabel).length == 0 ? '' : string.concat('_', outLabel),
+      '_deploy.json'
+    );
+
     // Gateway: prefer the explicit param, else the env var. Never hardcoded.
     address gateway = bytes(sp1GatewayAddr).length == 0
       ? vm.envAddress('SP1_VERIFIER_GATEWAY')
