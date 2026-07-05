@@ -13,6 +13,9 @@ export {
   decodeWeight,
   journalEncoded,
   paramsHash,
+  selectionParamsHash,
+  signerJournalEncoded,
+  signerJournalDigest,
 } from './encode'
 export {
   buildTree,
@@ -20,7 +23,9 @@ export {
   outputLeaf,
   proofFor,
   seedSetRoot,
+  signerSetRoot,
 } from './merkle'
+export { selectSigners, computeSigners } from './signer'
 export { buildGraph, type Graph } from './reconcile'
 export { calculate } from './pagerank'
 export { distributePoints } from './distribute'

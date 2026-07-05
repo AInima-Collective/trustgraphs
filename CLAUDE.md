@@ -34,7 +34,8 @@ TrustGraph implements attestation-based governance using EAS (Ethereum Attestati
 > the SP1 guest in `zk/program`, the host in `zk/prover`, and ported to the browser in
 > `frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
 > EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
-> is slated to return as a ZK proof; see [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
+> was reimplemented as a ZK proof (`SignerSyncZkModule` + a signer guest in `zk/program`); see
+> [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
 
 The system consists of:
 
@@ -61,7 +62,7 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 > the non-producer WASI components (`eas-attest`, `aggregator`, `wavs-indexer`, `safe-signer-sync`),
 > the operator/aggregator infrastructure, and the service-manager contracts are all gone. Attestations
 > are created directly against EAS; indexing is done by Ponder reading contract events directly. The
-> Safe signer-sync capability is slated to return as a ZK proof — see `SIGNER_SYNC_ZK_PLAN.md`.
+> Safe signer-sync capability was reimplemented as a ZK proof — see `SIGNER_SYNC_ZK_PLAN.md`.
 
 #### Attestation & governance flow
 1. Users create/revoke EAS attestations directly against the EAS contract.

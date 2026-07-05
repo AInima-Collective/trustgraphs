@@ -5,7 +5,13 @@
 import { concat, hexToBytes, keccak256, type Hex } from 'viem'
 
 import { seedSetRoot } from './merkle'
-import { type Journal, type Params, type RawEdge } from './types'
+import {
+  type Journal,
+  type Params,
+  type RawEdge,
+  type SelectionParams,
+  type SignerJournal,
+} from './types'
 import {
   wordAddr,
   wordU256,
@@ -110,6 +116,39 @@ export const paramsHash = (p: Params): Hex => {
     ])
   )
 }
+
+/**
+ * The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:
+ * `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps))`.
+ * Mirrors `pagerank_core::encode::selection_params_hash`.
+ */
+export const selectionParamsHash = (sp: SelectionParams): Hex =>
+  keccak256(
+    concat([
+      wordU32(sp.topN),
+      wordU32(sp.minThreshold),
+      wordU32(sp.targetThresholdBps),
+    ])
+  )
+
+/**
+ * The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
+ * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
+ *             bytes32 signerSetRoot, uint256 targetThreshold)`.
+ */
+export const signerJournalEncoded = (j: SignerJournal): Hex =>
+  concat([
+    j.acc,
+    wordU64(j.leafCount),
+    j.paramsHash,
+    j.selectionParamsHash,
+    j.signerSetRoot,
+    wordU256(j.targetThreshold),
+  ])
+
+/** The signer journal digest = `keccak256(signerJournalEncoded(j))`. */
+export const signerJournalDigest = (j: SignerJournal): Hex =>
+  keccak256(signerJournalEncoded(j))
 
 /**
  * Decode the confidence (weight) uint256 from ABI-encoded attestation `data` at head slot `index`.

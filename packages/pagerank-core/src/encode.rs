@@ -5,7 +5,7 @@
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather
 //! than pull in a proc-macro ABI crate) for auditability and zkVM-friendliness.
 
-use crate::{merkle, Journal, Params};
+use crate::{merkle, Journal, Params, SelectionParams, SignerJournal};
 use alloy_primitives::{keccak256, Address, B256, U256};
 
 /// A 32-byte ABI word from a `U256`.
@@ -133,6 +133,38 @@ pub fn params_hash(p: &Params) -> B256 {
     buf.extend_from_slice(p.schema_uid.as_slice());
     buf.extend_from_slice(&word_u32(p.weight_field_index));
     keccak256(&buf)
+}
+
+/// The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:
+/// `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps))`.
+/// Bound the same way `paramsHash` is: `SignerSyncZkModule.submitSignerProof` builds the signer
+/// journal digest from its stored `selectionParamsHash`, so a proof with different selection params
+/// yields a different digest and fails verification.
+pub fn selection_params_hash(sp: &SelectionParams) -> B256 {
+    let mut buf = Vec::with_capacity(32 * 3);
+    buf.extend_from_slice(&word_u32(sp.top_n));
+    buf.extend_from_slice(&word_u32(sp.min_threshold));
+    buf.extend_from_slice(&word_u32(sp.target_threshold_bps));
+    keccak256(&buf)
+}
+
+/// The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
+/// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
+///             bytes32 signerSetRoot, uint256 targetThreshold)`.
+pub fn signer_journal_encoded(j: &SignerJournal) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(32 * 6);
+    buf.extend_from_slice(j.acc.as_slice());
+    buf.extend_from_slice(&word_u64(j.leaf_count));
+    buf.extend_from_slice(j.params_hash.as_slice());
+    buf.extend_from_slice(j.selection_params_hash.as_slice());
+    buf.extend_from_slice(j.signer_set_root.as_slice());
+    buf.extend_from_slice(&word_u256(j.target_threshold));
+    buf
+}
+
+/// The signer journal digest = `keccak256(signer_journal_encoded(j))`.
+pub fn signer_journal_digest(j: &SignerJournal) -> B256 {
+    keccak256(signer_journal_encoded(j))
 }
 
 /// Decode the confidence (weight) uint256 from ABI-encoded attestation `data` at head slot `index`.

@@ -84,3 +84,11 @@ export const seedSetRoot = (sortedSeeds: Hex[]): Hex => {
   const leaves = sortedSeeds.map((a) => keccak256(wordAddr(a)))
   return merkleRoot(leaves)
 }
+
+/**
+ * The `signerSetRoot`: an OZ StandardMerkleTree over the sorted signer set (leaf =
+ * `keccak256(abi.encode(address))`) — byte-identical to `seedSetRoot`. Mirrors
+ * `pagerank_core::signer::signer_set_root`.
+ */
+export const signerSetRoot = (sortedSigners: Hex[]): Hex =>
+  seedSetRoot(sortedSigners)

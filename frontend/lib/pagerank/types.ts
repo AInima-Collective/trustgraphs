@@ -77,3 +77,54 @@ export interface ComputeResult {
   /** The CIDv1 (raw, sha2-256) string. */
   cid: string
 }
+
+/**
+ * Governance-pinned parameters for the Safe signer-sync selection rule. Mirrors
+ * `pagerank_core::SelectionParams`. Hashed to `selectionParamsHash` (see `encode.selectionParamsHash`).
+ */
+export interface SelectionParams {
+  /** Maximum number of top-scored accounts to select as Safe owners. */
+  topN: number
+  /** Minimum resulting Safe threshold (>= 1). */
+  minThreshold: number
+  /** Target threshold as a fraction of the selected owner count, in basis points (e.g. 5000 = 50%). */
+  targetThresholdBps: number
+}
+
+/**
+ * The input the signer-sync computer receives: the same folded edges + params as the root producer,
+ * plus the selection parameters. Mirrors `pagerank_core::SignerInput`.
+ */
+export interface SignerInput {
+  edges: RawEdge[]
+  params: Params
+  selection: SelectionParams
+}
+
+/**
+ * The 6 public signer-journal fields. `keccak256(abi.encode(..))` is the digest the on-chain
+ * `SignerSyncZkModule` binds. Field order is FROZEN — see `encode.signerJournalEncoded`.
+ * Mirrors `pagerank_core::SignerJournal`.
+ */
+export interface SignerJournal {
+  acc: Hex
+  leafCount: bigint
+  paramsHash: Hex
+  selectionParamsHash: Hex
+  /**
+   * OZ StandardMerkleTree root over the canonically-sorted selected owner set (leaf =
+   * `keccak256(abi.encode(address))`), identical to `seedSetRoot`.
+   */
+  signerSetRoot: Hex
+  targetThreshold: bigint
+}
+
+/**
+ * Full result of a signer-sync computation. Mirrors `pagerank_core::SignerComputeResult`.
+ */
+export interface SignerComputeResult {
+  journal: SignerJournal
+  /** The selected owner set, sorted ascending by address (lowercase `0x` addresses). */
+  signers: Hex[]
+  targetThreshold: bigint
+}

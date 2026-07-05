@@ -14,13 +14,21 @@
 
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{anyhow, Result};
-use pagerank_core::{compute::compute, encode, GuestInput, Params, RawEdge};
+use pagerank_core::{
+    compute::compute, encode, signer::compute_signers, GuestInput, Params, RawEdge, SelectionParams,
+    SignerInput,
+};
 use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
 use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1Stdin};
 
-/// The guest ELF, built by build.rs (`sp1_build::build_program`).
+/// The root-producer guest ELF, built by build.rs (`sp1_build::build_program`).
 fn load_elf() -> Elf {
     include_elf!("trustgraph-program")
+}
+
+/// The signer-sync guest ELF (second bin of the program crate).
+fn load_signer_elf() -> Elf {
+    include_elf!("trustgraph-signer-program")
 }
 
 fn scale() -> U256 {
@@ -156,6 +164,88 @@ fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
     Ok(())
 }
 
+/// The built-in signer sample (same edges/params as the root sample + a 3/50%/min-1 selection).
+fn sample_signer_input() -> SignerInput {
+    let g = sample_input();
+    SignerInput {
+        edges: g.edges,
+        params: g.params,
+        selection: SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 },
+    }
+}
+
+fn load_signer_input(path: Option<&String>) -> Result<SignerInput> {
+    match path {
+        Some(p) => Ok(serde_json::from_str(&std::fs::read_to_string(p)?)?),
+        None => Ok(sample_signer_input()),
+    }
+}
+
+fn cmd_signer_execute(input: SignerInput) -> Result<()> {
+    let native = compute_signers(&input);
+    let native_pub = encode::signer_journal_encoded(&native.journal);
+
+    let client = ProverClient::from_env();
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&input);
+
+    let (public_values, report) = client
+        .execute(load_signer_elf(), stdin)
+        .run()
+        .map_err(|e| anyhow!("execute failed: {e:?}"))?;
+    let guest_pub = public_values.as_slice().to_vec();
+
+    println!("guest cycles: {}", report.total_instruction_count());
+    if guest_pub != native_pub {
+        return Err(anyhow!(
+            "MISMATCH guest vs native public values\n guest:  0x{}\n native: 0x{}",
+            hex::encode(&guest_pub),
+            hex::encode(&native_pub)
+        ));
+    }
+    println!("guest == native  ✓");
+    println!(
+        "signerJournalDigest: 0x{}",
+        hex::encode(encode::signer_journal_digest(&native.journal))
+    );
+    println!("signerSetRoot:       0x{}", hex::encode(native.journal.signer_set_root));
+    println!("paramsHash:          0x{}", hex::encode(native.journal.params_hash));
+    println!("selectionParamsHash: 0x{}", hex::encode(native.journal.selection_params_hash));
+    println!("targetThreshold:     {}", native.journal.target_threshold);
+    println!("signers ({}):", native.signers.len());
+    for s in &native.signers {
+        println!("  0x{}", hex::encode(s));
+    }
+    Ok(())
+}
+
+fn cmd_signer_prove(input: SignerInput, groth16: bool) -> Result<()> {
+    let client = ProverClient::from_env();
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&input);
+
+    let pk = client.setup(load_signer_elf()).map_err(|e| anyhow!("setup failed: {e:?}"))?;
+    let vk = pk.verifying_key();
+    println!("vkey: {}", vk.bytes32());
+
+    let req = client.prove(&pk, stdin);
+    let proof = if groth16 { req.groth16() } else { req.core() }
+        .run()
+        .map_err(|e| anyhow!("prove failed: {e:?}"))?;
+
+    client.verify(&proof, vk, None).map_err(|e| anyhow!("local verify failed: {e:?}"))?;
+    println!("local verify ✓");
+
+    let public_values = proof.public_values.as_slice().to_vec();
+    let seal = proof.bytes();
+    let blob = abi_encode_two_bytes(&public_values, &seal);
+    std::fs::write("signer_proof.bin", &blob)?;
+    std::fs::write("signer_public_values.bin", &public_values)?;
+    println!("wrote signer_proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
+    println!("publicValues: 0x{}", hex::encode(&public_values));
+    Ok(())
+}
+
 fn main() -> Result<()> {
     sp1_sdk::utils::setup_logger();
     let args: Vec<String> = std::env::args().collect();
@@ -177,9 +267,24 @@ fn main() -> Result<()> {
             let path = args.get(2).filter(|s| !s.starts_with("--"));
             cmd_prove(load_input(path)?, groth16)?;
         }
+        "signer-vkey" => {
+            let client = ProverClient::from_env();
+            let pk = client.setup(load_signer_elf()).map_err(|e| anyhow!("setup failed: {e:?}"))?;
+            println!("{}", pk.verifying_key().bytes32());
+        }
+        "signer-selectionparamshash" => {
+            let input = load_signer_input(args.get(2))?;
+            println!("0x{}", hex::encode(encode::selection_params_hash(&input.selection)));
+        }
+        "signer-execute" => cmd_signer_execute(load_signer_input(args.get(2))?)?,
+        "signer-prove" => {
+            let groth16 = args.iter().any(|a| a == "--groth16");
+            let path = args.get(2).filter(|s| !s.starts_with("--"));
+            cmd_signer_prove(load_signer_input(path)?, groth16)?;
+        }
         _ => {
             eprintln!(
-                "usage: trustgraph-prover [vkey|execute|prove|paramshash] [input.json] [--groth16]"
+                "usage: trustgraph-prover [vkey|execute|prove|paramshash|signer-vkey|\n         signer-selectionparamshash|signer-execute|signer-prove] [input.json] [--groth16]"
             );
         }
     }

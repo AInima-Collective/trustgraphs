@@ -18,6 +18,7 @@ pub mod fixed;
 pub mod merkle;
 pub mod pagerank;
 pub mod reconcile;
+pub mod signer;
 
 #[cfg(test)]
 mod tests;
@@ -106,6 +107,50 @@ pub struct ComputeResult {
     pub blob: Vec<u8>,
     /// The CIDv1 (raw, sha2-256) string.
     pub cid: String,
+}
+
+/// Governance-pinned parameters for the Safe signer-sync selection rule. Hashed to
+/// `selectionParamsHash` (see [`encode::selection_params_hash`]) and pinned in `SignerSyncZkModule`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectionParams {
+    /// Maximum number of top-scored accounts to select as Safe owners.
+    pub top_n: u32,
+    /// Minimum resulting Safe threshold (>= 1).
+    pub min_threshold: u32,
+    /// Target threshold as a fraction of the selected owner count, in basis points (e.g. 5000 = 50%).
+    pub target_threshold_bps: u32,
+}
+
+/// The input the signer-sync guest receives: the same folded edges + params as the root producer,
+/// plus the selection parameters.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignerInput {
+    pub edges: Vec<RawEdge>,
+    pub params: Params,
+    pub selection: SelectionParams,
+}
+
+/// The 6 public fields the signer-sync guest commits. `keccak256(abi.encode(..))` is the digest the
+/// on-chain `SignerSyncZkModule` binds. Field order is FROZEN — see [`encode::signer_journal_encoded`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignerJournal {
+    pub acc: B256,
+    pub leaf_count: u64,
+    pub params_hash: B256,
+    pub selection_params_hash: B256,
+    /// OZ StandardMerkleTree root over the canonically-sorted selected owner set (leaf =
+    /// `keccak256(abi.encode(address))`), identical to `seedSetRoot`.
+    pub signer_set_root: B256,
+    pub target_threshold: U256,
+}
+
+/// Full result of a signer-sync computation: the journal plus the selected owner set and threshold.
+#[derive(Clone, Debug)]
+pub struct SignerComputeResult {
+    pub journal: SignerJournal,
+    /// The selected owner set, sorted ascending by address (the canonical order the root commits to).
+    pub signers: Vec<Address>,
+    pub target_threshold: U256,
 }
 
 /// Minimal `serde` helper so `RawEdge::data` round-trips as a `0x`-hex string in golden vectors.

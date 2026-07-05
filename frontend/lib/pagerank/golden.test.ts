@@ -15,8 +15,22 @@ import assert from 'node:assert/strict'
 import { concat, keccak256, type Hex } from 'viem'
 
 import { compute, journalDigest } from './compute'
-import { accumulate, edgeLeaf, paramsHash } from './encode'
-import { type GuestInput, type Params, type RawEdge } from './types'
+import {
+  accumulate,
+  edgeLeaf,
+  paramsHash,
+  selectionParamsHash,
+  signerJournalEncoded,
+  signerJournalDigest,
+} from './encode'
+import { signerSetRoot } from './merkle'
+import { computeSigners, selectSigners } from './signer'
+import {
+  type GuestInput,
+  type Params,
+  type RawEdge,
+  type SelectionParams,
+} from './types'
 import { wordU256 } from './words'
 
 // ---- fixtures ---------------------------------------------------------------
@@ -69,6 +83,8 @@ const input: GuestInput = {
   params,
 }
 
+const selection: SelectionParams = { topN: 3, minThreshold: 1, targetThresholdBps: 5000 }
+
 // Golden expectations (from test/golden/vectors.json).
 const GOLDEN = {
   acc: '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d151',
@@ -91,6 +107,20 @@ const GOLDEN = {
     [addr(2)]: 300189600379200758401516n,
     [addr(3)]: 479793959587919175838351n,
   } as Record<string, bigint>,
+  // Signer-sync section (from test/golden/vectors.json `.signer`).
+  signer: {
+    selectionParamsHash: '0xae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c5204310',
+    signers: [
+      '0x0101010101010101010101010101010101010101',
+      '0x0202020202020202020202020202020202020202',
+      '0x0303030303030303030303030303030303030303',
+    ] as Hex[],
+    signerSetRoot: '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
+    targetThreshold: 2n,
+    journalEncoded:
+      '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d1510000000000000000000000000000000000000000000000000000000000000003ca027783e35ae2db8d91e560dcaf1a9ce86a678d3e75e2b781d78c2bfb7c42f4ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac30000000000000000000000000000000000000000000000000000000000000002',
+    journalDigest: '0xb81a2e5e10bb3651155b62351aed96d9460ca7709e9c8b8e75db0434519f0946',
+  },
 }
 
 // ---- test -------------------------------------------------------------------
@@ -139,6 +169,55 @@ for (const [a, v] of result.scores) gotValues[a.toLowerCase()] = v
 check('value 0x01..01', gotValues[addr(1)], GOLDEN.values[addr(1)])
 check('value 0x02..02', gotValues[addr(2)], GOLDEN.values[addr(2)])
 check('value 0x03..03', gotValues[addr(3)], GOLDEN.values[addr(3)])
+
+// Signer-sync selection (byte-parity with the Rust `pagerank_core::signer`).
+check(
+  'selectionParamsHash',
+  selectionParamsHash(selection).toLowerCase(),
+  GOLDEN.signer.selectionParamsHash
+)
+
+const selected = selectSigners(result.scores, selection)
+check(
+  'selectSigners signers',
+  selected.signers.map((a) => a.toLowerCase()),
+  GOLDEN.signer.signers.map((a) => a.toLowerCase())
+)
+check('selectSigners threshold', selected.threshold, GOLDEN.signer.targetThreshold)
+
+check(
+  'signerSetRoot',
+  signerSetRoot(GOLDEN.signer.signers).toLowerCase(),
+  GOLDEN.signer.signerSetRoot
+)
+
+const signerResult = computeSigners({ edges: input.edges, params, selection })
+check(
+  'computeSigners signers',
+  signerResult.signers.map((a) => a.toLowerCase()),
+  GOLDEN.signer.signers.map((a) => a.toLowerCase())
+)
+check('computeSigners targetThreshold', signerResult.targetThreshold, GOLDEN.signer.targetThreshold)
+check(
+  'signer journal signerSetRoot',
+  signerResult.journal.signerSetRoot.toLowerCase(),
+  GOLDEN.signer.signerSetRoot
+)
+check(
+  'signer journal selectionParamsHash',
+  signerResult.journal.selectionParamsHash.toLowerCase(),
+  GOLDEN.signer.selectionParamsHash
+)
+check(
+  'signerJournalEncoded',
+  signerJournalEncoded(signerResult.journal).toLowerCase(),
+  GOLDEN.signer.journalEncoded
+)
+check(
+  'signerJournalDigest',
+  signerJournalDigest(signerResult.journal).toLowerCase(),
+  GOLDEN.signer.journalDigest
+)
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) FAILED`)

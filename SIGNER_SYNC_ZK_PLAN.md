@@ -1,9 +1,50 @@
 # Safe Signer-Sync → ZK Replacement Plan
 
-Status: **proposed** (design only — not yet implemented). The WAVS `safe-signer-sync`
-component, `SignerSyncManagerModule.sol`, and their deploy/config were removed in the WAVS
-teardown. This document specifies how to bring the capability back as a permissionless SP1 proof,
-analogous to the ZK root producer (`packages/pagerank-core` → `zk/program` → `zk/prover` →
+Status: **IMPLEMENTED**. The capability is back as a permissionless SP1 proof, analogous to the ZK
+root producer.
+
+## Implementation summary (what was built)
+
+One deliberate deviation from the "recommended shape" below: rather than **fuse** signer selection
+into the existing root journal, the implementation uses a **self-contained signer proof** with its
+own journal, guest ELF, and verifier. Reason: SP1 verifies the *entire* public-values blob, so fusion
+would force `MerkleSnapshot.submitProof` to reconstruct signer fields it doesn't own — coupling the
+already-shipped, byte-validated core contract to signer concerns. The self-contained proof leaves
+`MerkleSnapshot` (and its 186 tests) **completely untouched** while sharing the same
+`(acc, leafCount, paramsHash)` commitment, so the score root and signer set stay consistent by
+construction (same inputs + params + deterministic algorithm). The trade is a second, infrequent
+proof — acceptable for zero blast radius on the core.
+
+Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == frontend TS):
+
+- **`packages/pagerank-core`**: `SelectionParams`, `select_signers` (value-desc / addr-asc total
+  order, canonical ascending output, clamped threshold), `signer_set_root`, the 6-field
+  `SignerJournal`, `encode::{selection_params_hash, signer_journal_encoded, signer_journal_digest}`,
+  and `signer::compute_signers`. Signer journal digest `0xb81a2e5e…`, root `0x2a003402…`.
+- **`zk/program/src/signer.rs`** (2nd guest bin) + **`zk/prover`** signer subcommands
+  (`signer-vkey`/`signer-selectionparamshash`/`signer-execute`/`signer-prove`). Executor-validated:
+  guest == native at 1.85M cycles.
+- **`src/contracts/zodiac/SignerSyncZkModule.sol`**: permissionless `submitSignerProof` (monotonic
+  checkpoint, journal rebuild + verify, canonical-signer validation, **on-chain owner diff against
+  the Safe's real linked list**, threshold invariant preserved every step, `onlyOwner` governance).
+  21 unit tests + a 256-run fuzz over random target sets against a real Gnosis Safe.
+- **Golden parity** (`test/unit/GoldenVectors.t.sol`): `selectionParamsHash`, `signerSetRoot`,
+  signer journal encoding/digest recomputed in Solidity and asserted equal to the Rust vectors.
+- **Deploy** (`script/DeployZodiacSafes.s.sol`): deploys + enables the module, reusing the
+  MerkleSnapshot's verifier/accumulator/paramsHash; `selectionParamsHash` from `SELECTION_PARAMS_HASH`
+  env (default 0 → inert until governance sets it, the fail-closed pattern).
+
+The signer journal (frozen): `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash,
+bytes32 selectionParamsHash, bytes32 signerSetRoot, uint256 targetThreshold)`.
+
+The original design is retained below for reference.
+
+---
+
+## Original plan
+
+This document specifies bringing the capability back as a permissionless SP1 proof, analogous to the
+ZK root producer (`packages/pagerank-core` → `zk/program` → `zk/prover` →
 `MerkleSnapshot.submitProof`, verified by `SP1TrustGraphVerifier` behind `IZkVerifier`).
 
 ## 1. What it did (the capability we are replacing)

@@ -7,6 +7,10 @@ edition = "2021"
 name = "trustgraph-program"
 path = "src/main.rs"
 
+[[bin]]
+name = "trustgraph-signer-program"
+path = "src/signer.rs"
+
 [dependencies]
 sp1-zkvm = "=6.3.1"
 pagerank-core = { path = "../../packages/pagerank-core" }

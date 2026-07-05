@@ -117,6 +117,47 @@ contract GoldenVectorsTest is Test {
         assertEq(keccak256(encoded), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 
+    /// selectionParamsHash: keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetBps)).
+    function test_SelectionParamsHash() public view {
+        bytes memory encoded = abi.encode(
+            uint32(json.readUint(".signer.selection.topN")),
+            uint32(json.readUint(".signer.selection.minThreshold")),
+            uint32(json.readUint(".signer.selection.targetThresholdBps"))
+        );
+        assertEq(
+            keccak256(encoded),
+            json.readBytes32(".signer.selectionParamsHash"),
+            "selectionParamsHash mismatch"
+        );
+    }
+
+    /// signerSetRoot: OZ standard tree over the selected owner set (leaf = keccak256(abi.encode(address))).
+    function test_SignerSetRoot() public view {
+        address[] memory signers = json.readAddressArray(".signer.signers");
+        bytes32[] memory leaves = new bytes32[](signers.length);
+        for (uint256 i = 0; i < signers.length; i++) {
+            leaves[i] = keccak256(abi.encode(signers[i]));
+        }
+        assertEq(_ozRoot(leaves), json.readBytes32(".signer.signerSetRoot"), "signerSetRoot mismatch");
+    }
+
+    /// Signer journal: abi.encode(bytes32, uint64, bytes32, bytes32, bytes32, uint256) and its keccak.
+    /// This is the EXACT tuple `SignerSyncZkModule.submitSignerProof` rebuilds and verifies against.
+    function test_SignerJournalEncodingAndDigest() public view {
+        bytes memory encoded = abi.encode(
+            json.readBytes32(".signer.journal.acc"),
+            uint64(json.readUint(".signer.journal.leafCount")),
+            json.readBytes32(".signer.journal.paramsHash"),
+            json.readBytes32(".signer.journal.selectionParamsHash"),
+            json.readBytes32(".signer.journal.signerSetRoot"),
+            json.readUint(".signer.journal.targetThreshold")
+        );
+        assertEq(encoded, json.readBytes(".signer.journal.encoded"), "signer journal encoding mismatch");
+        assertEq(
+            keccak256(encoded), json.readBytes32(".signer.journal.digest"), "signer journal digest mismatch"
+        );
+    }
+
     /// Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).
     function _ozRoot(bytes32[] memory leaves) internal pure returns (bytes32) {
         uint256 n = leaves.length;

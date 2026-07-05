@@ -5,6 +5,8 @@
 # zkVM prover output artifacts
 zk/**/proof.bin
 zk/**/public_values.bin
+zk/**/*proof.bin
+zk/**/*public_values.bin
 out/
 cache/
 broadcast/

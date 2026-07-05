@@ -16,14 +16,23 @@ import {
 
 // Our modules
 import { MerkleGovModule } from 'contracts/zodiac/MerkleGovModule.sol';
+import { SignerSyncZkModule } from 'contracts/zodiac/SignerSyncZkModule.sol';
 
-// MerkleSnapshot interface
+// MerkleSnapshot + verifier interfaces
 import { MerkleSnapshot } from 'contracts/merkle/MerkleSnapshot.sol';
 import { IMerkleSnapshotHook } from 'interfaces/merkle/IMerkleSnapshotHook.sol';
+import { IZkVerifier } from 'interfaces/merkle/IZkVerifier.sol';
+import {
+  IAttestationAccumulator
+} from 'interfaces/merkle/IAttestationAccumulator.sol';
 
-/// @dev Deployment script for a Zodiac-enabled Safe wired to the MerkleGovModule.
-///      Governance weights come from the ZK-proven MerkleSnapshot root (see ZK_ARCHITECTURE.md);
-///      the Safe executes proposals gated by merkle proofs against that root.
+/// @dev Deployment script for a Zodiac-enabled Safe wired to the MerkleGovModule (governance) and
+///      the SignerSyncZkModule (ZK-proven owner rotation). Both consume the ZK-proven MerkleSnapshot
+///      state (see ZK_ARCHITECTURE.md and SIGNER_SYNC_ZK_PLAN.md).
+///
+///      The signer module's selection params hash is read from the `SELECTION_PARAMS_HASH` env var
+///      (default 0 → deploy inert; governance sets it via `setSelectionParamsHash` before use, the
+///      same fail-closed pattern as `PARAMS_HASH`).
 contract DeployZodiacSafes is Common {
   using stdJson for string;
 
@@ -34,6 +43,7 @@ contract DeployZodiacSafes is Common {
   struct SafeDeployment {
     address safe;
     address merkleGovModule;
+    address signerSyncModule;
     address[] initialSigners;
     uint256 threshold;
     bool modulesEnabled;
@@ -144,6 +154,26 @@ contract DeployZodiacSafes is Common {
       signature // signatures
     );
 
+    // Deploy the SignerSyncZkModule, reusing the verifier / accumulator / paramsHash the
+    // MerkleSnapshot already trusts. selectionParamsHash comes from env (default 0 => inert).
+    address signerSyncModule = _deploySignerModule(deployer, safeProxy, merkleSnapshot);
+    bytes memory enableSignerModuleData = abi.encodeWithSignature(
+      'enableModule(address)',
+      signerSyncModule
+    );
+    bool signerEnabled = safe.execTransaction(
+      address(safe),
+      0,
+      enableSignerModuleData,
+      Enum.Operation.Call,
+      0,
+      0,
+      0,
+      address(0),
+      payable(0),
+      generateSignature(deployer)
+    );
+
     // Fund the Safe with ETH
     uint256 fundingAmount = 2 ether;
     (bool fundingSuccess, ) = safeProxy.call{ value: fundingAmount }('');
@@ -152,18 +182,38 @@ contract DeployZodiacSafes is Common {
     deployment = SafeDeployment({
       safe: safeProxy,
       merkleGovModule: address(merkleGovModule),
+      signerSyncModule: signerSyncModule,
       initialSigners: initialSigners,
       threshold: threshold,
-      modulesEnabled: success,
+      modulesEnabled: success && signerEnabled,
       fundingAmount: fundingAmount
     });
 
     // Log the deployment and enablement status
     if (deployment.modulesEnabled) {
-      emit SafeModulesEnabled(safeProxy, address(merkleGovModule));
+      emit SafeModulesEnabled(safeProxy, address(merkleGovModule), signerSyncModule);
     }
 
     return deployment;
+  }
+
+  /// @dev Deploy the SignerSyncZkModule wired to the MerkleSnapshot's verifier/accumulator/params.
+  function _deploySignerModule(
+    address deployer,
+    address safeProxy,
+    MerkleSnapshot merkleSnapshot
+  ) internal returns (address) {
+    bytes32 selectionParamsHash = vm.envOr('SELECTION_PARAMS_HASH', bytes32(0));
+    SignerSyncZkModule signerModule = new SignerSyncZkModule(
+      deployer, // owner (transfer to a timelock for production)
+      safeProxy, // avatar
+      safeProxy, // target
+      IZkVerifier(address(merkleSnapshot.zkVerifier())),
+      IAttestationAccumulator(address(merkleSnapshot.accumulator())),
+      merkleSnapshot.paramsHash(),
+      selectionParamsHash
+    );
+    return address(signerModule);
   }
 
   /// @notice Generate a signature for Safe transaction execution
@@ -210,6 +260,10 @@ contract DeployZodiacSafes is Common {
     safeJson.serialize(
       'merkle_gov_module',
       Strings.toChecksumHexString(safe.merkleGovModule)
+    );
+    safeJson.serialize(
+      'signer_sync_module',
+      Strings.toChecksumHexString(safe.signerSyncModule)
     );
     safeJson.serialize('threshold', safe.threshold);
     vm.serializeBool(safeJson, 'modules_enabled', safe.modulesEnabled);
@@ -259,6 +313,7 @@ contract DeployZodiacSafes is Common {
   // Events for logging
   event SafeModulesEnabled(
     address indexed safe,
-    address indexed merkleGovModule
+    address indexed merkleGovModule,
+    address indexed signerSyncModule
   );
 }

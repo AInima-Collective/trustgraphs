@@ -5,7 +5,7 @@
 
 use alloy_primitives::{hex, Address, B256, U256};
 use pagerank_core::compute::compute;
-use pagerank_core::{encode, merkle, GuestInput, Params, RawEdge};
+use pagerank_core::{encode, merkle, signer, GuestInput, Params, RawEdge, SelectionParams, SignerInput};
 use serde_json::json;
 use std::str::FromStr;
 
@@ -79,6 +79,13 @@ fn main() {
 
     let params_hash = encode::params_hash(&input.params);
 
+    // Signer-sync selection: derive the Safe owner set + threshold + signer journal.
+    let selection = SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 };
+    let signer_input = SignerInput { edges: edges.clone(), params: params(), selection };
+    let signer_result = signer::compute_signers(&signer_input);
+    let sj = &signer_result.journal;
+    let selection_params_hash = encode::selection_params_hash(&selection);
+
     // Params constituents + seedSetRoot, so Solidity can independently recompute paramsHash.
     let p = &input.params;
     let mut sorted_seeds = p.trusted_seeds.clone();
@@ -141,6 +148,27 @@ fn main() {
             "ipfsHash": hx(j.ipfs_hash.as_slice()),
             "cid": result.cid,
             "cidDigest": hx(j.cid_digest.as_slice())
+        },
+        "signer": {
+            "selection": {
+                "topN": selection.top_n,
+                "minThreshold": selection.min_threshold,
+                "targetThresholdBps": selection.target_threshold_bps
+            },
+            "selectionParamsHash": hx(selection_params_hash.as_slice()),
+            "signers": signer_result.signers.iter().map(|a| hx(a.as_slice())).collect::<Vec<_>>(),
+            "signerSetRoot": hx(sj.signer_set_root.as_slice()),
+            "targetThreshold": sj.target_threshold.to_string(),
+            "journal": {
+                "acc": hx(sj.acc.as_slice()),
+                "leafCount": sj.leaf_count,
+                "paramsHash": hx(sj.params_hash.as_slice()),
+                "selectionParamsHash": hx(sj.selection_params_hash.as_slice()),
+                "signerSetRoot": hx(sj.signer_set_root.as_slice()),
+                "targetThreshold": sj.target_threshold.to_string(),
+                "encoded": hx(&encode::signer_journal_encoded(sj)),
+                "digest": hx(encode::signer_journal_digest(sj).as_slice())
+            }
         }
     });
 
