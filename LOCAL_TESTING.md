@@ -60,7 +60,12 @@ export SP1_PROVER=cpu                                  # local: ~16-32 GiB + `--
 
 ```bash
 # Terminal 1 — mainnet-fork chain (real SP1 gateway in state):
-anvil --fork-url "$FORK_RPC_URL" --port 8545
+# `--chain-id 31337` is REQUIRED for the frontend: a bare `--fork-url` inherits mainnet's id (1), but
+# the UI's wallet + `frontend/lib/wagmi.ts` expect the anvil default 31337. Without it, CLI/cast attests
+# still land (cast auto-detects the node id) but *frontend* attestations are signed for the wrong chain,
+# never fold, and `trigger()` later reverts NoNewInputs(). The override keeps all forked state (the SP1
+# gateway verifies pure calldata; direct EAS attest isn't chain-id-bound).
+anvil --fork-url "$FORK_RPC_URL" --chain-id 31337 --port 8545
 
 # Terminal 2 — IPFS (score blobs the UI fetches), Postgres (Ponder), WARG:
 docker compose -f docker-compose.dev.yml up
@@ -178,7 +183,11 @@ task trustgraph:create-network NET_INDEX=0 TEST_ADDRESS=0x3C44CdDdB6a900fa2b585d
 **The loop:**
 
 ```bash
-# checkpoint the accumulator, then read the new checkpoint id (first = 0)
+# checkpoint the accumulator, then read the new checkpoint id (first = 0).
+# `trigger()` on MerkleSnapshot just calls `accumulator.checkpoint()` (it IS the checkpoint step) and
+# freezes the current `(acc, leafCount)` for a proof. It's permissionless and reverts with
+# NoNewInputs() unless at least one new edge folded since the last checkpoint — so attest first, then
+# trigger (see the NoNewInputs troubleshooting note below if it reverts).
 cast send $MERKLE_SNAPSHOT "trigger()" --rpc-url $RPC --private-key $PK
 export ID=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --rpc-url $RPC) - 1 ))
 
@@ -232,6 +241,39 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   `pnpm frontend dev` after (re)deploying so the config regenerates.
 - **Indexer empty?** Confirm `PONDER_RPC_URL_1` points at the fork and `DATABASE_URL` at the running
   Postgres (or drop `DATABASE_URL` to use Ponder's built-in pglite).
+- **`trigger()` reverts with `custom error 0x6eb09b42` (`NoNewInputs()`)?** That's the accumulator's
+  anti-spam guard: `checkpoint()` requires **at least one new edge folded since the last checkpoint**
+  (`leafCount` must strictly exceed the previous checkpoint's — the first checkpoint is the only one
+  allowed to freeze an empty set). You hit it by triggering twice with no attestation in between, or
+  when the attestations you made *didn't fold into this resolver*. Diagnose by comparing the live edge
+  count to the last checkpoint's:
+
+  ```bash
+  # live folded-edge count on the resolver (== the accumulator)
+  cast call $EAS_INDEXER_RESOLVER "leafCount()(uint64)" --rpc-url $RPC
+  # leafCount frozen by the most recent checkpoint
+  LAST=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --rpc-url $RPC) - 1 ))
+  cast call $EAS_INDEXER_RESOLVER "getCheckpoint(uint256)((bytes32,uint64,uint64))" $LAST --rpc-url $RPC
+  ```
+
+  If `leafCount()` hasn't moved past the checkpoint's, your attestations never reached the accumulator.
+  Two common causes:
+
+  1. **Wrong network.** A DEV deploy stands up *every* network in `config/networks.development.json` —
+     each with its **own** resolver + accumulator + `MerkleSnapshot` (see `config/network_deploy_dev_<N>.json`).
+     `$EAS_INDEXER_RESOLVER` / `$MERKLE_SNAPSHOT` point at network 0 only; an attestation made on another
+     network's page folds into *that* network's accumulator. Check each resolver's `leafCount()` to find
+     where your edges landed, then trigger that network's snapshot.
+  2. **chainId mismatch (frontend attests don't fold).** If you ran `anvil --fork-url …` *without*
+     `--chain-id 31337`, the node is chainId 1 but the UI/wallet sign for 31337 — CLI/cast attests land
+     (cast auto-detects the id) yet frontend attests never execute, so `leafCount` never moves. Fix:
+     restart with `--chain-id 31337` (see step 1) and redeploy.
+
+  Only attestations against the **wired vouching schema** (the `schema_uid` whose resolver is that
+  network's `EASIndexerResolver`) fold. Re-attest (e.g. `task trustgraph:create-network` or the UI's
+  *Create Attestation*), confirm `leafCount()` bumped, then `trigger()` again. There's no separate
+  "checkpoint the accumulator" call — `trigger()` **is** it (it just calls `accumulator.checkpoint()`);
+  you can also call `checkpoint()` directly on the resolver for the same effect.
 
 See [`README.md`](./README.md), [`zk/RUNBOOK.md`](./zk/RUNBOOK.md), and
 [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) for the design and the full command reference.
