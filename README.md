@@ -75,6 +75,13 @@ cargo run --release -- signer-execute  # signer selection: guest == native
 cd ../..
 ```
 
+Full on-chain acceptance (spins up anvil, deploys EAS + resolver, attests, checkpoints, reconstructs
+`input.json` with `input-exporter`, and cross-checks the guest) — needs anvil + the SP1 toolchain:
+
+```bash
+task e2e
+```
+
 ### 4. Start backend services
 
 > [!NOTE]

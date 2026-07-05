@@ -15,6 +15,11 @@ tasks:
     cmds:
       - forge test
 
+  e2e:
+    desc: "End-to-end: deploy on a local chain, attest, checkpoint, export input.json, cross-check the guest (needs anvil + SP1 toolchain)"
+    cmds:
+      - bash test/e2e/run.sh
+
   fmt:
     desc: "Format Solidity and Rust code"
     cmds:

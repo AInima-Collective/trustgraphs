@@ -46,3 +46,4 @@ config/*_deploy_*.json
 config/networks.development.json
 .docker/*.json
 .docker/*.log
+test/e2e/deploy.json
