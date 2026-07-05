@@ -17,6 +17,23 @@ source of truth), compiled to the SP1 guests in `zk/program`, driven by the host
 ported to the browser in `frontend/lib/pagerank`. See [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md),
 [`zk/RUNBOOK.md`](./zk/RUNBOOK.md), and [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
 
+## Try it in 30 seconds
+
+See the whole loop run end-to-end on a throwaway local chain — no config, no running node:
+
+```bash
+task e2e
+```
+
+It spins up its own anvil, deploys EAS + the resolver, creates attestations, freezes a checkpoint,
+reconstructs the prover's `input.json` from chain with `input-exporter` (self-checking that it
+re-folds to the on-chain `acc`), and cross-checks the SP1 guest against native — printing `E2E PASS`.
+
+Needs [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`), `jq`, and the SP1
+toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`). The first run builds the guest ELF, so
+give it a few minutes; after that it's seconds. It stops before real Groth16 proving (which needs
+≥16–32 GiB or the prover network) — the full loop, step by step, is in [Usage](#usage) §8–9.
+
 > **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
 > anywhere. Generating a real STARK→Groth16 *proof* needs ≥16–32 GiB of RAM or the Succinct prover
 > network (`SP1_PROVER=network`). For a local dev loop you can validate with `execute` and, if you
