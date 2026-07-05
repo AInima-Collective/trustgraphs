@@ -7,31 +7,23 @@ import {
   merkleFundDistributor,
   merkleSnapshot,
 } from 'ponder:schema'
+import { type Hex } from 'viem'
 
 import {
   merkleFundDistributorAbi,
   merkleSnapshotAbi,
 } from '../../frontend/lib/contract-abis'
+import { buildTree, outputLeaf, proofFor } from '../../frontend/lib/pagerank/merkle'
 import * as offchainSchema from '../offchain.schema'
 import { revalidateNetwork } from './utils'
 
-type MerkleTreeData = {
-  id: string
-  metadata: {
-    num_accounts: number
-    sources: {
-      name: string
-      metadata: any
-    }[]
-    total_value: string
-  }
-  root: string
-  tree: {
-    account: string
-    value: string
-    proof: string[]
-  }[]
-}
+/**
+ * The canonical score blob the ZK guest commits (`pagerank_core::cid::canonical_blob`): a flat map of
+ * lowercased address -> decimal value string, `{ "0x…": "123", … }`, containing only value > 0
+ * entries. Its sha256 is the on-chain `ipfsHash`; there is no metadata or precomputed proofs — those
+ * are recomputed here from the guest-identical `outputLeaf`/`buildTree`/`proofFor`.
+ */
+type ScoreBlob = Record<string, string>
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not set')
@@ -140,19 +132,35 @@ ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
       `Failed to fetch merkle tree from IPFS CID ${ipfsHashCid}: ${merkleRequest.status} ${merkleRequest.statusText}`
     )
   }
-  const merkleTreeData = (await merkleRequest.json()) as MerkleTreeData
-  await insertMerkleData(merkleTreeData, event, root, ipfsHash, ipfsHashCid)
+  const scores = (await merkleRequest.json()) as ScoreBlob
+  await insertMerkleData(scores, event, root, ipfsHash, ipfsHashCid, totalValue)
 
   await revalidateNetwork()
 })
 
 async function insertMerkleData(
-  merkleTreeData: MerkleTreeData,
+  scores: ScoreBlob,
   event: any,
   root: string,
   ipfsHash: string,
-  ipfsHashCid: string
+  ipfsHashCid: string,
+  totalValue: bigint
 ) {
+  // The blob is just { account: value }. Rebuild the OZ output tree exactly as the guest did (same
+  // leaf/hash-pair encoding, ported in frontend/lib/pagerank/merkle) to recover each account's proof.
+  const entries = Object.entries(scores)
+  const leaves = entries.map(([account, value]) =>
+    outputLeaf(account as Hex, BigInt(value))
+  )
+  const tree = buildTree(leaves)
+  if (tree.length > 0 && tree[0].toLowerCase() !== root.toLowerCase()) {
+    // Pinned blob doesn't reproduce the on-chain root — proofs would be useless. Surface it rather
+    // than store bad data, but don't crash the whole indexer on one bad snapshot.
+    console.warn(
+      `merkle: recomputed root ${tree[0]} != on-chain root ${root} for cid ${ipfsHashCid}; skipping entries`
+    )
+  }
+
   await offchainDb
     .insert(offchainSchema.merkleMetadata)
     .values({
@@ -160,9 +168,9 @@ async function insertMerkleData(
       root,
       ipfsHash,
       ipfsHashCid,
-      numAccounts: merkleTreeData.metadata.num_accounts,
-      totalValue: BigInt(merkleTreeData.metadata.total_value),
-      sources: merkleTreeData.metadata.sources,
+      numAccounts: entries.length,
+      totalValue,
+      sources: [],
       blockNumber: event.block.number,
       timestamp: event.block.timestamp,
     })
@@ -196,16 +204,23 @@ async function insertMerkleData(
       },
     })
 
+  // Skip entries if there are none, or if the recomputed root doesn't match (proofs would be wrong).
+  const rootMatches =
+    tree.length === 0 || tree[0].toLowerCase() === root.toLowerCase()
+  if (entries.length === 0 || !rootMatches) {
+    return
+  }
+
   await offchainDb
     .insert(offchainSchema.merkleEntry)
     .values(
-      merkleTreeData.tree.map((entry) => ({
+      entries.map(([account, value], i) => ({
         merkleSnapshotContract: event.log.address,
         root,
         ipfsHashCid,
-        account: entry.account,
-        value: BigInt(entry.value),
-        proof: entry.proof,
+        account,
+        value: BigInt(value),
+        proof: proofFor(tree, leaves[i]) ?? [],
         blockNumber: event.block.number,
         timestamp: event.block.timestamp,
       }))

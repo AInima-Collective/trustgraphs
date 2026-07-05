@@ -662,7 +662,7 @@ const SigmaControls = ({
             style={style}
           >
             <p className="text-xs">
-              Score: {formatBigNumber(attributes.value, undefined, true)}
+              Score: {formatBigNumber(attributes.value, 18)}
             </p>
           </div>
         )

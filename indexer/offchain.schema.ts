@@ -10,7 +10,9 @@ export const merkleMetadata = offchainSchema.table(
     ipfsHash: t.text().notNull(),
     ipfsHashCid: t.text().notNull(),
     numAccounts: t.integer().notNull(),
-    totalValue: t.bigint({ mode: 'bigint' }).notNull(),
+    // uint256-scale (the reward pool can exceed 1e18); Postgres bigint (int8) is only 64-bit, so use
+    // numeric(78,0) — same convention Ponder uses for its own bigint columns.
+    totalValue: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
     sources: t.jsonb().notNull().$type<
       {
         name: string
@@ -36,7 +38,8 @@ export const merkleEntry = offchainSchema.table(
     root: t.text().notNull(),
     account: t.text().notNull(),
     ipfsHashCid: t.text().notNull(),
-    value: t.bigint({ mode: 'bigint' }).notNull(),
+    // uint256-scale per-account score; numeric(78,0), not int8 (which overflows above ~9.2e18).
+    value: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
     proof: t.jsonb().notNull().$type<string[]>(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),

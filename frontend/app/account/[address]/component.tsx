@@ -229,7 +229,8 @@ export const AccountProfilePage = ({
         "This member's calculated Trust Score using a PageRank-style algorithm. Higher scores indicate stronger endorsement from trusted peers in the network.",
       sortable: true,
       accessor: (row) => row.score,
-      render: (row) => formatBigNumber(row.score, undefined, true),
+      // Score is a pool allocation in wei (scaled by precisionScale = 1e18); divide for display.
+      render: (row) => formatBigNumber(row.score, 18),
     },
   ]
 
@@ -418,7 +419,7 @@ export const AccountProfilePage = ({
                 <StatisticCard
                   title="HIGHEST SCORE"
                   tooltip="The account's highest Trust Score based on reputation in all their networks."
-                  value={formatBigNumber(maxScore, undefined, true)}
+                  value={formatBigNumber(Math.round(maxScore), 18)}
                 />
                 {networkRows.length > 1 && (
                   <StatisticCard
@@ -426,12 +427,11 @@ export const AccountProfilePage = ({
                     tooltip="This account's typical Trust Scores in all their networks."
                     value={
                       averageScore === medianScore
-                        ? formatBigNumber(averageScore, undefined, true)
+                        ? formatBigNumber(Math.round(averageScore), 18)
                         : `${formatBigNumber(
                             Math.round(averageScore),
-                            undefined,
-                            true
-                          )} / ${formatBigNumber(medianScore, undefined, true)}`
+                            18
+                          )} / ${formatBigNumber(Math.round(medianScore), 18)}`
                     }
                   />
                 )}

@@ -1,0 +1,2 @@
+ALTER TABLE "offchain"."merkle_entry" ALTER COLUMN "value" SET DATA TYPE numeric(78, 0);--> statement-breakpoint
+ALTER TABLE "offchain"."merkle_metadata" ALTER COLUMN "totalValue" SET DATA TYPE numeric(78, 0);

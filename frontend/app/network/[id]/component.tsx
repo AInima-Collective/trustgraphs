@@ -113,7 +113,8 @@ export const NetworkPage = () => {
         "This member's calculated Trust Score using a PageRank-style algorithm. Higher scores indicate stronger endorsement from trusted peers in the network.",
       sortable: true,
       accessor: (row) => Number(BigInt(row.value || '0')),
-      render: (row) => formatBigNumber(row.value, undefined, true),
+      // Merkle values are pool allocations in wei (scaled by precisionScale = 1e18); divide for display.
+      render: (row) => formatBigNumber(row.value, 18),
     },
   ]
 
@@ -198,18 +199,15 @@ export const NetworkPage = () => {
           <StatisticCard
             title="TOTAL NETWORK SCORE"
             tooltip="The sum of all Trust Scores across all network members, indicating overall network capacity and collective credibility."
-            value={
-              isLoading ? '...' : formatBigNumber(totalValue, undefined, true)
-            }
+            value={isLoading ? '...' : formatBigNumber(totalValue, 18)}
           />
           <StatisticCard
             title="AVERAGE + MEDIAN TRUST SCORE"
             tooltip="These metrics show typical member Trust Scores in this network."
             value={`${formatBigNumber(
               Math.round(averageValue),
-              undefined,
-              true
-            )} / ${formatBigNumber(medianValue, undefined, true)}`}
+              18
+            )} / ${formatBigNumber(Math.round(medianValue), 18)}`}
           />
           {gnosisSafe && (
             <StatisticCard
