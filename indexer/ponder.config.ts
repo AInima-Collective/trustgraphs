@@ -38,12 +38,13 @@ export default createConfig({
             ws: 'ws://localhost:8545',
           },
         }
-      : {}),
-    optimism: {
-      id: 10,
-      rpc: process.env.PONDER_RPC_URL_10,
-      ws: process.env.PONDER_WS_URL_10,
-    },
+      : {
+          optimism: {
+            id: 10,
+            rpc: process.env.PONDER_RPC_URL_10,
+            ws: process.env.PONDER_WS_URL_10,
+          },
+        }),
   },
   contracts: {
     wavsIndexer: {

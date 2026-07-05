@@ -1,18 +1,18 @@
 [
   {
-    "id": "test-network-1",
-    "name": "Test Network 1",
+    "id": "localism-fund",
+    "name": "Localism Fund",
     "link": {
       "prefix": "Learn more:",
-      "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "label": "localism.fund",
+      "href": "https://www.localism.fund"
     },
-    "about": "This is a test network.",
+    "about": "The **Localism Fund Expert Network** is a curated, peer-attested collective of practitioners advancing the intersection of **localism and Ethereum-based coordination**. Experts in the network bring proven experience across Grant-making, Web3 / Ethereum Tooling, or Localism.",
     "callToAction": {
-      "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "label": "Apply as Expert",
+      "href": "https://www.localism.fund/expert-network"
     },
-    "criteria": "The attestations in this network are weighted endorsements.",
+    "criteria": "Localism Fund Experts should meet the following criteria:\n\n- **Application** — Has completed the application form and appears in the [**Expert Network Database**](https://www.localism.fund/expert-network-db).\n- **Expertise** — Demonstrates relevant experience in at least one of the following areas: Grant-making, Web3 / Ethereum Tooling, Localism.\n- **Professional Alignment** — Commits to upholding the [**OpenCivics Ethical Standards**](https://wiki.opencivics.co/OpenCivics+Network/Membership/Ethical+Standards).\n\nBy attesting, you're **vouching** that this person meets the above criteria, and using the slider to signal your **confidence in**:\n\n- **Accuracy & Evidence**: Their _self-assessment is accurate, evidenced, and credible_ — with experience, expertise, and intentions that are verifiable through your direct experience with them or the evidence they've provided.\n- **Fit & Alignment**: Their _experience, expertise, unique insight, and credibility_ in one or more relevant domains, as well as _professional alignment_ — including good-faith collaboration, honesty, feedback & accountability, efficacy over ego, and inclusion & listening.\n\nEveryone helps **decentralize trust** by making honest, careful attestations.",
     "contracts": {
       "merkleSnapshot": "",
       "easIndexerResolver": "",
@@ -50,27 +50,27 @@
       "trustedSeeds": []
     },
     "safeZodiacSignerSync": {
-      "enabled": true,
+      "enabled": false,
       "topNSigners": 5,
       "minThreshold": 1,
       "targetThreshold": 0.5
     },
-    "validatedThreshold": 100
+    "validatedThreshold": 75
   },
   {
-    "id": "test-network-2",
-    "name": "Test Network 2",
+    "id": "regenhub",
+    "name": "RegenHub",
     "link": {
       "prefix": "Learn more:",
-      "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "label": "regenhub.xyz",
+      "href": "https://regenhub.xyz"
     },
-    "about": "This is a test network.",
+    "about": "RegenHub is a regenerative innovation hub in Boulder, Colorado, bringing together builders, creators, and changemakers working toward a more resilient and democratic economy. We offer community infrastructure, shared ownership, and collective intelligence to support projects at the intersection of climate, social equity, and technology. Through co-working, events, and cooperative governance, RegenHub helps people turn values into livelihoods and ideas into lasting impact.",
     "callToAction": {
-      "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "label": "Join RegenHub",
+      "href": "https://regenhub.xyz"
     },
-    "criteria": "The attestations in this network are weighted endorsements.",
+    "criteria": "RegenHub funds projects and people who are active participants in our regenerative ecosystem. To be eligible, teams must:\n\n1. **Show up in person**: Physically work from or visit RegenHub at least once per quarter to build real trust, context, and collaboration.\n2. **Add clear value**: Contribute meaningfully to the community through building, mentoring, organizing, knowledge sharing, or shipping real work.\n3. **Align with regenerative outcomes**: Advance climate resilience, social equity, economic democracy, or other regenerative public goods.\n4. **Build in the open**: Share learnings, progress, and failures with the community to strengthen collective intelligence.\n5. **Demonstrate commitment, not extraction**: Treat RegenHub as a long term home and partner, not a grant stop or marketing channel.\n6. **Accept shared accountability**: Be open to community feedback, light governance, and reciprocity as part of cooperative capital.",
     "contracts": {
       "merkleSnapshot": "",
       "easIndexerResolver": "",
@@ -108,27 +108,27 @@
       "trustedSeeds": []
     },
     "safeZodiacSignerSync": {
-      "enabled": true,
+      "enabled": false,
       "topNSigners": 5,
       "minThreshold": 1,
       "targetThreshold": 0.5
     },
-    "validatedThreshold": 100
+    "validatedThreshold": 75
   },
   {
-    "id": "test-network-3",
-    "name": "Test Network 3",
+    "id": "safe-demo",
+    "name": "Safe Demo",
     "link": {
       "prefix": "Learn more:",
       "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "href": "https://docs.safe.global"
     },
-    "about": "This is a test network.",
+    "about": "This network demos the Safe signer sync Zodiac module. The top-ranked attesters are synced as signers on a Safe multisig, so the trust graph directly controls who can sign.",
     "callToAction": {
-      "label": "Click Me",
-      "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      "label": "Vouch for a Signer",
+      "href": "https://docs.safe.global"
     },
-    "criteria": "The attestations in this network are weighted endorsements.",
+    "criteria": "Whatever your heart desires. Attest to the participants you trust to act as Safe signers — the highest-ranked addresses are synced onto the multisig automatically.",
     "contracts": {
       "merkleSnapshot": "",
       "easIndexerResolver": "",
@@ -167,10 +167,10 @@
     },
     "safeZodiacSignerSync": {
       "enabled": true,
-      "topNSigners": 5,
+      "topNSigners": 3,
       "minThreshold": 1,
       "targetThreshold": 0.5
     },
-    "validatedThreshold": 100
+    "validatedThreshold": 75
   }
 ]

@@ -27,9 +27,10 @@ tasks:
         echo -e "${PURPLE}Creating Direct EAS TrustGraph Vouching Network${NC}"
 
         # Load deployment configuration
+        NET_INDEX="{{.NET_INDEX | default 0}}"
         EAS_ADDRESS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
         ATTESTER_ADDRESS=$(jq -r '.eas.attester' {{.DEPLOYMENT_FILE}})
-        VOUCHING_SCHEMA_ID=$(jq -r '.eas.schemas.vouching.uid' {{.DEPLOYMENT_FILE}})
+        VOUCHING_SCHEMA_ID=$(jq -r ".networks[$NET_INDEX].schemas[] | select(.key==\"vouching\") | .uid" {{.DEPLOYMENT_FILE}})
 
         echo -e "${BLUE}Configuration:${NC}"
         echo "EAS: $EAS_ADDRESS"
@@ -54,6 +55,7 @@ tasks:
           local attester_key
 
           case "$attester_name" in
+            Seed) attester_key="${FUNDED_KEY:-0x706c64bee06b671b002ff98c6ecd2d47b7eac5b98e41dbff35be331f8c790e9b}" ;;
             Alice) attester_key="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" ;;
             Bob) attester_key="0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" ;;
             Charlie) attester_key="0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" ;;
@@ -103,6 +105,25 @@ tasks:
 
         total_attestations=0
         failed_attestations=0
+
+        # Seed vouchers: the trusted seed (deployer / FUNDED_KEY) must vouch INTO the
+        # graph, otherwise trust-aware PageRank finds every node unreachable and all
+        # scores collapse to zero. These edges root the network at the configured seed.
+        echo -e "${CYAN}🌱 Creating trusted-seed vouchers...${NC}"
+
+        if create_vouching_attestation "Seed" "Alice" "Root of trust" "100"; then
+          total_attestations=$((total_attestations + 1))
+        else
+          failed_attestations=$((failed_attestations + 1))
+        fi
+        sleep 0.1
+
+        if create_vouching_attestation "Seed" "Bob" "Trusted authority" "90"; then
+          total_attestations=$((total_attestations + 1))
+        else
+          failed_attestations=$((failed_attestations + 1))
+        fi
+        sleep 0.1
 
         # Authority vouchers
         echo -e "${CYAN}👑 Creating authority vouchers...${NC}"
@@ -195,8 +216,9 @@ tasks:
         GREEN='\033[0;32m'
         NC='\033[0m'
 
+        NET_INDEX="{{.NET_INDEX | default 0}}"
         EAS_ADDRESS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
-        VOUCHING_SCHEMA_ID=$(jq -r '.eas.schemas.vouching.uid' {{.DEPLOYMENT_FILE}})
+        VOUCHING_SCHEMA_ID=$(jq -r ".networks[$NET_INDEX].schemas[] | select(.key==\"vouching\") | .uid" {{.DEPLOYMENT_FILE}})
 
         echo -e "${CYAN}📊 TrustGraph Vouching Network Analysis${NC}"
         echo "==========================="
@@ -238,8 +260,9 @@ tasks:
         YELLOW='\033[1;33m'
         NC='\033[0m'
 
+        NET_INDEX="{{.NET_INDEX | default 0}}"
         EAS_ADDRESS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
-        VOUCHING_SCHEMA_ID=$(jq -r '.eas.schemas.vouching.uid' {{.DEPLOYMENT_FILE}})
+        VOUCHING_SCHEMA_ID=$(jq -r ".networks[$NET_INDEX].schemas[] | select(.key==\"vouching\") | .uid" {{.DEPLOYMENT_FILE}})
 
         echo -e "${YELLOW}🎯 Next Steps for TrustGraph Testing${NC}"
         echo ""
