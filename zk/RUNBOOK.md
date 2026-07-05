@@ -178,7 +178,7 @@ fork RPC, the gateway, and the proving backend); each is a real command, not a w
 ### Prerequisites / env
 
 ```bash
-export FORK_RPC=https://eth-mainnet.<your-provider>      # archive-capable mainnet RPC to fork
+export FORK_RPC_URL=https://eth-mainnet.<your-provider>      # archive-capable mainnet RPC to fork
 export SP1_VERIFIER_GATEWAY=0x...                        # Succinct's SP1 gateway on mainnet (docs.succinct.xyz)
 # proving backend — pick ONE:
 export SP1_PROVER=network NETWORK_PRIVATE_KEY=0x...      # Succinct prover network (no big box), OR
@@ -208,7 +208,7 @@ cd ../..
 ```bash
 # 1. Fork + deploy the full stack (EAS, both verifiers, MerkleSnapshot, the Safe with MerkleGovModule
 #    + SignerSyncZkModule, timelocks, distributor). Writes .docker/deployment_summary.json.
-anvil --fork-url "$FORK_RPC" --silent &
+anvil --fork-url "$FORK_RPC_URL" --silent &
 DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 
 # 2. Attest (UI or `task forge:vouch ...`), then run BOTH permissionless loops above

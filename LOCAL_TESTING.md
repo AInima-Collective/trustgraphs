@@ -49,7 +49,7 @@ against Succinct's real SP1 gateway — no testnet, no mock. You supply a fork R
 and a proving backend.
 
 ```bash
-export FORK_RPC=https://eth-mainnet.<your-provider>   # archive-capable mainnet RPC
+export FORK_RPC_URL=https://eth-mainnet.<your-provider>   # archive-capable mainnet RPC
 export SP1_VERIFIER_GATEWAY=0x...                      # Succinct's SP1 gateway on mainnet (docs.succinct.xyz)
 # proving backend — pick ONE:
 export SP1_PROVER=network NETWORK_PRIVATE_KEY=0x...    # Succinct prover network (no big box), OR
@@ -60,7 +60,7 @@ export SP1_PROVER=cpu                                  # local: ~16-32 GiB + `--
 
 ```bash
 # Terminal 1 — mainnet-fork chain (real SP1 gateway in state):
-anvil --fork-url "$FORK_RPC" --port 8545
+anvil --fork-url "$FORK_RPC_URL" --port 8545
 
 # Terminal 2 — IPFS (score blobs the UI fetches), Postgres (Ponder), WARG:
 docker compose -f docker-compose.dev.yml up
