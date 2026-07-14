@@ -49,6 +49,9 @@ try {
     MerkleSnapshot: '',
     MerkleGovModule: '',
     MerkleFundDistributor: '',
+    // Lane-2 (envelope-0) anchor accumulator; exposes anchorAcc()/anchorCount()
+    // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
+    AnchorRegistry: '',
   }
 
   // Make sure ABIs exist for all contracts, and copy them to the frontend.

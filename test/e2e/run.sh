@@ -177,6 +177,80 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "E2E ONCHAIN PASS — both programs proven via the CLI and applied on anvil"
   echo "(SNARK check mocked at the gateway seam; run SP1_PROVER=network against the canonical"
   echo " gateway for a fully real proof)."
+
+  # --- TWO-LANE stage (M2 exit): lane-1 EAS edges + lane-2 envelope-0 in ONE journal ---------
+  echo
+  echo "== two-lane: deploy AnchorRegistry, wire it into MerkleSnapshot =="
+  REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$DEPLOYER" | jq -r .deployedTo)
+  cast send "$SNAPSHOT" "setAnchorRegistry(address)" "$REGISTRY" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "   registry=$REGISTRY"
+
+  echo "== two-lane: attester builds + anchors a signed envelope-0 log =="
+  ATTESTER_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d  # anvil key 1
+  DS=$(cast keccak "e2e-envelope0-domain")
+  GEN_OUT=$(cargo run -q -p input-exporter --bin envelope0-gen -- \
+    --key "$ATTESTER_KEY" --domain-separator "$DS" --schema "$SCHEMA" \
+    --attest "$A0:80" --attest "0x0000000000000000000000000000000000000005:40" --revoke 1 \
+    --out "$WORK/envelope0_log.json")
+  echo "$GEN_OUT"
+  NODE_ID=$(echo "$GEN_OUT" | awk '/^nodeId:/{print $2}')
+  HEAD=$(echo "$GEN_OUT" | awk '/^head:/{print $2}')
+  cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$ATTESTER_KEY" >/dev/null
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$NODE_ID" 0 "$HEAD" "$ZERO32" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null   # third-party relay: permissionless anchor
+
+  echo "== two-lane: a second node anchors a head and WITHHOLDS the data (rule Φ) =="
+  WITHHELD_KEY=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a  # anvil key 2
+  WITHHELD_ADDR=$(cast wallet address --private-key "$WITHHELD_KEY")
+  WITHHELD_NODE=$(cast keccak "$(cast abi-encode "f(address)" "$WITHHELD_ADDR")")
+  cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$WITHHELD_KEY" >/dev/null
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" \
+    "$WITHHELD_NODE" 0 0x00000000000000000000000000000000000000000000000000000000deadbeef "$ZERO32" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+
+  echo "== two-lane: fresh lane-1 inputs + trigger() checkpoints BOTH lanes =="
+  forge script script/E2eAttest.s.sol:E2eAttest --sig "run(address,bytes32)" "$EAS" "$SCHEMA" \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >/dev/null
+  cast send "$SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  ANCHOR_CP=$(cast call "$SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" 1 --rpc-url "$RPC")
+  echo "   anchorCheckpoints(1): $ANCHOR_CP"
+
+  echo "== two-lane: export (lane-1 re-fold + lane-2 anchor re-fold self-checks) =="
+  jq --arg s "$SCHEMA" --arg d "$DS" \
+    '.schema_uid = $s | .envelope0_domain_separators = [$d] | .lane2_max_head_age = 1000000000' \
+    test/e2e/params.template.json > "$WORK/params2.json"
+  cargo run -q -p input-exporter -- \
+    --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
+    --checkpoint 1 --params "$WORK/params2.json" \
+    --anchor-registry "$REGISTRY" --snapshot "$SNAPSHOT" \
+    --envelope0-log "$WORK/envelope0_log.json" \
+    --out "$WORK/input2.json"
+
+  echo "== two-lane: prove via the CLI and land the journal-v2 proof =="
+  PARAMS2_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash "$WORK/input2.json" )
+  cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PARAMS2_HASH" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  EXEC2_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph execute "$WORK/input2.json" )
+  echo "$EXEC2_OUT"
+  ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph prove "$WORK/input2.json" --groth16 >/dev/null )
+  OUTPUT_ROOT2=$(echo "$EXEC2_OUT" | awk '/^outputRoot:/{print $2}')
+  IPFS_HASH2=$(echo "$EXEC2_OUT" | awk '/^ipfsHash:/{print $2}')
+  CID2=$(echo "$EXEC2_OUT" | awk '/^cid:/{print $2}')
+  TOTAL_VALUE2=$(echo "$EXEC2_OUT" | awk '/^totalValue:/{print $2}')
+  SKIPPED2=$(echo "$EXEC2_OUT" | awk '/^skippedDigest:/{print $2}')
+  [ "$SKIPPED2" != "$ZERO32" ] || { echo "FATAL: withheld head did not produce a skippedDigest"; exit 1; }
+  echo "   skippedDigest (withheld node recorded): $SKIPPED2 ✓"
+  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+    1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$(hex_file zk/prover/proof.bin)" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  ROOT2_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
+  [ "$ROOT2_ONCHAIN" = "$OUTPUT_ROOT2" ] || { echo "FATAL: two-lane root $ROOT2_ONCHAIN != proven $OUTPUT_ROOT2"; exit 1; }
+  echo "   two-lane root landed on-chain: $ROOT2_ONCHAIN ✓"
+  echo
+  echo "E2E TWO-LANE PASS — lane-1 EAS edges + lane-2 envelope-0 in one proven journal,"
+  echo "with a withheld head degraded via rule Φ and publicly committed in skippedDigest."
 fi
 
 echo

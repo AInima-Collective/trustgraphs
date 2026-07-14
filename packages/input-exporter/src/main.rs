@@ -9,7 +9,9 @@ use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use input_exporter::reconstruct;
-use pagerank_core::{GuestInput, Params, RawEdge, SelectionParams, SignerInput};
+use pagerank_core::{
+    AnchorRecord, GuestInput, Lane2Witness, Params, RawEdge, SelectionParams, SignerInput,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -26,6 +28,9 @@ sol! {
 
     event EdgeFolded(uint64 indexed index, bytes32 leaf, bytes32 acc);
     event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID);
+
+    event HeadAnchored(uint64 indexed foldIndex, bytes32 indexed nodeId, uint8 envelopeKind, bytes32 head, bytes32 dataCommitment, uint256 blockTimestamp);
+    function anchorCheckpoints(uint256 checkpointId) external view returns (bytes32 anchorAcc, uint64 anchorCount);
 }
 
 #[derive(Parser, Debug)]
@@ -63,6 +68,19 @@ struct Args {
     /// Max blocks per eth_getLogs request (many RPCs cap the range).
     #[arg(long, default_value_t = 10_000)]
     chunk: u64,
+    /// Lane 2: the AnchorRegistry address. When set, HeadAnchored events up to the checkpoint
+    /// block become the anchor-log witness.
+    #[arg(long)]
+    anchor_registry: Option<String>,
+    /// Lane 2: envelope-0 witness JSON files (from envelope0-gen), repeatable. Heads whose data
+    /// is not supplied here degrade via rule Φ in-guest (that is the withholding path, not an
+    /// error).
+    #[arg(long)]
+    envelope0_log: Vec<String>,
+    /// Lane 2: the MerkleSnapshot address, to self-check the re-folded anchorAcc against the
+    /// stored anchor checkpoint.
+    #[arg(long)]
+    snapshot: Option<String>,
 }
 
 struct Rpc {
@@ -275,11 +293,94 @@ async fn main() -> Result<()> {
     let edges = reconstruct(&ordered_leaves, &candidates, cp.acc, cp.leafCount)?;
     eprintln!("reconstruction self-check OK: re-folded acc == checkpoint acc ✓");
 
+    // 4b. Lane 2: anchor log + envelope witnesses.
+    let lane2: Option<Lane2Witness> = if let Some(reg) = &args.anchor_registry {
+        let registry = parse_addr(reg)?;
+        let anchor_logs = rpc
+            .get_logs(
+                registry,
+                &[Some(HeadAnchored::SIGNATURE_HASH)],
+                args.from_block,
+                to_block,
+                args.chunk,
+            )
+            .await
+            .context("querying HeadAnchored logs")?;
+        let mut indexed: Vec<(u64, AnchorRecord)> = Vec::new();
+        for log in &anchor_logs {
+            let ev = HeadAnchored::decode_raw_log(log.topics.iter().copied(), &log.data)
+                .context("decoding HeadAnchored")?;
+            indexed.push((
+                ev.foldIndex,
+                AnchorRecord {
+                    node_id: ev.nodeId,
+                    envelope_kind: ev.envelopeKind,
+                    head: ev.head,
+                    data_commitment: ev.dataCommitment,
+                    block_timestamp: u64::try_from(ev.blockTimestamp)
+                        .context("anchor timestamp overflows u64")?,
+                },
+            ));
+        }
+        indexed.sort_by_key(|(i, _)| *i);
+        for (want, (got, _)) in indexed.iter().enumerate() {
+            if *got != want as u64 {
+                bail!("HeadAnchored indices not contiguous: expected {want}, found {got}");
+            }
+        }
+        let anchors: Vec<AnchorRecord> = indexed.into_iter().map(|(_, a)| a).collect();
+
+        // Self-check the re-fold against the checkpointed anchorAcc, when a snapshot is given.
+        if let Some(snap) = &args.snapshot {
+            let snapshot = parse_addr(snap)?;
+            let ret = rpc
+                .eth_call(
+                    snapshot,
+                    anchorCheckpointsCall { checkpointId: U256::from(args.checkpoint) }
+                        .abi_encode(),
+                )
+                .await
+                .context("anchorCheckpoints failed")?;
+            let cp2 = anchorCheckpointsCall::abi_decode_returns(&ret)
+                .context("decoding anchorCheckpoints")?;
+            let mut acc2 = B256::ZERO;
+            for a in &anchors {
+                let leaf = zk_core::anchor::anchor_leaf(
+                    a.node_id,
+                    a.envelope_kind,
+                    a.head,
+                    a.data_commitment,
+                    a.block_timestamp,
+                );
+                acc2 = zk_core::fold::fold(acc2, leaf);
+            }
+            if acc2 != cp2.anchorAcc || anchors.len() as u64 != cp2.anchorCount {
+                bail!(
+                    "anchor re-fold mismatch: local acc={acc2:#x} count={} vs checkpointed acc={:#x} count={}",
+                    anchors.len(), cp2.anchorAcc, cp2.anchorCount
+                );
+            }
+            eprintln!("anchor re-fold self-check OK: matches checkpointed anchorAcc ✓");
+        }
+
+        let mut envelopes = Vec::new();
+        for path in &args.envelope0_log {
+            let w: envelopes_crate::eas_offchain::Envelope0Witness =
+                serde_json::from_str(&std::fs::read_to_string(path)?)
+                    .with_context(|| format!("failed to parse {path} as Envelope0Witness"))?;
+            envelopes.push(w);
+        }
+        eprintln!("lane 2: {} anchors, {} envelope witnesses", anchors.len(), envelopes.len());
+        Some(Lane2Witness { anchors, envelopes })
+    } else {
+        None
+    };
+
     // 5. Emit.
     let out_json = if let Some(selection) = selection {
         serde_json::to_string_pretty(&SignerInput { edges, params, selection })?
     } else {
-        serde_json::to_string_pretty(&GuestInput { edges, params, lane2: None })?
+        serde_json::to_string_pretty(&GuestInput { edges, params, lane2 })?
     };
     std::fs::write(&args.out, out_json)?;
     eprintln!("wrote {} ({} edges)", args.out, cp.leafCount);

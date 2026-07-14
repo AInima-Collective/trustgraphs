@@ -10,8 +10,11 @@ import {
   gnosisSafeAbi,
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
-  merkleSnapshotAbi,
 } from '../frontend/lib/contract-abis'
+import { anchorRegistryAbi } from './abis/anchorRegistry'
+// The frontend's generated merkleSnapshotAbi predates journal v2 and lacks AnchorsCheckpointed; this
+// local module re-exports it with that event appended (see indexer/abis/merkleSnapshot.ts).
+import { merkleSnapshotAbi } from './abis/merkleSnapshot'
 
 const dotenvFile = path.join(__dirname, '../.env')
 const { parsed: { DEPLOY_ENV } = {} } = dotenv.config({
@@ -76,6 +79,27 @@ export default createConfig({
           ),
         },
       },
+    },
+    // Lane-2 anchor registry (M2). Discovered from deployment_summary.json under
+    // `network.contracts.anchorRegistry` — single instance for now; only present once a lane-2
+    // instance is deployed, so gate on its presence exactly like merkleGovModule/safe. Backfills like
+    // merkleSnapshot (it emits HeadAnchored/NodeRegistered that may predate the indexer start).
+    anchorRegistry: {
+      abi: anchorRegistryAbi,
+      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      chain: deploymentSummary.networks.some(
+        (network) => (network.contracts as { anchorRegistry?: string }).anchorRegistry
+      )
+        ? {
+            [CORE_CHAIN]: {
+              address: deploymentSummary.networks.flatMap(
+                (network) =>
+                  ((network.contracts as { anchorRegistry?: string })
+                    .anchorRegistry as Hex) || []
+              ),
+            },
+          }
+        : {},
     },
     merkleGovModule: {
       abi: merkleGovModuleAbi,

@@ -1344,12 +1344,15 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "clap",
+ "envelopes",
  "hex",
+ "k256",
  "pagerank-core",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
+ "zk-core",
 ]
 
 [[package]]

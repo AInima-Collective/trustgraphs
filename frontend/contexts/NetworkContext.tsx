@@ -141,6 +141,13 @@ export const NetworkProvider = ({
   // Local "what-if" simulation using the CANONICAL fixed-point PageRank (the exact TS mirror of
   // packages/pagerank-core / the zk guest). Recomputed synchronously — no WASM needed — so the
   // previewed scores and merkle root match, byte-for-byte, what a proof would commit.
+  //
+  // REDUCED parity tier (MULTI_PROGRAM_PLATFORM §6): this re-derives PageRank + the output root from
+  // the edge set as served by the indexer; it does NOT re-verify EAS envelope signatures in TS
+  // (envelope verification is in-guest). The lane-2 params are threaded in so `paramsHash` matches
+  // on-chain, but the recomputed journal is lane-1-only — its `anchorAcc`/`anchorCount`/
+  // `skippedDigest` are zero here. To verify the on-chain lane-2 accumulator, read
+  // `AnchorRegistry.anchorAcc()/anchorCount()` or the `MerkleSnapshot.AnchorsCheckpointed` event.
   const simulation = useMemo(() => {
     if (!simulationConfig.enabled || !_networkData) {
       return null
@@ -166,6 +173,10 @@ export const NetworkProvider = ({
           maxWeight: network.pagerank.maxWeight,
           trustedSeeds: network.pagerank.trustedSeeds,
           pointsPool: BigInt(Math.round(network.pagerank.pointsPool || 0)),
+          // Lane-2 (envelope-0) params — threaded so the recomputed paramsHash matches the
+          // on-chain, governance-pinned 15-field paramsHash for lane-2-enabled networks.
+          envelope0DomainSeparators: network.pagerank.envelope0DomainSeparators,
+          lane2MaxHeadAge: network.pagerank.lane2MaxHeadAge,
         }
       )
     } catch (error) {
@@ -179,6 +190,8 @@ export const NetworkProvider = ({
     network.pagerank.maxWeight,
     network.pagerank.trustedSeeds,
     network.pagerank.pointsPool,
+    network.pagerank.envelope0DomainSeparators,
+    network.pagerank.lane2MaxHeadAge,
   ])
 
   const simulatedResults = simulation?.results ?? null

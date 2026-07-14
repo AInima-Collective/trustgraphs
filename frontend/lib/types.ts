@@ -36,6 +36,12 @@ export type Network = {
     minWeight: number
     maxWeight: number
     trustedSeeds: Hex[]
+    // Lane-2 (envelope-0) params. Both are hashed into the governance-pinned paramsHash
+    // (journal v2 hashes 15 param fields), so they must be threaded into the browser
+    // recompute even though envelope signatures are verified only in-guest. Absent/empty
+    // = lane 2 disabled (lane-1-only network).
+    envelope0DomainSeparators?: Hex[]
+    lane2MaxHeadAge?: number
   }
   safeZodiacSignerSync: {
     enabled: boolean

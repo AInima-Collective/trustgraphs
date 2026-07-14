@@ -55,6 +55,34 @@ export const merkleEntry = offchainSchema.table(
   ]
 )
 
+// skippedNode — the rule-Φ / deterministic-skip audit trail for lane 2 (OFFCHAIN_ATTESTATIONS_ZK §4.3,
+// MULTI_PROGRAM_PLATFORM §5). The guest commits only a 32-byte `skippedDigest` on-chain (a submitProof
+// argument bound into the journal); the PREIMAGE — which nodes were skipped, and why — is NOT on-chain.
+// These rows are therefore populated by the OFF-CHAIN prover/witness pipeline (the witness bundle the
+// prover archives) and then VALIDATED against the on-chain `skippedDigest` for the matching checkpoint.
+// This is an `offchain` (non-Ponder) table because its source is that pipeline, not a chain event.
+// Ingestion is stubbed for M2 — see `ingestSkippedNodes` in src/anchor.ts.
+export const skippedNode = offchainSchema.table(
+  'skipped_node',
+  (t) => ({
+    // A node can be skipped in more than one checkpoint, so key on (checkpointId, nodeId).
+    checkpointId: t.text().notNull(), // uint256 as decimal string
+    nodeId: t.text().notNull(),
+    reason: t.text().notNull(), // guest skip-rule label (e.g. "bad-signature", "stale-head")
+    epochObserved: t.bigint({ mode: 'bigint' }).notNull(), // input-freeze block / epoch the skip applies to
+    // Whether the reconstructed digest of the full skipped set validated against the on-chain
+    // skippedDigest for this checkpoint (null until the validation hook runs).
+    validated: t.boolean(),
+    updatedAt: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.checkpointId, t.nodeId] }),
+    index().on(t.checkpointId),
+    index().on(t.nodeId),
+    index().on(t.reason),
+  ]
+)
+
 export const localismFundApplication = offchainSchema.table(
   'localism_fund_application',
   (t) => ({

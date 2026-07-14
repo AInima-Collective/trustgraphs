@@ -1,11 +1,20 @@
 //! Browser simulation adapter: turn indexed attestations + a network config into the canonical
 //! fixed-point PageRank result. This is what the UI calls for "what-if" previews so the numbers it
 //! shows match, byte-for-byte, what the zk guest would commit for the same inputs.
+//!
+//! PARITY TIER (MULTI_PROGRAM_PLATFORM §6, REDUCED): this recomputes PageRank + the output root over
+//! the EDGE SET AS SERVED BY THE INDEXER; it does NOT re-verify EAS envelope signatures (envelope
+//! verification is in-guest only). Consequently the browser produces a LANE-1-ONLY journal — the
+//! lane-2 anchor fields (`anchorAcc`, `anchorCount`, `skippedDigest`) come back as the zero
+//! accumulator here (see `compute.ts`). The lane-2 `Params` fields ARE threaded through because
+//! `paramsHash` hashes all 15 param fields; leaving them out would mismatch an on-chain lane-2
+//! `paramsHash`. To check the on-chain lane-2 accumulator, read `AnchorRegistry.anchorAcc()/
+//! anchorCount()` or the `MerkleSnapshot.AnchorsCheckpointed` event — those are NOT reproduced here.
 
 import { concat, type Hex } from 'viem'
 
 import { compute } from './compute'
-import { type Params, type RawEdge } from './types'
+import { type Journal, type Params, type RawEdge } from './types'
 import { wordU256 } from './words'
 
 const S = 10n ** 18n
@@ -36,6 +45,10 @@ export interface SimConfig {
   trustedSeeds: Hex[]
   /** The reward pool to distribute (points). */
   pointsPool: bigint
+  /** Lane-2 (envelope-0) accepted EIP-712 domain separators. Empty/absent = lane 2 disabled. */
+  envelope0DomainSeparators?: Hex[]
+  /** Lane-2 Rule-Φ staleness horizon in seconds. */
+  lane2MaxHeadAge?: number
 }
 
 export interface SimResult {
@@ -45,6 +58,13 @@ export interface SimResult {
   ipfsHash: Hex
   cid: string
   totalValue: bigint
+  /**
+   * The full journal-v2 the recompute produced (lane-1-only: `anchorAcc`/`anchorCount`/
+   * `skippedDigest` are the zero accumulator here — see the file header). Callers comparing against
+   * on-chain state can check `acc`/`leafCount`/`paramsHash`/`outputRoot`/`ipfsHash`/`cidDigest`/
+   * `totalValue` directly; lane-2 fields must be read from the chain (AnchorRegistry / events).
+   */
+  journal: Journal
 }
 
 /** ABI-encode `(string comment, uint256 confidence)` head so `weightFieldIndex = 1` reads the weight. */
@@ -86,6 +106,16 @@ export const simulateNetwork = (
     precisionScale: S,
     schemaUid: `0x${'00'.repeat(32)}` as Hex,
     weightFieldIndex: 1,
+    // Lane-2 params flow into paramsHash (15 fields). Omitted/undefined for lane-1-only networks,
+    // which encode.paramsHash normalizes to an empty domain set + zero head-age.
+    ...(cfg.envelope0DomainSeparators?.length
+      ? {
+          envelope0DomainSeparators: cfg.envelope0DomainSeparators.map(
+            (d) => d.toLowerCase() as Hex
+          ),
+        }
+      : {}),
+    ...(cfg.lane2MaxHeadAge ? { lane2MaxHeadAge: cfg.lane2MaxHeadAge } : {}),
   }
 
   const r = compute({ edges, params })
@@ -98,5 +128,6 @@ export const simulateNetwork = (
     ipfsHash: r.journal.ipfsHash,
     cid: r.cid,
     totalValue: r.journal.totalValue,
+    journal: r.journal,
   }
 }

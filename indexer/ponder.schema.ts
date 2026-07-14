@@ -50,6 +50,82 @@ export const merkleSnapshot = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+              LANE 2 — offchain-attestation anchors (M2)
+//////////////////////////////////////////////////////////////*/
+
+// AnchorRegistry.HeadAnchored — one row per anchor claim folded into the lane-2 chained-hash log
+// (OFFCHAIN_ATTESTATIONS_ZK §4.1). `foldIndex` is the leaf's position in the chain; `head` is the
+// per-identity completeness commitment; `dataCommitment` is where the data behind the head lives.
+// Single-instance for M2 (the multi-instance `instanceId` dimension is deferred to M4/M5); `address`
+// is carried only for provenance across a redeploy, not as an instance key.
+export const anchor = onchainTable(
+  'anchor',
+  (t) => ({
+    id: t.text().primaryKey(), // event log id (unique per HeadAnchored)
+    address: t.hex().notNull(), // AnchorRegistry that emitted it
+    foldIndex: t.bigint().notNull(), // uint64 — leaf position in the fold
+    nodeId: t.hex().notNull(),
+    envelopeKind: t.integer().notNull(), // uint8 — 0 = EAS-offchain, 1 = atproto, ...
+    head: t.hex().notNull(),
+    dataCommitment: t.hex().notNull(),
+    blockTimestamp: t.bigint().notNull(), // the on-chain timestamp folded into the leaf
+    txHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+  }),
+  (t) => ({
+    addressIdx: index().on(t.address),
+    foldIndexIdx: index().on(t.foldIndex),
+    nodeIdIdx: index().on(t.nodeId),
+    envelopeKindIdx: index().on(t.envelopeKind),
+    headIdx: index().on(t.head),
+    blockTimestampIdx: index().on(t.blockTimestamp),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+// AnchorRegistry.NodeRegistered — one row per registered node. Registration is once-per-node (the
+// contract's AlreadyRegistered guard), so `nodeId` is the natural primary key.
+export const nodeRegistration = onchainTable(
+  'node_registration',
+  (t) => ({
+    nodeId: t.hex().primaryKey(),
+    address: t.hex().notNull(), // AnchorRegistry that emitted it
+    kind: t.integer().notNull(), // uint8 — 0 = address, 1 = DID, ...
+    registrant: t.hex().notNull(),
+    at: t.bigint().notNull(), // block.timestamp of registration
+    txHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+  }),
+  (t) => ({
+    addressIdx: index().on(t.address),
+    kindIdx: index().on(t.kind),
+    registrantIdx: index().on(t.registrant),
+    atIdx: index().on(t.at),
+  })
+)
+
+// MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each snapshot trigger. One
+// row per checkpoint id; `anchorAcc`/`anchorCount` are what the guest consumes for that epoch (zeros
+// for a lane-1-only instance with no AnchorRegistry).
+export const anchorCheckpoint = onchainTable(
+  'anchor_checkpoint',
+  (t) => ({
+    checkpointId: t.bigint().primaryKey(), // uint256
+    address: t.hex().notNull(), // MerkleSnapshot that emitted it
+    anchorAcc: t.hex().notNull(),
+    anchorCount: t.bigint().notNull(), // uint64
+    blockTimestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+  }),
+  (t) => ({
+    addressIdx: index().on(t.address),
+    anchorAccIdx: index().on(t.anchorAcc),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
 export const merkleGovModule = onchainTable(
   'merkle_gov_module',
   (t) => ({

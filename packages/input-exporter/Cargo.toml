@@ -1,5 +1,6 @@
 [package]
 name = "input-exporter"
+default-run = "input-exporter"
 description = "Reconstruct a GuestInput/SignerInput (input.json) from on-chain accumulator + EAS state for a checkpoint"
 edition.workspace = true
 version.workspace = true
@@ -14,8 +15,15 @@ path = "src/main.rs"
 [lib]
 crate-type = ["rlib"]
 
+[[bin]]
+name = "envelope0-gen"
+path = "src/bin/envelope0_gen.rs"
+
 [dependencies]
 pagerank-core = { path = "../pagerank-core" }
+envelopes_crate = { path = "../envelopes", package = "envelopes" }
+zk-core = { path = "../zk-core" }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy-sol-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
