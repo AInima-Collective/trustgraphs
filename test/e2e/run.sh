@@ -251,6 +251,87 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo
   echo "E2E TWO-LANE PASS — lane-1 EAS edges + lane-2 envelope-0 in one proven journal,"
   echo "with a withheld head degraded via rule Φ and publicly committed in skippedDigest."
+
+  # --- HYPERCERTS instance (M4 exit): lane-2-only, envelope 1, seeded two-repo fixture ------
+  echo
+  echo "== hypercerts: emit the two-repo fixture GuestInput =="
+  GEN_HC=$(cargo run -q -p hypercerts-core --example emit_fixture_input "$WORK/hc_input.json")
+  echo "$GEN_HC"
+  HC_NODE_A=$(echo "$GEN_HC" | sed -n 1p | grep -o 'nodeId=0x[0-9a-f]*' | cut -d= -f2)
+  HC_HEAD_A=$(echo "$GEN_HC" | sed -n 1p | grep -o 'head=0x[0-9a-f]*' | cut -d= -f2)
+  HC_NODE_B=$(echo "$GEN_HC" | sed -n 2p | grep -o 'nodeId=0x[0-9a-f]*' | cut -d= -f2)
+  HC_HEAD_B=$(echo "$GEN_HC" | sed -n 2p | grep -o 'head=0x[0-9a-f]*' | cut -d= -f2)
+
+  echo "== hypercerts: deploy the lane-2-only instance =="
+  HC_VKEY=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts vkey )
+  HC_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts paramshash "$WORK/hc_input.json" )
+  HC_EMPTY_ACC=$(forge create src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
+  HC_REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$DEPLOYER" | jq -r .deployedTo)
+  HC_GATEWAY=$(forge create test/mocks/MockSP1Gateway.sol:MockSP1Gateway \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
+  cast send "$HC_GATEWAY" "setExpectedVKey(bytes32)" "$HC_VKEY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  HC_VERIFIER=$(forge create src/contracts/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$HC_GATEWAY" "$HC_VKEY" | jq -r .deployedTo)
+  HC_SNAPSHOT=$(forge create src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
+  cast send "$HC_SNAPSHOT" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "   registry=$HC_REGISTRY snapshot=$HC_SNAPSHOT verifier=$HC_VERIFIER (vkey=$HC_VKEY)"
+
+  echo "== hypercerts: register DID nodes (REGISTRAR gate = PDS-allowlist stand-in) + anchor heads =="
+  cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$HC_NODE_A" 1 --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$HC_NODE_B" 1 --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$HC_NODE_A" 1 "$HC_HEAD_A" "$ZERO32" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  TS_A=$(cast block latest --field timestamp --rpc-url "$RPC")
+  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$HC_NODE_B" 1 "$HC_HEAD_B" "$ZERO32" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  TS_B=$(cast block latest --field timestamp --rpc-url "$RPC")
+  # The witness anchors must carry the REAL chain timestamps so the guest re-fold matches
+  # the checkpointed anchorAcc.
+  jq --argjson a "$TS_A" --argjson b "$TS_B" \
+    '.anchors[0].block_timestamp = $a | .anchors[1].block_timestamp = $b' \
+    "$WORK/hc_input.json" > "$WORK/hc_input_chain.json"
+
+  echo "== hypercerts: trigger checkpoints both lanes (lane 1 = the empty accumulator) =="
+  cast send "$HC_SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "   anchorCheckpoints(0): $(cast call "$HC_SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" 0 --rpc-url "$RPC")"
+
+  echo "== hypercerts: prove via the CLI and land the journal-v2 proof =="
+  HC_EXEC=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts execute "$WORK/hc_input_chain.json" )
+  echo "$HC_EXEC"
+  ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts prove "$WORK/hc_input_chain.json" --groth16 >/dev/null )
+  HC_ROOT=$(echo "$HC_EXEC" | awk '/^outputRoot:/{print $2}')
+  HC_IPFS=$(echo "$HC_EXEC" | awk '/^ipfsHash:/{print $2}')
+  HC_CID=$(echo "$HC_EXEC" | awk '/^cid:/{print $2}')
+  HC_TOTAL=$(echo "$HC_EXEC" | awk '/^totalValue:/{print $2}')
+  HC_SKIPPED=$(echo "$HC_EXEC" | awk '/^skippedDigest:/{print $2}')
+  [ "$HC_SKIPPED" != "$ZERO32" ] || { echo "FATAL: fixture self-edge did not land in skippedDigest"; exit 1; }
+  cast send "$HC_SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+    0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$(hex_file zk/prover/hypercerts_proof.bin)" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  HC_ROOT_ONCHAIN=$(cast call "$HC_SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
+  [ "$HC_ROOT_ONCHAIN" = "$HC_ROOT" ] || { echo "FATAL: hypercerts root $HC_ROOT_ONCHAIN != proven $HC_ROOT"; exit 1; }
+  echo "   hypercerts root landed on-chain: $HC_ROOT_ONCHAIN ✓ (skippedDigest $HC_SKIPPED)"
+
+  echo "== hypercerts: register the instance in InstanceRegistry =="
+  IREG=$(forge create src/contracts/registry/InstanceRegistry.sol:InstanceRegistry \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$DEPLOYER" | jq -r .deployedTo)
+  HC_ID=$(cast keccak "hypercerts-e2e")
+  cast send "$IREG" "register(bytes32,(bytes32,address,address,address,bytes32))" \
+    "$HC_ID" "($(cast keccak "hypercerts"),$HC_SNAPSHOT,$HC_VERIFIER,$HC_REGISTRY,$HC_PARAMS_HASH)" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "   instance registered: $IREG[$HC_ID] ✓"
+  echo
+  echo "E2E HYPERCERTS PASS — the fourth program's full pipeline on anvil: seeded two-repo"
+  echo "fixture anchored (DID nodes via the registrar gate), both repos proven in ONE lane-2"
+  echo "journal (envelope 1 in-guest), root + skippedDigest landed, instance discoverable"
+  echo "on-chain via InstanceRegistry."
 fi
 
 echo
