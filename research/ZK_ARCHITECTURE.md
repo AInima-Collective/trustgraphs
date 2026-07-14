@@ -1,8 +1,8 @@
 # ZK TrustGraph — A Trustless Compute Seam
 
-**Status:** ✅ **Implemented (v1).** This spec is realized in `packages/pagerank-core` (canonical
+**Status:** ✅ **Implemented (v1).** Journal v2 (two-lane) supersedes the journal section from **M2**; see [`MULTI_PROGRAM_PLATFORM.md`](./MULTI_PROGRAM_PLATFORM.md). This spec is realized in `packages/pagerank-core` (canonical
 fixed-point PageRank + encodings), `zk/program` (SP1 guest), `zk/prover` (host), the on-chain
-`AttestationAccumulator` / `MerkleSnapshot.submitProof` / `SP1TrustGraphVerifier`, and the frontend
+`AttestationAccumulator` / `MerkleSnapshot.submitProof` / `SP1JournalVerifier` (né `SP1TrustGraphVerifier`), and the frontend
 `frontend/lib/pagerank` port. Guest output is cross-checked byte-identical against native Rust,
 Solidity (`test/unit/GoldenVectors.t.sol`), and TypeScript. Real STARK/Groth16 proving requires
 ≥16–32 GiB or the Succinct prover network — see [`zk/RUNBOOK.md`](./zk/RUNBOOK.md). Privacy remains

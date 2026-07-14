@@ -1,5 +1,7 @@
 # Feasibility Dossier: Verifying Signed Off-Chain Attestations inside SP1
 
+**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); see [`/GOAL.md`](../../GOAL.md)).
+
 > Source research for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md). Compiled 2026-07-10 · Grounded against this repo (SP1 pinned `=6.3.1` in `zk/program/Cargo.toml` and `zk/prover/Cargo.toml`; current guest ≈ **1.79M cycles** for the sample input, signer guest ≈ **1.85M cycles**, per `zk/RUNBOOK.md`).
 
 **TL;DR:** In-guest signature verification is entirely feasible and is the dominant cost. At ~1k-account scale (N≈1,000 signatures) the added proving cost is **~0.2–0.5B cycles ≈ well under $1 and single-digit minutes** on the Succinct network — noise. At N=100,000 EIP-712 signatures it's **~20–45B cycles, roughly $2–45 and ~15–60 min** — feasible but worth optimizing. The AT Protocol model (one commit signature per attester + SHA-256 MST verification) is **~5–10× cheaper** than per-record EIP-712 at the same record count and composes naturally with SP1 recursion (cache one sub-proof per attester repo, re-aggregate per epoch). No prior art of atproto-in-a-zkVM was found — this would be novel.

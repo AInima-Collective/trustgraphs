@@ -14,8 +14,19 @@ zero-knowledge proofs** — anyone who can generate a valid proof can post it, n
 
 The canonical algorithm + every on-chain byte encoding live in `packages/pagerank-core` (the single
 source of truth), compiled to the SP1 guests in `zk/program`, driven by the host in `zk/prover`, and
-ported to the browser in `frontend/lib/pagerank`. See [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md),
-[`zk/RUNBOOK.md`](./zk/RUNBOOK.md), and [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
+ported to the browser in `frontend/lib/pagerank`. See [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md),
+the per-program runbooks under [`docs/`](./docs/), and [`research/SIGNER_SYNC_ZK_PLAN.md`](./research/SIGNER_SYNC_ZK_PLAN.md).
+
+## Programs
+
+TrustGraph is a **platform of ZK-proven graphs**. Each SP1 program has its own guest bin, journal,
+verification key, and golden vectors; [`docs/PROGRAMS.md`](./docs/PROGRAMS.md) is the full index.
+
+| Program | Status | Docs |
+|---|---|---|
+| **trust-graph** — the `{account → score}` root producer | Live | [architecture](./docs/trust-graph/ARCHITECTURE.md) · [runbook](./docs/trust-graph/RUNBOOK.md) |
+| **signer-sync** — proven Safe owner-set rotation | Built | [architecture](./docs/signer-sync/ARCHITECTURE.md) · [runbook](./docs/signer-sync/RUNBOOK.md) |
+| **hypercerts** — trust graph over AT-Protocol records | Planned | [architecture](./docs/hypercerts/ARCHITECTURE.md) |
 
 ## Try it in 30 seconds
 
@@ -40,7 +51,7 @@ the UI showing the results), see [`LOCAL_TESTING.md`](./LOCAL_TESTING.md).
 > **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
 > anywhere. Generating a real STARK→Groth16 *proof* needs ≥16–32 GiB of RAM or the Succinct prover
 > network (`SP1_PROVER=network`). For a local dev loop you can validate with `execute` and, if you
-> lack the hardware, use the network for the final `prove`. See [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+> lack the hardware, use the network for the final `prove`. See [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md).
 
 ## Usage
 
@@ -78,8 +89,8 @@ frontend.
 cargo test -p pagerank-core
 
 # (optional) Regenerate the golden vectors and re-lock them against Solidity
-cargo run -p pagerank-core --example export_golden > test/golden/vectors.json
-forge test --match-path 'test/unit/GoldenVectors.t.sol'
+cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json
+forge test --match-path 'test/unit/golden/TrustGraphGoldenVectors.t.sol'
 
 # Build the guest ELFs (root producer + signer-sync) and the host CLI
 cd zk/program && cargo prove build && cd ../..
@@ -90,8 +101,8 @@ Validate that the guests match native `pagerank-core` (no proving, runs anywhere
 
 ```bash
 cd zk/prover
-cargo run --release -- execute         # root producer: guest == native
-cargo run --release -- signer-execute  # signer selection: guest == native
+cargo run --release -- trust-graph execute  # root producer: guest == native
+cargo run --release -- signer execute       # signer selection: guest == native
 cd ../..
 ```
 
@@ -121,16 +132,16 @@ the reward distributor, and a Zodiac Safe with the `MerkleGovModule` (governance
 
 ```bash
 # Deploy constants read from env (see deploy/env.ts):
-#   PARAMS_HASH             = cargo run -p trustgraph-prover -- paramshash [params.json]
-#   SP1_PROGRAM_VKEY        = cargo run -p trustgraph-prover -- vkey
-#   SP1_SIGNER_PROGRAM_VKEY = cargo run -p trustgraph-prover -- signer-vkey
-#   SELECTION_PARAMS_HASH   = cargo run -p trustgraph-prover -- signer-selectionparamshash [input.json]
+#   PARAMS_HASH             = cargo run -p trustgraph-prover -- trust-graph paramshash [params.json]
+#   SP1_PROGRAM_VKEY        = cargo run -p trustgraph-prover -- trust-graph vkey
+#   SP1_SIGNER_PROGRAM_VKEY = cargo run -p trustgraph-prover -- signer vkey
+#   SELECTION_PARAMS_HASH   = cargo run -p trustgraph-prover -- signer selectionparamshash [input.json]
 #   SP1_VERIFIER_GATEWAY    = the canonical SP1 gateway (present in a mainnet-fork anvil)
 pnpm deploy:full
 ```
 
 For a **real on-chain verify locally**, run anvil as a mainnet fork so Succinct's SP1 gateway is in
-state — see [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) → "Real end-to-end on a mainnet fork" (it also covers
+state — see [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md) → "Real end-to-end on a mainnet fork" (it also covers
 the `PARAMS_HASH` ⇄ schema bootstrapping).
 
 Deployed addresses are written to `.docker/deployment_summary.json` (and the Safe/module addresses to
@@ -172,9 +183,9 @@ cargo run -p input-exporter -- \
 
 # c. Prove the fixed-point PageRank (writes proof.bin = abi.encode(publicValues, seal)):
 cd zk/prover
-SP1_PROVER=network cargo run --release -- prove input.json --groth16
+SP1_PROVER=network cargo run --release -- trust-graph prove input.json --groth16
 #    local instead (needs ~16–32 GiB + a gnark/Go toolchain):
-#    SP1_PROVER=cpu cargo run --release --features native-gnark -- prove input.json --groth16
+#    SP1_PROVER=cpu cargo run --release --features native-gnark -- trust-graph prove input.json --groth16
 
 # d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid). `prove`/`execute` write blob.json:
 ipfs add --cid-version=1 --raw-leaves blob.json
@@ -194,7 +205,7 @@ cast send $MERKLE_SNAPSHOT \
 
 `submitProof` rebuilds the journal digest from the chain-pinned checkpoint + stored `paramsHash` + the
 submitted outputs and reverts unless the proof binds exactly that digest. Full detail (edge
-reconstruction, governance, gas) is in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+reconstruction, governance, gas) is in [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md).
 
 ### 9. Rotate the Safe owner set (signer-sync ZK loop, optional)
 
@@ -210,8 +221,8 @@ cargo run -p input-exporter -- \
   --checkpoint $CHECKPOINT_ID --params params.json \
   --signer --selection selection.json --out input.json
 cd zk/prover
-SP1_PROVER=network cargo run --release -- signer-prove input.json --groth16   # writes signer_proof.bin
-#    local instead: SP1_PROVER=cpu cargo run --release --features native-gnark -- signer-prove input.json --groth16
+SP1_PROVER=network cargo run --release -- signer prove input.json --groth16   # writes signer_proof.bin
+#    local instead: SP1_PROVER=cpu cargo run --release --features native-gnark -- signer prove input.json --groth16
 
 # c. Submit to rotate owners (SIGNERS ascending & unique; THRESHOLD in [1, |SIGNERS|]):
 cast send $SIGNER_SYNC_MODULE \
@@ -223,7 +234,7 @@ The module verifies the proof, then diffs the proven owner set against the Safe'
 on-chain (correct `prevOwner` pointers and the `1 ≤ threshold ≤ ownerCount` invariant at every step).
 The selection rule (`topN` / `minThreshold` / `targetThresholdBps`) is governance-pinned as
 `selectionParamsHash` — set it at deploy (`SELECTION_PARAMS_HASH`) or later via the module owner's
-`setSelectionParamsHash`. See [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md).
+`setSelectionParamsHash`. See [`research/SIGNER_SYNC_ZK_PLAN.md`](./research/SIGNER_SYNC_ZK_PLAN.md).
 
 ### 10. Explore other functionality
 

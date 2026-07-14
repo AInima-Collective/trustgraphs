@@ -34,7 +34,7 @@ What it does (`test/e2e/run.sh`): starts its own anvil → deploys `SchemaRegist
 `EASIndexerResolver` + a `(string comment, uint256 confidence)` schema → attests a 3-account ring and
 revokes one (4 folds) → `checkpoint()` → runs `input-exporter` for both the `GuestInput` and the
 `SignerInput` (each self-checks that the reconstructed edges re-fold to the on-chain `acc`) → runs the
-prover's `execute` / `signer-execute` and asserts `guest == native`. Prints `E2E PASS`.
+prover's `trust-graph execute` / `signer execute` and asserts `guest == native`. Prints `E2E PASS`.
 
 It **stops before real Groth16 proving** (which needs ≥16–32 GiB or the prover network) and doesn't
 touch the UI — that's the full stack below. The first run builds the guest ELF (a few minutes); after
@@ -93,9 +93,9 @@ cp test/e2e/params.template.json params.json    # tune seeds / pool / damping…
 
 ```bash
 cd zk/prover
-export SP1_PROGRAM_VKEY=$(cargo run -q --release -- vkey)
-export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer-vkey)
-export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer-selectionparamshash)   # no arg → default selection
+export SP1_PROGRAM_VKEY=$(cargo run -q --release -- trust-graph vkey)
+export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer vkey)
+export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer selectionparamshash)   # no arg → default selection
 cd ../..
 ```
 
@@ -202,14 +202,14 @@ cargo run -p input-exporter -- --rpc $RPC \
   --from-block $(( FORK_BLOCK + 1 )) --out input.json
 
 # execute (fast, no proof) to get the submitProof args — and blob.json
-EXEC=$( ( cd zk/prover && cargo run -q --release -- execute ../../input.json ) ); echo "$EXEC"
+EXEC=$( ( cd zk/prover && cargo run -q --release -- trust-graph execute ../../input.json ) ); echo "$EXEC"
 export OUTPUT_ROOT=$(echo "$EXEC" | awk '/outputRoot:/{print $2}')
 export IPFS_HASH=$(  echo "$EXEC" | awk '/ipfsHash:/{print $2}')
 export CID=$(        echo "$EXEC" | awk '/cid:/{print $2}')
 export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
 
 # prove — cpu Groth16 needs --features native-gnark + ~16-32 GiB RAM (drop it for SP1_PROVER=network)
-( cd zk/prover && cargo run --release --features native-gnark -- prove ../../input.json --groth16 )
+( cd zk/prover && cargo run --release --features native-gnark -- trust-graph prove ../../input.json --groth16 )
 
 # pin the score blob so the UI can fetch it (kubo HTTP API — no ipfs CLI needed)
 curl -sF file=@zk/prover/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"

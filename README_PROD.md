@@ -7,7 +7,7 @@ Add a new network to `config/networks.production.json` with all the correct meta
 Set the ZK deployment parameters in your environment (see `deploy/env.ts`):
 
 - `PARAMS_HASH` — the governance-pinned PageRank parameter hash
-- `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- vkey`)
+- `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- trust-graph vkey`)
 - `SP1_VERIFIER_GATEWAY` — the canonical SP1 verifier gateway on the target chain
 
 Then deploy the contracts, which will deploy and fill in the missing values:
@@ -16,7 +16,7 @@ Then deploy the contracts, which will deploy and fill in the missing values:
 pnpm deploy:contracts
 ```
 
-This deploys EAS + resolvers, the `SP1TrustGraphVerifier`, `MerkleSnapshot` (with the accumulator and
+This deploys EAS + resolvers, the `SP1JournalVerifier`, `MerkleSnapshot` (with the accumulator and
 the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the reward distributor.
 
 ### Run the prover

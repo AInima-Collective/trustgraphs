@@ -1,6 +1,6 @@
 # Private TrustGraph — A Privacy Architecture
 
-**Status:** Design proposal / research synthesis. Highly experimental, like the rest of TrustGraph.
+**Status:** ⏸️ **Deferred (GOAL.md Phase E).** Design proposal / research synthesis, highly experimental like the rest of TrustGraph.
 **Scope:** How to take TrustGraph from "transparent by construction" to "private by construction" without throwing away the WAVS + EAS + Merkle architecture that already works.
 
 ---
