@@ -14,6 +14,13 @@ import { readFileSync } from 'node:fs'
 
 import { concat, keccak256, toBytes, toHex, type Hex } from 'viem'
 
+import {
+  journalDigest as recomputeJournalDigest,
+  recompute,
+  type HypercertsParams,
+  type RecomputeInput,
+} from './recompute'
+
 // ---- pure-viem hashing helpers ----------------------------------------------
 
 const ZERO: Hex = `0x${'00'.repeat(32)}`
@@ -127,6 +134,75 @@ check(
   String(g.outputLeaf.leaf).toLowerCase()
 )
 check('journalDigest', journalDigest().toLowerCase(), String(j.digest).toLowerCase())
+
+// ---- reduced-tier recompute (the M4 exit criterion at the vector layer) -----
+//
+// Feed the indexer-served derived edge set + skips + bindings + chain accumulators into
+// recompute.ts and assert the reproduced journal EQUALS the golden journal, byte-for-byte. This is
+// the browser reproducing rank → distribute → output_root → blob/cid → skippedDigest → journal
+// digest from the envelope-verified edges alone (envelope verification itself stays in-guest).
+
+console.log('\nreduced-tier recompute (rank + root + journal from indexed edges)')
+
+const rc = g.recompute
+const rcParams: HypercertsParams = {
+  dampingFp: BigInt(p.dampingFp),
+  toleranceFp: BigInt(p.toleranceFp),
+  maxIterations: Number(p.maxIterations),
+  trustMultiplierFp: BigInt(p.trustMultiplierFp),
+  trustShareFp: BigInt(p.trustShareFp),
+  trustDecayFp: BigInt(p.trustDecayFp),
+  precisionScale: BigInt(p.precisionScale),
+  totalPool: BigInt(p.totalPool),
+  trustedSeedDids: p.trustedSeedDids as string[],
+  wFollowFp: BigInt(p.wFollowFp),
+  wBadgeFp: BigInt(p.wBadgeFp),
+  wEvalFp: BigInt(p.wEvalFp),
+  wAttribFp: BigInt(p.wAttribFp),
+  ackBoostFp: BigInt(p.ackBoostFp),
+  unackedAttribFp: BigInt(p.unackedAttribFp),
+  pdsAttestedWeightFp: BigInt(p.pdsAttestedWeightFp),
+  lane2MaxHeadAge: BigInt(p.lane2MaxHeadAge),
+}
+const rcInput: RecomputeInput = {
+  edges: (rc.edges as Array<{ source: Hex; target: Hex; weightFp: string }>).map((e) => ({
+    source: e.source,
+    target: e.target,
+    weightFp: e.weightFp,
+  })),
+  skips: (rc.skips as Array<{ nodeId: Hex; reason: number; epochObserved: number }>).map((s) => ({
+    nodeId: s.nodeId,
+    reason: Number(s.reason),
+    epochObserved: Number(s.epochObserved),
+  })),
+  bindings: (rc.bindings as Array<{ nodeId: Hex; address: Hex }>).map((b) => ({
+    nodeId: b.nodeId,
+    address: b.address,
+  })),
+  params: rcParams,
+  anchorAcc: rc.anchorAcc as Hex,
+  anchorCount: BigInt(rc.anchorCount),
+  acc: rc.acc as Hex,
+  leafCount: BigInt(rc.leafCount),
+}
+
+const result = recompute(rcInput)
+const rj = result.journal
+
+check('recompute paramsHash', String(rj.paramsHash).toLowerCase(), String(j.paramsHash).toLowerCase())
+check('recompute outputRoot', String(rj.outputRoot).toLowerCase(), String(j.outputRoot).toLowerCase())
+check('recompute ipfsHash', String(rj.ipfsHash).toLowerCase(), String(j.ipfsHash).toLowerCase())
+check('recompute cidDigest', String(rj.cidDigest).toLowerCase(), String(j.cidDigest).toLowerCase())
+check('recompute totalValue', rj.totalValue.toString(), String(j.totalValue))
+check('recompute skippedDigest', String(rj.skippedDigest).toLowerCase(), String(j.skippedDigest).toLowerCase())
+check('recompute anchorAcc', String(rj.anchorAcc).toLowerCase(), String(j.anchorAcc).toLowerCase())
+check('recompute blob', result.blob, String(g.cid.blob))
+check('recompute cid', result.cid, String(g.cid.cid))
+check(
+  'recompute journalDigest',
+  recomputeJournalDigest(rj).toLowerCase(),
+  String(j.digest).toLowerCase()
+)
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) FAILED`)

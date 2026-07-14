@@ -136,10 +136,12 @@ fn fixture_input() -> (GuestInput, B256, String) {
     (input, head, seed_did)
 }
 
-/// Independently reconstruct the fixture's canonical skip set (verify → derive), matching the
-/// steps `compute` folds into `skippedDigest`. The fixture is a single fresh anchor, so rule Φ
-/// contributes no skip; the set is exactly the record-level skips, canonically sorted.
-fn reconstruct_skips(input: &GuestInput) -> Vec<SkipEntry> {
+/// Independently reconstruct the fixture's derived graph (verify → derive), matching the exact
+/// `repos` the guest `compute` folds. The fixture is a single fresh anchor, so rule Φ contributes
+/// no skip; the graph's skip list is exactly the record-level skips, canonically sorted. This is
+/// the *envelope-verified edge set* the indexer serves to the browser (OFFCHAIN §6 reduced tier):
+/// the browser re-derives PageRank + root + journal from it (`frontend/lib/hypercerts/recompute.ts`).
+fn reconstruct_graph(input: &GuestInput) -> semantics::DerivedGraph {
     let now = input.anchors.iter().map(|a| a.block_timestamp).max().unwrap_or(0);
     let cols: Vec<&str> = COLLECTIONS.to_vec();
     let mut repos: Vec<RepoRecords> = Vec::new();
@@ -158,8 +160,13 @@ fn reconstruct_skips(input: &GuestInput) -> Vec<SkipEntry> {
             });
         }
     }
-    let graph = semantics::derive(&repos, &input.strongref_targets, &input.params.edge_params());
-    let mut skips = graph.skips;
+    semantics::derive(&repos, &input.strongref_targets, &input.params.edge_params())
+}
+
+/// The fixture's canonical skip set (verify → derive), matching the steps `compute` folds into
+/// `skippedDigest`.
+fn reconstruct_skips(input: &GuestInput) -> Vec<SkipEntry> {
+    let mut skips = reconstruct_graph(input).skips;
     skips.sort();
     skips
 }
@@ -352,6 +359,42 @@ fn main() {
     let r = compute(&input);
     let j = &r.journal;
     let skips = reconstruct_skips(&input);
+
+    // The reduced-tier reproduction inputs: the envelope-verified derived edge set + bindings +
+    // skips (what the indexer serves the browser) + the chain-state accumulators the journal binds.
+    // `frontend/lib/hypercerts/recompute.ts` re-derives rank → distribute → output_root → blob/cid →
+    // journal digest from ONLY these keys and must reproduce the journal above byte-for-byte.
+    let graph = reconstruct_graph(&input);
+    let recompute_edges: Vec<serde_json::Value> = graph
+        .outgoing
+        .iter()
+        .flat_map(|(source, targets)| {
+            targets.iter().map(move |(target, w)| {
+                json!({
+                    "source": hx(source.as_slice()),
+                    "target": hx(target.as_slice()),
+                    "weightFp": w.to_string(),
+                })
+            })
+        })
+        .collect();
+    let recompute_bindings: Vec<serde_json::Value> = graph
+        .bindings
+        .iter()
+        .map(|(node_id, addr)| {
+            json!({ "nodeId": hx(node_id.as_slice()), "address": hx(addr.as_slice()) })
+        })
+        .collect();
+    let recompute_skips: Vec<serde_json::Value> = skips
+        .iter()
+        .map(|sk| {
+            json!({
+                "nodeId": hx(sk.node_id.as_slice()),
+                "reason": sk.reason,
+                "epochObserved": sk.epoch_observed,
+            })
+        })
+        .collect();
     assert_eq!(
         skipped_digest(&skips),
         j.skipped_digest,
@@ -437,6 +480,16 @@ fn main() {
             "count": skip_preimage.len(),
             "entries": skip_preimage,
             "skippedDigest": hx(j.skipped_digest.as_slice())
+        },
+        "recompute": {
+            "note": "reduced-tier browser reproduction inputs — the envelope-verified derived edge set (indexer offchainEdge table), bindings, skips, and the chain-state accumulators the journal binds. envelope-1 verification / CAR walk stay in-guest; this is only the rank→distribute→root→journal reproduction (frontend/lib/hypercerts/recompute.ts).",
+            "edges": recompute_edges,
+            "bindings": recompute_bindings,
+            "skips": recompute_skips,
+            "acc": hx(j.acc.as_slice()),
+            "leafCount": j.leaf_count,
+            "anchorAcc": hx(j.anchor_acc.as_slice()),
+            "anchorCount": j.anchor_count
         }
     });
 
