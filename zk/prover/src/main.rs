@@ -19,6 +19,8 @@
 
 mod common;
 mod programs;
+#[cfg(feature = "witness-atproto")]
+mod witness;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -43,6 +45,20 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::signer::Command,
     },
+    /// Envelope-1 (atproto) conformance harness: run the guest over a CAR + PLC witness and
+    /// byte-assert guest == native (M3 exit; not a production program).
+    #[command(name = "atproto-conformance")]
+    AtprotoConformance {
+        #[command(subcommand)]
+        cmd: programs::atproto_conformance::Command,
+    },
+    /// Host-side lane-2 (atproto) witness assembly: fetch + archive repo CARs and PLC logs into an
+    /// offline-reproducible bundle. Requires `--features witness-atproto`.
+    #[cfg(feature = "witness-atproto")]
+    Witness {
+        #[command(subcommand)]
+        cmd: witness::Command,
+    },
 }
 
 fn main() -> Result<()> {
@@ -51,5 +67,8 @@ fn main() -> Result<()> {
     match cli.program {
         Program::TrustGraph { cmd } => programs::trust_graph::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
+        Program::AtprotoConformance { cmd } => programs::atproto_conformance::run(cmd),
+        #[cfg(feature = "witness-atproto")]
+        Program::Witness { cmd } => witness::run(cmd),
     }
 }

@@ -42,7 +42,10 @@ pub fn key_layer(key: &[u8]) -> u32 {
     clz / 2
 }
 
-fn lcp(a: &[u8], b: &[u8]) -> usize {
+/// Common-prefix length of two bytestrings (atproto `CountPrefixLen`). Public so the
+/// conformance suite can pin it against the canonical `mst/common_prefix.json` interop
+/// vectors; also used below to enforce canonical entry prefix-compression.
+pub fn lcp(a: &[u8], b: &[u8]) -> usize {
     a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count()
 }
 
@@ -159,8 +162,16 @@ impl<'a> Walker<'a> {
             l0
         };
         if let Some(pl) = parent_layer {
-            if node_layer >= pl {
-                return Err(format!("{cid}: child layer {node_layer} >= parent layer {pl}"));
+            // Canonical atproto rule (indigo `verifyStructure`): a child pointer descends
+            // EXACTLY one layer. Gaps are bridged by keyless pass-through nodes (`{l, e:[]}`),
+            // which land here with keys.is_empty() and node_layer == pl-1 by construction, so
+            // they satisfy this equality. A value-bearing node placed more than one layer below
+            // its parent (an illegal layer skip) — or any child under a layer-0 node — is
+            // rejected. (Previously this only enforced `node_layer < pl`, which admitted skips.)
+            if node_layer + 1 != pl {
+                return Err(format!(
+                    "{cid}: child layer {node_layer} != parent layer {pl} - 1 (illegal layer skip)"
+                ));
             }
         }
 

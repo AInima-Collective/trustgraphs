@@ -14,6 +14,16 @@ path = "src/main.rs"
 #   local groth16:  cargo run --features native-gnark --release -- prove input.json --groth16
 native-gnark = ["sp1-sdk/native-gnark"]
 
+# Opt-in: host-side lane-2 (atproto) witness assembly — the `witness` subcommand group.
+# Pulls the network/DAG-CBOR/date deps (reqwest + ipld + chrono) that the lean `prove`/`execute`
+# builds must NOT carry; leave OFF unless you are fetching CARs/PLC logs off the live network.
+#   cargo build  --release --features witness-atproto
+#   cargo run    --release --features witness-atproto -- witness fetch --did did:plc:...
+witness-atproto = [
+    "dep:reqwest",
+    
+]
+
 [dependencies]
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
 pagerank-core = { path = "../../packages/pagerank-core" }
@@ -23,6 +33,19 @@ serde_json = "1"
 anyhow = "1"
 hex = "0.4"
 clap = { version = "4", features = ["derive"] }
+
+# --- witness-atproto feature only (host-side, heavy; kept out of default builds) ---
+# The envelope verifier crate (light; guest-grade deps) — reused verbatim on the host so the
+# assembled bundle is byte-checked against the SAME code the guest runs.
+envelopes = { path = "../../packages/envelopes" }
+zk-core = { path = "../../packages/zk-core" }
+# reqwest blocking follows the getRepo 302 → PDS host automatically (M1 finding). rustls to avoid
+# a system-OpenSSL build dependency.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"], optional = true }
+ipld-core = { version = "0.4" }
+serde_ipld_dagcbor = { version = "=0.6.4" }
+sha2 = { version = "0.10", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"], optional = false }
 
 [build-dependencies]
 sp1-build = "=6.3.1"
