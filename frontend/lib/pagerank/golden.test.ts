@@ -2,12 +2,12 @@
  * Golden-vector reproduction test for the canonical fixed-point PageRank TS port.
  *
  * Asserts the TypeScript mirror of `packages/pagerank-core` reproduces, byte-for-byte, the
- * `test/golden/vectors.json` scenario: the same accumulator, paramsHash, outputRoot, per-account
+ * `test/golden/trust-graph.json` scenario: the same accumulator, paramsHash, outputRoot, per-account
  * values, IPFS blob/CID, and journal digest that the SP1 zk guest commits.
  *
  * Run: `pnpm test` (or `npx tsx lib/pagerank/golden.test.ts`).
  *
- * The golden values below are copied verbatim from `test/golden/vectors.json` (the constraint is
+ * The golden values below are copied verbatim from `test/golden/trust-graph.json` (the constraint is
  * to keep a self-contained frontend fixture rather than import across package boundaries).
  */
 import assert from 'node:assert/strict'
@@ -85,7 +85,7 @@ const input: GuestInput = {
 
 const selection: SelectionParams = { topN: 3, minThreshold: 1, targetThresholdBps: 5000 }
 
-// Golden expectations (from test/golden/vectors.json).
+// Golden expectations (from test/golden/trust-graph.json).
 const GOLDEN = {
   acc: '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d151',
   leafCount: 3n,
@@ -107,7 +107,7 @@ const GOLDEN = {
     [addr(2)]: 300189600379200758401516n,
     [addr(3)]: 479793959587919175838351n,
   } as Record<string, bigint>,
-  // Signer-sync section (from test/golden/vectors.json `.signer`).
+  // Signer-sync section (from test/golden/trust-graph.json `.signer`).
   signer: {
     selectionParamsHash: '0xae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c5204310',
     signers: [

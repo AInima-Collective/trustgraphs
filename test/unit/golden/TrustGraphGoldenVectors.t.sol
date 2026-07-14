@@ -7,18 +7,22 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-/// @title GoldenVectors
-/// @notice Cross-language lock (Risk R2): independently recompute in Solidity every frozen byte
-///         format that `pagerank-core` produces (via `cargo run --example export_golden`) and
-///         assert equality. If the guest's Rust encoding and the on-chain Solidity encoding ever
-///         diverge, this test fails — before a "valid" proof that never verifies reaches anyone.
-contract GoldenVectorsTest is Test {
+/// @title TrustGraphGoldenVectors
+/// @notice Cross-language lock (Risk R2) for the `trust-graph` (root-producer) program: independently
+///         recompute in Solidity every frozen byte format that `pagerank-core` produces (via
+///         `cargo run --example export_golden`) and assert equality. If the guest's Rust encoding and
+///         the on-chain Solidity encoding ever diverge, this test fails — before a "valid" proof that
+///         never verifies reaches anyone.
+/// @dev    The `trust-graph` and `signer` programs share the same golden feed
+///         (`test/golden/trust-graph.json`); the `.signer` section is asserted in
+///         SignerGoldenVectors.t.sol.
+contract TrustGraphGoldenVectorsTest is Test {
     using stdJson for string;
 
     string json;
 
     function setUp() public {
-        json = vm.readFile("test/golden/vectors.json");
+        json = vm.readFile("test/golden/trust-graph.json");
     }
 
     /// Accumulator edge leaf: keccak256(abi.encode(uint8, address, address, bytes32, uint256, bytes32)).
@@ -118,77 +122,5 @@ contract GoldenVectorsTest is Test {
             weightFieldIndex: uint32(json.readUint(".params.weightFieldIndex"))
         });
         assertEq(ParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
-    }
-
-    /// selectionParamsHash: keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetBps)).
-    function test_SelectionParamsHash() public view {
-        bytes memory encoded = abi.encode(
-            uint32(json.readUint(".signer.selection.topN")),
-            uint32(json.readUint(".signer.selection.minThreshold")),
-            uint32(json.readUint(".signer.selection.targetThresholdBps"))
-        );
-        assertEq(
-            keccak256(encoded),
-            json.readBytes32(".signer.selectionParamsHash"),
-            "selectionParamsHash mismatch"
-        );
-    }
-
-    /// signerSetRoot: OZ standard tree over the selected owner set (leaf = keccak256(abi.encode(address))).
-    function test_SignerSetRoot() public view {
-        address[] memory signers = json.readAddressArray(".signer.signers");
-        bytes32[] memory leaves = new bytes32[](signers.length);
-        for (uint256 i = 0; i < signers.length; i++) {
-            leaves[i] = keccak256(abi.encode(signers[i]));
-        }
-        assertEq(_ozRoot(leaves), json.readBytes32(".signer.signerSetRoot"), "signerSetRoot mismatch");
-    }
-
-    /// Signer journal: abi.encode(bytes32, uint64, bytes32, bytes32, bytes32, uint256) and its keccak.
-    /// This is the EXACT tuple `SignerSyncZkModule.submitSignerProof` rebuilds and verifies against.
-    function test_SignerJournalEncodingAndDigest() public view {
-        bytes memory encoded = abi.encode(
-            json.readBytes32(".signer.journal.acc"),
-            uint64(json.readUint(".signer.journal.leafCount")),
-            json.readBytes32(".signer.journal.paramsHash"),
-            json.readBytes32(".signer.journal.selectionParamsHash"),
-            json.readBytes32(".signer.journal.signerSetRoot"),
-            json.readUint(".signer.journal.targetThreshold")
-        );
-        assertEq(encoded, json.readBytes(".signer.journal.encoded"), "signer journal encoding mismatch");
-        assertEq(
-            keccak256(encoded), json.readBytes32(".signer.journal.digest"), "signer journal digest mismatch"
-        );
-    }
-
-    /// Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).
-    function _ozRoot(bytes32[] memory leaves) internal pure returns (bytes32) {
-        uint256 n = leaves.length;
-        if (n == 0) return bytes32(0);
-        // insertion sort (small n)
-        for (uint256 i = 1; i < n; i++) {
-            bytes32 key = leaves[i];
-            uint256 j = i;
-            while (j > 0 && leaves[j - 1] > key) {
-                leaves[j] = leaves[j - 1];
-                j--;
-            }
-            leaves[j] = key;
-        }
-        if (n == 1) return leaves[0];
-        uint256 size = 2 * n - 1;
-        bytes32[] memory tree = new bytes32[](size);
-        for (uint256 i = 0; i < n; i++) {
-            tree[size - 1 - i] = leaves[i];
-        }
-        for (uint256 i = n - 1; i > 0; i--) {
-            uint256 idx = i - 1;
-            bytes32 a = tree[2 * idx + 1];
-            bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b
-                ? keccak256(abi.encode(a, b))
-                : keccak256(abi.encode(b, a));
-        }
-        return tree[0];
     }
 }

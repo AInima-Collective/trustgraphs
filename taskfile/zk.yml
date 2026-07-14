@@ -1,0 +1,71 @@
+version: "3"
+
+silent: true
+
+# ZK program tasks (multi-program platform).
+#
+# Every task takes PROGRAM (values: trust-graph | signer, default trust-graph). The prover CLI is
+# invoked as `trustgraph-prover <program> <command>`, so PROGRAM is passed as the first positional
+# arg. The `trust-graph` and `signer` programs share the same golden feed
+# (test/golden/trust-graph.json) because the signer program reads the same trust-graph attestation
+# feed — there is no separate signer vector file.
+
+tasks:
+  vectors:
+    desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer)"
+    vars:
+      PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
+    cmds:
+      # Both programs share test/golden/trust-graph.json — the signer vectors live in its `.signer`
+      # section — so regeneration is the same command regardless of PROGRAM.
+      - cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json
+
+  vkey:
+    desc: "Print the SP1 program vkey for PROGRAM (trust-graph | signer)"
+    vars:
+      PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
+    env:
+      # vkey derivation only needs setup, not a prover backend; cpu/network backends eagerly
+      # allocate the ~5 GiB CPU prover machine. The vkey is identical under mock.
+      SP1_PROVER: mock
+    cmds:
+      - cd zk/prover && cargo run --release -- {{.PROGRAM}} vkey
+
+  execute:
+    desc: "Execute the guest for PROGRAM (guest==native byte-assert); optional INPUT= file"
+    vars:
+      PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
+      INPUT: '{{.INPUT}}'
+    env:
+      # execute never produces a proof — the executor + byte-assert are identical under mock,
+      # and the cpu/network backends' eager CPU-prover allocation OOMs small boxes/CI runners.
+      SP1_PROVER: mock
+    cmds:
+      - cd zk/prover && cargo run --release -- {{.PROGRAM}} execute {{.INPUT}}
+
+  prove:
+    desc: "Prove the guest for PROGRAM (trust-graph | signer); GROTH16=1 for a groth16 proof, optional INPUT="
+    vars:
+      PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
+      INPUT: '{{.INPUT}}'
+    cmds:
+      - cd zk/prover && cargo run --release -- {{.PROGRAM}} prove {{.INPUT}} {{if eq .GROTH16 "1"}}--groth16{{end}}
+
+  parity:
+    desc: "Aggregate cross-language parity gate for PROGRAM (trust-graph | signer)"
+    vars:
+      PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
+    cmds:
+      # (a) Regenerate golden vectors and fail if the encodings drifted without regenerated vectors.
+      - task: vectors
+        vars: { PROGRAM: "{{.PROGRAM}}" }
+      - git diff --exit-code test/golden/
+      # (b) Rust parity (canonical core + zk glue).
+      - cargo test -p pagerank-core -p zk-core
+      # (c) Solidity golden vectors (both split suites).
+      - forge test --match-path "test/unit/golden/*"
+      # (d) Frontend TS port golden vectors.
+      - cd frontend && pnpm test
+      # (e) Guest==native byte-assert for PROGRAM.
+      - task: execute
+        vars: { PROGRAM: "{{.PROGRAM}}" }

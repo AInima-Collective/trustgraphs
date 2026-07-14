@@ -1,0 +1,60 @@
+name: ZK Parity
+
+on:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "zk/**"
+      - "test/golden/**"
+      - "test/unit/golden/**"
+      - "frontend/lib/pagerank/**"
+      - "taskfile/zk.yml"
+
+jobs:
+  parity:
+    name: Parity (${{ matrix.program }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        program: [trust-graph, signer]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - uses: actions/setup-node@v4
+        name: Install Node.js
+        with:
+          node-version: 21
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install SP1 toolchain (pinned 6.3.1)
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version v6.3.1
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+
+      - name: Install Task
+        uses: go-task/setup-task@v1
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: ZK parity (${{ matrix.program }})
+        run: task --yes zk:parity PROGRAM=${{ matrix.program }}
