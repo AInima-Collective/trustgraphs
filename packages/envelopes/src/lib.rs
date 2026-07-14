@@ -12,6 +12,7 @@
 //! Rules identical to the other guest crates: NO floats, NO non-deterministic iteration,
 //! NO platform-dependent operations.
 
+pub mod atproto;
 pub mod eas_offchain;
 pub mod ecdsa;
 
