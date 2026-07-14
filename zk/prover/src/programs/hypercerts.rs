@@ -180,6 +180,9 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
     // The canonical nodeId-keyed score blob whose sha256 is `ipfsHash` and whose CID is `cid`.
     std::fs::write("hypercerts_blob.json", &native.blob)?;
     println!("wrote hypercerts_blob.json ({} bytes) — pin at the cid above", native.blob.len());
+    // The skippedDigest PREIMAGE: watchers audit every rule-Φ/record skip without recompute.
+    std::fs::write("hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
+    println!("wrote hypercerts_skips.json ({} skip entries)", native.skips.len());
     Ok(())
 }
 
@@ -192,6 +195,7 @@ fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
     std::fs::write("hypercerts_proof.bin", &blob)?;
     std::fs::write("hypercerts_public_values.bin", &public_values)?;
     std::fs::write("hypercerts_blob.json", &native.blob)?;
+    std::fs::write("hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
     println!("wrote hypercerts_proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
     println!(
         "wrote hypercerts_blob.json ({} bytes) — pin at the cid for the UI",

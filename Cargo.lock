@@ -3422,5 +3422,6 @@ name = "zk-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
+ "serde",
  "sha2",
 ]

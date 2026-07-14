@@ -27,7 +27,9 @@ pub fn anchor_leaf(
 
 /// One rule-Φ / deterministic-skip record: this node's lane-2 data was skipped or
 /// carried forward, with a closed-enum reason (per-program; see the program crate).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct SkipEntry {
     pub node_id: B256,
     pub reason: u8,

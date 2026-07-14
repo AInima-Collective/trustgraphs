@@ -20,6 +20,14 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 
 ---
 
+
+> **One-script deploy:** the whole battery below is also available as a single labeled script —
+> `forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance --sig "run(string)" <label>`
+> (env: `SP1_VERIFIER_GATEWAY`, `HYPERCERTS_VKEY`, `HYPERCERTS_PARAMS_HASH`,
+> `HYPERCERTS_EPOCH_LENGTH`, optional `INSTANCE_REGISTRY` + admin overrides); it writes
+> `.docker/hypercerts_instance_<label>_deploy.json`. Third-party epoch reproduction is
+> documented in [`REPRODUCE.md`](./REPRODUCE.md).
+
 ## Components (hypercerts-specific)
 
 | Path | What it is |

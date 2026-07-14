@@ -136,6 +136,10 @@ pub struct ComputeResult {
     pub scores: Vec<(B256, U256)>,
     /// Bound-actor address per nodeId (drives the extra v1 address leaves).
     pub bindings: BTreeMap<B256, Address>,
+    /// The skippedDigest PREIMAGE (canonically sorted skip entries) — published alongside
+    /// the proof so watchers audit rule-Φ/record skips without recomputing the epoch
+    /// (GOAL "Done when" #3).
+    pub skips: Vec<SkipEntry>,
     pub blob: Vec<u8>,
     pub cid: String,
 }
@@ -284,6 +288,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
 
     // 7. Journal v2, lane-2-only shape: lane 1 is the zero accumulator.
     skips.sort();
+    let skipped = skipped_digest(&skips);
     let journal = Journal {
         acc: B256::ZERO,
         leaf_count: 0,
@@ -294,7 +299,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         ipfs_hash,
         cid_digest,
         total_value,
-        skipped_digest: skipped_digest(&skips),
+        skipped_digest: skipped,
     };
-    ComputeResult { journal, scores: assigned, bindings: graph.bindings, blob, cid: cid_str }
+    ComputeResult { journal, scores: assigned, bindings: graph.bindings, skips, blob, cid: cid_str }
 }
