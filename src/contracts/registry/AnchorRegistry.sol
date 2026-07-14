@@ -52,6 +52,7 @@ contract AnchorRegistry is AccessControl {
     error NotRegistered(bytes32 nodeId);
     error AlreadyRegistered(bytes32 nodeId);
     error WrongNodeId(bytes32 nodeId, address sender);
+    error AddressKindIsSelfRegisterOnly();
 
     /// @param admin Authority over REGISTRAR_ROLE (the operational timelock).
     constructor(address admin) {
@@ -71,6 +72,9 @@ contract AnchorRegistry is AccessControl {
     /// @notice Gated registration for non-address node kinds (DIDs etc.). The gate policy —
     ///         PDS allowlist, invited-by, bond — lives with the registrar, not in this contract.
     function registerNode(bytes32 nodeId, uint8 kind) external onlyRole(REGISTRAR_ROLE) {
+        // Address nodes bind by a tx from the address (register()); a registrar must not be able
+        // to mint an "address-kind" node whose id matches no real address.
+        if (kind == NODE_KIND_ADDRESS) revert AddressKindIsSelfRegisterOnly();
         if (registered[nodeId]) revert AlreadyRegistered(nodeId);
         registered[nodeId] = true;
         nodeKind[nodeId] = kind;
