@@ -12,7 +12,9 @@ export const merkleMetadata = offchainSchema.table(
     numAccounts: t.integer().notNull(),
     // uint256-scale (the reward pool can exceed 1e18); Postgres bigint (int8) is only 64-bit, so use
     // numeric(78,0) — same convention Ponder uses for its own bigint columns.
-    totalValue: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
     sources: t.jsonb().notNull().$type<
       {
         name: string
@@ -80,6 +82,70 @@ export const skippedNode = offchainSchema.table(
     index().on(t.checkpointId),
     index().on(t.nodeId),
     index().on(t.reason),
+  ]
+)
+
+// hypercertsMetadata — per-root journal fields for the hypercerts (lane-2) instance. The `merkle_metadata`
+// twin, but keyed to the hypercerts snapshot and carrying the lane-2 journal fields the trust-graph
+// metadata table doesn't have (`skippedDigest`, `anchorAcc`, `anchorCount`). Populated by the OFF-CHAIN
+// prover/witness pipeline (the guest commits only the journal digest on-chain; the nodeId→score preimage
+// and its skipped set come from the archived blob) and validated against the on-chain `outputRoot` —
+// same provenance discipline as `skipped_node`. Ingestion is stubbed for now (see
+// `ingestHypercertsScores` in src/anchor.ts); the bundle API reads these rows.
+export const hypercertsMetadata = offchainSchema.table(
+  'hypercerts_metadata',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(), // the on-chain outputRoot (hex)
+    ipfsHash: t.text().notNull(),
+    ipfsHashCid: t.text().notNull(),
+    numNodes: t.integer().notNull(),
+    // uint256-scale total distributed value; numeric(78,0), not int8 (overflows above ~9.2e18).
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    // Journal v2 lane-2 commitments (32-byte hex) — served in the bundle for auditability.
+    skippedDigest: t.text().notNull(),
+    anchorAcc: t.text().notNull(),
+    anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
+    index().on(t.root),
+    index().on(t.ipfsHashCid),
+    index().on(t.timestamp),
+  ]
+)
+
+// hypercertsScore — the `merkle_entry` twin for the hypercerts instance, keyed by 32-byte nodeId
+// (`keccak256(did)` for actors, `keccak256("at://did/coll/rkey")` for artifacts) instead of a 20-byte
+// address. `boundAddress` is the verified `link.evm` binding (nullable); when present it earns the extra
+// v1 address leaf in the output tree so address-keyed consumers verify against the same root. `proof`
+// may be precomputed at ingestion (like `merkle_entry`); if null, the bundle API rebuilds the tree from
+// the full score set for the root and derives the proof on the fly (both yield the same OZ proof).
+export const hypercertsScore = offchainSchema.table(
+  'hypercerts_score',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    nodeId: t.text().notNull(),
+    // uint256-scale per-node score; numeric(78,0).
+    value: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    // The verified link.evm binding (hex address), or null for satellite/artifact nodes.
+    boundAddress: t.text(),
+    // Optional precomputed OZ proof; null ⇒ the API derives it from the root's full score set.
+    proof: t.jsonb().$type<string[]>(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.nodeId] }),
+    index().on(t.root),
+    index().on(t.nodeId),
+    index().on(t.boundAddress),
+    index().on(t.timestamp),
   ]
 )
 

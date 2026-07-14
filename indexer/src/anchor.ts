@@ -86,3 +86,36 @@ export async function ingestSkippedNodes(_checkpointId: bigint): Promise<void> {
   // TODO(lane-2): implement off-chain bundle read + on-chain skippedDigest validation (see above).
   return
 }
+
+/*///////////////////////////////////////////////////////////////
+    STUB — hypercerts score ingestion (off-chain prover/witness pipeline)
+//////////////////////////////////////////////////////////////*/
+
+/**
+ * NOT WIRED UP yet — intentionally stubbed, same provenance discipline as `ingestSkippedNodes`.
+ *
+ * The hypercerts guest commits only the journal digest on-chain (the `{nodeId → score}` preimage lives
+ * in the pinned blob at `cid`, and the skipped set / bindings are the off-chain prover bundle). This
+ * hook is where those become the `offchain.hypercerts_metadata` + `offchain.hypercerts_score` rows the
+ * `{nodeId, score, proof[]}` bundle API (src/api/hypercerts.ts) serves.
+ *
+ * Wiring this up (a later milestone) means, for a given hypercerts `MerkleRootUpdated`:
+ *   1. Fetch the canonical nodeId-keyed blob from IPFS at the event's `ipfsHashCid`
+ *      (`{ "0x<nodeId>": "<decimal>", … }`, hypercerts_core::compute::canonical_blob).
+ *   2. Read the verified `link.evm` bindings (nodeId → address) and the skipped set from the prover's
+ *      archived witness bundle for the matching checkpoint.
+ *   3. Rebuild the guest's exact OZ output tree (unified nodeId leaves + v1 address leaves for bound
+ *      nodes — src/api/hypercerts-tree.ts) and assert its root equals the on-chain `outputRoot` before
+ *      trusting the rows (mirrors the `merkle.ts` root cross-check).
+ *   4. Upsert `hypercerts_metadata` (root + journal fields) and `hypercerts_score` (per-node value +
+ *      boundAddress, optionally the precomputed proof).
+ *
+ * Left as a documented no-op so the tables exist and their provenance is unambiguous; the bundle API's
+ * tree logic is verified without live rows by src/api/hypercerts-tree.test.ts.
+ */
+export async function ingestHypercertsScores(
+  _checkpointId: bigint
+): Promise<void> {
+  // TODO(hypercerts): implement blob fetch + bundle read + on-chain outputRoot validation (see above).
+  return
+}

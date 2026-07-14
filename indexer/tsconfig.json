@@ -10,6 +10,9 @@
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
+    // Permit explicit `.ts` import specifiers (required by the node:test runner for local .ts imports,
+    // e.g. src/api/hypercerts-tree.test.ts). Purely permissive; safe under noEmit.
+    "allowImportingTsExtensions": true,
 
     // Language and environment
     "moduleResolution": "bundler",

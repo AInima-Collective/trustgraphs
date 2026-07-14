@@ -5,6 +5,7 @@ import schema from 'ponder:schema'
 
 import account from './account'
 import attestations from './attestations'
+import hypercerts from './hypercerts'
 import localismFund from './localism-fund'
 import merkle from './merkle'
 import network from './network'
@@ -17,6 +18,7 @@ app.use('/graphql', graphql({ db, schema }))
 
 app.route('/account', account)
 app.route('/attestations', attestations)
+app.route('/hypercerts', hypercerts)
 app.route('/merkle', merkle)
 app.route('/network', network)
 
