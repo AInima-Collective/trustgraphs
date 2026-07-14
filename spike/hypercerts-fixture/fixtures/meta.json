@@ -1,0 +1,114 @@
+{
+  "generatedAt": "2026-07-14T16:22:59.389Z",
+  "pdsVersion": "0.5.17",
+  "devEnvVersion": "0.5.31",
+  "lexiconVersion": "1.1.0",
+  "primaryDid": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
+  "peerDid": "did:plc:muv57sirdfpkaiaapvlk55fx",
+  "ghostDid": "did:plc:zzzzzzzzzzzzzzzzzzzzzzzz",
+  "rev": "3mqmmjg7jcs2k",
+  "headCid": "bafyreia6obygtkat3yn3jr4k37wgxd2qt6zxwd3ici5khmikwri6ccrdve",
+  "dataRoot": null,
+  "atprotoVerificationMethod": {
+    "id": "#atproto",
+    "type": "EcdsaSecp256k1VerificationKey2019",
+    "controller": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
+    "publicKeyMultibase": "zPBAyx6xFCFXavEXDPmhzDn5RmbXJQfxWwtVuYRQsYinacbbGU5qCQHyi4eWxRbr5hKrWDKA14gxsPeH8XbEVhtzk"
+  },
+  "recordCount": 7,
+  "collections": [
+    "app.certified.graph.follow",
+    "app.certified.badge.award",
+    "app.certified.badge.response",
+    "org.hypercerts.context.evaluation",
+    "org.hypercerts.claim.activity",
+    "org.hypercerts.context.acknowledgement",
+    "app.certified.link.evm"
+  ],
+  "validationBehavior": "validate:true REJECTED: Unknown lexicon type: app.certified.graph.follow",
+  "evm": {
+    "privateKey": "0xe12a05bf98dbb4520318418c4194486c00914844ba8400a7f4516eae675889c4",
+    "address": "0x24dF77757394DFDf84f47b6C55df431C9c78A7b9",
+    "chainId": "10",
+    "timestamp": "1784046178",
+    "nonce": "1",
+    "signature": "0x4986adceffb13ac272c23152301e00a21b8788f46233bea2467ba5f958ddf01a6f7159d421dcbd5a0f79391477a52e85a28878fd4658f387a50651fea02eb04d1b",
+    "eip712": {
+      "domain": {
+        "name": "IdentityLink",
+        "version": "1",
+        "chainId": 10
+      },
+      "primaryType": "LinkAttestation",
+      "types": {
+        "LinkAttestation": [
+          {
+            "name": "did",
+            "type": "string"
+          },
+          {
+            "name": "evmAddress",
+            "type": "address"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "timestamp",
+            "type": "uint256"
+          },
+          {
+            "name": "nonce",
+            "type": "uint256"
+          }
+        ]
+      },
+      "message": {
+        "did": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
+        "evmAddress": "0x24dF77757394DFDf84f47b6C55df431C9c78A7b9",
+        "chainId": "10",
+        "timestamp": "1784046178",
+        "nonce": "1"
+      }
+    }
+  },
+  "strongRefs": {
+    "badgeDefinition": {
+      "uri": "at://did:plc:muv57sirdfpkaiaapvlk55fx/app.certified.badge.definition/3mqmmjfkv5s2k",
+      "cid": "bafyreieoqlyx7bbucqmkqbdbyo7k4wvtw5t7vfpgbhs6yg2xxn37q2jknm"
+    },
+    "inboundAward": {
+      "uri": "at://did:plc:muv57sirdfpkaiaapvlk55fx/app.certified.badge.award/3mqmmjfn4h22k",
+      "cid": "bafyreifnf2nzlmwgovvua3la57x6sj6aqygfsytblvfknmxvhftxnwusyi"
+    },
+    "activity": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.claim.activity/reforestation-amazon-2024",
+      "cid": "bafyreidhafyflagnf2mw2t7iphl63aeybqg5ebaeyebhr6vwot6n43tkfy"
+    },
+    "follow": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.graph.follow/3mqmmjfozxs2k",
+      "cid": "bafyreidjy2scwqlepq7omfccntdux4fsf7agjhz6vlbld63yuyv425iwhm"
+    },
+    "award": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.badge.award/3mqmmjfqjt22k",
+      "cid": "bafyreigklpv246hx7nb553gwdh7q2rij23fhmx6wn4ap4zvwihqxtad6di"
+    },
+    "response": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.badge.response/3mqmmjfsr4c2k",
+      "cid": "bafyreibbeil5kcwmonsfrbjxorzfu2vup2seeekidm5gzpm3o6glqngxmq"
+    },
+    "evaluation": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.context.evaluation/3mqmmjfwja22k",
+      "cid": "bafyreigmawmqxq6t76lxvehl2kdhk7m6r7nw4j34sksjuqkxsjlybo4ylm"
+    },
+    "acknowledgement": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.context.acknowledgement/3mqmmjg2dcc2k",
+      "cid": "bafyreieiitmopugov7qja4wu47eo5xhkgsbtl5y4yp7ajdvbag3brtpyte"
+    },
+    "linkEvm": {
+      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.link.evm/self",
+      "cid": "bafyreifju3jbajhr5dpn4z4vpg3v4gmmvtxx3szdi33vqep2zyri35fx3m"
+    }
+  }
+}

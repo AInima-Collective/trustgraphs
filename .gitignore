@@ -48,3 +48,8 @@ config/networks.development.json
 .docker/*.json
 .docker/*.log
 test/e2e/deploy.json
+
+# M1 spike fixtures: large real-repo CARs are re-fetchable (see spike/*/fixtures/README.md);
+# only the small hypercerts fixture CAR is committed.
+spike/mst/fixtures/*.car
+spike/*/node_modules/

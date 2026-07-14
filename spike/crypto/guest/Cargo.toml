@@ -1,0 +1,57 @@
+[package]
+name = "spike-crypto-guest"
+version = "0.1.0"
+edition = "2021"
+
+# One guest crate, many bins. This is the PATCHED build: the [patch.crates-io] section below
+# redirects k256/p256/sha2/tiny-keccak to the SP1 precompile-accelerated forks. Because
+# [patch.crates-io] is crate-graph-wide, the unpatched comparison lives in the sibling
+# `guest-nopatch` crate (same source files, no patch section).
+
+[[bin]]
+name = "noop"
+path = "src/bin/noop.rs"
+
+[[bin]]
+name = "bench-memfill"
+path = "src/bin/memfill.rs"
+
+[[bin]]
+name = "bench-ecrecover"
+path = "src/bin/bench_ecrecover.rs"
+
+[[bin]]
+name = "bench-p256-verify"
+path = "src/bin/bench_p256_verify.rs"
+
+[[bin]]
+name = "bench-keccak"
+path = "src/bin/bench_keccak.rs"
+
+[[bin]]
+name = "bench-sha256"
+path = "src/bin/bench_sha256.rs"
+
+[dependencies]
+sp1-zkvm = "=6.3.1"
+k256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+# Detach from the root workspace: the guest builds for riscv64im-succinct-zkvm-elf with the
+# `succinct` toolchain and must not share the root dependency graph.
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+# SP1 precompile patch crates for the 6.x line (tags per research/offchain/03-sp1-feasibility.md §1,
+# all verified present via `git ls-remote` on 2026-07-14).
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-6.0.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.0.0" }
+p256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "p256", tag = "patch-p256-13.2-sp1-6.0.0" }

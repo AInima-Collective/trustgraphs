@@ -1,0 +1,29 @@
+[package]
+name = "mst-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Own workspace root so this throwaway crate is NOT pulled into the repo's
+# root Cargo workspace.
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+serde_ipld_dagcbor = "=0.6.4"
+ipld-core = "0.4"
+sha2 = "0.10"
+k256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+ecdsa = "0.16"
+bs58 = "0.5"
+hex = "0.4"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+
+[[bin]]
+name = "mst-spike"
+path = "src/main.rs"

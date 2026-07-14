@@ -1,0 +1,29 @@
+[
+  {
+    "did": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
+    "operation": {
+      "type": "plc_operation",
+      "verificationMethods": {
+        "atproto": "did:key:zQ3shkNUqVV4ZEvLoBHdAMu3kmJ7NHuonsf1s2txykCHyYrfY"
+      },
+      "rotationKeys": [
+        "did:key:zQ3shXH4az3rk1jP8SgNitCdJBnZbyxjEGpRem7nq95N194eL",
+        "did:key:zQ3shjZ2hdBXdDswZ7TiAGA5exqnrHPYW8uFGUkQP981PKvQd"
+      ],
+      "alsoKnownAs": [
+        "at://alice.test"
+      ],
+      "services": {
+        "atproto_pds": {
+          "type": "AtprotoPersonalDataServer",
+          "endpoint": "http://localhost:44447"
+        }
+      },
+      "prev": null,
+      "sig": "_OIV4AJf-_YkAuCDElauc0ov4EIdnhXeSZ-sqcBbwpM-q72Sj6Hmjgfosoo7UrijnMggAJYCmwtYr46eG5wwqQ"
+    },
+    "cid": "bafyreighezemel75mk5n6f23loclfmxxc4llza3pxyzcmlkdbqnhawwmfy",
+    "nullified": false,
+    "createdAt": "2026-07-14T16:22:57.837Z"
+  }
+]
