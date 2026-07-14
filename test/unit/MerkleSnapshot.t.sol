@@ -30,14 +30,18 @@ contract MerkleSnapshotTest is Test {
     }
 
     function _expectDigest(bytes32 acc, uint64 leafCount) internal {
+        // Journal v2: lane-2 fields are the zero accumulator on this lane-1-only instance.
         bytes32 digest = keccak256(
-            abi.encode(acc, leafCount, paramsHash, ROOT, IPFS, keccak256(bytes(CID)), TOTAL)
+            abi.encode(
+                acc, leafCount, bytes32(0), uint64(0), paramsHash, ROOT, IPFS,
+                keccak256(bytes(CID)), TOTAL, bytes32(0)
+            )
         );
         verifier.setExpectedDigest(digest);
     }
 
     function _submit(uint256 checkpointId) internal {
-        ms.submitProof(checkpointId, ROOT, IPFS, CID, TOTAL, hex"");
+        ms.submitProof(checkpointId, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
     }
 
     function test_TriggerCreatesCheckpoint() public {
@@ -116,10 +120,13 @@ contract MerkleSnapshotTest is Test {
     function test_EmptyCheckpointProvable() public {
         accer.pushCheckpoint(bytes32(0), 0, 7);
         bytes32 digest = keccak256(
-            abi.encode(bytes32(0), uint64(0), paramsHash, bytes32(0), bytes32(0), keccak256(bytes("")), uint256(0))
+            abi.encode(
+                bytes32(0), uint64(0), bytes32(0), uint64(0), paramsHash, bytes32(0), bytes32(0),
+                keccak256(bytes("")), uint256(0), bytes32(0)
+            )
         );
         verifier.setExpectedDigest(digest);
-        ms.submitProof(0, bytes32(0), bytes32(0), "", 0, hex"");
+        ms.submitProof(0, bytes32(0), bytes32(0), "", 0, bytes32(0), hex"");
         assertEq(ms.getLatestState().blockNumber, 7);
     }
 

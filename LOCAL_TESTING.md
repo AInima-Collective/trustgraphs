@@ -215,8 +215,8 @@ export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
 curl -sF file=@zk/prover/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
 # submit (note the 0x prefix on the proof blob)
-cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE "0x$(xxd -p zk/prover/proof.bin | tr -d '\n')" \
+cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 "0x$(xxd -p zk/prover/proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
 ```
 

@@ -43,20 +43,53 @@ contract TrustGraphGoldenVectorsTest is Test {
     function test_JournalEncodingAndDigest() public view {
         bytes32 acc = json.readBytes32(".journal.acc");
         uint64 leafCount = uint64(json.readUint(".journal.leafCount"));
+        bytes32 anchorAcc = json.readBytes32(".journal.anchorAcc");
+        uint64 anchorCount = uint64(json.readUint(".journal.anchorCount"));
         bytes32 paramsHash = json.readBytes32(".journal.paramsHash");
         bytes32 outputRoot = json.readBytes32(".journal.outputRoot");
         bytes32 ipfsHash = json.readBytes32(".journal.ipfsHash");
         bytes32 cidDigest = json.readBytes32(".journal.cidDigest");
         uint256 totalValue = json.readUint(".journal.totalValue");
+        bytes32 skippedDigest = json.readBytes32(".journal.skippedDigest");
 
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
+        // Journal v2 (two-lane), field order FROZEN — must match MerkleSnapshot.submitProof.
         bytes memory encoded = abi.encode(
-            acc, leafCount, paramsHash, outputRoot, ipfsHash, cidDigest, totalValue
+            acc, leafCount, anchorAcc, anchorCount, paramsHash, outputRoot, ipfsHash, cidDigest,
+            totalValue, skippedDigest
         );
         assertEq(keccak256(encoded), keccak256(expectedEncoded), "journal encoding mismatch");
         assertEq(keccak256(encoded), expectedDigest, "journal digest mismatch");
+    }
+
+    /// Anchor-log leaf: keccak256(abi.encode(bytes32, uint8, bytes32, bytes32, uint256)) — must
+    /// match AnchorRegistry.anchor and zk_core::anchor::anchor_leaf.
+    function test_AnchorLeaf() public view {
+        bytes32 nodeId = json.readBytes32(".anchor.leaf.nodeId");
+        uint8 envelopeKind = uint8(json.readUint(".anchor.leaf.envelopeKind"));
+        bytes32 head = json.readBytes32(".anchor.leaf.head");
+        bytes32 dataCommitment = json.readBytes32(".anchor.leaf.dataCommitment");
+        uint256 ts = json.readUint(".anchor.leaf.blockTimestamp");
+        bytes32 expected = json.readBytes32(".anchor.leaf.leaf");
+
+        bytes32 leaf = keccak256(abi.encode(nodeId, envelopeKind, head, dataCommitment, ts));
+        assertEq(leaf, expected, "anchor leaf mismatch");
+    }
+
+    /// Skip entry leaf + skippedDigest fold: leaf = keccak256(abi.encode(bytes32, uint8, uint64));
+    /// digest = fold(0, leaf) for a single-entry set (zk_core::anchor::skipped_digest).
+    function test_SkipLeafAndSkippedDigest() public view {
+        bytes32 nodeId = json.readBytes32(".anchor.skip.nodeId");
+        uint8 reason = uint8(json.readUint(".anchor.skip.reason"));
+        uint64 epochObserved = uint64(json.readUint(".anchor.skip.epochObserved"));
+        bytes32 expectedLeaf = json.readBytes32(".anchor.skip.skipLeaf");
+        bytes32 expectedDigest = json.readBytes32(".anchor.skip.skippedDigest");
+
+        bytes32 leaf = keccak256(abi.encode(nodeId, reason, epochObserved));
+        assertEq(leaf, expectedLeaf, "skip leaf mismatch");
+        assertEq(keccak256(abi.encode(bytes32(0), leaf)), expectedDigest, "skippedDigest mismatch");
     }
 
     /// Output leaf: keccak256(bytes.concat(keccak256(abi.encode(address, uint256)))) — matches

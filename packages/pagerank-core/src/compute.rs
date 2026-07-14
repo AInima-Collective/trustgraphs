@@ -34,8 +34,23 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let cid_str = cid::cid_v1_raw(&digest);
     let cid_digest = keccak256(cid_str.as_bytes());
 
-    let journal =
-        Journal { acc, leaf_count, params_hash, output_root, ipfs_hash, cid_digest, total_value };
+    // Journal v2, lane-1-only shape: this input carries no lane-2 anchors, so the guest
+    // commits the empty lane as the zero accumulator (empty-lane-as-zero — the guest, not
+    // the contract, decides what an empty lane means). Lane-2 consumption (envelope
+    // verification + rule Φ) extends GuestInput and fills these from the witnessed anchor
+    // log; see the `envelopes` crate (GOAL M2).
+    let journal = Journal {
+        acc,
+        leaf_count,
+        anchor_acc: B256::ZERO,
+        anchor_count: 0,
+        params_hash,
+        output_root,
+        ipfs_hash,
+        cid_digest,
+        total_value,
+        skipped_digest: B256::ZERO,
+    };
     ComputeResult { journal, scores: assigned, blob, cid: cid_str }
 }
 

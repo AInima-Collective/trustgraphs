@@ -94,7 +94,7 @@ const GOLDEN = {
   ipfsHash: '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
   cid: 'bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4',
   cidDigest: '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
-  journalDigest: '0x93c9029d2ab9e82b3f2ecce72369a21aaf6a8f25fc76fe6a1cb2abd563821caf',
+  journalDigest: '0x2d6cd18629ab0f23ff8119d671b3abef09b1bfd71c2f65cbdd33cb3050dba34e', // journal v2 (two-lane; empty lane 2)
   totalValue: 1_000_000_000_000_000_000_000_000n, // 1e24
   edge0DataHash: '0x00bcd6ff29ae71d399fb597d99792fa72d0863bd723b9ab11f79d0b8d8ac5bc8',
   edge0Leaf: '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',

@@ -46,19 +46,23 @@ pub fn accumulate(edges: &[crate::RawEdge]) -> (B256, u64) {
     (acc, edges.len() as u64)
 }
 
-/// The ABI-encoded journal tuple — the exact bytes the SP1 guest commits as `publicValues`, and the
-/// preimage of the journal digest:
-/// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 outputRoot,
-///             bytes32 ipfsHash, bytes32 cidDigest, uint256 totalValue)`.
+/// The ABI-encoded journal-v2 tuple — the exact bytes the SP1 guest commits as `publicValues`,
+/// and the preimage of the journal digest (field order FROZEN, OFFCHAIN doc §4.3):
+/// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 anchorAcc, uint64 anchorCount,
+///             bytes32 paramsHash, bytes32 outputRoot, bytes32 ipfsHash, bytes32 cidDigest,
+///             uint256 totalValue, bytes32 skippedDigest)`.
 pub fn journal_encoded(j: &Journal) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(32 * 7);
+    let mut buf = Vec::with_capacity(32 * 10);
     buf.extend_from_slice(j.acc.as_slice());
     buf.extend_from_slice(&word_u64(j.leaf_count));
+    buf.extend_from_slice(j.anchor_acc.as_slice());
+    buf.extend_from_slice(&word_u64(j.anchor_count));
     buf.extend_from_slice(j.params_hash.as_slice());
     buf.extend_from_slice(j.output_root.as_slice());
     buf.extend_from_slice(j.ipfs_hash.as_slice());
     buf.extend_from_slice(j.cid_digest.as_slice());
     buf.extend_from_slice(&word_u256(j.total_value));
+    buf.extend_from_slice(j.skipped_digest.as_slice());
     buf
 }
 

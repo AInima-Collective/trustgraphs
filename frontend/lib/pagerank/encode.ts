@@ -71,19 +71,23 @@ export const accumulate = (edges: RawEdge[]): { acc: Hex; leafCount: bigint } =>
 }
 
 /**
- * The ABI-encoded journal tuple — the preimage of the journal digest:
- * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 outputRoot,
- *             bytes32 ipfsHash, bytes32 cidDigest, uint256 totalValue)`.
+ * The ABI-encoded journal-v2 tuple — the preimage of the journal digest (field order FROZEN):
+ * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 anchorAcc, uint64 anchorCount,
+ *             bytes32 paramsHash, bytes32 outputRoot, bytes32 ipfsHash, bytes32 cidDigest,
+ *             uint256 totalValue, bytes32 skippedDigest)`.
  */
 export const journalEncoded = (j: Journal): Hex =>
   concat([
     j.acc,
     wordU64(j.leafCount),
+    j.anchorAcc,
+    wordU64(j.anchorCount),
     j.paramsHash,
     j.outputRoot,
     j.ipfsHash,
     j.cidDigest,
     wordU256(j.totalValue),
+    j.skippedDigest,
   ])
 
 /** The journal digest = `keccak256(journalEncoded(j))`. This is what the on-chain verifier binds. */

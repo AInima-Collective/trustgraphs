@@ -9,6 +9,7 @@ import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 
 /// @title MerkleSnapshot
 /// @notice Merkle-root snapshotter for TrustGraph. The `{account => score}` root is produced by a
@@ -27,6 +28,28 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
     IAttestationAccumulator public accumulator;
+
+    /// @notice Lane-2 anchor log (OFFCHAIN doc §4). Zero address = lane-1-only instance: trigger
+    ///         checkpoints the empty lane as the zero accumulator and the guest asserts the empty
+    ///         fold (empty-lane-as-zero — one journal shape for every instance).
+    IAnchorRegistry public anchorRegistry;
+
+    /// @notice A frozen lane-2 snapshot taken at the same trigger as the lane-1 checkpoint.
+    struct AnchorCheckpoint {
+        bytes32 anchorAcc;
+        uint64 anchorCount;
+    }
+
+    /// @notice Lane-2 checkpoint per lane-1 checkpoint id (zeros when no registry is set).
+    mapping(uint256 checkpointId => AnchorCheckpoint) public anchorCheckpoints;
+
+    /// @notice Contract-fixed epoch schedule in blocks; 0 = unscheduled (lane-1-only default).
+    ///         When set, trigger() only fires once the boundary has passed — epoch boundaries are
+    ///         never prover-chosen (OFFCHAIN doc §4.1).
+    uint64 public epochLength;
+
+    /// @notice The block at which the last scheduled trigger fired.
+    uint64 public lastTriggerBlock;
 
     /// @notice The proof verifier gating the write (SP1 today; swappable behind IZkVerifier).
     IZkVerifier public zkVerifier;
@@ -113,14 +136,59 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         emit ParamsHashUpdated(_paramsHash);
     }
 
+    /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
+    ///         inputs "the graph" means, exactly like the accumulator knob).
+    function setAnchorRegistry(IAnchorRegistry _anchorRegistry)
+        external
+        onlyRole(CONSTITUTIONAL_ROLE)
+    {
+        anchorRegistry = _anchorRegistry;
+        emit AnchorRegistryUpdated(address(_anchorRegistry));
+    }
+
+    /// @notice Set the epoch schedule (constitutional; 0 disables the schedule).
+    function setEpochLength(uint64 _epochLength) external onlyRole(CONSTITUTIONAL_ROLE) {
+        epochLength = _epochLength;
+        emit EpochLengthUpdated(_epochLength);
+    }
+
+    /// @notice Emitted when the lane-2 registry is re-pointed.
+    event AnchorRegistryUpdated(address anchorRegistry);
+
+    /// @notice Emitted when the epoch schedule changes.
+    event EpochLengthUpdated(uint64 epochLength);
+
+    /// @notice Emitted with every trigger's lane-2 snapshot.
+    event AnchorsCheckpointed(uint256 indexed checkpointId, bytes32 anchorAcc, uint64 anchorCount);
+
+    /// @notice Trigger fired before the contract-fixed epoch boundary.
+    error EpochNotElapsed(uint64 lastTriggerBlock, uint64 epochLength);
+
     /*///////////////////////////////////////////////////////////////
                         SNAPSHOT LIFECYCLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Freeze the current accumulator as a checkpoint. Permissionless.
+    /// @notice Freeze the current accumulator(s) as a checkpoint. Permissionless; when an epoch
+    ///         schedule is set, only past the contract-fixed boundary (never prover-chosen).
     /// @return checkpointId The id of the new checkpoint (provers watch InputsCheckpointed).
     function trigger() external returns (uint256 checkpointId) {
+        if (epochLength > 0 && block.number < uint256(lastTriggerBlock) + epochLength) {
+            revert EpochNotElapsed(lastTriggerBlock, epochLength);
+        }
+        lastTriggerBlock = uint64(block.number);
+
         checkpointId = accumulator.checkpoint();
+
+        // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
+        // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
+        if (address(anchorRegistry) != address(0)) {
+            anchorCheckpoints[checkpointId] = AnchorCheckpoint({
+                anchorAcc: anchorRegistry.anchorAcc(),
+                anchorCount: anchorRegistry.anchorCount()
+            });
+        }
+        AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
+        emit AnchorsCheckpointed(checkpointId, ac.anchorAcc, ac.anchorCount);
         emit SnapshotTriggered(checkpointId);
     }
 
@@ -131,6 +199,8 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @param ipfsHash The digest of the canonical scored blob.
     /// @param ipfsHashCid The CID string pointing at that blob.
     /// @param totalValue The summed points.
+    /// @param skippedDigest The guest's rule-Φ/deterministic-skip commitment (proven output;
+    ///        bytes32(0) when nothing was skipped or the instance has no lane 2).
     /// @param proof The verifier-specific proof blob.
     function submitProof(
         uint256 checkpointId,
@@ -138,6 +208,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         bytes32 ipfsHash,
         string calldata ipfsHashCid,
         uint256 totalValue,
+        bytes32 skippedDigest,
         bytes calldata proof
     ) external {
         // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
@@ -147,18 +218,24 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         // Reverts if checkpointId is out of range.
         IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(checkpointId);
+        AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
 
-        // The journal is the ENTIRE ABI between contract and guest. Bind all of it — including the
-        // CID *string* consumers fetch by, whose 32-byte digest alone is otherwise unproven.
+        // The journal is the ENTIRE ABI between contract and guest (journal v2 — two-lane, field
+        // order FROZEN, golden-locked four ways). Bind all of it — including the CID *string*
+        // consumers fetch by, whose 32-byte digest alone is otherwise unproven. Checkpointed
+        // storage pins both lanes; skippedDigest is the guest's own audited-discretion output.
         bytes32 journalDigest = keccak256(
             abi.encode(
-                c.acc, // which inputs   (chain-pinned)
+                c.acc, // lane-1 inputs   (chain-pinned)
                 c.leafCount,
-                paramsHash, // which params   (governance-pinned)
+                ac.anchorAcc, // lane-2 inputs   (chain-pinned; zeros for a lane-1-only instance)
+                ac.anchorCount,
+                paramsHash, // which params    (governance-pinned)
                 outputRoot, // scored tree
                 ipfsHash, // canonical-blob digest
                 keccak256(bytes(ipfsHashCid)), // ...and the CID string that points at that blob
-                totalValue // summed points
+                totalValue, // summed points
+                skippedDigest // rule-Φ audit commitment
             )
         );
 

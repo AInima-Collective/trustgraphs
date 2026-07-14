@@ -49,14 +49,20 @@ export const compute = (input: GuestInput): ComputeResult => {
   const cid = cidV1Raw(digest)
   const cidDigest = keccak256(stringToBytes(cid))
 
+  // Journal v2, lane-1-only shape: no lane-2 anchors in this input, so the empty lane is the
+  // zero accumulator (mirrors pagerank_core::compute::compute).
+  const ZERO = `0x${'00'.repeat(32)}` as Hex
   const journal: Journal = {
     acc,
     leafCount,
+    anchorAcc: ZERO,
+    anchorCount: 0n,
     paramsHash: pHash,
     outputRoot,
     ipfsHash,
     cidDigest,
     totalValue,
+    skippedDigest: ZERO,
   }
 
   return { journal, scores: assigned, blob, cid }

@@ -54,17 +54,22 @@ export interface GuestInput {
 }
 
 /**
- * The 7 public journal fields. `keccak256(abi.encode(..))` of these is the digest the on-chain
- * verifier binds. Field order is FROZEN — see `encode.journalDigest`.
+ * The 10 public journal fields (journal v2 — two-lane). `keccak256(abi.encode(..))` of these is
+ * the digest the on-chain verifier binds. Field order is FROZEN — see `encode.journalDigest`.
+ * An empty lane is the zero accumulator (lane-1-only: anchorAcc = 0x0, anchorCount = 0,
+ * skippedDigest = 0x0).
  */
 export interface Journal {
   acc: Hex
   leafCount: bigint
+  anchorAcc: Hex
+  anchorCount: bigint
   paramsHash: Hex
   outputRoot: Hex
   ipfsHash: Hex
   cidDigest: Hex
   totalValue: bigint
+  skippedDigest: Hex
 }
 
 /** Full result of a canonical computation. Mirrors `pagerank_core::ComputeResult`. */

@@ -138,13 +138,49 @@ fn main() {
         "journal": {
             "acc": hx(j.acc.as_slice()),
             "leafCount": j.leaf_count,
+            "anchorAcc": hx(j.anchor_acc.as_slice()),
+            "anchorCount": j.anchor_count,
             "paramsHash": hx(j.params_hash.as_slice()),
             "outputRoot": hx(j.output_root.as_slice()),
             "ipfsHash": hx(j.ipfs_hash.as_slice()),
             "cidDigest": hx(j.cid_digest.as_slice()),
             "totalValue": j.total_value.to_string(),
+            "skippedDigest": hx(j.skipped_digest.as_slice()),
             "encoded": hx(&encode::journal_encoded(j)),
             "digest": hx(encode::journal_digest(j).as_slice())
+        },
+        "anchor": {
+            // Anchor-log leaf (AnchorRegistry fold) + a nonempty skippedDigest vector,
+            // locked four ways like every other encoding (OFFCHAIN doc §4.1/§4.3).
+            "leaf": {
+                "nodeId": hx(&[0x11u8; 32]),
+                "envelopeKind": 0,
+                "head": hx(&[0x22u8; 32]),
+                "dataCommitment": hx(&[0x33u8; 32]),
+                "blockTimestamp": 1234u64,
+                "leaf": hx(zk_core::anchor::anchor_leaf(
+                    alloy_primitives::B256::from([0x11u8; 32]),
+                    0,
+                    alloy_primitives::B256::from([0x22u8; 32]),
+                    alloy_primitives::B256::from([0x33u8; 32]),
+                    1234,
+                ).as_slice())
+            },
+            "skip": {
+                "nodeId": hx(&[0x44u8; 32]),
+                "reason": 1,
+                "epochObserved": 7u64,
+                "skipLeaf": hx(zk_core::anchor::skip_leaf(&zk_core::anchor::SkipEntry {
+                    node_id: alloy_primitives::B256::from([0x44u8; 32]),
+                    reason: 1,
+                    epoch_observed: 7,
+                }).as_slice()),
+                "skippedDigest": hx(zk_core::anchor::skipped_digest(&[zk_core::anchor::SkipEntry {
+                    node_id: alloy_primitives::B256::from([0x44u8; 32]),
+                    reason: 1,
+                    epoch_observed: 7,
+                }]).as_slice())
+            }
         },
         "output": {
             "root": hx(j.output_root.as_slice()),

@@ -12,6 +12,7 @@
 //! operations, NO non-deterministic iteration, NO async — the identical logic compiles to
 //! the SP1 zkVM guest, native (host + tests), and the browser TS port's reference.
 
+pub mod anchor;
 pub mod cid;
 pub mod fixed;
 pub mod fold;

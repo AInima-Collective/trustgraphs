@@ -150,8 +150,10 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   IPFS_HASH=$(echo "$EXEC_OUT" | awk '/^ipfsHash:/{print $2}')
   CID=$(echo "$EXEC_OUT" | awk '/^cid:/{print $2}')
   TOTAL_VALUE=$(echo "$EXEC_OUT" | awk '/^totalValue:/{print $2}')
-  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$(hex_file zk/prover/proof.bin)" \
+  # Journal v2: lane-1-only run, skippedDigest is the zero word.
+  ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
+  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$ZERO32" "$(hex_file zk/prover/proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ROOT_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$ROOT_ONCHAIN" = "$OUTPUT_ROOT" ] || { echo "FATAL: on-chain root $ROOT_ONCHAIN != proven $OUTPUT_ROOT"; exit 1; }

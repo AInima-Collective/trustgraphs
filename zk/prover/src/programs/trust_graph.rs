@@ -110,6 +110,7 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
     println!("ipfsHash:      0x{}", hex::encode(native.journal.ipfs_hash));
     println!("cid:           {}", native.cid);
     println!("totalValue:    {}", native.journal.total_value);
+    println!("skippedDigest: 0x{}", hex::encode(native.journal.skipped_digest));
 
     // The canonical score blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so it
     // can be pinned (the UI/indexer fetch the {account -> score} scores from IPFS at that cid).

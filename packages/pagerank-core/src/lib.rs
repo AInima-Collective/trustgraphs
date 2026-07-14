@@ -84,17 +84,29 @@ pub struct GuestInput {
     pub params: Params,
 }
 
-/// The 7 public fields the guest commits. `keccak256(abi.encode(..))` of these is the journal digest
-/// the on-chain verifier binds. Field order is FROZEN — see [`encode::journal_digest`].
+/// The 10 public fields the guest commits (journal v2 — two-lane, OFFCHAIN doc §4.3).
+/// `keccak256(abi.encode(..))` of these is the journal digest the on-chain verifier binds.
+/// Field order is FROZEN — see [`encode::journal_digest`]. An instance with an empty lane
+/// encodes it as the zero accumulator: lane-1-only ⇒ `anchor_acc = 0, anchor_count = 0,
+/// skipped_digest = 0`; lane-2-only ⇒ `acc = 0, leaf_count = 0`. The guest, not the
+/// contract, decides what an empty lane means. (Journal v1 exists solely as the frozen
+/// live deployment; there is no v1 code path.)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Journal {
     pub acc: B256,
     pub leaf_count: u64,
+    /// Lane-2 anchor-log accumulator at the checkpoint (`AnchorRegistry.anchorAcc`).
+    pub anchor_acc: B256,
+    /// Lane-2 anchor count at the checkpoint.
+    pub anchor_count: u64,
     pub params_hash: B256,
     pub output_root: B256,
     pub ipfs_hash: B256,
     pub cid_digest: B256,
     pub total_value: U256,
+    /// Chained fold over rule-Φ / deterministic-skip entries (`zk_core::anchor::skipped_digest`);
+    /// `bytes32(0)` when nothing was skipped (or the instance has no lane 2).
+    pub skipped_digest: B256,
 }
 
 /// Full result of a canonical computation: the journal plus the artifacts the host needs to pin
