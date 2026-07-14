@@ -14,7 +14,11 @@ fn is_seed(seeds: &BTreeSet<Address>, a: &Address) -> bool {
 /// Initial scores (scaled by S). No trust ⇒ uniform `S/n`. Trust ⇒ seeds share `trust_share`,
 /// regulars share `1 - trust_share`. Counts follow the legacy convention exactly
 /// (`trusted_count = |seeds|`, `regular_count = n - trusted_count`).
-fn initialize_scores(graph: &Graph, p: &Params, seeds: &BTreeSet<Address>) -> BTreeMap<Address, U256> {
+fn initialize_scores(
+    graph: &Graph,
+    p: &Params,
+    seeds: &BTreeSet<Address>,
+) -> BTreeMap<Address, U256> {
     let n = graph.nodes.len();
     let s = p.precision_scale;
     let mut out = BTreeMap::new();

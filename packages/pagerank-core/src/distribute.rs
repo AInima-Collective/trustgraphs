@@ -14,7 +14,10 @@ const QUANTUM: u64 = 1_000_000;
 /// Distribute `total_pool` across `scores_fp` (normalized PageRank scores, scaled by S, `value > 0`).
 /// Returns `(assigned, total_value)` where `assigned` holds only `value > 0` entries and
 /// `total_value == total_pool` whenever anything is distributed.
-pub fn distribute_points(scores_fp: &[(Address, U256)], p: &Params) -> (Vec<(Address, U256)>, U256) {
+pub fn distribute_points(
+    scores_fp: &[(Address, U256)],
+    p: &Params,
+) -> (Vec<(Address, U256)>, U256) {
     if scores_fp.is_empty() {
         return (Vec::new(), U256::ZERO);
     }

@@ -1,0 +1,16 @@
+[package]
+name = "zk-core"
+description = "Shared, program-agnostic ZK building blocks: ABI words, chained-hash fold, OZ StandardMerkleTree, fixed-point, canonical CID, and the journal discipline. Every byte encoding here is golden-tested four ways (native Rust, SP1 guest, Solidity, TS)."
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Keep deps minimal and zkVM-friendly. No floats, no wasm-bindgen, no async.
+alloy-primitives = { workspace = true, features = ["serde"] }
+sha2 = { version = "0.10", default-features = false }

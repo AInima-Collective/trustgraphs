@@ -78,10 +78,15 @@ struct RawLog {
 impl Rpc {
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
         let body = json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
-        let resp: Value =
-            self.client.post(&self.url).json(&body).send().await?.json().await.with_context(
-                || format!("{method} response was not valid JSON"),
-            )?;
+        let resp: Value = self
+            .client
+            .post(&self.url)
+            .json(&body)
+            .send()
+            .await?
+            .json()
+            .await
+            .with_context(|| format!("{method} response was not valid JSON"))?;
         if let Some(e) = resp.get("error").filter(|e| !e.is_null()) {
             bail!("{method} RPC error: {e}");
         }
@@ -130,7 +135,8 @@ impl Rpc {
                     .iter()
                     .map(|t| parse_b256(t.as_str().unwrap_or("")))
                     .collect::<Result<Vec<_>>>()?;
-                let data = hex::decode(log["data"].as_str().unwrap_or("0x").trim_start_matches("0x"))?;
+                let data =
+                    hex::decode(log["data"].as_str().unwrap_or("0x").trim_start_matches("0x"))?;
                 out.push(RawLog { topics, data });
             }
             start = end + 1;
@@ -186,7 +192,13 @@ async fn main() -> Result<()> {
 
     // 2. Ordered fold leaves (EdgeFolded), index 0..leafCount-1.
     let fold_logs = rpc
-        .get_logs(accumulator, &[Some(EdgeFolded::SIGNATURE_HASH)], args.from_block, to_block, args.chunk)
+        .get_logs(
+            accumulator,
+            &[Some(EdgeFolded::SIGNATURE_HASH)],
+            args.from_block,
+            to_block,
+            args.chunk,
+        )
         .await
         .context("querying EdgeFolded logs")?;
     let mut indexed: Vec<(u64, B256)> = Vec::new();
@@ -201,7 +213,9 @@ async fn main() -> Result<()> {
     // Verify contiguity 0..leafCount-1 (no gaps / dups).
     for (want, (got, _)) in indexed.iter().enumerate() {
         if *got != want as u64 {
-            bail!("EdgeFolded indices not contiguous: expected {want}, found {got} (missing events?)");
+            bail!(
+                "EdgeFolded indices not contiguous: expected {want}, found {got} (missing events?)"
+            );
         }
     }
     let ordered_leaves: Vec<B256> = indexed.into_iter().map(|(_, leaf)| leaf).collect();

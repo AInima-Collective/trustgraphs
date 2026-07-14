@@ -8,43 +8,10 @@
 use crate::{merkle, Journal, Params, SelectionParams, SignerJournal};
 use alloy_primitives::{keccak256, Address, B256, U256};
 
-/// A 32-byte ABI word from a `U256`.
-#[inline]
-pub fn word_u256(x: U256) -> [u8; 32] {
-    x.to_be_bytes()
-}
-
-/// A 32-byte ABI word from a `u64` (left-padded).
-#[inline]
-pub fn word_u64(x: u64) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[24..].copy_from_slice(&x.to_be_bytes());
-    w
-}
-
-/// A 32-byte ABI word from a `u32` (left-padded).
-#[inline]
-pub fn word_u32(x: u32) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[28..].copy_from_slice(&x.to_be_bytes());
-    w
-}
-
-/// A 32-byte ABI word from a `u8` (right-most byte).
-#[inline]
-pub fn word_u8(x: u8) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[31] = x;
-    w
-}
-
-/// A 32-byte ABI word from an `address` (right-aligned 20 bytes).
-#[inline]
-pub fn word_addr(a: Address) -> [u8; 32] {
-    let mut w = [0u8; 32];
-    w[12..].copy_from_slice(a.as_slice());
-    w
-}
+// The word encoders and the accumulator fold are program-agnostic and live in `zk-core`;
+// re-exported so every existing `encode::word_*` / `encode::fold` call site is unchanged.
+pub use zk_core::fold::fold;
+pub use zk_core::words::{word_addr, word_u256, word_u32, word_u64, word_u8};
 
 /// The accumulator edge leaf:
 /// `keccak256(abi.encode(uint8 kind, address attester, address recipient, bytes32 uid,
@@ -64,14 +31,6 @@ pub fn edge_leaf(
     buf.extend_from_slice(uid.as_slice());
     buf.extend_from_slice(&word_u256(U256::from(block_timestamp)));
     buf.extend_from_slice(data_hash.as_slice());
-    keccak256(&buf)
-}
-
-/// Fold a leaf into the running accumulator: `acc' = keccak256(abi.encode(bytes32 acc, bytes32 leaf))`.
-pub fn fold(prev: B256, leaf: B256) -> B256 {
-    let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(prev.as_slice());
-    buf[32..].copy_from_slice(leaf.as_slice());
     keccak256(&buf)
 }
 

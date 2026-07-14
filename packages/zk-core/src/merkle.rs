@@ -2,7 +2,7 @@
 //! `@openzeppelin/merkle-tree` and the on-chain `MerkleProof.verifyCalldata` (commutative /
 //! sorted-pair hashing) verifies guest-produced proofs unchanged (PLAN.md §1.4).
 
-use crate::encode::{word_addr, word_u256};
+use crate::words::{word_addr, word_u256};
 use alloy_primitives::{keccak256, Address, B256, U256};
 
 /// The output-tree leaf: `keccak256(bytes.concat(keccak256(abi.encode(address account, uint256 value))))`.
@@ -128,11 +128,9 @@ mod tests {
 
     #[test]
     fn proof_verifies_against_root() {
-        let accts: Vec<Address> = (1u8..=5)
-            .map(|i| Address::from_str(&format!("0x{:040x}", i)).unwrap())
-            .collect();
-        let leaves: Vec<B256> =
-            accts.iter().map(|a| output_leaf(*a, U256::from(10u64))).collect();
+        let accts: Vec<Address> =
+            (1u8..=5).map(|i| Address::from_str(&format!("0x{:040x}", i)).unwrap()).collect();
+        let leaves: Vec<B256> = accts.iter().map(|a| output_leaf(*a, U256::from(10u64))).collect();
         let root = merkle_root(leaves.clone());
         let tree = build_tree(leaves.clone());
         for leaf in &leaves {

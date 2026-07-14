@@ -61,11 +61,8 @@ fn legacy_points(g: &Graph) -> HashMap<Address, U256> {
         .with_trust_share(0.15)
         .with_trust_decay(0.8);
     let config = PageRankConfig::default().with_trust_config(trust);
-    let scores: HashMap<Address, f64> = graph
-        .calculate_pagerank(&config)
-        .into_iter()
-        .filter(|(_, s)| *s > 0.0)
-        .collect();
+    let scores: HashMap<Address, f64> =
+        graph.calculate_pagerank(&config).into_iter().filter(|(_, s)| *s > 0.0).collect();
     let total_pool = U256::from(1_000_000_000_000_000_000_000_000u128);
     graph.distribute_points(&scores, total_pool).0
 }
@@ -151,9 +148,15 @@ fn main() {
     println!("worst per-account delta: {:.4}% of pool  ({worst_case})", worst_rel * 100.0);
     let bound = 0.05; // 5% of pool per account
     if worst_rel > bound {
-        println!("WARNING: worst delta exceeds {:.0}% of pool — investigate the port.", bound * 100.0);
+        println!(
+            "WARNING: worst delta exceeds {:.0}% of pool — investigate the port.",
+            bound * 100.0
+        );
     } else {
-        println!("OK: fixed-point port is within {:.0}% of pool of legacy f64 on all cases.", bound * 100.0);
+        println!(
+            "OK: fixed-point port is within {:.0}% of pool of legacy f64 on all cases.",
+            bound * 100.0
+        );
     }
 }
 

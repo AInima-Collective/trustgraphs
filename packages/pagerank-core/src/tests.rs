@@ -18,11 +18,11 @@ fn fp(num: u64, den: u64) -> U256 {
 pub(crate) fn default_params() -> Params {
     let s = scale();
     Params {
-        damping_fp: fp(85, 100),      // 0.85
+        damping_fp: fp(85, 100),                    // 0.85
         tolerance_fp: s / U256::from(1_000_000u64), // 1e-6
         max_iterations: 100,
-        min_weight_fp: U256::ZERO,    // 0
-        max_weight_fp: U256::from(100u64) * s, // 100
+        min_weight_fp: U256::ZERO,                 // 0
+        max_weight_fp: U256::from(100u64) * s,     // 100
         trust_multiplier_fp: U256::from(2u64) * s, // unused when no seeds
         trust_share_fp: U256::ZERO,
         trust_decay_fp: U256::ZERO,
@@ -66,11 +66,7 @@ fn edge(from: u8, to: u8, uid: u8, ts: u64, weight: u64) -> RawEdge {
 
 fn sample_input() -> GuestInput {
     // Alice -> Bob -> Charlie -> Alice, symmetric ring, all weight 1.
-    let edges = vec![
-        edge(1, 2, 1, 100, 1),
-        edge(2, 3, 2, 101, 1),
-        edge(3, 1, 3, 102, 1),
-    ];
+    let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
     GuestInput { edges, params: default_params() }
 }
 
@@ -113,11 +109,7 @@ fn journal_binds_inputs() {
 #[test]
 fn trust_boosts_seed_neighbour() {
     // Alice (seed) -> Bob, Bob -> Charlie, Charlie -> Alice.
-    let edges = vec![
-        edge(1, 2, 1, 100, 1),
-        edge(2, 3, 2, 101, 1),
-        edge(3, 1, 3, 102, 1),
-    ];
+    let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
     let input = GuestInput { edges, params: trust_params(vec![addr(1)]) };
     let r = compute(&input);
     assert_eq!(r.journal.total_value, input.params.total_pool);

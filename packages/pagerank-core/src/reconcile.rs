@@ -44,8 +44,7 @@ fn weight_fp(edge: &RawEdge, p: &Params) -> U256 {
 /// Build the reconciled graph from folded edges.
 pub fn build_graph(edges: &[RawEdge], p: &Params) -> Graph {
     // uids that were ever revoked are excluded entirely.
-    let revoked: BTreeSet<B256> =
-        edges.iter().filter(|e| e.kind == 1).map(|e| e.uid).collect();
+    let revoked: BTreeSet<B256> = edges.iter().filter(|e| e.kind == 1).map(|e| e.uid).collect();
 
     // Attest edges in canonical (timestamp, fold_index) order.
     let mut indexed: Vec<(u64, &RawEdge)> = edges

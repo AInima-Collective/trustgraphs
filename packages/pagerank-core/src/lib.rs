@@ -10,12 +10,13 @@
 use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 
-pub mod cid;
+// Program-agnostic building blocks live in `zk-core` (shared with every program crate);
+// re-exported here so this crate's public API is unchanged by the extraction.
+pub use zk_core::{cid, fixed, merkle};
+
 pub mod compute;
 pub mod distribute;
 pub mod encode;
-pub mod fixed;
-pub mod merkle;
 pub mod pagerank;
 pub mod reconcile;
 pub mod signer;

@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 [dependencies]
 # Keep deps minimal and zkVM-friendly. No floats, no wasm-bindgen, no async.
 alloy-primitives = { workspace = true, features = ["serde"] }
-sha2 = { version = "0.10", default-features = false }
+zk-core = { path = "../zk-core" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

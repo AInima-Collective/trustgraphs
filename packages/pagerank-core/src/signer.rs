@@ -28,7 +28,8 @@ fn ceil_div(a: u64, b: u64) -> u64 {
 /// If no account has a positive score the set is empty and the threshold is 0; the on-chain module
 /// rejects such a proof (a Safe must keep >= 1 owner).
 pub fn select_signers(scores: &[(Address, U256)], sp: &SelectionParams) -> (Vec<Address>, U256) {
-    let mut ranked: Vec<(Address, U256)> = scores.iter().filter(|(_, v)| !v.is_zero()).cloned().collect();
+    let mut ranked: Vec<(Address, U256)> =
+        scores.iter().filter(|(_, v)| !v.is_zero()).cloned().collect();
     // value desc, then address asc.
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     ranked.truncate(sp.top_n as usize);
@@ -64,10 +65,8 @@ pub fn signer_set_root(sorted_signers: &[Address]) -> alloy_primitives::B256 {
 pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
     // Reuse the canonical root computation so the scores (and acc/leafCount/paramsHash) are
     // byte-identical to what the root producer proves for the same checkpoint.
-    let base = compute::compute(&GuestInput {
-        edges: input.edges.clone(),
-        params: input.params.clone(),
-    });
+    let base =
+        compute::compute(&GuestInput { edges: input.edges.clone(), params: input.params.clone() });
 
     let selection_params_hash = encode::selection_params_hash(&input.selection);
     let (signers, target_threshold) = select_signers(&base.scores, &input.selection);

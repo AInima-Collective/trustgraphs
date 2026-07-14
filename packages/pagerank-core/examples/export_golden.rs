@@ -5,7 +5,9 @@
 
 use alloy_primitives::{hex, Address, B256, U256};
 use pagerank_core::compute::compute;
-use pagerank_core::{encode, merkle, signer, GuestInput, Params, RawEdge, SelectionParams, SignerInput};
+use pagerank_core::{
+    encode, merkle, signer, GuestInput, Params, RawEdge, SelectionParams, SignerInput,
+};
 use serde_json::json;
 use std::str::FromStr;
 
@@ -58,7 +60,8 @@ fn params() -> Params {
 }
 
 fn main() {
-    let edges = vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
+    let edges =
+        vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
     let input = GuestInput { edges: edges.clone(), params: params() };
     let result = compute(&input);
     let j = &result.journal;
@@ -66,11 +69,19 @@ fn main() {
     // Standalone accumulator vectors for the first edge + full fold.
     let e0 = &edges[0];
     let e0_datahash = alloy_primitives::keccak256(&e0.data);
-    let e0_leaf = encode::edge_leaf(e0.kind, e0.attester, e0.recipient, e0.uid, e0.block_timestamp, e0_datahash);
+    let e0_leaf = encode::edge_leaf(
+        e0.kind,
+        e0.attester,
+        e0.recipient,
+        e0.uid,
+        e0.block_timestamp,
+        e0_datahash,
+    );
     let (acc, leaf_count) = encode::accumulate(&edges);
 
     // Output tree: pick the first scored account and produce a proof.
-    let leaves: Vec<B256> = result.scores.iter().map(|(a, v)| merkle::output_leaf(*a, *v)).collect();
+    let leaves: Vec<B256> =
+        result.scores.iter().map(|(a, v)| merkle::output_leaf(*a, *v)).collect();
     let tree = merkle::build_tree(leaves.clone());
     let (sample_acct, sample_val) = result.scores[0];
     let sample_leaf = merkle::output_leaf(sample_acct, sample_val);

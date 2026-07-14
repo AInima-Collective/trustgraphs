@@ -1601,7 +1601,7 @@ dependencies = [
  "pagerank",
  "serde",
  "serde_json",
- "sha2",
+ "zk-core",
 ]
 
 [[package]]
@@ -3196,4 +3196,12 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "zk-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "sha2",
 ]
