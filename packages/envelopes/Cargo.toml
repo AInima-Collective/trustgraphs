@@ -1,0 +1,24 @@
+[package]
+name = "envelopes"
+description = "Lane-2 envelope verification: per-identity completeness commitments decoded into authenticated edge sets, in-guest (OFFCHAIN_ATTESTATIONS_ZK §4.2). Envelope 0 = EAS-offchain chained log."
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Guest-compiled: no floats, BTree-only, deterministic. k256 is the ecrecover path — inside the
+# SP1 guest it resolves to the sp1-patches precompile-backed fork via zk/program's
+# [patch.crates-io]; native builds use upstream. Keep the dependency surface identical to what
+# the guest compiles.
+alloy-primitives = { workspace = true, features = ["serde"] }
+zk-core = { path = "../zk-core" }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+hex = { workspace = true }
