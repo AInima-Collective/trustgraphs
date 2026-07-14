@@ -1,0 +1,98 @@
+//! Signer-sync program: proves the selected Safe signer set (top-N by proven PageRank score) and its
+//! threshold, for `SignerSyncZkModule`.
+
+use anyhow::Result;
+use clap::Subcommand;
+use pagerank_core::{encode, signer::compute_signers, SelectionParams, SignerInput};
+use sp1_sdk::{include_elf, Elf};
+
+use crate::common;
+use crate::programs::trust_graph::sample_input;
+
+/// The signer-sync guest ELF (second bin of the program crate).
+fn load_signer_elf() -> Elf {
+    include_elf!("trustgraph-signer-program")
+}
+
+/// The built-in signer sample (same edges/params as the root sample + a 3/50%/min-1 selection).
+fn sample_signer_input() -> SignerInput {
+    let g = sample_input();
+    SignerInput {
+        edges: g.edges,
+        params: g.params,
+        selection: SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 },
+    }
+}
+
+fn load_signer_input(path: Option<&String>) -> Result<SignerInput> {
+    match path {
+        Some(p) => Ok(serde_json::from_str(&std::fs::read_to_string(p)?)?),
+        None => Ok(sample_signer_input()),
+    }
+}
+
+/// `signer` subcommands. `input.json` is a serialized `pagerank_core::SignerInput`; omit it to use
+/// the built-in sample.
+#[derive(Subcommand)]
+pub enum Command {
+    /// Print the signer guest program verification key (bytes32) for deployment.
+    Vkey,
+    /// Print keccak256 of the canonical selection params.
+    Selectionparamshash { input: Option<String> },
+    /// Run the signer guest via the SP1 executor and assert it matches native (no proof).
+    Execute { input: Option<String> },
+    /// Generate a proof (core, or Groth16-wrapped), verify it locally, and write the on-chain proof
+    /// blob to signer_proof.bin.
+    Prove {
+        input: Option<String>,
+        #[arg(long)]
+        groth16: bool,
+    },
+}
+
+pub fn run(cmd: Command) -> Result<()> {
+    match cmd {
+        Command::Vkey => common::print_vkey(load_signer_elf()),
+        Command::Selectionparamshash { input } => {
+            let input = load_signer_input(input.as_ref())?;
+            println!("0x{}", hex::encode(encode::selection_params_hash(&input.selection)));
+            Ok(())
+        }
+        Command::Execute { input } => cmd_signer_execute(load_signer_input(input.as_ref())?),
+        Command::Prove { input, groth16 } => {
+            cmd_signer_prove(load_signer_input(input.as_ref())?, groth16)
+        }
+    }
+}
+
+fn cmd_signer_execute(input: SignerInput) -> Result<()> {
+    let native = compute_signers(&input);
+    let native_pub = encode::signer_journal_encoded(&native.journal);
+
+    common::execute_and_check(load_signer_elf(), &input, &native_pub)?;
+
+    println!(
+        "signerJournalDigest: 0x{}",
+        hex::encode(encode::signer_journal_digest(&native.journal))
+    );
+    println!("signerSetRoot:       0x{}", hex::encode(native.journal.signer_set_root));
+    println!("paramsHash:          0x{}", hex::encode(native.journal.params_hash));
+    println!("selectionParamsHash: 0x{}", hex::encode(native.journal.selection_params_hash));
+    println!("targetThreshold:     {}", native.journal.target_threshold);
+    println!("signers ({}):", native.signers.len());
+    for s in &native.signers {
+        println!("  0x{}", hex::encode(s));
+    }
+    Ok(())
+}
+
+fn cmd_signer_prove(input: SignerInput, groth16: bool) -> Result<()> {
+    let (public_values, seal) = common::prove_and_verify(load_signer_elf(), &input, groth16)?;
+
+    let blob = common::abi_encode_two_bytes(&public_values, &seal);
+    std::fs::write("signer_proof.bin", &blob)?;
+    std::fs::write("signer_public_values.bin", &public_values)?;
+    println!("wrote signer_proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
+    println!("publicValues: 0x{}", hex::encode(&public_values));
+    Ok(())
+}

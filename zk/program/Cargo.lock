@@ -1585,7 +1585,7 @@ version = "0.9.3"
 dependencies = [
  "alloy-primitives",
  "serde",
- "sha2",
+ "zk-core",
 ]
 
 [[package]]
@@ -2765,6 +2765,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "zk-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "sha2",
 ]
 
 [[package]]

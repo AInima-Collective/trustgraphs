@@ -1,0 +1,94 @@
+//! Shared prover plumbing used by every program module: the on-chain proof-blob encoding, the
+//! ProverClient setup helper, and the execute (guest-vs-native cross-check) and prove/verify flows.
+//! Program-specific details (which ELF, which journal fields to print, which output files to write)
+//! live in `programs/*`; the byte-level machinery is here so it stays identical across programs.
+
+use anyhow::{anyhow, Result};
+use serde::Serialize;
+use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
+use sp1_sdk::{Elf, HashableKey, ProvingKey, SP1Stdin};
+
+/// abi.encode(bytes publicValues, bytes proofBytes) — the blob SP1JournalVerifier decodes.
+pub fn abi_encode_two_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
+    fn word(n: usize) -> [u8; 32] {
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(n as u64).to_be_bytes());
+        w
+    }
+    fn enc(x: &[u8]) -> Vec<u8> {
+        let mut v = word(x.len()).to_vec();
+        v.extend_from_slice(x);
+        let pad = (32 - x.len() % 32) % 32;
+        v.extend(std::iter::repeat(0u8).take(pad));
+        v
+    }
+    let a_enc = enc(a);
+    let b_enc = enc(b);
+    let mut out = Vec::new();
+    out.extend_from_slice(&word(0x40)); // offset to a
+    out.extend_from_slice(&word(0x40 + a_enc.len())); // offset to b
+    out.extend_from_slice(&a_enc);
+    out.extend_from_slice(&b_enc);
+    out
+}
+
+/// Print the guest program verification key (bytes32) for the given ELF (deployment / config value).
+pub fn print_vkey(elf: Elf) -> Result<()> {
+    let client = ProverClient::from_env();
+    let pk = client.setup(elf).map_err(|e| anyhow!("setup failed: {e:?}"))?;
+    println!("{}", pk.verifying_key().bytes32());
+    Ok(())
+}
+
+/// Run the guest via the SP1 executor and assert its public values match the native `native_pub`
+/// (the guest-vs-native cross-check; no proof). Prints the cycle count and the `guest == native ✓`
+/// line. This is the parity layer — it must byte-assert, never soften to a warning.
+pub fn execute_and_check<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -> Result<()> {
+    let client = ProverClient::from_env();
+    let mut stdin = SP1Stdin::new();
+    stdin.write(input);
+
+    let (public_values, report) =
+        client.execute(elf, stdin).run().map_err(|e| anyhow!("execute failed: {e:?}"))?;
+    let guest_pub = public_values.as_slice().to_vec();
+
+    println!("guest cycles: {}", report.total_instruction_count());
+    if guest_pub != native_pub {
+        return Err(anyhow!(
+            "MISMATCH guest vs native public values\n guest:  0x{}\n native: 0x{}",
+            hex::encode(&guest_pub),
+            hex::encode(native_pub)
+        ));
+    }
+    println!("guest == native  ✓");
+    Ok(())
+}
+
+/// Generate a proof (core, or Groth16-wrapped) for the given ELF + input, verify it locally, and
+/// return `(publicValues, seal)`. Prints the vkey and the local-verify line. Callers assemble the
+/// on-chain blob via [`abi_encode_two_bytes`] and write the program-specific output files.
+pub fn prove_and_verify<T: Serialize>(
+    elf: Elf,
+    input: &T,
+    groth16: bool,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    let client = ProverClient::from_env();
+    let mut stdin = SP1Stdin::new();
+    stdin.write(input);
+
+    let pk = client.setup(elf).map_err(|e| anyhow!("setup failed: {e:?}"))?;
+    let vk = pk.verifying_key();
+    println!("vkey: {}", vk.bytes32());
+
+    let req = client.prove(&pk, stdin);
+    let proof = if groth16 { req.groth16() } else { req.core() }
+        .run()
+        .map_err(|e| anyhow!("prove failed: {e:?}"))?;
+
+    client.verify(&proof, vk, None).map_err(|e| anyhow!("local verify failed: {e:?}"))?;
+    println!("local verify ✓");
+
+    let public_values = proof.public_values.as_slice().to_vec();
+    let seal = proof.bytes();
+    Ok((public_values, seal))
+}
