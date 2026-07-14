@@ -7,3 +7,4 @@
 pub mod binding;
 pub mod decimal;
 pub mod records;
+pub mod semantics;
