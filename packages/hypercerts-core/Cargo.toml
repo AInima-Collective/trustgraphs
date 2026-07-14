@@ -1,0 +1,27 @@
+[package]
+name = "hypercerts-core"
+description = "The hypercerts program: @hypercerts-org/lexicon v1.1.0 records → trust edges (HYPERCERTS_ATPROTO_PLAN §2–§3), Params/Journal, and the record→edge byte encodings — single source of truth for the hypercerts SP1 guest, host, and TS view"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Guest-compiled: no floats, BTree-only, deterministic — same rules as every core crate.
+alloy-primitives = { workspace = true, features = ["serde"] }
+zk-core = { path = "../zk-core" }
+envelopes = { path = "../envelopes" }
+pagerank-core = { path = "../pagerank-core" }
+ipld-core = "0.4"
+serde_ipld_dagcbor = "=0.6.4"
+serde = { workspace = true, features = ["derive"] }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+hex = { workspace = true }
+sha2 = { version = "0.10", default-features = false }
