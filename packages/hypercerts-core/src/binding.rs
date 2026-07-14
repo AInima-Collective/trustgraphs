@@ -104,9 +104,9 @@ mod tests {
             panic!("link.evm must decode")
         };
         let bound =
-            verify_binding("did:plc:y4terqrp7vrlvxyxlnnyjmvs", &address, &message, &signature)
+            verify_binding("did:plc:ss2ib2f37vegrihrkrfkrw55", &address, &message, &signature)
                 .expect("binding must verify");
-        assert_eq!(bound, "0x24dF77757394DFDf84f47b6C55df431C9c78A7b9".parse::<Address>().unwrap());
+        assert_eq!(bound, "0xD030e52949a1D6BC7D00a2040268410eE3AFd65A".parse::<Address>().unwrap());
 
         // wrong DID (consent direction) rejected
         assert!(verify_binding("did:plc:attacker", &address, &message, &signature).is_none());
@@ -116,7 +116,7 @@ mod tests {
         let orig = &bad[2..4].to_string();
         bad.replace_range(2..4, if orig == "00" { "01" } else { "00" });
         assert!(
-            verify_binding("did:plc:y4terqrp7vrlvxyxlnnyjmvs", &address, &message, &bad).is_none()
+            verify_binding("did:plc:ss2ib2f37vegrihrkrfkrw55", &address, &message, &bad).is_none()
         );
     }
 }

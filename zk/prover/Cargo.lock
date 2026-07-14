@@ -2209,6 +2209,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "hypercerts-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "envelopes",
+ "ipld-core",
+ "k256",
+ "pagerank-core",
+ "serde",
+ "serde_ipld_dagcbor",
+ "zk-core",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6137,6 +6151,7 @@ dependencies = [
  "clap",
  "envelopes",
  "hex",
+ "hypercerts-core",
  "ipld-core",
  "pagerank-core",
  "reqwest",

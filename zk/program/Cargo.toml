@@ -15,9 +15,14 @@ path = "src/signer.rs"
 name = "trustgraph-atproto-conformance"
 path = "src/atproto_conformance.rs"
 
+[[bin]]
+name = "trustgraph-hypercerts-program"
+path = "src/hypercerts.rs"
+
 [dependencies]
 sp1-zkvm = "=6.3.1"
 pagerank-core = { path = "../../packages/pagerank-core" }
+hypercerts-core = { path = "../../packages/hypercerts-core" }
 envelopes = { path = "../../packages/envelopes" }
 zk-core = { path = "../../packages/zk-core" }
 alloy-primitives = { version = "1", features = ["serde"] }

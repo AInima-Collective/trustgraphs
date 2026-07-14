@@ -2,5 +2,6 @@
 //! the shared prove/execute/encode plumbing lives in [`crate::common`].
 
 pub mod atproto_conformance;
+pub mod hypercerts;
 pub mod signer;
 pub mod trust_graph;

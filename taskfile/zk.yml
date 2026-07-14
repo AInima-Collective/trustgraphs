@@ -12,13 +12,14 @@ silent: true
 
 tasks:
   vectors:
-    desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer)"
+    desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer | hypercerts)"
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      # Both programs share test/golden/trust-graph.json — the signer vectors live in its `.signer`
-      # section — so regeneration is the same command regardless of PROGRAM.
-      - cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json
+      # `hypercerts` owns its own vector file (test/golden/hypercerts.json); trust-graph and signer
+      # share test/golden/trust-graph.json — the signer vectors live in its `.signer` section — so
+      # regeneration for those two is the same command regardless of PROGRAM.
+      - '{{if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
 
   vkey:
     desc: "Print the SP1 program vkey for PROGRAM (trust-graph | signer)"

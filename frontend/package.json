@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "format": "eslint . --fix",
     "start": "next start",
-    "test": "tsc lib/pagerank/*.ts --outDir node_modules/.cache/pr-test --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/pr-test/golden.test.js",
+    "test": "tsc lib/pagerank/*.ts lib/hypercerts/*.ts --outDir node_modules/.cache/pr-test --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/pr-test/pagerank/golden.test.js && node node_modules/.cache/pr-test/hypercerts/golden.test.js",
     "indexer:config": "cp ../indexer/*.schema.ts .",
     "config:generate": "tsx scripts/generate-config.ts",
     "config:link": "rm -f config.json || true && test -f config.${NODE_ENV:-development}.json && ln -s config.${NODE_ENV:-development}.json config.json || echo \"Error: config.${NODE_ENV:-development}.json does not exist\"",

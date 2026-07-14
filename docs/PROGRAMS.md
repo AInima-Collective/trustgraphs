@@ -21,13 +21,18 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Live** | `0x00998782ddeac1f0b105db095fe7d5936336ef1a2747c35d4d730dcddbeea051` (M3 — p256 patch + envelope-1 crate in the guest graph; rotated from M2) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | v1 Optimism deployment — **frozen on journal v1**, never migrated (retains vkey `0x00a3d155…`) |
-| **signer-sync** (Safe owner rotation) | **Built** | `0x0003faaf82204a604f98f7a0cc0af860211f18cc2c994cadec96da00a45825ce` (M3 — p256 patch + envelope-1 crate in the guest graph; rotated from M2) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
-| **hypercerts** (AT-proto graph) | **Planned** — GOAL.md M4 | `TODO(vkey)` — first derived at M4 | [architecture](./hypercerts/ARCHITECTURE.md) (runbook at M4/M5) | pilot on Optimism (GOAL.md M5; OP Sepolia rehearsal first) |
+| **trust-graph** (root producer) | **Live** | `0x00aa4b4bec3cec5d3207be6a5bcea74a924ea059b4e848b8700c6e87c293c334` (M4 re-derivation) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | v1 Optimism deployment — **frozen on journal v1**, never migrated (retains vkey `0x00a3d155…`) |
+| **signer-sync** (Safe owner rotation) | **Built** | `0x00e06fc3677ab9f30e499dd4d47970945b47083c398158c4e009712e26e784dc` (M4 re-derivation) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
+| **hypercerts** (AT-proto graph) | **Built** — GOAL.md M4 | `0x007b0fc964221d8496f4fae791235afe12b7790575f5b8c4c7287f319766d9b0` (M4, SP1 6.3.1) | [architecture](./hypercerts/ARCHITECTURE.md) (runbook at M5) | pilot on Optimism (GOAL.md M5; OP Sepolia rehearsal first) |
 
 > **vkeys:** M0's reorg changed each existing guest's ELF layout (semantics didn't change — vectors are
 > byte-identical to pre-reorg), so the trust-graph and signer vkeys above were re-derived at M0 exit
 > (`task zk:vkey PROGRAM=…`). They will rotate again at M2 (patched-crate additions change the ELFs).
+> **Reproducibility caveat (measured at M4):** the vkey depends on the exact `succinct` toolchain
+> build — a toolchain reinstall shifted the trust-graph/signer vkeys with zero source change, and
+> adding a guest bin WITHOUT new crypto patches does NOT rotate sibling vkeys (byte-diff-verified
+> both ways). Deployment-grade vkeys must be derived on the pinned toolchain recorded in the deploy
+> runbook, not an arbitrary box.
 > The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is never migrated;
 > the re-derived vkeys apply to fresh deployments. Vkey rotations for the live stack are **batched** to
 > M2's deploy through the constitutional-timelock path (GOAL.md ground rule 7).
@@ -70,8 +75,11 @@ program (call it `foo`) is exactly these additions — no change to any existing
 5. **Docs dir** — `docs/foo/` with `ARCHITECTURE.md` (pointer to the research design) and `RUNBOOK.md`,
    plus a new row in this table.
 
-Task/CI plumbing is already generic: `task zk:{vectors|vkey|execute|prove|parity} PROGRAM=foo`, and the
-CI parity job runs for every program on every PR touching `packages/` or `zk/`.
+Task/CI plumbing: `zk:{vkey|execute|prove|parity}` are generic via `PROGRAM=foo`; `zk:vectors` needs a
+per-program branch (each program writes its own vector file — see the hypercerts branch added at M4),
+and the frontend `pnpm test` script must be extended to compile+run the new program's golden suite.
+The prover's `Cargo.toml` also gains the new core crate as a dependency (step 3's clap group needs it).
+The CI parity job runs for every program on every PR touching `packages/` or `zk/`.
 
 **Contracts are reuse, not new code.** A new program deploys a fresh labeled `SP1JournalVerifier`
 instance (same bytecode, its own immutable vkey) against the same SP1 gateway, reuses `MerkleSnapshot`

@@ -1,11 +1,29 @@
-// Hypercerts atproto fixture generator (GOAL.md M1, last fixture).
+// Hypercerts atproto fixture generator (GOAL.md M4 exit — TWO-SIDED, multi-repo).
 //
 // Stands up an in-process atproto network (@atproto/dev-env TestNetworkNoAppView:
-// a real did:plc PLC server + a SQLite PDS), creates two accounts, writes real
-// records for all seven HYPERCERTS_ATPROTO_PLAN §2 collections (plus a supporting
-// badge.definition), signs a REAL EIP-712 app.certified.link.evm proof with a
-// freshly generated EVM key, then exports the primary repo CAR + PLC audit log +
-// commit metadata + a ground-truth {key -> valueCID} table into ../fixtures/.
+// a real did:plc PLC server + a SQLite PDS), creates two accounts (alice + bob),
+// and writes real records so that the two-sided semantics (§3/§5) are exercised
+// ACROSS repos — the counterparty facts (badge.response, acknowledgement) live in
+// the COUNTERPARTY's own signed repo, exactly as the derive rules require.
+//
+// It signs a REAL EIP-712 app.certified.link.evm proof with a freshly generated EVM
+// key (alice's binding), then exports BOTH repos: CAR + PLC audit log + commit
+// metadata + a ground-truth {key -> valueCID} table per repo into ../fixtures/.
+//
+// Repo contents (GOAL M4):
+//   alice.test (primary, BOUND actor via link.evm):
+//     - graph.follow(bob)
+//     - badge.award(subject=bob)                      -> alice→bob badge (bob accepts in HIS repo)
+//     - claim.activity "reforestation-amazon-2024"    contributors [bob 0.6, carol 0.4]
+//     - context.evaluation of BOB's activity (87.5)   -> a clean cross-repo E3 edge
+//     - context.evaluation of HER OWN activity (90)   -> self-edge, inert (anti-gaming fixture)
+//     - link.evm (real EIP-712)                        -> alice is a bound actor
+//   bob.test (peer, SATELLITE actor):
+//     - badge.definition (the endorsement badge alice's award references)
+//     - claim.activity "bob-mangrove-2024"            contributors [alice 1.0]  -> alice gets an E4
+//     - badge.response(accepted, 0.85) to ALICE's award   -> two-sided badge accept
+//     - context.acknowledgement(true) of ALICE's activity -> two-sided ack (boosts bob's E4 share)
+//   carol: a purely-referenced contributor DID with NO repo (named-but-no-node path).
 //
 // Run:  node gen.mjs
 
@@ -35,6 +53,24 @@ const EIP712_TYPES = {
 
 const strongRef = (uri, cid) => ({ uri, cid })
 
+// Fixed rkeys so the downstream Rust tests can reference the artifact node ids by
+// name (artifactNodeId = keccak256("at://did/collection/rkey")).
+const ALICE_ACTIVITY_RKEY = 'reforestation-amazon-2024'
+const BOB_ACTIVITY_RKEY = 'bob-mangrove-2024'
+
+// The seven §2 collections plus the supporting badge.definition — used to list the
+// ground-truth table for EACH repo (a repo only surfaces the collections it holds).
+const LIST_COLLECTIONS = [
+  'app.certified.badge.definition',
+  'app.certified.graph.follow',
+  'app.certified.badge.award',
+  'app.certified.badge.response',
+  'org.hypercerts.context.evaluation',
+  'org.hypercerts.claim.activity',
+  'org.hypercerts.context.acknowledgement',
+  'app.certified.link.evm',
+]
+
 async function main() {
   await fs.mkdir(OUT, { recursive: true })
   const net = await TestNetworkNoAppView.create({})
@@ -42,28 +78,27 @@ async function main() {
   const plcUrl = net.plc.url
   console.log('PDS:', pdsUrl, ' PLC:', plcUrl)
 
-  // ---- two accounts: primary (exported) + peer (referenced) ----
-  const primary = net.pds.getClient
-    ? new AtpAgent({ service: pdsUrl })
-    : new AtpAgent({ service: pdsUrl })
-  const peer = new AtpAgent({ service: pdsUrl })
+  // ---- two accounts: alice (bound, primary) + bob (satellite, counterparty) ----
+  const alice = new AtpAgent({ service: pdsUrl })
+  const bob = new AtpAgent({ service: pdsUrl })
 
-  await primary.createAccount({
+  await alice.createAccount({
     handle: 'alice.test',
     email: 'alice@example.com',
     password: 'hunter2hunter2',
   })
-  await peer.createAccount({
+  await bob.createAccount({
     handle: 'bob.test',
     email: 'bob@example.com',
     password: 'hunter2hunter2',
   })
-  const primaryDid = primary.session.did
-  const peerDid = peer.session.did
+  const aliceDid = alice.session.did
+  const bobDid = bob.session.did
   // a third, purely-referenced contributor DID (no repo — self-asserted identity)
-  const ghostDid = 'did:plc:zzzzzzzzzzzzzzzzzzzzzzzz'
-  console.log('primary(alice):', primaryDid)
-  console.log('peer(bob):     ', peerDid)
+  const carolDid = 'did:plc:carol0000000000000000000'
+  console.log('alice:', aliceDid)
+  console.log('bob:  ', bobDid)
+  console.log('carol:', carolDid, '(no repo)')
 
   const put = async (agent, collection, value, rkey, validate = false) => {
     const writes = [
@@ -86,18 +121,19 @@ async function main() {
   const now = () => new Date().toISOString()
 
   // ---------- LEXICON VALIDATION PROBE ----------
-  // Ask the PDS to validate an unknown-lexicon record (validate:true). Record
-  // whether the PDS knows the hypercerts lexicons at all.
+  // Ask the PDS to validate an unknown-lexicon record (validate:true). Record whether
+  // the PDS knows the hypercerts lexicons at all. (Historically REJECTED — unknown
+  // lexicon — so nothing persists into bob's repo.)
   let validationBehavior
   try {
-    await peer.com.atproto.repo.applyWrites({
-      repo: peerDid,
+    await bob.com.atproto.repo.applyWrites({
+      repo: bobDid,
       validate: true,
       writes: [
         {
           $type: 'com.atproto.repo.applyWrites#create',
           collection: 'app.certified.graph.follow',
-          value: { subject: primaryDid, createdAt: now() },
+          value: { subject: aliceDid, createdAt: now() },
         },
       ],
     })
@@ -107,24 +143,20 @@ async function main() {
   }
   console.log('validation probe:', validationBehavior)
 
-  // ---------- Stage A: peer writes supporting records ----------
-  const badgeDef = await put(peer, 'app.certified.badge.definition', {
+  // ================= record writes (dependency-ordered) =================
+
+  // 1. bob defines the endorsement badge (alice's award references it by strongRef).
+  const badgeDef = await put(bob, 'app.certified.badge.definition', {
     badgeType: 'endorsement',
     title: 'Verified Impact Contributor',
     description: 'Awarded to accounts whose contributions have been verified.',
     createdAt: now(),
   })
-  // peer awards a badge to primary (inbound award primary will respond to)
-  const inboundAward = await put(peer, 'app.certified.badge.award', {
-    badge: strongRef(badgeDef.uri, badgeDef.cid),
-    subject: { $type: 'app.certified.defs#did', did: primaryDid },
-    note: 'Consistent, well-evidenced contributions across 2024.',
-    createdAt: now(),
-  })
 
-  // ---------- Stage B: primary writes the activity (referenced by 3,6) ----------
-  const activity = await put(
-    primary,
+  // 2. alice's activity (the artifact bob & carol contribute to; bob acks it in HIS repo,
+  //    alice self-evaluates it in HER repo → self-edge).
+  const aliceActivity = await put(
+    alice,
     'org.hypercerts.claim.activity',
     {
       title: 'Reforestation in Amazon Basin 2024',
@@ -139,7 +171,7 @@ async function main() {
         {
           contributorIdentity: {
             $type: 'org.hypercerts.claim.activity#contributorIdentity',
-            identity: peerDid,
+            identity: bobDid,
           },
           contributionWeight: '0.6',
           contributionDetails: {
@@ -150,7 +182,7 @@ async function main() {
         {
           contributorIdentity: {
             $type: 'org.hypercerts.claim.activity#contributorIdentity',
-            identity: ghostDid,
+            identity: carolDid,
           },
           contributionWeight: '0.4',
           contributionDetails: {
@@ -167,51 +199,98 @@ async function main() {
       endDate: '2024-12-20T00:00:00.000Z',
       createdAt: now(),
     },
-    'reforestation-amazon-2024', // key: "any"
+    ALICE_ACTIVITY_RKEY,
   )
 
-  // ---------- Stage C: primary writes the remaining six §2 collections ----------
-  // 1. graph.follow
-  const follow = await put(primary, 'app.certified.graph.follow', {
-    subject: peerDid,
-    createdAt: now(),
-  })
-
-  // 2. badge.award (primary -> peer, subject = DID)
-  const award = await put(primary, 'app.certified.badge.award', {
+  // 3. alice awards bob a badge (subject = DID). bob accepts it in HIS own repo (step 6).
+  const award = await put(alice, 'app.certified.badge.award', {
     badge: strongRef(badgeDef.uri, badgeDef.cid),
-    subject: { $type: 'app.certified.defs#did', did: peerDid },
+    subject: { $type: 'app.certified.defs#did', did: bobDid },
     note: 'Reliable field partner.',
     createdAt: now(),
   })
 
-  // 3. badge.response (primary accepts peer's inbound award, with a decimal weight)
-  const response = await put(primary, 'app.certified.badge.response', {
-    badgeAward: strongRef(inboundAward.uri, inboundAward.cid),
+  // 4. bob's own activity, with alice as a 1.0 contributor. This makes bob an activity
+  //    author (target of alice's cross-repo E3 eval) and gives alice an E4 in-edge.
+  const bobActivity = await put(
+    bob,
+    'org.hypercerts.claim.activity',
+    {
+      title: 'Mangrove restoration, Gulf of Guinea 2024',
+      shortDescription: 'Replanting and monitoring 8,000 mangrove propagules across tidal flats.',
+      description: {
+        $type: 'org.hypercerts.defs#descriptionString',
+        description: 'Tidal-zone survival monitoring with alice as verification lead.',
+      },
+      contributors: [
+        {
+          contributorIdentity: {
+            $type: 'org.hypercerts.claim.activity#contributorIdentity',
+            identity: aliceDid,
+          },
+          contributionWeight: '1.0',
+          contributionDetails: {
+            $type: 'org.hypercerts.claim.activity#contributorRole',
+            role: 'Verification lead',
+          },
+        },
+      ],
+      workScope: {
+        $type: 'org.hypercerts.claim.activity#workScopeString',
+        scope: 'mangrove restoration, coastal monitoring',
+      },
+      startDate: '2024-02-01T00:00:00.000Z',
+      endDate: '2024-11-30T00:00:00.000Z',
+      createdAt: now(),
+    },
+    BOB_ACTIVITY_RKEY,
+  )
+
+  // 5. bob ACCEPTS alice's award, in HIS OWN repo, with a decimal weight (two-sided fact:
+  //    the response keys on the SUBJECT's own DID → alice's award → bob edge is boosted).
+  const response = await put(bob, 'app.certified.badge.response', {
+    badgeAward: strongRef(award.uri, award.cid),
     response: 'accepted',
     weight: '0.85',
     createdAt: now(),
   })
 
-  // 4. context.evaluation (primary -> activity, with numeric-string score)
-  const evaluation = await put(primary, 'org.hypercerts.context.evaluation', {
-    subject: strongRef(activity.uri, activity.cid),
-    evaluators: [{ $type: 'app.certified.defs#did', did: primaryDid }],
-    summary:
-      'Strong survival rate (87%) verified against monitoring photos; methodology sound.',
-    score: { min: '0', max: '100', value: '87.5' },
-    createdAt: now(),
-  })
-
-  // 5. context.acknowledgement (primary acknowledges the activity attribution)
-  const ack = await put(primary, 'org.hypercerts.context.acknowledgement', {
-    subject: strongRef(activity.uri, activity.cid),
+  // 6. bob ACKNOWLEDGES alice's activity attribution, in HIS OWN repo (two-sided ack →
+  //    bob's E4 share from alice's activity is boosted vs carol's unacked share).
+  const ack = await put(bob, 'org.hypercerts.context.acknowledgement', {
+    subject: strongRef(aliceActivity.uri, aliceActivity.cid),
     acknowledged: true,
     comment: 'Confirming my contribution to this activity.',
     createdAt: now(),
   })
 
-  // 6. link.evm — REAL EIP-712 signature over eip712Message{did,evmAddress,chainId,timestamp,nonce}
+  // 7. alice follows bob.
+  const follow = await put(alice, 'app.certified.graph.follow', {
+    subject: bobDid,
+    createdAt: now(),
+  })
+
+  // 8. alice EVALUATES BOB's activity (cross-repo E3, subject in bob's repo, score 87.5/100).
+  const evaluation = await put(alice, 'org.hypercerts.context.evaluation', {
+    subject: strongRef(bobActivity.uri, bobActivity.cid),
+    evaluators: [{ $type: 'app.certified.defs#did', did: aliceDid }],
+    summary:
+      'Strong survival rate (87.5%) verified against monitoring photos; methodology sound.',
+    score: { min: '0', max: '100', value: '87.5' },
+    createdAt: now(),
+  })
+
+  // 9. alice EVALUATES HER OWN activity (self-edge — must be inert but recorded; the
+  //    anti-gaming fixture).
+  const selfEvaluation = await put(alice, 'org.hypercerts.context.evaluation', {
+    subject: strongRef(aliceActivity.uri, aliceActivity.cid),
+    evaluators: [{ $type: 'app.certified.defs#did', did: aliceDid }],
+    summary: 'Self-assessment: consistent survival across all three parcels.',
+    score: { min: '0', max: '100', value: '90' },
+    createdAt: now(),
+  })
+
+  // 10. alice's link.evm — REAL EIP-712 signature over {did,evmAddress,chainId,timestamp,nonce}.
   const evmPriv = generatePrivateKey()
   const evmAccount = privateKeyToAccount(evmPriv)
   const evmAddress = getAddress(evmAccount.address)
@@ -219,7 +298,7 @@ async function main() {
   const timestamp = String(Math.floor(Date.now() / 1000))
   const nonce = '1'
   const message = {
-    did: primaryDid,
+    did: aliceDid,
     evmAddress,
     chainId: BigInt(chainId),
     timestamp: BigInt(timestamp),
@@ -243,7 +322,7 @@ async function main() {
   console.log('EIP-712 signed; viem self-recover OK ->', evmAddress)
 
   const linkEvm = await put(
-    primary,
+    alice,
     'app.certified.link.evm',
     {
       address: evmAddress,
@@ -252,7 +331,7 @@ async function main() {
         signature,
         message: {
           $type: 'app.certified.link.evm#eip712Message',
-          did: primaryDid,
+          did: aliceDid,
           evmAddress,
           chainId: String(chainId),
           timestamp,
@@ -266,57 +345,67 @@ async function main() {
 
   await net.processAll()
 
-  // ---------- export CAR (com.atproto.sync.getRepo against the local PDS) ----------
-  const carRes = await primary.com.atproto.sync.getRepo({ did: primaryDid })
-  const carBytes = Buffer.from(carRes.data)
-  await fs.writeFile(path.join(OUT, 'hypercerts.car'), carBytes)
-
-  // ---------- PLC audit log (real, from the local PLC server) ----------
-  const auditRes = await fetch(`${plcUrl}/${primaryDid}/log/audit`)
-  const audit = await auditRes.json()
-  await fs.writeFile(path.join(OUT, 'hypercerts.plc.json'), JSON.stringify(audit, null, 2))
-
-  // did doc (for the #atproto key, independent of the audit log)
-  const didDocRes = await fetch(`${plcUrl}/${primaryDid}`)
-  const didDoc = await didDocRes.json()
-
-  // ---------- commit metadata ----------
-  const status = await primary.com.atproto.sync.getLatestCommit({ did: primaryDid })
-  const rev = status.data.rev
-  const headCid = status.data.cid
-
-  // ---------- ground-truth key -> valueCID table (PDS is the source of truth) ----------
-  // list every record via com.atproto.repo.listRecords across the seven collections
-  const collections = [
-    'app.certified.graph.follow',
-    'app.certified.badge.award',
-    'app.certified.badge.response',
-    'org.hypercerts.context.evaluation',
-    'org.hypercerts.claim.activity',
-    'org.hypercerts.context.acknowledgement',
-    'app.certified.link.evm',
-  ]
-  const rows = []
-  for (const col of collections) {
-    let cursor
-    do {
-      const lr = await primary.com.atproto.repo.listRecords({
-        repo: primaryDid,
-        collection: col,
-        limit: 100,
-        cursor,
-      })
-      for (const rec of lr.data.records) {
-        const rkey = rec.uri.split('/').pop()
-        rows.push(`${col}/${rkey}\t${rec.cid}`)
-      }
-      cursor = lr.data.cursor
-    } while (cursor)
+  // ---------- per-repo export helper ----------
+  const listRecords = async (agent, did) => {
+    const rows = []
+    for (const col of LIST_COLLECTIONS) {
+      let cursor
+      do {
+        const lr = await agent.com.atproto.repo.listRecords({
+          repo: did,
+          collection: col,
+          limit: 100,
+          cursor,
+        })
+        for (const rec of lr.data.records) {
+          const rkey = rec.uri.split('/').pop()
+          rows.push(`${col}/${rkey}\t${rec.cid}`)
+        }
+        cursor = lr.data.cursor
+      } while (cursor)
+    }
+    rows.sort() // LC_ALL=C-ish byte sort (keys are ascii)
+    return rows
   }
-  rows.sort() // LC_ALL=C-ish byte sort (keys are ascii)
-  await fs.writeFile(path.join(OUT, 'hypercerts.records.tsv'), rows.join('\n') + '\n')
 
-  // ---------- signing-key material + EIP-712 derivation, for the walker & host verifier ----------
+  const exportRepo = async (agent, did, carName, plcName, tsvName) => {
+    const carRes = await agent.com.atproto.sync.getRepo({ did })
+    const carBytes = Buffer.from(carRes.data)
+    await fs.writeFile(path.join(OUT, carName), carBytes)
+
+    const auditRes = await fetch(`${plcUrl}/${did}/log/audit`)
+    const audit = await auditRes.json()
+    await fs.writeFile(path.join(OUT, plcName), JSON.stringify(audit, null, 2))
+
+    const didDocRes = await fetch(`${plcUrl}/${did}`)
+    const didDoc = await didDocRes.json()
+
+    const status = await agent.com.atproto.sync.getLatestCommit({ did })
+    const rows = await listRecords(agent, did)
+    await fs.writeFile(path.join(OUT, tsvName), rows.join('\n') + '\n')
+
+    return {
+      did,
+      rev: status.data.rev,
+      headCid: status.data.cid,
+      carBytes: carBytes.length,
+      recordCount: rows.length,
+      atprotoVerificationMethod: didDoc.verificationMethod?.find((v) => v.id.endsWith('#atproto')),
+      records: rows,
+    }
+  }
+
+  // alice keeps the historic file names; bob is the new export.
+  const aliceExport = await exportRepo(
+    alice,
+    aliceDid,
+    'hypercerts.car',
+    'hypercerts.plc.json',
+    'hypercerts.records.tsv',
+  )
+  const bobExport = await exportRepo(bob, bobDid, 'bob.car', 'bob.plc.json', 'bob.records.tsv')
+
+  // ---------- meta.json ----------
   const meta = {
     generatedAt: now(),
     pdsVersion: JSON.parse(
@@ -332,17 +421,30 @@ async function main() {
       ),
     ).version,
     lexiconVersion: '1.1.0',
-    primaryDid,
-    peerDid,
-    ghostDid,
-    rev,
-    headCid,
-    dataRoot: null, // filled from commit.txt below by the walker; recorded here for convenience
-    atprotoVerificationMethod: didDoc.verificationMethod?.find((v) =>
-      v.id.endsWith('#atproto'),
-    ),
-    recordCount: rows.length,
-    collections,
+    twoSided: true,
+    aliceDid,
+    bobDid,
+    carolDid,
+    aliceActivityRkey: ALICE_ACTIVITY_RKEY,
+    bobActivityRkey: BOB_ACTIVITY_RKEY,
+    alice: {
+      did: aliceExport.did,
+      rev: aliceExport.rev,
+      headCid: aliceExport.headCid,
+      carBytes: aliceExport.carBytes,
+      recordCount: aliceExport.recordCount,
+      atprotoVerificationMethod: aliceExport.atprotoVerificationMethod,
+      records: aliceExport.records,
+    },
+    bob: {
+      did: bobExport.did,
+      rev: bobExport.rev,
+      headCid: bobExport.headCid,
+      carBytes: bobExport.carBytes,
+      recordCount: bobExport.recordCount,
+      atprotoVerificationMethod: bobExport.atprotoVerificationMethod,
+      records: bobExport.records,
+    },
     validationBehavior,
     evm: {
       privateKey: evmPriv, // throwaway test key
@@ -356,7 +458,7 @@ async function main() {
         primaryType: 'LinkAttestation',
         types: EIP712_TYPES,
         message: {
-          did: primaryDid,
+          did: aliceDid,
           evmAddress,
           chainId: String(chainId),
           timestamp,
@@ -365,23 +467,24 @@ async function main() {
       },
     },
     strongRefs: {
-      badgeDefinition: badgeDef,
-      inboundAward,
-      activity,
+      badgeDefinition: badgeDef, // in bob's repo
+      aliceActivity,
+      bobActivity,
+      award, // alice -> bob
+      response, // bob accepts (bob's repo)
+      acknowledgement: ack, // bob acks (bob's repo)
       follow,
-      award,
-      response,
-      evaluation,
-      acknowledgement: ack,
+      evaluation, // alice -> bob's activity (E3)
+      selfEvaluation, // alice -> alice's activity (self-edge)
       linkEvm,
     },
   }
   await fs.writeFile(path.join(OUT, 'meta.json'), JSON.stringify(meta, null, 2))
 
-  console.log('records written:', rows.length)
-  console.log('rev:', rev, ' head:', headCid)
-  console.log('CAR bytes:', carBytes.length)
-  console.log('#atproto vm:', JSON.stringify(meta.atprotoVerificationMethod))
+  console.log('alice records:', aliceExport.recordCount, ' rev:', aliceExport.rev)
+  console.log('bob records:  ', bobExport.recordCount, ' rev:', bobExport.rev)
+  console.log('alice CAR bytes:', aliceExport.carBytes, ' bob CAR bytes:', bobExport.carBytes)
+  console.log('#atproto vm (alice):', JSON.stringify(aliceExport.atprotoVerificationMethod))
 
   await net.close()
   console.log('DONE')

@@ -45,6 +45,11 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::signer::Command,
     },
+    /// Hypercerts root producer (lane-2-only: atproto repo graph -> journal-v2 merkle root).
+    Hypercerts {
+        #[command(subcommand)]
+        cmd: programs::hypercerts::Command,
+    },
     /// Envelope-1 (atproto) conformance harness: run the guest over a CAR + PLC witness and
     /// byte-assert guest == native (M3 exit; not a production program).
     #[command(name = "atproto-conformance")]
@@ -67,6 +72,7 @@ fn main() -> Result<()> {
     match cli.program {
         Program::TrustGraph { cmd } => programs::trust_graph::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
+        Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
         Program::AtprotoConformance { cmd } => programs::atproto_conformance::run(cmd),
         #[cfg(feature = "witness-atproto")]
         Program::Witness { cmd } => witness::run(cmd),

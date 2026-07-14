@@ -1,38 +1,62 @@
 {
-  "generatedAt": "2026-07-14T16:22:59.389Z",
+  "generatedAt": "2026-07-14T21:26:35.890Z",
   "pdsVersion": "0.5.17",
   "devEnvVersion": "0.5.31",
   "lexiconVersion": "1.1.0",
-  "primaryDid": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
-  "peerDid": "did:plc:muv57sirdfpkaiaapvlk55fx",
-  "ghostDid": "did:plc:zzzzzzzzzzzzzzzzzzzzzzzz",
-  "rev": "3mqmmjg7jcs2k",
-  "headCid": "bafyreia6obygtkat3yn3jr4k37wgxd2qt6zxwd3ici5khmikwri6ccrdve",
-  "dataRoot": null,
-  "atprotoVerificationMethod": {
-    "id": "#atproto",
-    "type": "EcdsaSecp256k1VerificationKey2019",
-    "controller": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
-    "publicKeyMultibase": "zPBAyx6xFCFXavEXDPmhzDn5RmbXJQfxWwtVuYRQsYinacbbGU5qCQHyi4eWxRbr5hKrWDKA14gxsPeH8XbEVhtzk"
+  "twoSided": true,
+  "aliceDid": "did:plc:ss2ib2f37vegrihrkrfkrw55",
+  "bobDid": "did:plc:uz24xnaizz6bbw6lvrtvebja",
+  "carolDid": "did:plc:carol0000000000000000000",
+  "aliceActivityRkey": "reforestation-amazon-2024",
+  "bobActivityRkey": "bob-mangrove-2024",
+  "alice": {
+    "did": "did:plc:ss2ib2f37vegrihrkrfkrw55",
+    "rev": "3mqn5id3y6k2q",
+    "headCid": "bafyreibfdlt7n2gc53wdwjresksxrf3ni5f5cts2hckadsidevls52shva",
+    "carBytes": 4483,
+    "recordCount": 6,
+    "atprotoVerificationMethod": {
+      "id": "#atproto",
+      "type": "EcdsaSecp256k1VerificationKey2019",
+      "controller": "did:plc:ss2ib2f37vegrihrkrfkrw55",
+      "publicKeyMultibase": "zQN6ngQ3y576VKTmSJwWnzJwQqvyY98LvDZjRTMX4xFhCoUQeqrbcxdwqiVbZJSJH3QGUZexgcXoAqcEYkX14qJHL"
+    },
+    "records": [
+      "app.certified.badge.award/3mqn5iczf6c2q\tbafyreibwgurrd4gmsnfcebxsyokcu2nfao2yjjypmexewpeivrozzs42ai",
+      "app.certified.graph.follow/3mqn5id2chs2q\tbafyreia4fzy2qhhazu6j36ztjpd2syxio33luqh2tksmfq2muxokmrxgna",
+      "app.certified.link.evm/self\tbafyreiegjiidug2jwugfjvj6bs7oabwc3njhqrs2pd4xbqkocaw364wxyy",
+      "org.hypercerts.claim.activity/reforestation-amazon-2024\tbafyreiat2qzchul3r3c4heda27mkibmncn7g7enyyybwrezguvsaveam6a",
+      "org.hypercerts.context.evaluation/3mqn5id2mac2q\tbafyreian5qyuato22dogbqo5gxkzt2lcsmljgmf4d2yfyd4ee7pt3qqzky",
+      "org.hypercerts.context.evaluation/3mqn5id2uzk2q\tbafyreihw56v7vase3prhkabnweti7bpv4je73ekt6ivxbpqvjuogqtfxrm"
+    ]
   },
-  "recordCount": 7,
-  "collections": [
-    "app.certified.graph.follow",
-    "app.certified.badge.award",
-    "app.certified.badge.response",
-    "org.hypercerts.context.evaluation",
-    "org.hypercerts.claim.activity",
-    "org.hypercerts.context.acknowledgement",
-    "app.certified.link.evm"
-  ],
+  "bob": {
+    "did": "did:plc:uz24xnaizz6bbw6lvrtvebja",
+    "rev": "3mqn5id26ks2q",
+    "headCid": "bafyreienjjdecqvpgbigdie6ktan362xvnkwwsmnpz6pbaqu2ebu2j5qym",
+    "carBytes": 2424,
+    "recordCount": 4,
+    "atprotoVerificationMethod": {
+      "id": "#atproto",
+      "type": "EcdsaSecp256k1VerificationKey2019",
+      "controller": "did:plc:uz24xnaizz6bbw6lvrtvebja",
+      "publicKeyMultibase": "zNupyPNck9Hs837f4Eyx6Q223uCAoK3W8o6izxGXVc9PefXn1XGTFkdZhc76kzVpK6rmsjcWMq4q5XCak8C5PpsFA"
+    },
+    "records": [
+      "app.certified.badge.definition/3mqn5icyqo22q\tbafyreidmw7zvztpd75opiq3rsi43iqp4xptrsoz2iolwmdcsqasgoekuoi",
+      "app.certified.badge.response/3mqn5icztt22q\tbafyreiagxnhrwab4nhgim6q22ashedeiqruz35o77arfmaj34rtpnqve64",
+      "org.hypercerts.claim.activity/bob-mangrove-2024\tbafyreih4mjoachrke6oqgcjhreerr74iwous5hgz3l2mnzcnfp7kkzzeri",
+      "org.hypercerts.context.acknowledgement/3mqn5id24mc2q\tbafyreihy2npxhsq7hp7e6zy3lhickf2r7kpxaspp3lxn47iugg7vjmsnza"
+    ]
+  },
   "validationBehavior": "validate:true REJECTED: Unknown lexicon type: app.certified.graph.follow",
   "evm": {
-    "privateKey": "0xe12a05bf98dbb4520318418c4194486c00914844ba8400a7f4516eae675889c4",
-    "address": "0x24dF77757394DFDf84f47b6C55df431C9c78A7b9",
+    "privateKey": "0xb9b280a1522bdcb9d608975e9c17b2e1237e8ea8dc616c2532d3e893617dc75a",
+    "address": "0xD030e52949a1D6BC7D00a2040268410eE3AFd65A",
     "chainId": "10",
-    "timestamp": "1784046178",
+    "timestamp": "1784064395",
     "nonce": "1",
-    "signature": "0x4986adceffb13ac272c23152301e00a21b8788f46233bea2467ba5f958ddf01a6f7159d421dcbd5a0f79391477a52e85a28878fd4658f387a50651fea02eb04d1b",
+    "signature": "0xf99b358a82fa0c37dbca00d86bce970eaf1050d047d83be4ee9ce3f21ae9d94577acd6f99ec07fa85781e008cdad56a983cc4ebee17c858ae5b49984d114a8cb1b",
     "eip712": {
       "domain": {
         "name": "IdentityLink",
@@ -65,50 +89,54 @@
         ]
       },
       "message": {
-        "did": "did:plc:y4terqrp7vrlvxyxlnnyjmvs",
-        "evmAddress": "0x24dF77757394DFDf84f47b6C55df431C9c78A7b9",
+        "did": "did:plc:ss2ib2f37vegrihrkrfkrw55",
+        "evmAddress": "0xD030e52949a1D6BC7D00a2040268410eE3AFd65A",
         "chainId": "10",
-        "timestamp": "1784046178",
+        "timestamp": "1784064395",
         "nonce": "1"
       }
     }
   },
   "strongRefs": {
     "badgeDefinition": {
-      "uri": "at://did:plc:muv57sirdfpkaiaapvlk55fx/app.certified.badge.definition/3mqmmjfkv5s2k",
-      "cid": "bafyreieoqlyx7bbucqmkqbdbyo7k4wvtw5t7vfpgbhs6yg2xxn37q2jknm"
+      "uri": "at://did:plc:uz24xnaizz6bbw6lvrtvebja/app.certified.badge.definition/3mqn5icyqo22q",
+      "cid": "bafyreidmw7zvztpd75opiq3rsi43iqp4xptrsoz2iolwmdcsqasgoekuoi"
     },
-    "inboundAward": {
-      "uri": "at://did:plc:muv57sirdfpkaiaapvlk55fx/app.certified.badge.award/3mqmmjfn4h22k",
-      "cid": "bafyreifnf2nzlmwgovvua3la57x6sj6aqygfsytblvfknmxvhftxnwusyi"
+    "aliceActivity": {
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/org.hypercerts.claim.activity/reforestation-amazon-2024",
+      "cid": "bafyreiat2qzchul3r3c4heda27mkibmncn7g7enyyybwrezguvsaveam6a"
     },
-    "activity": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.claim.activity/reforestation-amazon-2024",
-      "cid": "bafyreidhafyflagnf2mw2t7iphl63aeybqg5ebaeyebhr6vwot6n43tkfy"
-    },
-    "follow": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.graph.follow/3mqmmjfozxs2k",
-      "cid": "bafyreidjy2scwqlepq7omfccntdux4fsf7agjhz6vlbld63yuyv425iwhm"
+    "bobActivity": {
+      "uri": "at://did:plc:uz24xnaizz6bbw6lvrtvebja/org.hypercerts.claim.activity/bob-mangrove-2024",
+      "cid": "bafyreih4mjoachrke6oqgcjhreerr74iwous5hgz3l2mnzcnfp7kkzzeri"
     },
     "award": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.badge.award/3mqmmjfqjt22k",
-      "cid": "bafyreigklpv246hx7nb553gwdh7q2rij23fhmx6wn4ap4zvwihqxtad6di"
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/app.certified.badge.award/3mqn5iczf6c2q",
+      "cid": "bafyreibwgurrd4gmsnfcebxsyokcu2nfao2yjjypmexewpeivrozzs42ai"
     },
     "response": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.badge.response/3mqmmjfsr4c2k",
-      "cid": "bafyreibbeil5kcwmonsfrbjxorzfu2vup2seeekidm5gzpm3o6glqngxmq"
-    },
-    "evaluation": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.context.evaluation/3mqmmjfwja22k",
-      "cid": "bafyreigmawmqxq6t76lxvehl2kdhk7m6r7nw4j34sksjuqkxsjlybo4ylm"
+      "uri": "at://did:plc:uz24xnaizz6bbw6lvrtvebja/app.certified.badge.response/3mqn5icztt22q",
+      "cid": "bafyreiagxnhrwab4nhgim6q22ashedeiqruz35o77arfmaj34rtpnqve64"
     },
     "acknowledgement": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/org.hypercerts.context.acknowledgement/3mqmmjg2dcc2k",
-      "cid": "bafyreieiitmopugov7qja4wu47eo5xhkgsbtl5y4yp7ajdvbag3brtpyte"
+      "uri": "at://did:plc:uz24xnaizz6bbw6lvrtvebja/org.hypercerts.context.acknowledgement/3mqn5id24mc2q",
+      "cid": "bafyreihy2npxhsq7hp7e6zy3lhickf2r7kpxaspp3lxn47iugg7vjmsnza"
+    },
+    "follow": {
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/app.certified.graph.follow/3mqn5id2chs2q",
+      "cid": "bafyreia4fzy2qhhazu6j36ztjpd2syxio33luqh2tksmfq2muxokmrxgna"
+    },
+    "evaluation": {
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/org.hypercerts.context.evaluation/3mqn5id2mac2q",
+      "cid": "bafyreian5qyuato22dogbqo5gxkzt2lcsmljgmf4d2yfyd4ee7pt3qqzky"
+    },
+    "selfEvaluation": {
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/org.hypercerts.context.evaluation/3mqn5id2uzk2q",
+      "cid": "bafyreihw56v7vase3prhkabnweti7bpv4je73ekt6ivxbpqvjuogqtfxrm"
     },
     "linkEvm": {
-      "uri": "at://did:plc:y4terqrp7vrlvxyxlnnyjmvs/app.certified.link.evm/self",
-      "cid": "bafyreifju3jbajhr5dpn4z4vpg3v4gmmvtxx3szdi33vqep2zyri35fx3m"
+      "uri": "at://did:plc:ss2ib2f37vegrihrkrfkrw55/app.certified.link.evm/self",
+      "cid": "bafyreiegjiidug2jwugfjvj6bs7oabwc3njhqrs2pd4xbqkocaw364wxyy"
     }
   }
 }

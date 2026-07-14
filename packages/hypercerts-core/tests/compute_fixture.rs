@@ -1,7 +1,8 @@
 //! Full hypercerts pipeline over the REAL seeded-PDS fixture: anchor → envelope-1 verify →
-//! decode → semantics → rank → journal v2 (lane-2-only). The fixture's own quirks make it
-//! a good adversary: alice evaluates and acknowledges HER OWN activity (self-edges must be
-//! inert), and her link.evm binding is real (bound-actor address leaf must be emitted).
+//! decode → semantics → rank → journal v2 (lane-2-only). This loads ALICE's repo only; the
+//! fixture's own quirks make it a good adversary: alice evaluates HER OWN activity (a
+//! self-edge that must be inert), and her link.evm binding is real (bound-actor address leaf
+//! must be emitted). The two-sided cross-repo semantics are exercised in two_sided_fixture.rs.
 
 use alloy_primitives::{B256, U256};
 use envelopes::atproto::{carset::Car, plc::PlcOpWitness, AtprotoWitness};
@@ -12,8 +13,8 @@ use pagerank_core::AnchorRecord;
 use sha2::Digest;
 use std::collections::BTreeMap;
 
-const ALICE: &str = "did:plc:y4terqrp7vrlvxyxlnnyjmvs";
-const BOB: &str = "did:plc:muv57sirdfpkaiaapvlk55fx";
+const ALICE: &str = "did:plc:ss2ib2f37vegrihrkrfkrw55";
+const BOB: &str = "did:plc:uz24xnaizz6bbw6lvrtvebja";
 
 fn s() -> U256 {
     U256::from(1_000_000_000_000_000_000u64)
@@ -118,10 +119,10 @@ fn full_pipeline_over_the_seeded_fixture() {
     let alice = did_node_id(ALICE);
     assert_eq!(
         r.bindings.get(&alice).map(|a| format!("{a:#x}")),
-        Some("0x24df77757394dfdf84f47b6c55df431c9c78a7b9".to_string())
+        Some("0xd030e52949a1d6bc7d00a2040268410ee3afd65a".to_string())
     );
 
-    // The fixture's self-evaluation and self-acknowledgement are inert but RECORDED:
+    // The fixture's self-evaluation (alice → her own activity) is inert but RECORDED:
     // skippedDigest is nonzero and includes a SELF_EDGE entry.
     assert_ne!(r.journal.skipped_digest, B256::ZERO);
 

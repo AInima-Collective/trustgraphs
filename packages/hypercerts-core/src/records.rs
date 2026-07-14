@@ -219,7 +219,9 @@ mod tests {
                     Record::Evaluation { score: Some(s), subject: Some(_), .. },
                     "org.hypercerts.context.evaluation",
                 ) => {
-                    assert_eq!(s.value, "87.5");
+                    // Alice now has TWO evaluations: a cross-repo eval of Bob's activity
+                    // (87.5) and a self-eval of her own activity (90, inert but recorded).
+                    assert!(s.value == "87.5" || s.value == "90", "unexpected score {}", s.value);
                 }
                 (
                     Record::BadgeResponse { response, weight, .. },
@@ -229,6 +231,7 @@ mod tests {
                     assert_eq!(weight.as_deref(), Some("0.85"));
                 }
                 (Record::Activity { contributors, .. }, "org.hypercerts.claim.activity") => {
+                    // Alice's only activity: [bob 0.6, carol 0.4].
                     assert_eq!(contributors.len(), 2);
                     assert_eq!(contributors[0].contribution_weight.as_deref(), Some("0.6"));
                 }
@@ -238,7 +241,7 @@ mod tests {
                 _ => {}
             }
         }
-        assert_eq!(n, 7);
+        assert_eq!(n, 6);
     }
 
     #[test]
