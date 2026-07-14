@@ -4,14 +4,17 @@ pragma solidity ^0.8.22;
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {ISP1Verifier} from "interfaces/merkle/ISP1Verifier.sol";
 
-/// @title SP1TrustGraphVerifier
-/// @notice Adapts the SP1 verifier gateway to the MerkleSnapshot `IZkVerifier` seam.
+/// @title SP1JournalVerifier
+/// @notice Adapts the SP1 verifier gateway to the `IZkVerifier` seam. Journal-agnostic: it binds
+/// `keccak256(publicValues)` to the consumer-computed journal digest and delegates proof checking
+/// to the gateway — the consumer (`MerkleSnapshot`, `SignerSyncZkModule`, …) owns the journal
+/// shape. Same bytecode serves every program, deployed once per program with its own vkey.
 ///
 /// The `programVKey` (the SP1 guest's verification key) is the constitutional "what is correct
-/// PageRank" knob and is IMMUTABLE here: to change the guest, deploy a new verifier and re-point
-/// `MerkleSnapshot.zkVerifier` through the constitutional timelock (D8). This avoids any drift
-/// between a stored image id and the key the gateway actually checks.
-contract SP1TrustGraphVerifier is IZkVerifier {
+/// for this program" knob and is IMMUTABLE here: to change the guest, deploy a new verifier and
+/// re-point the consumer's `zkVerifier` through the constitutional timelock (D8). This avoids any
+/// drift between a stored image id and the key the gateway actually checks.
+contract SP1JournalVerifier is IZkVerifier {
     /// @notice The SP1 verifier (or verifier gateway) this adapter delegates to.
     ISP1Verifier public immutable gateway;
 

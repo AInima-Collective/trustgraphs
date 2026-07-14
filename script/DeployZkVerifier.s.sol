@@ -7,19 +7,19 @@ import { Strings } from '@openzeppelin/contracts/utils/Strings.sol';
 
 import { ISP1Verifier } from 'interfaces/merkle/ISP1Verifier.sol';
 import {
-  SP1TrustGraphVerifier
-} from 'contracts/merkle/SP1TrustGraphVerifier.sol';
+  SP1JournalVerifier
+} from 'contracts/merkle/SP1JournalVerifier.sol';
 
 import { Common } from 'script/Common.s.sol';
 
 /// @title DeployZkVerifier
-/// @notice Deploys the `SP1TrustGraphVerifier` adapter that gates `MerkleSnapshot.submitProof`.
+/// @notice Deploys the `SP1JournalVerifier` adapter that gates `MerkleSnapshot.submitProof`.
 ///
 /// This script does NOT deploy an SP1 verifier gateway: the canonical Groth16 gateway is a shared,
 /// audited Succinct deployment (per-chain). Its address is taken as an INPUT so we point at the
 /// already-deployed canonical gateway rather than hardcoding it. The `programVKey` (guest image id)
 /// is likewise an input — it is the constitutional "what is correct PageRank" knob and is immutable
-/// in the adapter (see `SP1TrustGraphVerifier` / DECISIONS D8).
+/// in the adapter (see `SP1JournalVerifier` / DECISIONS D8).
 ///
 /// The deployed adapter address is written to `.docker/zk_verifier_deploy.json` so the TypeScript
 /// deploy orchestration can thread it into `DeployNetwork` as `MerkleSnapshot.zkVerifier`.
@@ -36,7 +36,7 @@ contract DeployZkVerifier is Common {
   /// @param outLabel Output-file discriminator: '' -> `.docker/zk_verifier_deploy.json` (root
   ///        producer), else `.docker/zk_verifier_<outLabel>_deploy.json` (e.g. 'signer'). Lets the
   ///        root and signer verifiers coexist without clobbering each other's output.
-  /// @return verifier The deployed `SP1TrustGraphVerifier` address.
+  /// @return verifier The deployed `SP1JournalVerifier` address.
   function run(
     string calldata sp1GatewayAddr,
     bytes32 programVKey,
@@ -63,7 +63,7 @@ contract DeployZkVerifier is Common {
 
     vm.startBroadcast(_privateKey);
 
-    SP1TrustGraphVerifier sp1Verifier = new SP1TrustGraphVerifier(
+    SP1JournalVerifier sp1Verifier = new SP1JournalVerifier(
       ISP1Verifier(gateway),
       vkey
     );
@@ -73,7 +73,7 @@ contract DeployZkVerifier is Common {
 
     console.log('SP1 verifier gateway:', gateway);
     console.log('SP1 program vkey:', vm.toString(vkey));
-    console.log('SP1TrustGraphVerifier deployed at:', verifier);
+    console.log('SP1JournalVerifier deployed at:', verifier);
 
     // Persist for the deploy orchestration (env.ts reads `zk_verifier`).
     string memory _json = 'json';

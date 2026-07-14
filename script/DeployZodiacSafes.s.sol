@@ -53,7 +53,7 @@ contract DeployZodiacSafes is Common {
   /**
    * @dev Deploys a Safe with the MerkleGovModule + SignerSyncZkModule and auto-enables them.
    * @param merkleSnapshotAddr The address of the MerkleSnapshot contract.
-   * @param signerVerifierAddr The SP1TrustGraphVerifier bound to the SIGNER guest's vkey (NOT the
+   * @param signerVerifierAddr The SP1JournalVerifier bound to the SIGNER guest's vkey (NOT the
    *        root verifier — the signer proof is a different program). Pass address(0) only for a
    *        mock-verifier local run.
    */
@@ -210,7 +210,7 @@ contract DeployZodiacSafes is Common {
   /// @dev Deploy the SignerSyncZkModule. It reuses the MerkleSnapshot's accumulator + paramsHash (so
   ///      the score root and signer set stay consistent), but MUST use its OWN verifier bound to the
   ///      SIGNER guest's vkey — reusing the MerkleSnapshot's (root-vkey) verifier would reject every
-  ///      real signer proof. `signerVerifier` is that dedicated SP1TrustGraphVerifier.
+  ///      real signer proof. `signerVerifier` is that dedicated SP1JournalVerifier.
   function _deploySignerModule(
     address deployer,
     address safeProxy,
