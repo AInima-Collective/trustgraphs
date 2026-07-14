@@ -5,6 +5,7 @@
 //! `pagerank-core`: NO floats, BTree-only iteration, deterministic everything.
 
 pub mod binding;
+pub mod compute;
 pub mod decimal;
 pub mod records;
 pub mod semantics;
