@@ -11,21 +11,21 @@ use alloy_primitives::{Address, U256};
 /// The legacy precision quantum: `f64` scores were scaled to `u64` by 1e6 before distribution.
 const QUANTUM: u64 = 1_000_000;
 
-/// Distribute `total_pool` across `scores_fp` (normalized PageRank scores, scaled by S, `value > 0`).
-/// Returns `(assigned, total_value)` where `assigned` holds only `value > 0` entries and
-/// `total_value == total_pool` whenever anything is distributed.
-pub fn distribute_points(
-    scores_fp: &[(Address, U256)],
-    p: &Params,
-) -> (Vec<(Address, U256)>, U256) {
+/// Key-generic distribution core — the exact algorithm, over any node key type (the
+/// hypercerts program distributes over `B256` node ids). Wrappers only adapt key types.
+pub fn distribute_points_generic<K: Ord + Copy>(
+    scores_fp: &[(K, U256)],
+    scale: U256,
+    total_pool: U256,
+) -> (Vec<(K, U256)>, U256) {
     if scores_fp.is_empty() {
         return (Vec::new(), U256::ZERO);
     }
-    let s = p.precision_scale;
+    let s = scale;
     let quantum = U256::from(QUANTUM);
 
     // score * 1e6 (truncating), kept as U256.
-    let mut scaled: Vec<(Address, U256)> =
+    let mut scaled: Vec<(K, U256)> =
         scores_fp.iter().map(|(a, sc)| (*a, mul_div(*sc, quantum, s))).collect();
 
     let total_scaled: U256 = scaled.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
@@ -33,12 +33,11 @@ pub fn distribute_points(
         return (Vec::new(), U256::ZERO);
     }
 
-    // Sort by scaled score descending, then address ascending (deterministic tie-break).
+    // Sort by scaled score descending, then key ascending (deterministic tie-break).
     scaled.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-    let total_pool = p.total_pool;
     let mut remaining = total_pool;
-    let mut assigned: Vec<(Address, U256)> = Vec::new();
+    let mut assigned: Vec<(K, U256)> = Vec::new();
     let len = scaled.len();
 
     for (i, (addr, sc)) in scaled.iter().enumerate() {
@@ -64,6 +63,15 @@ pub fn distribute_points(
 
     let total_value: U256 = assigned.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
     (assigned, total_value)
+}
+
+/// Distribute `total_pool` across `scores_fp` (normalized PageRank scores, scaled by S,
+/// `value > 0`) — the trust-graph program's Address-keyed entry (public API unchanged).
+pub fn distribute_points(
+    scores_fp: &[(Address, U256)],
+    p: &Params,
+) -> (Vec<(Address, U256)>, U256) {
+    distribute_points_generic(scores_fp, p.precision_scale, p.total_pool)
 }
 
 #[cfg(test)]
