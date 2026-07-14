@@ -21,8 +21,8 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Live** | `0x00d4c9d24cf3f9dfee319b1010030a9a40be4bf848af23172e6b4a1b43e18715` (M0 exit, SP1 6.3.1) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | v1 Optimism deployment — **frozen on journal v1**, never migrated (retains vkey `0x00a3d155…`) |
-| **signer-sync** (Safe owner rotation) | **Built** | `0x0015b448a050900664e9fb69429193c4d6fae1f0a5f83f2863c421b6aa8697be` (M0 exit, SP1 6.3.1) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
+| **trust-graph** (root producer) | **Live** | `0x000101e91d5386f1c1655bd51c3b10bb27626fa949a9a668a9ac2dda98d438c2` (M2 — journal v2 + patched crypto; rotated from M0) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | v1 Optimism deployment — **frozen on journal v1**, never migrated (retains vkey `0x00a3d155…`) |
+| **signer-sync** (Safe owner rotation) | **Built** | `0x001b3c29f9f2a739ddeddb3014576d7d984ec9304031ef376401bc158979d80d` (M2 — journal v2 + patched crypto; rotated from M0) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
 | **hypercerts** (AT-proto graph) | **Planned** — GOAL.md M4 | `TODO(vkey)` — first derived at M4 | [architecture](./hypercerts/ARCHITECTURE.md) (runbook at M4/M5) | pilot on Optimism (GOAL.md M5; OP Sepolia rehearsal first) |
 
 > **vkeys:** M0's reorg changed each existing guest's ELF layout (semantics didn't change — vectors are

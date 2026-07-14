@@ -83,6 +83,8 @@ fn fixed_points(g: &Graph) -> HashMap<Address, U256> {
         precision_scale: s,
         schema_uid: B256::ZERO,
         weight_field_index: 1,
+        envelope0_domain_separators: vec![],
+        lane2_max_head_age: 0,
     };
     let mut edges = Vec::new();
     for (i, &(f, t, w)) in g.edges.iter().enumerate() {
@@ -97,7 +99,7 @@ fn fixed_points(g: &Graph) -> HashMap<Address, U256> {
             data,
         });
     }
-    compute(&GuestInput { edges, params }).scores.into_iter().collect()
+    compute(&GuestInput { edges, params, lane2: None }).scores.into_iter().collect()
 }
 
 fn main() {

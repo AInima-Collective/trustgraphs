@@ -19,6 +19,14 @@ pagerank-core = { path = "../../packages/pagerank-core" }
 # `succinct` toolchain via `cargo prove build`, and must not share the root's dependency graph.
 [workspace]
 
+# SP1 precompile-accelerated crypto (measured at M1: ecrecover 27.3k cyc / 50.2k PGU per sig,
+# sha256 219 cyc / 732 PGU per 64-B block — research/offchain/05-spike-results.md §3). Adding
+# these changes EVERY bin's ELF → the root and signer vkeys rotate, batched at M2's deploy per
+# GOAL.md ground rule 7.
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.0.0" }
+
 [profile.release]
 opt-level = 3
 lto = true

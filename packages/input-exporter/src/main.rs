@@ -279,7 +279,7 @@ async fn main() -> Result<()> {
     let out_json = if let Some(selection) = selection {
         serde_json::to_string_pretty(&SignerInput { edges, params, selection })?
     } else {
-        serde_json::to_string_pretty(&GuestInput { edges, params })?
+        serde_json::to_string_pretty(&GuestInput { edges, params, lane2: None })?
     };
     std::fs::write(&args.out, out_json)?;
     eprintln!("wrote {} ({} edges)", args.out, cp.leafCount);

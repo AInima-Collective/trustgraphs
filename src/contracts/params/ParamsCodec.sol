@@ -28,10 +28,15 @@ library ParamsCodec {
         uint256 precisionScale;
         bytes32 schemaUid;
         uint32 weightFieldIndex;
+        /// Lane 2 (envelope 0): accepted EIP-712 domain separators; EMPTY = lane 2 disabled.
+        bytes32[] envelope0DomainSeparators;
+        /// Rule-Φ staleness horizon in seconds (nonzero when lane 2 is enabled).
+        uint64 lane2MaxHeadAge;
     }
 
-    /// @notice The 13-field `paramsHash`. Field order + types are frozen against `params_hash` in
-    ///         `pagerank-core` (slot 9 is the `seedSetRoot` over the sorted seeds).
+    /// @notice The 15-field `paramsHash`. Field order + types are frozen against `params_hash` in
+    ///         `pagerank-core` (slot 9 is the `seedSetRoot` over the sorted seeds; slot 14 is
+    ///         keccak over the concatenated lane-2 domain separators, 0 when the list is empty).
     function hash(Params memory p) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -47,9 +52,18 @@ library ParamsCodec {
                 p.totalPool,
                 p.precisionScale,
                 p.schemaUid,
-                p.weightFieldIndex
+                p.weightFieldIndex,
+                domainSetHash(p.envelope0DomainSeparators),
+                p.lane2MaxHeadAge
             )
         );
+    }
+
+    /// @notice keccak over the concatenated lane-2 domain separators; bytes32(0) when empty
+    ///         (lane 2 disabled). Matches `pagerank_core::encode::params_hash`.
+    function domainSetHash(bytes32[] memory separators) internal pure returns (bytes32) {
+        if (separators.length == 0) return bytes32(0);
+        return keccak256(abi.encodePacked(separators));
     }
 
     /// @notice `seedSetRoot`: an OpenZeppelin StandardMerkleTree (sorted leaves, commutative parent

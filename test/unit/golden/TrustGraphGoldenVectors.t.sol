@@ -152,7 +152,9 @@ contract TrustGraphGoldenVectorsTest is Test {
             totalPool: json.readUint(".params.totalPool"),
             precisionScale: json.readUint(".params.precisionScale"),
             schemaUid: json.readBytes32(".params.schemaUid"),
-            weightFieldIndex: uint32(json.readUint(".params.weightFieldIndex"))
+            weightFieldIndex: uint32(json.readUint(".params.weightFieldIndex")),
+            envelope0DomainSeparators: json.readBytes32Array(".params.envelope0DomainSeparators"),
+            lane2MaxHeadAge: uint64(json.readUint(".params.lane2MaxHeadAge"))
         });
         assertEq(ParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }

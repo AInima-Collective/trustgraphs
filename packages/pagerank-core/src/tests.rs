@@ -31,6 +31,8 @@ pub(crate) fn default_params() -> Params {
         precision_scale: s,
         schema_uid: B256::ZERO,
         weight_field_index: 1,
+        envelope0_domain_separators: vec![],
+        lane2_max_head_age: 0,
     }
 }
 
@@ -67,7 +69,7 @@ fn edge(from: u8, to: u8, uid: u8, ts: u64, weight: u64) -> RawEdge {
 fn sample_input() -> GuestInput {
     // Alice -> Bob -> Charlie -> Alice, symmetric ring, all weight 1.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    GuestInput { edges, params: default_params() }
+    GuestInput { edges, params: default_params(), lane2: None }
 }
 
 #[test]
@@ -110,7 +112,7 @@ fn journal_binds_inputs() {
 fn trust_boosts_seed_neighbour() {
     // Alice (seed) -> Bob, Bob -> Charlie, Charlie -> Alice.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    let input = GuestInput { edges, params: trust_params(vec![addr(1)]) };
+    let input = GuestInput { edges, params: trust_params(vec![addr(1)]), lane2: None };
     let r = compute(&input);
     assert_eq!(r.journal.total_value, input.params.total_pool);
     // Everyone is reachable; pool fully distributed among 3.
@@ -119,7 +121,7 @@ fn trust_boosts_seed_neighbour() {
 
 #[test]
 fn empty_input_is_valid() {
-    let input = GuestInput { edges: vec![], params: default_params() };
+    let input = GuestInput { edges: vec![], params: default_params(), lane2: None };
     let r = compute(&input);
     assert_eq!(r.journal.leaf_count, 0);
     assert_eq!(r.journal.acc, B256::ZERO);
@@ -128,4 +130,170 @@ fn empty_input_is_valid() {
     assert_eq!(r.scores.len(), 0);
     // empty blob is "{}"
     assert_eq!(r.blob, b"{}");
+}
+
+// ---------------------------------------------------------------------------
+// Two-lane compute: a real envelope-0 fixture through the FULL pipeline, plus
+// the withholding path (GOAL M2 exit: anchored head, data withheld → rule Φ,
+// skip recorded, root still lands).
+// ---------------------------------------------------------------------------
+
+mod lane2_compute {
+    use super::*;
+    use crate::{skip_reason, AnchorRecord, Lane2Witness};
+    use alloy_primitives::keccak256;
+    use envelopes::eas_offchain::{
+        self, attest_struct_hash, eip712_digest, head_payload, offchain_uid_v2, Envelope0Witness,
+        LogEntry, OffchainAttestation, ENTRY_ATTEST,
+    };
+    use envelopes::ecdsa::eip191_digest32;
+    use k256::ecdsa::SigningKey;
+    use zk_core::anchor::{skip_leaf, skipped_digest, SkipEntry};
+    use zk_core::fold::fold;
+
+    fn sign_prehash(sk: &SigningKey, prehash: &B256) -> Vec<u8> {
+        let (sig, _) = sk.sign_prehash_recoverable(prehash.as_slice()).unwrap();
+        let sig = sig.normalize_s().unwrap_or(sig);
+        for v in 0u8..=1 {
+            let rid = k256::ecdsa::RecoveryId::from_byte(v).unwrap();
+            if let Ok(vk) =
+                k256::ecdsa::VerifyingKey::recover_from_prehash(prehash.as_slice(), &sig, rid)
+            {
+                if vk == *sk.verifying_key() {
+                    let mut out = sig.to_bytes().to_vec();
+                    out.push(v);
+                    return out;
+                }
+            }
+        }
+        unreachable!("one recovery id must match");
+    }
+
+    fn eth_addr(sk: &SigningKey) -> Address {
+        let unc = sk.verifying_key().to_encoded_point(false);
+        let h = keccak256(&unc.as_bytes()[1..]);
+        Address::from_slice(&h[12..])
+    }
+
+    fn lane2_params(ds: B256) -> Params {
+        let mut p = default_params();
+        p.envelope0_domain_separators = vec![ds];
+        p.lane2_max_head_age = 10_000;
+        p
+    }
+
+    /// Build a signed one-attestation envelope-0 log for `sk`, returning (witness, head).
+    fn one_edge_log(
+        sk: &SigningKey,
+        ds: B256,
+        schema: B256,
+        to: u8,
+        conf: u64,
+    ) -> (Envelope0Witness, B256) {
+        let mut data = vec![0u8; 64];
+        data[32..].copy_from_slice(&U256::from(conf).to_be_bytes::<32>());
+        let mut a = OffchainAttestation {
+            version: 2,
+            schema,
+            recipient: addr(to),
+            time: 500,
+            expiration_time: 0,
+            revocable: true,
+            ref_uid: B256::ZERO,
+            data,
+            salt: B256::from([0x77; 32]),
+            signature: vec![],
+        };
+        a.signature = sign_prehash(sk, &eip712_digest(ds, attest_struct_hash(&a)));
+        let uid = offchain_uid_v2(&a);
+        let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid }];
+        let head = eas_offchain::log_head(&entries);
+        let head_signature =
+            sign_prehash(sk, &eip191_digest32(&head_payload(head, entries.len() as u64)));
+        (
+            Envelope0Witness {
+                owner: eth_addr(sk),
+                entries,
+                attestations: vec![a],
+                head_signature,
+            },
+            head,
+        )
+    }
+
+    #[test]
+    fn two_lane_compute_merges_lanes_and_commits_anchor_acc() {
+        let ds = keccak256(b"test-domain");
+        let params = lane2_params(ds);
+        let sk = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
+        let owner = eth_addr(&sk);
+        let (w, head) = one_edge_log(&sk, ds, params.schema_uid, 9, 60);
+
+        // Lane 1: one edge 1 -> 2. Lane 2: owner -> 0x09.
+        let input = GuestInput {
+            edges: vec![edge(1, 2, 1, 100, 50)],
+            params,
+            lane2: Some(Lane2Witness {
+                anchors: vec![AnchorRecord {
+                    node_id: eas_offchain::address_node_id(owner),
+                    envelope_kind: 0,
+                    head,
+                    data_commitment: B256::ZERO,
+                    block_timestamp: 1000,
+                }],
+                envelopes: vec![w],
+            }),
+        };
+        let r = compute(&input);
+
+        // Both lanes committed: lane 1 acc as usual, lane 2 anchor fold nonzero, no skips.
+        assert_eq!(r.journal.leaf_count, 1);
+        assert_eq!(r.journal.anchor_count, 1);
+        assert_ne!(r.journal.anchor_acc, B256::ZERO);
+        assert_eq!(r.journal.skipped_digest, B256::ZERO);
+        // The lane-2 attester + recipient are scored nodes (graph merged both lanes).
+        let scored: Vec<Address> = r.scores.iter().map(|(a, _)| *a).collect();
+        assert!(scored.contains(&owner), "lane-2 attester missing from scores");
+        assert!(scored.contains(&addr(9)), "lane-2 recipient missing from scores");
+        assert!(scored.contains(&addr(2)), "lane-1 recipient missing from scores");
+    }
+
+    #[test]
+    fn withheld_head_degrades_and_root_still_lands() {
+        let ds = keccak256(b"test-domain");
+        let params = lane2_params(ds);
+        let node = B256::from([0x33; 32]);
+
+        // Anchored head, data withheld (no envelope witness).
+        let input = GuestInput {
+            edges: vec![edge(1, 2, 1, 100, 50)],
+            params,
+            lane2: Some(Lane2Witness {
+                anchors: vec![AnchorRecord {
+                    node_id: node,
+                    envelope_kind: 0,
+                    head: B256::from([0x44; 32]),
+                    data_commitment: B256::ZERO,
+                    block_timestamp: 1000,
+                }],
+                envelopes: vec![],
+            }),
+        };
+        let r = compute(&input);
+
+        // The epoch did NOT abort: lane 1 scored, root landed.
+        assert_ne!(r.journal.output_root, B256::ZERO);
+        assert_eq!(r.journal.anchor_count, 1);
+        // The skip is publicly committed with the exact expected preimage.
+        let expected = skipped_digest(&[SkipEntry {
+            node_id: node,
+            reason: skip_reason::DROPPED,
+            epoch_observed: 1000,
+        }]);
+        assert_eq!(r.journal.skipped_digest, expected);
+        assert_ne!(r.journal.skipped_digest, B256::ZERO);
+        // And the digest is reproducible from first principles (fold of one skip leaf).
+        let leaf = skip_leaf(&SkipEntry { node_id: node, reason: 2, epoch_observed: 1000 });
+        assert_eq!(r.journal.skipped_digest, fold(B256::ZERO, leaf));
+    }
 }

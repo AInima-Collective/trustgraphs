@@ -53,10 +53,12 @@ pub fn sample_input() -> GuestInput {
         precision_scale: s,
         schema_uid: B256::from([0xAB; 32]),
         weight_field_index: 1,
+        envelope0_domain_separators: vec![],
+        lane2_max_head_age: 0,
     };
     let edges =
         vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
-    GuestInput { edges, params }
+    GuestInput { edges, params, lane2: None }
 }
 
 fn load_input(path: Option<&String>) -> Result<GuestInput> {

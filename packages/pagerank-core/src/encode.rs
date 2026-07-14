@@ -81,7 +81,18 @@ pub fn params_hash(p: &Params) -> B256 {
     seeds.sort();
     let seed_set_root = merkle::seed_set_root(&seeds);
 
-    let mut buf = Vec::with_capacity(32 * 13);
+    // Lane-2 domain set: keccak over the concatenated separators; 0 = lane 2 disabled.
+    let domain_set_hash = if p.envelope0_domain_separators.is_empty() {
+        B256::ZERO
+    } else {
+        let mut d = Vec::with_capacity(32 * p.envelope0_domain_separators.len());
+        for sep in &p.envelope0_domain_separators {
+            d.extend_from_slice(sep.as_slice());
+        }
+        keccak256(&d)
+    };
+
+    let mut buf = Vec::with_capacity(32 * 15);
     buf.extend_from_slice(&word_u256(p.damping_fp));
     buf.extend_from_slice(&word_u256(p.tolerance_fp));
     buf.extend_from_slice(&word_u32(p.max_iterations));
@@ -95,6 +106,8 @@ pub fn params_hash(p: &Params) -> B256 {
     buf.extend_from_slice(&word_u256(p.precision_scale));
     buf.extend_from_slice(p.schema_uid.as_slice());
     buf.extend_from_slice(&word_u32(p.weight_field_index));
+    buf.extend_from_slice(domain_set_hash.as_slice());
+    buf.extend_from_slice(&word_u64(p.lane2_max_head_age));
     keccak256(&buf)
 }
 

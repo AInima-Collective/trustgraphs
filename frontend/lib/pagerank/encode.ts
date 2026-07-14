@@ -117,9 +117,15 @@ export const paramsHash = (p: Params): Hex => {
       wordU256(p.precisionScale),
       p.schemaUid,
       wordU32(p.weightFieldIndex),
+      domainSetHash(p.envelope0DomainSeparators ?? []),
+      wordU64(BigInt(p.lane2MaxHeadAge ?? 0)),
     ])
   )
 }
+
+/** keccak over the concatenated lane-2 domain separators; 0x0 when empty (lane 2 disabled). */
+export const domainSetHash = (separators: Hex[]): Hex =>
+  separators.length === 0 ? (`0x${'00'.repeat(32)}` as Hex) : keccak256(concat(separators))
 
 /**
  * The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:

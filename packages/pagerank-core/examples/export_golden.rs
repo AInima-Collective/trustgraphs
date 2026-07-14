@@ -56,13 +56,15 @@ fn params() -> Params {
         precision_scale: s,
         schema_uid: B256::from([0xAB; 32]),
         weight_field_index: 1,
+        envelope0_domain_separators: vec![],
+        lane2_max_head_age: 0,
     }
 }
 
 fn main() {
     let edges =
         vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
-    let input = GuestInput { edges: edges.clone(), params: params() };
+    let input = GuestInput { edges: edges.clone(), params: params(), lane2: None };
     let result = compute(&input);
     let j = &result.journal;
 
@@ -119,6 +121,8 @@ fn main() {
             "precisionScale": p.precision_scale.to_string(),
             "schemaUid": hx(p.schema_uid.as_slice()),
             "weightFieldIndex": p.weight_field_index,
+            "envelope0DomainSeparators": p.envelope0_domain_separators.iter().map(|d| hx(d.as_slice())).collect::<Vec<_>>(),
+            "lane2MaxHeadAge": p.lane2_max_head_age,
             "paramsHash": hx(params_hash.as_slice())
         },
         "accumulator": {

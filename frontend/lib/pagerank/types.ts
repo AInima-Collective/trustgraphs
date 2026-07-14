@@ -41,6 +41,10 @@ export interface Params {
   schemaUid: Hex
   /** ABI head-slot index of the confidence field in the attestation `data` (currently 1). */
   weightFieldIndex: number
+  /** Lane 2 (envelope 0): accepted EIP-712 domain separators; empty/absent = lane 2 disabled. */
+  envelope0DomainSeparators?: Hex[]
+  /** Rule-Φ staleness horizon in seconds (nonzero when lane 2 is enabled). */
+  lane2MaxHeadAge?: number | bigint
 }
 
 /** Trust is enabled iff there is at least one trusted seed (mirrors `has_trust_enabled`). */

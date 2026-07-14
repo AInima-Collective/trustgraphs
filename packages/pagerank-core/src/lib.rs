@@ -17,6 +17,7 @@ pub use zk_core::{cid, fixed, merkle};
 pub mod compute;
 pub mod distribute;
 pub mod encode;
+pub mod lane2;
 pub mod pagerank;
 pub mod reconcile;
 pub mod signer;
@@ -62,6 +63,16 @@ pub struct Params {
     pub schema_uid: B256,
     /// ABI head-slot index of the confidence field in the attestation `data` (currently 1).
     pub weight_field_index: u32,
+    /// Lane 2 (envelope 0): accepted EAS-offchain EIP-712 domain separators. EMPTY = lane 2
+    /// disabled (the guest then asserts the empty lane). Hashed into `params_hash` as
+    /// `keccak(concat(separators))` (0 when empty).
+    #[serde(default)]
+    pub envelope0_domain_separators: Vec<B256>,
+    /// Rule Φ staleness horizon in seconds: a node's newest usable head must be at most this
+    /// much older than the witnessed anchor log's latest timestamp, else the node's out-edges
+    /// drop for the epoch. MUST be nonzero when lane 2 is enabled.
+    #[serde(default)]
+    pub lane2_max_head_age: u64,
 }
 
 impl Params {
@@ -76,12 +87,43 @@ impl Params {
     }
 }
 
+/// One anchor claim, exactly as `AnchorRegistry` folded it (re-folds to `anchorAcc`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchorRecord {
+    pub node_id: B256,
+    pub envelope_kind: u8,
+    pub head: B256,
+    pub data_commitment: B256,
+    pub block_timestamp: u64,
+}
+
+/// The lane-2 witness: the full anchor log plus whatever per-head envelope data the prover
+/// could supply. Missing/invalid data trips rule Φ per node — never an abort.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lane2Witness {
+    /// The complete anchor log in fold order (must re-fold to the checkpointed `anchorAcc`).
+    pub anchors: Vec<AnchorRecord>,
+    /// Envelope-0 witnesses, matched to anchors by the owner-derived nodeId.
+    pub envelopes: Vec<envelopes::eas_offchain::Envelope0Witness>,
+}
+
+/// Rule-Φ / deterministic-skip reason codes (the closed list committed via `skippedDigest`).
+pub mod skip_reason {
+    /// The node's newest head was unusable; an OLDER in-window head was consumed instead.
+    pub const CARRIED: u8 = 1;
+    /// No usable head within the staleness window — the node's out-edges dropped.
+    pub const DROPPED: u8 = 2;
+}
+
 /// The complete input the guest receives.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuestInput {
     /// Edges in accumulator fold order (index = `leafCount` position).
     pub edges: Vec<RawEdge>,
     pub params: Params,
+    /// Lane-2 witness; None/absent for a lane-1-only instance (journal commits zero lane).
+    #[serde(default)]
+    pub lane2: Option<Lane2Witness>,
 }
 
 /// The 10 public fields the guest commits (journal v2 — two-lane, OFFCHAIN doc §4.3).

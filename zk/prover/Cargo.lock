@@ -1543,6 +1543,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "envelopes"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "k256",
+ "serde",
+ "zk-core",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3111,6 +3121,7 @@ name = "pagerank-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
+ "envelopes",
  "serde",
  "zk-core",
 ]

@@ -14,9 +14,11 @@ crate-type = ["rlib"]
 # Keep deps minimal and zkVM-friendly. No floats, no wasm-bindgen, no async.
 alloy-primitives = { workspace = true, features = ["serde"] }
 zk-core = { path = "../zk-core" }
+envelopes = { path = "../envelopes" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 serde_json = { workspace = true }
 hex = { workspace = true }
 # The legacy f64 implementation, for the off-chain fixed-point-vs-f64 diff harness (WP11 acceptance).
