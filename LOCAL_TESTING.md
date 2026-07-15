@@ -262,7 +262,13 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
 - **Frontend shows nothing?** It reads `.docker/deployment_summary.json` at `predev` — re-run
   `pnpm frontend dev` after (re)deploying so the config regenerates.
 - **Indexer empty?** Confirm `PONDER_RPC_URL_1` points at the fork and `DATABASE_URL` at the running
-  Postgres (or drop `DATABASE_URL` to use Ponder's built-in pglite).
+  Postgres. `DATABASE_URL` is **required** (the offchain tables — merkle blobs, hypercerts scores — use
+  a raw `pg` connection alongside Ponder); the compose files provide it on `localhost:6432`
+  (`docker compose -f docker-compose.dev.yml up ponder-db`).
+- **Indexer dies at startup with an esbuild "installed for another platform" error?** `node_modules`
+  was installed on a different OS/arch than the one you're running on (typical when the repo is
+  bind-mounted between macOS and a Linux container). Re-run `CI=true pnpm install` **at the repo
+  root** on the platform you're launching from — and again when you switch back.
 - **`trigger()` reverts with `custom error 0x6eb09b42` (`NoNewInputs()`)?** That's the accumulator's
   anti-spam guard: `checkpoint()` requires **at least one new edge folded since the last checkpoint**
   (`leafCount` must strictly exceed the previous checkpoint's — the first checkpoint is the only one
