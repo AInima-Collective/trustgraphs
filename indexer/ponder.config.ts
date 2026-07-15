@@ -10,11 +10,9 @@ import {
   gnosisSafeAbi,
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
+  merkleSnapshotAbi,
 } from '../frontend/lib/contract-abis'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
-// The frontend's generated merkleSnapshotAbi predates journal v2 and lacks AnchorsCheckpointed; this
-// local module re-exports it with that event appended (see indexer/abis/merkleSnapshot.ts).
-import { merkleSnapshotAbi } from './abis/merkleSnapshot'
 
 const dotenvFile = path.join(__dirname, '../.env')
 const { parsed: { DEPLOY_ENV } = {} } = dotenv.config({
