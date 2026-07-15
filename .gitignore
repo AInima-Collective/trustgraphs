@@ -8,6 +8,7 @@ zk/**/public_values.bin
 zk/**/*proof.bin
 zk/**/*public_values.bin
 zk/**/blob.json
+zk/**/*skips.json
 out/
 cache/
 broadcast/

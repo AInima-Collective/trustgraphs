@@ -1,6 +1,10 @@
-# Local Testing
+# Local Testing — EAS / trust-graph (+ signer-sync)
 
-Two ways to exercise TrustGraph locally:
+This guide covers the **lane-1 EAS path**: the trust-graph root producer and the Safe
+signer-sync program. The **hypercerts program** (atproto records, envelope 1, the lane-2-only
+instance) has its own guide: [`docs/hypercerts/LOCAL_TESTING.md`](./docs/hypercerts/LOCAL_TESTING.md).
+
+Two ways to exercise it locally:
 
 - **[Quick check — `task e2e`](#quick-check--task-e2e)** — one command, no UI, no proving. Deploys
   EAS + the resolver on a throwaway anvil, attests, checkpoints, reconstructs `input.json` from chain,
@@ -30,15 +34,27 @@ Docker, and the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up
 task e2e            # or: bash test/e2e/run.sh
 ```
 
-What it does (`test/e2e/run.sh`): starts its own anvil → deploys `SchemaRegistry` + `EAS` +
-`EASIndexerResolver` + a `(string comment, uint256 confidence)` schema → attests a 3-account ring and
-revokes one (4 folds) → `checkpoint()` → runs `input-exporter` for both the `GuestInput` and the
-`SignerInput` (each self-checks that the reconstructed edges re-fold to the on-chain `acc`) → runs the
-prover's `trust-graph execute` / `signer execute` and asserts `guest == native`. Prints `E2E PASS`.
+What it does (`test/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
 
-It **stops before real Groth16 proving** (which needs ≥16–32 GiB or the prover network) and doesn't
-touch the UI — that's the full stack below. The first run builds the guest ELF (a few minutes); after
-that it's seconds.
+1. **Reconstruction + guest cross-check** — deploys `SchemaRegistry` + `EAS` + `EASIndexerResolver`
+   + a `(string comment, uint256 confidence)` schema → attests a 3-account ring and revokes one
+   (4 folds) → `checkpoint()` → `input-exporter` rebuilds both the `GuestInput` and the
+   `SignerInput` from chain (each self-checks the re-fold against the on-chain `acc`) → the
+   prover's `trust-graph execute` / `signer execute` assert `guest == native`.
+2. **On-chain submit (both programs)** — proves with `SP1_PROVER=mock`, deploys the real
+   `SP1JournalVerifier` + `MerkleSnapshot` behind a `MockSP1Gateway`, and lands `submitProof` /
+   `submitSignerProof` (the Safe's owners actually rotate). Only the SNARK check itself is mocked;
+   journal binding, vkey pinning, and the write paths are production code.
+3. **Two-lane (journal v2)** — deploys `AnchorRegistry`, an attester builds + anchors a signed
+   envelope-0 chained log, a second node anchors and **withholds** its data, `trigger()`
+   checkpoints both lanes, and one proof lands lane-1 EAS edges + lane-2 offchain edges in a
+   single journal — with the withheld head degraded via rule Φ and committed in `skippedDigest`.
+4. **Hypercerts instance** — the fourth program end-to-end (see the
+   [hypercerts guide](./docs/hypercerts/LOCAL_TESTING.md)).
+
+Each stage prints its own `… PASS` line. Real Groth16 proving (≥16–32 GiB or the prover network)
+and the UI are the full stack below. The first run builds the guest ELFs (minutes); after that
+it's seconds. Set `E2E_ONCHAIN=0` to run only stage 1.
 
 ---
 
@@ -125,7 +141,7 @@ jq --arg s "$(jq -r '.schemas.vouching.uid' config/network_deploy_dev_0.json)" \
 > the schema UID is produced *and* consumed inside the same deploy, so nothing has to reproduce across
 > runs. (Needing it to reproduce is exactly what used to force a pinned-deployer, two-pass,
 > restart-the-fork dance.) Reach for `DEPLOY_ENV=PROD` when you want the production timelock/config
-> wiring and a fixed `FUNDED_KEY` — see the note in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+> wiring and a fixed `FUNDED_KEY` — see the note in [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md).
 
 Addresses are written to `.docker/deployment_summary.json` (Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`), and the frontend + indexer read them from there.
@@ -161,7 +177,7 @@ deploy) and points `apis.ponder` at `http://127.0.0.1:65421`.
 
 Run the permissionless root loop (checkpoint → `input-exporter` → `execute` → `prove --groth16` → pin
 blob → `submitProof`) so there's a scored root to display. The signer variant → `submitSignerProof` is
-in [`zk/RUNBOOK.md`](./zk/RUNBOOK.md).
+in [`docs/signer-sync/RUNBOOK.md`](./docs/signer-sync/RUNBOOK.md).
 
 **Set the addresses** (from the deploy artifacts — the doc used to leave these unset):
 
@@ -214,7 +230,9 @@ export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
 # pin the score blob so the UI can fetch it (kubo HTTP API — no ipfs CLI needed)
 curl -sF file=@zk/prover/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
-# submit (note the 0x prefix on the proof blob)
+# submit. The extra bytes32(0) is the journal-v2 `skippedDigest` — always zero on this
+# lane-1-only path (no anchor registry wired ⇒ the guest asserts the empty lane).
+# (no xxd? use: "0x$(od -An -v -tx1 zk/prover/proof.bin | tr -d ' \n')")
 cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
   $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 "0x$(xxd -p zk/prover/proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
@@ -232,7 +250,11 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
 ## Notes & troubleshooting
 
 - **No fork RPC / no proving hardware?** Use the [quick check](#quick-check--task-e2e) — it validates
-  the reconstruction + guest correctness without a chain, proof, or gateway.
+  reconstruction, guest correctness, AND the on-chain write paths (mock-gateway) without a fork,
+  real proof, or gateway.
+- **`execute`/`vkey` get OOM-killed on a small box?** You're on the `cpu` backend (the `.env`
+  default). Prefix executor-only commands with `SP1_PROVER=mock` — identical executor + byte-assert,
+  no ~5 GiB prover allocation. `taskfile/zk.yml` and `test/e2e/run.sh` already pin this.
 - **Gateway version.** `SP1_VERIFIER_GATEWAY` must be a gateway that has the verifier for the SP1 SDK
   version this repo pins (v6.3.1); it routes by the proof's 4-byte selector.
 - **Local Groth16** (`SP1_PROVER=cpu`) needs `--features native-gnark` and a gnark/Go toolchain; the
@@ -275,5 +297,7 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   "checkpoint the accumulator" call — `trigger()` **is** it (it just calls `accumulator.checkpoint()`);
   you can also call `checkpoint()` directly on the resolver for the same effect.
 
-See [`README.md`](./README.md), [`zk/RUNBOOK.md`](./zk/RUNBOOK.md), and
-[`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) for the design and the full command reference.
+See [`README.md`](./README.md), [`docs/PROGRAMS.md`](./docs/PROGRAMS.md) (the program index),
+[`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md), and
+[`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) for the design and the full
+command reference. Hypercerts local testing: [`docs/hypercerts/LOCAL_TESTING.md`](./docs/hypercerts/LOCAL_TESTING.md).
