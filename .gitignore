@@ -42,6 +42,8 @@ schema_output.log
 .docker/service-cid
 deploy/post-deploy.sh
 Cargo-component.lock
+input.json
+params.json
 
 # Deploy
 config/*_deploy_*.json
