@@ -133,6 +133,9 @@ export const hypercertsScore = offchainSchema.table(
     nodeId: t.text().notNull(),
     // uint256-scale per-node score; numeric(78,0).
     value: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    // Display label from the prover sidecar, integrity-checked at ingestion
+    // (`keccak256(did) == nodeId`), or null for artifact/unlabeled nodes.
+    did: t.text(),
     // The verified link.evm binding (hex address), or null for satellite/artifact nodes.
     boundAddress: t.text(),
     // Optional precomputed OZ proof; null ⇒ the API derives it from the root's full score set.

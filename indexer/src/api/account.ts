@@ -6,12 +6,12 @@ import { easAttestation, merkleSnapshot } from 'ponder:schema'
 import { Hex } from 'viem'
 
 import {
+  EAS_NETWORKS as NETWORKS,
   MerkleTreeWithEntries,
   getMerkleTreeWithEntries,
   isHexEqual,
   lower,
 } from './utils'
-import NETWORKS from '../../networks.json'
 
 export type NetworkProfile = {
   /** The chain ID of the merkle snapshot contract. */

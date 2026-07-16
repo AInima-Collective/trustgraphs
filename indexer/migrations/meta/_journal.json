@@ -36,6 +36,13 @@
       "when": 1784067138302,
       "tag": "0004_chemical_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784160166831,
+      "tag": "0005_milky_snowbird",
+      "breakpoints": true
     }
   ]
 }

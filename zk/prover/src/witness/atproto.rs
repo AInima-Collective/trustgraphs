@@ -257,14 +257,23 @@ fn assemble_one(
 
 /// Assemble a witness bundle for `dids`: fetch + archive each, write `manifest.json` at the archive
 /// root, and return `(manifest_path, bundle)`. `execute`/`prove` are reproducible offline from here.
-pub fn assemble(dids: &[String], cfg: &FetchConfig) -> Result<(PathBuf, Bundle)> {
+/// With `keep_going`, a DID that fails (wrong PDS, takendown, …) is warned about and excluded from
+/// the manifest instead of aborting the bundle.
+pub fn assemble(dids: &[String], cfg: &FetchConfig, keep_going: bool) -> Result<(PathBuf, Bundle)> {
     std::fs::create_dir_all(&cfg.archive_dir)
         .with_context(|| format!("create archive dir {}", cfg.archive_dir.display()))?;
     let client = http_client()?;
 
     let mut entries = Vec::with_capacity(dids.len());
     for did in dids {
-        entries.push(assemble_one(&client, cfg, did)?);
+        match assemble_one(&client, cfg, did) {
+            Ok(entry) => entries.push(entry),
+            Err(e) if keep_going => eprintln!("skip {did}: {e:#}"),
+            Err(e) => return Err(e),
+        }
+    }
+    if entries.is_empty() {
+        anyhow::bail!("no DID could be assembled — every fetch failed");
     }
 
     let bundle = Bundle { version: 1, entries };

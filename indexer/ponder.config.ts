@@ -4,7 +4,8 @@ import dotenv from 'dotenv'
 import { createConfig } from 'ponder'
 import { Hex } from 'viem'
 
-import deploymentSummary from '../.docker/deployment_summary.json'
+import deploymentSummaryJson from '../.docker/deployment_summary.json'
+import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
   easIndexerResolverAbi,
   gnosisSafeAbi,
@@ -12,7 +13,26 @@ import {
   merkleGovModuleAbi,
   merkleSnapshotAbi,
 } from '../frontend/lib/contract-abis'
-import { anchorRegistryAbi } from './abis/anchorRegistry'
+
+/**
+ * The deployment summary is a generated, machine-local file whose entries vary by which instances
+ * are deployed (a lane-2-only hypercerts box has just merkleSnapshot + anchorRegistry; a
+ * trust-graph box has the EAS resolver, gov module, distributor, and Safe). Type it explicitly so
+ * typechecking doesn't depend on the box's current JSON shape.
+ */
+interface DeployedNetwork {
+  contracts: {
+    merkleSnapshot?: string
+    easIndexerResolver?: string
+    merkleFundDistributor?: string
+    merkleGovModule?: string
+    anchorRegistry?: string
+    safe?: { proxy?: string }
+  }
+}
+const deploymentSummary = deploymentSummaryJson as {
+  networks: DeployedNetwork[]
+}
 
 const dotenvFile = path.join(__dirname, '../.env')
 const { parsed: { DEPLOY_ENV } = {} } = dotenv.config({
@@ -61,8 +81,9 @@ export default createConfig({
       startBlock: IS_PRODUCTION ? 142786483 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
-          address: deploymentSummary.networks.map(
-            (network) => network.contracts.easIndexerResolver as Hex
+          // flatMap: a lane-2-only (hypercerts) entry has no EAS resolver.
+          address: deploymentSummary.networks.flatMap(
+            (network) => (network.contracts.easIndexerResolver as Hex) || []
           ),
         },
       },
@@ -72,8 +93,8 @@ export default createConfig({
       startBlock: IS_PRODUCTION ? 142786328 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
-          address: deploymentSummary.networks.map(
-            (network) => network.contracts.merkleSnapshot as Hex
+          address: deploymentSummary.networks.flatMap(
+            (network) => (network.contracts.merkleSnapshot as Hex) || []
           ),
         },
       },
@@ -86,14 +107,12 @@ export default createConfig({
       abi: anchorRegistryAbi,
       startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
       chain: deploymentSummary.networks.some(
-        (network) => (network.contracts as { anchorRegistry?: string }).anchorRegistry
+        (network) => network.contracts.anchorRegistry
       )
         ? {
             [CORE_CHAIN]: {
               address: deploymentSummary.networks.flatMap(
-                (network) =>
-                  ((network.contracts as { anchorRegistry?: string })
-                    .anchorRegistry as Hex) || []
+                (network) => (network.contracts.anchorRegistry as Hex) || []
               ),
             },
           }

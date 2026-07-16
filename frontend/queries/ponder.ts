@@ -42,6 +42,32 @@ export const ponderKeys = {
     [...ponderKeys.all, 'accountNetworkProfile', options] as const,
   localismFundApplicationUrl: (address: string) =>
     [...ponderKeys.all, 'localismFundApplicationUrl', address] as const,
+  hypercertsScores: (snapshot: string) =>
+    [...ponderKeys.all, 'hypercertsScores', snapshot] as const,
+}
+
+/** One scored node at a hypercerts root (indexer `/hypercerts/:snapshot/scores`). */
+export type HypercertsScore = {
+  nodeId: string
+  /** Integrity-checked DID label (keccak(did) == nodeId), or null for artifact/unlabeled nodes. */
+  did: string | null
+  value: string
+  boundAddress: string | null
+}
+
+/** The full score set at a hypercerts snapshot's current root, plus the root's journal metadata. */
+export type HypercertsScoreList = {
+  snapshot: string
+  root: string
+  ipfsHash: string
+  ipfsHashCid: string
+  numNodes: number
+  totalValue: string
+  skippedDigest: string
+  anchorAcc: string
+  anchorCount: string
+  timestamp: string
+  scores: HypercertsScore[]
 }
 
 export type FollowerCount = {
@@ -138,6 +164,31 @@ export type NetworkProfile = {
 }
 
 export const ponderQueries = {
+  hypercertsScores: (snapshot: string) =>
+    queryOptions({
+      queryKey: ponderKeys.hypercertsScores(snapshot),
+      queryFn: async () => {
+        const response = await fetch(
+          `${APIS.ponder}/hypercerts/${snapshot}/scores`
+        )
+
+        if (response.ok) {
+          return (await response.json()) as HypercertsScoreList
+        } else {
+          if (response.status === 404) {
+            // No root indexed yet for this instance.
+            return null
+          }
+
+          throw new Error(
+            `Failed to fetch hypercerts scores: ${response.status} ${
+              response.statusText
+            } (${await response.text()})`
+          )
+        }
+      },
+      enabled: !!APIS.ponder && !!snapshot,
+    }),
   latestMerkleTree: (snapshot: string) =>
     queryOptions({
       queryKey: ponderKeys.latestMerkleTree(snapshot),

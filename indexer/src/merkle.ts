@@ -13,8 +13,13 @@ import {
   merkleFundDistributorAbi,
   merkleSnapshotAbi,
 } from '../../frontend/lib/contract-abis'
-import { buildTree, outputLeaf, proofFor } from '../../frontend/lib/pagerank/merkle'
+import {
+  buildTree,
+  outputLeaf,
+  proofFor,
+} from '../../frontend/lib/pagerank/merkle'
 import * as offchainSchema from '../offchain.schema'
+import { ingestHypercertsScores } from './anchor'
 import { revalidateNetwork } from './utils'
 
 /**
@@ -73,6 +78,9 @@ ponder.on('merkleSnapshot:setup', async ({ context }) => {
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
+  console.log(
+    `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid}`
+  )
 
   await context.db.insert(merkleSnapshot).values({
     id: event.id,
@@ -133,7 +141,33 @@ ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
     )
   }
   const scores = (await merkleRequest.json()) as ScoreBlob
-  await insertMerkleData(scores, event, root, ipfsHash, ipfsHashCid, totalValue)
+
+  // The blob is self-describing: 32-byte keys (0x + 64 hex) = a hypercerts (nodeId-keyed) instance,
+  // 20-byte keys = the address-keyed trust-graph blob. Route to the matching ingestion.
+  const firstKey = Object.keys(scores)[0]
+  console.log(
+    `merkle: blob fetched (${Object.keys(scores).length} entries) — routing to ${firstKey && firstKey.length === 66 ? 'hypercerts' : 'trust-graph'} ingestion`
+  )
+  if (firstKey && firstKey.length === 66) {
+    await ingestHypercertsScores(
+      scores,
+      event,
+      context,
+      root,
+      ipfsHash,
+      ipfsHashCid,
+      totalValue
+    )
+  } else {
+    await insertMerkleData(
+      scores,
+      event,
+      root,
+      ipfsHash,
+      ipfsHashCid,
+      totalValue
+    )
+  }
 
   await revalidateNetwork()
 })

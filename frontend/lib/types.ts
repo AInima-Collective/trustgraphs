@@ -1,6 +1,8 @@
 import { Hex } from 'viem'
 
 export type Network = {
+  /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
+  program?: 'trust-graph'
   id: string
   name: string
   hidden?: boolean
@@ -51,6 +53,35 @@ export type Network = {
   }
   validatedThreshold: number
 }
+
+/**
+ * A hypercerts (lane-2, nodeId-keyed) instance in the network catalog. Read-only in the UI:
+ * scores are proven over anchored atproto repos, so there is no attest flow, no schemas, and no
+ * address-keyed member model — the detail page renders the `/hypercerts` score-list API instead.
+ */
+export type HypercertsNetwork = {
+  program: 'hypercerts'
+  id: string
+  name: string
+  hidden?: boolean
+  link?: {
+    prefix: string
+    label: string
+    href: string
+  }
+  about: string
+  callToAction?: {
+    label: string
+    href: string
+  }
+  criteria?: string
+  contracts: {
+    merkleSnapshot: Hex
+    anchorRegistry?: Hex
+  }
+}
+
+export type AnyNetwork = Network | HypercertsNetwork
 
 export type NetworkSchema = {
   uid: Hex

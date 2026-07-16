@@ -1,0 +1,1 @@
+ALTER TABLE "offchain"."hypercerts_score" ADD COLUMN "did" text;

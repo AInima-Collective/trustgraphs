@@ -1,5 +1,20 @@
+import { readFileSync } from 'node:fs'
+
+import { sql } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
 import { anchor, anchorCheckpoint, nodeRegistration } from 'ponder:schema'
+import { type Hex, decodeFunctionData, keccak256, stringToHex } from 'viem'
+
+import { merkleSnapshotAbi } from '../../frontend/lib/contract-abis'
+import * as offchainSchema from '../offchain.schema'
+import { offchainDb } from './api/db'
+import {
+  type ScoreRow,
+  buildTree,
+  leafSet,
+  nodeOutputLeaf,
+  proofFor,
+} from './api/hypercerts-tree'
 
 /**
  * Lane-2 (offchain-attestation) handlers — MULTI_PROGRAM_PLATFORM §5, OFFCHAIN_ATTESTATIONS_ZK §4.
@@ -12,8 +27,14 @@ import { anchor, anchorCheckpoint, nodeRegistration } from 'ponder:schema'
 
 // AnchorRegistry.HeadAnchored — every anchor claim, in fold order.
 ponder.on('anchorRegistry:HeadAnchored', async ({ event, context }) => {
-  const { foldIndex, nodeId, envelopeKind, head, dataCommitment, blockTimestamp } =
-    event.args
+  const {
+    foldIndex,
+    nodeId,
+    envelopeKind,
+    head,
+    dataCommitment,
+    blockTimestamp,
+  } = event.args
 
   await context.db.insert(anchor).values({
     id: event.id,
@@ -88,34 +109,227 @@ export async function ingestSkippedNodes(_checkpointId: bigint): Promise<void> {
 }
 
 /*///////////////////////////////////////////////////////////////
-    STUB — hypercerts score ingestion (off-chain prover/witness pipeline)
+    Hypercerts score ingestion (off-chain prover/witness pipeline)
 //////////////////////////////////////////////////////////////*/
 
 /**
- * NOT WIRED UP yet — intentionally stubbed, same provenance discipline as `ingestSkippedNodes`.
+ * The prover's ingestion sidecar (`hypercerts_bundle.json`, written by `hypercerts execute`/`prove`):
+ * node labels + verified `link.evm` bindings. Availability, not truth — the bindings feed the tree
+ * rebuild whose root MUST reproduce the on-chain `outputRoot` before any row is trusted, and the DIDs
+ * are display labels (`keccak256(did)` must equal the nodeId or the label is dropped).
+ */
+interface HypercertsBundle {
+  dids?: Record<string, string>
+  bindings?: Record<string, string>
+}
+
+const loadBundle = (): HypercertsBundle => {
+  const path = process.env.HYPERCERTS_BUNDLE_PATH
+  if (!path) return {}
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as HypercertsBundle
+  } catch (e) {
+    console.warn(`hypercerts: could not read bundle at ${path}: ${e}`)
+    return {}
+  }
+}
+
+/**
+ * Ingest one hypercerts `MerkleRootUpdated` into `offchain.hypercerts_metadata` +
+ * `offchain.hypercerts_score` (the rows the `{nodeId, score, proof[]}` bundle API serves):
  *
- * The hypercerts guest commits only the journal digest on-chain (the `{nodeId → score}` preimage lives
- * in the pinned blob at `cid`, and the skipped set / bindings are the off-chain prover bundle). This
- * hook is where those become the `offchain.hypercerts_metadata` + `offchain.hypercerts_score` rows the
- * `{nodeId, score, proof[]}` bundle API (src/api/hypercerts.ts) serves.
- *
- * Wiring this up (a later milestone) means, for a given hypercerts `MerkleRootUpdated`:
- *   1. Fetch the canonical nodeId-keyed blob from IPFS at the event's `ipfsHashCid`
- *      (`{ "0x<nodeId>": "<decimal>", … }`, hypercerts_core::compute::canonical_blob).
- *   2. Read the verified `link.evm` bindings (nodeId → address) and the skipped set from the prover's
- *      archived witness bundle for the matching checkpoint.
+ *   1. The caller (merkle.ts) fetched the canonical nodeId-keyed blob from IPFS at the event's
+ *      `ipfsHashCid` (`{ "0x<nodeId>": "<decimal>", … }`, hypercerts_core::compute::canonical_blob)
+ *      and detected the nodeId keying.
+ *   2. `link.evm` bindings (nodeId → address) + DID labels come from the prover's sidecar
+ *      (`HYPERCERTS_BUNDLE_PATH`); the journal's `checkpointId`/`skippedDigest` are decoded from the
+ *      `submitProof` calldata, and the lane-2 checkpoint (`anchorAcc`, `anchorCount`) is read from
+ *      chain state.
  *   3. Rebuild the guest's exact OZ output tree (unified nodeId leaves + v1 address leaves for bound
- *      nodes — src/api/hypercerts-tree.ts) and assert its root equals the on-chain `outputRoot` before
- *      trusting the rows (mirrors the `merkle.ts` root cross-check).
- *   4. Upsert `hypercerts_metadata` (root + journal fields) and `hypercerts_score` (per-node value +
- *      boundAddress, optionally the precomputed proof).
- *
- * Left as a documented no-op so the tables exist and their provenance is unambiguous; the bundle API's
- * tree logic is verified without live rows by src/api/hypercerts-tree.test.ts.
+ *      nodes — src/api/hypercerts-tree.ts) and assert its root equals the on-chain `outputRoot`
+ *      before trusting the rows (mirrors the `merkle.ts` root cross-check).
+ *   4. Upsert `hypercerts_metadata` (root + journal fields) and `hypercerts_score` (per-node value,
+ *      DID label, boundAddress, precomputed proof).
  */
 export async function ingestHypercertsScores(
-  _checkpointId: bigint
+  scores: Record<string, string>,
+  event: any,
+  context: any,
+  root: string,
+  ipfsHash: string,
+  ipfsHashCid: string,
+  totalValue: bigint
 ): Promise<void> {
-  // TODO(hypercerts): implement blob fetch + bundle read + on-chain outputRoot validation (see above).
-  return
+  const snapshot = event.log.address as Hex
+
+  // Journal fields not present in the event: checkpointId + skippedDigest from the submitProof
+  // calldata of the same tx, then the frozen lane-2 checkpoint from chain state.
+  let skippedDigest: Hex = `0x${'00'.repeat(32)}`
+  let anchorAcc: Hex = `0x${'00'.repeat(32)}`
+  let anchorCount = 0n
+  try {
+    const decoded = decodeFunctionData({
+      abi: merkleSnapshotAbi,
+      data: event.transaction.input as Hex,
+    })
+    if (decoded.functionName === 'submitProof') {
+      const [checkpointId, , , , , digest] = decoded.args as unknown as [
+        bigint,
+        Hex,
+        Hex,
+        string,
+        bigint,
+        Hex,
+        Hex,
+      ]
+      skippedDigest = digest
+      const ac = (await context.client.readContract({
+        address: snapshot,
+        abi: merkleSnapshotAbi,
+        functionName: 'anchorCheckpoints',
+        args: [checkpointId],
+      })) as readonly [Hex, bigint]
+      anchorAcc = ac[0]
+      anchorCount = ac[1]
+    }
+  } catch (e) {
+    console.warn(`hypercerts: could not decode submitProof calldata: ${e}`)
+  }
+
+  // Bindings + labels from the prover sidecar; the tree cross-check below decides trust.
+  const bundle = loadBundle()
+  const bindings = new Map(
+    Object.entries(bundle.bindings ?? {}).map(([k, v]) => [
+      k.toLowerCase(),
+      v as Hex,
+    ])
+  )
+  // A DID label is only kept if it actually hashes to its nodeId — the sidecar is unauthenticated.
+  const dids = new Map(
+    Object.entries(bundle.dids ?? {})
+      .filter(([nodeId, did]) => {
+        const ok =
+          keccak256(stringToHex(did)).toLowerCase() === nodeId.toLowerCase()
+        if (!ok) {
+          console.warn(
+            `hypercerts: bundle DID ${did} does not hash to ${nodeId}; dropping label`
+          )
+        }
+        return ok
+      })
+      .map(([k, v]) => [k.toLowerCase(), v])
+  )
+
+  const rows: ScoreRow[] = Object.entries(scores).map(([nodeId, value]) => ({
+    nodeId: nodeId as Hex,
+    value: BigInt(value),
+    boundAddress: bindings.get(nodeId.toLowerCase()) ?? null,
+  }))
+
+  // Rebuild the guest's exact output tree; a mismatch means the pinned blob (or the sidecar's
+  // bindings) do not reproduce the proven root — store metadata, never the rows.
+  const tree = buildTree(leafSet(rows))
+  const rootMatches =
+    tree.length === 0 || tree[0]?.toLowerCase() === root.toLowerCase()
+  if (!rootMatches) {
+    console.warn(
+      `hypercerts: recomputed root ${tree[0]} != on-chain root ${root} for cid ${ipfsHashCid}; skipping score rows`
+    )
+  }
+
+  await offchainDb
+    .insert(offchainSchema.hypercertsMetadata)
+    .values({
+      merkleSnapshotContract: snapshot,
+      root,
+      ipfsHash,
+      ipfsHashCid,
+      numNodes: rows.length,
+      totalValue,
+      skippedDigest,
+      anchorAcc,
+      anchorCount,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+    })
+    .onConflictDoUpdate({
+      target: [
+        offchainSchema.hypercertsMetadata.merkleSnapshotContract,
+        offchainSchema.hypercertsMetadata.root,
+      ],
+      set: {
+        ipfsHash: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.ipfsHash.name}"`
+        ),
+        ipfsHashCid: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.ipfsHashCid.name}"`
+        ),
+        numNodes: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.numNodes.name}"`
+        ),
+        totalValue: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.totalValue.name}"`
+        ),
+        skippedDigest: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.skippedDigest.name}"`
+        ),
+        anchorAcc: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.anchorAcc.name}"`
+        ),
+        anchorCount: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.anchorCount.name}"`
+        ),
+        blockNumber: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.blockNumber.name}"`
+        ),
+        timestamp: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.timestamp.name}"`
+        ),
+      },
+    })
+
+  if (rows.length === 0 || !rootMatches) {
+    return
+  }
+
+  await offchainDb
+    .insert(offchainSchema.hypercertsScore)
+    .values(
+      rows.map((r) => ({
+        merkleSnapshotContract: snapshot,
+        root,
+        nodeId: r.nodeId,
+        value: r.value,
+        did: dids.get(r.nodeId.toLowerCase()) ?? null,
+        boundAddress: r.boundAddress ?? null,
+        proof: proofFor(tree, nodeOutputLeaf(r.nodeId, r.value)) ?? [],
+        blockNumber: event.block.number,
+        timestamp: event.block.timestamp,
+      }))
+    )
+    .onConflictDoUpdate({
+      target: [
+        offchainSchema.hypercertsScore.merkleSnapshotContract,
+        offchainSchema.hypercertsScore.root,
+        offchainSchema.hypercertsScore.nodeId,
+      ],
+      set: {
+        value: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.value.name}"`
+        ),
+        did: sql.raw(`excluded."${offchainSchema.hypercertsScore.did.name}"`),
+        boundAddress: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.boundAddress.name}"`
+        ),
+        proof: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.proof.name}"`
+        ),
+        blockNumber: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.blockNumber.name}"`
+        ),
+        timestamp: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.timestamp.name}"`
+        ),
+      },
+    })
 }

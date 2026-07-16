@@ -207,9 +207,11 @@ cast call "$HC_SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" "$CP" --rp
 
 ### 4. Prove (real proofs on the network; mock only for rehearsal)
 
-Assemble the `GuestInput` (params + the checkpoint's anchor set + the archived witnesses), then prove.
-The anchors' `block_timestamp`s in the input **must** be the real on-chain timestamps so the guest's
-re-fold matches the checkpointed `anchorAcc` (the e2e stage patches them from `cast block`).
+Assemble the `GuestInput` (params + the checkpoint's anchor set + the archived witnesses) with
+`hypercerts buildinput --archive-dir .witness-archive --params params.json` (or `--seed-did`), then
+prove. The anchors' `block_timestamp`s in the input **must** be the real on-chain timestamps so the
+guest's re-fold matches the checkpointed `anchorAcc` (the e2e stage patches them from `cast block`);
+`buildinput` emits `0` placeholders in fold order — rewrite each from its `HeadAnchored` event/tx.
 
 ```bash
 cd zk/prover

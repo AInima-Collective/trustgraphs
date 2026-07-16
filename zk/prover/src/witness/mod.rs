@@ -28,8 +28,12 @@ pub enum Command {
     /// print the head digests (the values the AnchorRegistry anchors). Reproducible offline after.
     Fetch {
         /// A registered DID to assemble (repeatable).
-        #[arg(long = "did", required = true)]
+        #[arg(long = "did")]
         dids: Vec<String>,
+        /// Also read DIDs from stdin, one per line (blank lines skipped) — pipe a discovery
+        /// query straight in.
+        #[arg(long)]
+        stdin: bool,
         /// Relay/PDS entry URL for getRepo (302-redirects to the PDS host are followed).
         #[arg(long, default_value = DEFAULT_RELAY_URL)]
         relay_url: String,
@@ -42,14 +46,46 @@ pub enum Command {
         /// Skip the post-assembly `envelopes::verify` self-check (assembly only).
         #[arg(long)]
         no_verify: bool,
+        /// Warn and continue when one DID fails (e.g. its repo lives on another PDS) instead of
+        /// aborting the whole bundle. Failed DIDs are excluded from the manifest.
+        #[arg(long)]
+        keep_going: bool,
     },
 }
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
-        Command::Fetch { dids, relay_url, plc_url, archive_dir, no_verify } => {
+        Command::Fetch {
+            mut dids,
+            stdin,
+            relay_url,
+            plc_url,
+            archive_dir,
+            no_verify,
+            keep_going,
+        } => {
+            if stdin {
+                use std::io::BufRead;
+                for line in std::io::stdin().lock().lines() {
+                    let line = line?;
+                    let did = line.trim();
+                    if did.is_empty() {
+                        continue;
+                    }
+                    if !did.starts_with("did:") {
+                        anyhow::bail!("stdin line is not a DID: {did:?}");
+                    }
+                    dids.push(did.to_string());
+                }
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            dids.retain(|d| seen.insert(d.clone()));
+            if dids.is_empty() {
+                anyhow::bail!("no DIDs: pass --did (repeatable) or pipe one per line with --stdin");
+            }
+
             let cfg = FetchConfig { relay_url, plc_url, archive_dir };
-            let (manifest_path, bundle) = atproto::assemble(&dids, &cfg)?;
+            let (manifest_path, bundle) = atproto::assemble(&dids, &cfg, keep_going)?;
 
             println!("manifest: {}", manifest_path.display());
             for entry in &bundle.entries {

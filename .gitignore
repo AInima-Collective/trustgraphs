@@ -44,6 +44,10 @@ deploy/post-deploy.sh
 Cargo-component.lock
 input.json
 params.json
+anchors.txt
+.witness-archive
+hypercerts_blob.json
+hypercerts_skips.json
 
 # Deploy
 config/*_deploy_*.json

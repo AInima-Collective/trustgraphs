@@ -162,6 +162,81 @@ hypercertsApp.get('/roots', async (c) => {
   return c.json({ roots: rows })
 })
 
+/** The full score set at a snapshot's root (value-descending), plus the root's journal metadata. */
+const serveScoreList = async (snapshot: string, root: string) => {
+  const meta = await offchainDb.query.hypercertsMetadata.findFirst({
+    where: (t, { and, eq }) =>
+      and(
+        eq(lower(t.merkleSnapshotContract), snapshot.toLowerCase()),
+        eq(lower(t.root), root.toLowerCase())
+      ),
+  })
+  if (!meta) return { status: 404, body: { error: 'Root not indexed' } }
+  const rows = await offchainDb.query.hypercertsScore.findMany({
+    where: (t, { and, eq }) =>
+      and(
+        eq(lower(t.merkleSnapshotContract), snapshot.toLowerCase()),
+        eq(lower(t.root), root.toLowerCase())
+      ),
+    orderBy: (t, { desc }) => desc(t.value),
+  })
+  return {
+    status: 200,
+    body: {
+      snapshot: meta.merkleSnapshotContract,
+      root: meta.root,
+      ipfsHash: meta.ipfsHash,
+      ipfsHashCid: meta.ipfsHashCid,
+      numNodes: meta.numNodes,
+      totalValue: meta.totalValue,
+      skippedDigest: meta.skippedDigest,
+      anchorAcc: meta.anchorAcc,
+      anchorCount: meta.anchorCount,
+      timestamp: meta.timestamp,
+      scores: rows.map((r) => ({
+        nodeId: r.nodeId,
+        did: r.did,
+        value: r.value,
+        boundAddress: r.boundAddress,
+      })),
+    },
+  }
+}
+
+// GET /hypercerts/scores — the full score set at the single instance's current root (UI list view).
+hypercertsApp.get('/scores', async (c) => {
+  const snapshotQ = c.req.query('snapshot')
+  let snapshot: string
+  if (snapshotQ) {
+    snapshot = snapshotQ
+  } else {
+    const meta = await latestMetadata()
+    if (!meta) return c.json({ error: 'No hypercerts instance indexed' }, 404)
+    snapshot = meta.merkleSnapshotContract
+  }
+  let root: string
+  try {
+    root = await resolveRoot(snapshot, c.req.query('root') ?? 'current')
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404)
+  }
+  const res = await serveScoreList(snapshot, root)
+  return c.json(res.body as object, res.status as 200 | 404)
+})
+
+// GET /hypercerts/:snapshot/scores — the full score set at that snapshot's current root.
+hypercertsApp.get('/:snapshot/scores', async (c) => {
+  const snapshot = c.req.param('snapshot')
+  let root: string
+  try {
+    root = await resolveRoot(snapshot, c.req.query('root') ?? 'current')
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404)
+  }
+  const res = await serveScoreList(snapshot, root)
+  return c.json(res.body as object, res.status as 200 | 404)
+})
+
 // GET /hypercerts/score/:nodeId — §10.3 shape: current root of the single instance (?snapshot= / ?root= override).
 hypercertsApp.get('/score/:nodeId', async (c) => {
   const nodeId = c.req.param('nodeId')

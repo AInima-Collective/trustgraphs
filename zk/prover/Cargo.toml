@@ -14,6 +14,11 @@ path = "src/main.rs"
 #   local groth16:  cargo run --features native-gnark --release -- prove input.json --groth16
 native-gnark = ["sp1-sdk/native-gnark"]
 
+# Opt-in: the Succinct prover-network client (`SP1_PROVER=network` + `NETWORK_PRIVATE_KEY`).
+# Pulls the grpc/tonic graph, so it stays out of the lean default build like the others.
+#   cargo run --release --features network -- hypercerts prove input.json --groth16
+network = ["sp1-sdk/network"]
+
 # Opt-in: host-side lane-2 (atproto) witness assembly — the `witness` subcommand group.
 # Pulls the network/DAG-CBOR/date deps (reqwest + ipld + chrono) that the lean `prove`/`execute`
 # builds must NOT carry; leave OFF unless you are fetching CARs/PLC logs off the live network.

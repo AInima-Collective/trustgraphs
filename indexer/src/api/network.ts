@@ -5,8 +5,7 @@ import { easAttestation } from 'ponder:schema'
 import { Hex } from 'viem'
 
 import { offchainDb } from './db'
-import { isHexEqual, lower } from './utils'
-import NETWORKS from '../../networks.json'
+import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
 
 const app = new Hono()
 
