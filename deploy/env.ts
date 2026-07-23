@@ -273,8 +273,13 @@ export class DevEnv extends EnvBase {
       )
     }
 
-    // Get the number of networks from the template file.
-    const numNetworks = readJson<Network[]>(networksConfigTemplateFile).length
+    // Get the number of EAS-vouching networks from the template file. Program-tagged entries
+    // (e.g. `program: "contributions"`) have their own instance deploy step and MUST come after
+    // every vouching entry in the template: `network_deploy_dev_<i>.json` maps to template index
+    // `i`, so vouching entries own the leading indices.
+    const numNetworks = readJson<(Network & { program?: string })[]>(
+      networksConfigTemplateFile
+    ).filter((network) => !network.program).length
 
     super({
       rpcUrl,
@@ -337,16 +342,29 @@ export class DevEnv extends EnvBase {
           script:
             'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
           sig: 'run(string,string,string,string,string)',
-          args: () => [
-            'dev',
-            readJsonKey('.docker/eas_deploy.json', 'eas'),
-            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
-            readJsonKey(
-              'config/network_deploy_dev_0.json',
-              'contracts.eas_indexer_resolver'
-            ),
-            process.env.CONTRIBUTIONS_PARAMS_JSON || 'params.contributions.json',
-          ],
+          args: () => {
+            // Provision the contributions params file from its committed template if absent
+            // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
+            // writes the registered schema UIDs back into it, so it is local state, not tracked.
+            const paramsFile =
+              process.env.CONTRIBUTIONS_PARAMS_JSON || 'params.contributions.json'
+            if (!fs.existsSync(paramsFile)) {
+              fs.copyFileSync(
+                'test/e2e/params.contributions.template.json',
+                paramsFile
+              )
+            }
+            return [
+              'dev',
+              readJsonKey('.docker/eas_deploy.json', 'eas'),
+              readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+              readJsonKey(
+                'config/network_deploy_dev_0.json',
+                'contracts.eas_indexer_resolver'
+              ),
+              paramsFile,
+            ]
+          },
         },
         // Deploy the SIGNER verifier adapter (bound to the signer guest's vkey — a different program
         // than the root). Runs AFTER Network (which already consumed the root verifier), so it may
