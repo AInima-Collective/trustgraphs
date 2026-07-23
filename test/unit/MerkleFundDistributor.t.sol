@@ -1094,6 +1094,465 @@ contract MerkleFundDistributorTest is Test {
         assertEq(claimedAmount, expectedClaim);
     }
 
+    /* ========== CLAIM DEADLINE (DISTRIBUTE OVERLOAD) TESTS ========== */
+
+    function test_DistributeWithDeadline_StoresDeadlineAndZeroSweptAmount()
+        public
+    {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor
+            .getDistribution(0);
+        assertEq(dist.claimDeadline, deadline);
+        assertEq(dist.sweptAmount, 0);
+        assertEq(dist.distributor, alice);
+        assertEq(dist.amountFunded, 100 ether);
+    }
+
+    function test_DistributeWithDeadline_ZeroDeadlineMatchesLegacyBehavior()
+        public
+    {
+        _setupTwoLeafTree();
+        _createERC20DistributionWithDeadline(alice, 100 ether, 0);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor
+            .getDistribution(0);
+        assertEq(dist.claimDeadline, 0);
+
+        // Claims stay open forever.
+        vm.warp(block.timestamp + 3650 days);
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        uint256 claimedAmount = distributor.claim(0, alice, 600, aliceProof);
+        assertGt(claimedAmount, 0);
+
+        // And the distribution can never be swept.
+        vm.expectRevert(IMerkleFundDistributor.NoClaimDeadline.selector);
+        distributor.sweep(0);
+    }
+
+    function test_LegacyDistribute_CreatesZeroDeadlineDistribution() public {
+        _createERC20Distribution(alice, 100 ether);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor
+            .getDistribution(0);
+        assertEq(dist.claimDeadline, 0);
+        assertEq(dist.sweptAmount, 0);
+    }
+
+    function test_DistributeWithDeadline_RevertsOnPastDeadline() public {
+        vm.warp(1000);
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 100 ether);
+
+        vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            bytes32(0),
+            uint64(999)
+        );
+        vm.stopPrank();
+    }
+
+    function test_DistributeWithDeadline_RevertsOnDeadlineEqualToNow() public {
+        vm.warp(1000);
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 100 ether);
+
+        vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            bytes32(0),
+            uint64(1000)
+        );
+        vm.stopPrank();
+    }
+
+    function test_DistributeWithDeadline_RespectsAllowlist() public {
+        vm.prank(owner);
+        distributor.setAllowlistEnabled(true);
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 100 ether);
+
+        vm.expectRevert(IMerkleFundDistributor.CannotDistribute.selector);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            bytes32(0),
+            uint64(block.timestamp + 1 days)
+        );
+        vm.stopPrank();
+    }
+
+    /* ========== CLAIM WINDOW TESTS ========== */
+
+    function test_Claim_BeforeDeadline_Succeeds() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(deadline - 1);
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        uint256 claimedAmount = distributor.claim(0, alice, 600, aliceProof);
+        assertGt(claimedAmount, 0);
+    }
+
+    function test_Claim_AfterDeadline_RevertsClaimWindowClosed() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(uint256(deadline) + 1);
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
+        distributor.claim(0, alice, 600, aliceProof);
+    }
+
+    function test_SweepVsLateClaimRace_AtAndPastDeadline() public {
+        // The race the design closes: claims are valid while timestamp <= deadline,
+        // sweep only when timestamp > deadline. The two can never both succeed at
+        // the same timestamp.
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        uint256 feeAmount = (100 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+        uint256 distributable = 100 ether - feeAmount;
+
+        // Exactly at the deadline: claim still works, sweep reverts.
+        vm.warp(deadline);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        distributor.sweep(0);
+
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        uint256 aliceClaimed = distributor.claim(0, alice, 600, aliceProof);
+        assertEq(aliceClaimed, (distributable * 600) / 1000);
+
+        // One second past the deadline: claim reverts, sweep works.
+        vm.warp(uint256(deadline) + 1);
+        bytes32[] memory bobProof = new bytes32[](1);
+        bobProof[0] = _generateLeaf(alice, 600);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
+        distributor.claim(0, bob, 400, bobProof);
+
+        uint256 aliceBalanceBefore = mockToken.balanceOf(alice);
+        uint256 sweptAmount = distributor.sweep(0);
+        assertEq(sweptAmount, distributable - aliceClaimed);
+        assertEq(
+            mockToken.balanceOf(alice),
+            aliceBalanceBefore + sweptAmount
+        );
+    }
+
+    /* ========== SWEEP TESTS ========== */
+
+    function test_Sweep_BeforeDeadline_Reverts() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_ERC20_ReturnsAllUnclaimedToFunder() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        uint256 feeAmount = (100 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+        uint256 distributable = 100 ether - feeAmount;
+
+        vm.warp(uint256(deadline) + 1);
+
+        uint256 aliceBalanceBefore = mockToken.balanceOf(alice);
+
+        vm.expectEmit(true, true, false, true);
+        emit IMerkleFundDistributor.Swept(0, alice, distributable);
+
+        uint256 sweptAmount = distributor.sweep(0);
+
+        assertEq(sweptAmount, distributable);
+        assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + sweptAmount);
+        assertEq(mockToken.balanceOf(address(distributor)), 0);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor
+            .getDistribution(0);
+        assertEq(dist.sweptAmount, sweptAmount);
+        // Fee accounting untouched by the sweep.
+        assertEq(dist.feeAmount, feeAmount);
+        assertEq(mockToken.balanceOf(feeRecipient), feeAmount);
+    }
+
+    function test_Sweep_NativeToken_ReturnsAllUnclaimedToFunder() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        vm.prank(alice);
+        distributor.distribute{value: 10 ether}(
+            address(0),
+            10 ether,
+            bytes32(0),
+            deadline
+        );
+
+        uint256 feeAmount = (10 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+        uint256 distributable = 10 ether - feeAmount;
+
+        vm.warp(uint256(deadline) + 1);
+
+        uint256 aliceBalanceBefore = alice.balance;
+        uint256 sweptAmount = distributor.sweep(0);
+
+        assertEq(sweptAmount, distributable);
+        assertEq(alice.balance, aliceBalanceBefore + sweptAmount);
+        assertEq(address(distributor).balance, 0);
+    }
+
+    function test_Sweep_Permissionless_FundsStillGoToFunder() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(uint256(deadline) + 1);
+
+        uint256 aliceBalanceBefore = mockToken.balanceOf(alice);
+        uint256 charlieBalanceBefore = mockToken.balanceOf(charlie);
+
+        // Charlie (unrelated) triggers the sweep.
+        vm.prank(charlie);
+        uint256 sweptAmount = distributor.sweep(0);
+
+        assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + sweptAmount);
+        assertEq(mockToken.balanceOf(charlie), charlieBalanceBefore);
+    }
+
+    function test_Sweep_DoubleSweepReverts() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(uint256(deadline) + 1);
+        distributor.sweep(0);
+
+        vm.expectRevert(IMerkleFundDistributor.AlreadySwept.selector);
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_RevertsOnZeroDeadlineDistribution() public {
+        _createERC20Distribution(alice, 100 ether);
+
+        vm.warp(block.timestamp + 3650 days);
+        vm.expectRevert(IMerkleFundDistributor.NoClaimDeadline.selector);
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_RevertsOnDistributionNotFound() public {
+        vm.expectRevert(IMerkleFundDistributor.DistributionNotFound.selector);
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_RevertsWhenPaused() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(uint256(deadline) + 1);
+        vm.prank(owner);
+        distributor.pause();
+
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        distributor.sweep(0);
+    }
+
+    function test_Claim_AfterSweep_RevertsClaimWindowClosed() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.warp(uint256(deadline) + 1);
+        distributor.sweep(0);
+
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowClosed.selector);
+        distributor.claim(0, alice, 600, aliceProof);
+    }
+
+    function test_Sweep_PartialClaims_AccountingExact() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        uint256 feeAmount = (100 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+        uint256 distributable = 100 ether - feeAmount;
+
+        // Alice claims her share, bob never claims.
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        uint256 aliceClaimed = distributor.claim(0, alice, 600, aliceProof);
+
+        vm.warp(uint256(deadline) + 1);
+        uint256 sweptAmount = distributor.sweep(0);
+
+        // Exact remainder, and the whole pot is accounted for.
+        assertEq(sweptAmount, distributable - aliceClaimed);
+        assertEq(feeAmount + aliceClaimed + sweptAmount, 100 ether);
+        assertEq(mockToken.balanceOf(address(distributor)), 0);
+    }
+
+    function test_Sweep_AllClaimed_RevertsNothingToSweep() public {
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        // Both leaves claim (600 + 400 over total 1000 divides 99 ether exactly).
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = _generateLeaf(bob, 400);
+        distributor.claim(0, alice, 600, aliceProof);
+
+        bytes32[] memory bobProof = new bytes32[](1);
+        bobProof[0] = _generateLeaf(alice, 600);
+        distributor.claim(0, bob, 400, bobProof);
+
+        vm.warp(uint256(deadline) + 1);
+        vm.expectRevert(IMerkleFundDistributor.NothingToSweep.selector);
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_NativeToken_RevertsOnTransferFailure() public {
+        RejectingReceiver rejecter = new RejectingReceiver();
+        vm.deal(address(rejecter), 10 ether);
+
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        vm.prank(address(rejecter));
+        distributor.distribute{value: 10 ether}(
+            address(0),
+            10 ether,
+            bytes32(0),
+            deadline
+        );
+
+        vm.warp(uint256(deadline) + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.FailedToTransferTokens.selector,
+                ""
+            )
+        );
+        distributor.sweep(0);
+    }
+
+    function test_Sweep_OnlyTargetsItsOwnDistribution() public {
+        // Two distributions; sweeping one must not touch the other's funds.
+        _setupTwoLeafTree();
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+        _createERC20DistributionWithDeadline(bob, 50 ether, deadline);
+
+        uint256 fee0 = (100 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+        uint256 fee1 = (50 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
+
+        vm.warp(uint256(deadline) + 1);
+        uint256 swept0 = distributor.sweep(0);
+
+        assertEq(swept0, 100 ether - fee0);
+        // Distribution 1's pot is still fully held by the contract.
+        assertEq(
+            mockToken.balanceOf(address(distributor)),
+            50 ether - fee1
+        );
+
+        uint256 swept1 = distributor.sweep(1);
+        assertEq(swept1, 50 ether - fee1);
+        assertEq(mockToken.balanceOf(address(distributor)), 0);
+    }
+
+    /* ========== SWEEP FUZZ TESTS ========== */
+
+    /// forge-config: default.fuzz.runs = 512
+    function testFuzz_Sweep_ConservationInvariant(
+        uint256 fundedAmount,
+        uint256[4] memory values,
+        uint8 claimMask
+    ) public {
+        fundedAmount = bound(fundedAmount, 1, 1e30);
+
+        address[4] memory accounts = [
+            alice,
+            bob,
+            charlie,
+            address(0x6666)
+        ];
+
+        // Build a 4-leaf tree with fuzzed values (at least one non-zero).
+        uint256 totalValue;
+        bytes32[4] memory leaves;
+        for (uint256 i = 0; i < 4; i++) {
+            values[i] = bound(values[i], 0, 1e24);
+            totalValue += values[i];
+            leaves[i] = _generateLeaf(accounts[i], values[i]);
+        }
+        vm.assume(totalValue > 0);
+
+        bytes32 node01 = _hashPair(leaves[0], leaves[1]);
+        bytes32 node23 = _hashPair(leaves[2], leaves[3]);
+        bytes32 root = _hashPair(node01, node23);
+
+        mockMerkleSnapshot.setMerkleState(
+            IMerkleSnapshot.MerkleState({
+                blockNumber: block.number,
+                timestamp: block.timestamp,
+                root: root,
+                ipfsHash: TEST_IPFS_HASH,
+                ipfsHashCid: TEST_IPFS_CID,
+                totalValue: totalValue
+            })
+        );
+
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        mockToken.mint(alice, fundedAmount);
+        _createERC20DistributionWithDeadline(alice, fundedAmount, deadline);
+
+        uint256 feeAmount = (fundedAmount * DEFAULT_FEE_PERCENTAGE) /
+            FEE_RANGE;
+        uint256 distributable = fundedAmount - feeAmount;
+
+        // A random subset of accounts claims before the deadline.
+        uint256 totalClaimed;
+        for (uint256 i = 0; i < 4; i++) {
+            if (claimMask & (1 << i) == 0) continue;
+
+            uint256 expectedClaim = (distributable * values[i]) / totalValue;
+            if (expectedClaim == 0) continue; // would revert NoFundsToClaim
+
+            bytes32[] memory proof = new bytes32[](2);
+            proof[0] = i % 2 == 0 ? leaves[i + 1] : leaves[i - 1];
+            proof[1] = i < 2 ? node23 : node01;
+
+            totalClaimed += distributor.claim(0, accounts[i], values[i], proof);
+        }
+
+        vm.warp(uint256(deadline) + 1);
+
+        uint256 unclaimed = distributable - totalClaimed;
+        uint256 sweptAmount;
+        if (unclaimed == 0) {
+            vm.expectRevert(IMerkleFundDistributor.NothingToSweep.selector);
+            distributor.sweep(0);
+        } else {
+            sweptAmount = distributor.sweep(0);
+        }
+
+        // Conservation: every wei of the pot is either fee, claimed, or swept.
+        assertEq(feeAmount + totalClaimed + sweptAmount, fundedAmount);
+        // The contract holds nothing for this distribution afterwards.
+        assertEq(mockToken.balanceOf(address(distributor)), 0);
+    }
+
     /* ========== HELPER FUNCTIONS ========== */
 
     function _createERC20Distribution(address from, uint256 amount) internal {
@@ -1101,6 +1560,40 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), amount);
         distributor.distribute(address(mockToken), amount, bytes32(0));
         vm.stopPrank();
+    }
+
+    function _createERC20DistributionWithDeadline(
+        address from,
+        uint256 amount,
+        uint64 claimDeadline
+    ) internal {
+        vm.startPrank(from);
+        mockToken.approve(address(distributor), amount);
+        distributor.distribute(
+            address(mockToken),
+            amount,
+            bytes32(0),
+            claimDeadline
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev Sets the mock snapshot to a two-leaf tree: alice=600, bob=400 (total=1000).
+    function _setupTwoLeafTree() internal {
+        bytes32 root = _hashPair(
+            _generateLeaf(alice, 600),
+            _generateLeaf(bob, 400)
+        );
+        mockMerkleSnapshot.setMerkleState(
+            IMerkleSnapshot.MerkleState({
+                blockNumber: block.number,
+                timestamp: block.timestamp,
+                root: root,
+                ipfsHash: TEST_IPFS_HASH,
+                ipfsHashCid: TEST_IPFS_CID,
+                totalValue: 1000
+            })
+        );
     }
 
     function _generateLeaf(
