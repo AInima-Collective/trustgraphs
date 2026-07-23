@@ -167,6 +167,18 @@ app.get('/round', async (c) => {
   }
 })
 
+// Path-style alias — the shape the frontend's contributions-api client fetches
+// (`/contributions/:snapshot/round`), mirroring the :snapshot param routes below (M5).
+app.get('/:snapshot/round', async (c) => {
+  const { snapshot } = c.req.param()
+  try {
+    const round = await resolveRound(snapshot, c.req.query('root') ?? 'current')
+    return c.json(roundSummary(round))
+  } catch (e: any) {
+    return c.json({ error: e.message }, 404)
+  }
+})
+
 /** Claims list: live decoded claims for the instance's resolver + scores at the resolved root. */
 const serveClaims = async (snapshot: string, rootQ: string) => {
   const instance = contributionsInstanceForSnapshot(snapshot)
@@ -297,6 +309,13 @@ app.get('/claims', async (c) => {
       400
     )
   }
+  const res = await serveClaims(snapshot, c.req.query('root') ?? 'current')
+  return c.json(res.body as object, res.status)
+})
+
+// Path-style alias — the frontend client's `/contributions/:snapshot/claims` shape (M5).
+app.get('/:snapshot/claims', async (c) => {
+  const { snapshot } = c.req.param()
   const res = await serveClaims(snapshot, c.req.query('root') ?? 'current')
   return c.json(res.body as object, res.status)
 })
