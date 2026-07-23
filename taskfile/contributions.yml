@@ -1,0 +1,169 @@
+version: '3'
+
+# Contribution-funding round lifecycle on local anvil (GOAL.md M5).
+#
+# The user-side actions (vouch / claim / respond / rate / claim payout) run through
+# frontend/scripts/contribution-round.ts — the exact SchemaManager → EAS.attest and
+# proof-bundle-API seams the frontend screens drive. The operator-side actions
+# (window params, trigger, prove, submit, fund, sweep) live here.
+#
+# Full walkthrough: docs/contributions/LOCAL_TESTING.md
+# Operator view:    docs/contributions/RUNBOOK.md
+
+vars:
+  RPC_URL: 'http://localhost:8545'
+  DEPLOYMENT_FILE: '.docker/deployment_summary.json'
+  PARAMS_FILE: 'params.contributions.json'
+  SUBMIT_ENV: '.docker/contributions_round_submit.env'
+  IPFS_API: 'http://127.0.0.1:5001'
+
+tasks:
+  # ──────────────────────────────────────────────────────────────────────────
+  # The M5 seed: the 6-persona worked example (contributions-core testutil
+  # fixture) reproduced on-chain. Vouch graph → out-of-window claim → window
+  # params → in-window claims/responses/valuations.
+  # ──────────────────────────────────────────────────────────────────────────
+  create-contribution-round-network:
+    desc: 'Seed the 6-persona contribution round (the worked-example fixture) on local anvil'
+    preconditions:
+      - test -f {{.DEPLOYMENT_FILE}}
+      - test -f {{.PARAMS_FILE}}
+    cmds:
+      - echo "== 1/4 trust lane (six fixture vouches) =="
+      - cd frontend && npx tsx scripts/contribution-round.ts graph
+      - echo "== 2/4 out-of-window claim (C4) =="
+      - cd frontend && npx tsx scripts/contribution-round.ts claim-out-of-window
+      - echo "== 3/4 open the round window (operational setParamsHash) =="
+      - task: open-round-window
+      - echo "== 4/4 in-window fixture sequence (C1/C2/C3/C5 + responses + valuations) =="
+      - cd frontend && npx tsx scripts/contribution-round.ts round1
+      - echo "Seeded. Next - task contributions:trigger"
+
+  create-round-2:
+    desc: 'Seed the minimal round-2 fixture (window rotate + co-claim + accept + two ratings)'
+    cmds:
+      - task: open-round-window
+      - cd frontend && npx tsx scripts/contribution-round.ts round2
+
+  # Rotate the round window to [now+1, now+1+7d]: update the params sidecar, recompute the
+  # 21-word paramsHash, and pin it on the snapshot (OPERATIONAL_ROLE = the deployer in dev).
+  # Claims attested BEFORE this task ran are outside the new window by construction.
+  open-round-window:
+    desc: 'Set round_start/round_end bracketing now, update {{.PARAMS_FILE}}, setParamsHash'
+    preconditions:
+      - test -f {{.PARAMS_FILE}}
+      - test -n "$FUNDED_KEY"
+    cmds:
+      - |
+        set -e
+        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        LATEST_TS=$(cast block latest -f timestamp --rpc-url {{.RPC_URL}})
+        ROUND_START=$((LATEST_TS + 1))
+        ROUND_END=$((ROUND_START + 604800))
+        jq --arg s "$(printf '0x%x' $ROUND_START)" --arg e "$(printf '0x%x' $ROUND_END)" \
+          '.round_start = $s | .round_end = $e' {{.PARAMS_FILE}} > {{.PARAMS_FILE}}.tmp \
+          && mv {{.PARAMS_FILE}}.tmp {{.PARAMS_FILE}}
+        PH=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions paramshash ../../{{.PARAMS_FILE}})
+        echo "window [$ROUND_START, $ROUND_END] paramsHash $PH"
+        cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PH" \
+          --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
+        echo "setParamsHash OK"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Operator lifecycle: trigger → prove → submit → fund → (claim) → sweep
+  # ──────────────────────────────────────────────────────────────────────────
+  trigger:
+    desc: 'Freeze both accumulators into a new checkpoint (permissionless, epoch-gated)'
+    cmds:
+      - |
+        set -e
+        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        MIRROR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.trustAccumulatorMirror' {{.DEPLOYMENT_FILE}})
+        cast send "$SNAPSHOT" "trigger()" --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
+        ID=$(( $(cast call "$MIRROR" "checkpointCount()(uint256)" --rpc-url {{.RPC_URL}}) - 1 ))
+        echo "checkpoint id: $ID"
+
+  # fetch → execute → prove (mock Groth16) → pin the payout blob. Writes the submitProof args
+  # to {{.SUBMIT_ENV}}. SP1_PROVER=mock: the dev deploy uses a MockSP1Gateway; the executor and
+  # journal bytes are identical to a real prove (see docs/contributions/RUNBOOK.md for real
+  # proving).
+  prove-round:
+    desc: 'Reconstruct input from chain, execute + mock-prove the guest, pin the blob'
+    cmds:
+      - |
+        set -e
+        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        MIRROR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.trustAccumulatorMirror' {{.DEPLOYMENT_FILE}})
+        EAS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
+        VOUCH_UID=$(jq -r '.networks[0].schemas[] | select(.key=="vouching") | .uid' {{.DEPLOYMENT_FILE}})
+        ID={{.ID | default ""}}
+        if [ -z "$ID" ]; then
+          ID=$(( $(cast call "$MIRROR" "checkpointCount()(uint256)" --rpc-url {{.RPC_URL}}) - 1 ))
+        fi
+        echo "== fetch (checkpoint $ID) =="
+        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions fetch \
+          --rpc {{.RPC_URL}} --snapshot "$SNAPSHOT" --eas "$EAS" --checkpoint "$ID" \
+          --params ../../{{.PARAMS_FILE}} --trust-schema-uid "$VOUCH_UID" \
+          --out ../../contributions_input.json)
+        echo "== execute (guest == native byte-assert) =="
+        EXEC=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions execute ../../contributions_input.json)
+        echo "$EXEC"
+        {
+          echo "CHECKPOINT_ID=$ID"
+          echo "OUTPUT_ROOT=$(echo "$EXEC" | awk '/outputRoot:/{print $2}')"
+          echo "IPFS_HASH=$(echo "$EXEC" | awk '/ipfsHash:/{print $2}')"
+          echo "CID=$(echo "$EXEC" | awk '/^cid:/{print $2}')"
+          echo "TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')"
+        } > {{.SUBMIT_ENV}}
+        echo "== prove (mock groth16) =="
+        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions prove ../../contributions_input.json --groth16)
+        echo "== pin the payout blob =="
+        curl -sF file=@zk/prover/contributions_blob.json "{{.IPFS_API}}/api/v0/add?cid-version=1&raw-leaves=true"
+        echo ""
+        cat {{.SUBMIT_ENV}}
+
+  submit-proof:
+    desc: 'submitProof for the checkpoint proved by prove-round'
+    preconditions:
+      - test -f {{.SUBMIT_ENV}}
+      - test -f zk/prover/contributions_proof.bin
+    cmds:
+      - |
+        set -e
+        . ./{{.SUBMIT_ENV}}
+        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        PROOF="0x$(od -An -v -tx1 zk/prover/contributions_proof.bin | tr -d ' \n')"
+        cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+          "$CHECKPOINT_ID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" \
+          0x0000000000000000000000000000000000000000000000000000000000000000 "$PROOF" \
+          --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
+        echo "submitProof OK: checkpoint $CHECKPOINT_ID root $OUTPUT_ROOT"
+
+  # Fund the round through the payout page's seam (approve + distribute with expectedRoot
+  # pinned). AMOUNT is in pool-token base units (tUSDC = 6 decimals). Set DEADLINE=<unix ts>
+  # to use the expiring 4-arg overload (sweepable after the deadline).
+  fund-round:
+    desc: 'Approve + distribute AMOUNT of the pool token against the proven root'
+    preconditions:
+      - test -n "{{.AMOUNT}}"
+    cmds:
+      - cd frontend && npx tsx scripts/contribution-round.ts fund --amount {{.AMOUNT}} {{if .DEADLINE}}--deadline {{.DEADLINE}}{{end}}
+
+  # Claim payouts through the proof-bundle API. INDEX = distribution index (default 0);
+  # AS = comma-separated persona subset (default: all six).
+  claim-payouts:
+    desc: 'Claim distribution INDEX for the personas via /contributions payout bundles'
+    cmds:
+      - cd frontend && npx tsx scripts/contribution-round.ts claim --index {{.INDEX | default 0}} {{if .AS}}--as {{.AS}}{{end}}
+
+  sweep:
+    desc: 'Sweep the unclaimed remainder of expired distribution INDEX back to the funder'
+    preconditions:
+      - test -n "{{.INDEX}}"
+    cmds:
+      - |
+        set -e
+        DISTRIBUTOR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleFundDistributor' {{.DEPLOYMENT_FILE}})
+        cast send "$DISTRIBUTOR" "sweep(uint256)" {{.INDEX}} \
+          --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
+        echo "swept distribution {{.INDEX}}"
