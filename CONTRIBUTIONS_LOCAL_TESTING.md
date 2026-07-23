@@ -301,6 +301,18 @@ task contributions:prove-round ID=<checkpoint>
   before the indexer (§3): its `predev` runs `wagmi:generate` / `config:generate` off the fresh
   deploy summary, and the indexer imports those ABIs. Or regenerate directly with
   `pnpm --filter frontend wagmi:generate`.
+- **Indexer crashes on a `MerkleRootUpdated` event (`Failed to fetch merkle tree from IPFS CID …`),
+  and a fresh deploy / `forge clean` doesn't fix it?** The IPFS daemon is down. Each proven root
+  pins its `{account: value}` blob to the local kubo node; the indexer *must* re-fetch that blob to
+  rebuild proofs, and that fetch (`src/merkle.ts`) is **not** swallowed — a dead gateway kills the
+  handler. Redeploying can't help: the blobs (and the crash) live in IPFS, not the chain. This is
+  distinct from the harmless, caught `getStateCount returned no data ("0x")` line — that one is the
+  `merkleSnapshot:setup` handler reading at the historical start block (block 1), before any
+  snapshot is deployed, and is always ignored. Fix: bring the gateway back (`curl -s -m4
+  http://127.0.0.1:8080/ipfs/<any-pinned-cid>` should return the score JSON; if it times out,
+  restart kubo — `IPFS_PATH=<repo> ipfs daemon`), confirm the round's CIDs are still pinned
+  (`ipfs pin ls --type=recursive`), then restart the indexer. The pins survive a daemon restart as
+  long as the repo dir is intact.
 - **`pnpm deploy:contracts` hangs on a step (forge spamming `eth_getTransactionReceipt`)?** A
   broadcast tx was dropped and the rest queued behind the nonce gap (`cast rpc txpool_status` shows
   `pending: 0x0` with a nonzero `queued`). Almost always the **running indexer flooding the RPC**
