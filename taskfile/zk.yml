@@ -4,25 +4,26 @@ silent: true
 
 # ZK program tasks (multi-program platform).
 #
-# Every task takes PROGRAM (values: trust-graph | signer, default trust-graph). The prover CLI is
-# invoked as `trustgraph-prover <program> <command>`, so PROGRAM is passed as the first positional
-# arg. The `trust-graph` and `signer` programs share the same golden feed
-# (test/golden/trust-graph.json) because the signer program reads the same trust-graph attestation
-# feed — there is no separate signer vector file.
+# Every task takes PROGRAM (values: trust-graph | signer | hypercerts | contributions, default
+# trust-graph). The prover CLI is invoked as `trustgraph-prover <program> <command>`, so PROGRAM is
+# passed as the first positional arg. The `trust-graph` and `signer` programs share the same golden
+# feed (test/golden/trust-graph.json) because the signer program reads the same trust-graph
+# attestation feed — there is no separate signer vector file; `hypercerts` and `contributions` each
+# own their own vector file.
 
 tasks:
   vectors:
-    desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer | hypercerts)"
+    desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer | hypercerts | contributions)"
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      # `hypercerts` owns its own vector file (test/golden/hypercerts.json); trust-graph and signer
-      # share test/golden/trust-graph.json — the signer vectors live in its `.signer` section — so
-      # regeneration for those two is the same command regardless of PROGRAM.
-      - '{{if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
+      # `hypercerts` and `contributions` own their own vector files (test/golden/<program>.json);
+      # trust-graph and signer share test/golden/trust-graph.json — the signer vectors live in its
+      # `.signer` section — so regeneration for those two is the same command regardless of PROGRAM.
+      - '{{if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > test/golden/contributions.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
 
   vkey:
-    desc: "Print the SP1 program vkey for PROGRAM (trust-graph | signer)"
+    desc: "Print the SP1 program vkey for PROGRAM (trust-graph | signer | hypercerts | contributions)"
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     env:
@@ -45,7 +46,7 @@ tasks:
       - cd zk/prover && cargo run --release -- {{.PROGRAM}} execute {{.INPUT}}
 
   prove:
-    desc: "Prove the guest for PROGRAM (trust-graph | signer); GROTH16=1 for a groth16 proof, optional INPUT="
+    desc: "Prove the guest for PROGRAM (trust-graph | signer | hypercerts | contributions); GROTH16=1 for a groth16 proof, optional INPUT="
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
       INPUT: '{{.INPUT}}'
@@ -53,7 +54,7 @@ tasks:
       - cd zk/prover && cargo run --release -- {{.PROGRAM}} prove {{.INPUT}} {{if eq .GROTH16 "1"}}--groth16{{end}}
 
   parity:
-    desc: "Aggregate cross-language parity gate for PROGRAM (trust-graph | signer)"
+    desc: "Aggregate cross-language parity gate for PROGRAM (trust-graph | signer | hypercerts | contributions)"
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:

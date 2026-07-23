@@ -12,10 +12,14 @@
 //!                                                         keccak256 of the canonical selection params
 //!   trustgraph-prover signer execute    [input.json]      executor-run + guest-vs-native assert
 //!   trustgraph-prover signer prove      [input.json] [--groth16]
+//!   trustgraph-prover contributions {vkey|paramshash|fetch|execute|prove}
+//!                                                         the contributions program (fetch needs
+//!                                                         `--features fetch`)
 //!
 //! For `trust-graph`, `input.json` is a serialized `pagerank_core::GuestInput`; for `signer` it is a
-//! `pagerank_core::SignerInput`. Omit it to use the built-in sample (identical to
-//! test/golden/trust-graph.json).
+//! `pagerank_core::SignerInput`; for `contributions` it is a
+//! `contributions_core::compute::GuestInput`. Omit it to use the built-in sample (identical to
+//! test/golden/trust-graph.json / test/golden/contributions.json).
 
 mod common;
 mod programs;
@@ -50,6 +54,12 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::hypercerts::Command,
     },
+    /// Contributions root producer (rep-weighted funding split over EAS contribution
+    /// claims/responses/valuations -> journal-v2 merkle root).
+    Contributions {
+        #[command(subcommand)]
+        cmd: programs::contributions::Command,
+    },
     /// Envelope-1 (atproto) conformance harness: run the guest over a CAR + PLC witness and
     /// byte-assert guest == native (M3 exit; not a production program).
     #[command(name = "atproto-conformance")]
@@ -73,6 +83,7 @@ fn main() -> Result<()> {
         Program::TrustGraph { cmd } => programs::trust_graph::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
+        Program::Contributions { cmd } => programs::contributions::run(cmd),
         Program::AtprotoConformance { cmd } => programs::atproto_conformance::run(cmd),
         #[cfg(feature = "witness-atproto")]
         Program::Witness { cmd } => witness::run(cmd),

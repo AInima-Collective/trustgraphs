@@ -653,6 +653,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "contributions-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "pagerank-core",
+ "serde",
+ "zk-core",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2730,6 +2740,7 @@ name = "trustgraph-program"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
+ "contributions-core",
  "envelopes",
  "hypercerts-core",
  "pagerank-core",
