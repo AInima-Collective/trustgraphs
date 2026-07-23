@@ -18,6 +18,9 @@ contract TrustAccumulatorMirrorTest is Test {
     function setUp() public {
         trust = new TestAccumulator();
         mirror = new TrustAccumulatorMirror(trust);
+        // This test doubles as the bound snapshot (in production: the contributions
+        // MerkleSnapshot, whose trigger() is then the only checkpoint mint — AUDIT_M6 M6-1).
+        mirror.bindSnapshot(address(this));
     }
 
     function _foldOne(uint256 salt) internal {
@@ -89,6 +92,35 @@ contract TrustAccumulatorMirrorTest is Test {
         assertEq(mirror.checkpointCount(), 2);
         assertEq(trust.checkpointCount(), 0, "the trust accumulator must never gain checkpoints");
         assertEq(trust.leafCount(), 1, "mirroring must not fold");
+    }
+
+    /// M6-1 regression: only the bound snapshot may mint checkpoints — a directly-minted id
+    /// would leave the snapshot's lane-2 freeze at (0,0) and admit a contributions-blind proof.
+    function test_CheckpointOnlyFromBoundSnapshot() public {
+        _foldOne(1);
+        vm.prank(address(0xA77ac)); // anyone else
+        vm.expectRevert(TrustAccumulatorMirror.NotSnapshot.selector);
+        mirror.checkpoint();
+
+        // Pre-bind, nobody can checkpoint (not even the binder).
+        TrustAccumulatorMirror unbound = new TrustAccumulatorMirror(trust);
+        vm.expectRevert(TrustAccumulatorMirror.NotSnapshot.selector);
+        unbound.checkpoint();
+    }
+
+    function test_BindSnapshotIsOneShotAndBinderOnly() public {
+        TrustAccumulatorMirror fresh = new TrustAccumulatorMirror(trust);
+        vm.prank(address(0xBAD));
+        vm.expectRevert(TrustAccumulatorMirror.NotBinder.selector);
+        fresh.bindSnapshot(address(0xBAD));
+
+        vm.expectRevert(TrustAccumulatorMirror.ZeroAddress.selector);
+        fresh.bindSnapshot(address(0));
+
+        fresh.bindSnapshot(address(this));
+        assertEq(fresh.snapshot(), address(this));
+        vm.expectRevert(TrustAccumulatorMirror.AlreadyBound.selector);
+        fresh.bindSnapshot(address(0x1234));
     }
 
     function test_CheckpointCapturesSubsequentGrowth() public {

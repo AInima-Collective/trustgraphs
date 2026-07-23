@@ -143,6 +143,9 @@ contract DeployContributionsInstance is Common {
       operational
     );
     snapshot.setAnchorRegistry(IAnchorRegistry(address(resolver)));
+    // M6-1: only the snapshot's trigger() may mint mirror checkpoints (a directly-minted id
+    // would leave anchorCheckpoints[id] at (0,0) and admit a contributions-blind proof).
+    mirror.bindSnapshot(address(snapshot));
     if (epochLength > 0) {
       snapshot.setEpochLength(epochLength);
     }

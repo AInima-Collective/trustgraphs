@@ -85,6 +85,7 @@ contract ContributionsInstanceTest is Test {
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(contribResolver)));
         snapshot.setEpochLength(EPOCH_LENGTH);
+        mirror.bindSnapshot(address(snapshot));
 
         // Past the first epoch boundary so the initial trigger is allowed.
         vm.roll(100);

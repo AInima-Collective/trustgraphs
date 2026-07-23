@@ -15,20 +15,41 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 ///         because `acc` already commits to the full ordered edge log.
 /// @dev Deliberately NO `NoNewInputs` guard (unlike `AttestationAccumulator.checkpoint`): a round
 ///      can legitimately close while the vouch graph was quiet, and a revert here would wedge the
-///      contributions `MerkleSnapshot.trigger()` for as long as no one vouches. Checkpoint spam is
-///      bounded by the snapshot's `epochLength` gate (trigger is the only expected caller, and the
-///      contract-fixed epoch schedule paces it); a direct spam call costs the spammer gas and adds
-///      a redundant-but-harmless checkpoint. Emits `InputsCheckpointed` like the real accumulator
-///      so provers can watch one event shape everywhere.
+///      contributions `MerkleSnapshot.trigger()` for as long as no one vouches. Emits
+///      `InputsCheckpointed` like the real accumulator so provers can watch one event shape
+///      everywhere.
+///
+///      `checkpoint()` is callable ONLY by the bound snapshot (AUDIT_M6.md finding M6-1): a
+///      directly-minted mirror checkpoint would carry an id that `trigger()` never created, so the
+///      snapshot's `anchorCheckpoints[id]` (the lane-2 contribution freeze) would sit at the
+///      default `(0, 0)` — and a proof over an EMPTY contribution log against that id verifies,
+///      applying a contributions-blind root. Binding the mirror to the snapshot makes `trigger()`
+///      the only checkpoint mint, so every id has both lanes frozen at one block.
 contract TrustAccumulatorMirror is IAttestationAccumulator {
     /// @notice The trust instance's accumulator this mirror reads (the live `EASIndexerResolver`).
     IAttestationAccumulator public immutable trustAccumulator;
+
+    /// @notice The only address allowed to mint checkpoints (the contributions `MerkleSnapshot`,
+    ///         whose `trigger()` freezes BOTH lanes under one id). Set once via `bindSnapshot`.
+    address public snapshot;
+
+    /// @notice The deployer address allowed to perform the one-shot `bindSnapshot`.
+    address public immutable binder;
 
     /// @notice The mirror's own frozen checkpoints (never the trust accumulator's).
     Checkpoint[] private _checkpoints;
 
     /// @notice The wrapped accumulator must be nonzero.
     error ZeroAddress();
+    /// @notice `checkpoint()` called by anything other than the bound snapshot (or pre-bind).
+    error NotSnapshot();
+    /// @notice `bindSnapshot` called twice or by a non-binder.
+    error AlreadyBound();
+    /// @notice `bindSnapshot` caller is not the binder.
+    error NotBinder();
+
+    /// @notice Emitted when the snapshot is bound.
+    event SnapshotBound(address snapshot);
 
     /// @param _trustAccumulator The trust accumulator to mirror. Immutable: re-pointing the input
     ///        lane is a constitutional event on the snapshot (`setAccumulator` to a new mirror),
@@ -38,6 +59,24 @@ contract TrustAccumulatorMirror is IAttestationAccumulator {
             revert ZeroAddress();
         }
         trustAccumulator = _trustAccumulator;
+        binder = msg.sender;
+    }
+
+    /// @notice One-shot: bind the contributions `MerkleSnapshot` whose `trigger()` may mint
+    ///         checkpoints. Deploy-time circularity (snapshot's constructor takes the mirror)
+    ///         makes this a post-deploy call, mirroring the resolver's `setSchemas` pattern.
+    function bindSnapshot(address _snapshot) external {
+        if (msg.sender != binder) {
+            revert NotBinder();
+        }
+        if (snapshot != address(0)) {
+            revert AlreadyBound();
+        }
+        if (_snapshot == address(0)) {
+            revert ZeroAddress();
+        }
+        snapshot = _snapshot;
+        emit SnapshotBound(_snapshot);
     }
 
     /// @inheritdoc IAttestationAccumulator
@@ -55,8 +94,12 @@ contract TrustAccumulatorMirror is IAttestationAccumulator {
     /// @inheritdoc IAttestationAccumulator
     /// @dev Freezes the trust accumulator's CURRENT state into a local checkpoint. Never reverts
     ///      on an unchanged accumulator (see the contract-level dev note on the missing
-    ///      `NoNewInputs` guard).
+    ///      `NoNewInputs` guard). Only the bound snapshot may mint (M6-1): both lanes must be
+    ///      frozen under one id by `trigger()`, or the unset lane-2 freeze reads `(0, 0)`.
     function checkpoint() external returns (uint256 id) {
+        if (msg.sender != snapshot || snapshot == address(0)) {
+            revert NotSnapshot();
+        }
         bytes32 currentAcc = trustAccumulator.acc();
         uint64 currentLeafCount = trustAccumulator.leafCount();
 

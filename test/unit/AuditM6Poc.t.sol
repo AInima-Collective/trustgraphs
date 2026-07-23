@@ -69,6 +69,8 @@ contract AuditM6Poc is Test {
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(contribResolver)));
         snapshot.setEpochLength(EPOCH_LENGTH);
+        // The M6-1 fix: bind the mirror so only the snapshot's trigger() may mint checkpoints.
+        mirror.bindSnapshot(address(snapshot));
         vm.roll(100);
     }
 
@@ -89,10 +91,12 @@ contract AuditM6Poc is Test {
         );
     }
 
-    /// @notice HIGH: a directly-created mirror checkpoint (no NoNewInputs guard) mints a lane-1
-    ///         checkpoint id whose paired lane-2 anchor in MerkleSnapshot is (0,0) — because only
-    ///         trigger() populates anchorCheckpoints. A prover can submitProof against that id,
-    ///         binding lane-2 (the contribution log) to EMPTY even though the live log is non-empty.
+    /// @notice M6-1 regression (was HIGH): a directly-created mirror checkpoint would mint a
+    ///         lane-1 checkpoint id whose paired lane-2 anchor in MerkleSnapshot is (0,0) — because
+    ///         only trigger() populates anchorCheckpoints — letting a prover bind lane-2 (the
+    ///         contribution log) to EMPTY even though the live log is non-empty. FIXED: the mirror
+    ///         is bound to the snapshot, so only trigger() mints checkpoints (both lanes frozen at
+    ///         one id). The attack path now reverts at its first step.
     function test_poc_mirrorSpamCheckpoint_desyncsLane2() public {
         // A real, non-empty contribution log exists.
         _foldContribution(hex"1111");
@@ -110,24 +114,18 @@ contract AuditM6Poc is Test {
         _foldContribution(hex"3333");
         assertEq(contribResolver.anchorCount(), 3, "live contribution log is non-empty (3 leaves)");
 
-        // ATTACK: anyone calls the mirror's checkpoint() DIRECTLY. No epoch gate, no NoNewInputs
-        // guard, no auth. This mints lane-1 checkpoint id = 1 that trigger() never paired.
+        // ATTACK (now defeated): anyone calling the mirror's checkpoint() DIRECTLY reverts —
+        // only the bound snapshot's trigger() may mint a checkpoint id, so no unpaired lane-1
+        // id can ever exist for a prover to bind an empty lane 2 against.
         vm.prank(attacker);
-        uint256 spamId = mirror.checkpoint();
-        assertEq(spamId, honestId + 1, "attacker minted the next lane-1 checkpoint id");
+        vm.expectRevert(TrustAccumulatorMirror.NotSnapshot.selector);
+        mirror.checkpoint();
 
-        // The paired lane-2 anchor for the spam id is the DEFAULT (0,0): trigger() never ran for it.
-        (bytes32 sAnchorAcc, uint64 sAnchorCount) = snapshot.anchorCheckpoints(spamId);
-        assertEq(sAnchorAcc, bytes32(0), "DESYNC: spam checkpoint's lane-2 acc is zero");
-        assertEq(sAnchorCount, 0, "DESYNC: spam checkpoint's lane-2 count is zero (log has 3!)");
-
-        // A prover feeds the guest an EMPTY lane 2 (a valid guest execution: empty input commits
-        // (0,0)), producing a contributions-BLIND root. On-chain it matches anchorCheckpoints[spamId]
-        // = (0,0), so the proof verifies and the blind snapshot is applied over the honest one.
-        vm.prank(attacker);
-        snapshot.submitProof(spamId, BLIND_ROOT, bytes32(uint256(2)), "cid-blind", 500, bytes32(0), hex"");
-
-        assertEq(snapshot.lastAppliedCheckpoint(), spamId, "blind checkpoint became the applied one");
-        assertEq(snapshot.getLatestState().root, BLIND_ROOT, "latest snapshot root ignores all contributions");
+        // The only way to advance the checkpoint id is trigger(), which pairs lane 2 correctly.
+        vm.roll(block.number + EPOCH_LENGTH);
+        uint256 nextId = snapshot.trigger();
+        (bytes32 nAnchorAcc, uint64 nAnchorCount) = snapshot.anchorCheckpoints(nextId);
+        assertEq(nAnchorCount, 3, "trigger binds the CURRENT contribution count, never (0,0)");
+        assertTrue(nAnchorAcc != bytes32(0), "the contribution acc is bound, not empty");
     }
 }
