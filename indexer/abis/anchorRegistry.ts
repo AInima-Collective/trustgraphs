@@ -5,493 +5,493 @@
 // add AnchorRegistry there and import the generated abi instead of this file.
 export const anchorRegistryAbi = [
   {
-    "type": "constructor",
-    "inputs": [
+    type: 'constructor',
+    inputs: [
       {
-        "name": "admin",
-        "type": "address",
-        "internalType": "address"
-      }
+        name: 'admin',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
-    "stateMutability": "nonpayable"
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "DEFAULT_ADMIN_ROLE",
-    "inputs": [],
-    "outputs": [
+    type: 'function',
+    name: 'DEFAULT_ADMIN_ROLE',
+    inputs: [],
+    outputs: [
       {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "NODE_KIND_ADDRESS",
-    "inputs": [],
-    "outputs": [
+    type: 'function',
+    name: 'NODE_KIND_ADDRESS',
+    inputs: [],
+    outputs: [
       {
-        "name": "",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
+        name: '',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "REGISTRAR_ROLE",
-    "inputs": [],
-    "outputs": [
+    type: 'function',
+    name: 'REGISTRAR_ROLE',
+    inputs: [],
+    outputs: [
       {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "anchor",
-    "inputs": [
+    type: 'function',
+    name: 'anchor',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "envelopeKind",
-        "type": "uint8",
-        "internalType": "uint8"
+        name: 'envelopeKind',
+        type: 'uint8',
+        internalType: 'uint8',
       },
       {
-        "name": "head",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'head',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "dataCommitment",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: 'dataCommitment',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "anchorAcc",
-    "inputs": [],
-    "outputs": [
+    type: 'function',
+    name: 'anchorAcc',
+    inputs: [],
+    outputs: [
       {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "anchorCount",
-    "inputs": [],
-    "outputs": [
+    type: 'function',
+    name: 'anchorCount',
+    inputs: [],
+    outputs: [
       {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
+        name: '',
+        type: 'uint64',
+        internalType: 'uint64',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "getRoleAdmin",
-    "inputs": [
+    type: 'function',
+    name: 'getRoleAdmin',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: 'role',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "outputs": [
+    outputs: [
       {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "grantRole",
-    "inputs": [
+    type: 'function',
+    name: 'grantRole',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "hasRole",
-    "inputs": [
+    type: 'function',
+    name: 'hasRole',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
-    "outputs": [
+    outputs: [
       {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "nodeKind",
-    "inputs": [
+    type: 'function',
+    name: 'nodeKind',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "outputs": [
+    outputs: [
       {
-        "name": "kind",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
+        name: 'kind',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "register",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    type: 'function',
+    name: 'register',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "registerNode",
-    "inputs": [
+    type: 'function',
+    name: 'registerNode',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "kind",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
+        name: 'kind',
+        type: 'uint8',
+        internalType: 'uint8',
+      },
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "registered",
-    "inputs": [
+    type: 'function',
+    name: 'registered',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
     ],
-    "outputs": [
+    outputs: [
       {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "function",
-    "name": "renounceRole",
-    "inputs": [
+    type: 'function',
+    name: 'renounceRole',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "callerConfirmation",
-        "type": "address",
-        "internalType": "address"
-      }
+        name: 'callerConfirmation',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "revokeRole",
-    "inputs": [
+    type: 'function',
+    name: 'revokeRole',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
-      }
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
+      },
     ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
-    "type": "function",
-    "name": "supportsInterface",
-    "inputs": [
+    type: 'function',
+    name: 'supportsInterface',
+    inputs: [
       {
-        "name": "interfaceId",
-        "type": "bytes4",
-        "internalType": "bytes4"
-      }
+        name: 'interfaceId',
+        type: 'bytes4',
+        internalType: 'bytes4',
+      },
     ],
-    "outputs": [
+    outputs: [
       {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
+        name: '',
+        type: 'bool',
+        internalType: 'bool',
+      },
     ],
-    "stateMutability": "view"
+    stateMutability: 'view',
   },
   {
-    "type": "event",
-    "name": "HeadAnchored",
-    "inputs": [
+    type: 'event',
+    name: 'HeadAnchored',
+    inputs: [
       {
-        "name": "foldIndex",
-        "type": "uint64",
-        "indexed": true,
-        "internalType": "uint64"
+        name: 'foldIndex',
+        type: 'uint64',
+        indexed: true,
+        internalType: 'uint64',
       },
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'nodeId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "envelopeKind",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
+        name: 'envelopeKind',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
       },
       {
-        "name": "head",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
+        name: 'head',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
       },
       {
-        "name": "dataCommitment",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
+        name: 'dataCommitment',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
       },
       {
-        "name": "blockTimestamp",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'blockTimestamp',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "NodeRegistered",
-    "inputs": [
+    type: 'event',
+    name: 'NodeRegistered',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'nodeId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "kind",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
+        name: 'kind',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
       },
       {
-        "name": "registrant",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
+        name: 'registrant',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleAdminChanged",
-    "inputs": [
+    type: 'event',
+    name: 'RoleAdminChanged',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "previousAdminRole",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'previousAdminRole',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "newAdminRole",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      }
+        name: 'newAdminRole',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleGranted",
-    "inputs": [
+    type: 'event',
+    name: 'RoleGranted',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "sender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
+        name: 'sender',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleRevoked",
-    "inputs": [
+    type: 'event',
+    name: 'RoleRevoked',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "sender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
+        name: 'sender',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "error",
-    "name": "AccessControlBadConfirmation",
-    "inputs": []
+    type: 'error',
+    name: 'AccessControlBadConfirmation',
+    inputs: [],
   },
   {
-    "type": "error",
-    "name": "AccessControlUnauthorizedAccount",
-    "inputs": [
+    type: 'error',
+    name: 'AccessControlUnauthorizedAccount',
+    inputs: [
       {
-        "name": "account",
-        "type": "address",
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        internalType: 'address',
       },
       {
-        "name": "neededRole",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
+        name: 'neededRole',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
   },
   {
-    "type": "error",
-    "name": "AddressKindIsSelfRegisterOnly",
-    "inputs": []
+    type: 'error',
+    name: 'AddressKindIsSelfRegisterOnly',
+    inputs: [],
   },
   {
-    "type": "error",
-    "name": "AlreadyRegistered",
-    "inputs": [
+    type: 'error',
+    name: 'AlreadyRegistered',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
   },
   {
-    "type": "error",
-    "name": "NotRegistered",
-    "inputs": [
+    type: 'error',
+    name: 'NotRegistered',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ]
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
   },
   {
-    "type": "error",
-    "name": "WrongNodeId",
-    "inputs": [
+    type: 'error',
+    name: 'WrongNodeId',
+    inputs: [
       {
-        "name": "nodeId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
       },
       {
-        "name": "sender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  }
+        name: 'sender',
+        type: 'address',
+        internalType: 'address',
+      },
+    ],
+  },
 ] as const

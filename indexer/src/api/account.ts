@@ -6,8 +6,8 @@ import { easAttestation, merkleSnapshot } from 'ponder:schema'
 import { Hex } from 'viem'
 
 import {
-  EAS_NETWORKS as NETWORKS,
   MerkleTreeWithEntries,
+  EAS_NETWORKS as NETWORKS,
   getMerkleTreeWithEntries,
   isHexEqual,
   lower,

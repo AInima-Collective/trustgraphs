@@ -17,7 +17,7 @@
     "serve": "ponder serve -p 65421",
     "lint": "eslint .",
     "format": "eslint . --fix",
-    "test": "node --test 'src/**/*.test.ts'",
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
     "typecheck": "tsc"
   },
   "dependencies": {

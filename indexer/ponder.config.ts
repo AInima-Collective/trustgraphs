@@ -7,6 +7,7 @@ import { Hex } from 'viem'
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
+  contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
   merkleFundDistributorAbi,
@@ -27,6 +28,7 @@ interface DeployedNetwork {
     merkleFundDistributor?: string
     merkleGovModule?: string
     anchorRegistry?: string
+    contributionResolver?: string
     safe?: { proxy?: string }
   }
 }
@@ -113,6 +115,27 @@ export default createConfig({
             [CORE_CHAIN]: {
               address: deploymentSummary.networks.flatMap(
                 (network) => (network.contracts.anchorRegistry as Hex) || []
+              ),
+            },
+          }
+        : {},
+    },
+    // Contributions-program resolver + accumulator (M3). Discovered from deployment_summary.json
+    // under `network.contracts.contributionResolver` — only present once a contributions instance is
+    // deployed, so gate on its presence exactly like anchorRegistry. Backfills like the EAS resolver
+    // (attestations may predate the indexer start; the fold log must be complete for the derived
+    // scoring recompute).
+    contributionResolver: {
+      abi: contributionResolverAbi,
+      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      chain: deploymentSummary.networks.some(
+        (network) => network.contracts.contributionResolver
+      )
+        ? {
+            [CORE_CHAIN]: {
+              address: deploymentSummary.networks.flatMap(
+                (network) =>
+                  (network.contracts.contributionResolver as Hex) || []
               ),
             },
           }
