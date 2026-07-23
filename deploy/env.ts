@@ -5,6 +5,7 @@ import { Command } from 'commander'
 
 import {
   ContractDeployment,
+  ContributionsInstanceDeploy,
   EnvName,
   EnvOverrides,
   IEnv,
@@ -324,6 +325,29 @@ export class DevEnv extends EnvBase {
             numNetworks,
           ],
         },
+        // Deploy the WHOLE contributions instance (fifth program): ContributionResolver + three
+        // schemas, TrustAccumulatorMirror over network 0's trust accumulator (journal slot A),
+        // its own SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = dev scaffolding with a
+        // MockSP1Gateway), contrib MerkleSnapshot + MerkleFundDistributor, and the TestUSDC pool
+        // token. Must run AFTER Network so network_deploy_dev_0.json (with the trust resolver
+        // address) exists. paramsHash is computed on-chain from the contributions params file +
+        // the freshly registered schema UIDs, same pattern as DeployNetwork.
+        {
+          name: 'Contributions',
+          script:
+            'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
+          sig: 'run(string,string,string,string,string)',
+          args: () => [
+            'dev',
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            readJsonKey(
+              'config/network_deploy_dev_0.json',
+              'contracts.eas_indexer_resolver'
+            ),
+            process.env.CONTRIBUTIONS_PARAMS_JSON || 'params.contributions.json',
+          ],
+        },
         // Deploy the SIGNER verifier adapter (bound to the signer guest's vkey — a different program
         // than the root). Runs AFTER Network (which already consumed the root verifier), so it may
         // reuse the zk_verifier_deploy.json output slot. The Safe step below reads it.
@@ -378,8 +402,64 @@ export class DevEnv extends EnvBase {
         // Replace the networks config file with the template.
         fs.copyFileSync(networksConfigTemplateFile, this.networksConfigFile)
         this.updateNetworksConfigWithDeployments('dev')
+        this.updateContributionsNetworkConfig()
       },
     })
+  }
+
+  /**
+   * Fill the `program: "contributions"` template entry in the networks config with the
+   * contracts + schemas from the contributions instance deploy
+   * (`script/DeployContributionsInstance.s.sol`). The entry then flows into
+   * `.docker/deployment_summary.json` via `generateDeploymentSummary`, which is where the
+   * indexer + frontend aggregate it from.
+   */
+  updateContributionsNetworkConfig = (): void => {
+    const deploy = readJsonIfFileExists<ContributionsInstanceDeploy>(
+      '.docker/contributions_instance_dev_deploy.json'
+    )
+    if (!deploy) {
+      return
+    }
+
+    const networks = readJson<(Network & { program?: string })[]>(
+      this.networksConfigFile
+    )
+    const network = networks.find((n) => n.program === 'contributions')
+    if (!network) {
+      throw new Error(
+        `No program: "contributions" entry in ${this.networksConfigFile} (template) to fill from the contributions deploy.`
+      )
+    }
+
+    network.contracts = {
+      merkleSnapshot: deploy.contracts.merkle_snapshot,
+      contributionResolver: deploy.contracts.contribution_resolver,
+      trustAccumulatorMirror: deploy.contracts.trust_accumulator_mirror,
+      trustAccumulator: deploy.contracts.trust_accumulator,
+      merkleFundDistributor: deploy.contracts.fund_distributor,
+      zkVerifier: deploy.contracts.zk_verifier,
+      poolToken: deploy.contracts.pool_token,
+    } as unknown as Network['contracts']
+    network.schemas = [
+      deploy.schemas.claim,
+      deploy.schemas.response,
+      deploy.schemas.valuation,
+    ].map((schema) => ({
+      ...schema,
+      fields: schema.schema.split(',').map((field) => {
+        const [type, name] = field.split(' ')
+        return {
+          name,
+          type,
+        }
+      }),
+    }))
+
+    fs.writeFileSync(
+      this.networksConfigFile,
+      JSON.stringify(networks, null, 2) + '\n'
+    )
   }
 
   async uploadToIpfs(file: string, apiKey?: string): Promise<string> {

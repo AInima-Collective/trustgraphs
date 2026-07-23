@@ -15,8 +15,12 @@
 use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 
+pub mod compute;
 pub mod kind;
 pub mod params;
+pub mod reconcile;
+pub mod records;
+pub mod testutil;
 
 // Re-export the shared primitives every consumer needs alongside this crate.
 pub use pagerank_core::{encode, Journal};
