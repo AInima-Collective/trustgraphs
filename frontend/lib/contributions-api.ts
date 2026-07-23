@@ -33,7 +33,8 @@ export type ContributionsRound = {
   root: string | null
   /** CID of the payout blob behind `root`, if any. */
   cid: string | null
-  status: 'open' | 'closing' | 'settled'
+  /** Lifecycle from the round window vs now (the indexer's vocabulary). */
+  status: 'upcoming' | 'open' | 'closed' | 'unknown'
 }
 
 /** One contributor's slice of a claim, from the indexer's derived-score breakdown. */
@@ -132,10 +133,30 @@ const get = async <T>(path: string): Promise<T | null> => {
 }
 
 // ---- Indexer → client shape normalization -------------------------------------------------
-// The indexer's `/contributions/:snapshot/{claims,score}` rows use the storage-layer field names
-// (`uid`, `scoreFp`, `blockTimestamp`; audit `status`/`discountFp`). The types above are the shape
-// the screens consume. Normalize here so the drift lives in exactly one place (this file), rather
-// than crashing consumers on a renamed field.
+// The indexer's `/contributions/:snapshot/{round,claims,score}` rows use the storage-layer field
+// names (round `roundStart`/`roundEnd`/`totalPool`; claim `uid`/`scoreFp`/`blockTimestamp`; audit
+// `status`/`discountFp`). The types above are the shape the screens consume. Normalize here so the
+// drift lives in exactly one place (this file), rather than crashing consumers on a renamed field.
+
+/** A round row as the indexer's `/round` route actually serializes it (subset consumed here). */
+type RawRound = {
+  root: string | null
+  ipfsHashCid: string | null
+  status: 'upcoming' | 'open' | 'closed' | 'unknown'
+  roundStart: string | null
+  roundEnd: string | null
+  totalPool: string | null
+  token?: string | null
+}
+
+const normalizeRound = (raw: RawRound): ContributionsRound => ({
+  window: { start: raw.roundStart ?? '0', end: raw.roundEnd ?? '0' },
+  pool: raw.totalPool ?? '0',
+  token: raw.token ?? '',
+  root: raw.root,
+  cid: raw.ipfsHashCid,
+  status: raw.status,
+})
 
 /** A claim row as the indexer's `/claims` route actually serializes it. */
 type RawScoredClaim = {
@@ -207,7 +228,8 @@ export const fetchContributionsRound = async (
   snapshot: string
 ): Promise<ContributionsRound | null> => {
   if (mocksEnabled()) return MOCK_ROUND
-  return await get<ContributionsRound>(`/contributions/${snapshot}/round`)
+  const raw = await get<RawRound>(`/contributions/${snapshot}/round`)
+  return raw ? normalizeRound(raw) : null
 }
 
 export const fetchContributionsClaims = async (

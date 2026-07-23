@@ -129,14 +129,14 @@ export const formatPoolAmount = (
 
 /** Human round status line. */
 export const roundStatusLabel = (
-  status: 'open' | 'closing' | 'settled' | null
+  status: 'upcoming' | 'open' | 'closed' | 'unknown' | null
 ): string =>
   status === 'open'
     ? 'Round open'
-    : status === 'closing'
-      ? 'Round closing'
-      : status === 'settled'
-        ? 'Round settled'
+    : status === 'upcoming'
+      ? 'Round not started yet'
+      : status === 'closed'
+        ? 'Round closed'
         : 'Round status unknown'
 
 const TABS = [
