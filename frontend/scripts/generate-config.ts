@@ -52,6 +52,11 @@ try {
     // Lane-2 (envelope-0) anchor accumulator; exposes anchorAcc()/anchorCount()
     // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
     AnchorRegistry: '',
+    // Contributions program (per-instance addresses live in networks.json): the three-schema
+    // resolver + accumulator, the trust-accumulator mirror, and the local pool token (6dp).
+    ContributionResolver: '',
+    TrustAccumulatorMirror: '',
+    TestUSDC: '',
   }
 
   // Make sure ABIs exist for all contracts, and copy them to the frontend.

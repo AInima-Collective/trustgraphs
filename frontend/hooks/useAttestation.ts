@@ -18,7 +18,8 @@ import { ponderQueryFns } from '@/queries/ponder'
 interface NewAttestationData {
   schema: Hex
   recipient: string
-  data: Record<string, string | boolean>
+  // Array values cover the contribution claim schema's `address[]`/`uint32[]` fields.
+  data: Record<string, string | boolean | string[] | number[]>
 }
 
 /**
