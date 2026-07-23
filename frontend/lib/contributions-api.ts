@@ -131,6 +131,78 @@ const get = async <T>(path: string): Promise<T | null> => {
   )
 }
 
+// ---- Indexer → client shape normalization -------------------------------------------------
+// The indexer's `/contributions/:snapshot/{claims,score}` rows use the storage-layer field names
+// (`uid`, `scoreFp`, `blockTimestamp`; audit `status`/`discountFp`). The types above are the shape
+// the screens consume. Normalize here so the drift lives in exactly one place (this file), rather
+// than crashing consumers on a renamed field.
+
+/** A claim row as the indexer's `/claims` route actually serializes it. */
+type RawScoredClaim = {
+  uid: string
+  attester: string
+  title: string
+  uri: string
+  contentHash: string
+  blockTimestamp: string
+  revoked: boolean
+  scoreFp: string | null
+  contributors?: { contributor: string; share: string }[]
+  responses?: { responder: string; response: string }[]
+}
+type RawClaimsResponse = { snapshot: string; claims: RawScoredClaim[] }
+
+const normalizeClaim = (raw: RawScoredClaim): ContributionsScoredClaim => {
+  const responseByAccount = new Map(
+    (raw.responses ?? []).map((r) => [r.responder.toLowerCase(), r.response])
+  )
+  return {
+    claimUid: raw.uid,
+    attester: raw.attester,
+    title: raw.title,
+    uri: raw.uri,
+    contentHash: raw.contentHash,
+    timestamp: raw.blockTimestamp,
+    revoked: raw.revoked,
+    score: raw.scoreFp,
+    contributors: (raw.contributors ?? []).map((cont) => {
+      const response = responseByAccount.get(cont.contributor.toLowerCase())
+      return {
+        account: cont.contributor,
+        share: cont.share,
+        response:
+          response === 'accept' || response === 'reject' ? response : 'none',
+      }
+    }),
+  }
+}
+
+/** A score-detail valuation as the indexer's `/score` route actually serializes it. */
+type RawScoreValuation = {
+  rater: string
+  score: number
+  status: 'counted' | 'discounted' | 'filtered'
+  reason?: ContributionsSkipReason | null
+  discountFp?: string | null
+}
+type RawScoreDetail = {
+  claimUid: string
+  scoreFp: string
+  valuations: RawScoreValuation[]
+}
+
+const normalizeScore = (raw: RawScoreDetail): ContributionsScoreDetail => ({
+  claimUid: raw.claimUid,
+  score: raw.scoreFp,
+  valuations: raw.valuations.map((v) => ({
+    rater: v.rater,
+    score: v.score,
+    counted: v.status !== 'filtered',
+    reason: v.reason ?? undefined,
+    collaboratorDiscount: v.status === 'discounted',
+  })),
+})
+
 export const fetchContributionsRound = async (
   snapshot: string
 ): Promise<ContributionsRound | null> => {
@@ -142,9 +214,12 @@ export const fetchContributionsClaims = async (
   snapshot: string
 ): Promise<ContributionsClaimsResponse | null> => {
   if (mocksEnabled()) return MOCK_CLAIMS
-  return await get<ContributionsClaimsResponse>(
-    `/contributions/${snapshot}/claims`
-  )
+  const raw = await get<RawClaimsResponse>(`/contributions/${snapshot}/claims`)
+  if (!raw) return null
+  return {
+    snapshot: raw.snapshot,
+    claims: (raw.claims ?? []).map(normalizeClaim),
+  }
 }
 
 export const fetchContributionsScore = async (
@@ -152,9 +227,10 @@ export const fetchContributionsScore = async (
   claimUid: string
 ): Promise<ContributionsScoreDetail | null> => {
   if (mocksEnabled()) return null
-  return await get<ContributionsScoreDetail>(
+  const raw = await get<RawScoreDetail>(
     `/contributions/${snapshot}/score/${claimUid}`
   )
+  return raw ? normalizeScore(raw) : null
 }
 
 export const fetchContributionsPayout = async (
