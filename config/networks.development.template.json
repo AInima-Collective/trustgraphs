@@ -176,7 +176,6 @@
   {
     "id": "contributions",
     "program": "contributions",
-    "hidden": true,
     "name": "Contribution Funding",
     "about": "Claim the work you (or others) did, let the community score it, and split a funding pool by those scores. Every score is weighted by the rater's standing in the trust graph, and the whole computation — from vouches to payouts — is proven in zero knowledge before any money moves.",
     "criteria": "How a round works:\n\n1. **Contribute** — attest to a contribution during the round window: what was done, a link, and who did it (naming only others nominates them).\n2. **Respond** — anyone named on a contribution can accept or reject it. Rejecting means refusing the credit and the money.\n3. **Rate** — score contributions from 0 to 100. Your ratings share one budget: rating everything highly dilutes each rating.\n4. **Payout** — when the round closes, the pool splits by the proven scores and contributors claim their share.",
