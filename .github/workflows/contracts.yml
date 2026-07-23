@@ -37,3 +37,6 @@ jobs:
 
       - name: Run forge tests
         run: forge test -vvv
+        env:
+          # M6 hardening: a deeper fuzz budget in CI than the local default.
+          FOUNDRY_FUZZ_RUNS: "1024"

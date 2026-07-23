@@ -62,8 +62,8 @@ tasks:
       - task: vectors
         vars: { PROGRAM: "{{.PROGRAM}}" }
       - git diff --exit-code test/golden/
-      # (b) Rust parity (canonical core + zk glue).
-      - cargo test -p pagerank-core -p zk-core
+      # (b) Rust parity (canonical core + zk glue + program crates).
+      - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core
       # (c) Solidity golden vectors (both split suites).
       - forge test --match-path "test/unit/golden/*"
       # (d) Frontend TS port golden vectors.
