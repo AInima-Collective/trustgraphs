@@ -110,8 +110,8 @@ fn score_inflation_is_pure_voice_splitting() {
 fn collusion_ring_is_discounted() {
     let (mut ring, [seed, r1, r2, x, y], [c1, c2]) = base(params());
     let t0 = ring.params.round_start;
-    // x and y are ALSO vouched raters here? No — make the ring between x and y directly:
-    // vouch them so their ratings carry weight.
+    // The ring is between the contributors x and y themselves: vouch them so their
+    // mutual ratings carry real weight.
     for input_uid in [(30u16, x), (31u16, y)] {
         ring.trust_edges.push(vouch(0, seed, input_uid.1, uid(input_uid.0), t0 - 80, 80));
     }
