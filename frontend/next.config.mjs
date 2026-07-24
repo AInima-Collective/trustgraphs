@@ -25,11 +25,6 @@ const nextConfig = {
       permanent: false,
     },
     {
-      source: '/interest',
-      destination: 'https://opencivics.notion.site/28d06d2570f2804cbf62cca8d3c0034e',
-      permanent: false,
-    },
-    {
       source: '/attestation',
       destination: '/attestations',
       permanent: false,

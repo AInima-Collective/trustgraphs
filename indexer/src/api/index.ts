@@ -7,7 +7,6 @@ import account from './account'
 import attestations from './attestations'
 import contributions from './contributions'
 import hypercerts from './hypercerts'
-import localismFund from './localism-fund'
 import merkle from './merkle'
 import network from './network'
 
@@ -23,7 +22,5 @@ app.route('/contributions', contributions)
 app.route('/hypercerts', hypercerts)
 app.route('/merkle', merkle)
 app.route('/network', network)
-
-app.route('/localism-fund', localismFund)
 
 export default app

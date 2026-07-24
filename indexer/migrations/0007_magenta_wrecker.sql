@@ -1,2 +1,0 @@
-ALTER TABLE "offchain"."contribution_round" ALTER COLUMN "roundStart" SET DATA TYPE numeric(78, 0);--> statement-breakpoint
-ALTER TABLE "offchain"."contribution_round" ALTER COLUMN "roundEnd" SET DATA TYPE numeric(78, 0);

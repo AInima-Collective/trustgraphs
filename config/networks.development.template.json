@@ -1,18 +1,15 @@
 [
   {
-    "id": "localism-fund",
-    "name": "Localism Fund",
+    "id": "example-network",
+    "name": "Example Network",
     "link": {
       "prefix": "Learn more:",
-      "label": "localism.fund",
-      "href": "https://www.localism.fund"
+      "label": "example.com",
+      "href": "https://www.example.com"
     },
-    "about": "The **Localism Fund Expert Network** is a curated, peer-attested collective of practitioners advancing the intersection of **localism and Ethereum-based coordination**. Experts in the network bring proven experience across Grant-making, Web3 / Ethereum Tooling, or Localism.",
-    "callToAction": {
-      "label": "Apply as Expert",
-      "href": "https://www.localism.fund/expert-network"
-    },
-    "criteria": "Localism Fund Experts should meet the following criteria:\n\n- **Application** — Has completed the application form and appears in the [**Expert Network Database**](https://www.localism.fund/expert-network-db).\n- **Expertise** — Demonstrates relevant experience in at least one of the following areas: Grant-making, Web3 / Ethereum Tooling, Localism.\n- **Professional Alignment** — Commits to upholding the [**OpenCivics Ethical Standards**](https://wiki.opencivics.co/OpenCivics+Network/Membership/Ethical+Standards).\n\nBy attesting, you're **vouching** that this person meets the above criteria, and using the slider to signal your **confidence in**:\n\n- **Accuracy & Evidence**: Their _self-assessment is accurate, evidenced, and credible_ — with experience, expertise, and intentions that are verifiable through your direct experience with them or the evidence they've provided.\n- **Fit & Alignment**: Their _experience, expertise, unique insight, and credibility_ in one or more relevant domains, as well as _professional alignment_ — including good-faith collaboration, honesty, feedback & accountability, efficacy over ego, and inclusion & listening.\n\nEveryone helps **decentralize trust** by making honest, careful attestations.",
+    "about": "A neutral example vouching network. Members attest to people they trust, and Trust-Aware PageRank over those attestations produces each member's score. Replace this entry with your own network's copy.",
+    "applicationUrl": "https://www.example.com/apply",
+    "criteria": "Describe here what an attestation in your network means. For example:\n\n- **Competence** — you have first-hand experience of this person's work.\n- **Alignment** — they act in good faith toward the network's goals.\n\nBy attesting, you're **vouching** that this person meets the criteria above, and the confidence slider signals how strongly you stand behind that.",
     "contracts": {
       "merkleSnapshot": "",
       "easIndexerResolver": "",

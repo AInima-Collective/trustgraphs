@@ -50,22 +50,7 @@ export default async function AccountProfilePageServer({
               chainId: 1,
             })
           )
-          .then(async (ensName) => {
-            if (ensName) {
-              // Prefetch Localism Fund application URL via ENS name.
-              await queryClient.prefetchQuery(
-                ponderQueries.localismFundApplicationUrl(ensName)
-              )
-            }
-
-            return ensName
-          })
           .catch(() => null),
-
-        // Localism Fund application URL via address.
-        queryClient.prefetchQuery(
-          ponderQueries.localismFundApplicationUrl(address)
-        ),
 
         // Account stats
         queryClient.prefetchQuery(

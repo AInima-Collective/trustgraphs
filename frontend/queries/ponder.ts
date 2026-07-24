@@ -40,8 +40,6 @@ export const ponderKeys = {
     [...ponderKeys.all, 'accountNetworkProfiles', address] as const,
   accountNetworkProfile: (options: { address: Hex; snapshot: string }) =>
     [...ponderKeys.all, 'accountNetworkProfile', options] as const,
-  localismFundApplicationUrl: (address: string) =>
-    [...ponderKeys.all, 'localismFundApplicationUrl', address] as const,
   hypercertsScores: (snapshot: string) =>
     [...ponderKeys.all, 'hypercertsScores', snapshot] as const,
 }
@@ -375,33 +373,6 @@ export const ponderQueries = {
         }
       },
       enabled: !!options.address && !!options.snapshot && !!APIS.ponder,
-    }),
-  localismFundApplicationUrl: (address: string) =>
-    queryOptions({
-      queryKey: ponderKeys.localismFundApplicationUrl(address),
-      queryFn: async () => {
-        const response = await fetch(
-          `${APIS.ponder}/localism-fund/applications/${address}`
-        )
-
-        if (response.ok) {
-          const { url } = (await response.json()) as {
-            url: string
-          }
-          return url
-        } else {
-          if (response.status === 404) {
-            return null
-          }
-
-          throw new Error(
-            `Failed to fetch Localism Fund application: ${response.status} ${
-              response.statusText
-            } (${await response.text()})`
-          )
-        }
-      },
-      enabled: !!address && !!APIS.ponder,
     }),
 }
 

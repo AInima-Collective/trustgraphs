@@ -16,6 +16,10 @@ export type Network = {
     label: string
     href: string
   }
+  /** Optional static "apply to join" URL for this network (rendered on the network and
+   * account pages when present). Generic replacement for bespoke application integrations;
+   * the future instance factory carries the same link inside instance metadataURI. */
+  applicationUrl?: string
   criteria: string
   contracts: {
     merkleSnapshot: Hex
@@ -74,6 +78,10 @@ export type HypercertsNetwork = {
     label: string
     href: string
   }
+  /** Optional static "apply to join" URL for this network (rendered on the network and
+   * account pages when present). Generic replacement for bespoke application integrations;
+   * the future instance factory carries the same link inside instance metadataURI. */
+  applicationUrl?: string
   criteria?: string
   contracts: {
     merkleSnapshot: Hex
@@ -104,6 +112,10 @@ export type ContributionsNetwork = {
     label: string
     href: string
   }
+  /** Optional static "apply to join" URL for this network (rendered on the network and
+   * account pages when present). Generic replacement for bespoke application integrations;
+   * the future instance factory carries the same link inside instance metadataURI. */
+  applicationUrl?: string
   criteria?: string
   contracts: {
     merkleSnapshot: Hex
