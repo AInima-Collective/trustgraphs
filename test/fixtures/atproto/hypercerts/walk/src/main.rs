@@ -1,7 +1,7 @@
-//! Hypercerts fixture walker (GOAL.md M1, last fixture).
+//! Hypercerts fixture walker (from the M1 spike).
 //!
-//! Runs the EXISTING spike/mst walker (car/mst/verify modules included verbatim
-//! by path) over the locally-generated Hypercerts repo CAR:
+//! Runs the M1-validated MST walker (the car/mst/verify modules in this crate)
+//! over the locally-generated Hypercerts repo CAR:
 //!   1. CAR parse + content-address check
 //!   2. commit decode + signature verify vs PLC #atproto key
 //!   3. full canonical MST walk, parity vs the PDS's own {key -> valueCID} table
@@ -10,12 +10,8 @@
 //!   6. host-side EIP-712 recovery of the app.certified.link.evm proof (k256
 //!      ecrecover over the keccak digest) -> must equal the record's address.
 
-// Reuse the already-validated spike/mst modules unchanged.
-#[path = "../../../mst/src/car.rs"]
 mod car;
-#[path = "../../../mst/src/mst.rs"]
 mod mst;
-#[path = "../../../mst/src/verify.rs"]
 mod verify;
 
 use car::Car;

@@ -1,10 +1,10 @@
 # Hypercerts atproto fixture (GOAL.md M4 exit — TWO-SIDED, multi-repo)
 
 A **synthetic but real** pair of atproto repos containing `@hypercerts-org/lexicon`
-**v1.1.0** records, exported as CARv1 and verified by the existing `spike/mst` walker.
+**v1.1.0** records, exported as CARv1 and verified by the M1 MST walker (`../walk`).
 Regenerated **2026-07-14** for the M4 exit. Throwaway.
 
-Unlike the `spike/mst/fixtures/` snapshots (real Bluesky repos pulled from the relay),
+Unlike the `test/fixtures/atproto/repos/` snapshots (real Bluesky repos pulled from the relay),
 these repos are **generated locally** by an in-process atproto network so we control the
 record contents and can exercise the typed Hypercerts decode, the real EIP-712 `link.evm`
 proof, and — new for M4 — the **two-sided cross-repo semantics** (§3/§5): the counterparty
@@ -81,7 +81,7 @@ tests that pin them (below) must be re-pinned when the fixture is regenerated.
 
 ## What consumes this fixture (re-pin on regenerate)
 
-- `spike/hypercerts-fixture/walk` — the MST/commit/parity/EIP-712 walker (see below).
+- `test/fixtures/atproto/hypercerts/walk` — the MST/commit/parity/EIP-712 walker (see below).
 - `packages/envelopes/tests/atproto_real.rs` — `hypercerts_seeded_repo_verifies_all_collections`
   (pins alice's record count = 6).
 - `packages/hypercerts-core/src/records.rs` — `all_fixture_records_decode` (count = 6, field values).

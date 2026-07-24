@@ -1,4 +1,4 @@
-//! Envelope-1 integration tests against REAL fixtures (spike/mst + spike/hypercerts-fixture):
+//! Envelope-1 integration tests against REAL fixtures (test/fixtures/atproto/{repos,hypercerts}):
 //! full pipeline — CAR content-addressing, commit decode + signature, PLC chain (incl. the
 //! genesis-hash == DID check, which pins the JSON→dag-cbor conversion), MST range walks —
 //! plus fail-closed tamper cases.
@@ -73,7 +73,7 @@ fn load_witness(car_rel: &str, plc_rel: &str) -> (String, B256, AtprotoWitness) 
 #[test]
 fn real_bluesky_repo_full_pipeline() {
     let (did, head, w) =
-        load_witness("spike/mst/fixtures/atproto.car", "spike/mst/fixtures/atproto.plc.json");
+        load_witness("test/fixtures/atproto/repos/atproto.car", "test/fixtures/atproto/repos/atproto.plc.json");
     let node_id = atproto::did_node_id(&did);
     let records = atproto::verify(node_id, head, 2_000_000_000, &["app.bsky.graph.follow"], &w)
         .expect("envelope 1 verify");
@@ -89,7 +89,7 @@ fn real_bluesky_repo_full_pipeline() {
 fn legacy_create_genesis_chain_verifies() {
     // jay.bsky.team's log starts with a legacy "create" op and has later rotations.
     let (did, head, w) =
-        load_witness("spike/mst/fixtures/jay.car", "spike/mst/fixtures/jay.plc.json");
+        load_witness("test/fixtures/atproto/repos/jay.car", "test/fixtures/atproto/repos/jay.plc.json");
     let records = atproto::verify(
         atproto::did_node_id(&did),
         head,
@@ -104,8 +104,8 @@ fn legacy_create_genesis_chain_verifies() {
 #[test]
 fn hypercerts_seeded_repo_verifies_all_collections() {
     let (did, head, w) = load_witness(
-        "spike/hypercerts-fixture/fixtures/hypercerts.car",
-        "spike/hypercerts-fixture/fixtures/hypercerts.plc.json",
+        "test/fixtures/atproto/hypercerts/fixtures/hypercerts.car",
+        "test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json",
     );
     let collections = [
         "app.certified.graph.follow",
@@ -127,7 +127,7 @@ fn hypercerts_seeded_repo_verifies_all_collections() {
 #[test]
 fn tampered_block_fails_closed() {
     let (did, head, mut w) =
-        load_witness("spike/mst/fixtures/atproto.car", "spike/mst/fixtures/atproto.plc.json");
+        load_witness("test/fixtures/atproto/repos/atproto.car", "test/fixtures/atproto/repos/atproto.plc.json");
     // Flip one byte deep in the CAR body (past the header + root block region).
     let mid = w.car.len() / 2;
     w.car[mid] ^= 0x01;
@@ -144,7 +144,7 @@ fn tampered_block_fails_closed() {
 #[test]
 fn wrong_head_rejected() {
     let (did, _head, w) =
-        load_witness("spike/mst/fixtures/atproto.car", "spike/mst/fixtures/atproto.plc.json");
+        load_witness("test/fixtures/atproto/repos/atproto.car", "test/fixtures/atproto/repos/atproto.plc.json");
     let r = atproto::verify(
         atproto::did_node_id(&did),
         B256::from([0x99; 32]),
@@ -158,7 +158,7 @@ fn wrong_head_rejected() {
 #[test]
 fn foreign_did_rejected() {
     let (_did, head, w) =
-        load_witness("spike/mst/fixtures/atproto.car", "spike/mst/fixtures/atproto.plc.json");
+        load_witness("test/fixtures/atproto/repos/atproto.car", "test/fixtures/atproto/repos/atproto.plc.json");
     let r = atproto::verify(
         atproto::did_node_id("did:plc:someoneelse000000000000"),
         head,

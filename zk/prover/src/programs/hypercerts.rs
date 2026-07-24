@@ -1,7 +1,7 @@
 //! Hypercerts root-producer program (lane-2-only): proves the §3 edge semantics + fixed-point
 //! Trust-Aware PageRank over anchored atproto repos and emits the journal-v2 merkle root + score
 //! blob. Mirrors `trust_graph.rs`; the built-in sample is the seeded-PDS fixture
-//! (`spike/hypercerts-fixture`) so `execute`/`prove` run with no external witness.
+//! (`test/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
 
 use alloy_primitives::{B256, U256};
 use anyhow::{anyhow, Result};
@@ -77,10 +77,10 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 pub fn sample_input() -> GuestInput {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/hypercerts.car")).unwrap();
+        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car")).unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
-            "{root}/spike/hypercerts-fixture/fixtures/hypercerts.plc.json"
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
         ))
         .unwrap(),
     )

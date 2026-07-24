@@ -198,11 +198,11 @@ mod tests {
     #[test]
     fn all_fixture_records_decode() {
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-        let car = std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/hypercerts.car"))
+        let car = std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car"))
             .unwrap();
         let parsed = Car::parse(&car).unwrap();
         let tsv = std::fs::read_to_string(format!(
-            "{root}/spike/hypercerts-fixture/fixtures/hypercerts.records.tsv"
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.records.tsv"
         ))
         .unwrap();
         let mut n = 0;

@@ -1,4 +1,4 @@
-# MST spike fixtures
+# Real atproto repo fixtures (from the M1 MST spike)
 
 Real atproto repo snapshots + PLC audit logs for the M1 Phase-A MST-verification
 spike. Throwaway. Fetched **2026-07-14T15:58:44Z**.
