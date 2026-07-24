@@ -81,48 +81,14 @@ curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 rustup toolchain install stable
-rustup target add wasm32-wasip2
 ```
 
-### Upgrade Rust
+## SP1 (zkVM toolchain)
+
+Required to build the ZK guest programs and run the prover. See the
+[SP1 installation docs](https://docs.succinct.xyz/docs/sp1/getting-started/install):
 
 ```bash docci-ignore
-# Remove old targets if present
-rustup target remove wasm32-wasi || true
-rustup target remove wasm32-wasip1 || true
-
-# Update and add required target
-rustup update stable
-rustup target add wasm32-wasip2
-```
-
-## Cargo Components
-
-```bash docci-ignore
-# Install required cargo components
-# https://github.com/bytecodealliance/cargo-component#installation
-cargo install cargo-binstall
-cargo binstall cargo-component wasm-tools warg-cli wkg --locked --no-confirm --force
-
-# Configure default registry
-# Found at: $HOME/.config/wasm-pkg/config.toml
-wkg config --default-registry wa.dev
-
-# Allow publishing to a registry
-#
-# if WSL: `warg config --keyring-backend linux-keyutils`
-warg key new
-```
-
-On Ubuntu LTS, if you later encounter errors like:
-
-```bash
-wkg: /lib/x86_64-linux-gnu/libm.so.6: version `GLIBC_2.38' not found (required by wkg)
-wkg: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found (required by wkg)
-```
-
-If GLIB is out of date. Consider updating your system using:
-
-```bash
-sudo do-release-upgrade
+curl -L https://sp1up.succinct.xyz | bash
+sp1up
 ```

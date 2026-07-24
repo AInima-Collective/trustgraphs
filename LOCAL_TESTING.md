@@ -83,7 +83,7 @@ export SP1_PROVER=cpu                                  # local: ~16-32 GiB + `--
 # gateway verifies pure calldata; direct EAS attest isn't chain-id-bound).
 anvil --fork-url "$FORK_RPC_URL" --chain-id 31337 --port 8545
 
-# Terminal 2 — IPFS (score blobs the UI fetches), Postgres (Ponder), WARG:
+# Terminal 2 — IPFS (score blobs the UI fetches), Postgres (Ponder):
 docker compose -f docker-compose.dev.yml up
 ```
 

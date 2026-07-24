@@ -1,7 +1,7 @@
 {
   "chain": "optimism",
   "apis": {
-    "ponder": "https://trust-graph.wavs.xyz/ponder",
+    "ponder": "https://ponder.example.com/ponder",
     "ipfsGateway": "https://gateway.pinata.cloud/ipfs/"
   },
   "contracts": {

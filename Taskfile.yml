@@ -13,7 +13,6 @@ includes:
     flatten: true
   build: ./taskfile/build.yml
   forge: ./taskfile/eas-forge.yml
-  merkle: ./taskfile/merkle.yml
   services: ./taskfile/services.yml
   zk: ./taskfile/zk.yml
   trustgraph: ./taskfile/trustgraph.yml
@@ -48,7 +47,7 @@ tasks:
         echo "✅ Dependencies installed"
 
   start-all-local:
-    desc: "Start all local services (anvil, IPFS, WARG, Jaeger, prometheus)"
+    desc: "Start all local services (anvil, IPFS, ponder-db)"
     deps: [setup-env]
     cmds:
       - task: services:start-all

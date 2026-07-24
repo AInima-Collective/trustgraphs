@@ -120,7 +120,7 @@ task e2e
 
 ```bash docci-background docci-delay-after=5
 cp .env.example .env
-task -y start-all-local   # Anvil, IPFS, and the WARG registry
+task -y start-all-local   # Anvil, IPFS, and the ponder database
 ```
 
 ### 5. Deploy contracts

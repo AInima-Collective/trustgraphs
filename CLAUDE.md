@@ -16,7 +16,7 @@ Use `task --list-all` to see all available commands.
 - `cargo test -p pagerank-core` - Run the PageRank core + golden-vector tests
 
 ### Development Environment
-- `task start-all-local` - Start anvil, IPFS, WARG, and Ponder
+- `task start-all-local` - Start anvil, IPFS, and the ponder database
 - `pnpm deploy:contracts` - Deploy the contracts via Foundry
 - `task setup` - Install initial dependencies (pnpm + forge)
 
