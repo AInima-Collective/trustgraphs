@@ -1,6 +1,6 @@
 # Reproducing a hypercerts epoch from public data (clean-room)
 
-GOAL.md "Done when" #3: *for any pilot epoch, a third party holding only public data — the
+The build plan's "Done when" #3: *for any pilot epoch, a third party holding only public data — the
 chain, the archived CARs, and the witness bundle — can re-derive the root and the full
 `skippedDigest` preimage, with no appeal to our indexer.* This is the procedure. Every step
 uses only public inputs and this repo's code; nothing consults our infrastructure.

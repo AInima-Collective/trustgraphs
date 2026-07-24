@@ -2,7 +2,7 @@
 
 This guide covers the **lane-1 EAS path**: the trust-graph root producer and the Safe
 signer-sync program. The **hypercerts program** (atproto records, envelope 1, the lane-2-only
-instance) has its own guide: [`docs/hypercerts/LOCAL_TESTING.md`](./docs/hypercerts/LOCAL_TESTING.md).
+instance) has its own guide: [`docs/hypercerts/LOCAL_TESTING.md`](../hypercerts/LOCAL_TESTING.md).
 
 Two ways to exercise it locally:
 
@@ -50,7 +50,7 @@ What it does (`test/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
    checkpoints both lanes, and one proof lands lane-1 EAS edges + lane-2 offchain edges in a
    single journal — with the withheld head degraded via rule Φ and committed in `skippedDigest`.
 4. **Hypercerts instance** — the fourth program end-to-end (see the
-   [hypercerts guide](./docs/hypercerts/LOCAL_TESTING.md)).
+   [hypercerts guide](../hypercerts/LOCAL_TESTING.md)).
 
 Each stage prints its own `… PASS` line. Real Groth16 proving (≥16–32 GiB or the prover network)
 and the UI are the full stack below. The first run builds the guest ELFs (minutes); after that
@@ -141,7 +141,7 @@ jq --arg s "$(jq -r '.schemas.vouching.uid' config/network_deploy_dev_0.json)" \
 > the schema UID is produced *and* consumed inside the same deploy, so nothing has to reproduce across
 > runs. (Needing it to reproduce is exactly what used to force a pinned-deployer, two-pass,
 > restart-the-fork dance.) Reach for `DEPLOY_ENV=PROD` when you want the production timelock/config
-> wiring and a fixed `FUNDED_KEY` — see the note in [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md).
+> wiring and a fixed `FUNDED_KEY` — see the note in [`RUNBOOK.md`](./RUNBOOK.md).
 
 Addresses are written to `.docker/deployment_summary.json` (Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`), and the frontend + indexer read them from there.
@@ -177,7 +177,7 @@ deploy) and points `apis.ponder` at `http://127.0.0.1:65421`.
 
 Run the permissionless root loop (checkpoint → `input-exporter` → `execute` → `prove --groth16` → pin
 blob → `submitProof`) so there's a scored root to display. The signer variant → `submitSignerProof` is
-in [`docs/signer-sync/RUNBOOK.md`](./docs/signer-sync/RUNBOOK.md).
+in [`docs/signer-sync/RUNBOOK.md`](../signer-sync/RUNBOOK.md).
 
 **Set the addresses** (from the deploy artifacts — the doc used to leave these unset):
 
@@ -303,7 +303,7 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   "checkpoint the accumulator" call — `trigger()` **is** it (it just calls `accumulator.checkpoint()`);
   you can also call `checkpoint()` directly on the resolver for the same effect.
 
-See [`README.md`](./README.md), [`docs/PROGRAMS.md`](./docs/PROGRAMS.md) (the program index),
-[`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md), and
-[`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) for the design and the full
-command reference. Hypercerts local testing: [`docs/hypercerts/LOCAL_TESTING.md`](./docs/hypercerts/LOCAL_TESTING.md).
+See [`README.md`](../../README.md), [`docs/PROGRAMS.md`](../PROGRAMS.md) (the program index),
+[`RUNBOOK.md`](./RUNBOOK.md), and
+[`research/ZK_ARCHITECTURE.md`](../../research/ZK_ARCHITECTURE.md) for the design and the full
+command reference. Hypercerts local testing: [`docs/hypercerts/LOCAL_TESTING.md`](../hypercerts/LOCAL_TESTING.md).

@@ -153,7 +153,7 @@ fork RPC, the gateway, and the proving backend); each is a real command, not a w
 > `MerkleSnapshot` with it — one pass, no precomputed `PARAMS_HASH`, no restart. For a single-network
 > deploy it also writes the schema UID back into `params.json`; for DEV/multi-network, copy it from
 > `config/network_deploy_<env>_<i>.json` into the prover's `params.json`. See
-> [`../../LOCAL_TESTING.md`](../../LOCAL_TESTING.md) §"Deploy the full stack".
+> [`LOCAL_TESTING.md`](./LOCAL_TESTING.md) §"Deploy the full stack".
 
 ### Prerequisites / env
 

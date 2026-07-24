@@ -1,6 +1,6 @@
 # Multi-Program Platform — One Seam, Many Graphs
 
-**Status:** Planning, 2026-07-14. Execution spec: [`/GOAL.md`](../GOAL.md) (milestone M0 realizes this document).
+**Status:** Realized, 2026-07-14 plan — the platform reorg this document specifies shipped as the build plan's M0. Current program index: [`docs/PROGRAMS.md`](../docs/PROGRAMS.md).
 **Scope:** How to reorganize the repo so it supports **multiple SP1 programs and provers** — the existing trust-graph root producer, the signer-sync program, and the incoming Hypercerts/AT-Protocol program ([`HYPERCERTS_ATPROTO_PLAN.md`](./HYPERCERTS_ATPROTO_PLAN.md)) — without weakening the four-way byte-parity discipline that makes v1 sound.
 **Relationship to [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) / [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md) / [`OFFCHAIN_ATTESTATIONS_ZK.md`](./OFFCHAIN_ATTESTATIONS_ZK.md):** nothing in those designs changes. This document is about *packaging*: where code lives, what is shared, what is per-program, and how each additional graph pays only for its own semantics.
 
@@ -141,7 +141,7 @@ Answer to "how best to organize documentation for each example": one directory p
 ```
 docs/
   PROGRAMS.md                    # the index: program → status → vkey → docs → instances
-  trust-graph/                   # RUNBOOK.md (moved from zk/RUNBOOK.md; zk/RUNBOOK.md becomes a pointer),
+  trust-graph/                   # RUNBOOK.md (moved from the old zk/RUNBOOK.md),
                                  # ARCHITECTURE.md → pointer to research/ZK_ARCHITECTURE.md
   signer-sync/                   # RUNBOOK section split out; pointer to research/SIGNER_SYNC_ZK_PLAN.md
   hypercerts/                    # ARCHITECTURE.md → pointer to research/HYPERCERTS_ATPROTO_PLAN.md,
@@ -155,7 +155,7 @@ Conventions: `research/` holds *why* (design docs, dossiers, tradeoffs — immut
 
 ## 10. Migration sequencing
 
-Ordered so nothing breaks between steps; this is GOAL.md milestone M0 plus the M2 flag:
+Ordered so nothing breaks between steps; this is the build plan's milestone M0 plus the M2 flag:
 
 1. Extract `packages/zk-core` (move + re-export; `pagerank-core` API unchanged). Regenerate nothing — encodings must come out byte-identical, proven by the *existing* vectors still passing.
 2. Split golden vectors per program; split the Solidity/TS golden tests; add `taskfile/zk.yml` + CI parity job.

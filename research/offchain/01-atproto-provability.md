@@ -1,6 +1,6 @@
 # AT Protocol Cryptographic Provability Dossier
 
-**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); see [`/GOAL.md`](../../GOAL.md)).
+**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); realized — see [`../../docs/PROGRAMS.md`](../../docs/PROGRAMS.md)).
 
 > Source research for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md). Compiled 2026-07-10 from atproto.com specs, web.plc.directory, bluesky-social GitHub, and 2025–2026 roadmap posts. Uncertainties flagged inline with ⚠️.
 

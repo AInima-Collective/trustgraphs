@@ -2,7 +2,7 @@
 
 This guide covers the **hypercerts instance** (atproto records → envelope-1 proof → trust-weighted
 `{node → score}` root). The **EAS/trust-graph** local-testing guide is
-[`/LOCAL_TESTING.md`](../../LOCAL_TESTING.md); operations for a real deployment are in
+[`docs/trust-graph/LOCAL_TESTING.md`](../trust-graph/LOCAL_TESTING.md); operations for a real deployment are in
 [`RUNBOOK.md`](./RUNBOOK.md); third-party epoch reproduction is [`REPRODUCE.md`](./REPRODUCE.md).
 
 Two ways to exercise it locally:

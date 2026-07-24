@@ -1,6 +1,6 @@
 # Contribution Funding on EAS (v1 design)
 
-**Status:** design draft, 2026-07-22. Not committed to build.
+**Status:** design draft, 2026-07-22 — since **Built** as the contributions program (full round proven + paid out on local anvil; see [`docs/PROGRAMS.md`](../docs/PROGRAMS.md) and [`docs/contributions/`](../docs/contributions/)).
 **Depends on:** lane-1 EAS pipeline, ZK root producer, `MerkleFundDistributor`.
 **Successor:** v2 may add further ingestion lanes beyond EAS (see §8).
 

@@ -23,5 +23,5 @@ the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the r
 
 The `{account → score}` root is produced by a permissionless SP1 proof — anyone can post `(root, proof)`
 via `MerkleSnapshot.submitProof`. Real STARK → Groth16 proving needs ≥16–32 GiB of RAM or the Succinct
-prover network (`SP1_PROVER=network`). See [`zk/RUNBOOK.md`](./zk/RUNBOOK.md) for the guest/host build
+prover network (`SP1_PROVER=network`). See [`docs/trust-graph/RUNBOOK.md`](./trust-graph/RUNBOOK.md) for the guest/host build
 and the checkpoint → prove → submit flow.

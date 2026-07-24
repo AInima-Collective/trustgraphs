@@ -1,7 +1,7 @@
 # INSTANCE_FACTORY — permissionless community instances via a TrustGraphFactory
 
 Status: research (2026-07-24). No build decision yet. **Sequenced after the repo cleanup
-program** (`/GOAL.md`, decided 2026-07-24): the factory builds as its own program on the
+program** (decided 2026-07-24): the factory builds as its own program on the
 cleaned base — in particular, by the time Phase A starts, Localism-specific code is gone
 (cleanup M2), generated artifacts live under `.trustgraph/` (M1), and there is no live
 production network to migrate.

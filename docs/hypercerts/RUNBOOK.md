@@ -62,7 +62,7 @@ export PATH="$HOME/.sp1/bin:$PATH"
 > ```
 > Any guest change (or a `[patch.crates-io]` crypto bump that recompiles the ELF) **rotates this vkey
 > and the sibling trust-graph/signer vkeys**; batch rotations through the constitutional timelock
-> (GOAL.md ground rule 7) — see [§ vkey rotation](#vkey-rotation-constitutional-batched).
+> (a build-plan ground rule) — see [§ vkey rotation](#vkey-rotation-constitutional-batched).
 
 ## Build & test (before every deploy)
 
@@ -282,7 +282,7 @@ leaving v1.1.0 (Partner Brief §3) — rotates the hypercerts vkey **and** recom
 1. Re-derive all affected vkeys on the **pinned toolchain**; diff against [`../PROGRAMS.md`](../PROGRAMS.md).
 2. Deploy a fresh `SP1JournalVerifier(gateway, newHypercertsVkey)`.
 3. Through the **constitutional timelock**, `setZkVerifier(newVerifier)` on the hypercerts snapshot —
-   and batch the sibling instances' rotations into the same timelock cycle (GOAL.md ground rule 7).
+   and batch the sibling instances' rotations into the same timelock cycle (a build-plan ground rule).
    Do not dribble rotations.
 
 The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is **never** migrated.

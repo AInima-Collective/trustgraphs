@@ -1,8 +1,8 @@
 # TrustGraph, Explained Simply
 
 This is the plain-language guide. For the full algorithm spec see
-[`TRUST_GRAPH.md`](./TRUST_GRAPH.md), and for the deep design docs see
-[`research/`](./research/).
+[`ALGORITHM.md`](./ALGORITHM.md), and for the deep design docs see
+[`research/`](../research/).
 
 ## The problem
 
@@ -114,7 +114,7 @@ the scoring rules?" is its own attack surface. The short version of TrustGraph's
   bugs, but it can only stop the machine, never change the rules.
 
 The full design is in
-[`research/UPGRADE_GOVERNANCE.md`](./research/UPGRADE_GOVERNANCE.md).
+[`research/UPGRADE_GOVERNANCE.md`](../research/UPGRADE_GOVERNANCE.md).
 
 ## In one paragraph
 

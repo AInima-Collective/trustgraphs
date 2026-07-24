@@ -1,6 +1,6 @@
 # Private TrustGraph — A Privacy Architecture
 
-**Status:** ⏸️ **Deferred (GOAL.md Phase E).** Design proposal / research synthesis, highly experimental like the rest of TrustGraph.
+**Status:** ⏸️ **Deferred (was Phase E of the offchain-attestations build plan).** Design proposal / research synthesis, highly experimental like the rest of TrustGraph.
 **Scope:** How to take TrustGraph from "transparent by construction" to "private by construction" without throwing away the WAVS + EAS + Merkle architecture that already works.
 
 ---
@@ -36,7 +36,7 @@ This work is phased so that the **highest-value, lowest-risk fixes ship first** 
 | Governance | `src/contracts/zodiac/MerkleGovModule.sol` | Vote weight = score proven by Merkle inclusion. `votes[proposalId][voter]` stored publicly; `VoteCast` emitted; calldata reveals the voter's exact score. |
 | Consumption | `frontend/` | `usePageRankComputer.ts` recomputes PageRank in-browser — which only works because the whole weighted graph is shipped to the client. |
 
-**Trust-Aware PageRank** (`TRUST_GRAPH.md`): standard PageRank with trusted seed attestors that receive a weight multiplier and an initial-score boost, so trust flows from a curated root set and Sybil rings stay isolated.
+**Trust-Aware PageRank** (`docs/ALGORITHM.md`): standard PageRank with trusted seed attestors that receive a weight multiplier and an initial-score boost, so trust flows from a curated root set and Sybil rings stay isolated.
 
 ---
 

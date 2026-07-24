@@ -1,10 +1,14 @@
 # Deviations
 
-Build-time deviations from the normative plans
-([`GOAL.md`](../GOAL.md), [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](../research/OFFCHAIN_ATTESTATIONS_ZK.md),
-[`research/MULTI_PROGRAM_PLATFORM.md`](../research/MULTI_PROGRAM_PLATFORM.md),
-[`research/HYPERCERTS_ATPROTO_PLAN.md`](../research/HYPERCERTS_ATPROTO_PLAN.md)), per GOAL.md ground
-rule 1: what changed, why, and which plan section it touches. No silent divergence.
+Build-time deviations from the normative plans — the milestone build plans (platform reorg,
+offchain attestations, hypercerts, contributions, and the current cleanup program) plus
+[`research/OFFCHAIN_ATTESTATIONS_ZK.md`](../research/OFFCHAIN_ATTESTATIONS_ZK.md),
+[`research/MULTI_PROGRAM_PLATFORM.md`](../research/MULTI_PROGRAM_PLATFORM.md), and
+[`research/HYPERCERTS_ATPROTO_PLAN.md`](../research/HYPERCERTS_ATPROTO_PLAN.md): what changed, why,
+and which plan section it touches. No silent divergence. Convention: the active build plan lives at
+the repo root as `GOAL.md` while a program is in flight and is deleted (not archived) when done —
+history lives in git and in this file. "GOAL.md" in the table below refers to whichever build plan
+was active on that row's date.
 
 | # | Date | Plan section | What | Why |
 |---|---|---|---|---|

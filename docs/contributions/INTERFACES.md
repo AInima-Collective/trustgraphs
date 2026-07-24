@@ -8,7 +8,7 @@ vectors (`test/golden/contributions.json`) in the same PR and a
 [`../DEVIATIONS.md`](../DEVIATIONS.md) entry.
 
 Design provenance: [`../../research/CONTRIBUTION_FUNDING.md`](../../research/CONTRIBUTION_FUNDING.md)
-(normative); execution spec: [`../../GOAL.md`](../../GOAL.md).
+(normative); build history: [`../PROGRAMS.md`](../PROGRAMS.md), deviations of record: [`../DEVIATIONS.md`](../DEVIATIONS.md).
 
 ## 1. The three EAS schemas
 

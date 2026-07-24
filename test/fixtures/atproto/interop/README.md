@@ -1,4 +1,4 @@
-# Envelope-1 conformance fixtures (GOAL.md M3)
+# Envelope-1 conformance fixtures (the M3 conformance set)
 
 Vectors consumed by `packages/envelopes/tests/atproto_conformance.rs`.
 

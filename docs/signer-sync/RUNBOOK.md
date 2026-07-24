@@ -10,7 +10,8 @@ deterministic algorithm), but has its own guest bin, journal, verification key, 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/SIGNER_SYNC_ZK_PLAN.md`) for the design and the
 program index in [`../PROGRAMS.md`](../PROGRAMS.md). The shared toolchain, core-crate build, and the
 mainnet-fork harness are in the [`trust-graph` runbook](../trust-graph/RUNBOOK.md); this file covers
-only the signer-specific deltas.
+only the signer-specific deltas. The end-to-end local walkthrough (which exercises signer-sync
+alongside the root loop) is [`../trust-graph/LOCAL_TESTING.md`](../trust-graph/LOCAL_TESTING.md).
 
 ## Components (signer-specific)
 

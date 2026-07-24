@@ -1,4 +1,4 @@
-# Hypercerts atproto fixture (GOAL.md M4 exit — TWO-SIDED, multi-repo)
+# Hypercerts atproto fixture (M4 exit — TWO-SIDED, multi-repo)
 
 A **synthetic but real** pair of atproto repos containing `@hypercerts-org/lexicon`
 **v1.1.0** records, exported as CARv1 and verified by the M1 MST walker (`../walk`).

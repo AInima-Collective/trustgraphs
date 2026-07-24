@@ -1,5 +1,11 @@
 # TrustAwarePageRank: Spam-Resistant Reputation Systems
 
+> **Scope:** this is the *algorithm* spec — the trust-aware PageRank variant itself, kept
+> deliberately implementation-agnostic. How the system runs it today (fixed-point arithmetic,
+> epochs, the SP1 zero-knowledge proof) is summarized in the closing section and detailed in
+> [`../research/ZK_ARCHITECTURE.md`](../research/ZK_ARCHITECTURE.md). The canonical
+> implementation is `packages/pagerank-core`.
+
 ## Abstract
 
 TrustAwarePageRank is an extension of the traditional PageRank algorithm designed to create spam-resistant reputation systems in decentralized networks. By incorporating trusted seed attestors, this approach prevents Sybil attacks and spam manipulation while maintaining the distributed nature of reputation computation.
@@ -11,9 +17,7 @@ TrustAwarePageRank is an extension of the traditional PageRank algorithm designe
 - [TrustAwarePageRank Solution](#trustawarepagerank-solution)
 - [Algorithm Details](#algorithm-details)
 - [Implementation Architecture](#implementation-architecture)
-- [Blockchain Integration](#blockchain-integration)
-- [Use Cases](#use-cases)
-- [Security Considerations](#security-considerations)
+- [How this runs today](#how-this-runs-today)
 - [Future Work](#future-work)
 - [References](#references)
 
@@ -127,6 +131,20 @@ Initial_PR(i) = {
 5. **Merkle Tree Storage**: Store scores in verifiable data structure
 6. **On-Chain Commitment**: Publish merkle root for verification
 
+## How this runs today
+
+The production implementation departs from this spec in mechanics, never in semantics:
+
+- **Fixed-point, deterministic** — all arithmetic is integer fixed-point (1e18 scale) with
+  `BTreeMap` iteration, so every runner reproduces the same bytes (`packages/pagerank-core`,
+  the single source of truth compiled into the SP1 guest, the host, and the browser port).
+- **Epochs** — attestations fold into an on-chain accumulator; anyone freezes a checkpoint
+  (`MerkleSnapshot.trigger()`), and scores are computed over exactly that frozen input set.
+- **Zero-knowledge proof** — the `{account → score}` merkle root is proven correct in the SP1
+  zkVM and verified on-chain (`submitProof`), so consumers trust the math, not the machine
+  that ran it. See [`../research/ZK_ARCHITECTURE.md`](../research/ZK_ARCHITECTURE.md) and the
+  per-program operations docs indexed in [`PROGRAMS.md`](./PROGRAMS.md).
+
 ## Future Work
 
 ### 1. Temporal Dynamics
@@ -180,4 +198,4 @@ Technical Improvements:
 
 ---
 
-_This document represents the initial specification for TrustAwarePageRank systems. Implementation details may evolve based on testing and community feedback._
+_This document is the algorithm specification. The implementation of record is `packages/pagerank-core`; where mechanics differ (fixed-point, epochs, ZK proving), that crate and the docs above govern._

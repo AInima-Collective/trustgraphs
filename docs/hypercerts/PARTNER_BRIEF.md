@@ -2,7 +2,7 @@
 
 **To:** the Hypercerts team · **From:** the TrustGraph pilot team · **Date:** 2026-07-15
 **Context:** [`HYPERCERTS_ATPROTO_PLAN.md`](../../research/HYPERCERTS_ATPROTO_PLAN.md) §9, delivered
-per GOAL.md M5. The system this brief supports is **built and exit-green through M4**: your
+per the build plan's M5. The system this brief supports is **built and exit-green through M4**: your
 AT Protocol records (all seven v1.1.0 collections) are verified inside an SP1 zero-knowledge
 proof — repo commit signatures, did:plc key chains, MST completeness walks — and folded into a
 trust-weighted `{node → score}` merkle root nobody has to be trusted to compute. A seeded
