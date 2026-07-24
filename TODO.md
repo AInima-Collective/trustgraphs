@@ -4,6 +4,7 @@
 - [-] Architect Governance flows for upgrade
 - [-] Design a Trust Graph based contribution system
 - [ ] Redesign
-- [ ] Backwards compatibility
+- [ ] Clean up mess
+- [x] Backwards compatibility? (No)
 - [ ] TrustGraphFactory
 - [ ] demurrage would be nice (maybe v2)
