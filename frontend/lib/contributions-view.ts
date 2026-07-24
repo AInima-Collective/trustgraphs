@@ -1,10 +1,13 @@
 //! On-chain view building for the contributions screens.
 //!
-//! The claims / responses / ratings shown in the UI come straight from the chain: the generic
-//! Ponder `eas_attestation` table already indexes every attestation against the instance's
-//! `ContributionResolver`, and this module reconciles those rows with the SAME parity-locked
-//! logic the proof runs (`lib/contributions/` — read-only import, never forked). Derived SCORES
-//! (which need the trust-graph reputation) come from the M3 indexer routes via
+//! The claims / responses / ratings shown in the UI come straight from the chain: the Ponder
+//! `accumulator_record` table indexes every attestation AND revocation folded by the instance's
+//! `ContributionResolver` (one row per fold marker, `accumulator` = the resolver address), and this
+//! module reconciles those rows with the SAME parity-locked logic the proof runs
+//! (`lib/contributions/` — read-only import, never forked). NOTE: contribution attestations are NOT
+//! in the generic `eas_attestation` table — that table is only populated for the trust-graph
+//! `EASIndexerResolver` (`indexer/src/eas.ts`), never for the `ContributionResolver`. Derived SCORES
+//! (which need the trust-graph reputation) come from the indexer routes via
 //! `lib/contributions-api.ts`; nothing in this module is used to compute money.
 
 import { type Client } from '@ponder/client'
@@ -14,8 +17,6 @@ import { Hex, zeroHash } from 'viem'
 import {
   type ContributionsParams,
   KIND_CLAIM_ATTEST,
-  KIND_RESPONSE_ATTEST,
-  KIND_VALUATION_ATTEST,
   type LiveState,
   actorKey,
   eligibility,
@@ -27,9 +28,9 @@ import { SchemaManager } from './schemas'
 import { ContributionsNetwork, NetworkSchema } from './types'
 // Type-only: keeps this module runtime-independent of the ponder package (the indexer and
 // scripts import this file too).
-import { type easAttestation } from '../ponder.schema'
+import { type accumulatorRecord } from '../ponder.schema'
 
-type AttestationRow = typeof easAttestation.$inferSelect
+type AccumulatorRow = typeof accumulatorRecord.$inferSelect
 
 const S = 10n ** 18n
 
@@ -76,16 +77,17 @@ export const contributionsSchema = (
   network.schemas.find((schema) => schema.key === key)
 
 /**
- * Ponder query for every attestation folded by this instance's resolver, in fold-ish order
- * (timestamp ascending; `reconcile` re-sorts by `(blockTimestamp, index)` anyway).
+ * Ponder query for every fold marker (attest AND revoke) folded by this instance's resolver, in
+ * fold order — `(blockNumber, logIndex)` ascending, exactly the order the guest folds. `reconcile`
+ * re-sorts by `(blockTimestamp, index)` anyway. `schemaUids` is unused here (the row's `kind`
+ * already encodes the schema), kept only so callers pin the query key to the instance's schemas.
  */
 export const getContributionAttestations =
-  (resolver: Hex, schemaUids: Hex[]) =>
-  (db: Client<ResolvedSchema>['db']): Promise<AttestationRow[]> =>
-    db.query.easAttestation.findMany({
-      where: (t, { and, eq, inArray }) =>
-        and(eq(t.resolver, resolver), inArray(t.schema, schemaUids)),
-      orderBy: (t, { asc }) => [asc(t.blockNumber), asc(t.timestamp)],
+  (resolver: Hex, _schemaUids: Hex[]) =>
+  (db: Client<ResolvedSchema>['db']): Promise<AccumulatorRow[]> =>
+    db.query.accumulatorRecord.findMany({
+      where: (t, { eq }) => eq(t.accumulator, resolver),
+      orderBy: (t, { asc }) => [asc(t.blockNumber), asc(t.logIndex)],
       limit: 1000,
     })
 
@@ -128,30 +130,30 @@ export interface ClaimView {
  * (revocation excludes, one live response/valuation per actor, malformed payloads skipped).
  */
 export const buildClaimViews = (
-  rows: AttestationRow[],
+  rows: AccumulatorRow[],
   schemaUids: { claim: Hex; response: Hex; valuation: Hex },
   window?: { start: bigint; end: bigint }
 ): { claims: ClaimView[]; state: LiveState } => {
-  // Map rows → contribution records. Revoked attestations are excluded exactly like a folded
-  // revocation record would exclude them.
+  // `accumulator_record` folds each attest AND each revoke as its own row: even `kind` = attest
+  // (schemaIndex*2 == KIND_*_ATTEST), odd `kind` = revoke of the SAME uid. Collect the revoked
+  // uids first, then keep the attest rows whose uid was never revoked — exactly the set a folded
+  // revocation record would have excluded.
+  const revokedUids = new Set<string>()
+  for (const row of rows) {
+    if (row.kind % 2 === 1) revokedUids.add(row.uid.toLowerCase())
+  }
   const records: RawEdge[] = []
   for (const row of rows) {
-    if (row.revocationTime !== 0n) continue
-    const kind =
-      row.schema === schemaUids.claim
-        ? KIND_CLAIM_ATTEST
-        : row.schema === schemaUids.response
-          ? KIND_RESPONSE_ATTEST
-          : row.schema === schemaUids.valuation
-            ? KIND_VALUATION_ATTEST
-            : null
-    if (kind === null) continue
+    if (row.kind % 2 === 1) continue // revoke marker — accounted for above
+    if (revokedUids.has(row.uid.toLowerCase())) continue
+    // Even kinds are exactly KIND_CLAIM_ATTEST (0) / KIND_RESPONSE_ATTEST (2) /
+    // KIND_VALUATION_ATTEST (4); unknown schemas never fold, so no null guard is needed.
     records.push({
-      kind,
+      kind: row.kind,
       attester: row.attester,
       recipient: row.recipient,
       uid: row.uid,
-      blockTimestamp: row.timestamp,
+      blockTimestamp: row.blockTimestamp,
       data: row.data,
     })
   }
@@ -167,7 +169,7 @@ export const buildClaimViews = (
     { title: string; uri: string; contentHash: Hex }
   >()
   for (const row of rows) {
-    if (row.schema !== schemaUids.claim) continue
+    if (row.kind !== KIND_CLAIM_ATTEST) continue
     try {
       const decoded = SchemaManager.decode(schemaUids.claim, row.data)
       displayByUid.set(row.uid.toLowerCase(), {

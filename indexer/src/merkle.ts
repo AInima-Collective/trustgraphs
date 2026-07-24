@@ -540,6 +540,7 @@ async function ensureDistribution(
   distributionIndex: bigint
 ) {
   const existing = await context.db.find(merkleFundDistribution, {
+    merkleFundDistributor: distributorAddress,
     id: distributionIndex,
   })
   if (existing) return existing
@@ -614,7 +615,10 @@ ponder.on('merkleFundDistributor:Swept', async ({ event, context }) => {
   const { distributionIndex, to, amount } = event.args
   await ensureDistribution(context, event.log.address, distributionIndex)
   await context.db
-    .update(merkleFundDistribution, { id: distributionIndex })
+    .update(merkleFundDistribution, {
+      merkleFundDistributor: event.log.address,
+      id: distributionIndex,
+    })
     .set({
       sweptAmount: amount,
       sweptTo: to,
@@ -636,7 +640,10 @@ ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
   // predates the indexer — dev distributor sources start at 'latest').
   await ensureDistribution(context, event.log.address, distributionIndex)
   await context.db
-    .update(merkleFundDistribution, { id: distributionIndex })
+    .update(merkleFundDistribution, {
+      merkleFundDistributor: event.log.address,
+      id: distributionIndex,
+    })
     .set({
       amountDistributed: newAmountDistributed,
     })

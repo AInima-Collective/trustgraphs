@@ -126,6 +126,139 @@ export const anchorCheckpoint = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+        CONTRIBUTIONS PROGRAM — fold log + decoded records (M3)
+//////////////////////////////////////////////////////////////*/
+
+// The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
+// accumulator-bearing resolver (the trust EASIndexerResolver instances, kinds {0, 1}, and the
+// ContributionResolver, kinds 0–5 per docs/contributions/INTERFACES.md §2). This is the indexer's
+// mirror of the exact `RawEdge` stream the ZK guest consumes: ordering by (block_number, log_index)
+// is fold order (each fold emits exactly one AttestationAttested/AttestationRevoked marker), and
+// `data` is the payload preimage of the folded `dataHash`. The derived-scoring recompute truncates
+// this log to the checkpointed leaf counts and re-folds it, asserting the accumulator matches the
+// chain before trusting anything derived from it.
+export const accumulatorRecord = onchainTable(
+  'accumulator_record',
+  (t) => ({
+    id: t.text().primaryKey(), // event log id (unique per fold marker event)
+    accumulator: t.hex().notNull(), // the resolver/accumulator contract that folded it
+    kind: t.integer().notNull(), // trust: 0 attest / 1 revoke; contributions: schemaIndex*2+isRevoke
+    attester: t.hex().notNull(),
+    recipient: t.hex().notNull(),
+    uid: t.hex().notNull(),
+    schema: t.hex().notNull(),
+    data: t.hex().notNull(), // raw EAS attestation data (preimage of the folded dataHash)
+    blockTimestamp: t.bigint().notNull(), // the block.timestamp folded into the leaf
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    accumulatorIdx: index().on(t.accumulator),
+    uidIdx: index().on(t.uid),
+    kindIdx: index().on(t.kind),
+    foldOrderIdx: index().on(t.accumulator, t.blockNumber, t.logIndex),
+  })
+)
+
+// contribution.claim attestations, decoded (INTERFACES.md §1 schema 0). `malformed = true` rows
+// failed the guest's structural decoder (`decodeClaim`) and are provably inert in scoring — the
+// row is kept (with whatever fields decoded) so the UI can show the attestation exists.
+export const contributionClaim = onchainTable(
+  'contribution_claim',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    resolver: t.hex().notNull(),
+    attester: t.hex().notNull(),
+    recipient: t.hex().notNull(),
+    title: t.text(), // display decode (null if malformed)
+    contentHash: t.hex(),
+    uri: t.text(),
+    contributors: t.hex().array(), // as attested, in order (duplicates allowed)
+    shares: t.bigint().array(), // uint32 weights, same order
+    malformed: t.boolean().notNull(),
+    revoked: t.boolean().notNull(),
+    blockTimestamp: t.bigint().notNull(), // drives the round-window check
+    blockNumber: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    resolverIdx: index().on(t.resolver),
+    attesterIdx: index().on(t.attester),
+    revokedIdx: index().on(t.revoked),
+    blockTimestampIdx: index().on(t.blockTimestamp),
+  })
+)
+
+// Per-contributor attribution rows for a claim, shares aggregated per address (duplicates summed —
+// the same aggregation reconciliation applies before normalizing). Serves the by-contributor API.
+export const contributionClaimContributor = onchainTable(
+  'contribution_claim_contributor',
+  (t) => ({
+    claimUid: t.hex().notNull(),
+    contributor: t.hex().notNull(),
+    share: t.bigint().notNull(), // aggregated raw weight (normalized per-claim at scoring time)
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.claimUid, t.contributor] }),
+    claimUidIdx: index().on(t.claimUid),
+    contributorIdx: index().on(t.contributor),
+  })
+)
+
+// contribution.response attestations (schema 1): accept/reject being named on a claim.
+// `superseded = true` marks records replaced by a later live response from the same responder for
+// the same claim (last-write-wins surfaced as a flag rather than deletion); a revocation of the
+// latest response un-supersedes the previous one, mirroring the guest's reconciliation.
+export const contributionResponse = onchainTable(
+  'contribution_response',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    resolver: t.hex().notNull(),
+    claimUid: t.hex(), // null if malformed
+    responder: t.hex().notNull(), // the attester
+    response: t.integer(), // 1 = accept, 2 = reject (null if malformed)
+    malformed: t.boolean().notNull(),
+    superseded: t.boolean().notNull(),
+    revoked: t.boolean().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(), // LWW tiebreak within a block (fold order)
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    resolverIdx: index().on(t.resolver),
+    claimUidIdx: index().on(t.claimUid),
+    responderIdx: index().on(t.responder),
+  })
+)
+
+// contribution.valuation attestations (schema 2): 0–100 scores. Same LWW `superseded` semantics as
+// responses (one live valuation per (rater, claim)).
+export const contributionValuation = onchainTable(
+  'contribution_valuation',
+  (t) => ({
+    uid: t.hex().primaryKey(),
+    resolver: t.hex().notNull(),
+    claimUid: t.hex(), // null if malformed
+    rater: t.hex().notNull(), // the attester
+    score: t.integer(), // 0–100 (null if malformed)
+    malformed: t.boolean().notNull(),
+    superseded: t.boolean().notNull(),
+    revoked: t.boolean().notNull(),
+    blockTimestamp: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    resolverIdx: index().on(t.resolver),
+    claimUidIdx: index().on(t.claimUid),
+    raterIdx: index().on(t.rater),
+  })
+)
+
 export const merkleGovModule = onchainTable(
   'merkle_gov_module',
   (t) => ({
@@ -235,7 +368,11 @@ export const merkleFundDistributor = onchainTable(
 export const merkleFundDistribution = onchainTable(
   'merkle_fund_distribution',
   (t) => ({
-    id: t.bigint().primaryKey(),
+    // distributionIndex — restarts at 0 for EACH distributor contract, so it is UNIQUE only when
+    // paired with `merkleFundDistributor` (see the composite primaryKey below). A bare `id` pk
+    // collides across programs' distributors (trust-graph / contributions / hypercerts each fund
+    // their own).
+    id: t.bigint().notNull(),
     merkleFundDistributor: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
     timestamp: t.bigint().notNull(),
@@ -249,8 +386,15 @@ export const merkleFundDistribution = onchainTable(
     amountDistributed: t.bigint().notNull(),
     feeRecipient: t.hex().notNull(),
     feeAmount: t.bigint().notNull(),
+    // M6 expiry + sweep: claims close at `claimDeadline` (unix seconds; 0 = no deadline), after
+    // which the funder can sweep the unclaimed remainder back (`Swept`).
+    claimDeadline: t.bigint().notNull(),
+    sweptAmount: t.bigint().notNull(),
+    sweptTo: t.hex(),
+    sweptAt: t.bigint(),
   }),
   (t) => ({
+    pk: primaryKey({ columns: [t.merkleFundDistributor, t.id] }),
     merkleFundDistributorIdx: index().on(t.merkleFundDistributor),
     rootIdx: index().on(t.root),
     blockNumberIdx: index().on(t.blockNumber),

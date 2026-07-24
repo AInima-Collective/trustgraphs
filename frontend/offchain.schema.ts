@@ -152,6 +152,131 @@ export const hypercertsScore = offchainSchema.table(
   ]
 )
 
+/*///////////////////////////////////////////////////////////////
+          CONTRIBUTIONS PROGRAM — derived scoring (M3)
+//////////////////////////////////////////////////////////////*/
+
+// contributionRound — per-(snapshot, root) round metadata for the contributions program: the
+// journal commitments, the validated params snapshot, and the verification verdict of the display
+// recompute. Populated on `MerkleRootUpdated` by `ingestContributionsScores` (src/contributions.ts):
+// the indexer re-derives the FULL stage-2 computation from its own fold-log rows (truncated to the
+// checkpointed leaf counts) + the params sidecar, and only writes score/audit rows when the
+// recomputed output root equals the proven on-chain root. `verified = false` rows exist so the API
+// can answer 409 ("refuse to serve") instead of silently serving nothing — the recompute is a
+// display validation, never a second source of truth.
+export const contributionRound = offchainSchema.table(
+  'contribution_round',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(), // the on-chain outputRoot (hex)
+    checkpointId: t.text().notNull(), // uint256 as decimal string
+    ipfsHash: t.text().notNull(),
+    ipfsHashCid: t.text().notNull(),
+    // Journal v2 input commitments: slot A = trust accumulator, slot B = contribution accumulator.
+    trustAcc: t.text().notNull(),
+    trustLeafCount: t.bigint({ mode: 'bigint' }).notNull(),
+    anchorAcc: t.text().notNull(),
+    anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
+    paramsHash: t.text().notNull(),
+    // The validated params snapshot (bigints as decimal strings), from the params sidecar whose
+    // hash reproduced the on-chain paramsHash. Null when the sidecar was missing/invalid.
+    params: t.jsonb().$type<Record<string, unknown> | null>(),
+    // uint64 unix seconds (null without valid params). numeric(78,0), NOT int8: an open-ended
+    // round pins roundEnd = u64::MAX (1.8e19), which overflows Postgres bigint (~9.2e18).
+    roundStart: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }),
+    roundEnd: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }),
+    // uint256-scale pool/total; numeric(78,0) per the offchain big-value rule.
+    totalPool: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    numClaims: t.integer().notNull(), // live in-window claims in the recompute (0 if unverified)
+    numRecipients: t.integer().notNull(), // payout leaves (0 if unverified)
+    // Whether the display recompute reproduced the proven root (score/audit rows only exist when
+    // true); `failureReason` explains a false verdict for operators.
+    verified: t.boolean().notNull(),
+    failureReason: t.text(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
+    index().on(t.root),
+    index().on(t.ipfsHashCid),
+    index().on(t.timestamp),
+  ]
+)
+
+// contributionScore — S(c) per (snapshot, root, claim), plus the per-contributor payout breakdown
+// (attribution share, consent multiplier, and resulting weight — everything the round view needs to
+// explain a payout in plain language). All *Fp values are fixed point scaled by the round's
+// precisionScale (1e18), stored as numeric(78,0). Only written when the recompute verified.
+export const contributionScore = offchainSchema.table(
+  'contribution_score',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    claimUid: t.text().notNull(),
+    // S(c): the rep-weighted budgeted claim score, fixed point.
+    scoreFp: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    // Per-contributor breakdown: raw aggregated share, normalized attribution (fp), consent
+    // multiplier applied (fp: S = accepted/self, unacceptedMultFp = no response, 0 = rejected),
+    // and the resulting pre-carve-out payout weight (fp). Decimal strings inside the JSON.
+    contributors: t.jsonb().notNull().$type<
+      {
+        contributor: string
+        share: string
+        attribFp: string
+        consentFp: string
+        weightFp: string
+      }[]
+    >(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.claimUid] }),
+    index().on(t.root),
+    index().on(t.claimUid),
+  ]
+)
+
+// contributionValuationAudit — why each live valuation counted, was discounted, or was filtered at
+// a given root (the honest-UI audit surface: research/CONTRIBUTION_FUNDING.md §5). One row per
+// (root, claim, rater) live valuation from the guest-identical eligibility partition:
+//   status 'counted'    — eligible at full weight
+//   status 'discounted' — eligible, collaborator-discounted (discountFp = collaboratorMultFp)
+//   status 'filtered'   — skipped, with reason 'selfValuation' | 'belowMinRep'
+export const contributionValuationAudit = offchainSchema.table(
+  'contribution_valuation_audit',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    claimUid: t.text().notNull(),
+    rater: t.text().notNull(),
+    score: t.integer().notNull(), // the live (post-LWW) 0–100 score
+    status: t.text().notNull(), // 'counted' | 'discounted' | 'filtered'
+    reason: t.text(), // skip reason when filtered: 'selfValuation' | 'belowMinRep'
+    // The applied discount (fp; precisionScale = none, collaboratorMultFp = discounted). Null when
+    // filtered (the valuation contributed nothing).
+    discountFp: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }),
+    // The rater's stage-1 reputation (fp) — context for "weighted by standing" copy.
+    raterRepFp: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    updatedAt: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({
+      columns: [t.merkleSnapshotContract, t.root, t.claimUid, t.rater],
+    }),
+    index().on(t.root),
+    index().on(t.claimUid),
+    index().on(t.rater),
+    index().on(t.status),
+  ]
+)
+
 export const localismFundApplication = offchainSchema.table(
   'localism_fund_application',
   (t) => ({

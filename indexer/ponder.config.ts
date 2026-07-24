@@ -158,6 +158,13 @@ export default createConfig({
     },
     merkleFundDistributor: {
       abi: merkleFundDistributorAbi,
+      // Must stay 'latest' in dev (NOT DEV_START_BLOCK): the `setup` handler reads the distributor's
+      // live state via readContract at the start block, so it must run at a block where the contract
+      // is already deployed. Backfilling from block 1 makes setup revert (no code yet) → the config
+      // row is never created → every later `.update(merkleFundDistributor, ...)` throws
+      // RecordNotFound. A round's fund is caught as long as the indexer is running before the fund
+      // tx (the normal start-services-then-deploy flow); after a DB reset, restart the whole local
+      // stack (fresh anvil) or re-run the fund so `Distributed` fires while the indexer is live.
       startBlock: IS_PRODUCTION ? 0 : 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.merkleFundDistributor

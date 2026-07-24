@@ -368,7 +368,11 @@ export const merkleFundDistributor = onchainTable(
 export const merkleFundDistribution = onchainTable(
   'merkle_fund_distribution',
   (t) => ({
-    id: t.bigint().primaryKey(),
+    // distributionIndex — restarts at 0 for EACH distributor contract, so it is UNIQUE only when
+    // paired with `merkleFundDistributor` (see the composite primaryKey below). A bare `id` pk
+    // collides across programs' distributors (trust-graph / contributions / hypercerts each fund
+    // their own).
+    id: t.bigint().notNull(),
     merkleFundDistributor: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
     timestamp: t.bigint().notNull(),
@@ -390,6 +394,7 @@ export const merkleFundDistribution = onchainTable(
     sweptAt: t.bigint(),
   }),
   (t) => ({
+    pk: primaryKey({ columns: [t.merkleFundDistributor, t.id] }),
     merkleFundDistributorIdx: index().on(t.merkleFundDistributor),
     rootIdx: index().on(t.root),
     blockNumberIdx: index().on(t.blockNumber),

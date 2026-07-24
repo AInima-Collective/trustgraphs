@@ -4556,6 +4556,20 @@ export const trustAccumulatorMirrorAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '_snapshot', internalType: 'address', type: 'address' }],
+    name: 'bindSnapshot',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'binder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'checkpoint',
     outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
@@ -4591,6 +4605,13 @@ export const trustAccumulatorMirrorAbi = [
     inputs: [],
     name: 'leafCount',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'snapshot',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -4642,6 +4663,22 @@ export const trustAccumulatorMirrorAbi = [
     ],
     name: 'InputsCheckpointed',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'SnapshotBound',
+  },
+  { type: 'error', inputs: [], name: 'AlreadyBound' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NotBinder' },
+  { type: 'error', inputs: [], name: 'NotSnapshot' },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
