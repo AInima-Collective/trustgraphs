@@ -35,7 +35,7 @@ Ports/services used by the full round:
 | frontend (optional) | http://localhost:3000 | `pnpm frontend dev` |
 
 Prereqs (one-time): [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`),
-`jq`, and the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`). Then:
+`jq`, and the SP1 toolchain (`curl -L https://sp1up.succinct.xyz | bash && sp1up`). Then:
 
 ```bash
 task setup            # pnpm install + forge install (use CI=true pnpm install if a TTY prompt wedges it)

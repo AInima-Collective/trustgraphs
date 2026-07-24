@@ -3,9 +3,8 @@
 How the zero-knowledge **root producer** (`trust-graph` program) is built, deployed, and run. This
 replaces the WAVS operator set: the `{account → score}` merkle root is produced by a permissionless
 SP1 proof of correct fixed-point Trust-Aware PageRank. See
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/ZK_ARCHITECTURE.md`) for the design, the program
-index in [`../PROGRAMS.md`](../PROGRAMS.md), and the `scratchpad/zk/` `DECISIONS.md` / `PLAN.md` for
-the locked choices.
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/ZK_ARCHITECTURE.md`) for the design and the
+program index in [`../PROGRAMS.md`](../PROGRAMS.md).
 
 > **Sibling program.** The Safe signer-sync capability is a **second program** (`signer`) that reuses
 > this program's accumulator and `paramsHash`. Its build/deploy/run loop lives in
@@ -29,7 +28,9 @@ the locked choices.
 
 ```bash
 # SP1 (installs cargo-prove + the `succinct` rust toolchain)
-curl -L https://sp1.succinct.xyz | bash && ~/.sp1/bin/sp1up   # pins v6.3.1
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up
+# (the SP1 *SDK* is pinned to =6.3.1 in zk/prover/Cargo.toml; the vkey depends on the exact
+#  toolchain build — see ../PROGRAMS.md's reproducibility caveat before deriving deploy values)
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
@@ -66,10 +67,11 @@ cargo run --release -- trust-graph vkey        # -> 0x....   (programVKey)
 #   ≡ task zk:vkey PROGRAM=trust-graph
 ```
 
-> **TODO(vkey):** the trust-graph vkey is re-derived at **M0 exit** (the reorg changes ELF layout even
-> though semantics don't) and recorded in [`../PROGRAMS.md`](../PROGRAMS.md). The **frozen v1 Optimism
-> deployment** keeps its already-deployed vkey `0x00a3d155dede72bb1651783cb67497e4215bf9bfd688096cb33bbef7a632a819`
-> and is never migrated; fresh builds use the re-derived value.
+> **vkey:** the current trust-graph vkey is recorded in [`../PROGRAMS.md`](../PROGRAMS.md) (it
+> rotates whenever the guest ELF changes, even for refactors that don't change semantics). The
+> **frozen v1 Optimism deployment** keeps its already-deployed vkey
+> `0x00a3d155dede72bb1651783cb67497e4215bf9bfd688096cb33bbef7a632a819` and is never migrated;
+> fresh deployments use the current value.
 
 The canonical `paramsHash` is **not** a manual deploy input — `DeployNetwork` computes it on-chain from
 `params.json` after registering the schema (`ParamsCodec.hash`, byte-identical to the guest's
@@ -105,7 +107,7 @@ Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its
    distributor. Pass the `paramsHash` from `trust-graph paramshash`.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s and transfers `CONSTITUTIONAL_ROLE` /
-   `OPERATIONAL_ROLE` off the deployer to them. (Finalized in WP7.)
+   `OPERATIONAL_ROLE` off the deployer to them.
 
 ## Produce a root (the permissionless loop)
 

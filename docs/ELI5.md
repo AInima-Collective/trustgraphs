@@ -31,9 +31,9 @@ idea Google used to rank web pages, called PageRank: **a vouch is worth more whe
 from someone who is themselves trusted.**
 
 Imagine trust as a liquid. It starts at a small set of **trusted seeds**: accounts the
-community has chosen as starting points, the way you might anchor a rumor by asking "who
-told *you*?" until you reach someone you actually know. Trust flows out from the seeds
-along the vouch arrows, splits where arrows split, and fades as it travels. Your score is
+community has chosen as starting points. (It's the way you might anchor a rumor by asking
+"who told *you*?" until you reach someone you actually know.) Trust flows out from the
+seeds along the vouch arrows, splits where arrows split, and fades as it travels. Your score is
 how much of that liquid ends up pooled at your account.
 
 This is why bot armies fail. A thousand bots vouching for each other form an island: lots
@@ -66,10 +66,11 @@ inclined). Your score comes with a short receipt proving "this score is part of 
 fingerprint." Contracts and apps check your receipt against the published fingerprint,
 which takes a moment, instead of storing millions of scores.
 
-Scores refresh on a fixed schedule, in rounds called **epochs** (about a week). Each
-round, the set of vouches is frozen at a cut-off, someone proves the new scores, and the
-new fingerprint goes on-chain. Past rounds are never recalculated: whatever your score was
-when a round settled, it stays settled.
+Scores refresh in rounds called **epochs**. Each round, the set of vouches is frozen at a
+cut-off, someone proves the new scores, and the new fingerprint goes on-chain. Each network
+chooses its own cadence (a weekly rhythm is the working assumption; the development default
+is unscheduled — anyone can start a round at any time). Past rounds are never recalculated:
+whatever your score was when a round settled, it stays settled.
 
 ## What scores are for
 
@@ -113,7 +114,8 @@ the scoring rules?" is its own attack surface. The short version of TrustGraph's
   had time to object, switch versions, or exit. An emergency brake exists for genuine
   bugs, but it can only stop the machine, never change the rules.
 
-The full design is in
+One honest caveat: this upgrade machinery is **designed but not yet fully implemented** —
+unlike the proof loop above, which is built and running. The full design is in
 [`research/UPGRADE_GOVERNANCE.md`](../research/UPGRADE_GOVERNANCE.md).
 
 ## In one paragraph

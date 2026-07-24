@@ -47,8 +47,8 @@ cargo run --release -- signer selectionparamshash signer_input.json   # -> selec
 # signer_input.json is a serialized pagerank_core::SignerInput (edges + params + selection). Omit for the sample.
 ```
 
-> **TODO(vkey):** the signer vkey is re-derived at **M0 exit** (ELF layout changes under the reorg) and
-> recorded in [`../PROGRAMS.md`](../PROGRAMS.md).
+> **vkey:** the current signer vkey is recorded in [`../PROGRAMS.md`](../PROGRAMS.md) (it rotates
+> whenever the guest ELF changes, even for refactors that don't change semantics).
 
 `SignerSyncZkModule` is deployed + enabled by `script/DeployZodiacSafes.s.sol`, reusing the
 MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the

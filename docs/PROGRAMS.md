@@ -5,7 +5,8 @@ in the repo, its status, its verification key, its docs, and its live instances.
 
 ## Program vs. instance
 
-Two axes get conflated when we say "support multiple zk programs" (see
+"Program" and "instance" are different axes, and conflating them muddles every
+multiple-zk-programs conversation (see
 [`../research/MULTI_PROGRAM_PLATFORM.md`](../research/MULTI_PROGRAM_PLATFORM.md) §1):
 
 - A **program** = one guest binary + the core-crate semantics it compiles + one journal shape + one
@@ -14,29 +15,30 @@ Two axes get conflated when we say "support multiple zk programs" (see
   accumulator/registry) + a params set + an indexer/frontend view. The same program can run as many
   instances with **zero code changes**.
 
-The reorg target, and the platform claim: **adding a program costs a core crate + a guest bin + prover
+The platform claim (realized by the platform refactor): **adding a program costs a core crate + a guest bin + prover
 subcommands + golden vectors; adding an instance costs only a deployment.**
 
 ## Index
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Live** | `0x00aa4b4bec3cec5d3207be6a5bcea74a924ea059b4e848b8700c6e87c293c334` (M4 re-derivation) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | v1 Optimism deployment — **frozen on journal v1**, never migrated (retains vkey `0x00a3d155…`) |
-| **signer-sync** (Safe owner rotation) | **Built** | `0x00e06fc3677ab9f30e499dd4d47970945b47083c398158c4e009712e26e784dc` (M4 re-derivation) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
-| **hypercerts** (AT-proto graph) | **Built** (M4 exit-green) | `0x007b0fc964221d8496f4fae791235afe12b7790575f5b8c4c7287f319766d9b0` (M4, SP1 6.3.1) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
-| **contributions** (rep-weighted funding split) | **Built** (M5 exit-green) | `0x0065cd065fabfe54a357afb4a22f2c44a5b88519421292bfc41e9c5c2fec1d90` (M2, SP1 6.3.1 — box-derived; see the reproducibility caveat below) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
+| **trust-graph** (root producer) | **Built** | `0x00aa4b4bec3cec5d3207be6a5bcea74a924ea059b4e848b8700c6e87c293c334` (box-derived; see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
+| **signer-sync** (Safe owner rotation) | **Built** | `0x00e06fc3677ab9f30e499dd4d47970945b47083c398158c4e009712e26e784dc` (box-derived; see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
+| **hypercerts** (AT-proto graph) | **Built** | `0x007b0fc964221d8496f4fae791235afe12b7790575f5b8c4c7287f319766d9b0` (SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
+| **contributions** (rep-weighted funding split) | **Built** | `0x0065cd065fabfe54a357afb4a22f2c44a5b88519421292bfc41e9c5c2fec1d90` (SP1 6.3.1, box-derived; see the reproducibility caveat below) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
 
-> **vkeys:** M0's reorg changed each existing guest's ELF layout (semantics didn't change — vectors are
-> byte-identical to pre-reorg), so the trust-graph and signer vkeys above were re-derived at M0 exit
-> (`task zk:vkey PROGRAM=…`). They will rotate again at M2 (patched-crate additions change the ELFs).
-> **Reproducibility caveat (measured at M4):** the vkey depends on the exact `succinct` toolchain
+> **vkeys:** a vkey identifies one exact guest binary, so it changes whenever the guest ELF
+> changes — including refactors that don't change semantics (the platform reorg rotated the
+> trust-graph and signer vkeys even though golden vectors stayed byte-identical). Re-derive with
+> `task zk:vkey PROGRAM=…`.
+> **Reproducibility caveat (measured):** the vkey also depends on the exact `succinct` toolchain
 > build — a toolchain reinstall shifted the trust-graph/signer vkeys with zero source change, and
 > adding a guest bin WITHOUT new crypto patches does NOT rotate sibling vkeys (byte-diff-verified
 > both ways). Deployment-grade vkeys must be derived on the pinned toolchain recorded in the deploy
-> runbook, not an arbitrary box.
-> The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is never migrated;
-> the re-derived vkeys apply to fresh deployments. Vkey rotations for the live stack are **batched** to
-> M2's deploy through the constitutional-timelock path (build-plan ground rule: batch rotations, don't dribble them).
+> runbook, not an arbitrary box; the values above are from this repo's dev box.
+> The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is never
+> migrated; re-derived vkeys apply to fresh deployments. Rotate live instances' vkeys in
+> **batches** through the constitutional-timelock path — don't dribble one rotation per change.
 
 ## Layout
 
@@ -47,7 +49,8 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 - `zk/program` — one multi-bin guest crate; `build.rs` builds every `[[bin]]`.
 - `zk/prover` — one host CLI (`trustgraph-prover`) with clap program groups.
 - `test/golden/<program>.json` — one golden-vector file per program (four-way parity: native Rust /
-  SP1 guest / Solidity / TS).
+  SP1 guest / Solidity / TS). Exception: signer-sync shares `trust-graph.json` (same attestation
+  feed; its vectors live under that file's `signer` key).
 - `docs/<program>/` — how to operate each program today (runbooks, params, addresses). `research/`
   holds *why* (design provenance).
 
@@ -58,7 +61,7 @@ program (call it `foo`) is exactly these additions — no change to any existing
 
 1. **Core crate** — `packages/foo-core/`: the record→edge mapping, weight normalization, and the
    program's own `Params`/`Journal` + byte encodings, depending on `packages/zk-core` (and
-   `packages/envelopes` if it ingests a lane-2 substrate). Same discipline as every core crate: no
+   `packages/envelopes` if it ingests a *lane-2* substrate — off-chain signed data, like atproto repos, anchored on-chain by digest rather than attested via EAS). Same discipline as every core crate: no
    floats, `BTreeMap` only, no non-deterministic iteration.
 2. **Guest `[[bin]]`** — add `zk/program/src/foo.rs` (a ~25-line shell) and its `[[bin]]` entry. The
    single `build.rs` (`sp1_build::build_program("../program")`) builds it automatically.

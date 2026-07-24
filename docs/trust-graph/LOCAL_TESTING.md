@@ -24,7 +24,7 @@ Ports/services used by the full stack:
 | Postgres (Ponder) | localhost:6432 | `docker compose -f docker-compose.dev.yml up` |
 
 Prereqs (one-time): [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`), `jq`,
-Docker, and the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`). Then `task -y setup`.
+Docker, and the SP1 toolchain (`curl -L https://sp1up.succinct.xyz | bash && sp1up`). Then `task -y setup`.
 
 ---
 

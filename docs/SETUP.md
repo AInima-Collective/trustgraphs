@@ -1,6 +1,12 @@
 # System Requirements
 
-### Linux
+Everything the stack needs, and what each piece is for: **Docker** (IPFS + Postgres for the
+indexer in the full local stack — not needed for `task e2e`), **go-task** (the task runner
+gluing the toolchains together), **jq** (deploy scripts), **Node 21+/pnpm** (frontend,
+indexer, deploy scripts, Solidity deps via node_modules), **Foundry** (contracts + anvil),
+**Rust** (the prover/core crates), and **SP1** (the zkVM toolchain).
+
+## Linux
 
 If on Linux (e.g. Ubuntu), install the essentials:
 
@@ -10,12 +16,12 @@ sudo apt update && sudo apt install build-essential
 
 ## Docker
 
-If prompted, remove container with `sudo apt remove containerd.io`.
-
 - **MacOS**: `brew install --cask docker`
 - **Linux**: `sudo apt -y install docker.io`
 - **Windows WSL**: [docker desktop wsl](https://docs.docker.com/desktop/wsl/#turn-on-docker-desktop-wsl-2) & `sudo chmod 666 /var/run/docker.sock`
 - [Docker Documentation](https://docs.docker.com/get-started/get-docker/)
+- If `apt` reports a conflict with a preinstalled `containerd.io`, remove it first:
+  `sudo apt remove containerd.io`
 
 > **Note:** `sudo` is only used for Docker-related commands in this project. If you prefer not to use sudo with Docker, you can add your user to the Docker group with:
 >
@@ -71,13 +77,13 @@ Install the latest version of pnpm: https://pnpm.io/installation
 
 ## Foundry
 
-```bash docci-ignore
+```bash
 curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
 ```
 
 ## Rust v1.85+
 
-```bash docci-ignore
+```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 rustup toolchain install stable
@@ -88,7 +94,7 @@ rustup toolchain install stable
 Required to build the ZK guest programs and run the prover. See the
 [SP1 installation docs](https://docs.succinct.xyz/docs/sp1/getting-started/install):
 
-```bash docci-ignore
+```bash
 curl -L https://sp1up.succinct.xyz | bash
 sp1up
 ```

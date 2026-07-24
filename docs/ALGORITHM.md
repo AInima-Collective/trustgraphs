@@ -75,16 +75,24 @@ The algorithm incorporates trust through three mechanisms:
 ### Modified PageRank Formula
 
 ```
-PR(i) = (1-d)/N + d * Σ(PR(j) * W(j,i) / L(j))
+PR(i) = (1-d) * T(i) + d * Σ(PR(j) * W(j,i) / L(j))
 ```
 
 Where:
 
 - `PR(i)` = PageRank score of node i
 - `d` = damping factor (typically 0.85)
-- `N` = total number of nodes
+- `T(i)` = the **teleport vector** — and this is the load-bearing difference from vanilla
+  PageRank. It is *seed-biased*, not uniform: a configured share of teleport mass
+  (`trust_share`) is reserved for the trusted seeds and only the remainder spreads over
+  everyone else (TrustRank-style personalization). With a uniform `1/N` teleport, the
+  seeds' initial boost would wash out at convergence and Sybil isolation would fail.
 - `W(j,i)` = weight of attestation from j to i
 - `L(j)` = total outgoing attestation weight from j
+
+The exact fixed-point recurrence (including rounding order) is defined by the
+implementation of record, `packages/pagerank-core` — where this document and the code
+disagree, the code governs.
 
 ### Weight Assignment
 
@@ -149,43 +157,31 @@ The production implementation departs from this spec in mechanics, never in sema
 
 ### 1. Temporal Dynamics
 
-```
-Planned Features:
 - Time-decay functions for aging attestations
 - Periodic trust seed rotation
 - Historical reputation tracking
 - Seasonal adjustment mechanisms
-```
 
 ### 2. Multi-Schema Support
 
-```
-Enhancement Areas:
 - Multiple attestation types with different weights
 - Cross-schema reputation aggregation
 - Domain-specific trust metrics
 - Hierarchical trust structures
-```
 
 ### 3. Advanced Trust Propagation
 
-```
-Research Directions:
 - Personalized PageRank variants
 - Trust transitivity analysis
 - Multi-hop trust validation
 - Dynamic trust threshold adjustment
-```
 
 ### 4. Scalability Optimizations
 
-```
-Technical Improvements:
 - Incremental computation updates
 - Distributed computation sharding
 - Advanced merkle tree structures
 - Real-time score approximations
-```
 
 ## References
 

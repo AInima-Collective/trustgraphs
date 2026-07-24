@@ -47,7 +47,7 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 ## Toolchain + the vkey reproducibility caveat
 
 ```bash
-curl -L https://sp1.succinct.xyz | bash && ~/.sp1/bin/sp1up   # pins SP1 v6.3.1
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up   # SDK pinned =6.3.1 in zk/prover/Cargo.toml
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
