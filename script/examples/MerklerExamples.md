@@ -17,7 +17,7 @@ Before running any rewards scripts, ensure you have:
 1. Set the `IPFS_GATEWAY_URL` environment variable
 2. Set the `FUNDED_KEY` environment variable (or use default)
 3. Access to `curl` and `jq` commands for IPFS data retrieval
-4. Deployed MerkleFundDistributor and ENOVA token contracts
+4. Deployed MerkleFundDistributor and reward-token (ERC-20) contracts
 
 ## Environment Variables
 
@@ -64,7 +64,7 @@ forge script script/Merkler.s.sol:Merkler \
 **Parameters:**
 
 - `merkleFundDistributorAddr`: Address of the deployed MerkleFundDistributor contract
-- `rewardTokenAddr`: Address of the ENOVA token contract
+- `rewardTokenAddr`: Address of the reward token (ERC-20) contract
 
 **Output:**
 
@@ -92,7 +92,7 @@ forge script script/Merkler.s.sol:Merkler \
 
 - `merkleSnapshotAddr`: Address of the deployed MerkleSnapshot contract
 - `merkleFundDistributorAddr`: Address of the deployed MerkleFundDistributor contract
-- `rewardTokenAddr`: Address of the ENOVA token contract
+- `rewardTokenAddr`: Address of the reward token (ERC-20) contract
 
 **Output:**
 
@@ -149,7 +149,7 @@ forge script script/Merkler.s.sol:Merkler \
 **Parameters:**
 
 - `merkleFundDistributorAddr`: Address of the deployed MerkleFundDistributor contract
-- `rewardTokenAddr`: Address of the ENOVA token contract
+- `rewardTokenAddr`: Address of the reward token (ERC-20) contract
 - `account`: Address to check claim status for
 
 ### 7. Query Token Balance
@@ -166,7 +166,7 @@ forge script script/Merkler.s.sol:Merkler \
 
 **Parameters:**
 
-- `rewardTokenAddr`: Address of the ENOVA token contract
+- `rewardTokenAddr`: Address of the reward token (ERC-20) contract
 - `account`: Address to check balance for
 
 ### 8. Comprehensive Query
@@ -185,7 +185,7 @@ forge script script/Merkler.s.sol:Merkler \
 **Parameters:**
 
 - `merkleFundDistributorAddr`: Address of the deployed MerkleFundDistributor contract
-- `rewardTokenAddr`: Address of the ENOVA token contract
+- `rewardTokenAddr`: Address of the reward token (ERC-20) contract
 - `account`: Address to check information for
 
 ## Example Output

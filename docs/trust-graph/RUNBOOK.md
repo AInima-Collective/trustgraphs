@@ -3,9 +3,8 @@
 How the zero-knowledge **root producer** (`trust-graph` program) is built, deployed, and run. This
 replaces the WAVS operator set: the `{account → score}` merkle root is produced by a permissionless
 SP1 proof of correct fixed-point Trust-Aware PageRank. See
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/ZK_ARCHITECTURE.md`) for the design, the program
-index in [`../PROGRAMS.md`](../PROGRAMS.md), and the `scratchpad/zk/` `DECISIONS.md` / `PLAN.md` for
-the locked choices.
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/ZK_ARCHITECTURE.md`) for the design and the
+program index in [`../PROGRAMS.md`](../PROGRAMS.md).
 
 > **Sibling program.** The Safe signer-sync capability is a **second program** (`signer`) that reuses
 > this program's accumulator and `paramsHash`. Its build/deploy/run loop lives in
@@ -29,7 +28,9 @@ the locked choices.
 
 ```bash
 # SP1 (installs cargo-prove + the `succinct` rust toolchain)
-curl -L https://sp1.succinct.xyz | bash && ~/.sp1/bin/sp1up   # pins v6.3.1
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up
+# (the SP1 *SDK* is pinned to =6.3.1 in zk/prover/Cargo.toml; the vkey depends on the exact
+#  toolchain build — see ../PROGRAMS.md's reproducibility caveat before deriving deploy values)
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
@@ -66,10 +67,11 @@ cargo run --release -- trust-graph vkey        # -> 0x....   (programVKey)
 #   ≡ task zk:vkey PROGRAM=trust-graph
 ```
 
-> **TODO(vkey):** the trust-graph vkey is re-derived at **M0 exit** (the reorg changes ELF layout even
-> though semantics don't) and recorded in [`../PROGRAMS.md`](../PROGRAMS.md). The **frozen v1 Optimism
-> deployment** keeps its already-deployed vkey `0x00a3d155dede72bb1651783cb67497e4215bf9bfd688096cb33bbef7a632a819`
-> and is never migrated; fresh builds use the re-derived value.
+> **vkey:** the current trust-graph vkey is recorded in [`../PROGRAMS.md`](../PROGRAMS.md) (it
+> rotates whenever the guest ELF changes, even for refactors that don't change semantics). The
+> **frozen v1 Optimism deployment** keeps its already-deployed vkey
+> `0x00a3d155dede72bb1651783cb67497e4215bf9bfd688096cb33bbef7a632a819` and is never migrated;
+> fresh deployments use the current value.
 
 The canonical `paramsHash` is **not** a manual deploy input — `DeployNetwork` computes it on-chain from
 `params.json` after registering the schema (`ParamsCodec.hash`, byte-identical to the guest's
@@ -88,7 +90,7 @@ jq '{edges: [], params: .}' params.json | cargo run --release -- trust-graph par
 ```bash
 cd zk/prover
 SP1_PROVER=cpu cargo run --release -- trust-graph execute            # built-in sample
-SP1_PROVER=cpu cargo run --release -- trust-graph execute input.json # a real checkpoint's input
+SP1_PROVER=cpu cargo run --release -- trust-graph execute ../../.trustgraph/trust-graph/input.json # a real checkpoint's input
 #   ≡ task zk:execute PROGRAM=trust-graph
 # Asserts the guest's committed public values == native pagerank-core::compute. Prints the journal.
 ```
@@ -105,7 +107,7 @@ Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its
    distributor. Pass the `paramsHash` from `trust-graph paramshash`.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s and transfers `CONSTITUTIONAL_ROLE` /
-   `OPERATIONAL_ROLE` off the deployer to them. (Finalized in WP7.)
+   `OPERATIONAL_ROLE` off the deployer to them.
 
 ## Produce a root (the permissionless loop)
 
@@ -116,22 +118,25 @@ cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc
 # 2. Reconstruct the checkpoint's exact edge set from chain (self-checks it re-folds to `acc`):
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
-  --checkpoint $CHECKPOINT_ID --params params.json --out input.json
+  --checkpoint $CHECKPOINT_ID --params params.json
+# (writes .trustgraph/trust-graph/input.json; override with --out)
 # $ACCUMULATOR = the EASIndexerResolver address; params.json = serialized pagerank_core::Params.
 # For a large history set --from-block <deployBlock>; RPCs that cap eth_getLogs ranges: tune --chunk.
 
 # 3. Prove:
 cd zk/prover
-cargo run --release -- trust-graph prove input.json --groth16   # writes proof.bin = abi.encode(publicValues, seal)
+cargo run --release -- trust-graph prove ../../.trustgraph/trust-graph/input.json --groth16
+#   writes .trustgraph/trust-graph/proof.bin = abi.encode(publicValues, seal)
 #   ≡ task zk:prove PROGRAM=trust-graph
+cd ../..
 
 # 4. Pin the canonical blob to IPFS (raw, CIDv1 — matches the guest's ipfsHash/cid):
-ipfs add --cid-version=1 --raw-leaves blob.json      # CID must equal the guest's cid
+ipfs add --cid-version=1 --raw-leaves .trustgraph/trust-graph/blob.json   # CID must equal the guest's cid
 
 # 5. Submit:
 cast send $MERKLE_SNAPSHOT \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 proof.bin)
+  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 .trustgraph/trust-graph/proof.bin)
 ```
 
 `submitProof` recomputes the journal digest from the chain-pinned checkpoint + stored `paramsHash` +
@@ -150,7 +155,7 @@ fork RPC, the gateway, and the proving backend); each is a real command, not a w
 > `MerkleSnapshot` with it — one pass, no precomputed `PARAMS_HASH`, no restart. For a single-network
 > deploy it also writes the schema UID back into `params.json`; for DEV/multi-network, copy it from
 > `config/network_deploy_<env>_<i>.json` into the prover's `params.json`. See
-> [`../../LOCAL_TESTING.md`](../../LOCAL_TESTING.md) §"Deploy the full stack".
+> [`LOCAL_TESTING.md`](./LOCAL_TESTING.md) §"Deploy the full stack".
 
 ### Prerequisites / env
 

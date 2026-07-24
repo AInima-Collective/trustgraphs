@@ -2,7 +2,7 @@ version: '3'
 
 tasks:
   start-all:
-    desc: 'Start all local services (anvil, IPFS, WARG, Jaeger, prometheus)'
+    desc: 'Start all local services (anvil, IPFS, ponder-db)'
     cmds:
       - |
         set -e
@@ -32,10 +32,10 @@ tasks:
             sleep 0.25
           done
 
-          FILES="-f docker-compose.dev.yml" # -f telemetry/docker-compose.yml
+          FILES="-f docker-compose.dev.yml"
           docker compose ${FILES} pull
           docker compose ${FILES} up --force-recreate -d
-          trap "docker compose ${FILES} down --remove-orphans && echo -e '\nKilled IPFS + Local WARG'" EXIT
+          trap "docker compose ${FILES} down --remove-orphans && echo -e '\nKilled IPFS + ponder-db'" EXIT
 
           echo "Started..."
           wait
@@ -54,7 +54,7 @@ tasks:
         fi
 
         echo "Stopping all services..."
-        FILES="-f docker-compose.dev.yml -f telemetry/docker-compose.yml"
+        FILES="-f docker-compose.dev.yml"
         docker compose ${FILES} down --remove-orphans || true
         pkill -f anvil || true
         echo "All services stopped"

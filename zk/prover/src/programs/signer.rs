@@ -47,8 +47,14 @@ pub enum Command {
         input: Option<String>,
         #[arg(long)]
         groth16: bool,
+        /// Output directory (default: `<repo root>/.trustgraph/signer-sync/`).
+        #[arg(long)]
+        out_dir: Option<String>,
     },
 }
+
+/// The default generated-output directory for this program.
+const OUT_DIR: &str = "signer-sync";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
@@ -59,9 +65,11 @@ pub fn run(cmd: Command) -> Result<()> {
             Ok(())
         }
         Command::Execute { input } => cmd_signer_execute(load_signer_input(input.as_ref())?),
-        Command::Prove { input, groth16 } => {
-            cmd_signer_prove(load_signer_input(input.as_ref())?, groth16)
-        }
+        Command::Prove { input, groth16, out_dir } => cmd_signer_prove(
+            load_signer_input(input.as_ref())?,
+            groth16,
+            common::out_dir(out_dir.as_ref(), OUT_DIR)?,
+        ),
     }
 }
 
@@ -86,13 +94,18 @@ fn cmd_signer_execute(input: SignerInput) -> Result<()> {
     Ok(())
 }
 
-fn cmd_signer_prove(input: SignerInput, groth16: bool) -> Result<()> {
+fn cmd_signer_prove(input: SignerInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
     let (public_values, seal) = common::prove_and_verify(load_signer_elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
-    std::fs::write("signer_proof.bin", &blob)?;
-    std::fs::write("signer_public_values.bin", &public_values)?;
-    println!("wrote signer_proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
+    let proof_path = common::write_out(&out, "signer_proof.bin", &blob)?;
+    common::write_out(&out, "signer_public_values.bin", &public_values)?;
+    println!(
+        "wrote {} ({} blob bytes, {} seal bytes)",
+        proof_path.display(),
+        blob.len(),
+        seal.len()
+    );
     println!("publicValues: 0x{}", hex::encode(&public_values));
     Ok(())
 }

@@ -2,13 +2,8 @@
 /target
 # Rust build dirs for the detached zk/ workspaces (guest + host) and any nested crate.
 **/target/
-# zkVM prover output artifacts
-zk/**/proof.bin
-zk/**/public_values.bin
-zk/**/*proof.bin
-zk/**/*public_values.bin
-zk/**/blob.json
-zk/**/*skips.json
+# Generated outputs (prover proofs/blobs, exporter inputs, witness archives) — one home.
+.trustgraph/
 out/
 cache/
 broadcast/
@@ -38,17 +33,10 @@ foundry_nightly_linux_arm64.tar.gz
 # Misc
 .DS_Store
 schema_output.log
-.docker/component-upload-status
-.docker/service-cid
 deploy/post-deploy.sh
-Cargo-component.lock
-input.json
+# Human-seeded, deploy-mutated config (like foundry.toml) — stays at repo root.
 params.json
 params.contributions.json
-anchors.txt
-.witness-archive
-hypercerts_blob.json
-hypercerts_skips.json
 
 # Deploy
 config/*_deploy_*.json
@@ -57,7 +45,7 @@ config/networks.development.json
 .docker/*.log
 test/e2e/deploy.json
 
-# M1 spike fixtures: large real-repo CARs are re-fetchable (see spike/*/fixtures/README.md);
+# Real-repo fixture CARs are re-fetchable (see test/fixtures/atproto/repos/README.md);
 # only the small hypercerts fixture CAR is committed.
-spike/mst/fixtures/*.car
-spike/*/node_modules/
+test/fixtures/atproto/repos/*.car
+test/fixtures/atproto/hypercerts/gen/node_modules/

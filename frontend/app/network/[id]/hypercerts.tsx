@@ -47,7 +47,7 @@ export const HypercertsNetworkPage = ({
 }: {
   network: HypercertsNetwork
 }) => {
-  const { name, link, about, callToAction, criteria } = network
+  const { name, link, about, callToAction, applicationUrl, criteria } = network
 
   const {
     data: scoreList,
@@ -126,6 +126,11 @@ export const HypercertsNetworkPage = ({
           {callToAction && (
             <ButtonLink href={callToAction.href} target="_blank">
               {callToAction.label}
+            </ButtonLink>
+          )}
+          {applicationUrl && (
+            <ButtonLink href={applicationUrl} target="_blank">
+              Apply to join
             </ButtonLink>
           )}
         </div>

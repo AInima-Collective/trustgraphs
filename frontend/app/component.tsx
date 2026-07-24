@@ -137,7 +137,7 @@ export function HomePage() {
           />
           <FrequentlyAskedQuestion
             question="Where can I learn more?"
-            answer="Explore the [open-source repository](https://github.com/Lay3rLabs/TrustGraph) or [localism fund pilot documentation](https://www.localism.fund/expert-network). Join the [Telegram community](https://trustgraph.network/support) or fill out the [Open Interest Form](https://trustgraph.network/interest)."
+            answer="Explore the [open-source repository](https://github.com/JakeHartnell/ZkTrustGraph) or join the [Telegram community](https://trustgraph.network/support)."
           />
         </div>
       </div>

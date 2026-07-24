@@ -1,7 +1,7 @@
 //! Hypercerts root-producer program (lane-2-only): proves the §3 edge semantics + fixed-point
 //! Trust-Aware PageRank over anchored atproto repos and emits the journal-v2 merkle root + score
 //! blob. Mirrors `trust_graph.rs`; the built-in sample is the seeded-PDS fixture
-//! (`spike/hypercerts-fixture`) so `execute`/`prove` run with no external witness.
+//! (`test/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
 
 use alloy_primitives::{B256, U256};
 use anyhow::{anyhow, Result};
@@ -77,10 +77,10 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 pub fn sample_input() -> GuestInput {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/hypercerts.car")).unwrap();
+        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car")).unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
-            "{root}/spike/hypercerts-fixture/fixtures/hypercerts.plc.json"
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
         ))
         .unwrap(),
     )
@@ -134,13 +134,21 @@ pub enum Command {
     /// witness fetching lives in the `witness fetch` group behind `--features witness-atproto`.
     Fetch,
     /// Run the guest via the SP1 executor and assert it matches native `compute` (no proof).
-    Execute { input: Option<String> },
+    Execute {
+        input: Option<String>,
+        /// Output directory (default: `<repo root>/.trustgraph/hypercerts/`).
+        #[arg(long)]
+        out_dir: Option<String>,
+    },
     /// Generate a proof (core, or Groth16-wrapped), verify it locally, and write the on-chain proof
     /// blob `abi.encode(publicValues, seal)` to hypercerts_proof.bin.
     Prove {
         input: Option<String>,
         #[arg(long)]
         groth16: bool,
+        /// Output directory (default: `<repo root>/.trustgraph/hypercerts/`).
+        #[arg(long)]
+        out_dir: Option<String>,
     },
     /// Build a `GuestInput` from a `witness fetch` archive: every manifest entry becomes an
     /// anchored envelope-1 witness, and badge-definition strongRef targets are resolved across
@@ -158,10 +166,14 @@ pub enum Command {
         /// Full `Params` JSON override; without it, the §6.1 launch params + --seed-did are used.
         #[arg(long)]
         params: Option<String>,
-        #[arg(long, default_value = "hypercerts_input.json")]
-        out: String,
+        /// Output path (default: `<repo root>/.trustgraph/hypercerts/hypercerts_input.json`).
+        #[arg(long)]
+        out: Option<String>,
     },
 }
+
+/// The default generated-output directory for this program.
+const OUT_DIR: &str = "hypercerts";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
@@ -176,10 +188,20 @@ pub fn run(cmd: Command) -> Result<()> {
              `--features witness-atproto` and run `trustgraph-prover witness fetch --did <did>` \
              to archive the CAR + PLC log, then pass the assembled bundle to `hypercerts execute`."
         )),
-        Command::Execute { input } => cmd_execute(load_input(input.as_ref())?),
-        Command::Prove { input, groth16 } => cmd_prove(load_input(input.as_ref())?, groth16),
+        Command::Execute { input, out_dir } => {
+            cmd_execute(load_input(input.as_ref())?, common::out_dir(out_dir.as_ref(), OUT_DIR)?)
+        }
+        Command::Prove { input, groth16, out_dir } => cmd_prove(
+            load_input(input.as_ref())?,
+            groth16,
+            common::out_dir(out_dir.as_ref(), OUT_DIR)?,
+        ),
         #[cfg(feature = "witness-atproto")]
         Command::Buildinput { archive_dir, seed_dids, params, out } => {
+            let out = match out {
+                Some(o) => std::path::PathBuf::from(o),
+                None => common::out_dir(None, OUT_DIR)?.join("hypercerts_input.json"),
+            };
             cmd_buildinput(&archive_dir, &seed_dids, params.as_deref(), &out)
         }
     }
@@ -191,7 +213,7 @@ fn cmd_buildinput(
     archive_dir: &str,
     seed_dids: &[String],
     params_path: Option<&str>,
-    out: &str,
+    out: &std::path::Path,
 ) -> Result<()> {
     use crate::witness::atproto::{witness_from_entry, Bundle};
     use envelopes::atproto::carset::Car;
@@ -271,10 +293,14 @@ fn cmd_buildinput(
     }
 
     let input = GuestInput { params: p, anchors: anchors.clone(), witnesses, strongref_targets };
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     std::fs::write(out, serde_json::to_string(&input)?)?;
     eprintln!(
-        "wrote {out}: {} witnesses, {} badge-definition strongRef target(s) resolved, {} left \
+        "wrote {}: {} witnesses, {} badge-definition strongRef target(s) resolved, {} left \
          to open-vocabulary",
+        out.display(),
         input.witnesses.len(),
         hits,
         misses
@@ -302,6 +328,7 @@ fn cmd_buildinput(
 fn write_bundle(
     input: &GuestInput,
     native: &hypercerts_core::compute::ComputeResult,
+    out: &std::path::Path,
 ) -> Result<()> {
     let mut dids = BTreeMap::new();
     for w in &input.witnesses {
@@ -315,16 +342,17 @@ fn write_bundle(
         );
     }
     let bundle = serde_json::json!({ "dids": dids, "bindings": bindings });
-    std::fs::write("hypercerts_bundle.json", serde_json::to_string_pretty(&bundle)?)?;
+    let p = common::write_out(out, "hypercerts_bundle.json", serde_json::to_string_pretty(&bundle)?)?;
     println!(
-        "wrote hypercerts_bundle.json ({} dids, {} bindings) — the indexer ingestion sidecar",
+        "wrote {} ({} dids, {} bindings) — the indexer ingestion sidecar",
+        p.display(),
         dids.len(),
         bindings.len()
     );
     Ok(())
 }
 
-fn cmd_execute(input: GuestInput) -> Result<()> {
+fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
@@ -340,29 +368,36 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
     println!("skippedDigest: 0x{}", hex::encode(native.journal.skipped_digest));
 
     // The canonical nodeId-keyed score blob whose sha256 is `ipfsHash` and whose CID is `cid`.
-    std::fs::write("hypercerts_blob.json", &native.blob)?;
-    println!("wrote hypercerts_blob.json ({} bytes) — pin at the cid above", native.blob.len());
+    let blob_path = common::write_out(&out, "hypercerts_blob.json", &native.blob)?;
+    println!("wrote {} ({} bytes) — pin at the cid above", blob_path.display(), native.blob.len());
     // The skippedDigest PREIMAGE: watchers audit every rule-Φ/record skip without recompute.
-    std::fs::write("hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
-    println!("wrote hypercerts_skips.json ({} skip entries)", native.skips.len());
-    write_bundle(&input, &native)?;
+    let skips_path =
+        common::write_out(&out, "hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
+    println!("wrote {} ({} skip entries)", skips_path.display(), native.skips.len());
+    write_bundle(&input, &native, &out)?;
     Ok(())
 }
 
-fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
+fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
 
     let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
-    std::fs::write("hypercerts_proof.bin", &blob)?;
-    std::fs::write("hypercerts_public_values.bin", &public_values)?;
-    std::fs::write("hypercerts_blob.json", &native.blob)?;
-    std::fs::write("hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
-    write_bundle(&input, &native)?;
-    println!("wrote hypercerts_proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
+    let proof_path = common::write_out(&out, "hypercerts_proof.bin", &blob)?;
+    common::write_out(&out, "hypercerts_public_values.bin", &public_values)?;
+    let blob_path = common::write_out(&out, "hypercerts_blob.json", &native.blob)?;
+    common::write_out(&out, "hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
+    write_bundle(&input, &native, &out)?;
     println!(
-        "wrote hypercerts_blob.json ({} bytes) — pin at the cid for the UI",
+        "wrote {} ({} blob bytes, {} seal bytes)",
+        proof_path.display(),
+        blob.len(),
+        seal.len()
+    );
+    println!(
+        "wrote {} ({} bytes) — pin at the cid for the UI",
+        blob_path.display(),
         native.blob.len()
     );
     println!("publicValues: 0x{}", hex::encode(&public_values));

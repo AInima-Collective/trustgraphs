@@ -1,7 +1,1 @@
 concurrency: 4
-
-remote:
-  insecure: true
-
-experiments:
-  REMOTE_TASKFILES: 1

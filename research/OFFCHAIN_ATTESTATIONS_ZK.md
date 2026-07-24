@@ -1,9 +1,9 @@
 # Offchain Attestations, ZK-Proven — Extending the Trustless Seam Beyond the Chain
 
-**Status:** 📐 **Normative, in execution** ([`/GOAL.md`](../GOAL.md)). Grounded in four source dossiers (see Appendix A); numbers marked *(soft)* die at the Phase-A spike (GOAL.md M1) or become measured facts — the spike ran 2026-07-14; measured values in [`offchain/05-spike-results.md`](./offchain/05-spike-results.md) (headline: patched ecrecover is 8× cheaper than assumed; PGU ≈ 1.8–3.4× cycles for precompiled ops).
+**Status:** 📐 **Normative, realized** — the architecture this document specifies is built (lane 2, envelopes 0/1, journal v2; see [`docs/PROGRAMS.md`](../docs/PROGRAMS.md)). Grounded in four source dossiers (see Appendix A); numbers marked *(soft)* died at the Phase-A spike (the build plan's M1) or became measured facts — the spike ran 2026-07-14; measured values in [`offchain/05-spike-results.md`](./offchain/05-spike-results.md) (headline: patched ecrecover is 8× cheaper than assumed; PGU ≈ 1.8–3.4× cycles for precompiled ops).
 **Scope:** How TrustGraph's attestations can live in decentralized offchain stores — AT Protocol (Bluesky) repos first among them — while the `{account → score}` merkle root stays a permissionless SP1 zero-knowledge proof, soundness intact.
 **Relationship to [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md):** v1 built the guest → journal → `submitProof` seam for *on-chain* inputs, with `AttestationAccumulator` supplying input completeness. This document changes exactly one load-bearing thing: **who commits to input completeness, and how**. The guest pipeline, journal discipline, verifier gate, `MerkleSnapshot` write path, and consumer contracts all survive.
-**Relationship to [`PRIVACY_ARCHITECTURE.md`](./PRIVACY_ARCHITECTURE.md):** this is a two-track document. Track 1 (the bulk) is the *public* offchain lane. Track 2 (§9) shows exactly which pieces change under encryption, mapping onto the privacy roadmap's Layer 1 — and confirms the offchain move is a *prerequisite improvement* for privacy, not a detour.
+**Relationship to [`PRIVACY_ARCHITECTURE.md`](./archive/PRIVACY_ARCHITECTURE.md):** this is a two-track document. Track 1 (the bulk) is the *public* offchain lane. Track 2 (§9) shows exactly which pieces change under encryption, mapping onto the privacy roadmap's Layer 1 — and confirms the offchain move is a *prerequisite improvement* for privacy, not a detour.
 
 ---
 
@@ -231,7 +231,7 @@ Honest one-liner, updated from v1: trust moves from *"governance set the guest +
 
 The offchain move is not itself a privacy move — an atproto firehose record is *more* observable than L2 calldata, and EAS-offchain blobs on IPFS are public. But it strictly improves the privacy roadmap's starting position, and the seam holds exactly as `ZK_ARCHITECTURE.md` promised: **under encryption, only the guest's input-decoding step changes.** Anchors, accumulators, journal, verifier, write path — identical, because they commit to bytes, and ciphertext is bytes.
 
-What changes per layer of [`PRIVACY_ARCHITECTURE.md`](./PRIVACY_ARCHITECTURE.md):
+What changes per layer of [`PRIVACY_ARCHITECTURE.md`](./archive/PRIVACY_ARCHITECTURE.md):
 
 - **Layer 1 (encrypted attestations) gets easier.** The vouch record's `weight` (and optionally `subject`) become ciphertext under the committee threshold key, with the Noir/in-guest validity proof attached — as a *record field*, no EAS schema-resolver gymnastics, no calldata. The heaviest Layer-0 item from the privacy doc ("stop broadcasting the plaintext graph on-chain") is subsumed: lane-2 edges never touch the chain at all. Interim, committee-free option: the EAS private-data pattern (merkle-ized fields) hides weights from the public while the prover still sees them — weaker, shippable now.
 - **Layer 2 (who decrypts) is unchanged** — the committee/TEE/threshold-decrypt decision is orthogonal to where ciphertexts are stored. One improvement: the prover domain fetches ciphertexts from PDSes/DA instead of from public chain state, so the *public* never holds the ciphertext corpus to attack later (a real harvest-now-decrypt-later reduction).

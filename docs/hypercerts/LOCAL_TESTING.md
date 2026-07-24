@@ -2,7 +2,7 @@
 
 This guide covers the **hypercerts instance** (atproto records → envelope-1 proof → trust-weighted
 `{node → score}` root). The **EAS/trust-graph** local-testing guide is
-[`/LOCAL_TESTING.md`](../../LOCAL_TESTING.md); operations for a real deployment are in
+[`docs/trust-graph/LOCAL_TESTING.md`](../trust-graph/LOCAL_TESTING.md); operations for a real deployment are in
 [`RUNBOOK.md`](./RUNBOOK.md); third-party epoch reproduction is [`REPRODUCE.md`](./REPRODUCE.md).
 
 Two ways to exercise it locally:
@@ -69,6 +69,7 @@ real repos, real envelope-1 verification, a real Groth16 proof, and the real SP1
 export RPC=http://127.0.0.1:8545
 export PK=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # anvil key 0
 export PROVER=zk/prover/target/release/trustgraph-prover
+export HC=.trustgraph/hypercerts   # where the prover reads/writes this program's generated files
 ```
 
 ### 1. Discover publishing DIDs
@@ -98,20 +99,21 @@ cd zk/prover && cargo build --release --features witness-atproto && cd ../..
 curl -s -X POST https://api.hi.gainforest.app/graphql -H "Content-Type: application/json" \
   -d '{"query":"{ appCertifiedGraphFollow(first: 50) { edges { node { did } } } }"}' \
   | jq -r '.data.appCertifiedGraphFollow.edges[].node.did' | sort -u \
-  | $PROVER witness fetch --stdin --keep-going --relay-url https://certified.one \
-      --archive-dir .witness-archive
+  | $PROVER witness fetch --stdin --keep-going --relay-url https://certified.one
+# (archives into $HC/witness-archive by default; override with --archive-dir)
 
 # archive → GuestInput: every manifest entry becomes an anchored envelope-1 witness, and
 # badge-definition strongRefs are resolved across the witness CARs. stdout is the
 # did/nodeId/head list you register + anchor in step 4 — keep it.
-$PROVER hypercerts buildinput --archive-dir .witness-archive \
+$PROVER hypercerts buildinput \
   --seed-did did:plc:rrpj5emotskpamzcr3642qk6 \
   --seed-did did:plc:wjthxgygf2hwaknaekgmmthi \
-  --out input.json > anchors.txt
+  > $HC/anchors.txt
+# (reads $HC/witness-archive, writes $HC/hypercerts_input.json; --archive-dir/--out override)
 
 # real repos through the SP1 guest, guest == native byte-assert (no proof yet).
 # (On a <16 GiB box, prefix executor-only commands with SP1_PROVER=mock — see troubleshooting.)
-$PROVER hypercerts execute input.json
+$PROVER hypercerts execute $HC/hypercerts_input.json
 ```
 
 `--seed-did` (repeatable) fills the §6.1 launch params' **trusted-seed set** — the partner-curated
@@ -155,7 +157,7 @@ a key that isn't funded on your anvil — the CLI `--private-key` does *not* ove
 FUNDED_KEY=$PK \
 SP1_VERIFIER_GATEWAY=$GW \
 HYPERCERTS_VKEY=$($PROVER hypercerts vkey) \
-HYPERCERTS_PARAMS_HASH=$($PROVER hypercerts paramshash input.json) \
+HYPERCERTS_PARAMS_HASH=$($PROVER hypercerts paramshash $HC/hypercerts_input.json) \
 forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance \
   --sig "run(string)" local --rpc-url $RPC --private-key $PK --broadcast --skip-simulation
 export HC_REGISTRY=$(jq -r .anchor_registry .docker/hypercerts_instance_local_deploy.json)
@@ -168,7 +170,7 @@ gate below is just `$PK`.
 
 ### 4. Register + anchor the real heads
 
-Each line of `anchors.txt` is one node. Register it (kind 1 = DID), anchor its head, and patch
+Each line of `$HC/anchors.txt` is one node. Register it (kind 1 = DID), anchor its head, and patch
 the anchor's **real** `block.timestamp` into the input — the guest re-folds the anchor log and
 must match the checkpointed `anchorAcc` exactly:
 
@@ -182,9 +184,9 @@ while read -r _ node head; do
     --rpc-url $RPC --private-key $PK
   TS=$(cast block latest --field timestamp --rpc-url $RPC)
   jq --argjson i $i --argjson ts $TS '.anchors[$i].block_timestamp = $ts' \
-    input.json > tmp.json && mv tmp.json input.json
+    $HC/hypercerts_input.json > tmp.json && mv tmp.json $HC/hypercerts_input.json
   i=$((i+1))
-done < anchors.txt
+done < $HC/anchors.txt
 ```
 
 ### 5. Trigger the checkpoint
@@ -200,10 +202,10 @@ cast call $HC_SNAPSHOT "anchorCheckpoints(uint256)(bytes32,uint64)" 0 --rpc-url 
 cd zk/prover
 # Succinct prover network (no big box needed; key = your Succinct network account):
 SP1_PROVER=network NETWORK_PRIVATE_KEY=$NETWORK_PRIVATE_KEY \
-  cargo run --release --features "network" -- hypercerts prove ../../input.json --groth16
+  cargo run --release --features "network" -- hypercerts prove ../../.trustgraph/hypercerts/hypercerts_input.json --groth16
 # or local Groth16 — ~16–32 GiB + the native-gnark feature (gnark/Go toolchain):
 #   SP1_PROVER=cpu cargo run --release --features "witness-atproto native-gnark" -- \
-#     hypercerts prove ../../input.json --groth16
+#     hypercerts prove ../../.trustgraph/hypercerts/hypercerts_input.json --groth16
 cd ../..
 ```
 
@@ -212,8 +214,8 @@ the command line as shown, or `export` it; a plain `VAR=value` line in zsh or an
 never reaches the prover. On the network backend you'll see request-submitted/polling logs right
 after the `vkey:` line.
 
-Writes `hypercerts_proof.bin`, the pinnable `hypercerts_blob.json`, and
-`hypercerts_skips.json` (the `skippedDigest` preimage — every rule-Φ and record-level skip the
+Writes `$HC/hypercerts_proof.bin`, the pinnable `$HC/hypercerts_blob.json`, and
+`$HC/hypercerts_skips.json` (the `skippedDigest` preimage — every rule-Φ and record-level skip the
 guest committed). Three modest repos run ~4M guest cycles, so proving cost is small.
 
 ### 7. submitProof + post-checks
@@ -221,14 +223,14 @@ guest committed). Three modest repos run ~4M guest cycles, so proving cost is sm
 Grab the journal args from `hypercerts execute` output (or the `prove` log), then land it:
 
 ```bash
-EXEC=$($PROVER hypercerts execute input.json)
+EXEC=$($PROVER hypercerts execute $HC/hypercerts_input.json)
 ROOT=$(echo "$EXEC" | awk '/^outputRoot:/{print $2}');   IPFS=$(echo "$EXEC" | awk '/^ipfsHash:/{print $2}')
 CID=$(echo "$EXEC" | awk '/^cid:/{print $2}');           TOTAL=$(echo "$EXEC" | awk '/^totalValue:/{print $2}')
 SKIPPED=$(echo "$EXEC" | awk '/^skippedDigest:/{print $2}')
 
-# (no xxd? use: "0x$(od -An -v -tx1 zk/prover/hypercerts_proof.bin | tr -d ' \n')")
+# (no xxd? use: "0x$(od -An -v -tx1 $HC/hypercerts_proof.bin | tr -d ' \n')")
 cast send $HC_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  0 $ROOT $IPFS $CID $TOTAL $SKIPPED "0x$(xxd -p zk/prover/hypercerts_proof.bin | tr -d '\n')" \
+  0 $ROOT $IPFS $CID $TOTAL $SKIPPED "0x$(xxd -p $HC/hypercerts_proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
 
 # the root is on-chain:
@@ -265,7 +267,7 @@ jq --slurpfile hc .docker/hypercerts_instance_local_deploy.json \
   .docker/deployment_summary.json > tmp.json && mv tmp.json .docker/deployment_summary.json
 
 # b. Pin the blob so ingestion can fetch it (kubo from docker-compose.dev.yml):
-curl -sF file=@zk/prover/hypercerts_blob.json \
+curl -sF file=@$HC/hypercerts_blob.json \
   "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
 # c. Indexer env — write BOTH into indexer/.env.local so they survive shell restarts
@@ -273,7 +275,7 @@ curl -sF file=@zk/prover/hypercerts_blob.json \
 #    sweeps up production events, and never reaches yours — see the main guide's Indexer section):
 cat >> indexer/.env.local <<EOF
 PONDER_START_BLOCK=$(( $(cast rpc anvil_nodeInfo --rpc-url $RPC | jq -r '.forkConfig.forkBlockNumber') + 1 ))
-HYPERCERTS_BUNDLE_PATH=$PWD/zk/prover/hypercerts_bundle.json
+HYPERCERTS_BUNDLE_PATH=$PWD/$HC/hypercerts_bundle.json
 EOF
 pnpm indexer dev
 
@@ -329,12 +331,10 @@ label nodes but never mislabel them.
 - **A node scores zero unexpectedly** → check `hypercerts_skips.json` first; reasons are the
   closed enum in `hypercerts_core::semantics::skip_reason` (+ rule-Φ CARRIED/DROPPED from
   `pagerank_core::skip_reason`).
-- **`hypercerts execute`/`prove` overwrite `zk/prover/hypercerts_blob.json`** — a committed
-  fixture artifact lives at that path; run from another directory or `git checkout` it after.
 - **Regenerating the fixture**: the committed two-repo fixture (alice + bob, all seven v1.1.0
-  collections, a real `link.evm` signature) is generated by `spike/hypercerts-fixture/gen/gen.mjs`
+  collections, a real `link.evm` signature) is generated by `test/fixtures/atproto/hypercerts/gen/gen.mjs`
   against a real in-process PDS + PLC (`@atproto/dev-env`). DIDs/keys are random per run, so
-  regenerating means re-pinning the consumers listed in `spike/hypercerts-fixture/fixtures/README.md`
+  regenerating means re-pinning the consumers listed in `test/fixtures/atproto/hypercerts/fixtures/README.md`
   — don't regenerate unless you're changing the fixture's content.
 
 See [`RUNBOOK.md`](./RUNBOOK.md) for the deploy battery, roles, and the weekly epoch loop;

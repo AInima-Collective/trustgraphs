@@ -47,7 +47,7 @@ export const NetworkPage = () => {
     refresh,
   } = useNetwork()
 
-  const { name, link, about, callToAction, criteria } = network
+  const { name, link, about, callToAction, applicationUrl, criteria } = network
 
   // Define table columns
   const columns: Column<NetworkEntry>[] = [
@@ -160,6 +160,18 @@ export const NetworkPage = () => {
               className="mb-2"
             >
               {callToAction.label}
+            </ButtonLink>
+          )}
+
+          {applicationUrl && (
+            <ButtonLink
+              href={applicationUrl}
+              target="_blank"
+              variant="brand"
+              rel="noopener noreferrer"
+              className="mb-2"
+            >
+              Apply to join
             </ButtonLink>
           )}
 

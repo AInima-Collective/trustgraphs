@@ -89,22 +89,23 @@ never prover-chosen.
 task contributions:prove-round [ID=<checkpoint>]
 ```
 
-Which is, by hand (binary: `zk/prover`, built `--release --features fetch`):
+Which is, by hand (run from `zk/prover`, built `--release --features fetch`):
 
 ```bash
 cargo run --release --features fetch -- contributions fetch \
   --rpc $RPC_URL --snapshot $SNAP --eas $EAS_ADDRESS \
-  --checkpoint <id> --params params.contributions.json \
-  --trust-schema-uid <vouching schema uid> --out contributions_input.json
-SP1_PROVER=mock cargo run --release --features fetch -- contributions execute contributions_input.json
-cargo run --release --features fetch -- contributions prove contributions_input.json --groth16
-curl -sF file=@contributions_blob.json "http://127.0.0.1:5001/api/v0/add?cid-version=1&raw-leaves=true"
+  --checkpoint <id> --params ../../params.contributions.json \
+  --trust-schema-uid <vouching schema uid>
+# (writes .trustgraph/contributions/contributions_input.json; override with --out)
+SP1_PROVER=mock cargo run --release --features fetch -- contributions execute ../../.trustgraph/contributions/contributions_input.json
+cargo run --release --features fetch -- contributions prove ../../.trustgraph/contributions/contributions_input.json --groth16
+curl -sF file=@../../.trustgraph/contributions/contributions_blob.json "http://127.0.0.1:5001/api/v0/add?cid-version=1&raw-leaves=true"
 ```
 
 `fetch` re-derives the input from the `EdgeFolded` logs and self-checks by
 re-folding to the checkpointed accumulators. `execute` byte-asserts guest ==
 native and prints the submit args. `prove` writes
-`contributions_proof.bin` = `abi.encode(publicValues, seal)`. Real proving
+`.trustgraph/contributions/contributions_proof.bin` = `abi.encode(publicValues, seal)`. Real proving
 (not the dev mock gateway): `SP1_PROVER=cpu` + `--features native-gnark`
 (~16 GiB) or `SP1_PROVER=network` with `NETWORK_PRIVATE_KEY`.
 

@@ -16,6 +16,8 @@ vars:
   PARAMS_FILE: 'params.contributions.json'
   SUBMIT_ENV: '.docker/contributions_round_submit.env'
   IPFS_API: 'http://127.0.0.1:5001'
+  # Where the prover writes this program's generated outputs (gitignored).
+  OUT_DIR: '.trustgraph/contributions'
 
 tasks:
   # ──────────────────────────────────────────────────────────────────────────
@@ -104,9 +106,9 @@ tasks:
         (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions fetch \
           --rpc {{.RPC_URL}} --snapshot "$SNAPSHOT" --eas "$EAS" --checkpoint "$ID" \
           --params ../../{{.PARAMS_FILE}} --trust-schema-uid "$VOUCH_UID" \
-          --out ../../contributions_input.json)
+          --out ../../{{.OUT_DIR}}/contributions_input.json)
         echo "== execute (guest == native byte-assert) =="
-        EXEC=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions execute ../../contributions_input.json)
+        EXEC=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions execute ../../{{.OUT_DIR}}/contributions_input.json)
         echo "$EXEC"
         {
           echo "CHECKPOINT_ID=$ID"
@@ -116,9 +118,9 @@ tasks:
           echo "TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')"
         } > {{.SUBMIT_ENV}}
         echo "== prove (mock groth16) =="
-        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions prove ../../contributions_input.json --groth16)
+        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions prove ../../{{.OUT_DIR}}/contributions_input.json --groth16)
         echo "== pin the payout blob =="
-        curl -sF file=@zk/prover/contributions_blob.json "{{.IPFS_API}}/api/v0/add?cid-version=1&raw-leaves=true"
+        curl -sF file=@{{.OUT_DIR}}/contributions_blob.json "{{.IPFS_API}}/api/v0/add?cid-version=1&raw-leaves=true"
         echo ""
         cat {{.SUBMIT_ENV}}
 
@@ -126,13 +128,13 @@ tasks:
     desc: 'submitProof for the checkpoint proved by prove-round'
     preconditions:
       - test -f {{.SUBMIT_ENV}}
-      - test -f zk/prover/contributions_proof.bin
+      - test -f {{.OUT_DIR}}/contributions_proof.bin
     cmds:
       - |
         set -e
         . ./{{.SUBMIT_ENV}}
         SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
-        PROOF="0x$(od -An -v -tx1 zk/prover/contributions_proof.bin | tr -d ' \n')"
+        PROOF="0x$(od -An -v -tx1 {{.OUT_DIR}}/contributions_proof.bin | tr -d ' \n')"
         cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
           "$CHECKPOINT_ID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" \
           0x0000000000000000000000000000000000000000000000000000000000000000 "$PROOF" \

@@ -29,7 +29,8 @@ try {
     ponder:
       env === 'development'
         ? 'http://127.0.0.1:65421'
-        : 'https://trust-graph.wavs.xyz/ponder',
+        : // No production deployment exists today; set PONDER_URL when one does.
+          process.env.PONDER_URL || 'https://ponder.example.com/ponder',
     ipfsGateway:
       env === 'development'
         ? 'http://127.0.0.1:8080/ipfs/'

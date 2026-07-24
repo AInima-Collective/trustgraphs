@@ -276,13 +276,3 @@ export const contributionValuationAudit = offchainSchema.table(
     index().on(t.status),
   ]
 )
-
-export const localismFundApplication = offchainSchema.table(
-  'localism_fund_application',
-  (t) => ({
-    address: t.text().primaryKey(),
-    url: t.text().notNull(),
-    updatedAt: t.bigint({ mode: 'bigint' }).notNull(),
-  }),
-  (t) => [index().on(t.url)]
-)

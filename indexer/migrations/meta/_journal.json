@@ -5,57 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1760551795517,
-      "tag": "0000_noisy_kronos",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1761007098799,
-      "tag": "0001_smiling_drax",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1765838296733,
-      "tag": "0002_chief_veda",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1783283982785,
-      "tag": "0003_orange_thena",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1784067138302,
-      "tag": "0004_chemical_lilandra",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1784160166831,
-      "tag": "0005_milky_snowbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1784773339614,
-      "tag": "0006_careless_pixie",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1784774796507,
-      "tag": "0007_magenta_wrecker",
+      "when": 1784906667933,
+      "tag": "0000_salty_mach_iv",
       "breakpoints": true
     }
   ]

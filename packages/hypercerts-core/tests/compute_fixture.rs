@@ -65,10 +65,10 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 fn fixture_input() -> (GuestInput, B256) {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/hypercerts.car")).unwrap();
+        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car")).unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
-            "{root}/spike/hypercerts-fixture/fixtures/hypercerts.plc.json"
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
         ))
         .unwrap(),
     )

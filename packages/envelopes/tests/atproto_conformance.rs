@@ -3,7 +3,7 @@
 //! Two halves:
 //!
 //!   1. Canonical interop vectors — pinned against the upstream atproto test-vector repos,
-//!      vendored under `spike/conformance-fixtures/`:
+//!      vendored under `test/fixtures/atproto/interop/`:
 //!        * `mst/key_heights.json`      (bluesky-social/atproto-interop-tests @ 056e574) →
 //!          `mst::key_layer` == atproto `HeightForKey`.
 //!        * `mst/common_prefix.json`    (same repo)                                       →
@@ -21,7 +21,7 @@
 //!      layer-skip, non-canonical prefix compression, reordered/duplicated entries, provable
 //!      absence, an equivocation pair, and an end-to-end p256 repo.
 //!
-//! See `spike/conformance-fixtures/README.md` for provenance + the Go generator.
+//! See `test/fixtures/atproto/interop/README.md` for provenance + the Go generator.
 
 use envelopes::atproto::carset::{cid_dagcbor, Car};
 use envelopes::atproto::commit::{self, Curve, Multikey};
@@ -338,7 +338,7 @@ fn record(ty: &str, rkey_seed: &str) -> Vec<u8> {
 /// `mst::key_layer` == atproto `HeightForKey`, pinned against `mst/key_heights.json`.
 #[test]
 fn conformance_key_heights() {
-    let v = read_json("spike/conformance-fixtures/interop/key_heights.json");
+    let v = read_json("test/fixtures/atproto/interop/key_heights.json");
     let mut n = 0;
     for e in v.as_array().unwrap() {
         let key = e["key"].as_str().unwrap();
@@ -352,7 +352,7 @@ fn conformance_key_heights() {
 /// `mst::lcp` == atproto `CountPrefixLen`, pinned against `mst/common_prefix.json`.
 #[test]
 fn conformance_common_prefix() {
-    let v = read_json("spike/conformance-fixtures/interop/common_prefix.json");
+    let v = read_json("test/fixtures/atproto/interop/common_prefix.json");
     let mut n = 0;
     for e in v.as_array().unwrap() {
         let l = e["left"].as_str().unwrap().as_bytes();
@@ -369,7 +369,7 @@ fn conformance_common_prefix() {
 /// valid low-S k256+p256 verify; high-S and DER-encoded signatures are rejected.
 #[test]
 fn conformance_signature_fixtures() {
-    let v = read_json("spike/conformance-fixtures/interop/signature-fixtures.json");
+    let v = read_json("test/fixtures/atproto/interop/signature-fixtures.json");
     let mut seen_low_s = 0;
     let mut seen_high_s = 0;
     let mut seen_der = 0;
@@ -412,7 +412,7 @@ fn conformance_canonical_trees_walk_exact() {
         ("neighbor_two_layers_down.car", vec!["A0/374913", "B2/827649", "C0/451630"]),
     ] {
         let bytes =
-            std::fs::read(fixture(&format!("spike/conformance-fixtures/car/{car_file}"))).unwrap();
+            std::fs::read(fixture(&format!("test/fixtures/atproto/interop/car/{car_file}"))).unwrap();
         let car = Car::parse(&bytes).expect("canonical CAR parses (content-addressed)");
         let walk = Walker::full(&car).run(&car.roots[0]).expect("canonical tree accepted");
         let got: Vec<String> =
@@ -432,7 +432,7 @@ fn conformance_canonical_trees_walk_exact() {
 #[test]
 fn adversarial_boundary_fencing() {
     let bytes =
-        std::fs::read(fixture("spike/conformance-fixtures/car/two_deep_split.car")).unwrap();
+        std::fs::read(fixture("test/fixtures/atproto/interop/car/two_deep_split.car")).unwrap();
     let car = Car::parse(&bytes).unwrap();
     let root = car.roots[0];
     let full = Walker::full(&car).run(&root).unwrap().entries;
@@ -595,7 +595,7 @@ fn adversarial_duplicate_entries_rejected() {
 /// so non-existence is authenticated, not merely "not seen".
 #[test]
 fn absence_semantics_provable_nonexistence() {
-    let car_bytes = std::fs::read(fixture("spike/mst/fixtures/atproto.car")).unwrap();
+    let car_bytes = std::fs::read(fixture("test/fixtures/atproto/repos/atproto.car")).unwrap();
     let car = Car::parse(&car_bytes).unwrap();
     // decode the commit to get the data root
     let root = car.roots[0];

@@ -1,7 +1,7 @@
 'use client'
 
 import { usePonderQuery } from '@ponder/react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowUpRight,
   Check,
@@ -104,16 +104,6 @@ export const AccountProfilePage = ({
       router.prefetch(`/attestations/${attestation.uid}`)
     })
   }, [router, attestations])
-
-  // Query for Localism Fund application URL via address and ENS name (if available), since the user may have used either one on the application.
-  const localismFundApplicationUrl = useQueries({
-    queries: [
-      ponderQueries.localismFundApplicationUrl(address),
-      ...(ensName ? [ponderQueries.localismFundApplicationUrl(ensName)] : []),
-    ],
-    // Get first valid URL.
-    combine: (results) => results.find((r) => !!r.data)?.data || undefined,
-  })
 
   const { networkRows, maxScore, averageScore, medianScore } = useMemo(() => {
     const networkRows =
@@ -319,10 +309,12 @@ export const AccountProfilePage = ({
         />
 
         <div className="flex flex-row gap-2">
-          {!!localismFundApplicationUrl && (
-            <Tooltip title="Open Application in Notion">
+          {!!selectedNetworkRow?.network.applicationUrl && (
+            <Tooltip
+              title={`Apply to join ${selectedNetworkRow.network.name}`}
+            >
               <ButtonLink
-                href={localismFundApplicationUrl}
+                href={selectedNetworkRow.network.applicationUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 size="icon"

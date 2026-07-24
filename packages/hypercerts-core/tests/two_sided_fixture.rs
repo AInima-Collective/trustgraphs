@@ -23,7 +23,7 @@ use pagerank_core::AnchorRecord;
 use sha2::Digest;
 use std::collections::BTreeMap;
 
-// The three DIDs of the regenerated two-sided fixture (spike/hypercerts-fixture/fixtures/meta.json).
+// The three DIDs of the regenerated two-sided fixture (test/fixtures/atproto/hypercerts/fixtures/meta.json).
 const ALICE: &str = "did:plc:ss2ib2f37vegrihrkrfkrw55";
 const BOB: &str = "did:plc:uz24xnaizz6bbw6lvrtvebja";
 const CAROL: &str = "did:plc:carol0000000000000000000";
@@ -81,9 +81,9 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 /// witness assembly (same shape as compute_fixture.rs / atproto_real.rs).
 fn load(did: &str, car_rel: &str, plc_rel: &str) -> (B256, AtprotoWitness) {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let car = std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/{car_rel}")).unwrap();
+    let car = std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{car_rel}")).unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(format!("{root}/spike/hypercerts-fixture/fixtures/{plc_rel}"))
+        &std::fs::read_to_string(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{plc_rel}"))
             .unwrap(),
     )
     .unwrap();

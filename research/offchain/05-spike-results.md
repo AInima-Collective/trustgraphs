@@ -1,4 +1,4 @@
-# Phase-A spike results (GOAL.md M1)
+# Phase-A spike results (the offchain build plan's M1)
 
 Measured facts that retire the "soft" numbers in the OFFCHAIN/HYPERCERTS plans.
 Each section is owned by one spike track. Append, do not clobber.
@@ -143,7 +143,7 @@ cycles say otherwise.
 ### 1.9 What remains for M3 conformance
 
 This spike validated the happy path + basic tamper on real Bluesky repos. M3 still
-needs, per GOAL.md M3 exit:
+needs, per the build plan's M3 exit:
 
 - **indigo test-vector suite** - run against indigo's own repo/MST conformance
   vectors (structure, absence proofs, boundary fencing), not just live CARs.

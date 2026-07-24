@@ -1,6 +1,6 @@
 # Reproducing a hypercerts epoch from public data (clean-room)
 
-GOAL.md "Done when" #3: *for any pilot epoch, a third party holding only public data — the
+The build plan's "Done when" #3: *for any pilot epoch, a third party holding only public data — the
 chain, the archived CARs, and the witness bundle — can re-derive the root and the full
 `skippedDigest` preimage, with no appeal to our indexer.* This is the procedure. Every step
 uses only public inputs and this repo's code; nothing consults our infrastructure.
@@ -39,7 +39,7 @@ cargo build --release -p input-exporter && (cd zk/prover && cargo build --releas
 #    comes from step 1 — never from the bundle.)
 
 # 3. Re-derive, offline:
-cd zk/prover && SP1_PROVER=mock cargo run --release -- hypercerts execute input.json
+cd zk/prover && SP1_PROVER=mock cargo run --release -- hypercerts execute ../../.trustgraph/hypercerts/hypercerts_input.json
 # prints: outputRoot, ipfsHash, cid, totalValue, skippedDigest — and writes
 #   hypercerts_blob.json   (the {nodeId -> score} preimage of ipfsHash)
 #   hypercerts_skips.json  (the FULL skippedDigest preimage: every (nodeId, reason,

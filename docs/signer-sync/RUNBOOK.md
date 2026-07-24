@@ -10,7 +10,8 @@ deterministic algorithm), but has its own guest bin, journal, verification key, 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) (→ `research/SIGNER_SYNC_ZK_PLAN.md`) for the design and the
 program index in [`../PROGRAMS.md`](../PROGRAMS.md). The shared toolchain, core-crate build, and the
 mainnet-fork harness are in the [`trust-graph` runbook](../trust-graph/RUNBOOK.md); this file covers
-only the signer-specific deltas.
+only the signer-specific deltas. The end-to-end local walkthrough (which exercises signer-sync
+alongside the root loop) is [`../trust-graph/LOCAL_TESTING.md`](../trust-graph/LOCAL_TESTING.md).
 
 ## Components (signer-specific)
 
@@ -32,8 +33,8 @@ forge test --match-path 'test/unit/golden/SignerGoldenVectors.t.sol'
 
 # Guest == native (no proof) for the signer selection:
 cd zk/prover
-SP1_PROVER=cpu cargo run --release -- signer execute input.json   # guest == native
-#   ≡ task zk:execute PROGRAM=signer
+SP1_PROVER=cpu cargo run --release -- signer execute signer_input.json   # guest == native
+#   ≡ task zk:execute PROGRAM=signer  (omit the input to use the built-in sample)
 ```
 
 ## Determine the deploy constants
@@ -42,12 +43,12 @@ SP1_PROVER=cpu cargo run --release -- signer execute input.json   # guest == nat
 cd zk/prover
 cargo run --release -- signer vkey                              # -> programVKey for the signer guest
 #   ≡ task zk:vkey PROGRAM=signer
-cargo run --release -- signer selectionparamshash input.json   # -> selectionParamsHash
-# input.json is a serialized pagerank_core::SignerInput (edges + params + selection). Omit for the sample.
+cargo run --release -- signer selectionparamshash signer_input.json   # -> selectionParamsHash
+# signer_input.json is a serialized pagerank_core::SignerInput (edges + params + selection). Omit for the sample.
 ```
 
-> **TODO(vkey):** the signer vkey is re-derived at **M0 exit** (ELF layout changes under the reorg) and
-> recorded in [`../PROGRAMS.md`](../PROGRAMS.md).
+> **vkey:** the current signer vkey is recorded in [`../PROGRAMS.md`](../PROGRAMS.md) (it rotates
+> whenever the guest ELF changes, even for refactors that don't change semantics).
 
 `SignerSyncZkModule` is deployed + enabled by `script/DeployZodiacSafes.s.sol`, reusing the
 MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the
@@ -70,11 +71,13 @@ Build the signer input, validate, then run the loop:
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
   --checkpoint $CHECKPOINT_ID --params params.json \
-  --signer --selection selection.json --out input.json
+  --signer --selection selection.json
+# (writes .trustgraph/signer-sync/signer_input.json; override with --out)
 
 cd zk/prover
-SP1_PROVER=cpu cargo run --release -- signer execute input.json   # guest == native (no proof)
-cargo run --release -- signer prove input.json --groth16          # writes signer_proof.bin
+SP1_PROVER=cpu cargo run --release -- signer execute ../../.trustgraph/signer-sync/signer_input.json   # guest == native (no proof)
+cargo run --release -- signer prove ../../.trustgraph/signer-sync/signer_input.json --groth16
+# (writes .trustgraph/signer-sync/signer_proof.bin)
 #   ≡ task zk:prove PROGRAM=signer
 ```
 
@@ -84,7 +87,7 @@ cast send $MERKLE_SNAPSHOT "trigger()"
 # 2. Submit. SIGNERS must be strictly ascending + unique; THRESHOLD in [1, |SIGNERS|]:
 cast send $SIGNER_SYNC_MODULE \
   "submitSignerProof(uint256,address[],uint256,bytes)" \
-  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 signer_proof.bin)
+  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 .trustgraph/signer-sync/signer_proof.bin)
 ```
 
 `submitSignerProof` rebuilds the signer journal digest from the chain-pinned checkpoint + stored

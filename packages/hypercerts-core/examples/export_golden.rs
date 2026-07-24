@@ -5,7 +5,7 @@
 //! Run: `cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json`
 //!
 //! The seed DID is read from the fixture's PLC log (so the vectors track whatever repo the
-//! `spike/hypercerts-fixture` generator currently pins); every hash-formula vector (nodeIds,
+//! `test/fixtures/atproto/hypercerts` generator currently pins); every hash-formula vector (nodeIds,
 //! output leaf, E1–E4 edge weights) is synthetic and fixture-independent.
 //!
 //! The vector family:
@@ -99,10 +99,10 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 fn fixture_input() -> (GuestInput, B256, String) {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/spike/hypercerts-fixture/fixtures/hypercerts.car")).unwrap();
+        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car")).unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
-            "{root}/spike/hypercerts-fixture/fixtures/hypercerts.plc.json"
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
         ))
         .unwrap(),
     )
@@ -413,7 +413,7 @@ fn main() {
         .collect();
 
     let out = json!({
-        "note": "generated from spike/hypercerts-fixture; seed DID read from the PLC log",
+        "note": "generated from test/fixtures/atproto/hypercerts; seed DID read from the PLC log",
         "seedDid": seed_did,
         "params": {
             "dampingFp": p.damping_fp.to_string(),

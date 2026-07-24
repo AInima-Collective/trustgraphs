@@ -63,7 +63,7 @@
       "didNodeId": "0xfa3006d04d045a62fa27fff6bc18cf47156c034ddaa0ba2bea70e0d32d9b4294"
     }
   },
-  "note": "generated from spike/hypercerts-fixture; seed DID read from the PLC log",
+  "note": "generated from test/fixtures/atproto/hypercerts; seed DID read from the PLC log",
   "outputLeaf": {
     "leaf": "0xd166b00cdf403d3d93995ee1f4df415ce82c32c1e6899e3bf35cc8abd1685222",
     "nodeId": "0xfa3006d04d045a62fa27fff6bc18cf47156c034ddaa0ba2bea70e0d32d9b4294",
