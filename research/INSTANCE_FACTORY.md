@@ -1,7 +1,8 @@
 # INSTANCE_FACTORY — permissionless community instances via a TrustGraphFactory
 
-Status: research (2026-07-24). No build decision yet; tracked as
-[issue #6](https://github.com/JakeHartnell/ZkTrustGraph/issues/6). **The repo cleanup
+Status: **BUILD DECIDED 2026-07-24** — the execution spec is
+[`GOAL.md`](../GOAL.md); all §8 questions are answered in place below.
+Tracked as [issue #6](https://github.com/JakeHartnell/ZkTrustGraph/issues/6). **The repo cleanup
 program this was sequenced after closed 2026-07-24** (all six milestones landed; see
 `docs/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
 code is gone, generated artifacts live under `.trustgraph/`, and there is no live
@@ -235,8 +236,12 @@ wizard's Identity screen should carry it forward.
 Screens, all passing the plain-reader rule:
 
 1. **Identity** — name, about, membership criteria, image → pinned to
-   IPFS as the `metadataURI` blob (the app already pins score blobs; same
-   pipeline).
+   IPFS as the `metadataURI` blob. (Correction 2026-07-24: the frontend
+   has **no pin path today** — score-blob pinning lives in
+   `deploy/env.ts:uploadToIpfs()` and the runbook's `ipfs add` step;
+   the frontend's `app/api/ipfs/[cid]` route is a read-only gateway
+   proxy. The wizard needs a new pin route built on the `pinApi`
+   pattern.)
 2. **Trusted seeds** — "pick a few accounts everyone in your community
    already trusts; scores flow outward from them." Paste addresses /
    pick from connected wallet's graph. This is the one screen with real
@@ -345,19 +350,24 @@ Sustainable posture given "hosted by us initially":
    creation tx and per-root submit gas are mainnet-priced, and the
    public mempool forces commit-reveal on permissionless bounty claims
    — are worked in `research/PROOF_SCHEDULER.md` §3.2/§4.3.)
-2. **Creator-as-admin default** (§2.3) — comfortable shipping v1 where
-   the creator holds both snapshot roles, with graduation later? The
-   alternative (auto-timelocks) roughly doubles creation complexity.
-3. **Params defaults** — bless the current live-network params as the
-   wizard defaults, and which knobs go behind "advanced"?
-4. **Vouch schema string** — one canonical schema string for all
-   factory instances (`"string comment,uint256 confidence"`), or
-   creator-customizable fields? (Canonical keeps the guest's
-   weight-field extraction uniform; customization touches
-   `weightFieldIndex` and multiplies test surface. Recommend canonical.)
+2. **Creator-as-admin default** (§2.3) — ANSWERED 2026-07-24 (Jake):
+   **yes, creator holds both snapshot roles in v1**; graduation is a
+   later, separate flow.
+3. **Params defaults** — ANSWERED 2026-07-24 (Jake): **current
+   live-network params blessed as wizard defaults**; tuning knobs go
+   behind "advanced".
+4. **Vouch schema string** — ANSWERED 2026-07-24 (Jake): **canonical**
+   (`"string comment,uint256 confidence"`) for all factory instances;
+   no creator-customizable fields in v1.
 5. **Free-tier proving commitment** — ANSWERED 2026-07-24 (Jake):
    **monthly** floor cadence, funded hosted; `epochLength` floor ≈ 30
    days of blocks. Full economics in `research/PROOF_SCHEDULER.md`.
-6. **Domain-separation timing** — fold accumulator address + chainid
-   into the params schema at the next vkey rotation (§6.1), or earlier
-   as its own rotation?
+6. **Domain-separation timing** — DECIDED 2026-07-24 (delegated to
+   Claude, "most future proof"): **now, as part of the factory build
+   itself** (`GOAL.md` M0), not deferred to a later rotation. Mainnet
+   (the home chain) has nothing deployed, so rotating before the first
+   mainnet instance costs zero ceremony; after the factory ships,
+   rotation is contagious across N live instances. The factory is also
+   exactly what creates the identical-clone hazard, and `chainId` in
+   the hash is the multi-chain prerequisite §0 demands. Journal v2
+   stays untouched.
