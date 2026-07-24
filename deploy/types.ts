@@ -68,6 +68,42 @@ export type NetworkDeploy = {
   }
 }
 
+/** One registered schema as serialized by the deploy scripts. */
+export type DeployedSchema = {
+  uid: Hex
+  key: string
+  name: string
+  description: string
+  resolver: Hex
+  revocable: boolean
+  schema: string
+}
+
+/**
+ * Shape written by `script/DeployContributionsInstance.s.sol` to
+ * `.docker/contributions_instance_<label>_deploy.json`.
+ */
+export type ContributionsInstanceDeploy = {
+  deployer: Hex
+  params_hash: Hex
+  epoch_length: number
+  contracts: {
+    contribution_resolver: Hex
+    trust_accumulator_mirror: Hex
+    trust_accumulator: Hex
+    sp1_gateway: Hex
+    zk_verifier: Hex
+    merkle_snapshot: Hex
+    fund_distributor: Hex
+    pool_token: Hex
+  }
+  schemas: {
+    claim: DeployedSchema
+    response: DeployedSchema
+    valuation: DeployedSchema
+  }
+}
+
 export type SafeZodiacSignerSyncDeploy = {
   safe_factory: Hex
   safe_singleton: Hex

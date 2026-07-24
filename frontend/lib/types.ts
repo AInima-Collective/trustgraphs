@@ -81,7 +81,45 @@ export type HypercertsNetwork = {
   }
 }
 
-export type AnyNetwork = Network | HypercertsNetwork
+/**
+ * A contributions-program instance in the network catalog: a funding round where members claim
+ * contributions, respond to being named, and rate each other's work via EAS attestations against
+ * the instance's `ContributionResolver`. Payouts flow through the instance's own
+ * `MerkleFundDistributor` once the round's proven root lands on its `MerkleSnapshot`.
+ * Address-keyed like the vouching networks, but with no vouch/pagerank surface of its own —
+ * stage-1 reputation is proven over the sibling trust network's accumulator.
+ */
+export type ContributionsNetwork = {
+  program: 'contributions'
+  id: string
+  name: string
+  hidden?: boolean
+  link?: {
+    prefix: string
+    label: string
+    href: string
+  }
+  about: string
+  callToAction?: {
+    label: string
+    href: string
+  }
+  criteria?: string
+  contracts: {
+    merkleSnapshot: Hex
+    contributionResolver: Hex
+    trustAccumulatorMirror: Hex
+    trustAccumulator: Hex
+    merkleFundDistributor: Hex
+    zkVerifier: Hex
+    /** The round's pool ERC20 (TestUSDC locally, 6 decimals). */
+    poolToken: Hex
+  }
+  /** The three contribution schemas (claim / response / valuation), from the deployment. */
+  schemas: NetworkSchema[]
+}
+
+export type AnyNetwork = Network | HypercertsNetwork | ContributionsNetwork
 
 export type NetworkSchema = {
   uid: Hex

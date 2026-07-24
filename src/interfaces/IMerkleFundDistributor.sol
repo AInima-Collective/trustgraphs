@@ -28,6 +28,10 @@ interface IMerkleFundDistributor {
         address feeRecipient;
         /// @notice The amount of the token retained as a fee.
         uint256 feeAmount;
+        /// @notice The timestamp after which claims close and sweeping opens (0 = no expiry; claims stay open forever and the distribution can never be swept).
+        uint64 claimDeadline;
+        /// @notice The amount of the token returned to the round funder by `sweep` (0 = not swept yet).
+        uint256 sweptAmount;
     }
 
     /// @notice Emitted when owner starts 2-step ownership transfer to `pendingOwner`.
@@ -108,6 +112,16 @@ interface IMerkleFundDistributor {
         uint256 newAmountDistributed
     );
 
+    /// @notice Emitted when unclaimed funds are swept back to the round funder after the claim deadline.
+    /// @param distributionIndex The index of the distribution swept.
+    /// @param to The address that received the unclaimed funds (the round funder).
+    /// @param amount The amount of unclaimed funds swept.
+    event Swept(
+        uint256 indexed distributionIndex,
+        address indexed to,
+        uint256 amount
+    );
+
     error NotOwner();
     error NotPendingOwner();
     error InvalidAddress();
@@ -123,4 +137,10 @@ interface IMerkleFundDistributor {
     error NoFundsToClaim();
     error FeePercentageTooHigh();
     error UnexpectedMerkleRoot(bytes32 expected, bytes32 actual);
+    error InvalidClaimDeadline();
+    error ClaimWindowClosed();
+    error ClaimWindowNotClosed();
+    error NoClaimDeadline();
+    error AlreadySwept();
+    error NothingToSweep();
 }

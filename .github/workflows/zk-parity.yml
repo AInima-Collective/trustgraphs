@@ -8,6 +8,8 @@ on:
       - "test/golden/**"
       - "test/unit/golden/**"
       - "frontend/lib/pagerank/**"
+      - "frontend/lib/hypercerts/**"
+      - "frontend/lib/contributions/**"
       - "taskfile/zk.yml"
 
 jobs:
@@ -17,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        program: [trust-graph, signer, hypercerts]
+        program: [trust-graph, signer, hypercerts, contributions]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4

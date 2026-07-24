@@ -62,6 +62,12 @@ const main = async () => {
         '--private-key',
         '"$FUNDED_KEY"',
         '--broadcast',
+        // Send one tx at a time, waiting for each receipt before the next. Without this, forge
+        // signs a whole script's batch with sequential nonces and fires them at once; if the RPC
+        // drops the first send (e.g. under load from a concurrently-running indexer), every later
+        // nonce lands in anvil's "queued" set behind the gap and forge polls their receipts
+        // forever (observed hanging DeployTimelocks: txpool pending 0 / queued 16).
+        '--slow',
       ],
       log: 'cmd',
       env: {

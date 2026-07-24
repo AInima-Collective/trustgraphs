@@ -4,7 +4,7 @@
 import { SchemaEncoder } from '@ethereum-attestation-service/eas-sdk'
 import { Hex, stringToHex, toHex } from 'viem'
 
-import { VISIBLE_NETWORKS } from './config'
+import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_NETWORKS } from './config'
 
 // Schema definitions with metadata for UI
 export type SchemaFieldType =
@@ -14,7 +14,12 @@ export type SchemaFieldType =
   | 'uint256'
   | 'address'
 
-const SCHEMAS = VISIBLE_NETWORKS.flatMap((network) => network.schemas)
+// Contributions instances attest through the same EAS + SchemaManager flow, so their schemas
+// (claim / response / valuation) join the vouching schemas here.
+const SCHEMAS = [
+  ...VISIBLE_NETWORKS,
+  ...VISIBLE_CONTRIBUTIONS_NETWORKS,
+].flatMap((network) => network.schemas)
 
 export class SchemaManager {
   static maybeSchemaForUid(uid: string) {
@@ -29,7 +34,12 @@ export class SchemaManager {
     return schema
   }
 
-  static encode(uid: string, data: Record<string, string | boolean>): Hex {
+  static encode(
+    uid: string,
+    // Array values cover the contribution claim schema's `address[] contributors` +
+    // `uint32[] shares` fields; scalar values behave exactly as before.
+    data: Record<string, string | boolean | string[] | number[]>
+  ): Hex {
     const schema = this.schemaForUid(uid)
 
     // Ensure all data fields are present

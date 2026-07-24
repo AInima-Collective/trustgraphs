@@ -17,6 +17,7 @@ includes:
   services: ./taskfile/services.yml
   zk: ./taskfile/zk.yml
   trustgraph: ./taskfile/trustgraph.yml
+  contributions: ./taskfile/contributions.yml
   env:
     taskfile: ./taskfile/env.yml
     flatten: true

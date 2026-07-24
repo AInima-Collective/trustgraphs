@@ -20,6 +20,8 @@ import {
 } from '../../frontend/lib/pagerank/merkle'
 import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
+import { ingestContributionsScores } from './contributions'
+import { contributionsInstanceForSnapshot } from './contributions-shared'
 import { revalidateNetwork } from './utils'
 
 /**
@@ -123,7 +125,30 @@ ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
       )
     )
     .limit(1)
-  if (existingMetadata.length > 0 && existingEntries.length > 0) {
+  // A contributions snapshot additionally needs its derived round/score rows — a crash (or an
+  // older indexer build) can leave the generic rows present but the round missing, so the skip
+  // must consider both surfaces or the ingestion is never retried.
+  const isContributions = !!contributionsInstanceForSnapshot(event.log.address)
+  const existingRound = isContributions
+    ? await offchainDb
+        .select()
+        .from(offchainSchema.contributionRound)
+        .where(
+          and(
+            eq(
+              offchainSchema.contributionRound.merkleSnapshotContract,
+              event.log.address.toLowerCase()
+            ),
+            eq(offchainSchema.contributionRound.root, root)
+          )
+        )
+        .limit(1)
+    : []
+  if (
+    existingMetadata.length > 0 &&
+    existingEntries.length > 0 &&
+    (!isContributions || existingRound.length > 0)
+  ) {
     return
   }
 
@@ -167,6 +192,22 @@ ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
       ipfsHashCid,
       totalValue
     )
+
+    // A contributions instance's blob is address-keyed like the trust graph's (v1 leaves are
+    // address-domain), so the generic ingestion above already produced the payout entries +
+    // proofs. Additionally re-derive the per-claim scores / audit rows, root-validated
+    // (src/contributions.ts) — no-op for non-contributions snapshots.
+    if (isContributions) {
+      await ingestContributionsScores(
+        scores,
+        event,
+        context,
+        root,
+        ipfsHash,
+        ipfsHashCid,
+        totalValue
+      )
+    }
   }
 
   await revalidateNetwork()
@@ -488,6 +529,52 @@ ponder.on('merkleFundDistributor:Unpaused', async ({ event, context }) => {
     })
 })
 
+/**
+ * Ensure the distribution row exists, backfilling it from contract state when the Distributed
+ * event predates the indexer (dev uses `startBlock: 'latest'` for the distributor, so a
+ * distribution created before the indexer started has no row when its Claimed/Swept arrives).
+ */
+async function ensureDistribution(
+  context: any,
+  distributorAddress: `0x${string}`,
+  distributionIndex: bigint
+) {
+  const existing = await context.db.find(merkleFundDistribution, {
+    id: distributionIndex,
+  })
+  if (existing) return existing
+
+  const distribution = await context.client.readContract({
+    address: distributorAddress,
+    abi: merkleFundDistributorAbi,
+    functionName: 'getDistribution',
+    args: [distributionIndex],
+  })
+  return await context.db
+    .insert(merkleFundDistribution)
+    .values({
+      id: distributionIndex,
+      merkleFundDistributor: distributorAddress,
+      blockNumber: BigInt(distribution.blockNumber),
+      timestamp: BigInt(distribution.timestamp),
+      root: distribution.root,
+      ipfsHash: distribution.ipfsHash,
+      ipfsHashCid: distribution.ipfsHashCid,
+      totalMerkleValue: distribution.totalMerkleValue,
+      distributor: distribution.distributor,
+      token: distribution.token,
+      amountFunded: distribution.amountFunded,
+      amountDistributed: distribution.amountDistributed,
+      feeRecipient: distribution.feeRecipient,
+      feeAmount: distribution.feeAmount,
+      claimDeadline: BigInt(distribution.claimDeadline),
+      sweptAmount: distribution.sweptAmount,
+      sweptTo: null,
+      sweptAt: null,
+    })
+    .onConflictDoNothing()
+}
+
 ponder.on('merkleFundDistributor:Distributed', async ({ event, context }) => {
   const { distributionIndex, distributor, token, amountFunded, feeAmount } =
     event.args
@@ -515,7 +602,24 @@ ponder.on('merkleFundDistributor:Distributed', async ({ event, context }) => {
     amountDistributed: 0n,
     feeRecipient: distribution.feeRecipient,
     feeAmount,
+    claimDeadline: distribution.claimDeadline,
+    sweptAmount: 0n,
+    sweptTo: null,
+    sweptAt: null,
   })
+})
+
+// M6 expiry + sweep: the funder reclaimed the unclaimed remainder after the claim deadline.
+ponder.on('merkleFundDistributor:Swept', async ({ event, context }) => {
+  const { distributionIndex, to, amount } = event.args
+  await ensureDistribution(context, event.log.address, distributionIndex)
+  await context.db
+    .update(merkleFundDistribution, { id: distributionIndex })
+    .set({
+      sweptAmount: amount,
+      sweptTo: to,
+      sweptAt: event.block.timestamp,
+    })
 })
 
 ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
@@ -528,7 +632,9 @@ ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
     newAmountDistributed,
   } = event.args
 
-  // Update the distribution's amountDistributed
+  // Update the distribution's amountDistributed (backfilling the row if the Distributed event
+  // predates the indexer — dev distributor sources start at 'latest').
+  await ensureDistribution(context, event.log.address, distributionIndex)
   await context.db
     .update(merkleFundDistribution, { id: distributionIndex })
     .set({

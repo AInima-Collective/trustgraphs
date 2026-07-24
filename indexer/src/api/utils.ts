@@ -2,18 +2,21 @@ import { SQL, sql } from 'drizzle-orm'
 import { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import { offchainDb } from './db'
-import * as offchainSchema from '../../offchain.schema'
-import networksJson from '../../networks.json'
 import { AnyNetwork, Network } from '../../../frontend/lib/types'
+import networksJson from '../../networks.json'
+import * as offchainSchema from '../../offchain.schema'
 
 /**
  * The trust-graph (EAS, address-keyed) networks from the generated catalog. Typed explicitly and
  * filtered here so typechecking doesn't depend on the box-local JSON shape: a
  * `program: "hypercerts"` entry has no schemas/pagerank config and is served by its own
- * /hypercerts routes, never these.
+ * /hypercerts routes, and a `program: "contributions"` entry (no easIndexerResolver, no pagerank
+ * config) is served by /contributions — neither belongs to the vouch-network routes.
  */
 export const EAS_NETWORKS = (networksJson as AnyNetwork[]).filter(
-  (network): network is Network => network.program !== 'hypercerts'
+  (network): network is Network =>
+    network.program !== 'hypercerts' &&
+    (network.program as string | undefined) !== 'contributions'
 )
 
 export const lower = (column: AnyPgColumn): SQL => sql`lower(${column})`

@@ -1,0 +1,55 @@
+# Contributions M6 — Adversarial Audit Pass
+
+Scope: the NEW contract surface for the contributions program only (not the whole repo).
+Branch `contribution-graph`. Reviewed against attacker concerns (a)–(e) from the M6 audit brief.
+
+Contracts audited:
+
+1. `src/contracts/eas/resolvers/ContributionResolver.sol`
+2. `src/contracts/merkle/TrustAccumulatorMirror.sol`
+3. `src/contracts/merkle/MerkleFundDistributor.sol` — M6 delta only (commit `4a41f6b`)
+4. `src/contracts/params/ContributionsParamsCodec.sol`
+5. `script/DeployContributionsInstance.s.sol` + `script/lib/ContributionsParamsJson.sol`
+6. `src/contracts/tokens/TestUSDC.sol`
+
+Label key: **CONFIRMED** = reproduced with a PoC or an exact code-path trace. **PLAUSIBLE** = argued, not
+executed.
+
+## Triage table
+
+| # | Sev | Contract | Finding | Verification | Proposed fix / rationale |
+|---|-----|----------|---------|--------------|--------------------------|
+| M6-1 | **HIGH — FIXED (`289fa25`)** | TrustAccumulatorMirror + MerkleSnapshot | **Lane-2 desync via a directly-minted mirror checkpoint.** `mirror.checkpoint()` is permissionless, has no `NoNewInputs` guard, and is not epoch-gated. Anyone can mint a lane-1 checkpoint id that `MerkleSnapshot.trigger()` never created. `anchorCheckpoints[id]` (the lane-2 freeze) is populated **only** by `trigger()`, so for a directly-minted id it stays the default `(bytes32(0), 0)`. `submitProof` accepts **any** in-range checkpoint id (`getCheckpoint(id)`), so a prover can submit against the spam id — binding lane-2 (the contribution log) to EMPTY even though the live log is non-empty. The guest happily proves this: `compute()` sets `anchor = accumulate(input.records)` with **no** non-empty guard, and `accumulate([]) == (0,0)`, which matches the on-chain `(0,0)`. A real SP1 proof over `records = []` therefore verifies against the real gateway. Result: an unpermissioned actor can apply a **contributions-blind snapshot** (contributions ignored) as the latest state, bypassing the epoch schedule and the two-lane freeze invariant, and can keep re-winning the monotonic race. If a funder distributes against the latest state, the pool is misallocated. | **CONFIRMED** — PoC `test/unit/AuditM6Poc.t.sol::test_poc_mirrorSpamCheckpoint_desyncsLane2` (passes): with 3 real contributions folded, attacker calls `mirror.checkpoint()` → `anchorCheckpoints[spamId] == (0,0)`, then `submitProof(spamId, BLIND_ROOT, …)` applies a root that ignores all contributions. ZK leg confirmed by code path: `packages/contributions-core/src/compute.rs:245` + `packages/pagerank-core/src/encode.rs:39` (`accumulate([]) → (0,0)`, no guard). | **FIXED (`289fa25`) via the local gate:** `TrustAccumulatorMirror.checkpoint()` now reverts `NotSnapshot` unless `msg.sender == snapshot`, where `snapshot` is set by a one-shot binder-only `bindSnapshot` (deploy-time circularity, like the resolver's `setSchemas`). `trigger()` remains permissionless — it is the bound caller — so every checkpoint id is minted by `trigger()` with BOTH lanes frozen at one block; an unpaired id (and thus the `(0,0)` lane-2 freeze) can no longer exist. The deploy script and both test harnesses bind after wiring. The auditor's alternative (a `triggered[id]` guard inside `MerkleSnapshot`) is more general but was declined here: `MerkleSnapshot` is the shared live-deployment contract (on the do-not-modify list), and the mirror gate closes this instance's hole with zero blast radius to the trust-graph/signer/hypercerts instances. A `NoNewInputs` guard alone would NOT have fixed this. PoC `test_poc_mirrorSpamCheckpoint_desyncsLane2` is now a regression test asserting the attack's first step reverts. |
+| M6-2 | MEDIUM | DeployContributionsInstance | **Distributor `owner` / `feeRecipient` are never handed off.** The script hands off `MerkleSnapshot`'s `CONSTITUTIONAL_ROLE` to `CONSTITUTIONAL_ADMIN`, but hard-codes `MerkleFundDistributor(owner = deployer, feeRecipient = deployer)` with no hand-off. The distributor owner can `setMerkleSnapshot` (repoint at a malicious snapshot with an attacker root), `setFeePercentage` up to 100%, `pause`, and change `feeRecipient`. In production the deploying EOA retains all of this. The asymmetry with the snapshot hand-off reads as an oversight. | **PLAUSIBLE** (requires the deployer key; ops/centralization). | For a production round, transfer distributor ownership to the same multisig/timelock as `CONSTITUTIONAL_ADMIN` (2-step `transferOwnership`/`acceptOwnership` already exists) and set a real `feeRecipient`. Accepted-risk only if the deployer key is deliberately the admin. |
+| M6-3 | LOW | DeployContributionsInstance | **Schema-registration front-run DoS.** Schema UID = `keccak256(schemaString, resolver, revocable)`. An attacker who predicts the resolver address (deployer nonce) can front-run one of the three `SchemaRegistrar.register` calls with identical args; EAS reverts `AlreadyExists`, so the deploy reverts. Recoverable (redeploy → new resolver address → new UIDs). The one-shot `setSchemas` itself is NOT front-runnable (`schemaAdmin`-only), and a front-run registration binds the same resolver, so no wrong-kind fold is possible. | **PLAUSIBLE** (griefing only). | Accept, or wrap the three `register` calls to tolerate `AlreadyExists` and read back the deterministic UID. No integrity impact. |
+| M6-4 | INFO | ContributionResolver | `onAttest` emits `IEAS.Attested` from the resolver address (not EAS). Cosmetic; the `AttestationAttested` event carries `address(_eas)` correctly and indexers should key on EAS. | Trace. | No change needed. |
+| M6-5 | INFO | TestUSDC / DeployContributionsInstance | Dev-only open-mint token, deployed + minted unconditionally by the instance script (which is itself dev-shaped: `MockSP1Gateway` when `CONTRIBUTIONS_PROGRAM_VKEY` unset). TestUSDC never sits on a privileged path — the distributor accepts an arbitrary token and claims are bounded by the proven root, not token supply — so open mint grants no claim advantage. | Trace. | Production must fund with a real token and set real vkey/gateway/admins. Confirmed cannot reach a production trust path. |
+| M6-6 | INFO | MerkleFundDistributor (M6 delta) | **Reviewed clean.** `claim` closes at `block.timestamp > claimDeadline`; `sweep` blocks while `<= claimDeadline` and opens at `> claimDeadline` — complementary strict inequalities, so a sweep-vs-late-claim race is structurally impossible. `sweep` is `nonReentrant` + CEI (`sweptAmount` set before transfer), so a native-funder reentrancy callback cannot re-enter `claim`/`sweep`. Conservation `feeAmount + amountDistributed + sweptAmount == amountFunded` holds (subtraction underflow-guarded). `distribute(…,claimDeadline)` rejects a past deadline. Legacy `deadline == 0` distributions are never sweepable. Per-distribution accounting (`feeAmount` snapshot at distribute time) is unaffected by later `setFeePercentage`. | Trace + existing suite (23 M6 tests + 512-run conservation fuzz). | No finding. |
+| M6-7 | INFO | ContributionsParamsCodec | **Reviewed clean.** Byte-identical to `contributions_core::params::params_hash`: all 21 fields in the same order (`src/lib.rs` struct ↔ codec ↔ `params.rs`), and Solidity `abi.encode` of static types == the Rust right-aligned big-endian words (`packages/zk-core/src/words.rs`). Golden-locked by `ContributionsGoldenVectors.t.sol`. Schema UIDs (slots 19–21) are supplied by the deploy, not the params file, so `paramsHash` binds the freshly registered UIDs in one pass. | Word-by-word comparison. | No finding. |
+
+## Notes / out of scope
+
+- **Resolver kind-tag trust boundary (concern a): holds.** All attestations revert until `setSchemas`
+  (`SchemasNotSet`), and after it only the three allowlisted UIDs fold; any 4th schema pointing at the
+  resolver reverts `UnknownSchema`. `schemaAdmin` is immutable and its one-shot power dies after the
+  single `setSchemas`. Value-bearing attestations are rejected upstream by EAS (`isPayable() == false`),
+  so no ETH lodges in the resolver. Multi-attest/-revoke and delegated paths fold each item individually
+  with the correct kind. No wrong-kind fold path found.
+- **Cross-distribution accounting (pre-existing, gated by the proven root):** `sweep` (and `claim`) rely on
+  `Σ claims ≤ amountFunded - feeAmount`, which holds only if the merkle tree's values sum to
+  `totalMerkleValue`. A malformed root could over-claim across distributions; the `sweep` subtraction is
+  underflow-guarded (protective) but the over-claim itself is a base-contract property gated by the ZK
+  snapshot, not part of the M6 delta.
+
+## Overall judgment
+
+**M6-1 is fixed (`289fa25`); no remaining finding blocks a small-pool production round on integrity
+grounds.** The instance's central proven statement — that lane-1 (trust) and lane-2 (contributions) are
+frozen together and both honored in the scored root — is now enforced by binding the mirror to its
+snapshot, so `trigger()` is the sole checkpoint mint and no unpaired (contributions-blind) checkpoint id
+can exist. The distributor's M6 delta (expiry/sweep) is well-constructed with no race and correct
+reentrancy hygiene; the codec is byte-exact and golden-locked; the resolver's kind-tag boundary is sound.
+The remaining items are **ops-level, not code**: before a production round, hand off the distributor owner
+and `feeRecipient` to the same multisig/timelock as the snapshot's `CONSTITUTIONAL_ADMIN` (M6-2), and
+deploy with a real token/vkey/gateway/admin set (M6-5). Both are deployment-configuration actions for a
+later production-deployment GOAL, not local-anvil blockers, and are captured in `RUNBOOK.md`'s role map.

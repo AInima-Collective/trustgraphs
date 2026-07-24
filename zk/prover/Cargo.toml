@@ -26,14 +26,24 @@ network = ["sp1-sdk/network"]
 #   cargo run    --release --features witness-atproto -- witness fetch --did did:plc:...
 witness-atproto = [
     "dep:reqwest",
-    
+
 ]
+
+# Opt-in: on-chain input reconstruction — `contributions fetch` (input.json from the two
+# checkpointed accumulators of a contributions instance, same refuse-to-emit re-fold discipline
+# as packages/input-exporter). Pulls reqwest + the sol! ABI machinery, kept out of the lean
+# default build like witness-atproto.
+#   cargo run --release --features fetch -- contributions fetch --rpc ... --snapshot ... --eas ... --checkpoint 0 --params params.json
+fetch = ["dep:reqwest", "dep:alloy-sol-types"]
 
 [dependencies]
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
 pagerank-core = { path = "../../packages/pagerank-core" }
 hypercerts-core = { path = "../../packages/hypercerts-core" }
+contributions-core = { path = "../../packages/contributions-core" }
 alloy-primitives = { version = "1", features = ["serde"] }
+# fetch feature only: the sol! call/event ABI plumbing for on-chain reconstruction.
+alloy-sol-types = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

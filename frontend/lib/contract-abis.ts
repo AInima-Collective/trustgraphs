@@ -294,6 +294,376 @@ export const anchorRegistryAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ContributionResolver
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const contributionResolverAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: 'eas', internalType: 'contract IEAS', type: 'address' },
+      { name: '_schemaAdmin', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  { type: 'receive', stateMutability: 'payable' },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acc',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'anchorAcc',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'anchorCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'attestation',
+        internalType: 'struct Attestation',
+        type: 'tuple',
+        components: [
+          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'schema', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'time', internalType: 'uint64', type: 'uint64' },
+          { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'revocationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'refUID', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'recipient', internalType: 'address', type: 'address' },
+          { name: 'attester', internalType: 'address', type: 'address' },
+          { name: 'revocable', internalType: 'bool', type: 'bool' },
+          { name: 'data', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'attest',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpoint',
+    outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpointCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    name: 'checkpoints',
+    outputs: [
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+      { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'claimSchemaUid',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    name: 'getCheckpoint',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct IAttestationAccumulator.Checkpoint',
+        type: 'tuple',
+        components: [
+          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'isPayable',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'leafCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'attestations',
+        internalType: 'struct Attestation[]',
+        type: 'tuple[]',
+        components: [
+          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'schema', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'time', internalType: 'uint64', type: 'uint64' },
+          { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'revocationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'refUID', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'recipient', internalType: 'address', type: 'address' },
+          { name: 'attester', internalType: 'address', type: 'address' },
+          { name: 'revocable', internalType: 'bool', type: 'bool' },
+          { name: 'data', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+      { name: 'values', internalType: 'uint256[]', type: 'uint256[]' },
+    ],
+    name: 'multiAttest',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'attestations',
+        internalType: 'struct Attestation[]',
+        type: 'tuple[]',
+        components: [
+          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'schema', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'time', internalType: 'uint64', type: 'uint64' },
+          { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'revocationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'refUID', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'recipient', internalType: 'address', type: 'address' },
+          { name: 'attester', internalType: 'address', type: 'address' },
+          { name: 'revocable', internalType: 'bool', type: 'bool' },
+          { name: 'data', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+      { name: 'values', internalType: 'uint256[]', type: 'uint256[]' },
+    ],
+    name: 'multiRevoke',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'responseSchemaUid',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'attestation',
+        internalType: 'struct Attestation',
+        type: 'tuple',
+        components: [
+          { name: 'uid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'schema', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'time', internalType: 'uint64', type: 'uint64' },
+          { name: 'expirationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'revocationTime', internalType: 'uint64', type: 'uint64' },
+          { name: 'refUID', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'recipient', internalType: 'address', type: 'address' },
+          { name: 'attester', internalType: 'address', type: 'address' },
+          { name: 'revocable', internalType: 'bool', type: 'bool' },
+          { name: 'data', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'revoke',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'schemaAdmin',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'schemasSet',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'claimUid', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'responseUid', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'valuationUid', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'setSchemas',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'valuationSchemaUid',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'version',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'eas', internalType: 'address', type: 'address', indexed: true },
+      { name: 'uid', internalType: 'bytes32', type: 'bytes32', indexed: true },
+    ],
+    name: 'AttestationAttested',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'eas', internalType: 'address', type: 'address', indexed: true },
+      { name: 'uid', internalType: 'bytes32', type: 'bytes32', indexed: true },
+    ],
+    name: 'AttestationRevoked',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'recipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'attester',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'uid', internalType: 'bytes32', type: 'bytes32', indexed: false },
+      {
+        name: 'schemaUID',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'Attested',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'index', internalType: 'uint64', type: 'uint64', indexed: true },
+      {
+        name: 'leaf',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+    ],
+    name: 'EdgeFolded',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'id', internalType: 'uint256', type: 'uint256', indexed: true },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+      {
+        name: 'leafCount',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'blockNumber',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'InputsCheckpointed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'claimSchemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'responseSchemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'valuationSchemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'SchemasSet',
+  },
+  { type: 'error', inputs: [], name: 'AccessDenied' },
+  { type: 'error', inputs: [], name: 'DuplicateSchemaUid' },
+  { type: 'error', inputs: [], name: 'InsufficientValue' },
+  { type: 'error', inputs: [], name: 'InvalidEAS' },
+  { type: 'error', inputs: [], name: 'InvalidLength' },
+  { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NotPayable' },
+  { type: 'error', inputs: [], name: 'NotSchemaAdmin' },
+  { type: 'error', inputs: [], name: 'SchemasAlreadySet' },
+  { type: 'error', inputs: [], name: 'SchemasNotSet' },
+  {
+    type: 'error',
+    inputs: [{ name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'UnknownSchema',
+  },
+  { type: 'error', inputs: [], name: 'ZeroSchemaUid' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // EAS
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1801,6 +2171,20 @@ export const merkleFundDistributorAbi = [
       { name: 'token', internalType: 'address', type: 'address' },
       { name: 'amount', internalType: 'uint256', type: 'uint256' },
       { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'distribute',
+    outputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'token', internalType: 'address', type: 'address' },
+      { name: 'amount', internalType: 'uint256', type: 'uint256' },
+      { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'distribute',
     outputs: [
@@ -1825,6 +2209,8 @@ export const merkleFundDistributorAbi = [
       { name: 'amountDistributed', internalType: 'uint256', type: 'uint256' },
       { name: 'feeRecipient', internalType: 'address', type: 'address' },
       { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
+      { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+      { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'view',
   },
@@ -1905,6 +2291,8 @@ export const merkleFundDistributorAbi = [
           },
           { name: 'feeRecipient', internalType: 'address', type: 'address' },
           { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
+          { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+          { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
         ],
       },
     ],
@@ -1950,6 +2338,8 @@ export const merkleFundDistributorAbi = [
           },
           { name: 'feeRecipient', internalType: 'address', type: 'address' },
           { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
+          { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+          { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
         ],
       },
     ],
@@ -2029,6 +2419,17 @@ export const merkleFundDistributorAbi = [
     ],
     name: 'setMerkleSnapshot',
     outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'sweep',
+    outputs: [
+      { name: 'sweptAmount', internalType: 'uint256', type: 'uint256' },
+    ],
     stateMutability: 'nonpayable',
   },
   {
@@ -2269,6 +2670,26 @@ export const merkleFundDistributorAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'distributionIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      { name: 'to', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Swept',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'account',
         internalType: 'address',
         type: 'address',
@@ -2278,7 +2699,10 @@ export const merkleFundDistributorAbi = [
     name: 'Unpaused',
   },
   { type: 'error', inputs: [], name: 'AlreadyClaimed' },
+  { type: 'error', inputs: [], name: 'AlreadySwept' },
   { type: 'error', inputs: [], name: 'CannotDistribute' },
+  { type: 'error', inputs: [], name: 'ClaimWindowClosed' },
+  { type: 'error', inputs: [], name: 'ClaimWindowNotClosed' },
   { type: 'error', inputs: [], name: 'DistributionNotFound' },
   { type: 'error', inputs: [], name: 'EnforcedPause' },
   { type: 'error', inputs: [], name: 'ExpectedPause' },
@@ -2294,13 +2718,16 @@ export const merkleFundDistributorAbi = [
   },
   { type: 'error', inputs: [], name: 'FeePercentageTooHigh' },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
+  { type: 'error', inputs: [], name: 'InvalidClaimDeadline' },
   { type: 'error', inputs: [], name: 'InvalidMerkleProof' },
   { type: 'error', inputs: [], name: 'InvalidMerkleState' },
   { type: 'error', inputs: [], name: 'InvalidNativeTokenTransfer' },
   { type: 'error', inputs: [], name: 'InvalidNativeTokenTransferAmount' },
+  { type: 'error', inputs: [], name: 'NoClaimDeadline' },
   { type: 'error', inputs: [], name: 'NoFundsToClaim' },
   { type: 'error', inputs: [], name: 'NotOwner' },
   { type: 'error', inputs: [], name: 'NotPendingOwner' },
+  { type: 'error', inputs: [], name: 'NothingToSweep' },
   { type: 'error', inputs: [], name: 'ReentrancyGuardReentrantCall' },
   {
     type: 'error',
@@ -3930,4 +4357,291 @@ export const schemaRegistryAbi = [
     name: 'Registered',
   },
   { type: 'error', inputs: [], name: 'AlreadyExists' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TestUSDC
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const testUsdcAbi = [
+  { type: 'constructor', inputs: [], stateMutability: 'nonpayable' },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'owner', internalType: 'address', type: 'address' },
+      { name: 'spender', internalType: 'address', type: 'address' },
+    ],
+    name: 'allowance',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'spender', internalType: 'address', type: 'address' },
+      { name: 'value', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'approve',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'to', internalType: 'address', type: 'address' },
+      { name: 'amount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'mint',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'to', internalType: 'address', type: 'address' },
+      { name: 'value', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'transfer',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'from', internalType: 'address', type: 'address' },
+      { name: 'to', internalType: 'address', type: 'address' },
+      { name: 'value', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'transferFrom',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'owner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'spender',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'value',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Approval',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'from', internalType: 'address', type: 'address', indexed: true },
+      { name: 'to', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'value',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Transfer',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'spender', internalType: 'address', type: 'address' },
+      { name: 'allowance', internalType: 'uint256', type: 'uint256' },
+      { name: 'needed', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ERC20InsufficientAllowance',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'sender', internalType: 'address', type: 'address' },
+      { name: 'balance', internalType: 'uint256', type: 'uint256' },
+      { name: 'needed', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ERC20InsufficientBalance',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'approver', internalType: 'address', type: 'address' }],
+    name: 'ERC20InvalidApprover',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'receiver', internalType: 'address', type: 'address' }],
+    name: 'ERC20InvalidReceiver',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'sender', internalType: 'address', type: 'address' }],
+    name: 'ERC20InvalidSender',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'spender', internalType: 'address', type: 'address' }],
+    name: 'ERC20InvalidSpender',
+  },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TrustAccumulatorMirror
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const trustAccumulatorMirrorAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      {
+        name: '_trustAccumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acc',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpoint',
+    outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpointCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
+    name: 'getCheckpoint',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct IAttestationAccumulator.Checkpoint',
+        type: 'tuple',
+        components: [
+          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'leafCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'trustAccumulator',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'index', internalType: 'uint64', type: 'uint64', indexed: true },
+      {
+        name: 'leaf',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+    ],
+    name: 'EdgeFolded',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'id', internalType: 'uint256', type: 'uint256', indexed: true },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+      {
+        name: 'leafCount',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'blockNumber',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'InputsCheckpointed',
+  },
+  { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const

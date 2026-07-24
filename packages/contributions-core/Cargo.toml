@@ -1,0 +1,22 @@
+[package]
+name = "contributions-core"
+description = "The contributions program: EAS contribution claims/responses/valuations → rep-weighted funding split (CONTRIBUTION_FUNDING.md §2–§6), Params/Journal, and every byte encoding this program owns — single source of truth for the contributions SP1 guest, host, and TS view"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# Guest-compiled: no floats, BTree-only, deterministic — same rules as every core crate.
+alloy-primitives = { workspace = true, features = ["serde"] }
+zk-core = { path = "../zk-core" }
+pagerank-core = { path = "../pagerank-core" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+hex = { workspace = true }

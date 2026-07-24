@@ -1,0 +1,331 @@
+# Local Testing — contributions (the funding program)
+
+This guide covers the **contributions program**: claim/nominate a contribution, let others
+rate its value, and split a funding pool by those valuations weighted by the raters' proven
+trust-graph reputation — the whole path computed inside one SP1 proof and paid out through
+`MerkleFundDistributor`. It's the fifth program on the platform; the trust-graph / signer-sync
+lane has its own guide ([`LOCAL_TESTING.md`](./LOCAL_TESTING.md)) and this one mirrors its shape.
+
+The instance has **two input accumulators**, frozen together at one checkpoint:
+
+- **slot A** — the trust vouch graph (a read-only `TrustAccumulatorMirror` over the trust
+  instance's accumulator), which drives stage-1 reputation;
+- **slot B** — the contribution log (claims / responses / valuations) folded by the
+  `ContributionResolver`, which drives stage-2 scoring.
+
+Two ways to exercise it locally:
+
+- **[Quick check](#quick-check--parity--core)** — no chain, no UI, no proving. The core-crate
+  tests + the four-way parity gate (native Rust / SP1 guest / Solidity / TS). Best for verifying
+  a change to the encodings or the scoring math end-to-end in seconds.
+- **[Full round on anvil](#full-round-on-anvil)** — the M5 flow: deploy the whole instance,
+  seed the 6-persona worked example through the real UI seams, prove it, submit the root, fund
+  with test USDC, and claim to **wei-exact** payouts — then a second round with a claim deadline
+  and a sweep.
+
+Ports/services used by the full round:
+
+| Service | URL | Started by |
+|---|---|---|
+| anvil | http://localhost:8545 | `anvil --port 8545` (or `task services:start-all`) |
+| Ponder indexer | http://127.0.0.1:65421 | `cd indexer && npm run dev` |
+| IPFS (score blobs) | http://localhost:5001 (api) | `task services:start-all` / kubo `ipfs daemon` |
+| Postgres (Ponder) | localhost:6432 | `task services:start-all` / embedded-postgres |
+| frontend (optional) | http://localhost:3000 | `pnpm frontend dev` |
+
+Prereqs (one-time): [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`),
+`jq`, and the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`). Then:
+
+```bash
+task setup            # pnpm install + forge install (use CI=true pnpm install if a TTY prompt wedges it)
+task build:forge
+```
+
+The full round also needs the prover built with the `fetch` feature (on-chain reconstruction is
+feature-gated):
+
+```bash
+cd zk/prover && cargo build --release --features fetch
+```
+
+---
+
+## Quick check — parity + core
+
+No chain, no services. This is the fastest way to know the scoring semantics and every byte
+encoding still agree across all four languages.
+
+```bash
+# (1) the core crate: record decoding, reconciliation, two-stage scoring, the 6-persona
+#     worked-example fixture (verified to the wei against an independent recompute), the
+#     property suite, and the §5 anti-gaming vector suite.
+cargo test -p contributions-core
+
+# (2) the four-way parity gate: regenerates test/golden/contributions.json and fails if the
+#     encodings drifted without regenerated vectors, then runs the Rust / Solidity / TS /
+#     guest==native legs for the program.
+task zk:parity PROGRAM=contributions
+```
+
+What the parity gate checks, leg by leg:
+
+- **native** — `contributions-core` reproduces the golden vectors (`test/golden/contributions.json`);
+- **Solidity** — `test/unit/golden/ContributionsGoldenVectors.t.sol` recomputes the 21-word
+  `paramsHash`, the seed-set root, the fold `kind` tags, the accumulator leaf/fold, and the full
+  fixture journal encode + digest;
+- **TS** — `frontend/lib/contributions/golden.test.ts` recomputes everything from the fixture
+  input (reputation, per-claim scores, payouts, blob, CID, every journal field);
+- **guest==native** — the SP1 guest's committed public values equal the native journal encoding
+  byte-for-byte.
+
+`SP1_PROVER=mock` is pinned for the executor-only leg (the `cpu` backend allocates a ~5 GiB prover
+and OOMs small boxes). The first run builds the guest ELF (minutes); after that it's seconds.
+
+---
+
+## Full round on anvil
+
+The M5 flow: one complete round from a clean checkout to wei-exact payouts. The seeded round
+reproduces the cross-lane oracle fixture (`packages/contributions-core/src/testutil.rs::fixture()`,
+golden-locked in `test/golden/contributions.json`), so **every number below is a hard expected
+value** — if your run prints something else, something regressed.
+
+**Startup order matters: infra services → deploy → frontend → indexer.** The deploy writes
+`.docker/deployment_summary.json`; the frontend's `predev` (`config:generate` + `wagmi:generate`)
+regenerates the config and the ABIs in `frontend/lib/contract-abis` *from that summary*; and the
+indexer imports those ABIs. Start the indexer before the frontend has regenerated them and it can
+run against stale ABIs/addresses. Keep the indexer **down during the deploy** too — its RPC flood
+can drop a deploy transaction (see the troubleshooting note on the Timelocks hang).
+
+### 1. Stand up the infra services
+
+```bash
+task services:start-all      # anvil :8545 + kubo (5001/8080) + postgres 17 (6432)
+```
+
+No-docker fallback (a plain anvil + a kubo binary in offline mode + any postgres serving
+`postgresql://ponder:ponder@localhost:6432/ponder`) is documented in
+[`docs/contributions/LOCAL_TESTING.md`](./docs/contributions/LOCAL_TESTING.md) §1.
+
+`indexer/.env.local` needs the DB URL and the params sidecar path (the indexer, started in §3,
+refuses to publish scores unless this hash matches the on-chain `paramsHash`):
+
+```
+DATABASE_URL=postgresql://ponder:ponder@localhost:6432/ponder
+CONTRIBUTIONS_PARAMS_PATH=<absolute path to>/params.contributions.json
+```
+
+### 2. Deploy
+
+The deployer key is `.env`'s `FUNDED_KEY` (not an anvil default account) — fund it first:
+
+```bash
+DEPLOYER=$(cast wallet address $(grep '^FUNDED_KEY=' .env | cut -d= -f2))
+cast rpc anvil_setBalance $DEPLOYER 0x21e19e0c9bab2400000 --rpc-url http://127.0.0.1:8545
+
+CI=true pnpm deploy:contracts
+```
+
+This stands up the whole contributions instance (`DeployContributionsInstance.s.sol`): the
+resolver + 3 schemas + the one-shot schema allowlist, `TrustAccumulatorMirror` (bound to the
+snapshot via `bindSnapshot`, so only `trigger()` can mint checkpoints), a dev mock-gateway
+`SP1JournalVerifier` (no `CONTRIBUTIONS_PROGRAM_VKEY` set), `MerkleSnapshot`,
+`MerkleFundDistributor` (3% fee, fee recipient = deployer), and the `TestUSDC` pool token
+(1,000,000 tUSDC minted to the deployer). It provisions `params.contributions.json` from the
+template and writes the registered schema UIDs back into it. Addresses land in
+`.docker/deployment_summary.json` under the `program: "contributions"` network.
+
+### 3. Start the frontend, then the indexer (in that order)
+
+```bash
+pnpm frontend dev        # http://localhost:3000 — predev regenerates config + ABIs from the deploy summary
+cd indexer && npm run dev # ponder dev on :65421 — predev runs migrate + networks:link; imports the ABIs above
+```
+
+The frontend first: its `predev` regenerates `frontend/lib/contract-abis` and the network config
+from `.docker/deployment_summary.json`, which the indexer then imports. (For a pure CLI/indexer
+run without the UI you can regenerate the ABIs directly with `pnpm --filter frontend wagmi:generate`
+before starting the indexer — but keep the order.) Contributions networks route to the round view;
+keep `NEXT_PUBLIC_CONTRIBUTIONS_MOCKS` unset so the pages read the live API.
+
+### 4. Seed the round (the 6-persona fixture)
+
+```bash
+task contributions:create-contribution-round-network
+```
+
+User actions run through `frontend/scripts/contribution-round.ts` — the exact
+`SchemaManager.encode` → `EAS.attest` seam the frontend screens drive. In order: the six trust
+vouches (SEED→ALICE 100, SEED→BOB 80, SEED→CAROL 60, SEED→DAVE 90, ALICE→BOB 50, DAVE→CAROL 40;
+personas are anvil accounts 0–5, SEED = account 0 = the params' `trusted_seeds` entry, EVE
+un-vouched so her rep stays below `min_rater_rep_fp`); C4 the out-of-window claim; the window
+open (`open-round-window` sets `round_start`/`round_end`, recomputes the `paramsHash`, and pins
+it with the operational `setParamsHash`); then the in-window sequence — C1 ALICE self-claim,
+C2 BOB [BOB:60, CAROL:40], C3 ALICE nomination [EVE:50, DAVE:50], C5 BOB self-claim, CAROL
+accepts C2, EVE rejects C3, and the 12 valuations (incl. DAVE's LWW re-rate of C1 80→90, ALICE's
+self-rating filtered, EVE's dust-rep rating filtered, CAROL's C5 rating collaborator-discounted,
+DAVE's C4 rating inert). Claim UIDs persist in `.docker/contribution_round_dev_state.json`.
+
+### 5. The operator loop
+
+```bash
+task contributions:trigger        # freeze BOTH accumulators → checkpoint id 0
+task contributions:prove-round    # fetch → execute (guest==native) → mock-groth16 prove → pin blob
+task contributions:submit-proof   # submitProof with the args prove-round saved
+```
+
+`prove-round` reconstructs `contributions_input.json` from the two on-chain checkpoints
+(self-checked by re-folding to the checkpointed accumulators), byte-asserts guest == native, and
+pins the blob to IPFS. **Expected round-1 blob** — the merkle VALUES, byte-identical to the
+golden fixture payouts, Σ = the 5e9 pool, EVE absent:
+
+```json
+{"0x15d34aaf54267db7d7c367839aaf71a00a2c6a65":"94160282",
+ "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc":"1184138552",
+ "0x70997970c51812dc3a010c7d01b50e0d17dc79c8":"3509435528",
+ "0x90f79bf6eb2c4f870365e785982e1f101e93b906":"206730620",
+ "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266":"5535018"}
+```
+
+`execute` also prints `totalValue: 5000000000` and the reproducible
+`outputRoot: 0x939b892519f253bc0a88398dccc850cfd7040f0346095bca1bd9cdf37dd16496`.
+
+### 6. Indexer verification
+
+Give ponder ~10s after `submit-proof`, then confirm the indexer independently re-derived the
+proven root from its own tables (`verified: true`) and served the golden per-claim scores:
+
+```bash
+SNAP=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' .docker/deployment_summary.json)
+
+curl -s http://127.0.0.1:65421/contributions/$SNAP/round | jq '{verified, numClaims, numRecipients, totalValue}'
+# → {"verified": true, "numClaims": 4, "numRecipients": 5, "totalValue": "5000000000"}
+```
+
+The `/contributions/$SNAP/audit/:claimUID` route shows every filter/discount decision (ALICE
+self-valuation filtered, EVE below-min-rep filtered, DAVE's LWW 90 live / 80 superseded, CAROL's
+C5 rating discounted at `500000000000000000`). Per-claim `scoreFp` values and the audit walk-through
+are tabulated in [`docs/contributions/LOCAL_TESTING.md`](./docs/contributions/LOCAL_TESTING.md) §5.
+
+### 7. Fund + claim (wei-exact)
+
+```bash
+task contributions:fund-round AMOUNT=5000000000    # 5,000 tUSDC; approve + 3-arg distribute, expectedRoot pinned
+task contributions:claim-payouts INDEX=0           # all personas via the proof-bundle API
+```
+
+Every claim pays `mulDiv(amountFunded − feeAmount, value, totalMerkleValue)` with the 3% fee =
+`150000000` exactly. Expected final tUSDC balances:
+
+| persona | merkle value | claimed (× 0.97, floor) |
+|---|---|---|
+| ALICE | 3509435528 | **3404152462** |
+| BOB | 1184138552 | **1148614395** |
+| CAROL | 206730620 | **200528701** |
+| DAVE | 94160282 | **91335473** |
+| SEED | 5535018 | **5368967** |
+| EVE | — | **0** (no leaf) |
+
+The fee recipient (= deployer in dev) gains exactly `150000000`; `2` base units of quantization
+dust stay in the distributor (this round has no deadline, so it's never sweepable — a deliberate
+property of the open-ended overload).
+
+```bash
+TOKEN=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.poolToken' .docker/deployment_summary.json)
+cast call $TOKEN "balanceOf(address)(uint256)" 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --rpc-url http://127.0.0.1:8545
+# → 3404152462   (ALICE)
+```
+
+### 8. Round 2 — repeatability, claim deadline, sweep
+
+Proves rounds are repeatable over the same instance and exercises the M6 sweep path:
+
+```bash
+task contributions:create-round-2       # rotates the window (new paramsHash) + a fresh claim/valuations
+task contributions:trigger              # checkpoint id 1 (monotonic)
+task contributions:prove-round          # round-1 records are now provably out-of-window
+task contributions:submit-proof
+
+# fund WITH a claim deadline (the 4-arg distribute overload):
+DEADLINE=$(( $(cast block latest -f timestamp --rpc-url http://127.0.0.1:8545) + 3600 ))
+task contributions:fund-round AMOUNT=5000000000 DEADLINE=$DEADLINE
+task contributions:claim-payouts INDEX=1 AS=SEED,BOB,CAROL     # DAVE deliberately does not claim
+
+# close the window and sweep the unclaimed remainder back to the funder:
+cast rpc evm_setNextBlockTimestamp $((DEADLINE + 1)) --rpc-url http://127.0.0.1:8545
+cast rpc anvil_mine 1 --rpc-url http://127.0.0.1:8545
+task contributions:claim-payouts INDEX=1 AS=DAVE    # ← reverts ClaimWindowClosed(), as designed
+task contributions:sweep INDEX=1                    # swept = 31660833 back to the funder (DAVE's 31660831 + 2 dust)
+```
+
+Expected round-2 claims: CAROL **2880902880**, BOB **1920601920**, SEED **16834367** (raters
+SEED+DAVE split the 1% carve-out pro-rata reputation; CAROL/BOB split 99% of the pool 60/40).
+Full blob in [`docs/contributions/LOCAL_TESTING.md`](./docs/contributions/LOCAL_TESTING.md) §7.
+
+### 9. Third-party re-derivation (audited by construction)
+
+Holding only chain data + the pinned blob, anyone re-derives every payout:
+
+```bash
+# the blob at the CID the journal committed hashes to the round's ipfsHash (round 1: 975b0b08…49ebcb):
+curl -s -X POST "http://127.0.0.1:5001/api/v0/cat?arg=<cid from round API>" | sha256sum
+
+# and a full recompute from chain reproduces the whole journal (fetch re-folds the logs to the
+# checkpointed accumulators; execute re-runs the exact guest semantics natively and in the executor):
+task contributions:prove-round ID=<checkpoint>
+```
+
+---
+
+## Notes & troubleshooting
+
+- **`SP1_PROVER=mock`** for every executor-only step (`vkey`, `execute`, dev proving against the
+  MockSP1Gateway). The `cpu` backend eagerly allocates a ~5 GiB prover and OOMs small boxes; the
+  taskfile pins mock. Real proving: `SP1_PROVER=cpu` needs `--features native-gnark` + ~16 GiB, or
+  use the Succinct prover network.
+- **`prove --groth16`** — the on-chain path always takes the Groth16-shaped blob; under
+  `SP1_PROVER=mock` the seal is empty and only the dev MockSP1Gateway accepts it.
+- **`--features fetch`** when building the prover, or the `contributions fetch` subcommand errors.
+- **`CONTRIBUTIONS_PARAMS_PATH`** — the indexer refuses to publish derived scores unless the
+  sidecar params file's 21-word hash reproduces the snapshot's on-chain `paramsHash` at ingest
+  time. Keep `params.contributions.json` in sync: the `open-round-window` task maintains it, so if
+  you rotate params by hand, rotate the file in the same breath, **before** `submit-proof`.
+- **Trigger reverts `EpochNotElapsed`?** `CONTRIBUTIONS_EPOCH_LENGTH` (default 10 blocks in dev)
+  paces `trigger()`. Mine blocks (`cast rpc anvil_mine 10`) or wait.
+- **Trigger reverts `NotSnapshot`?** The mirror's one-shot `bindSnapshot` is missing — only
+  possible with a hand-rolled deploy; `DeployContributionsInstance` binds it for you. This is the
+  guard that makes `trigger()` the sole checkpoint mint, so both lanes are always frozen together
+  (a directly-minted mirror checkpoint would otherwise leave the contribution lane at `(0,0)` and
+  admit a contributions-blind proof — see [`docs/contributions/AUDIT_M6.md`](./docs/contributions/AUDIT_M6.md) M6-1).
+- **Stale `frontend/lib/contracts.ts` / `contract-abis` after a redeploy** — start the frontend
+  before the indexer (§3): its `predev` runs `wagmi:generate` / `config:generate` off the fresh
+  deploy summary, and the indexer imports those ABIs. Or regenerate directly with
+  `pnpm --filter frontend wagmi:generate`.
+- **Indexer crashes on a `MerkleRootUpdated` event (`Failed to fetch merkle tree from IPFS CID …`),
+  and a fresh deploy / `forge clean` doesn't fix it?** The IPFS daemon is down. Each proven root
+  pins its `{account: value}` blob to the local kubo node; the indexer *must* re-fetch that blob to
+  rebuild proofs, and that fetch (`src/merkle.ts`) is **not** swallowed — a dead gateway kills the
+  handler. Redeploying can't help: the blobs (and the crash) live in IPFS, not the chain. This is
+  distinct from the harmless, caught `getStateCount returned no data ("0x")` line — that one is the
+  `merkleSnapshot:setup` handler reading at the historical start block (block 1), before any
+  snapshot is deployed, and is always ignored. Fix: bring the gateway back (`curl -s -m4
+  http://127.0.0.1:8080/ipfs/<any-pinned-cid>` should return the score JSON; if it times out,
+  restart kubo — `IPFS_PATH=<repo> ipfs daemon`), confirm the round's CIDs are still pinned
+  (`ipfs pin ls --type=recursive`), then restart the indexer. The pins survive a daemon restart as
+  long as the repo dir is intact.
+- **`pnpm deploy:contracts` hangs on a step (forge spamming `eth_getTransactionReceipt`)?** A
+  broadcast tx was dropped and the rest queued behind the nonce gap (`cast rpc txpool_status` shows
+  `pending: 0x0` with a nonzero `queued`). Almost always the **running indexer flooding the RPC**
+  dropped the batch's first send. Fix: stop the indexer during the deploy, restart anvil fresh to
+  clear the poisoned txpool, and redeploy — the orchestrator sends one tx at a time (`--slow`) so a
+  gap can't form, but a fresh chain is needed to drain the already-queued txs.
+- **`PONDER_START_BLOCK`** — only needed on a mainnet-fork anvil; a plain local anvil backfills
+  from block 1 by default.
+- **`CI=true pnpm install`** in headless environments — pnpm's TTY prompts otherwise wedge
+  `task setup`.
+
+For the exhaustive per-claim score table, the audit-view walkthrough, and the no-docker stack
+recipe, see [`docs/contributions/LOCAL_TESTING.md`](./docs/contributions/LOCAL_TESTING.md); for the
+operator/role view and independent re-derivation recipe, [`docs/contributions/RUNBOOK.md`](./docs/contributions/RUNBOOK.md);
+for the design, [`research/CONTRIBUTION_FUNDING.md`](./research/CONTRIBUTION_FUNDING.md) and
+[`docs/contributions/INTERFACES.md`](./docs/contributions/INTERFACES.md).

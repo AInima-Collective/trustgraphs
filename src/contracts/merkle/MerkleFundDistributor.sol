@@ -22,8 +22,21 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 
 /// @title MerkleFundDistributor
 /// @notice A contract for distributing funds from a merkle tree.
-/// @dev TODO: allow distributor to refund unclaimed funds? after expiration? to retrieve dust/rounding losses?
-/// @dev TODO: restrict claim function to sender-only (instead of anyone)?
+/// @dev Expiry + sweep (resolved): each distribution may carry a `claimDeadline`
+///      (0 = no expiry, the original behavior — such distributions can never be
+///      swept). Claims are accepted while `block.timestamp <= claimDeadline`;
+///      once `block.timestamp > claimDeadline` claims revert and anyone may call
+///      `sweep(distributionIndex)` to return the unclaimed remainder
+///      (`amountFunded - feeAmount - amountDistributed`, which also captures
+///      per-claim rounding dust) to the round funder (`distribution.distributor`).
+///      Claims closing strictly before sweeping opens makes a sweep-vs-late-claim
+///      race structurally impossible.
+/// @dev Open claim (resolved): `claim` is deliberately callable by anyone, but
+///      funds always pay the leaf's `account` — they cannot be redirected. This
+///      keeps claims relayable and works naturally for contributors that are
+///      contracts (Safes, splitters): the distributor pays `account` directly,
+///      which is how teams should claim shared work (or split via shares at
+///      claim time).
 contract MerkleFundDistributor is
     IMerkleFundDistributor,
     ReentrancyGuard,
@@ -290,7 +303,7 @@ contract MerkleFundDistributor is
         _unpause();
     }
 
-    /// @notice Distributes funds.
+    /// @notice Distributes funds with no claim deadline (claims stay open forever, never sweepable).
     /// @param token The token to distribute.
     /// @param amount The amount of token to distribute.
     /// @param expectedRoot The expected root of the merkle tree to add an additional layer of security (pass 0 to skip).
@@ -308,6 +321,43 @@ contract MerkleFundDistributor is
         whenNotPaused
         returns (uint256 distributionIndex)
     {
+        return _distribute(token, amount, expectedRoot, 0);
+    }
+
+    /// @notice Distributes funds with a claim deadline.
+    /// @param token The token to distribute.
+    /// @param amount The amount of token to distribute.
+    /// @param expectedRoot The expected root of the merkle tree to add an additional layer of security (pass 0 to skip).
+    /// @param claimDeadline The timestamp after which claims close and the unclaimed remainder can be swept back to the funder (0 = no expiry).
+    /// @dev Only distributors can distribute funds.
+    /// @return distributionIndex The index of the distribution.
+    function distribute(
+        address token,
+        uint256 amount,
+        bytes32 expectedRoot,
+        uint64 claimDeadline
+    )
+        external
+        payable
+        onlyDistributor
+        nonReentrant
+        whenNotPaused
+        returns (uint256 distributionIndex)
+    {
+        if (claimDeadline != 0 && claimDeadline <= block.timestamp) {
+            revert InvalidClaimDeadline();
+        }
+
+        return _distribute(token, amount, expectedRoot, claimDeadline);
+    }
+
+    /// @dev Creates a distribution and moves the funds. Shared by both `distribute` overloads.
+    function _distribute(
+        address token,
+        uint256 amount,
+        bytes32 expectedRoot,
+        uint64 claimDeadline
+    ) internal returns (uint256 distributionIndex) {
         // Fetch the latest merkle state.
         IMerkleSnapshot.MerkleState memory merkleState = IMerkleSnapshot(
             merkleSnapshot
@@ -339,7 +389,9 @@ contract MerkleFundDistributor is
                 amountFunded: amount,
                 amountDistributed: 0,
                 feeRecipient: feeRecipient,
-                feeAmount: feeAmount
+                feeAmount: feeAmount,
+                claimDeadline: claimDeadline,
+                sweptAmount: 0
             })
         );
 
@@ -411,6 +463,12 @@ contract MerkleFundDistributor is
             revert DistributionNotFound();
         }
 
+        // Claims close strictly after the deadline (deadline 0 = no expiry).
+        uint64 claimDeadline = distribution.claimDeadline;
+        if (claimDeadline != 0 && block.timestamp > claimDeadline) {
+            revert ClaimWindowClosed();
+        }
+
         // Verify the account has not already claimed tokens for this distribution.
         if (claimed[distributionIndex][account] > 0) {
             revert AlreadyClaimed();
@@ -464,6 +522,71 @@ contract MerkleFundDistributor is
             value,
             distribution.amountDistributed
         );
+    }
+
+    /// @notice Sweeps the unclaimed remainder of an expired distribution back to the round funder.
+    /// @param distributionIndex The index of the distribution to sweep.
+    /// @return sweptAmount The amount of unclaimed funds returned to the funder.
+    /// @dev Permissionless: anyone may trigger the sweep, but funds always go to
+    ///      `distribution.distributor` (the round funder). Only callable once the
+    ///      claim window has closed (`claimDeadline != 0 && block.timestamp > claimDeadline`),
+    ///      so a sweep can never race a valid claim.
+    function sweep(
+        uint256 distributionIndex
+    ) external nonReentrant whenNotPaused returns (uint256 sweptAmount) {
+        if (distributionIndex >= distributions.length) {
+            revert DistributionNotFound();
+        }
+
+        // Fetch the distribution.
+        DistributionState storage distribution = distributions[
+            distributionIndex
+        ];
+        if (distribution.root == bytes32(0)) {
+            revert DistributionNotFound();
+        }
+
+        // Distributions without a deadline can never be swept.
+        uint64 claimDeadline = distribution.claimDeadline;
+        if (claimDeadline == 0) {
+            revert NoClaimDeadline();
+        }
+
+        // The claim window must be closed (claims are accepted while timestamp <= deadline).
+        if (block.timestamp <= claimDeadline) {
+            revert ClaimWindowNotClosed();
+        }
+
+        // Only sweep once.
+        if (distribution.sweptAmount != 0) {
+            revert AlreadySwept();
+        }
+
+        // Unclaimed remainder, including per-claim rounding dust.
+        sweptAmount =
+            distribution.amountFunded -
+            distribution.feeAmount -
+            distribution.amountDistributed;
+        if (sweptAmount == 0) {
+            revert NothingToSweep();
+        }
+
+        distribution.sweptAmount = sweptAmount;
+        address to = distribution.distributor;
+
+        // Transfer the unclaimed funds back to the round funder.
+        if (_isNativeToken(distribution.token)) {
+            (bool success, bytes memory data) = payable(to).call{
+                value: sweptAmount
+            }("");
+            if (!success) {
+                revert FailedToTransferTokens(data);
+            }
+        } else {
+            IERC20(distribution.token).safeTransfer(to, sweptAmount);
+        }
+
+        emit Swept(distributionIndex, to, sweptAmount);
     }
 
     /* INTERNAL */

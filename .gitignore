@@ -44,6 +44,7 @@ deploy/post-deploy.sh
 Cargo-component.lock
 input.json
 params.json
+params.contributions.json
 anchors.txt
 .witness-archive
 hypercerts_blob.json

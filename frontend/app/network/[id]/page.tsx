@@ -3,22 +3,29 @@ import { HydrationBoundary, dehydrate } from '@tanstack/react-query'
 import { notFound } from 'next/navigation'
 
 import { NetworkProvider } from '@/contexts/NetworkContext'
-import { VISIBLE_HYPERCERTS_NETWORKS, VISIBLE_NETWORKS } from '@/lib/config'
+import {
+  VISIBLE_CONTRIBUTIONS_NETWORKS,
+  VISIBLE_HYPERCERTS_NETWORKS,
+  VISIBLE_NETWORKS,
+} from '@/lib/config'
 import { ponderClient } from '@/lib/ponder'
 import { makeQueryClient } from '@/lib/query'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { NetworkPage } from './component'
+import { ContributionsNetworkPage } from './contributions'
 import { HypercertsNetworkPage } from './hypercerts'
 
 export const revalidate = 3_600 // 1 hour
 
 export async function generateStaticParams() {
-  return [...VISIBLE_NETWORKS, ...VISIBLE_HYPERCERTS_NETWORKS].map(
-    (network) => ({
-      id: network.id,
-    })
-  )
+  return [
+    ...VISIBLE_NETWORKS,
+    ...VISIBLE_HYPERCERTS_NETWORKS,
+    ...VISIBLE_CONTRIBUTIONS_NETWORKS,
+  ].map((network) => ({
+    id: network.id,
+  }))
 }
 
 export default async function NetworkPageServer({
@@ -35,6 +42,15 @@ export default async function NetworkPageServer({
   )
   if (hypercertsNetwork) {
     return <HypercertsNetworkPage network={hypercertsNetwork} />
+  }
+
+  // A contributions instance renders the round view — claims/ratings live on-chain against its
+  // own resolver, so none of the vouching-network prefetching below applies either.
+  const contributionsNetwork = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
+    (network) => network.id === id
+  )
+  if (contributionsNetwork) {
+    return <ContributionsNetworkPage network={contributionsNetwork} />
   }
 
   const network = VISIBLE_NETWORKS.find((network) => network.id === id)
