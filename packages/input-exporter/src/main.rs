@@ -53,9 +53,10 @@ struct Args {
     /// Path to the governance-pinned params (serialized `pagerank_core::Params`).
     #[arg(long)]
     params: String,
-    /// Output path.
-    #[arg(long, default_value = "input.json")]
-    out: String,
+    /// Output path (default: `<repo root>/.trustgraph/trust-graph/input.json`, or
+    /// `.trustgraph/signer-sync/signer_input.json` with --signer).
+    #[arg(long)]
+    out: Option<String>,
     /// Emit a `SignerInput` (adds `selection`) instead of a `GuestInput`.
     #[arg(long)]
     signer: bool,
@@ -376,13 +377,28 @@ async fn main() -> Result<()> {
         None
     };
 
-    // 5. Emit.
+    // 5. Emit. Default paths live under the repo's gitignored `.trustgraph/` output directory,
+    // resolved from this crate's manifest dir so they land there from any CWD.
+    let out_path = match &args.out {
+        Some(o) => std::path::PathBuf::from(o),
+        None => {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+            if args.signer {
+                root.join(".trustgraph/signer-sync/signer_input.json")
+            } else {
+                root.join(".trustgraph/trust-graph/input.json")
+            }
+        }
+    };
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let out_json = if let Some(selection) = selection {
         serde_json::to_string_pretty(&SignerInput { edges, params, selection })?
     } else {
         serde_json::to_string_pretty(&GuestInput { edges, params, lane2 })?
     };
-    std::fs::write(&args.out, out_json)?;
-    eprintln!("wrote {} ({} edges)", args.out, cp.leafCount);
+    std::fs::write(&out_path, out_json)?;
+    eprintln!("wrote {} ({} edges)", out_path.display(), cp.leafCount);
     Ok(())
 }

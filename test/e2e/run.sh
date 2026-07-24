@@ -153,7 +153,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   # Journal v2: lane-1-only run, skippedDigest is the zero word.
   ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
   cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$ZERO32" "$(hex_file zk/prover/proof.bin)" \
+    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$ZERO32" "$(hex_file .trustgraph/trust-graph/proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ROOT_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$ROOT_ONCHAIN" = "$OUTPUT_ROOT" ] || { echo "FATAL: on-chain root $ROOT_ONCHAIN != proven $OUTPUT_ROOT"; exit 1; }
@@ -168,7 +168,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   TARGET_THRESHOLD=$(echo "$SIGNER_EXEC_OUT" | awk '/^targetThreshold:/{print $2}')
   SIGNERS=$(echo "$SIGNER_EXEC_OUT" | awk '/^  0x/{print $1}' | paste -sd, -)
   cast send "$SIGNER_MODULE" "submitSignerProof(uint256,address[],uint256,bytes)" \
-    0 "[$SIGNERS]" "$TARGET_THRESHOLD" "$(hex_file zk/prover/signer_proof.bin)" \
+    0 "[$SIGNERS]" "$TARGET_THRESHOLD" "$(hex_file .trustgraph/signer-sync/signer_proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   OWNERS=$(cast call "$SAFE" "getOwners()(address[])" --rpc-url "$RPC")
   THRESHOLD=$(cast call "$SAFE" "getThreshold()(uint256)" --rpc-url "$RPC")
@@ -243,7 +243,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   [ "$SKIPPED2" != "$ZERO32" ] || { echo "FATAL: withheld head did not produce a skippedDigest"; exit 1; }
   echo "   skippedDigest (withheld node recorded): $SKIPPED2 ✓"
   cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$(hex_file zk/prover/proof.bin)" \
+    1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$(hex_file .trustgraph/trust-graph/proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ROOT2_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$ROOT2_ONCHAIN" = "$OUTPUT_ROOT2" ] || { echo "FATAL: two-lane root $ROOT2_ONCHAIN != proven $OUTPUT_ROOT2"; exit 1; }
@@ -312,7 +312,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   HC_SKIPPED=$(echo "$HC_EXEC" | awk '/^skippedDigest:/{print $2}')
   [ "$HC_SKIPPED" != "$ZERO32" ] || { echo "FATAL: fixture self-edge did not land in skippedDigest"; exit 1; }
   cast send "$HC_SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$(hex_file zk/prover/hypercerts_proof.bin)" \
+    0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$(hex_file .trustgraph/hypercerts/hypercerts_proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   HC_ROOT_ONCHAIN=$(cast call "$HC_SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$HC_ROOT_ONCHAIN" = "$HC_ROOT" ] || { echo "FATAL: hypercerts root $HC_ROOT_ONCHAIN != proven $HC_ROOT"; exit 1; }

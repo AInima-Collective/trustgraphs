@@ -39,7 +39,7 @@ cargo build --release -p input-exporter && (cd zk/prover && cargo build --releas
 #    comes from step 1 — never from the bundle.)
 
 # 3. Re-derive, offline:
-cd zk/prover && SP1_PROVER=mock cargo run --release -- hypercerts execute input.json
+cd zk/prover && SP1_PROVER=mock cargo run --release -- hypercerts execute ../../.trustgraph/hypercerts/hypercerts_input.json
 # prints: outputRoot, ipfsHash, cid, totalValue, skippedDigest — and writes
 #   hypercerts_blob.json   (the {nodeId -> score} preimage of ipfsHash)
 #   hypercerts_skips.json  (the FULL skippedDigest preimage: every (nodeId, reason,

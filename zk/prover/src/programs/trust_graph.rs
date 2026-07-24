@@ -77,15 +77,26 @@ pub enum Command {
     /// Print keccak256 of the canonical params (for the operational timelock).
     Paramshash { input: Option<String> },
     /// Run the guest via the SP1 executor and assert it matches native `compute` (no proof).
-    Execute { input: Option<String> },
+    Execute {
+        input: Option<String>,
+        /// Output directory (default: `<repo root>/.trustgraph/trust-graph/`).
+        #[arg(long)]
+        out_dir: Option<String>,
+    },
     /// Generate a proof (core, or Groth16-wrapped), verify it locally, and write the on-chain proof
     /// blob `abi.encode(publicValues, seal)` to proof.bin.
     Prove {
         input: Option<String>,
         #[arg(long)]
         groth16: bool,
+        /// Output directory (default: `<repo root>/.trustgraph/trust-graph/`).
+        #[arg(long)]
+        out_dir: Option<String>,
     },
 }
+
+/// The default generated-output directory for this program.
+const OUT_DIR: &str = "trust-graph";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
@@ -95,12 +106,18 @@ pub fn run(cmd: Command) -> Result<()> {
             println!("0x{}", hex::encode(encode::params_hash(&input.params)));
             Ok(())
         }
-        Command::Execute { input } => cmd_execute(load_input(input.as_ref())?),
-        Command::Prove { input, groth16 } => cmd_prove(load_input(input.as_ref())?, groth16),
+        Command::Execute { input, out_dir } => {
+            cmd_execute(load_input(input.as_ref())?, common::out_dir(out_dir.as_ref(), OUT_DIR)?)
+        }
+        Command::Prove { input, groth16, out_dir } => cmd_prove(
+            load_input(input.as_ref())?,
+            groth16,
+            common::out_dir(out_dir.as_ref(), OUT_DIR)?,
+        ),
     }
 }
 
-fn cmd_execute(input: GuestInput) -> Result<()> {
+fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
@@ -116,12 +133,12 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
 
     // The canonical score blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so it
     // can be pinned (the UI/indexer fetch the {account -> score} scores from IPFS at that cid).
-    std::fs::write("blob.json", &native.blob)?;
-    println!("wrote blob.json ({} bytes) — pin at the cid above", native.blob.len());
+    let p = common::write_out(&out, "blob.json", &native.blob)?;
+    println!("wrote {} ({} bytes) — pin at the cid above", p.display(), native.blob.len());
     Ok(())
 }
 
-fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
+fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
     // The score blob is a pure function of the input; recompute it here so `prove` emits blob.json
     // next to proof.bin (same bytes execute writes — its sha256 is the journal's ipfsHash).
     let native = compute(&input);
@@ -129,11 +146,20 @@ fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
     let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
-    std::fs::write("proof.bin", &blob)?;
-    std::fs::write("public_values.bin", &public_values)?;
-    std::fs::write("blob.json", &native.blob)?;
-    println!("wrote proof.bin ({} blob bytes, {} seal bytes)", blob.len(), seal.len());
-    println!("wrote blob.json ({} bytes) — pin at the cid for the UI", native.blob.len());
+    let proof_path = common::write_out(&out, "proof.bin", &blob)?;
+    common::write_out(&out, "public_values.bin", &public_values)?;
+    let blob_path = common::write_out(&out, "blob.json", &native.blob)?;
+    println!(
+        "wrote {} ({} blob bytes, {} seal bytes)",
+        proof_path.display(),
+        blob.len(),
+        seal.len()
+    );
+    println!(
+        "wrote {} ({} bytes) — pin at the cid for the UI",
+        blob_path.display(),
+        native.blob.len()
+    );
     println!("publicValues: 0x{}", hex::encode(&public_values));
     Ok(())
 }

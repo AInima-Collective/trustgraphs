@@ -93,14 +93,14 @@ Derive the deploy constants first:
 ```bash
 cd zk/prover
 export HC_VKEY=$(cargo run -q --release -- hypercerts vkey)          # must equal the PROGRAMS.md value
-export HC_PARAMS_HASH=$(cargo run -q --release -- hypercerts paramshash input.json)  # keccak of the 17-word Params (§6.1)
+export HC_PARAMS_HASH=$(cargo run -q --release -- hypercerts paramshash ../../.trustgraph/hypercerts/hypercerts_input.json)  # keccak of the 17-word Params (§6.1)
 cd ../..
 export GATEWAY=0x...    # Succinct SP1 verifier gateway for the target chain (docs.succinct.xyz); must carry the v6.3.1 verifier
 export DEPLOYER=$(cast wallet address --private-key "$PK")
 ```
 
 > `paramshash` deserializes a full `GuestInput` (`{params, anchors, witnesses, strongref_targets}`),
-> not a bare params file — pass an `input.json` (or `jq '{params: ., anchors: [], witnesses: [], strongref_targets: {}}' params.json`).
+> not a bare params file — pass a built `hypercerts_input.json` (or `jq '{params: ., anchors: [], witnesses: [], strongref_targets: {}}' params.json`).
 > The on-chain twin is `HypercertsParamsCodec` (golden-locked to the crate's `params_hash`).
 
 ### Contract set, in order
@@ -167,8 +167,9 @@ is trace-free, so archival is what keeps a proven epoch auditable after the PDS 
 cd zk/prover
 cargo run --release --features witness-atproto -- \
   witness fetch --did did:plc:<repo1> --did did:plc:<repo2> ... \
-  --relay-url https://bsky.network --plc-url https://plc.directory --archive-dir .witness-archive
-# Writes .witness-archive/<did>/<rev>.car + plc-<ts>.json + manifest.json, and prints each head_sha256
+  --relay-url https://bsky.network --plc-url https://plc.directory
+# Archives into .trustgraph/hypercerts/witness-archive/ by default (--archive-dir overrides):
+# <did>/<rev>.car + plc-<ts>.json + manifest.json, and prints each head_sha256
 # (the value you anchor). The bundle re-verifies offline; `execute`/`prove` are network-free from here.
 ```
 
@@ -208,7 +209,7 @@ cast call "$HC_SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" "$CP" --rp
 ### 4. Prove (real proofs on the network; mock only for rehearsal)
 
 Assemble the `GuestInput` (params + the checkpoint's anchor set + the archived witnesses) with
-`hypercerts buildinput --archive-dir .witness-archive --params params.json` (or `--seed-did`), then
+`hypercerts buildinput --params params.json` (or `--seed-did`), then
 prove. The anchors' `block_timestamp`s in the input **must** be the real on-chain timestamps so the
 guest's re-fold matches the checkpointed `anchorAcc` (the e2e stage patches them from `cast block`);
 `buildinput` emits `0` placeholders in fold order — rewrite each from its `HeadAnchored` event/tx.
@@ -217,11 +218,13 @@ guest's re-fold matches the checkpointed `anchorAcc` (the e2e stage patches them
 cd zk/prover
 # Real proof — Succinct prover network (no big box) or a 16-32 GiB machine with --features native-gnark:
 SP1_PROVER=network NETWORK_PRIVATE_KEY=0x... \
-  cargo run --release -- hypercerts prove input.json --groth16      # writes hypercerts_proof.bin + hypercerts_blob.json
+  cargo run --release -- hypercerts prove ../../.trustgraph/hypercerts/hypercerts_input.json --groth16
+#   writes .trustgraph/hypercerts/hypercerts_proof.bin + hypercerts_blob.json
 #   ≡ task zk:prove PROGRAM=hypercerts.  SP1_PROVER=mock is REHEARSAL ONLY (stubs the SNARK).
+cd ../..
 
 # Pin the canonical nodeId-keyed blob at the guest's CID:
-ipfs add --cid-version=1 --raw-leaves hypercerts_blob.json          # CID must equal the guest's `cid`
+ipfs add --cid-version=1 --raw-leaves .trustgraph/hypercerts/hypercerts_blob.json   # CID must equal the guest's `cid`
 ```
 
 ### 5. submitProof + post-checks
@@ -232,7 +235,7 @@ Journal v2 is a 7-arg `submitProof` — note the `skippedDigest` argument (absen
 # From `hypercerts execute` output: outputRoot, ipfsHash, cid, totalValue, skippedDigest.
 cast send "$HC_SNAPSHOT" \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  "$CP" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED_DIGEST" "$(xxd -p -c0 hypercerts_proof.bin)" \
+  "$CP" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED_DIGEST" "$(xxd -p -c0 .trustgraph/hypercerts/hypercerts_proof.bin)" \
   --rpc-url "$RPC" --private-key "$PK"
 ```
 
@@ -334,7 +337,7 @@ over the sorted seed nodeIds); it is golden-locked four ways (`hypercerts_core::
 
 ### How a params update flows
 
-1. Edit `params.json`, recompute `HC_PARAMS_HASH = trustgraph-prover hypercerts paramshash input.json`.
+1. Edit `params.json`, recompute `HC_PARAMS_HASH = trustgraph-prover hypercerts paramshash <hypercerts_input.json>`.
 2. Propose `setParamsHash(HC_PARAMS_HASH)` through the **operational timelock**.
 3. From the next checkpoint, `submitProof` binds the new hash: prove with the same `params.json` you
    hashed (a mismatch reverts). Seed-set edits, weight tweaks, and the k-epoch horizon all ride this

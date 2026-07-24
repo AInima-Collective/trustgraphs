@@ -186,19 +186,31 @@ pub enum Command {
         /// Max blocks per eth_getLogs request (many RPCs cap the range).
         #[arg(long, default_value_t = 10_000)]
         chunk: u64,
-        #[arg(long, default_value = "contributions_input.json")]
-        out: String,
+        /// Output path (default: `<repo root>/.trustgraph/contributions/contributions_input.json`).
+        #[arg(long)]
+        out: Option<String>,
     },
     /// Run the guest via the SP1 executor and assert it matches native `compute` (no proof).
-    Execute { input: Option<String> },
+    Execute {
+        input: Option<String>,
+        /// Output directory (default: `<repo root>/.trustgraph/contributions/`).
+        #[arg(long)]
+        out_dir: Option<String>,
+    },
     /// Generate a proof (core, or Groth16-wrapped), verify it locally, and write the on-chain
     /// proof blob `abi.encode(publicValues, seal)` to contributions_proof.bin.
     Prove {
         input: Option<String>,
         #[arg(long)]
         groth16: bool,
+        /// Output directory (default: `<repo root>/.trustgraph/contributions/`).
+        #[arg(long)]
+        out_dir: Option<String>,
     },
 }
+
+/// The default generated-output directory for this program.
+const OUT_DIR: &str = "contributions";
 
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
@@ -219,29 +231,44 @@ pub fn run(cmd: Command) -> Result<()> {
             from_block,
             chunk,
             out,
-        } => fetch::run(fetch::Args {
-            rpc,
-            snapshot,
-            eas,
-            checkpoint,
-            params,
-            trust_schema_uid,
-            from_block,
-            chunk,
-            out,
-        }),
+        } => {
+            let out = match out {
+                Some(o) => o,
+                None => common::out_dir(None, OUT_DIR)?
+                    .join("contributions_input.json")
+                    .display()
+                    .to_string(),
+            };
+            fetch::run(fetch::Args {
+                rpc,
+                snapshot,
+                eas,
+                checkpoint,
+                params,
+                trust_schema_uid,
+                from_block,
+                chunk,
+                out,
+            })
+        }
         #[cfg(not(feature = "fetch"))]
         Command::Fetch { .. } => Err(anyhow!(
             "the fetch subcommand needs the on-chain reconstruction plumbing; rebuild with \
              `cargo build --release --features fetch` (kept out of the lean default build like \
              witness-atproto)."
         )),
-        Command::Execute { input } => cmd_execute(load_input(input.as_ref())?),
-        Command::Prove { input, groth16 } => cmd_prove(load_input(input.as_ref())?, groth16),
+        Command::Execute { input, out_dir } => {
+            cmd_execute(load_input(input.as_ref())?, common::out_dir(out_dir.as_ref(), OUT_DIR)?)
+        }
+        Command::Prove { input, groth16, out_dir } => cmd_prove(
+            load_input(input.as_ref())?,
+            groth16,
+            common::out_dir(out_dir.as_ref(), OUT_DIR)?,
+        ),
     }
 }
 
-fn cmd_execute(input: GuestInput) -> Result<()> {
+fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let native = compute(&input);
     let native_pub = encode::journal_encoded(&native.journal);
 
@@ -259,12 +286,12 @@ fn cmd_execute(input: GuestInput) -> Result<()> {
 
     // The canonical payout blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so
     // it can be pinned (the UI/indexer fetch the {account -> payout} split from IPFS at that cid).
-    std::fs::write("contributions_blob.json", &native.blob)?;
-    println!("wrote contributions_blob.json ({} bytes) — pin at the cid above", native.blob.len());
+    let p = common::write_out(&out, "contributions_blob.json", &native.blob)?;
+    println!("wrote {} ({} bytes) — pin at the cid above", p.display(), native.blob.len());
     Ok(())
 }
 
-fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
+fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Result<()> {
     // The payout blob is a pure function of the input; recompute it here so `prove` emits the
     // blob next to proof.bin (same bytes execute writes — its sha256 is the journal's ipfsHash).
     let native = compute(&input);
@@ -272,16 +299,18 @@ fn cmd_prove(input: GuestInput, groth16: bool) -> Result<()> {
     let (public_values, seal) = common::prove_and_verify(load_elf(), &input, groth16)?;
 
     let blob = common::abi_encode_two_bytes(&public_values, &seal);
-    std::fs::write("contributions_proof.bin", &blob)?;
-    std::fs::write("contributions_public_values.bin", &public_values)?;
-    std::fs::write("contributions_blob.json", &native.blob)?;
+    let proof_path = common::write_out(&out, "contributions_proof.bin", &blob)?;
+    common::write_out(&out, "contributions_public_values.bin", &public_values)?;
+    let blob_path = common::write_out(&out, "contributions_blob.json", &native.blob)?;
     println!(
-        "wrote contributions_proof.bin ({} blob bytes, {} seal bytes)",
+        "wrote {} ({} blob bytes, {} seal bytes)",
+        proof_path.display(),
         blob.len(),
         seal.len()
     );
     println!(
-        "wrote contributions_blob.json ({} bytes) — pin at the cid for the UI",
+        "wrote {} ({} bytes) — pin at the cid for the UI",
+        blob_path.display(),
         native.blob.len()
     );
     println!("publicValues: 0x{}", hex::encode(&public_values));

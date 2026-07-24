@@ -137,11 +137,11 @@ task contributions:submit-proof   # submitProof with the args prove-round saved
 
 `prove-round` reconstructs `contributions_input.json` from the two on-chain
 checkpoints (self-checked by re-folding to the checkpointed accumulators),
-byte-asserts guest == native, writes `zk/prover/contributions_proof.bin` +
+byte-asserts guest == native, writes `.trustgraph/contributions/contributions_proof.bin` +
 `contributions_blob.json`, pins the blob to kubo, and saves the submit args to
 `.docker/contributions_round_submit.env`.
 
-**Expected round-1 blob** (`zk/prover/contributions_blob.json`) — these are the
+**Expected round-1 blob** (`.trustgraph/contributions/contributions_blob.json`) — these are the
 merkle VALUES, byte-identical to the golden fixture payouts, Σ = the 5e9 pool,
 EVE absent:
 

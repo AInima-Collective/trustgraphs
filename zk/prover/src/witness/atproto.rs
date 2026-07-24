@@ -26,8 +26,10 @@ use std::collections::BTreeMap;
 pub const DEFAULT_RELAY_URL: &str = "https://bsky.network";
 /// Default PLC directory; a mirror can be substituted with `--plc-url`.
 pub const DEFAULT_PLC_URL: &str = "https://plc.directory";
-/// Default archive/bundle root.
-pub const DEFAULT_ARCHIVE_DIR: &str = ".witness-archive";
+/// Default archive/bundle root, under the repo's gitignored generated-output directory
+/// (resolved from this crate's manifest dir so it lands there from any CWD).
+pub const DEFAULT_ARCHIVE_DIR: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../.trustgraph/hypercerts/witness-archive");
 
 /// Where the CAR + PLC log for a DID were sourced from (recorded in the manifest for auditability).
 #[derive(Clone, Debug, Serialize, Deserialize)]

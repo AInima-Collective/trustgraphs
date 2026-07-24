@@ -7,6 +7,34 @@ use anyhow::{anyhow, Result};
 use serde::Serialize;
 use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
 use sp1_sdk::{Elf, HashableKey, ProvingKey, SP1Stdin};
+use std::path::{Path, PathBuf};
+
+/// Repo root, resolved from this crate's manifest dir (`zk/prover`) so generated-output paths
+/// are stable regardless of the CWD the prover is invoked from.
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Resolve (and create) the generated-output directory for `program`: the `--out-dir` override
+/// when given, else `<repo root>/.trustgraph/<program>/` — the single gitignored home for
+/// everything the prover writes.
+pub fn out_dir(override_dir: Option<&String>, program: &str) -> Result<PathBuf> {
+    let dir = match override_dir {
+        Some(d) => PathBuf::from(d),
+        None => repo_root().join(".trustgraph").join(program),
+    };
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| anyhow!("create output dir {}: {e}", dir.display()))?;
+    // Canonicalize so the "wrote …" lines print clean absolute paths (no `zk/prover/../..`).
+    Ok(dir.canonicalize().unwrap_or(dir))
+}
+
+/// Write `name` into `dir`, returning the full path (for the "wrote …" log lines).
+pub fn write_out(dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> Result<PathBuf> {
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).map_err(|e| anyhow!("write {}: {e}", path.display()))?;
+    Ok(path)
+}
 
 /// abi.encode(bytes publicValues, bytes proofBytes) — the blob SP1JournalVerifier decodes.
 pub fn abi_encode_two_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {

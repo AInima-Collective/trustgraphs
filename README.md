@@ -174,28 +174,31 @@ The root is not produced automatically — anyone runs this loop:
 # a. Freeze a checkpoint of the current attestation set:
 cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc, leafCount, block)
 
-# b. Reconstruct that checkpoint's exact edge set from chain into input.json. The exporter re-folds
-#    the reconstructed edges and refuses to emit unless they reproduce the checkpoint's `acc`:
+# b. Reconstruct that checkpoint's exact edge set from chain. The exporter re-folds the
+#    reconstructed edges and refuses to emit unless they reproduce the checkpoint's `acc`;
+#    it writes .trustgraph/trust-graph/input.json (override with --out):
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
-  --checkpoint $CHECKPOINT_ID --params params.json --out input.json
+  --checkpoint $CHECKPOINT_ID --params params.json
 #    ($ACCUMULATOR is the EASIndexerResolver; params.json is the serialized pinned Params.)
 
-# c. Prove the fixed-point PageRank (writes proof.bin = abi.encode(publicValues, seal)):
+# c. Prove the fixed-point PageRank. All prover outputs land in .trustgraph/trust-graph/
+#    (proof.bin = abi.encode(publicValues, seal)):
 cd zk/prover
-SP1_PROVER=network cargo run --release -- trust-graph prove input.json --groth16
+SP1_PROVER=network cargo run --release -- trust-graph prove ../../.trustgraph/trust-graph/input.json --groth16
 #    local instead (needs ~16–32 GiB + a gnark/Go toolchain):
-#    SP1_PROVER=cpu cargo run --release --features native-gnark -- trust-graph prove input.json --groth16
+#    SP1_PROVER=cpu cargo run --release --features native-gnark -- trust-graph prove ../../.trustgraph/trust-graph/input.json --groth16
+cd ../..
 
 # d. Pin the canonical blob (raw CIDv1 — must equal the guest's cid). `prove`/`execute` write blob.json:
-ipfs add --cid-version=1 --raw-leaves blob.json
+ipfs add --cid-version=1 --raw-leaves .trustgraph/trust-graph/blob.json
 #    or via a running kubo daemon without the ipfs CLI:
-#    curl -sF file=@blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
+#    curl -sF file=@.trustgraph/trust-graph/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
 # e. Submit (note the 0x prefix on the proof blob):
 cast send $MERKLE_SNAPSHOT \
   "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE "0x$(xxd -p proof.bin | tr -d '\n')"
+  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE "0x$(xxd -p .trustgraph/trust-graph/proof.bin | tr -d '\n')"
 ```
 
 > **Where does `input.json` come from?** It's a serialized `GuestInput` (edges + params) — the exact
@@ -215,19 +218,21 @@ Rotate the Safe's owners to the current top-scored accounts, proven correct:
 # a. Freeze a checkpoint (same accumulator as the root):
 cast send $MERKLE_SNAPSHOT "trigger()"
 
-# b. Reconstruct the SignerInput (adds --signer --selection), then prove the top-N selection:
+# b. Reconstruct the SignerInput (adds --signer --selection; writes
+#    .trustgraph/signer-sync/signer_input.json), then prove the top-N selection:
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
   --checkpoint $CHECKPOINT_ID --params params.json \
-  --signer --selection selection.json --out input.json
+  --signer --selection selection.json
 cd zk/prover
-SP1_PROVER=network cargo run --release -- signer prove input.json --groth16   # writes signer_proof.bin
-#    local instead: SP1_PROVER=cpu cargo run --release --features native-gnark -- signer prove input.json --groth16
+SP1_PROVER=network cargo run --release -- signer prove ../../.trustgraph/signer-sync/signer_input.json --groth16
+#    local instead: SP1_PROVER=cpu cargo run --release --features native-gnark -- signer prove ../../.trustgraph/signer-sync/signer_input.json --groth16
+cd ../..
 
 # c. Submit to rotate owners (SIGNERS ascending & unique; THRESHOLD in [1, |SIGNERS|]):
 cast send $SIGNER_SYNC_MODULE \
   "submitSignerProof(uint256,address[],uint256,bytes)" \
-  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 signer_proof.bin)
+  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 .trustgraph/signer-sync/signer_proof.bin)
 ```
 
 The module verifies the proof, then diffs the proven owner set against the Safe's **live** owner list

@@ -207,7 +207,7 @@ task trustgraph:create-network NET_INDEX=0 TEST_ADDRESS=0x3C44CdDdB6a900fa2b585d
 cast send $MERKLE_SNAPSHOT "trigger()" --rpc-url $RPC --private-key $PK
 export ID=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --rpc-url $RPC) - 1 ))
 
-# reconstruct input.json from chain (writes ./input.json at the repo root).
+# reconstruct input.json from chain (writes .trustgraph/trust-graph/input.json).
 # --from-block starts the getLogs scan just above the fork so anvil serves the (local) EdgeFolded logs
 # itself instead of proxying pre-fork ranges to your RPC — required on rate-limited tiers (Alchemy free
 # caps getLogs at a 10-block range). The exporter re-folds edges to the checkpoint acc, so a too-high
@@ -215,30 +215,30 @@ export ID=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --r
 FORK_BLOCK=$(cast rpc anvil_nodeInfo --rpc-url $RPC | jq -r '.forkConfig.forkBlockNumber')
 cargo run -p input-exporter -- --rpc $RPC \
   --accumulator $EAS_INDEXER_RESOLVER --eas $EAS --checkpoint $ID --params params.json \
-  --from-block $(( FORK_BLOCK + 1 )) --out input.json
+  --from-block $(( FORK_BLOCK + 1 ))
 
 # execute (fast, no proof) to get the submitProof args — and blob.json
-EXEC=$( ( cd zk/prover && cargo run -q --release -- trust-graph execute ../../input.json ) ); echo "$EXEC"
+EXEC=$( ( cd zk/prover && cargo run -q --release -- trust-graph execute ../../.trustgraph/trust-graph/input.json ) ); echo "$EXEC"
 export OUTPUT_ROOT=$(echo "$EXEC" | awk '/outputRoot:/{print $2}')
 export IPFS_HASH=$(  echo "$EXEC" | awk '/ipfsHash:/{print $2}')
 export CID=$(        echo "$EXEC" | awk '/cid:/{print $2}')
 export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
 
 # prove — cpu Groth16 needs --features native-gnark + ~16-32 GiB RAM (drop it for SP1_PROVER=network)
-( cd zk/prover && cargo run --release --features native-gnark -- trust-graph prove ../../input.json --groth16 )
+( cd zk/prover && cargo run --release --features native-gnark -- trust-graph prove ../../.trustgraph/trust-graph/input.json --groth16 )
 
 # pin the score blob so the UI can fetch it (kubo HTTP API — no ipfs CLI needed)
-curl -sF file=@zk/prover/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
+curl -sF file=@.trustgraph/trust-graph/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
 # submit. The extra bytes32(0) is the journal-v2 `skippedDigest` — always zero on this
 # lane-1-only path (no anchor registry wired ⇒ the guest asserts the empty lane).
-# (no xxd? use: "0x$(od -An -v -tx1 zk/prover/proof.bin | tr -d ' \n')")
+# (no xxd? use: "0x$(od -An -v -tx1 .trustgraph/trust-graph/proof.bin | tr -d ' \n')")
 cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 "0x$(xxd -p zk/prover/proof.bin | tr -d '\n')" \
+  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 "0x$(xxd -p .trustgraph/trust-graph/proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
 ```
 
-`execute` and `prove` both write `zk/prover/blob.json` (the `{account → score}` blob whose sha256 is
+`execute` and `prove` both write `.trustgraph/trust-graph/blob.json` (the `{account → score}` blob whose sha256 is
 `ipfsHash` and whose CID is `cid`); the `curl` pins it at that CID. `submitProof` verifies from the
 journal, so it lands even if you skip the pin — but the frontend needs the blob pinned to show scores.
 
