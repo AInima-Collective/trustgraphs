@@ -1,10 +1,12 @@
 # INSTANCE_FACTORY — permissionless community instances via a TrustGraphFactory
 
-Status: research (2026-07-24). No build decision yet. **Sequenced after the repo cleanup
-program** (decided 2026-07-24): the factory builds as its own program on the
-cleaned base — in particular, by the time Phase A starts, Localism-specific code is gone
-(cleanup M2), generated artifacts live under `.trustgraph/` (M1), and there is no live
-production network to migrate.
+Status: research (2026-07-24). No build decision yet; tracked as
+[issue #6](https://github.com/JakeHartnell/ZkTrustGraph/issues/6). **The repo cleanup
+program this was sequenced after closed 2026-07-24** (all six milestones landed; see
+`docs/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
+code is gone, generated artifacts live under `.trustgraph/`, and there is no live
+production network to migrate (the legacy v1 Optimism instance is frozen on journal v1
+and never migrates — `docs/PROGRAMS.md` is the canonical statement).
 
 ## 0. Product shape (decided up front)
 
@@ -208,8 +210,8 @@ Migration:
    (or the registry directly) instead of the static import;
    `app/network/[id]` flips to `dynamicParams = true` so a
    minutes-old instance resolves without rebuild. There is no live
-   production network to migrate (per the cleanup decisions,
-   `networks.production.json` is deleted); the only backfill is
+   production network to migrate (`networks.production.json` was deleted in the cleanup;
+   the legacy v1 Optimism instance is frozen and out of catalog scope); the only backfill is
    registering local dev-seed networks so there is one catalog, not two —
    and even that can simply be recreated through the factory instead.
 4. **SchemaManager** builds its schema list from the catalog rows
@@ -257,8 +259,12 @@ The prover loop generalizes cleanly because everything it needs is now
 on-chain (§2.1): enumerate registry → for each instance past its epoch
 boundary → `trigger()` → export input (`input-exporter` already takes
 addresses as args and self-checks the fold against the checkpoint) →
-prove → `submitProof`. Per-instance cost is real, though: one SP1 proof
-per instance per epoch.
+prove → `submitProof`. One operational note from the cleanup: prover/exporter outputs
+now default to `.trustgraph/<program>/` (one fixed directory per *program*, settable via
+`--out-dir`/`--out`); a hosted loop proving N instances of the same program must pass
+per-instance out-dirs (e.g. `.trustgraph/trust-graph/<instanceId>/`) or successive
+instances overwrite each other's `input.json`/`proof.bin`. Per-instance cost is real,
+though: one SP1 proof per instance per epoch.
 
 Sustainable posture given "hosted by us initially":
 
