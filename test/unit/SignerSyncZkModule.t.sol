@@ -4,9 +4,7 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 
 import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
-import {
-    GnosisSafeProxyFactory
-} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
+import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -58,13 +56,9 @@ contract SignerSyncZkModuleTest is Test {
             address(0)
         );
         safe = GnosisSafe(
-            payable(
-                address(
-                    safeFactory.createProxyWithNonce(
-                        address(safeSingleton), setupData, uint256(keccak256("salt"))
-                    )
-                )
-            )
+            payable(address(
+                    safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("salt")))
+                ))
         );
 
         verifier = new MockZkVerifier();
@@ -108,11 +102,7 @@ contract SignerSyncZkModuleTest is Test {
         r[2] = c;
     }
 
-    function _arr(address a, address b, address c, address d)
-        internal
-        pure
-        returns (address[] memory r)
-    {
+    function _arr(address a, address b, address c, address d) internal pure returns (address[] memory r) {
         r = new address[](4);
         r[0] = a;
         r[1] = b;
@@ -120,11 +110,7 @@ contract SignerSyncZkModuleTest is Test {
         r[3] = d;
     }
 
-    function _arr(address a, address b, address c, address d, address e)
-        internal
-        pure
-        returns (address[] memory r)
-    {
+    function _arr(address a, address b, address c, address d, address e) internal pure returns (address[] memory r) {
         r = new address[](5);
         r[0] = a;
         r[1] = b;
@@ -247,14 +233,10 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_StaleCheckpointReverts() public {
         module.submitSignerProof(1, _arr(D, E, F), 2, PROOF);
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(1), uint256(1))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(1), uint256(1)));
         module.submitSignerProof(1, _arr(A, B, C), 2, PROOF);
         // A strictly-lower checkpoint is also stale.
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(0), uint256(1))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(0), uint256(1)));
         module.submitSignerProof(0, _arr(A, B, C), 2, PROOF);
     }
 
@@ -275,26 +257,18 @@ contract SignerSyncZkModuleTest is Test {
     }
 
     function test_ZeroAndSentinelSignerRevert() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0)));
         module.submitSignerProof(0, _arr(address(0)), 1, PROOF);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0x1))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0x1)));
         module.submitSignerProof(0, _arr(address(0x1)), 1, PROOF);
     }
 
     function test_InvalidThresholdReverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(0), uint256(3))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(0), uint256(3)));
         module.submitSignerProof(0, _arr(A, B, C), 0, PROOF);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(4), uint256(3))
-        );
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(4), uint256(3)));
         module.submitSignerProof(0, _arr(A, B, C), 4, PROOF);
     }
 
@@ -335,9 +309,8 @@ contract SignerSyncZkModuleTest is Test {
         // the module rebuilds, so the encode() order/types are asserted.
         address[] memory signers = _arr(D, E, F);
         bytes32 signerSetRoot = _ozRoot(signers);
-        bytes32 expected = keccak256(
-            abi.encode(keccak256("acc0"), uint64(10), PARAMS_HASH, SEL_HASH, signerSetRoot, uint256(2))
-        );
+        bytes32 expected =
+            keccak256(abi.encode(keccak256("acc0"), uint64(10), PARAMS_HASH, SEL_HASH, signerSetRoot, uint256(2)));
         verifier.setExpectedDigest(expected);
         module.submitSignerProof(0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
@@ -348,9 +321,7 @@ contract SignerSyncZkModuleTest is Test {
         address[] memory signers = _arr(D, E, F);
         bytes32 signerSetRoot = _ozRoot(signers);
         bytes32 madeForDifferentParams = keccak256(
-            abi.encode(
-                keccak256("acc0"), uint64(10), keccak256("OTHER"), SEL_HASH, signerSetRoot, uint256(2)
-            )
+            abi.encode(keccak256("acc0"), uint64(10), keccak256("OTHER"), SEL_HASH, signerSetRoot, uint256(2))
         );
         verifier.setExpectedDigest(madeForDifferentParams);
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));

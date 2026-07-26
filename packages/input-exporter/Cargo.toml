@@ -19,6 +19,10 @@ crate-type = ["rlib"]
 name = "envelope0-gen"
 path = "src/bin/envelope0_gen.rs"
 
+[[bin]]
+name = "instance-scan"
+path = "src/bin/instance_scan.rs"
+
 [dependencies]
 pagerank-core = { path = "../pagerank-core" }
 envelopes_crate = { path = "../envelopes", package = "envelopes" }

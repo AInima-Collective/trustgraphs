@@ -35,7 +35,8 @@ contract OffchainAttestationVerifier is EIP712Verifier {
 
     // The hash of the data type used to relay calls to the attest function. It's the value of
     // keccak256("Attestation(bytes32 schema,address recipient,uint64 time,uint64 expirationTime,bool revocable,bytes32 refUID,bytes data)").
-    bytes32 private constant LEGACY_ATTEST_TYPEHASH = 0x2fcbc49c85ccde58f6986371b0828354351185c921aebbaace3e89e0e023b25d;
+    bytes32 private constant LEGACY_ATTEST_TYPEHASH =
+        0x2fcbc49c85ccde58f6986371b0828354351185c921aebbaace3e89e0e023b25d;
 
     // The hash of the data type used to relay calls to the attest function. It's the value of
     // keccak256("Attest(uint16 version,bytes32 schema,address recipient,uint64 time,uint64 expirationTime,bool revocable,bytes32 refUID,bytes data)").
@@ -105,11 +106,9 @@ contract OffchainAttestationVerifier is EIP712Verifier {
         }
 
         Signature memory signature = attestation.signature;
-        if (
-            !SignatureChecker.isValidSignatureNow(
+        if (!SignatureChecker.isValidSignatureNow(
                 attestation.attester, hash, abi.encodePacked(signature.r, signature.s, signature.v)
-            )
-        ) {
+            )) {
             return false;
         }
 

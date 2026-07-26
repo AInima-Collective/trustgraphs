@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import { stdJson } from 'forge-std/StdJson.sol';
-import { console } from 'forge-std/console.sol';
-import { Strings } from '@openzeppelin/contracts/utils/Strings.sol';
+import {stdJson} from "forge-std/StdJson.sol";
+import {console} from "forge-std/console.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import { ISP1Verifier } from 'interfaces/merkle/ISP1Verifier.sol';
-import {
-  SP1JournalVerifier
-} from 'contracts/merkle/SP1JournalVerifier.sol';
+import {ISP1Verifier} from "interfaces/merkle/ISP1Verifier.sol";
+import {SP1JournalVerifier} from "contracts/merkle/SP1JournalVerifier.sol";
 
-import { Common } from 'script/Common.s.sol';
+import {Common} from "script/Common.s.sol";
 
 /// @title DeployZkVerifier
 /// @notice Deploys the `SP1JournalVerifier` adapter that gates `MerkleSnapshot.submitProof`.
@@ -24,68 +22,55 @@ import { Common } from 'script/Common.s.sol';
 /// The deployed adapter address is written to `.docker/zk_verifier_deploy.json` so the TypeScript
 /// deploy orchestration can thread it into `DeployNetwork` as `MerkleSnapshot.zkVerifier`.
 contract DeployZkVerifier is Common {
-  using stdJson for string;
+    using stdJson for string;
 
-  string public root = vm.projectRoot();
+    string public root = vm.projectRoot();
 
-  /// @notice Deploy the SP1 verifier adapter.
-  /// @param sp1GatewayAddr The already-deployed canonical SP1 verifier gateway address. If empty,
-  ///        falls back to the `SP1_VERIFIER_GATEWAY` env var.
-  /// @param programVKey The SP1 guest program verification key (image id). If zero, falls back to
-  ///        the `SP1_PROGRAM_VKEY` env var.
-  /// @param outLabel Output-file discriminator: '' -> `.docker/zk_verifier_deploy.json` (root
-  ///        producer), else `.docker/zk_verifier_<outLabel>_deploy.json` (e.g. 'signer'). Lets the
-  ///        root and signer verifiers coexist without clobbering each other's output.
-  /// @return verifier The deployed `SP1JournalVerifier` address.
-  function run(
-    string calldata sp1GatewayAddr,
-    bytes32 programVKey,
-    string calldata outLabel
-  ) public returns (address verifier) {
-    string memory script_output_path = string.concat(
-      root,
-      '/.docker/zk_verifier',
-      bytes(outLabel).length == 0 ? '' : string.concat('_', outLabel),
-      '_deploy.json'
-    );
+    /// @notice Deploy the SP1 verifier adapter.
+    /// @param sp1GatewayAddr The already-deployed canonical SP1 verifier gateway address. If empty,
+    ///        falls back to the `SP1_VERIFIER_GATEWAY` env var.
+    /// @param programVKey The SP1 guest program verification key (image id). If zero, falls back to
+    ///        the `SP1_PROGRAM_VKEY` env var.
+    /// @param outLabel Output-file discriminator: '' -> `.docker/zk_verifier_deploy.json` (root
+    ///        producer), else `.docker/zk_verifier_<outLabel>_deploy.json` (e.g. 'signer'). Lets the
+    ///        root and signer verifiers coexist without clobbering each other's output.
+    /// @return verifier The deployed `SP1JournalVerifier` address.
+    function run(string calldata sp1GatewayAddr, bytes32 programVKey, string calldata outLabel)
+        public
+        returns (address verifier)
+    {
+        string memory script_output_path = string.concat(
+            root,
+            "/.docker/zk_verifier",
+            bytes(outLabel).length == 0 ? "" : string.concat("_", outLabel),
+            "_deploy.json"
+        );
 
-    // Gateway: prefer the explicit param, else the env var. Never hardcoded.
-    address gateway = bytes(sp1GatewayAddr).length == 0
-      ? vm.envAddress('SP1_VERIFIER_GATEWAY')
-      : vm.parseAddress(sp1GatewayAddr);
-    require(gateway != address(0), 'DeployZkVerifier: gateway is zero');
+        // Gateway: prefer the explicit param, else the env var. Never hardcoded.
+        address gateway =
+            bytes(sp1GatewayAddr).length == 0 ? vm.envAddress("SP1_VERIFIER_GATEWAY") : vm.parseAddress(sp1GatewayAddr);
+        require(gateway != address(0), "DeployZkVerifier: gateway is zero");
 
-    // Program vkey: prefer the explicit param, else the env var.
-    bytes32 vkey = programVKey == bytes32(0)
-      ? vm.envBytes32('SP1_PROGRAM_VKEY')
-      : programVKey;
-    require(vkey != bytes32(0), 'DeployZkVerifier: programVKey is zero');
+        // Program vkey: prefer the explicit param, else the env var.
+        bytes32 vkey = programVKey == bytes32(0) ? vm.envBytes32("SP1_PROGRAM_VKEY") : programVKey;
+        require(vkey != bytes32(0), "DeployZkVerifier: programVKey is zero");
 
-    vm.startBroadcast(_privateKey);
+        vm.startBroadcast(_privateKey);
 
-    SP1JournalVerifier sp1Verifier = new SP1JournalVerifier(
-      ISP1Verifier(gateway),
-      vkey
-    );
-    verifier = address(sp1Verifier);
+        SP1JournalVerifier sp1Verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
+        verifier = address(sp1Verifier);
 
-    vm.stopBroadcast();
+        vm.stopBroadcast();
 
-    console.log('SP1 verifier gateway:', gateway);
-    console.log('SP1 program vkey:', vm.toString(vkey));
-    console.log('SP1JournalVerifier deployed at:', verifier);
+        console.log("SP1 verifier gateway:", gateway);
+        console.log("SP1 program vkey:", vm.toString(vkey));
+        console.log("SP1JournalVerifier deployed at:", verifier);
 
-    // Persist for the deploy orchestration (env.ts reads `zk_verifier`).
-    string memory _json = 'json';
-    _json.serialize(
-      'sp1_gateway',
-      Strings.toChecksumHexString(gateway)
-    );
-    _json.serialize('program_vkey', vm.toString(vkey));
-    string memory finalJson = _json.serialize(
-      'zk_verifier',
-      Strings.toChecksumHexString(verifier)
-    );
-    vm.writeFile(script_output_path, finalJson);
-  }
+        // Persist for the deploy orchestration (env.ts reads `zk_verifier`).
+        string memory _json = "json";
+        _json.serialize("sp1_gateway", Strings.toChecksumHexString(gateway));
+        _json.serialize("program_vkey", vm.toString(vkey));
+        string memory finalJson = _json.serialize("zk_verifier", Strings.toChecksumHexString(verifier));
+        vm.writeFile(script_output_path, finalJson);
+    }
 }

@@ -1,5 +1,5 @@
 //! Exact byte encodings shared with Solidity. Every function here is golden-tested against
-//! `abi.encode` / `keccak256` / `sha256` in `test/unit/GoldenVectors.t.sol` (PLAN.md §1, WP2).
+//! `abi.encode` / `keccak256` / `sha256` in `test/unit/golden/TrustGraphGoldenVectors.t.sol` (PLAN.md §1, WP2).
 //!
 //! All tuples we encode are composed of STATIC ABI types (uintN, address, bytes32), so
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather
@@ -92,7 +92,7 @@ pub fn params_hash(p: &Params) -> B256 {
         keccak256(&d)
     };
 
-    let mut buf = Vec::with_capacity(32 * 15);
+    let mut buf = Vec::with_capacity(32 * 17);
     buf.extend_from_slice(&word_u256(p.damping_fp));
     buf.extend_from_slice(&word_u256(p.tolerance_fp));
     buf.extend_from_slice(&word_u32(p.max_iterations));
@@ -108,6 +108,10 @@ pub fn params_hash(p: &Params) -> B256 {
     buf.extend_from_slice(&word_u32(p.weight_field_index));
     buf.extend_from_slice(domain_set_hash.as_slice());
     buf.extend_from_slice(&word_u64(p.lane2_max_head_age));
+    // Domain separation (INSTANCE_FACTORY §6.1), appended as fields 16-17 in the params-schema v2
+    // rotation. The journal shape is untouched — separation lives in the params, not the journal.
+    buf.extend_from_slice(&word_addr(p.accumulator));
+    buf.extend_from_slice(&word_u64(p.chain_id));
     keccak256(&buf)
 }
 

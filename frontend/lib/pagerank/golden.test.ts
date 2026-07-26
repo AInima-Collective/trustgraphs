@@ -72,6 +72,9 @@ const params: Params = {
   precisionScale: S,
   schemaUid: `0x${'ab'.repeat(32)}` as Hex, // matches export_golden.rs: B256::from([0xAB; 32])
   weightFieldIndex: 1,
+  // Params-schema v2 domain separators (matches export_golden.rs: addr(0xAC) / chain 31337).
+  accumulator: `0x${'ac'.repeat(20)}` as Hex,
+  chainId: 31337n,
 }
 
 const input: GuestInput = {
@@ -89,12 +92,12 @@ const selection: SelectionParams = { topN: 3, minThreshold: 1, targetThresholdBp
 const GOLDEN = {
   acc: '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d151',
   leafCount: 3n,
-  paramsHash: '0xa8a8c290e6bc27514ecea8c62c740030220cd81dfcc21a173402da1911d9334d', // 15-field (lane-2 config)
+  paramsHash: '0x4c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757', // 17-field (v2: + accumulator, chainId)
   outputRoot: '0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27',
   ipfsHash: '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
   cid: 'bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4',
   cidDigest: '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
-  journalDigest: '0xe0b955157cb26800d2fb4fce00e00fb9fd88f375b0bec9d25129cdfdfec23b9f', // journal v2 (two-lane; empty lane 2)
+  journalDigest: '0xf9defecce3f274369e3b74f23546f97e5cf0f3e76c276869a7e642fb7cb4d1a2', // journal v2 (two-lane; empty lane 2)
   totalValue: 1_000_000_000_000_000_000_000_000n, // 1e24
   edge0DataHash: '0x00bcd6ff29ae71d399fb597d99792fa72d0863bd723b9ab11f79d0b8d8ac5bc8',
   edge0Leaf: '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
@@ -118,8 +121,8 @@ const GOLDEN = {
     signerSetRoot: '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
     targetThreshold: 2n,
     journalEncoded:
-      '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d1510000000000000000000000000000000000000000000000000000000000000003a8a8c290e6bc27514ecea8c62c740030220cd81dfcc21a173402da1911d9334dae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac30000000000000000000000000000000000000000000000000000000000000002',
-    journalDigest: '0xdce3c58eb3417cea2d866400352bc7b2be9aad51342390e35e3087cfa85dc36d',
+      '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d15100000000000000000000000000000000000000000000000000000000000000034c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac30000000000000000000000000000000000000000000000000000000000000002',
+    journalDigest: '0xfdc70ed2d32f22064bcbe84812a5b0539fbc6cdfc026978dce12cbbeb081631f',
   },
 }
 

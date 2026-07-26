@@ -1,0 +1,197 @@
+/**
+ * Trust-graph instance catalog (GOAL.md M2; research/INSTANCE_FACTORY.md §3).
+ *
+ * Serves the `instance` table — one row per network created through `TrustGraphFactory`, built from
+ * the frozen `InstanceCreated` event (src/factory.ts). This is what REPLACES `config/networks.json`
+ * for trust-graph networks: the app asks the chain (via this route) which networks exist instead of
+ * shipping a list, so a community that signed `createInstance` a minute ago is browsable with no
+ * config edit, no redeploy and no restart.
+ *
+ * The response is shaped for a TS client (frontend/lib/types.ts `Network`) and needs no post-
+ * processing: addresses arrive under `contracts` with the names the frontend uses, the vouch schema
+ * arrives as a ready `NetworkSchema` (uid + parsed fields), and every on-chain bigint arrives as a
+ * decimal string. `params` is the FULL 17-field struct as emitted — fixed-point, not rescaled: the
+ * `*Fp` fields are scaled by `params.precisionScale` (1e18) and `totalPool` is the raw pool. The
+ * canonical fixed-point → display conversion lives in frontend/lib/pagerank; doing it here would
+ * fork it.
+ *
+ * `paramsHash` is recomputed by the indexer from those exact fields and always equals
+ * `MerkleSnapshot(contracts.merkleSnapshot).paramsHash()` — a client that cares can verify this
+ * response against the chain in one `eth_call` and ignore this endpoint entirely.
+ *
+ * Routes:
+ *   GET /instances                    the catalog, newest first, paginated
+ *     ?limit= (default 50, max 200) &offset=
+ *     &creator= &admin= &snapshot= &resolver= &distributor= &schemaUid=   (exact-match filters)
+ *   GET /instances/:id                one instance by its `instanceId`
+ */
+import { and, count, desc, eq } from 'drizzle-orm'
+import { Hono } from 'hono'
+import { db } from 'ponder:api'
+import { instance } from 'ponder:schema'
+import { type Hex, isAddress, isHex } from 'viem'
+
+import type { InstanceParamsJson } from '../factory'
+
+const app = new Hono()
+
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 200
+
+type InstanceRow = typeof instance.$inferSelect
+
+/**
+ * The canonical vouch schema's presentation labels. Every factory instance shares one schema
+ * (`TrustGraphFactory.VOUCH_SCHEMA`) precisely so these are uniform — a creator-customizable schema
+ * would fork `weightFieldIndex` and multiply the surface every consumer has to handle.
+ */
+const VOUCH_SCHEMA_KEY = 'vouching'
+const VOUCH_SCHEMA_NAME = 'Vouch'
+const VOUCH_SCHEMA_DESCRIPTION = 'Weighted endorsement'
+
+/** `"string comment,uint256 confidence"` → `[{name: 'comment', type: 'string'}, …]`. */
+const parseSchemaFields = (schema: string) =>
+  schema
+    .split(',')
+    .map((field) => field.trim())
+    .filter((field) => field.length > 0)
+    .map((field) => {
+      const [type, name] = field.split(/\s+/)
+      return { name: name ?? '', type: type ?? '' }
+    })
+
+const serialize = (row: InstanceRow) => ({
+  id: row.id,
+  chainId: row.chainId,
+  factory: row.factory,
+  creator: row.creator,
+  admin: row.admin,
+  name: row.name,
+  metadataURI: row.metadataURI,
+  // The presentation blob `{name, description, criteria, image, applicationUrl}`, or null when the
+  // instance shipped no URI (or it could not be resolved). Nothing here is consensus-relevant.
+  metadata: row.metadata ?? null,
+  contracts: {
+    merkleSnapshot: row.snapshot,
+    easIndexerResolver: row.resolver,
+    merkleFundDistributor: row.distributor,
+  },
+  // Ready to drop into `Network['schemas']`.
+  schema: {
+    uid: row.schemaUid,
+    key: VOUCH_SCHEMA_KEY,
+    name: VOUCH_SCHEMA_NAME,
+    description: VOUCH_SCHEMA_DESCRIPTION,
+    schema: row.schemaString,
+    resolver: row.resolver,
+    // The factory always registers the vouch schema revocable (a vouch you cannot withdraw is not
+    // a vouch).
+    revocable: true,
+    fields: parseSchemaFields(row.schemaString),
+  },
+  // The token the community intends to distribute — the payout screen's default pick, not a
+  // restriction (the distributor is multi-token).
+  distributorToken: row.distributorToken,
+  epochLength: row.epochLength.toString(),
+  paramsHash: row.paramsHash,
+  params: row.params as InstanceParamsJson,
+  trustedSeeds: row.trustedSeeds,
+  createdBlock: row.createdBlock.toString(),
+  createdTimestamp: row.createdTimestamp.toString(),
+  createdTxHash: row.createdTxHash,
+})
+
+/** Parse a bounded non-negative integer query param. */
+const intParam = (raw: string | undefined, fallback: number, max: number) => {
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 0) return null
+  return Math.min(value, max)
+}
+
+app.get('/', async (c) => {
+  const limit = intParam(c.req.query('limit'), DEFAULT_LIMIT, MAX_LIMIT)
+  const offset = intParam(c.req.query('offset'), 0, Number.MAX_SAFE_INTEGER)
+  if (limit === null || offset === null) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+
+  const filters = []
+  for (const [param, column] of [
+    ['creator', instance.creator],
+    ['admin', instance.admin],
+    ['snapshot', instance.snapshot],
+    ['resolver', instance.resolver],
+    ['distributor', instance.distributor],
+  ] as const) {
+    const value = c.req.query(param)
+    if (value === undefined) continue
+    if (!isAddress(value)) {
+      return c.json({ error: `${param} must be an address` }, 400)
+    }
+    // Addresses are stored checksummed as they arrive from the event; compare case-insensitively.
+    filters.push(eq(column, value as Hex))
+  }
+  const schemaUid = c.req.query('schemaUid')
+  if (schemaUid !== undefined) {
+    if (!isHex(schemaUid) || schemaUid.length !== 66) {
+      return c.json({ error: 'schemaUid must be a 32-byte hex string' }, 400)
+    }
+    filters.push(eq(instance.schemaUid, schemaUid))
+  }
+  const where = filters.length > 0 ? and(...filters) : undefined
+
+  try {
+    const rows = await db
+      .select()
+      .from(instance)
+      .where(where)
+      .orderBy(desc(instance.createdBlock), desc(instance.id))
+      .limit(limit)
+      .offset(offset)
+
+    const [totalRow] = await db
+      .select({ total: count(instance.id) })
+      .from(instance)
+      .where(where)
+
+    return c.json({
+      instances: rows.map(serialize),
+      pagination: {
+        limit,
+        offset,
+        total: totalRow?.total ?? 0,
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching instances:', error)
+    return c.json({ error: 'Failed to fetch instances' }, 500)
+  }
+})
+
+app.get('/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!isHex(id) || id.length !== 66) {
+    return c.json({ error: 'id must be a 32-byte instanceId hex string' }, 400)
+  }
+
+  try {
+    const [row] = await db
+      .select()
+      .from(instance)
+      .where(eq(instance.id, id))
+      .limit(1)
+    if (!row) {
+      return c.json({ error: 'Instance not found' }, 404)
+    }
+    return c.json({ instance: serialize(row) })
+  } catch (error) {
+    console.error('Error fetching instance:', error)
+    return c.json({ error: 'Failed to fetch instance' }, 500)
+  }
+})
+
+export default app

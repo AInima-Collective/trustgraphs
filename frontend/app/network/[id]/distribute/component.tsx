@@ -21,6 +21,7 @@ import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
+import { NetworkNav } from '@/components/NetworkNav'
 import {
   Select,
   SelectContent,
@@ -33,6 +34,7 @@ import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
+import { trustGraphTabs } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
 import { formatBigNumber } from '@/lib/utils'
 import { merkleFundDistribution } from '@/ponder.schema'
@@ -628,6 +630,8 @@ export const DistributePage = () => {
           Distribute funds to network members based on their TrustScore, or
           claim your share from existing distributions.
         </p>
+
+        <NetworkNav tabs={trustGraphTabs(network)} className="w-full mt-2" />
       </div>
 
       {/* Statistics */}

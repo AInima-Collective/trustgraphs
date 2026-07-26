@@ -4,19 +4,19 @@ import { usePonderQuery } from '@ponder/react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { useMemo } from 'react'
 import { Hex, erc20Abi, formatUnits } from 'viem'
 import { useReadContracts } from 'wagmi'
 
+import { NetworkNav } from '@/components/NetworkNav'
 import { contributionsQueries } from '@/lib/contributions-api'
 import {
   buildClaimViews,
   contributionsSchema,
   getContributionAttestations,
 } from '@/lib/contributions-view'
+import { contributionsTabs } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
-import { cn } from '@/lib/utils'
 
 /**
  * All the data the contributions screens share: the round summary (M3 indexer route), the live
@@ -139,46 +139,15 @@ export const roundStatusLabel = (
         ? 'Round closed'
         : 'Round status unknown'
 
-const TABS = [
-  { segment: '', label: 'Round' },
-  { segment: 'contribute', label: 'Contribute' },
-  { segment: 'respond', label: 'Respond' },
-  { segment: 'rate', label: 'Rate' },
-  { segment: 'payout', label: 'Payout' },
-]
-
-/** Tab navigation across the five contributions screens. */
+/**
+ * Tab navigation across the five contributions screens. Delegates to the shared `NetworkNav` so
+ * a round and a trust network present their sections identically.
+ */
 export const ContributionsNav = ({
   network,
 }: {
   network: ContributionsNetwork
-}) => {
-  const pathname = usePathname()
-  const base = `/network/${network.id}`
-
-  return (
-    <div className="flex flex-row items-center gap-1 flex-wrap border-b border-border pb-2">
-      {TABS.map(({ segment, label }) => {
-        const href = segment ? `${base}/${segment}` : base
-        const active = pathname === href
-        return (
-          <Link
-            key={label}
-            href={href}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-sm transition-colors',
-              active
-                ? 'bg-primary text-primary-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-            )}
-          >
-            {label}
-          </Link>
-        )
-      })}
-    </div>
-  )
-}
+}) => <NetworkNav tabs={contributionsTabs(network)} />
 
 /** Back link to the round view. */
 export const BackToRound = ({ network }: { network: ContributionsNetwork }) => (

@@ -15,10 +15,7 @@ contract MockAccumulator is IAttestationAccumulator {
         leafCount = _leafCount;
     }
 
-    function pushCheckpoint(bytes32 _acc, uint64 _leafCount, uint64 _blockNumber)
-        external
-        returns (uint256 id)
-    {
+    function pushCheckpoint(bytes32 _acc, uint64 _leafCount, uint64 _blockNumber) external returns (uint256 id) {
         id = cps.length;
         cps.push(Checkpoint({acc: _acc, leafCount: _leafCount, blockNumber: _blockNumber}));
         emit InputsCheckpointed(id, _acc, _leafCount, _blockNumber);

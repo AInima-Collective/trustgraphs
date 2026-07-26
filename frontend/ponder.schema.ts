@@ -27,6 +27,82 @@ export const easAttestation = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+        THE TRUST-GRAPH CATALOG — one row per factory instance
+//////////////////////////////////////////////////////////////*/
+
+/**
+ * `TrustGraphFactory.InstanceCreated`, one row per trust-graph network created through the factory
+ * (research/INSTANCE_FACTORY.md §3). This table REPLACES `config/networks.json` as the trust-graph
+ * catalog: a community that signs one `createInstance` transaction is browsable here seconds later,
+ * with no config edit, no redeploy, and no indexer restart. The same event is what Ponder's
+ * `factory()` sources key off to discover the instance's snapshot / resolver / distributor, so a
+ * row existing here and that instance's events being indexed are the same fact.
+ *
+ * Everything a network page needs to render is carried here (frontend/lib/types.ts `Network`):
+ * addresses under `snapshot`/`resolver`/`distributor`, the vouch schema as `schemaUid` +
+ * `schemaString`, the scoring knobs as `params`, and the presentation copy as `metadata` (resolved
+ * best-effort from `metadataURI`; presentation-only, never consensus-relevant).
+ *
+ * `params` is the FULL 17-field struct exactly as emitted, with every uint256/uint64 as a decimal
+ * string so the JSON round-trips losslessly. `paramsHash` is recomputed here from those fields with
+ * the same TS port the browser recompute uses (frontend/lib/pagerank/encode) — it always equals
+ * `MerkleSnapshot(snapshot).paramsHash()`, which is exactly the self-check the multi-instance
+ * proving loop performs before proving an instance.
+ */
+export const instance = onchainTable(
+  'instance',
+  (t) => ({
+    // keccak256(abi.encode(creator, name, salt)) — the registry key.
+    id: t.hex().primaryKey(),
+    // The factory that minted it, kept for provenance across a factory redeploy.
+    factory: t.hex().notNull(),
+    // The indexed chain (string, as elsewhere in this schema). `params.chainId` is the chain id
+    // hashed into `paramsHash`; the two agree for every instance created on the chain it indexes.
+    chainId: t.text().notNull(),
+    creator: t.hex().notNull(),
+    // Holder of both snapshot roles and the distributor's ownership (creator-as-admin in v1).
+    admin: t.hex().notNull(),
+    name: t.text().notNull(),
+    // IPFS (or http) URI of `{name, description, criteria, image, applicationUrl}`. May be empty.
+    metadataURI: t.text().notNull(),
+    // The resolved presentation blob, or null when absent/unreachable/not-yet-fetched. Never
+    // consensus-relevant, so a failure to fetch it must not (and does not) stall indexing.
+    metadata: t.json(),
+    // The instance's EASIndexerResolver == its AttestationAccumulator == params.accumulator.
+    resolver: t.hex().notNull(),
+    schemaUid: t.hex().notNull(),
+    // The canonical vouch schema string every factory instance shares.
+    schemaString: t.text().notNull(),
+    snapshot: t.hex().notNull(),
+    // Null when the creator declined a fund distributor (the event carries address(0)).
+    distributor: t.hex(),
+    // The token the community intends to distribute; presentation only (the distributor is
+    // multi-token). Null when unset.
+    distributorToken: t.hex(),
+    // The EFFECTIVE epoch length in blocks, after the factory's floor was applied.
+    epochLength: t.bigint().notNull(),
+    paramsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    // Denormalized out of `params` so seed membership is queryable without unpacking the JSON.
+    trustedSeeds: t.hex().array().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    factoryIdx: index().on(t.factory),
+    creatorIdx: index().on(t.creator),
+    adminIdx: index().on(t.admin),
+    snapshotIdx: index().on(t.snapshot),
+    resolverIdx: index().on(t.resolver),
+    distributorIdx: index().on(t.distributor),
+    schemaUidIdx: index().on(t.schemaUid),
+    createdBlockIdx: index().on(t.createdBlock),
+    createdTimestampIdx: index().on(t.createdTimestamp),
+  })
+)
+
 export const merkleSnapshot = onchainTable(
   'merkle_snapshot',
   (t) => ({
@@ -105,13 +181,19 @@ export const nodeRegistration = onchainTable(
   })
 )
 
-// MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each snapshot trigger. One
-// row per checkpoint id; `anchorAcc`/`anchorCount` are what the guest consumes for that epoch (zeros
-// for a lane-1-only instance with no AnchorRegistry).
+// MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each snapshot trigger.
+// `anchorAcc`/`anchorCount` are what the guest consumes for that epoch (zeros for a lane-1-only
+// instance with no AnchorRegistry).
+//
+// `checkpointId` restarts at 0 for EVERY MerkleSnapshot, so it is unique only when paired with the
+// emitting contract (same reasoning as `merkleFundDistribution`'s composite key). A bare
+// `checkpointId` pk collides the moment a second instance triggers its first epoch — which, now
+// that instances are minted permissionlessly by the factory, is the normal case rather than an
+// edge case.
 export const anchorCheckpoint = onchainTable(
   'anchor_checkpoint',
   (t) => ({
-    checkpointId: t.bigint().primaryKey(), // uint256
+    checkpointId: t.bigint().notNull(), // uint256
     address: t.hex().notNull(), // MerkleSnapshot that emitted it
     anchorAcc: t.hex().notNull(),
     anchorCount: t.bigint().notNull(), // uint64
@@ -120,7 +202,9 @@ export const anchorCheckpoint = onchainTable(
     blockNumber: t.bigint().notNull(),
   }),
   (t) => ({
+    pk: primaryKey({ columns: [t.address, t.checkpointId] }),
     addressIdx: index().on(t.address),
+    checkpointIdIdx: index().on(t.checkpointId),
     anchorAccIdx: index().on(t.anchorAcc),
     blockNumberIdx: index().on(t.blockNumber),
   })

@@ -9,6 +9,8 @@
 //! won't match (or the final `acc` won't), and we refuse to emit — you never waste a proof on a bad
 //! input set. This uses the SAME `pagerank_core::encode` the guest and contracts use.
 
+pub mod rpc;
+
 use alloy_primitives::{keccak256, B256};
 use anyhow::{bail, Result};
 use pagerank_core::{encode, RawEdge};

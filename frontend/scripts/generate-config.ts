@@ -15,6 +15,17 @@ const deploymentSummaryFile = path.join(
   '../../.docker/deployment_summary.json'
 )
 
+// The permissionless instance factory (docs/trust-graph/FACTORY.md). It is deployed once per chain
+// by its own step, so it lands in its own file rather than the deployment summary. Absent on chains
+// where the factory has not been stood up yet — the create wizard hides itself in that case.
+const factoryDeployFile = path.join(
+  __dirname,
+  '../../.docker/factory_deploy.json'
+)
+const factoryAddress = fs.existsSync(factoryDeployFile)
+  ? (JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8')).factory ?? '')
+  : ''
+
 console.log('🔄 Updating config with latest deployment data...')
 
 try {
@@ -58,6 +69,9 @@ try {
     ContributionResolver: '',
     TrustAccumulatorMirror: '',
     TestUSDC: '',
+
+    // One per chain: the create-a-network wizard's only write target.
+    TrustGraphFactory: factoryAddress,
   }
 
   // Make sure ABIs exist for all contracts, and copy them to the frontend.

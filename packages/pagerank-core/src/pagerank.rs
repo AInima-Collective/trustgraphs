@@ -154,7 +154,9 @@ pub fn calculate_generic<K: Ord + Copy>(
                     if target == attester || w.is_zero() {
                         continue;
                     }
-                    total_base += *w;
+                    total_base = total_base
+                        .checked_add(*w)
+                        .expect("rank: outgoing-weight sum overflowed 256 bits");
                     if target == recipient {
                         to_recipient = Some(*w);
                     }
@@ -182,7 +184,9 @@ pub fn calculate_generic<K: Ord + Copy>(
                 let ratio = fp_div(eff, total_base, s);
                 let mut contribution = fp_mul(current[attester], ratio, s);
                 contribution = fp_mul(contribution, decay, s);
-                new_score += fp_mul(cfg.damping_fp, contribution, s);
+                new_score = new_score
+                    .checked_add(fp_mul(cfg.damping_fp, contribution, s))
+                    .expect("rank: accumulated score overflowed 256 bits");
             }
 
             let prev = current[recipient];
@@ -201,7 +205,12 @@ pub fn calculate_generic<K: Ord + Copy>(
     }
 
     // Normalize to sum S.
-    let total: U256 = current.values().copied().fold(U256::ZERO, |a, b| a + b);
+    // Checked, like every other accumulation here: alloy's `+` wraps silently in release, so an
+    // unchecked fold would turn an out-of-range instance into a wrong-but-provable answer.
+    let total: U256 = current
+        .values()
+        .copied()
+        .fold(U256::ZERO, |a, b| a.checked_add(b).expect("rank: score total overflowed 256 bits"));
     if !total.is_zero() {
         for v in current.values_mut() {
             *v = fp_div(*v, total, s);

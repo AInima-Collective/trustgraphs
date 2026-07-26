@@ -8,10 +8,7 @@ import {
     AttestationRequest,
     AttestationRequestData
 } from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
-import {
-    EMPTY_UID,
-    NO_EXPIRATION_TIME
-} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
+import {EMPTY_UID, NO_EXPIRATION_TIME} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 
 /// @title E2eAttest
 /// @notice Creates a small vouching ring (3 attests from 3 accounts). Uses anvil's well-known public
@@ -37,14 +34,10 @@ contract E2eAttest is Script {
         console.log("attested 3 (a0->a1, a1->a2, a2->a0); harness will revoke a0's attestation");
     }
 
-    function _attest(
-        IEAS eas,
-        uint256 pk,
-        bytes32 schema,
-        address recipient,
-        string memory comment,
-        uint256 confidence
-    ) internal returns (bytes32 uid) {
+    function _attest(IEAS eas, uint256 pk, bytes32 schema, address recipient, string memory comment, uint256 confidence)
+        internal
+        returns (bytes32 uid)
+    {
         vm.startBroadcast(pk);
         uid = eas.attest(
             AttestationRequest({

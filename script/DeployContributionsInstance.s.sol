@@ -1,34 +1,30 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import { stdJson } from 'forge-std/StdJson.sol';
-import { console } from 'forge-std/console.sol';
-import { Strings } from '@openzeppelin/contracts/utils/Strings.sol';
+import {stdJson} from "forge-std/StdJson.sol";
+import {console} from "forge-std/console.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import { IEAS } from '@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol';
-import {
-  ISchemaResolver
-} from '@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol';
+import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 
-import { ISP1Verifier } from 'interfaces/merkle/ISP1Verifier.sol';
-import { IZkVerifier } from 'interfaces/merkle/IZkVerifier.sol';
-import { IAttestationAccumulator } from 'interfaces/merkle/IAttestationAccumulator.sol';
-import { IAnchorRegistry } from 'interfaces/registry/IAnchorRegistry.sol';
-import { SP1JournalVerifier } from 'contracts/merkle/SP1JournalVerifier.sol';
-import { MerkleSnapshot } from 'contracts/merkle/MerkleSnapshot.sol';
-import { MerkleFundDistributor } from 'contracts/merkle/MerkleFundDistributor.sol';
-import { TrustAccumulatorMirror } from 'contracts/merkle/TrustAccumulatorMirror.sol';
-import { ContributionResolver } from 'contracts/eas/resolvers/ContributionResolver.sol';
-import { SchemaRegistrar } from 'contracts/eas/SchemaRegistrar.sol';
-import { TestUSDC } from 'contracts/tokens/TestUSDC.sol';
-import {
-  ContributionsParamsCodec
-} from 'contracts/params/ContributionsParamsCodec.sol';
+import {ISP1Verifier} from "interfaces/merkle/ISP1Verifier.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
+import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
+import {SP1JournalVerifier} from "contracts/merkle/SP1JournalVerifier.sol";
+import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
+import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
+import {TrustAccumulatorMirror} from "contracts/merkle/TrustAccumulatorMirror.sol";
+import {ContributionResolver} from "contracts/eas/resolvers/ContributionResolver.sol";
+import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
+import {TestUSDC} from "contracts/tokens/TestUSDC.sol";
+import {ContributionsParamsCodec} from "contracts/params/ContributionsParamsCodec.sol";
 
-import { MockSP1Gateway } from '../test/mocks/MockSP1Gateway.sol';
+import {MockSP1Gateway} from "../test/mocks/MockSP1Gateway.sol";
 
-import { Common } from 'script/Common.s.sol';
-import { ContributionsParamsJson } from 'script/lib/ContributionsParamsJson.sol';
+import {Common} from "script/Common.s.sol";
+import {ContributionsParamsJson} from "script/lib/ContributionsParamsJson.sol";
 
 /// @title DeployContributionsInstance
 /// @notice One labeled script for the WHOLE contributions instance battery
@@ -50,211 +46,209 @@ import { ContributionsParamsJson } from 'script/lib/ContributionsParamsJson.sol'
 ///      CONTRIBUTIONS_POOL_MINT (TestUSDC minted to the deployer; default 1,000,000 tUSDC),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN (default: deployer).
 contract DeployContributionsInstance is Common {
-  using stdJson for string;
+    using stdJson for string;
 
-  string public root = vm.projectRoot();
+    string public root = vm.projectRoot();
 
-  /// The three schema strings, EXACTLY as frozen in docs/contributions/INTERFACES.md §1
-  /// (canonical registered form is comma-separated without spaces, the house schema-string
-  /// format the config field parser consumes).
-  string constant CLAIM_SCHEMA =
-    'string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares';
-  string constant RESPONSE_SCHEMA = 'bytes32 claimUID,uint8 response';
-  string constant VALUATION_SCHEMA = 'bytes32 claimUID,uint8 score';
+    /// The three schema strings, EXACTLY as frozen in docs/contributions/INTERFACES.md §1
+    /// (canonical registered form is comma-separated without spaces, the house schema-string
+    /// format the config field parser consumes).
+    string constant CLAIM_SCHEMA = "string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares";
+    string constant RESPONSE_SCHEMA = "bytes32 claimUID,uint8 response";
+    string constant VALUATION_SCHEMA = "bytes32 claimUID,uint8 score";
 
-  /// @param outLabel Output-file discriminator: `.docker/contributions_instance_<outLabel>_deploy.json`.
-  /// @param easAddr The existing EAS contract.
-  /// @param schemaRegistrarAddr The existing SchemaRegistrar.
-  /// @param trustAccumulatorAddr The TRUST instance's accumulator (its EASIndexerResolver) that
-  ///        the mirror wraps for journal slot A.
-  /// @param paramsPath Path to the contributions params file (serialized
-  ///        `contributions_core::Params`; schema-UID fields are overwritten by this deploy).
-  function run(
-    string calldata outLabel,
-    string calldata easAddr,
-    string calldata schemaRegistrarAddr,
-    string calldata trustAccumulatorAddr,
-    string calldata paramsPath
-  ) public {
-    address deployer = vm.addr(_privateKey);
-    address eas = vm.parseAddress(easAddr);
-    address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
-    address trustAccumulator = vm.parseAddress(trustAccumulatorAddr);
-    require(eas != address(0), 'DeployContributionsInstance: eas is zero');
-    require(schemaRegistrar != address(0), 'DeployContributionsInstance: schemaRegistrar is zero');
-    require(trustAccumulator != address(0), 'DeployContributionsInstance: trustAccumulator is zero');
+    /// @param outLabel Output-file discriminator: `.docker/contributions_instance_<outLabel>_deploy.json`.
+    /// @param easAddr The existing EAS contract.
+    /// @param schemaRegistrarAddr The existing SchemaRegistrar.
+    /// @param trustAccumulatorAddr The TRUST instance's accumulator (its EASIndexerResolver) that
+    ///        the mirror wraps for journal slot A.
+    /// @param paramsPath Path to the contributions params file (serialized
+    ///        `contributions_core::Params`; schema-UID fields are overwritten by this deploy).
+    function run(
+        string calldata outLabel,
+        string calldata easAddr,
+        string calldata schemaRegistrarAddr,
+        string calldata trustAccumulatorAddr,
+        string calldata paramsPath
+    ) public {
+        address deployer = vm.addr(_privateKey);
+        address eas = vm.parseAddress(easAddr);
+        address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
+        address trustAccumulator = vm.parseAddress(trustAccumulatorAddr);
+        require(eas != address(0), "DeployContributionsInstance: eas is zero");
+        require(schemaRegistrar != address(0), "DeployContributionsInstance: schemaRegistrar is zero");
+        require(trustAccumulator != address(0), "DeployContributionsInstance: trustAccumulator is zero");
 
-    bytes32 vkey = vm.envOr('CONTRIBUTIONS_PROGRAM_VKEY', bytes32(0));
-    uint64 epochLength = uint64(vm.envOr('CONTRIBUTIONS_EPOCH_LENGTH', uint256(10)));
-    uint256 poolMint = vm.envOr('CONTRIBUTIONS_POOL_MINT', uint256(1_000_000e6));
-    address constitutional = vm.envOr('CONSTITUTIONAL_ADMIN', deployer);
-    address operational = vm.envOr('OPERATIONAL_ADMIN', deployer);
+        bytes32 vkey = vm.envOr("CONTRIBUTIONS_PROGRAM_VKEY", bytes32(0));
+        uint64 epochLength = uint64(vm.envOr("CONTRIBUTIONS_EPOCH_LENGTH", uint256(10)));
+        uint256 poolMint = vm.envOr("CONTRIBUTIONS_POOL_MINT", uint256(1_000_000e6));
+        address constitutional = vm.envOr("CONSTITUTIONAL_ADMIN", deployer);
+        address operational = vm.envOr("OPERATIONAL_ADMIN", deployer);
 
-    vm.startBroadcast(_privateKey);
+        vm.startBroadcast(_privateKey);
 
-    // The resolver is deployed first: the three schema UIDs = f(schema string, resolver,
-    // revocable) depend on its address, so registration (and the one-shot allowlist) must follow.
-    ContributionResolver resolver = new ContributionResolver(IEAS(eas), deployer);
+        // The resolver is deployed first: the three schema UIDs = f(schema string, resolver,
+        // revocable) depend on its address, so registration (and the one-shot allowlist) must follow.
+        ContributionResolver resolver = new ContributionResolver(IEAS(eas), deployer);
 
-    bytes32 claimUid = SchemaRegistrar(schemaRegistrar).register(
-      CLAIM_SCHEMA, ISchemaResolver(address(resolver)), true
-    );
-    bytes32 responseUid = SchemaRegistrar(schemaRegistrar).register(
-      RESPONSE_SCHEMA, ISchemaResolver(address(resolver)), true
-    );
-    bytes32 valuationUid = SchemaRegistrar(schemaRegistrar).register(
-      VALUATION_SCHEMA, ISchemaResolver(address(resolver)), true
-    );
-    resolver.setSchemas(claimUid, responseUid, valuationUid);
+        bytes32 claimUid =
+            SchemaRegistrar(schemaRegistrar).register(CLAIM_SCHEMA, ISchemaResolver(address(resolver)), true);
+        bytes32 responseUid =
+            SchemaRegistrar(schemaRegistrar).register(RESPONSE_SCHEMA, ISchemaResolver(address(resolver)), true);
+        bytes32 valuationUid =
+            SchemaRegistrar(schemaRegistrar).register(VALUATION_SCHEMA, ISchemaResolver(address(resolver)), true);
+        resolver.setSchemas(claimUid, responseUid, valuationUid);
 
-    // Slot-A seam: read-only mirror of the trust accumulator (never pushes checkpoints into it).
-    TrustAccumulatorMirror mirror = new TrustAccumulatorMirror(
-      IAttestationAccumulator(trustAccumulator)
-    );
+        // Slot-A seam: read-only mirror of the trust accumulator (never pushes checkpoints into it).
+        TrustAccumulatorMirror mirror = new TrustAccumulatorMirror(IAttestationAccumulator(trustAccumulator));
 
-    // Verifier: real gateway + contributions vkey when provided; otherwise dev scaffolding with a
-    // MockSP1Gateway (accept-all at the SNARK seam) so `SP1_PROVER=mock` proofs submit locally.
-    address gateway;
-    if (vkey == bytes32(0)) {
-      gateway = address(new MockSP1Gateway());
-      console.log('CONTRIBUTIONS_PROGRAM_VKEY unset: dev MockSP1Gateway deployed at', gateway);
-    } else {
-      gateway = vm.envAddress('SP1_VERIFIER_GATEWAY');
-      require(gateway != address(0), 'DeployContributionsInstance: gateway is zero');
+        // Verifier: real gateway + contributions vkey when provided; otherwise dev scaffolding with a
+        // MockSP1Gateway (accept-all at the SNARK seam) so `SP1_PROVER=mock` proofs submit locally.
+        address gateway;
+        if (vkey == bytes32(0)) {
+            gateway = address(new MockSP1Gateway());
+            console.log("CONTRIBUTIONS_PROGRAM_VKEY unset: dev MockSP1Gateway deployed at", gateway);
+        } else {
+            gateway = vm.envAddress("SP1_VERIFIER_GATEWAY");
+            require(gateway != address(0), "DeployContributionsInstance: gateway is zero");
+        }
+        SP1JournalVerifier verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
+
+        // paramsHash from the params file + the just-registered schema UIDs (slots 19-21).
+        // `ContributionsParamsCodec.hash` is byte-identical to `contributions_core::params::params_hash`
+        // (golden-tested), so the value the guest commits matches what MerkleSnapshot stores.
+        bytes32 paramsHash = ContributionsParamsCodec.hash(
+            ContributionsParamsJson.read(paramsPath, claimUid, responseUid, valuationUid)
+        );
+
+        // Journal v2 wiring: slot A (acc, leafCount) = the trust accumulator via the mirror;
+        // slot B (anchorAcc, anchorCount) = the contribution accumulator via the resolver's
+        // IAnchorRegistry aliases. One trigger() freezes both lanes at the same block.
+        MerkleSnapshot snapshot = new MerkleSnapshot(
+            IZkVerifier(address(verifier)),
+            paramsHash,
+            IAttestationAccumulator(address(mirror)),
+            // Deployer holds the roles during wiring; hand-off below.
+            deployer,
+            operational
+        );
+        snapshot.setAnchorRegistry(IAnchorRegistry(address(resolver)));
+        // M6-1: only the snapshot's trigger() may mint mirror checkpoints (a directly-minted id
+        // would leave anchorCheckpoints[id] at (0,0) and admit a contributions-blind proof).
+        mirror.bindSnapshot(address(snapshot));
+        if (epochLength > 0) {
+            snapshot.setEpochLength(epochLength);
+        }
+        if (constitutional != deployer) {
+            snapshot.grantRole(snapshot.CONSTITUTIONAL_ROLE(), constitutional);
+            snapshot.renounceRole(snapshot.CONSTITUTIONAL_ROLE(), deployer);
+        }
+
+        MerkleFundDistributor distributor = new MerkleFundDistributor(
+            deployer, // owner
+            address(snapshot), // merkle snapshot
+            deployer, // fee recipient
+            3e16, // 3% fee (same as the trust instance's distributor)
+            false // disable allowlist
+        );
+
+        // The dev funding pool token: 6-decimal test USDC, deployer pre-funded.
+        TestUSDC poolToken = new TestUSDC();
+        poolToken.mint(deployer, poolMint);
+
+        vm.stopBroadcast();
+
+        // Keep the prover's params file in sync with the registered schema UIDs (paramsHash already
+        // used the registered values; the file's placeholders were ignored).
+        vm.writeJson(vm.toString(claimUid), paramsPath, ".claim_schema_uid");
+        vm.writeJson(vm.toString(responseUid), paramsPath, ".response_schema_uid");
+        vm.writeJson(vm.toString(valuationUid), paramsPath, ".valuation_schema_uid");
+
+        console.log("ContributionResolver:  ", address(resolver));
+        console.log("TrustAccumulatorMirror:", address(mirror));
+        console.log("SP1JournalVerifier:    ", address(verifier));
+        console.log("MerkleSnapshot:        ", address(snapshot));
+        console.log("MerkleFundDistributor: ", address(distributor));
+        console.log("TestUSDC:              ", address(poolToken));
+        console.log("paramsHash:            ", vm.toString(paramsHash));
+
+        // Persist for the deploy orchestration (deploy/env.ts merges this into the networks config,
+        // which is what deployment_summary.json aggregates for the indexer + frontend).
+        string memory contractsJson = "contracts";
+        contractsJson.serialize("contribution_resolver", Strings.toChecksumHexString(address(resolver)));
+        contractsJson.serialize("trust_accumulator_mirror", Strings.toChecksumHexString(address(mirror)));
+        contractsJson.serialize("trust_accumulator", Strings.toChecksumHexString(trustAccumulator));
+        contractsJson.serialize("sp1_gateway", Strings.toChecksumHexString(gateway));
+        contractsJson.serialize("zk_verifier", Strings.toChecksumHexString(address(verifier)));
+        contractsJson.serialize("merkle_snapshot", Strings.toChecksumHexString(address(snapshot)));
+        contractsJson.serialize("fund_distributor", Strings.toChecksumHexString(address(distributor)));
+        string memory finalContractsJson =
+            contractsJson.serialize("pool_token", Strings.toChecksumHexString(address(poolToken)));
+
+        string memory schemasJson = "schemas";
+        schemasJson.serialize(
+            "claim",
+            _schemaJson(
+                "claim",
+                "contribution-claim",
+                "Contribution",
+                "A claimed contribution",
+                CLAIM_SCHEMA,
+                address(resolver),
+                claimUid
+            )
+        );
+        schemasJson.serialize(
+            "response",
+            _schemaJson(
+                "response",
+                "contribution-response",
+                "Response",
+                "Accept or reject being named on a contribution",
+                RESPONSE_SCHEMA,
+                address(resolver),
+                responseUid
+            )
+        );
+        string memory finalSchemasJson = schemasJson.serialize(
+            "valuation",
+            _schemaJson(
+                "valuation",
+                "contribution-valuation",
+                "Valuation",
+                "Score a contribution from 0 to 100",
+                VALUATION_SCHEMA,
+                address(resolver),
+                valuationUid
+            )
+        );
+
+        string memory _json = "json";
+        _json.serialize("deployer", Strings.toChecksumHexString(deployer));
+        _json.serialize("params_hash", vm.toString(paramsHash));
+        _json.serialize("epoch_length", uint256(epochLength));
+        _json.serialize("contracts", finalContractsJson);
+        string memory out = _json.serialize("schemas", finalSchemasJson);
+        vm.writeFile(string.concat(root, "/.docker/contributions_instance_", outLabel, "_deploy.json"), out);
     }
-    SP1JournalVerifier verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
 
-    // paramsHash from the params file + the just-registered schema UIDs (slots 19-21).
-    // `ContributionsParamsCodec.hash` is byte-identical to `contributions_core::params::params_hash`
-    // (golden-tested), so the value the guest commits matches what MerkleSnapshot stores.
-    bytes32 paramsHash = ContributionsParamsCodec.hash(
-      ContributionsParamsJson.read(paramsPath, claimUid, responseUid, valuationUid)
-    );
-
-    // Journal v2 wiring: slot A (acc, leafCount) = the trust accumulator via the mirror;
-    // slot B (anchorAcc, anchorCount) = the contribution accumulator via the resolver's
-    // IAnchorRegistry aliases. One trigger() freezes both lanes at the same block.
-    MerkleSnapshot snapshot = new MerkleSnapshot(
-      IZkVerifier(address(verifier)),
-      paramsHash,
-      IAttestationAccumulator(address(mirror)),
-      // Deployer holds the roles during wiring; hand-off below.
-      deployer,
-      operational
-    );
-    snapshot.setAnchorRegistry(IAnchorRegistry(address(resolver)));
-    // M6-1: only the snapshot's trigger() may mint mirror checkpoints (a directly-minted id
-    // would leave anchorCheckpoints[id] at (0,0) and admit a contributions-blind proof).
-    mirror.bindSnapshot(address(snapshot));
-    if (epochLength > 0) {
-      snapshot.setEpochLength(epochLength);
+    /// @dev Serialize one schema entry (the NetworkDeploy schema shape deploy/env.ts consumes).
+    function _schemaJson(
+        string memory objKey,
+        string memory key,
+        string memory name,
+        string memory description,
+        string memory schema,
+        address resolverAddr,
+        bytes32 uid
+    ) internal returns (string memory) {
+        string memory j = string.concat(objKey, "_schema_json");
+        j.serialize("uid", vm.toString(uid));
+        j.serialize("key", key);
+        j.serialize("name", name);
+        j.serialize("description", description);
+        j.serialize("schema", schema);
+        j.serialize("revocable", true);
+        return j.serialize("resolver", Strings.toChecksumHexString(resolverAddr));
     }
-    if (constitutional != deployer) {
-      snapshot.grantRole(snapshot.CONSTITUTIONAL_ROLE(), constitutional);
-      snapshot.renounceRole(snapshot.CONSTITUTIONAL_ROLE(), deployer);
-    }
-
-    MerkleFundDistributor distributor = new MerkleFundDistributor(
-      deployer, // owner
-      address(snapshot), // merkle snapshot
-      deployer, // fee recipient
-      3e16, // 3% fee (same as the trust instance's distributor)
-      false // disable allowlist
-    );
-
-    // The dev funding pool token: 6-decimal test USDC, deployer pre-funded.
-    TestUSDC poolToken = new TestUSDC();
-    poolToken.mint(deployer, poolMint);
-
-    vm.stopBroadcast();
-
-    // Keep the prover's params file in sync with the registered schema UIDs (paramsHash already
-    // used the registered values; the file's placeholders were ignored).
-    vm.writeJson(vm.toString(claimUid), paramsPath, '.claim_schema_uid');
-    vm.writeJson(vm.toString(responseUid), paramsPath, '.response_schema_uid');
-    vm.writeJson(vm.toString(valuationUid), paramsPath, '.valuation_schema_uid');
-
-    console.log('ContributionResolver:  ', address(resolver));
-    console.log('TrustAccumulatorMirror:', address(mirror));
-    console.log('SP1JournalVerifier:    ', address(verifier));
-    console.log('MerkleSnapshot:        ', address(snapshot));
-    console.log('MerkleFundDistributor: ', address(distributor));
-    console.log('TestUSDC:              ', address(poolToken));
-    console.log('paramsHash:            ', vm.toString(paramsHash));
-
-    // Persist for the deploy orchestration (deploy/env.ts merges this into the networks config,
-    // which is what deployment_summary.json aggregates for the indexer + frontend).
-    string memory contractsJson = 'contracts';
-    contractsJson.serialize('contribution_resolver', Strings.toChecksumHexString(address(resolver)));
-    contractsJson.serialize('trust_accumulator_mirror', Strings.toChecksumHexString(address(mirror)));
-    contractsJson.serialize('trust_accumulator', Strings.toChecksumHexString(trustAccumulator));
-    contractsJson.serialize('sp1_gateway', Strings.toChecksumHexString(gateway));
-    contractsJson.serialize('zk_verifier', Strings.toChecksumHexString(address(verifier)));
-    contractsJson.serialize('merkle_snapshot', Strings.toChecksumHexString(address(snapshot)));
-    contractsJson.serialize('fund_distributor', Strings.toChecksumHexString(address(distributor)));
-    string memory finalContractsJson =
-      contractsJson.serialize('pool_token', Strings.toChecksumHexString(address(poolToken)));
-
-    string memory schemasJson = 'schemas';
-    schemasJson.serialize(
-      'claim',
-      _schemaJson(
-        'claim', 'contribution-claim', 'Contribution', 'A claimed contribution', CLAIM_SCHEMA, address(resolver), claimUid
-      )
-    );
-    schemasJson.serialize(
-      'response',
-      _schemaJson(
-        'response',
-        'contribution-response',
-        'Response',
-        'Accept or reject being named on a contribution',
-        RESPONSE_SCHEMA,
-        address(resolver),
-        responseUid
-      )
-    );
-    string memory finalSchemasJson = schemasJson.serialize(
-      'valuation',
-      _schemaJson(
-        'valuation',
-        'contribution-valuation',
-        'Valuation',
-        'Score a contribution from 0 to 100',
-        VALUATION_SCHEMA,
-        address(resolver),
-        valuationUid
-      )
-    );
-
-    string memory _json = 'json';
-    _json.serialize('deployer', Strings.toChecksumHexString(deployer));
-    _json.serialize('params_hash', vm.toString(paramsHash));
-    _json.serialize('epoch_length', uint256(epochLength));
-    _json.serialize('contracts', finalContractsJson);
-    string memory out = _json.serialize('schemas', finalSchemasJson);
-    vm.writeFile(
-      string.concat(root, '/.docker/contributions_instance_', outLabel, '_deploy.json'), out
-    );
-  }
-
-  /// @dev Serialize one schema entry (the NetworkDeploy schema shape deploy/env.ts consumes).
-  function _schemaJson(
-    string memory objKey,
-    string memory key,
-    string memory name,
-    string memory description,
-    string memory schema,
-    address resolverAddr,
-    bytes32 uid
-  ) internal returns (string memory) {
-    string memory j = string.concat(objKey, '_schema_json');
-    j.serialize('uid', vm.toString(uid));
-    j.serialize('key', key);
-    j.serialize('name', name);
-    j.serialize('description', description);
-    j.serialize('schema', schema);
-    j.serialize('revocable', true);
-    return j.serialize('resolver', Strings.toChecksumHexString(resolverAddr));
-  }
 }

@@ -41,42 +41,27 @@ interface IMerkleFundDistributor {
     /// @notice Emitted when the owner of the contract is set.
     /// @param previousOwner The previous owner of the contract.
     /// @param newOwner The new owner of the contract.
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     /// @notice Emitted when the fee recipient is set.
     /// @param previousFeeRecipient The previous fee recipient address.
     /// @param newFeeRecipient The new fee recipient address.
-    event FeeRecipientSet(
-        address indexed previousFeeRecipient,
-        address indexed newFeeRecipient
-    );
+    event FeeRecipientSet(address indexed previousFeeRecipient, address indexed newFeeRecipient);
 
     /// @notice Emitted when the fee percentage is set.
     /// @param previousFeePercentage The previous fee percentage.
     /// @param newFeePercentage The new fee percentage.
-    event FeePercentageSet(
-        uint256 indexed previousFeePercentage,
-        uint256 indexed newFeePercentage
-    );
+    event FeePercentageSet(uint256 indexed previousFeePercentage, uint256 indexed newFeePercentage);
 
     /// @notice Emitted when the merkle snapshot contract is updated.
     /// @param previousContract The previous merkle snapshot contract address.
     /// @param newContract The new merkle snapshot contract address.
-    event MerkleSnapshotUpdated(
-        address indexed previousContract,
-        address indexed newContract
-    );
+    event MerkleSnapshotUpdated(address indexed previousContract, address indexed newContract);
 
     /// @notice Emitted when a distributor's ability to distribute funds is updated.
     /// @param distributor The distributor address.
     /// @param canDistribute The distributor's ability to distribute funds.
-    event DistributorAllowanceUpdated(
-        address indexed distributor,
-        bool indexed canDistribute
-    );
+    event DistributorAllowanceUpdated(address indexed distributor, bool indexed canDistribute);
 
     /// @notice Emitted when the distributor allowlist is enabled/disabled.
     /// @param enabled The distributor's allowlist status.
@@ -116,11 +101,7 @@ interface IMerkleFundDistributor {
     /// @param distributionIndex The index of the distribution swept.
     /// @param to The address that received the unclaimed funds (the round funder).
     /// @param amount The amount of unclaimed funds swept.
-    event Swept(
-        uint256 indexed distributionIndex,
-        address indexed to,
-        uint256 amount
-    );
+    event Swept(uint256 indexed distributionIndex, address indexed to, uint256 amount);
 
     error NotOwner();
     error NotPendingOwner();

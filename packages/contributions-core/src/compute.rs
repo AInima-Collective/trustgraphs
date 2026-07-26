@@ -65,6 +65,10 @@ fn trust_params(p: &Params) -> pagerank_core::Params {
         weight_field_index: p.weight_field_index,
         envelope0_domain_separators: Vec::new(),
         lane2_max_head_age: 0,
+        // Params-schema v2 domain separation is the trust program's; this twin only drives the
+        // stage-1 pipeline and never hashes, so both fields stay zero (see the doc comment above).
+        accumulator: Address::ZERO,
+        chain_id: 0,
     }
 }
 

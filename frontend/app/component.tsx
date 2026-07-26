@@ -10,16 +10,11 @@ import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
 import { Column, Table } from '@/components/Table'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { NetworkProvider } from '@/contexts/NetworkContext'
-import { VISIBLE_NETWORKS } from '@/lib/config'
 import { Network } from '@/lib/types'
 import { cn, formatBigNumber } from '@/lib/utils'
 import { ponderQueries } from '@/queries/ponder'
-
-const firstNetwork = VISIBLE_NETWORKS[0]
-if (!firstNetwork) {
-  throw new Error('No networks found')
-}
 
 type NetworkRow = {
   network: Network
@@ -39,15 +34,20 @@ const NetworkGraph = dynamic(
 export function HomePage() {
   const router = useRouter()
 
+  // The runtime catalog (GOAL.md M3) — a network created through the factory a minute ago is in
+  // here without a rebuild.
+  const networks = useNetworks()
+  const firstNetwork = networks[0]
+
   // Fetch network data for all networks in parallel
   const networkQueries = useQueries({
-    queries: VISIBLE_NETWORKS.map((network) =>
+    queries: networks.map((network) =>
       ponderQueries.network(network.contracts.merkleSnapshot)
     ),
   })
 
   // Combine network config with fetched data
-  const networkRows: NetworkRow[] = VISIBLE_NETWORKS.map((network, index) => {
+  const networkRows: NetworkRow[] = networks.map((network, index) => {
     const query = networkQueries[index]
     return {
       network,
@@ -100,15 +100,17 @@ export function HomePage() {
           rather than tokens.
         </p>
 
-        <ButtonLink
-          variant="brand"
-          href={`/network/${firstNetwork.id}`}
-          size="lg"
-        >
-          View Pilot Network: {firstNetwork.name}
-        </ButtonLink>
+        {firstNetwork && (
+          <ButtonLink
+            variant="brand"
+            href={`/network/${firstNetwork.id}`}
+            size="lg"
+          >
+            View Pilot Network: {firstNetwork.name}
+          </ButtonLink>
+        )}
 
-        {VISIBLE_NETWORKS.length > 1 && (
+        {networks.length > 1 && (
           <div className="w-full space-y-3 mt-6">
             <h2>ALL NETWORKS</h2>
             <Table
@@ -143,17 +145,17 @@ export function HomePage() {
       </div>
 
       <div className="space-y-10">
-        <div className="h-[66vh] lg:h-4/5">
-          <Suspense fallback={null}>
-            <NetworkProvider network={firstNetwork}>
-              <NetworkGraph
-                title={
-                  VISIBLE_NETWORKS.length > 1 ? firstNetwork.name : undefined
-                }
-              />
-            </NetworkProvider>
-          </Suspense>
-        </div>
+        {firstNetwork && (
+          <div className="h-[66vh] lg:h-4/5">
+            <Suspense fallback={null}>
+              <NetworkProvider network={firstNetwork}>
+                <NetworkGraph
+                  title={networks.length > 1 ? firstNetwork.name : undefined}
+                />
+              </NetworkProvider>
+            </Suspense>
+          </div>
+        )}
 
         <Card type="accent" size="md" className="space-y-4">
           <p className="text-sm">

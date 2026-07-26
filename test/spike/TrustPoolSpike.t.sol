@@ -4,17 +4,13 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 
 import {Governor, IGovernor} from "@openzeppelin/contracts/governance/Governor.sol";
-import {
-    GovernorCountingFractional
-} from "@openzeppelin/contracts/governance/extensions/GovernorCountingFractional.sol";
+import {GovernorCountingFractional} from "@openzeppelin/contracts/governance/extensions/GovernorCountingFractional.sol";
 import {GovernorVotes} from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Votes} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {
-    MerkleProof
-} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 /// Spike: can a pooled "TrustPool" contract cast per-delegate fractional votes on an
 /// OZ-5.4 GovernorCountingFractional governor (the module Gitcoin's governor uses),
@@ -42,9 +38,7 @@ contract SpikeToken is ERC20Votes {
 }
 
 contract SpikeGovernor is Governor, GovernorCountingFractional, GovernorVotes {
-    constructor(
-        IVotes _token
-    ) Governor("SpikeGovernor") GovernorVotes(_token) {}
+    constructor(IVotes _token) Governor("SpikeGovernor") GovernorVotes(_token) {}
 
     function votingDelay() public pure override returns (uint256) {
         return 10;
@@ -74,9 +68,7 @@ contract MockSnapshotHistory {
         states.push(State(block.number, root, totalValue));
     }
 
-    function stateAtBlock(
-        uint256 blockNumber
-    ) external view returns (bytes32 root, uint256 totalValue) {
+    function stateAtBlock(uint256 blockNumber) external view returns (bytes32 root, uint256 totalValue) {
         for (uint256 i = states.length; i > 0; i--) {
             if (states[i - 1].blockNumber <= blockNumber) {
                 return (states[i - 1].root, states[i - 1].totalValue);
@@ -100,12 +92,7 @@ contract TrustPool {
 
     mapping(uint256 => mapping(address => bool)) public delegateVoted;
 
-    constructor(
-        SpikeToken _token,
-        SpikeGovernor _governor,
-        MockSnapshotHistory _snapshot,
-        uint256 _poolCap
-    ) {
+    constructor(SpikeToken _token, SpikeGovernor _governor, MockSnapshotHistory _snapshot, uint256 _poolCap) {
         token = _token;
         governor = _governor;
         snapshot = _snapshot;
@@ -120,19 +107,18 @@ contract TrustPool {
         uint256 score,
         uint8 support, // 0 = Against, 1 = For, 2 = Abstain (Bravo order)
         bytes32[] calldata proof
-    ) external returns (uint256 weight) {
+    )
+        external
+        returns (uint256 weight)
+    {
         if (delegateVoted[proposalId][msg.sender]) revert AlreadyVoted();
         delegateVoted[proposalId][msg.sender] = true;
 
         uint256 snapshotBlock = governor.proposalSnapshot(proposalId);
-        (bytes32 root, uint256 totalScore) = snapshot.stateAtBlock(
-            snapshotBlock
-        );
+        (bytes32 root, uint256 totalScore) = snapshot.stateAtBlock(snapshotBlock);
 
         // Same double-hashed leaf encoding as MerkleSnapshot._verifyProof
-        bytes32 leaf = keccak256(
-            bytes.concat(keccak256(abi.encode(msg.sender, score)))
-        );
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(msg.sender, score))));
         if (!MerkleProof.verifyCalldata(proof, root, leaf)) {
             revert InvalidProof();
         }
@@ -149,18 +135,10 @@ contract TrustPool {
     /// Test-only escape hatch: attempt an arbitrary fractional cast, to show the
     /// GOVERNOR (not the pool) enforces the snapshot-weight ceiling.
     function debugCast(uint256 proposalId, uint256 forWeight) external {
-        governor.castVoteWithReasonAndParams(
-            proposalId,
-            255,
-            "",
-            _fractionalParams(1, forWeight)
-        );
+        governor.castVoteWithReasonAndParams(proposalId, 255, "", _fractionalParams(1, forWeight));
     }
 
-    function _fractionalParams(
-        uint8 support,
-        uint256 weight
-    ) internal pure returns (bytes memory) {
+    function _fractionalParams(uint8 support, uint256 weight) internal pure returns (bytes memory) {
         uint128 w = uint128(weight);
         if (support == 0) return abi.encodePacked(w, uint128(0), uint128(0));
         if (support == 1) return abi.encodePacked(uint128(0), w, uint128(0));
@@ -196,10 +174,7 @@ contract TrustPoolSpikeTest is Test {
         snap = new MockSnapshotHistory();
 
         // Pool is funded, then self-delegates in its constructor.
-        address poolAddr = vm.computeCreateAddress(
-            address(this),
-            vm.getNonce(address(this))
-        );
+        address poolAddr = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
         token.mint(poolAddr, 1_000_000e18);
         pool = new TrustPool(token, governor, snap, POOL_CAP);
         require(address(pool) == poolAddr, "prediction");
@@ -218,42 +193,27 @@ contract TrustPoolSpikeTest is Test {
     }
 
     function _pair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
-        return
-            a < b
-                ? keccak256(abi.encodePacked(a, b))
-                : keccak256(abi.encodePacked(b, a));
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
     }
 
-    function _leaves(
-        uint256 sa,
-        uint256 sb,
-        uint256 sc,
-        uint256 sd
-    ) internal view returns (bytes32[4] memory l) {
+    function _leaves(uint256 sa, uint256 sb, uint256 sc, uint256 sd) internal view returns (bytes32[4] memory l) {
         l[0] = _leaf(alice, sa);
         l[1] = _leaf(bob, sb);
         l[2] = _leaf(carol, sc);
         l[3] = _leaf(dave, sd);
     }
 
-    function _buildRoot(
-        uint256 sa,
-        uint256 sb,
-        uint256 sc,
-        uint256 sd
-    ) internal view returns (bytes32) {
+    function _buildRoot(uint256 sa, uint256 sb, uint256 sc, uint256 sd) internal view returns (bytes32) {
         bytes32[4] memory l = _leaves(sa, sb, sc, sd);
         return _pair(_pair(l[0], l[1]), _pair(l[2], l[3]));
     }
 
     /// proof for leaf index i in the 4-leaf tree
-    function _proofFor(
-        uint256 i,
-        uint256 sa,
-        uint256 sb,
-        uint256 sc,
-        uint256 sd
-    ) internal view returns (bytes32[] memory proof) {
+    function _proofFor(uint256 i, uint256 sa, uint256 sb, uint256 sc, uint256 sd)
+        internal
+        view
+        returns (bytes32[] memory proof)
+    {
         bytes32[4] memory l = _leaves(sa, sb, sc, sd);
         proof = new bytes32[](2);
         if (i == 0) (proof[0], proof[1]) = (l[1], _pair(l[2], l[3]));
@@ -262,9 +222,7 @@ contract TrustPoolSpikeTest is Test {
         if (i == 3) (proof[0], proof[1]) = (l[2], _pair(l[0], l[1]));
     }
 
-    function _propose(
-        string memory desc
-    ) internal returns (uint256 proposalId) {
+    function _propose(string memory desc) internal returns (uint256 proposalId) {
         address[] memory targets = new address[](1);
         targets[0] = address(0xbeef);
         uint256[] memory values = new uint256[](1);
@@ -292,8 +250,7 @@ contract TrustPoolSpikeTest is Test {
         assertEq(wB, (POOL_CAP * 300) / TOTAL_SCORE);
         assertEq(wC, (POOL_CAP * 90) / TOTAL_SCORE);
 
-        (uint256 against, uint256 forVotes, uint256 abstain) = governor
-            .proposalVotes(pid);
+        (uint256 against, uint256 forVotes, uint256 abstain) = governor.proposalVotes(pid);
         assertEq(forVotes, wA);
         assertEq(against, wB);
         assertEq(abstain, wC);
@@ -309,13 +266,10 @@ contract TrustPoolSpikeTest is Test {
         pool.vote(pid, 600, 1, _proofFor(0, 600, 300, 90, 10));
 
         // Pool's checkpointed weight is 1_000_000e18; try to cast beyond the remainder.
-        uint256 remaining = 1_000_000e18 -
-            governor.usedVotes(pid, address(pool));
+        uint256 remaining = 1_000_000e18 - governor.usedVotes(pid, address(pool));
         vm.expectRevert(
             abi.encodeWithSelector(
-                GovernorCountingFractional
-                    .GovernorExceedRemainingWeight
-                    .selector,
+                GovernorCountingFractional.GovernorExceedRemainingWeight.selector,
                 address(pool),
                 remaining + 1,
                 remaining

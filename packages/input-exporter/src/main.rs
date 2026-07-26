@@ -4,15 +4,15 @@
 //! exact ordered edge set, self-verifies it re-folds to the checkpoint's `acc`, and writes the JSON
 //! the prover consumes. See `zk/RUNBOOK.md`.
 
-use alloy_primitives::{hex, Address, B256, U256};
+use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use input_exporter::reconstruct;
+use input_exporter::rpc::{parse_addr, Rpc};
 use pagerank_core::{
     AnchorRecord, GuestInput, Lane2Witness, Params, RawEdge, SelectionParams, SignerInput,
 };
-use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 sol! {
@@ -84,107 +84,36 @@ struct Args {
     snapshot: Option<String>,
 }
 
-struct Rpc {
-    client: reqwest::Client,
-    url: String,
-}
-
-struct RawLog {
-    topics: Vec<B256>,
-    data: Vec<u8>,
-}
-
-impl Rpc {
-    async fn call(&self, method: &str, params: Value) -> Result<Value> {
-        let body = json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
-        let resp: Value = self
-            .client
-            .post(&self.url)
-            .json(&body)
-            .send()
-            .await?
-            .json()
-            .await
-            .with_context(|| format!("{method} response was not valid JSON"))?;
-        if let Some(e) = resp.get("error").filter(|e| !e.is_null()) {
-            bail!("{method} RPC error: {e}");
-        }
-        Ok(resp.get("result").cloned().unwrap_or(Value::Null))
-    }
-
-    async fn eth_call(&self, to: Address, data: Vec<u8>) -> Result<Vec<u8>> {
-        let params = json!([{ "to": to, "data": format!("0x{}", hex::encode(&data)) }, "latest"]);
-        let r = self.call("eth_call", params).await?;
-        let s = r.as_str().ok_or_else(|| anyhow!("eth_call returned no data"))?;
-        Ok(hex::decode(s.trim_start_matches("0x"))?)
-    }
-
-    /// eth_getLogs across `[from, to]`, chunked to `chunk` blocks. `topics` may contain nulls.
-    async fn get_logs(
-        &self,
-        address: Address,
-        topics: &[Option<B256>],
-        from: u64,
-        to: u64,
-        chunk: u64,
-    ) -> Result<Vec<RawLog>> {
-        let topics_json: Vec<Value> = topics
-            .iter()
-            .map(|t| match t {
-                Some(h) => json!(format!("0x{}", hex::encode(h))),
-                None => Value::Null,
-            })
-            .collect();
-
-        let mut out = Vec::new();
-        let mut start = from;
-        while start <= to {
-            let end = (start.saturating_add(chunk - 1)).min(to);
-            let params = json!([{
-                "address": address,
-                "topics": topics_json,
-                "fromBlock": format!("0x{:x}", start),
-                "toBlock": format!("0x{:x}", end),
-            }]);
-            let r = self.call("eth_getLogs", params).await?;
-            for log in r.as_array().ok_or_else(|| anyhow!("eth_getLogs returned non-array"))? {
-                let topics = log["topics"]
-                    .as_array()
-                    .ok_or_else(|| anyhow!("log missing topics"))?
-                    .iter()
-                    .map(|t| parse_b256(t.as_str().unwrap_or("")))
-                    .collect::<Result<Vec<_>>>()?;
-                let data =
-                    hex::decode(log["data"].as_str().unwrap_or("0x").trim_start_matches("0x"))?;
-                out.push(RawLog { topics, data });
-            }
-            start = end + 1;
-        }
-        Ok(out)
-    }
-}
-
-fn parse_b256(s: &str) -> Result<B256> {
-    let bytes = hex::decode(s.trim_start_matches("0x"))?;
-    if bytes.len() != 32 {
-        bail!("expected 32-byte topic, got {} bytes", bytes.len());
-    }
-    Ok(B256::from_slice(&bytes))
-}
-
-fn parse_addr(s: &str) -> Result<Address> {
-    s.parse().with_context(|| format!("invalid address: {s}"))
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let rpc = Rpc { client: reqwest::Client::new(), url: args.rpc.clone() };
+    let rpc = Rpc::new(args.rpc.clone());
     let accumulator = parse_addr(&args.accumulator)?;
     let eas = parse_addr(&args.eas)?;
 
-    let params: Params = serde_json::from_str(&std::fs::read_to_string(&args.params)?)
+    let mut params: Params = serde_json::from_str(&std::fs::read_to_string(&args.params)?)
         .context("failed to parse --params as pagerank_core::Params")?;
+
+    // Params-schema v2 domain separation (INSTANCE_FACTORY §6.1): the accumulator address and the
+    // chain id are properties of the instance being exported, not of the governance file, so they
+    // come from the connection we are actually reading. A file that names a *different* instance is
+    // a misconfiguration (it would silently produce a proof for someone else's snapshot), so it is
+    // an error rather than an override.
+    let chain_id = rpc.eth_chain_id().await.context("eth_chainId failed")?;
+    if params.accumulator != Address::ZERO && params.accumulator != accumulator {
+        bail!(
+            "--params names accumulator {:#x} but --accumulator is {:#x}",
+            params.accumulator,
+            accumulator
+        );
+    }
+    if params.chain_id != 0 && params.chain_id != chain_id {
+        bail!("--params names chain {} but --rpc is chain {}", params.chain_id, chain_id);
+    }
+    params.accumulator = accumulator;
+    params.chain_id = chain_id;
+    eprintln!("domain separators: accumulator={accumulator:#x} chainId={chain_id}");
+
     let selection: Option<SelectionParams> = match (args.signer, &args.selection) {
         (true, Some(p)) => Some(
             serde_json::from_str(&std::fs::read_to_string(p)?)

@@ -1,22 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {
-    MerkleProof
-} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {
-    SafeERC20,
-    IERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {
-    EnumerableSet
-} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 
@@ -37,11 +28,7 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 ///      contracts (Safes, splitters): the distributor pays `account` directly,
 ///      which is how teams should claim shared work (or split via shares at
 ///      claim time).
-contract MerkleFundDistributor is
-    IMerkleFundDistributor,
-    ReentrancyGuard,
-    Pausable
-{
+contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -81,8 +68,7 @@ contract MerkleFundDistributor is
     DistributionState[] public distributions;
 
     /// @notice The `amount` claimed by `account` for a given distribution.
-    mapping(uint256 distributionIndex => mapping(address account => uint256 amount))
-        public claimed;
+    mapping(uint256 distributionIndex => mapping(address account => uint256 amount)) public claimed;
 
     /* MODIFIERS */
 
@@ -119,12 +105,19 @@ contract MerkleFundDistributor is
         uint256 feePercentage_,
         bool allowlistEnabled_
     ) {
-        // Initialize owner to the deployer.
-        owner = msg.sender;
-        // If initial owner differs from the deployer, start 2-step ownership transfer.
-        if (owner_ != msg.sender) {
-            _transferOwnership(owner_);
+        // Bootstrap ownership DIRECTLY, without the 2-step handshake. Two-step transfer exists to
+        // stop a live owner from handing the contract to an address that cannot act; at
+        // construction there is no live owner to protect, and the deployer is frequently a
+        // factory or a script that must not linger as owner (`TrustGraphFactory` deploys this in
+        // the same transaction that hands the instance to its creator — a pending transfer would
+        // leave the factory owning every community's distributor until each one remembered to
+        // call `acceptOwnership`). `transferOwnership` after deployment is unchanged: still
+        // 2-step. See docs/DEVIATIONS.md.
+        if (owner_ == address(0)) {
+            revert InvalidAddress();
         }
+        owner = owner_;
+        emit OwnershipTransferred(address(0), owner_);
 
         _setMerkleSnapshot(merkleSnapshot_);
         _setFeeRecipient(feeRecipient_);
@@ -137,9 +130,7 @@ contract MerkleFundDistributor is
     /// @notice Gets a distribution by index.
     /// @param distributionIndex The index of the distribution.
     /// @return distribution The distribution.
-    function getDistribution(
-        uint256 distributionIndex
-    ) external view returns (DistributionState memory) {
+    function getDistribution(uint256 distributionIndex) external view returns (DistributionState memory) {
         return distributions[distributionIndex];
     }
 
@@ -147,10 +138,7 @@ contract MerkleFundDistributor is
     /// @param offset The offset to start from.
     /// @param limit The number of distributions to return.
     /// @return result The distributions.
-    function getDistributions(
-        uint256 offset,
-        uint256 limit
-    ) external view returns (DistributionState[] memory) {
+    function getDistributions(uint256 offset, uint256 limit) external view returns (DistributionState[] memory) {
         if (offset >= distributions.length) {
             return new DistributionState[](0);
         }
@@ -160,10 +148,8 @@ contract MerkleFundDistributor is
             end = distributions.length;
         }
 
-        DistributionState[] memory result = new DistributionState[](
-            end - offset
-        );
-        for (uint256 i = offset; i < end; ) {
+        DistributionState[] memory result = new DistributionState[](end - offset);
+        for (uint256 i = offset; i < end;) {
             result[i - offset] = distributions[i];
             unchecked {
                 ++i;
@@ -209,10 +195,7 @@ contract MerkleFundDistributor is
     /// @param offset The offset to start from.
     /// @param limit The number of addresses to return.
     /// @return result The allowlisted addresses.
-    function getAllowlistPaginated(
-        uint256 offset,
-        uint256 limit
-    ) external view returns (address[] memory) {
+    function getAllowlistPaginated(uint256 offset, uint256 limit) external view returns (address[] memory) {
         uint256 length = _allowlist.length();
         if (offset >= length) {
             return new address[](0);
@@ -224,7 +207,7 @@ contract MerkleFundDistributor is
         }
 
         address[] memory result = new address[](end - offset);
-        for (uint256 i = offset; i < end; ) {
+        for (uint256 i = offset; i < end;) {
             result[i - offset] = _allowlist.at(i);
             unchecked {
                 ++i;
@@ -281,10 +264,7 @@ contract MerkleFundDistributor is
     /// @notice Updates a distributor's ability to distribute funds.
     /// @param distributor The distributor address.
     /// @param canDistribute_ The distributor's ability to distribute funds.
-    function updateDistributorAllowance(
-        address distributor,
-        bool canDistribute_
-    ) external onlyOwner {
+    function updateDistributorAllowance(address distributor, bool canDistribute_) external onlyOwner {
         if (canDistribute_) {
             _allowlist.add(distributor);
         } else {
@@ -309,11 +289,7 @@ contract MerkleFundDistributor is
     /// @param expectedRoot The expected root of the merkle tree to add an additional layer of security (pass 0 to skip).
     /// @dev Only distributors can distribute funds.
     /// @return distributionIndex The index of the distribution.
-    function distribute(
-        address token,
-        uint256 amount,
-        bytes32 expectedRoot
-    )
+    function distribute(address token, uint256 amount, bytes32 expectedRoot)
         external
         payable
         onlyDistributor
@@ -331,12 +307,7 @@ contract MerkleFundDistributor is
     /// @param claimDeadline The timestamp after which claims close and the unclaimed remainder can be swept back to the funder (0 = no expiry).
     /// @dev Only distributors can distribute funds.
     /// @return distributionIndex The index of the distribution.
-    function distribute(
-        address token,
-        uint256 amount,
-        bytes32 expectedRoot,
-        uint64 claimDeadline
-    )
+    function distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
         external
         payable
         onlyDistributor
@@ -352,16 +323,12 @@ contract MerkleFundDistributor is
     }
 
     /// @dev Creates a distribution and moves the funds. Shared by both `distribute` overloads.
-    function _distribute(
-        address token,
-        uint256 amount,
-        bytes32 expectedRoot,
-        uint64 claimDeadline
-    ) internal returns (uint256 distributionIndex) {
+    function _distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
+        internal
+        returns (uint256 distributionIndex)
+    {
         // Fetch the latest merkle state.
-        IMerkleSnapshot.MerkleState memory merkleState = IMerkleSnapshot(
-            merkleSnapshot
-        ).getLatestState();
+        IMerkleSnapshot.MerkleState memory merkleState = IMerkleSnapshot(merkleSnapshot).getLatestState();
 
         if (merkleState.root == bytes32(0) || merkleState.totalValue == 0) {
             revert InvalidMerkleState();
@@ -405,9 +372,7 @@ contract MerkleFundDistributor is
             }
 
             // Transfer fee to the fee recipient.
-            (bool success, bytes memory data) = payable(feeRecipient).call{
-                value: feeAmount
-            }("");
+            (bool success, bytes memory data) = payable(feeRecipient).call{value: feeAmount}("");
             if (!success) {
                 revert FailedToTransferFee(data);
             }
@@ -424,13 +389,7 @@ contract MerkleFundDistributor is
             IERC20(token).safeTransfer(feeRecipient, feeAmount);
         }
 
-        emit Distributed(
-            distributionIndex,
-            msg.sender,
-            token,
-            amount,
-            feeAmount
-        );
+        emit Distributed(distributionIndex, msg.sender, token, amount, feeAmount);
     }
 
     /// @notice Claims tokens for a given distribution.
@@ -440,12 +399,12 @@ contract MerkleFundDistributor is
     /// @param proof The merkle proof that validates this claim.
     /// @return claimedAmount The amount of tokens claimed.
     /// @dev Anyone can claim tokens on behalf of an account.
-    function claim(
-        uint256 distributionIndex,
-        address account,
-        uint256 value,
-        bytes32[] calldata proof
-    ) external nonReentrant whenNotPaused returns (uint256 claimedAmount) {
+    function claim(uint256 distributionIndex, address account, uint256 value, bytes32[] calldata proof)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 claimedAmount)
+    {
         if (distributionIndex >= distributions.length) {
             revert DistributionNotFound();
         }
@@ -455,9 +414,7 @@ contract MerkleFundDistributor is
         }
 
         // Fetch the distribution.
-        DistributionState storage distribution = distributions[
-            distributionIndex
-        ];
+        DistributionState storage distribution = distributions[distributionIndex];
         bytes32 root = distribution.root;
         if (root == bytes32(0)) {
             revert DistributionNotFound();
@@ -475,25 +432,14 @@ contract MerkleFundDistributor is
         }
 
         // Verify the merkle proof.
-        if (
-            !MerkleProof.verifyCalldata(
-                proof,
-                root,
-                keccak256(bytes.concat(keccak256(abi.encode(account, value))))
-            )
-        ) {
+        if (!MerkleProof.verifyCalldata(proof, root, keccak256(bytes.concat(keccak256(abi.encode(account, value)))))) {
             revert InvalidMerkleProof();
         }
 
-        uint256 totalDistributable = distribution.amountFunded -
-            distribution.feeAmount;
+        uint256 totalDistributable = distribution.amountFunded - distribution.feeAmount;
 
         // Calculate the amount of distributable tokens to claim (proportional to value / total merkle value).
-        claimedAmount = Math.mulDiv(
-            totalDistributable,
-            value,
-            distribution.totalMerkleValue
-        );
+        claimedAmount = Math.mulDiv(totalDistributable, value, distribution.totalMerkleValue);
 
         if (claimedAmount == 0) {
             revert NoFundsToClaim();
@@ -504,9 +450,7 @@ contract MerkleFundDistributor is
 
         // Transfer tokens to the account.
         if (_isNativeToken(distribution.token)) {
-            (bool success, bytes memory data) = payable(account).call{
-                value: claimedAmount
-            }("");
+            (bool success, bytes memory data) = payable(account).call{value: claimedAmount}("");
             if (!success) {
                 revert FailedToTransferTokens(data);
             }
@@ -515,12 +459,7 @@ contract MerkleFundDistributor is
         }
 
         emit Claimed(
-            distributionIndex,
-            account,
-            distribution.token,
-            claimedAmount,
-            value,
-            distribution.amountDistributed
+            distributionIndex, account, distribution.token, claimedAmount, value, distribution.amountDistributed
         );
     }
 
@@ -531,17 +470,13 @@ contract MerkleFundDistributor is
     ///      `distribution.distributor` (the round funder). Only callable once the
     ///      claim window has closed (`claimDeadline != 0 && block.timestamp > claimDeadline`),
     ///      so a sweep can never race a valid claim.
-    function sweep(
-        uint256 distributionIndex
-    ) external nonReentrant whenNotPaused returns (uint256 sweptAmount) {
+    function sweep(uint256 distributionIndex) external nonReentrant whenNotPaused returns (uint256 sweptAmount) {
         if (distributionIndex >= distributions.length) {
             revert DistributionNotFound();
         }
 
         // Fetch the distribution.
-        DistributionState storage distribution = distributions[
-            distributionIndex
-        ];
+        DistributionState storage distribution = distributions[distributionIndex];
         if (distribution.root == bytes32(0)) {
             revert DistributionNotFound();
         }
@@ -563,10 +498,7 @@ contract MerkleFundDistributor is
         }
 
         // Unclaimed remainder, including per-claim rounding dust.
-        sweptAmount =
-            distribution.amountFunded -
-            distribution.feeAmount -
-            distribution.amountDistributed;
+        sweptAmount = distribution.amountFunded - distribution.feeAmount - distribution.amountDistributed;
         if (sweptAmount == 0) {
             revert NothingToSweep();
         }
@@ -576,9 +508,7 @@ contract MerkleFundDistributor is
 
         // Transfer the unclaimed funds back to the round funder.
         if (_isNativeToken(distribution.token)) {
-            (bool success, bytes memory data) = payable(to).call{
-                value: sweptAmount
-            }("");
+            (bool success, bytes memory data) = payable(to).call{value: sweptAmount}("");
             if (!success) {
                 revert FailedToTransferTokens(data);
             }

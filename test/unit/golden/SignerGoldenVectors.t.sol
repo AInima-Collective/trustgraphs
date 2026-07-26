@@ -28,11 +28,7 @@ contract SignerGoldenVectorsTest is Test {
             uint32(json.readUint(".signer.selection.minThreshold")),
             uint32(json.readUint(".signer.selection.targetThresholdBps"))
         );
-        assertEq(
-            keccak256(encoded),
-            json.readBytes32(".signer.selectionParamsHash"),
-            "selectionParamsHash mismatch"
-        );
+        assertEq(keccak256(encoded), json.readBytes32(".signer.selectionParamsHash"), "selectionParamsHash mismatch");
     }
 
     /// signerSetRoot: OZ standard tree over the selected owner set (leaf = keccak256(abi.encode(address))).
@@ -57,9 +53,7 @@ contract SignerGoldenVectorsTest is Test {
             json.readUint(".signer.journal.targetThreshold")
         );
         assertEq(encoded, json.readBytes(".signer.journal.encoded"), "signer journal encoding mismatch");
-        assertEq(
-            keccak256(encoded), json.readBytes32(".signer.journal.digest"), "signer journal digest mismatch"
-        );
+        assertEq(keccak256(encoded), json.readBytes32(".signer.journal.digest"), "signer journal digest mismatch");
     }
 
     /// Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).
@@ -86,9 +80,7 @@ contract SignerGoldenVectorsTest is Test {
             uint256 idx = i - 1;
             bytes32 a = tree[2 * idx + 1];
             bytes32 b = tree[2 * idx + 2];
-            tree[idx] = a <= b
-                ? keccak256(abi.encode(a, b))
-                : keccak256(abi.encode(b, a));
+            tree[idx] = a <= b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
         }
         return tree[0];
     }

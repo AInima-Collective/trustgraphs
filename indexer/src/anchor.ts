@@ -15,6 +15,7 @@ import {
   nodeOutputLeaf,
   proofFor,
 } from './api/hypercerts-tree'
+import { type SharedArgs } from './utils'
 
 /**
  * Lane-2 (offchain-attestation) handlers — MULTI_PROGRAM_PLATFORM §5, OFFCHAIN_ATTESTATIONS_ZK §4.
@@ -65,8 +66,14 @@ ponder.on('anchorRegistry:NodeRegistered', async ({ event, context }) => {
   })
 })
 
-// MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each trigger.
-ponder.on('merkleSnapshot:AnchorsCheckpointed', async ({ event, context }) => {
+// MerkleSnapshot.AnchorsCheckpointed — the lane-2 accumulator frozen at each trigger. Registered on
+// both snapshot sources: `merkleSnapshot` is the factory-discovered trust-graph instances (which
+// emit it with zeros, having no AnchorRegistry) and `programSnapshot` the statically-deployed
+// contributions/hypercerts instances (see indexer/ponder.config.ts).
+const onAnchorsCheckpointed = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:AnchorsCheckpointed'>) => {
   const { checkpointId, anchorAcc, anchorCount } = event.args
 
   await context.db.insert(anchorCheckpoint).values({
@@ -78,7 +85,10 @@ ponder.on('merkleSnapshot:AnchorsCheckpointed', async ({ event, context }) => {
     txHash: event.transaction.hash,
     blockNumber: event.block.number,
   })
-})
+}
+
+ponder.on('merkleSnapshot:AnchorsCheckpointed', onAnchorsCheckpointed)
+ponder.on('programSnapshot:AnchorsCheckpointed', onAnchorsCheckpointed)
 
 /*///////////////////////////////////////////////////////////////
     STUB — skippedNode ingestion (off-chain prover/witness pipeline)

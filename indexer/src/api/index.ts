@@ -7,6 +7,7 @@ import account from './account'
 import attestations from './attestations'
 import contributions from './contributions'
 import hypercerts from './hypercerts'
+import instances from './instances'
 import merkle from './merkle'
 import network from './network'
 
@@ -20,6 +21,7 @@ app.route('/account', account)
 app.route('/attestations', attestations)
 app.route('/contributions', contributions)
 app.route('/hypercerts', hypercerts)
+app.route('/instances', instances)
 app.route('/merkle', merkle)
 app.route('/network', network)
 

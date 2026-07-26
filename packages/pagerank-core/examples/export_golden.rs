@@ -58,6 +58,10 @@ fn params() -> Params {
         weight_field_index: 1,
         envelope0_domain_separators: vec![],
         lane2_max_head_age: 0,
+        // Params-schema v2 domain separation. Deliberately non-zero so the vectors would catch a
+        // port that silently defaults these fields away.
+        accumulator: addr(0xAC),
+        chain_id: 31337,
     }
 }
 
@@ -123,6 +127,8 @@ fn main() {
             "weightFieldIndex": p.weight_field_index,
             "envelope0DomainSeparators": p.envelope0_domain_separators.iter().map(|d| hx(d.as_slice())).collect::<Vec<_>>(),
             "lane2MaxHeadAge": p.lane2_max_head_age,
+            "accumulator": hx(p.accumulator.as_slice()),
+            "chainId": p.chain_id,
             "paramsHash": hx(params_hash.as_slice())
         },
         "accumulator": {

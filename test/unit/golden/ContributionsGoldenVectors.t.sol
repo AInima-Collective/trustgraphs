@@ -68,9 +68,7 @@ contract ContributionsGoldenVectorsTest is Test {
             responseSchemaUid: json.readBytes32(".params.responseSchemaUid"),
             valuationSchemaUid: json.readBytes32(".params.valuationSchemaUid")
         });
-        assertEq(
-            ContributionsParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch"
-        );
+        assertEq(ContributionsParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 
     /// The worked-example (M1 compute family) params: the codec reproduces the fixture's
@@ -123,9 +121,7 @@ contract ContributionsGoldenVectorsTest is Test {
             json.readBytes32(".compute.journal.skippedDigest")
         );
         assertEq(encoded, json.readBytes(".compute.journal.encoded"), "journal encoding mismatch");
-        assertEq(
-            keccak256(encoded), json.readBytes32(".compute.journal.digest"), "journal digest mismatch"
-        );
+        assertEq(keccak256(encoded), json.readBytes32(".compute.journal.digest"), "journal digest mismatch");
         // cidDigest is the keccak of the CID string (the consumer-facing pointer is bound).
         assertEq(
             keccak256(bytes(json.readString(".compute.cid"))),
@@ -173,10 +169,6 @@ contract ContributionsGoldenVectorsTest is Test {
             "fold mismatch"
         );
         // dataHash is keccak of the raw valuation payload (abi.encode(bytes32 claimUID, uint8 score)).
-        assertEq(
-            keccak256(json.readBytes(".leaf.data")),
-            json.readBytes32(".leaf.dataHash"),
-            "dataHash mismatch"
-        );
+        assertEq(keccak256(json.readBytes(".leaf.data")), json.readBytes32(".leaf.dataHash"), "dataHash mismatch");
     }
 }

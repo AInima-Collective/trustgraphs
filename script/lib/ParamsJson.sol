@@ -7,16 +7,18 @@ import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
 /// @title ParamsJson
 /// @notice Reads a governance `params.json` (the same file the prover feeds to the SP1 guest,
-///         serialized `pagerank_core::Params`) into a `ParamsCodec.Params`. The `schema_uid` field
-///         in the file is IGNORED — the deploy is the source of truth for it and passes the freshly
-///         registered UID in via `schemaUid`, so the on-chain `paramsHash` can be computed in one
-///         pass (no precomputed-hash env var, no two-phase bootstrap).
+///         serialized `pagerank_core::Params`) into a `ParamsCodec.Params`. Three fields in the
+///         file are IGNORED because the deploy is their source of truth and supplies them here:
+///         `schema_uid` (the freshly registered UID), and the params-schema v2 domain separators
+///         `accumulator` (this instance's resolver) and `chain_id`. That keeps `paramsHash`
+///         computable in one pass (no precomputed-hash env var, no two-phase bootstrap) and makes
+///         it impossible for a stale file to bind an instance to another instance's domain.
 /// @dev    U256 fields are stored as 0x-hex strings (alloy `U256` serde); `parseJsonUint` coerces
 ///         both those and plain JSON numbers.
 library ParamsJson {
     Vm private constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    function read(string memory path, bytes32 schemaUid)
+    function read(string memory path, bytes32 schemaUid, address accumulator, uint64 chainId)
         internal
         view
         returns (ParamsCodec.Params memory p)
@@ -34,6 +36,20 @@ library ParamsJson {
         p.totalPool = vm.parseJsonUint(j, ".total_pool");
         p.precisionScale = vm.parseJsonUint(j, ".precision_scale");
         p.weightFieldIndex = uint32(vm.parseJsonUint(j, ".weight_field_index"));
+
+        // Lane-2 fields. These ARE part of `paramsHash`, so skipping them (as this reader used to)
+        // silently computes a lane-1 hash for a lane-2 network — the same class of bug the v2
+        // domain separators were added to prevent. Optional in the file because `pagerank_core`
+        // defaults both, and every lane-1 params.json in the repo omits them.
+        if (vm.keyExistsJson(j, ".envelope0_domain_separators")) {
+            p.envelope0DomainSeparators = vm.parseJsonBytes32Array(j, ".envelope0_domain_separators");
+        }
+        if (vm.keyExistsJson(j, ".lane2_max_head_age")) {
+            p.lane2MaxHeadAge = uint64(vm.parseJsonUint(j, ".lane2_max_head_age"));
+        }
+
         p.schemaUid = schemaUid;
+        p.accumulator = accumulator;
+        p.chainId = chainId;
     }
 }

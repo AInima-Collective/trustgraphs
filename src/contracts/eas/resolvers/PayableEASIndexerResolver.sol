@@ -101,7 +101,14 @@ contract PayableEASIndexerResolver is SchemaResolver, Ownable {
     /// @notice Handles attestation revocation.
     /// @param attestation The attestation being revoked.
     /// @return Whether the attestation can be revoked.
-    function onRevoke(Attestation calldata attestation, uint256 /*value*/ ) internal override returns (bool) {
+    function onRevoke(
+        Attestation calldata attestation,
+        uint256 /*value*/
+    )
+        internal
+        override
+        returns (bool)
+    {
         // Emit the attestation revoked event for off-chain indexers
         emit AttestationRevoked(address(_eas), attestation.uid);
         return true;

@@ -119,6 +119,8 @@ export const paramsHash = (p: Params): Hex => {
       wordU32(p.weightFieldIndex),
       domainSetHash(p.envelope0DomainSeparators ?? []),
       wordU64(BigInt(p.lane2MaxHeadAge ?? 0)),
+      wordAddr(p.accumulator),
+      wordU64(BigInt(p.chainId)),
     ])
   )
 }

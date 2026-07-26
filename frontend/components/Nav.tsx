@@ -35,6 +35,11 @@ export const Nav = () => {
       </Link>
 
       <div className="flex flex-row gap-2 sm:gap-3 items-stretch">
+        <ButtonLink href="/create" variant="ghost">
+          <span className="hidden sm:block">Create a </span>
+          Network
+        </ButtonLink>
+
         <ButtonLink
           href="/support"
           target="_blank"

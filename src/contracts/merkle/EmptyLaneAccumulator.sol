@@ -29,9 +29,7 @@ contract EmptyLaneAccumulator is IAttestationAccumulator {
     /// @inheritdoc IAttestationAccumulator
     function checkpoint() external returns (uint256 id) {
         id = _checkpoints.length;
-        _checkpoints.push(
-            Checkpoint({acc: bytes32(0), leafCount: 0, blockNumber: uint64(block.number)})
-        );
+        _checkpoints.push(Checkpoint({acc: bytes32(0), leafCount: 0, blockNumber: uint64(block.number)}));
         emit InputsCheckpointed(id, bytes32(0), 0, uint64(block.number));
     }
 

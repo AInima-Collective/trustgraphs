@@ -7,9 +7,7 @@ import {EASIndexerResolver} from "../../src/contracts/eas/resolvers/EASIndexerRe
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
-import {
-    ISchemaRegistry, SchemaRecord
-} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
+import {ISchemaRegistry, SchemaRecord} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 
 contract SchemaRegistrarTest is Test {

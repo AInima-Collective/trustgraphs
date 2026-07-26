@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
-import { easAttestation } from 'ponder:schema'
+import { easAttestation, instance } from 'ponder:schema'
 import { Hex } from 'viem'
 
 import { offchainDb } from './db'
@@ -10,12 +10,38 @@ import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
 const app = new Hono()
 
 // Get the accounts and attestations that are part of the network defined by the Merkle Snapshot contract.
-app.get('/:snapshot', async (c) => {
-  const merkleSnapshotContract = c.req.param('snapshot')
-  const network = NETWORKS.find((network) =>
+/**
+ * The vouch schema UIDs to attribute attestations to, for one snapshot.
+ *
+ * Two sources, in order: the build-time config (hand-deployed networks, and the program-tagged
+ * entries this route deliberately ignores), then the `instance` table — the catalog of everything
+ * `TrustGraphFactory` created. Without the second lookup a factory network 404s here, which is not
+ * a cosmetic failure: it is exactly the endpoint the network page reads its member list and
+ * attestation feed from, so a freshly created community would render its name and a vouch button
+ * over a permanently empty roster.
+ */
+const schemaUidsForSnapshot = async (
+  merkleSnapshotContract: string
+): Promise<Hex[] | null> => {
+  const configured = NETWORKS.find((network) =>
     isHexEqual(network.contracts.merkleSnapshot, merkleSnapshotContract)
   )
-  if (!network) {
+  if (configured) {
+    return configured.schemas.map((schema) => schema.uid as Hex)
+  }
+
+  const row = await db
+    .select({ schemaUid: instance.schemaUid })
+    .from(instance)
+    .where(eq(instance.snapshot, merkleSnapshotContract.toLowerCase() as Hex))
+    .limit(1)
+  return row.length > 0 ? [row[0]!.schemaUid as Hex] : null
+}
+
+app.get('/:snapshot', async (c) => {
+  const merkleSnapshotContract = c.req.param('snapshot')
+  const schemaUids = await schemaUidsForSnapshot(merkleSnapshotContract)
+  if (!schemaUids) {
     return c.json(
       { error: 'Network not found for MerkleSnapshot contract' },
       404
@@ -83,10 +109,7 @@ app.get('/:snapshot', async (c) => {
           inArray(easAttestation.attester, relevantAccounts),
           inArray(easAttestation.recipient, relevantAccounts),
           // Only include attestations for network schemas.
-          inArray(
-            easAttestation.schema,
-            network.schemas.map((schema) => schema.uid as Hex)
-          )
+          inArray(easAttestation.schema, schemaUids)
         )
       )
       .orderBy(

@@ -34,11 +34,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { useNetworkIfAvailable } from '@/contexts/NetworkContext'
 import { useAttestation, useIntoAttestationsData } from '@/hooks/useAttestation'
 import { useResolveEnsName } from '@/hooks/useEns'
 import { AttestationData } from '@/lib/attestation'
-import { VISIBLE_NETWORKS } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import {
@@ -78,6 +78,9 @@ export const CreateAttestationModal = ({
   className,
 }: CreateAttestationModalProps) => {
   const networkContext = useNetworkIfAvailable()
+  // Outside a network page the picker lists the RUNTIME catalog, so a network created through the
+  // factory can be vouched in without a rebuild.
+  const networks = useNetworks()
 
   const [internalIsOpen, setInternalIsOpen] = useState(false)
   const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen
@@ -91,11 +94,11 @@ export const CreateAttestationModal = ({
 
   const defaultSchemaUid =
     networkContext?.network.schemas[0].uid ||
-    VISIBLE_NETWORKS[0].schemas[0].uid ||
+    networks[0]?.schemas[0]?.uid ||
     zeroAddress
   const form = useForm<AttestationFormData>({
     defaultValues: {
-      networkId: networkContext?.network.id || VISIBLE_NETWORKS[0].id || '',
+      networkId: networkContext?.network.id || networks[0]?.id || '',
       schema: defaultSchemaUid,
       recipient: defaultRecipient,
       data: {},
@@ -107,12 +110,15 @@ export const CreateAttestationModal = ({
   const currentNetwork =
     networkContext?.network ||
     (selectedNetworkId
-      ? VISIBLE_NETWORKS.find((network) => network.id === selectedNetworkId)
+      ? networks.find((network) => network.id === selectedNetworkId)
       : undefined)
 
   const selectedSchemaUid = form.watch('schema')
   const selectedSchemaInfo = selectedSchemaUid
-    ? SchemaManager.schemaForUid(selectedSchemaUid)
+    ? // `maybe`, not the throwing variant: the known-schema set is now populated at runtime from
+      // the catalog, and a uid arriving a beat before its network does should degrade to "no form
+      // yet", not take the whole page down. Every render path below already handles undefined.
+      SchemaManager.maybeSchemaForUid(selectedSchemaUid)
     : undefined
 
   const recipient = form.watch('recipient', '')
@@ -365,7 +371,7 @@ export const CreateAttestationModal = ({
                         onValueChange={(value) => {
                           field.onChange(value)
                           // Default schema to first schema in network
-                          const network = VISIBLE_NETWORKS.find(
+                          const network = networks.find(
                             (network) => network.id === value
                           )
                           if (network) {
@@ -380,7 +386,7 @@ export const CreateAttestationModal = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {VISIBLE_NETWORKS.map((network) => (
+                          {networks.map((network) => (
                             <SelectItem
                               key={network.id as string}
                               value={network.id as string}

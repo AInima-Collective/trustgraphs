@@ -59,7 +59,7 @@ compromise cannot escalate (`MerkleSnapshot.sol:106-109`).
 | Knob | Where | Mutability | Authority | Delay |
 |---|---|---|---|---|
 | vkey + gateway | `SP1JournalVerifier.sol:19-30` | **immutable** | change = deploy new verifier + `setZkVerifier` (`MerkleSnapshot.sol:117-121`) | constitutional timelock, **14d** (`DeployTimelocks.s.sol:34`) |
-| paramsHash (15 fields incl. `seedSetRoot`, damping, weights, schemaUid, lane-2 domains) | `encode.rs:79-112`, `ParamsCodec.sol:40-60` | single storage slot | `setParamsHash` → OPERATIONAL (`MerkleSnapshot.sol:134-137`) | operational timelock, **2d** |
+| paramsHash (17 fields incl. `seedSetRoot`, damping, weights, schemaUid, lane-2 domains, and the v2 domain separators `accumulator`/`chainId`) | `encode.rs:79-112`, `ParamsCodec.sol:40-60` | single storage slot | `setParamsHash` → OPERATIONAL (`MerkleSnapshot.sol:134-137`) | operational timelock, **2d** |
 | journal (10 fields, v2) | `encode.rs:49-67` + digest rebuild in `submitProof` (`MerkleSnapshot.sol:227-240`) | **frozen, no version byte** | versioning by fresh deployment; live v1 instance frozen forever | n/a |
 | accumulator / anchor registry / epoch length / hooks | `MerkleSnapshot` setters | storage pointers | constitutional | 14d |
 | trusted seeds | committed as `seedSetRoot` inside paramsHash; full set is a guest witness | rotate via new `params.json` → `setParamsHash` | operational | 2d |

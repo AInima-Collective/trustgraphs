@@ -179,6 +179,12 @@ Run the permissionless root loop (checkpoint → `input-exporter` → `execute` 
 blob → `submitProof`) so there's a scored root to display. The signer variant → `submitSignerProof` is
 in [`docs/signer-sync/RUNBOOK.md`](../signer-sync/RUNBOOK.md).
 
+> **Several networks to prove?** `task instances:prove-all` runs this whole loop for *every* instance
+> in the `InstanceRegistry`, reconstructing each one's params from its own `InstanceCreated` event —
+> no `params.json`, no addresses, no per-network shell history. See
+> [`FACTORY.md`](./FACTORY.md) §5. The manual sequence below is still the right thing for a single
+> instance, and it's what the loop automates.
+
 **Set the addresses** (from the deploy artifacts — the doc used to leave these unset):
 
 ```bash

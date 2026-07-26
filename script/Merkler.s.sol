@@ -7,9 +7,7 @@ import {console} from "forge-std/console.sol";
 import {Common} from "script/Common.s.sol";
 
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
-import {
-    MerkleFundDistributor
-} from "contracts/merkle/MerkleFundDistributor.sol";
+import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 
 /// @dev Combined script to update merkle tree and claim rewards
 contract Merkler is Common {
@@ -19,9 +17,7 @@ contract Merkler is Common {
     /// @param merkleSnapshotAddr Address of the MerkleSnapshot contract
     function updateMerkle(string calldata merkleSnapshotAddr) public {
         vm.startBroadcast(_privateKey);
-        MerkleSnapshot merkleSnapshot = MerkleSnapshot(
-            payable(vm.parseAddress(merkleSnapshotAddr))
-        );
+        MerkleSnapshot merkleSnapshot = MerkleSnapshot(payable(vm.parseAddress(merkleSnapshotAddr)));
 
         uint256 checkpointId = merkleSnapshot.trigger();
         console.log("CheckpointId", checkpointId);
@@ -30,26 +26,17 @@ contract Merkler is Common {
 
     /// @dev Claim rewards using merkle proof
     /// @param merkleFundDistributorAddr Address of the MerkleFundDistributor contract
-    function claimRewards(
-        string calldata merkleFundDistributorAddr,
-        uint256 distributionIndex
-    ) public {
+    function claimRewards(string calldata merkleFundDistributorAddr, uint256 distributionIndex) public {
         vm.startBroadcast(_privateKey);
-        MerkleFundDistributor merkleFundDistributor = MerkleFundDistributor(
-            payable(vm.parseAddress(merkleFundDistributorAddr))
-        );
+        MerkleFundDistributor merkleFundDistributor =
+            MerkleFundDistributor(payable(vm.parseAddress(merkleFundDistributorAddr)));
 
-        MerkleFundDistributor.DistributionState
-            memory distribution = merkleFundDistributor.getDistribution(
-                distributionIndex
-            );
+        MerkleFundDistributor.DistributionState memory distribution =
+            merkleFundDistributor.getDistribution(distributionIndex);
 
         // access IPFS_GATEWAY_URL from env
         string memory ipfsGatewayUrl = vm.envString("IPFS_GATEWAY_URL");
-        string memory url = string.concat(
-            ipfsGatewayUrl,
-            distribution.ipfsHashCid
-        );
+        string memory url = string.concat(ipfsGatewayUrl, distribution.ipfsHashCid);
 
         // Get the claimer address first
         address claimer = vm.addr(_privateKey);
@@ -87,12 +74,7 @@ contract Merkler is Common {
 
         // Claim rewards with proof
         uint256 balanceBefore = address(claimer).balance;
-        uint256 claimed = merkleFundDistributor.claim(
-            distributionIndex,
-            claimer,
-            value,
-            proof
-        );
+        uint256 claimed = merkleFundDistributor.claim(distributionIndex, claimer, value, proof);
         uint256 balanceAfter = address(claimer).balance;
 
         console.log("Balance before:", balanceBefore);
@@ -117,18 +99,12 @@ contract Merkler is Common {
 
     /// @dev Query current contract state information
     /// @param merkleFundDistributorAddr Address of the MerkleFundDistributor contract
-    function queryContractState(
-        string calldata merkleFundDistributorAddr,
-        uint256 distributionIndex
-    ) public view {
-        MerkleFundDistributor merkleFundDistributor = MerkleFundDistributor(
-            payable(vm.parseAddress(merkleFundDistributorAddr))
-        );
+    function queryContractState(string calldata merkleFundDistributorAddr, uint256 distributionIndex) public view {
+        MerkleFundDistributor merkleFundDistributor =
+            MerkleFundDistributor(payable(vm.parseAddress(merkleFundDistributorAddr)));
 
-        MerkleFundDistributor.DistributionState
-            memory distribution = merkleFundDistributor.getDistribution(
-                distributionIndex
-            );
+        MerkleFundDistributor.DistributionState memory distribution =
+            merkleFundDistributor.getDistribution(distributionIndex);
         console.log("=== Distribution", distributionIndex, "===");
         console.log("Block Number:", distribution.blockNumber);
         console.log("Timestamp:", distribution.timestamp);
@@ -151,23 +127,18 @@ contract Merkler is Common {
     /// @dev Get the IPFS URI for the current merkle tree
     /// @param merkleFundDistributorAddr Address of the MerkleFundDistributor contract
     /// @param distributionIndex Index of the distribution
-    function getIpfsUri(
-        string calldata merkleFundDistributorAddr,
-        uint256 distributionIndex
-    ) public view returns (string memory) {
-        MerkleFundDistributor merkleFundDistributor = MerkleFundDistributor(
-            payable(vm.parseAddress(merkleFundDistributorAddr))
-        );
+    function getIpfsUri(string calldata merkleFundDistributorAddr, uint256 distributionIndex)
+        public
+        view
+        returns (string memory)
+    {
+        MerkleFundDistributor merkleFundDistributor =
+            MerkleFundDistributor(payable(vm.parseAddress(merkleFundDistributorAddr)));
 
-        MerkleFundDistributor.DistributionState
-            memory distribution = merkleFundDistributor.getDistribution(
-                distributionIndex
-            );
+        MerkleFundDistributor.DistributionState memory distribution =
+            merkleFundDistributor.getDistribution(distributionIndex);
         string memory ipfsGatewayUrl = vm.envString("IPFS_GATEWAY_URL");
-        string memory uri = string.concat(
-            ipfsGatewayUrl,
-            distribution.ipfsHashCid
-        );
+        string memory uri = string.concat(ipfsGatewayUrl, distribution.ipfsHashCid);
 
         console.log("IPFS URI:", uri);
         return uri;
@@ -182,16 +153,12 @@ contract Merkler is Common {
         uint256 distributionIndex,
         string calldata account
     ) public view {
-        MerkleFundDistributor merkleFundDistributor = MerkleFundDistributor(
-            payable(vm.parseAddress(merkleFundDistributorAddr))
-        );
+        MerkleFundDistributor merkleFundDistributor =
+            MerkleFundDistributor(payable(vm.parseAddress(merkleFundDistributorAddr)));
 
         address accountAddr = vm.parseAddress(account);
 
-        uint256 claimedAmount = merkleFundDistributor.claimed(
-            distributionIndex,
-            accountAddr
-        );
+        uint256 claimedAmount = merkleFundDistributor.claimed(distributionIndex, accountAddr);
 
         console.log("=== Claim Status ===");
         console.log("Account:", accountAddr);
@@ -215,11 +182,10 @@ contract Merkler is Common {
     /// @dev Comprehensive query of all relevant information
     /// @param merkleFundDistributorAddr Address of the MerkleFundDistributor contract
     /// @param account Address to check information for
-    function queryAll(
-        string calldata merkleFundDistributorAddr,
-        uint256 distributionIndex,
-        string calldata account
-    ) public view {
+    function queryAll(string calldata merkleFundDistributorAddr, uint256 distributionIndex, string calldata account)
+        public
+        view
+    {
         console.log("=== COMPREHENSIVE QUERY ===");
         console.log("");
 

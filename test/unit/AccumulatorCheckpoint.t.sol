@@ -41,7 +41,9 @@ contract AccumulatorCheckpointTest is Test {
         // Reproduce the leaf + fold by hand.
         bytes32 dataHash = keccak256(abi.encodePacked("data", uint8(1)));
         bytes32 leaf = keccak256(
-            abi.encode(uint8(0), address(uint160(1)), address(uint160(2)), bytes32(uint256(1)), block.timestamp, dataHash)
+            abi.encode(
+                uint8(0), address(uint160(1)), address(uint160(2)), bytes32(uint256(1)), block.timestamp, dataHash
+            )
         );
         bytes32 expected = keccak256(abi.encode(bytes32(0), leaf));
         assertEq(acc.acc(), expected);

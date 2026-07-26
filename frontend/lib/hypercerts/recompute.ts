@@ -226,6 +226,9 @@ const asRankParams = (p: HypercertsParams, seedNodeIds: Hex[]): PagerankParams =
   precisionScale: p.precisionScale,
   schemaUid: ZERO_HASH,
   weightFieldIndex: 0,
+  // Trust-graph-only params-schema v2 fields; inert here (hypercerts pins its own paramsHash).
+  accumulator: `0x${'00'.repeat(20)}` as Hex,
+  chainId: 0n,
 })
 
 /** Build the reconciled graph directly from the indexer-served derived edges (already summed). */

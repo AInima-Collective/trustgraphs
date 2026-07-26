@@ -13,12 +13,15 @@ import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { Markdown } from '@/components/Markdown'
+import { NetworkFeatures } from '@/components/NetworkFeatures'
+import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
+import { trustGraphTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
 import { formatBigNumber } from '@/lib/utils'
 
@@ -127,28 +130,35 @@ export const NetworkPage = () => {
 
   return (
     <div className="space-y-12">
+      {/* Identity + where you can go from here. Full width, above the two-column body, so the
+          tab bar sits directly under the network's name instead of being buried in a column
+          beside the graph. */}
+      <div className="flex flex-col items-start gap-4">
+        <BreadcrumbRenderer className="mb-2" />
+
+        <h1 className="text-4xl font-bold">{name}</h1>
+
+        {link && (
+          <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
+            {link.prefix && <span>{link.prefix}</span>}
+            <a
+              className="inline-flex flex-row items-center gap-1.5 text-brand hover:text-brand/80 transition-colors underline"
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Link className="w-4 h-4" />
+              <span>{link.label}</span>
+            </a>
+          </p>
+        )}
+
+        <NetworkNav tabs={trustGraphTabs(network)} className="w-full mt-2" />
+      </div>
+
       <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-start gap-12">
         <div className="flex flex-col items-start gap-4">
-          <BreadcrumbRenderer className="mb-2" />
-
-          <h1 className="text-4xl font-bold">{name}</h1>
-
-          {link && (
-            <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
-              {link.prefix && <span>{link.prefix}</span>}
-              <a
-                className="inline-flex flex-row items-center gap-1.5 text-brand hover:text-brand/80 transition-colors underline"
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Link className="w-4 h-4" />
-                <span>{link.label}</span>
-              </a>
-            </p>
-          )}
-
-          <h2 className="mt-2 -mb-3 font-bold">ABOUT NETWORK</h2>
+          <h2 className="-mb-3 font-bold">ABOUT NETWORK</h2>
           <Markdown>{about}</Markdown>
 
           {callToAction && (
@@ -180,12 +190,6 @@ export const NetworkPage = () => {
 
           <div className="flex flex-row gap-3 mt-3 flex-wrap">
             <CreateAttestationModal />
-            {/* <ButtonLink
-              href={`/network/${network.id}/distribute`}
-              variant="secondary"
-            >
-              Distribute Funds
-            </ButtonLink> */}
           </div>
         </div>
 
@@ -236,6 +240,10 @@ export const NetworkPage = () => {
           /> */}
         </div>
       </div>
+
+      {/* Above the members table on purpose: the table is long, and everything this network can
+          actually DO would be below the fold if it came after. */}
+      <NetworkFeatures />
 
       <div className="space-y-6">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">

@@ -458,11 +458,15 @@ export const ponderQueryFns = {
           options.order === 'asc' ? asc(t.timestamp) : desc(t.timestamp),
         limit: options.limit ?? 100,
       }),
+  // `distributor` here is the DISTRIBUTOR CONTRACT, matching `getFundDistributionClaims` and both
+  // call sites (the distribute + payout screens pass `contracts.merkleFundDistributor`). Filter on
+  // the contract column: `merkleFundDistribution.distributor` is the funder account that called
+  // `distribute()`, so matching it against a contract address never returns a row.
   getFundDistributions:
     (distributor: Hex, limit: number = 100) =>
     (db: Client<ResolvedSchema>['db']) =>
       db.query.merkleFundDistribution.findMany({
-        where: (t, { eq }) => eq(t.distributor, distributor),
+        where: (t, { eq }) => eq(t.merkleFundDistributor, distributor),
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit,
       }),

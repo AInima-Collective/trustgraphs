@@ -108,8 +108,7 @@ contract SignerSyncZkModule is Module {
             bytes32 _paramsHash,
             bytes32 _selectionParamsHash
         ) = abi.decode(
-            initializeParams,
-            (address, address, address, IZkVerifier, IAttestationAccumulator, bytes32, bytes32)
+            initializeParams, (address, address, address, IZkVerifier, IAttestationAccumulator, bytes32, bytes32)
         );
         _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _paramsHash, _selectionParamsHash);
     }
@@ -199,9 +198,8 @@ contract SignerSyncZkModule is Module {
 
         // Rebuild the signer journal digest from stored (governance-pinned) + submitted (proven)
         // fields; a mismatch on ANY field fails verification.
-        bytes32 journalDigest = keccak256(
-            abi.encode(c.acc, c.leafCount, paramsHash, selectionParamsHash, signerSetRoot, targetThreshold)
-        );
+        bytes32 journalDigest =
+            keccak256(abi.encode(c.acc, c.leafCount, paramsHash, selectionParamsHash, signerSetRoot, targetThreshold));
 
         // Reverts on an invalid proof.
         zkVerifier.verify(proof, journalDigest);
@@ -251,18 +249,14 @@ contract SignerSyncZkModule is Module {
         // 1. Swaps: replace a removed owner with an added one in place. Count & threshold unchanged.
         for (uint256 k = 0; k < s; k++) {
             address prev = _prevOwner(list, toRemove[k]);
-            _execSafe(
-                abi.encodeWithSignature("swapOwner(address,address,address)", prev, toRemove[k], toAdd[k])
-            );
+            _execSafe(abi.encodeWithSignature("swapOwner(address,address,address)", prev, toRemove[k], toAdd[k]));
             _replaceInPlace(list, toRemove[k], toAdd[k]);
         }
 
         // 2. Additions: Safe inserts each new owner right after SENTINEL (front of the list). Count
         //    grows, so keeping the current threshold is always valid.
         for (uint256 k = s; k < aCount; k++) {
-            _execSafe(
-                abi.encodeWithSignature("addOwnerWithThreshold(address,uint256)", toAdd[k], curThreshold)
-            );
+            _execSafe(abi.encodeWithSignature("addOwnerWithThreshold(address,uint256)", toAdd[k], curThreshold));
             list = _prepend(list, toAdd[k]);
         }
 
@@ -272,9 +266,7 @@ contract SignerSyncZkModule is Module {
             uint256 newCount = list.length - 1;
             uint256 th = curThreshold > newCount ? newCount : curThreshold;
             if (th < 1) th = 1;
-            _execSafe(
-                abi.encodeWithSignature("removeOwner(address,address,uint256)", prev, toRemove[k], th)
-            );
+            _execSafe(abi.encodeWithSignature("removeOwner(address,address,uint256)", prev, toRemove[k], th));
             list = _remove(list, toRemove[k]);
             curThreshold = th;
         }

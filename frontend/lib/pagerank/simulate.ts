@@ -7,7 +7,7 @@
 //! verification is in-guest only). Consequently the browser produces a LANE-1-ONLY journal — the
 //! lane-2 anchor fields (`anchorAcc`, `anchorCount`, `skippedDigest`) come back as the zero
 //! accumulator here (see `compute.ts`). The lane-2 `Params` fields ARE threaded through because
-//! `paramsHash` hashes all 15 param fields; leaving them out would mismatch an on-chain lane-2
+//! `paramsHash` hashes all 17 param fields; leaving them out would mismatch an on-chain lane-2
 //! `paramsHash`. To check the on-chain lane-2 accumulator, read `AnchorRegistry.anchorAcc()/
 //! anchorCount()` or the `MerkleSnapshot.AnchorsCheckpointed` event — those are NOT reproduced here.
 
@@ -49,6 +49,12 @@ export interface SimConfig {
   envelope0DomainSeparators?: Hex[]
   /** Lane-2 Rule-Φ staleness horizon in seconds. */
   lane2MaxHeadAge?: number
+  /** The instance's `EASIndexerResolver` — one of the two params-schema v2 domain separators. */
+  accumulator: Hex
+  /** The chain the instance lives on — the other params-schema v2 domain separator. */
+  chainId: bigint
+  /** The instance's vouching schema UID. Omitted = zero (a preview with no on-chain schema). */
+  schemaUid?: Hex
 }
 
 export interface SimResult {
@@ -104,9 +110,13 @@ export const simulateNetwork = (
     trustedSeeds: cfg.trustedSeeds.map((a) => a.toLowerCase() as Hex),
     totalPool: cfg.pointsPool,
     precisionScale: S,
-    schemaUid: `0x${'00'.repeat(32)}` as Hex,
+    schemaUid: cfg.schemaUid ?? (`0x${'00'.repeat(32)}` as Hex),
     weightFieldIndex: 1,
-    // Lane-2 params flow into paramsHash (15 fields). Omitted/undefined for lane-1-only networks,
+    // Domain separation (params-schema v2): both fields are part of the 17-field paramsHash, so a
+    // recompute that wants to match the chain must carry the instance's own accumulator + chain id.
+    accumulator: cfg.accumulator,
+    chainId: cfg.chainId,
+    // Lane-2 params flow into paramsHash too. Omitted/undefined for lane-1-only networks,
     // which encode.paramsHash normalizes to an empty domain set + zero head-age.
     ...(cfg.envelope0DomainSeparators?.length
       ? {

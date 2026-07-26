@@ -85,6 +85,9 @@ fn fixed_points(g: &Graph) -> HashMap<Address, U256> {
         weight_field_index: 1,
         envelope0_domain_separators: vec![],
         lane2_max_head_age: 0,
+        // Float-vs-fixed-point comparison only; this harness never hashes params.
+        accumulator: Address::ZERO,
+        chain_id: 0,
     };
     let mut edges = Vec::new();
     for (i, &(f, t, w)) in g.edges.iter().enumerate() {

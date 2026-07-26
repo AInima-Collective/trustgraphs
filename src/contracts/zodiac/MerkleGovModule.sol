@@ -3,9 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Module} from "@gnosis-guild/zodiac-core/core/Module.sol";
 import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
-import {
-    MerkleProof
-} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
@@ -94,22 +92,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         uint256 totalVotingPower
     );
 
-    event VoteCast(
-        address indexed voter,
-        uint256 indexed proposalId,
-        VoteType voteType,
-        uint256 votingPower
-    );
+    event VoteCast(address indexed voter, uint256 indexed proposalId, VoteType voteType, uint256 votingPower);
 
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalCancelled(uint256 indexed proposalId);
     event QuorumUpdated(uint256 newQuorum);
     event VotingDelayUpdated(uint256 newDelay);
     event VotingPeriodUpdated(uint256 newPeriod);
-    event MerkleSnapshotContractUpdated(
-        address indexed previousContract,
-        address indexed newContract
-    );
+    event MerkleSnapshotContractUpdated(address indexed previousContract, address indexed newContract);
 
     /*///////////////////////////////////////////////////////////////
                                 STORAGE
@@ -140,12 +130,10 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     mapping(uint256 => ProposalAction[]) public proposalActions;
 
     /// @notice Tracks whether an address has voted on a proposal
-    mapping(uint256 proposalId => mapping(address voter => bool))
-        public hasVoted;
+    mapping(uint256 proposalId => mapping(address voter => bool)) public hasVoted;
 
     /// @notice Tracks the vote type for each voter on a proposal
-    mapping(uint256 proposalId => mapping(address voter => VoteType))
-        public votes;
+    mapping(uint256 proposalId => mapping(address voter => VoteType)) public votes;
 
     /// @notice Governance parameters
     uint256 public votingDelay = 1; // blocks
@@ -162,12 +150,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(
-        address _owner,
-        address _avatar,
-        address _target,
-        address _merkleSnapshot
-    ) {
+    constructor(address _owner, address _avatar, address _target, address _merkleSnapshot) {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
 
@@ -182,12 +165,8 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
 
-        (
-            address _owner,
-            address _avatar,
-            address _target,
-            address _merkleSnapshot
-        ) = abi.decode(initializeParams, (address, address, address, address));
+        (address _owner, address _avatar, address _target, address _merkleSnapshot) =
+            abi.decode(initializeParams, (address, address, address, address));
 
         _transferOwnership(_owner);
         avatar = _avatar;
@@ -221,15 +200,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         bytes32[] calldata proof
     ) external returns (uint256 proposalId) {
         proposalId = _propose(
-            title,
-            description,
-            targets,
-            values,
-            calldatas,
-            operations,
-            actionDescriptions,
-            votingPower,
-            proof
+            title, description, targets, values, calldatas, operations, actionDescriptions, votingPower, proof
         );
     }
 
@@ -257,15 +228,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         VoteType voteType
     ) external returns (uint256 proposalId) {
         proposalId = _propose(
-            title,
-            description,
-            targets,
-            values,
-            calldatas,
-            operations,
-            actionDescriptions,
-            votingPower,
-            proof
+            title, description, targets, values, calldatas, operations, actionDescriptions, votingPower, proof
         );
 
         // Record the proposer's vote immediately
@@ -278,12 +241,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @param voteType The type of vote (No, Yes, Abstain)
     /// @param votingPower The claimed voting power
     /// @param proof Merkle proof for voting power
-    function castVote(
-        uint256 proposalId,
-        VoteType voteType,
-        uint256 votingPower,
-        bytes32[] calldata proof
-    ) external {
+    function castVote(uint256 proposalId, VoteType voteType, uint256 votingPower, bytes32[] calldata proof) external {
         Proposal storage proposal = proposals[proposalId];
         if (state(proposalId) != ProposalState.Active) revert VotingClosed();
         if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
@@ -297,20 +255,16 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Execute a successful proposal
     /// @param proposalId The proposal to execute
     function execute(uint256 proposalId) external {
-        if (state(proposalId) != ProposalState.Passed)
+        if (state(proposalId) != ProposalState.Passed) {
             revert ProposalNotPassed();
+        }
 
         Proposal storage proposal = proposals[proposalId];
         proposal.executed = true;
 
         ProposalAction[] memory actions = proposalActions[proposalId];
         for (uint256 i = 0; i < actions.length; i++) {
-            exec(
-                actions[i].target,
-                actions[i].value,
-                actions[i].data,
-                actions[i].operation
-            );
+            exec(actions[i].target, actions[i].value, actions[i].data, actions[i].operation);
         }
 
         emit ProposalExecuted(proposalId);
@@ -320,12 +274,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @param proposalId The proposal to cancel
     /// @dev Only the owner or avatar can cancel a proposal
     function cancel(uint256 proposalId) external {
-        if (proposalId == 0 || proposalId > proposalCount)
+        if (proposalId == 0 || proposalId > proposalCount) {
             revert ProposalNotFound();
+        }
 
         Proposal storage proposal = proposals[proposalId];
-        if (msg.sender != owner() && msg.sender != avatar)
+        if (msg.sender != owner() && msg.sender != avatar) {
             revert NotAuthorized();
+        }
         if (proposal.executed) revert ProposalAlreadyExecuted();
         if (proposal.cancelled) revert ProposalAlreadyCancelled();
 
@@ -340,8 +296,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Get the state of a proposal
     /// @dev Reverts if proposal does not exist
     function state(uint256 proposalId) public view returns (ProposalState) {
-        if (proposalId == 0 || proposalId > proposalCount)
+        if (proposalId == 0 || proposalId > proposalCount) {
             revert ProposalNotFound();
+        }
 
         Proposal storage proposal = proposals[proposalId];
 
@@ -355,18 +312,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
         // Check if proposal passed
         // Quorum is a percentage of snapshotted totalVotingPower (e.g., 4e16 = 4%)
-        uint256 totalVotes = proposal.yesVotes +
-            proposal.noVotes +
-            proposal.abstainVotes;
-        uint256 quorumThreshold = Math.mulDiv(
-            proposal.totalVotingPower,
-            quorum,
-            QUORUM_RANGE
-        );
-        if (
-            totalVotes >= quorumThreshold &&
-            proposal.yesVotes > proposal.noVotes
-        ) {
+        uint256 totalVotes = proposal.yesVotes + proposal.noVotes + proposal.abstainVotes;
+        uint256 quorumThreshold = Math.mulDiv(proposal.totalVotingPower, quorum, QUORUM_RANGE);
+        if (totalVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
             return ProposalState.Passed;
         }
 
@@ -378,19 +326,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @return proposal The proposal data
     /// @return proposalState The current state of the proposal
     /// @return actions The proposal actions
-    function getProposal(
-        uint256 proposalId
-    )
+    function getProposal(uint256 proposalId)
         external
         view
-        returns (
-            Proposal memory proposal,
-            ProposalState proposalState,
-            ProposalAction[] memory actions
-        )
+        returns (Proposal memory proposal, ProposalState proposalState, ProposalAction[] memory actions)
     {
-        if (proposalId == 0 || proposalId > proposalCount)
+        if (proposalId == 0 || proposalId > proposalCount) {
             revert ProposalNotFound();
+        }
 
         proposal = proposals[proposalId];
         proposalState = state(proposalId);
@@ -398,9 +341,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     }
 
     /// @notice Get proposal actions
-    function getActions(
-        uint256 proposalId
-    ) external view returns (ProposalAction[] memory) {
+    function getActions(uint256 proposalId) external view returns (ProposalAction[] memory) {
         return proposalActions[proposalId];
     }
 
@@ -441,9 +382,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IMerkleSnapshotHook
-    function onMerkleUpdate(
-        IMerkleSnapshot.MerkleState memory state_
-    ) external {
+    function onMerkleUpdate(IMerkleSnapshot.MerkleState memory state_) external {
         if (msg.sender != merkleSnapshotContract) revert OnlyMerkleSnapshot();
         if (state_.totalValue == 0) revert InvalidTotalVotingPower();
 
@@ -451,12 +390,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         ipfsHash = state_.ipfsHash;
         ipfsHashCid = state_.ipfsHashCid;
         totalVotingPower = state_.totalValue;
-        emit IMerkleSnapshot.MerkleRootUpdated(
-            state_.root,
-            state_.ipfsHash,
-            state_.ipfsHashCid,
-            state_.totalValue
-        );
+        emit IMerkleSnapshot.MerkleRootUpdated(state_.root, state_.ipfsHash, state_.ipfsHashCid, state_.totalValue);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -486,10 +420,8 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     ) internal returns (uint256 proposalId) {
         if (currentMerkleRoot == bytes32(0)) revert NoMerkleRootSet();
         if (
-            targets.length != values.length ||
-            targets.length != calldatas.length ||
-            targets.length != operations.length ||
-            targets.length != actionDescriptions.length
+            targets.length != values.length || targets.length != calldatas.length || targets.length != operations.length
+                || targets.length != actionDescriptions.length
         ) revert InvalidProposalData();
 
         // Verify proposer is in merkle tree
@@ -537,12 +469,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @param voter The address casting the vote
     /// @param voteType The type of vote (No, Yes, Abstain)
     /// @param votingPower The voting power to apply
-    function _castVote(
-        uint256 proposalId,
-        address voter,
-        VoteType voteType,
-        uint256 votingPower
-    ) internal {
+    function _castVote(uint256 proposalId, address voter, VoteType voteType, uint256 votingPower) internal {
         Proposal storage proposal = proposals[proposalId];
 
         hasVoted[proposalId][voter] = true;
@@ -564,18 +491,15 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @param votingPower The claimed voting power
     /// @param merkleRoot The merkle root to verify against
     /// @param proof The merkle proof
-    function _verifyMerkleProof(
-        address account,
-        uint256 votingPower,
-        bytes32 merkleRoot,
-        bytes32[] calldata proof
-    ) internal pure {
+    function _verifyMerkleProof(address account, uint256 votingPower, bytes32 merkleRoot, bytes32[] calldata proof)
+        internal
+        pure
+    {
         // forge-lint-disable-next-line asm-keccak256
-        bytes32 leaf = keccak256(
-            bytes.concat(keccak256(abi.encode(account, votingPower)))
-        );
-        if (!MerkleProof.verifyCalldata(proof, merkleRoot, leaf))
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(account, votingPower))));
+        if (!MerkleProof.verifyCalldata(proof, merkleRoot, leaf)) {
             revert InvalidMerkleProof();
+        }
     }
 
     /// @notice Internal function to set the merkle snapshot contract and update the relevant state
@@ -587,9 +511,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
         // Pull latest merkle state from the snapshot contract.
         // If the snapshot has no states yet, gracefully initialize fields to empty.
-        try IMerkleSnapshot(newContract).getLatestState() returns (
-            IMerkleSnapshot.MerkleState memory merkleState
-        ) {
+        try IMerkleSnapshot(newContract).getLatestState() returns (IMerkleSnapshot.MerkleState memory merkleState) {
             currentMerkleRoot = merkleState.root;
             ipfsHash = merkleState.ipfsHash;
             ipfsHashCid = merkleState.ipfsHashCid;
@@ -597,10 +519,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         } catch (bytes memory reason) {
             // Custom errors encode as: selector (4 bytes) + args.
             // NoMerkleStates has no args, so revert data is just the selector.
-            if (
-                reason.length == 4 &&
-                bytes4(reason) == IMerkleSnapshot.NoMerkleStates.selector
-            ) {
+            if (reason.length == 4 && bytes4(reason) == IMerkleSnapshot.NoMerkleStates.selector) {
                 currentMerkleRoot = bytes32(0);
                 ipfsHash = bytes32(0);
                 ipfsHashCid = "";

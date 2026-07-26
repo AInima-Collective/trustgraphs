@@ -15,11 +15,13 @@ import {
 } from 'react'
 import { Hex, zeroAddress } from 'viem'
 
+import { registerNetworks } from '@/components/schema-components'
 import { useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { Network, NetworkEntry } from '@/lib/types'
+import { getCurrentChainConfig } from '@/lib/wagmi'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 export type NetworkSimulationConfig = {
@@ -85,6 +87,12 @@ export const NetworkProvider = ({
   network: Network
   children: ReactNode
 }) => {
+  // Make this network's vouch schema encodable and give it the vouching form, right now. The
+  // server can resolve a factory instance (`lib/catalog.server.getNetwork`) faster than the
+  // browser-side catalog query returns, and a page that renders a network must be able to attest
+  // to it on its first paint, not one refetch later. Idempotent map writes.
+  registerNetworks([network])
+
   // Fetch latest merkle tree with entries
   const {
     data: _merkleTreeData,
@@ -172,11 +180,22 @@ export const NetworkProvider = ({
           minWeight: network.pagerank.minWeight,
           maxWeight: network.pagerank.maxWeight,
           trustedSeeds: network.pagerank.trustedSeeds,
-          pointsPool: BigInt(Math.round(network.pagerank.pointsPool || 0)),
+          // Catalog networks carry `totalPool` as a decimal string precisely because the on-chain
+          // value (routinely 1e24) does not survive a JS number, and it is hashed into
+          // `paramsHash` — rounding it here would make every simulated root wrong.
+          pointsPool:
+            typeof network.pagerank.pointsPool === 'string'
+              ? BigInt(network.pagerank.pointsPool)
+              : BigInt(Math.round(network.pagerank.pointsPool || 0)),
           // Lane-2 (envelope-0) params — threaded so the recomputed paramsHash matches the
-          // on-chain, governance-pinned 15-field paramsHash for lane-2-enabled networks.
+          // on-chain, governance-pinned 17-field paramsHash for lane-2-enabled networks.
           envelope0DomainSeparators: network.pagerank.envelope0DomainSeparators,
           lane2MaxHeadAge: network.pagerank.lane2MaxHeadAge,
+          // Params-schema v2 domain separation: this instance's accumulator + its chain. Without
+          // them the recomputed paramsHash is some other instance's, which is the whole point.
+          accumulator: network.contracts.easIndexerResolver,
+          chainId: BigInt(getCurrentChainConfig().id),
+          schemaUid: network.schemas.find((s) => s.key === 'vouching')?.uid,
         }
       )
     } catch (error) {

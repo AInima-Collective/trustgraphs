@@ -1299,6 +1299,20 @@ export const easIndexerResolverAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'bindSchema',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'boundSchema',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'checkpoint',
     outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
@@ -1518,12 +1532,34 @@ export const easIndexerResolverAbi = [
     ],
     name: 'InputsCheckpointed',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'schemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'SchemaBound',
+  },
   { type: 'error', inputs: [], name: 'AccessDenied' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'ForeignSchema',
+  },
   { type: 'error', inputs: [], name: 'InsufficientValue' },
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
   { type: 'error', inputs: [], name: 'NotPayable' },
+  { type: 'error', inputs: [], name: 'SchemaAlreadyBound' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4681,4 +4717,552 @@ export const trustAccumulatorMirrorAbi = [
   { type: 'error', inputs: [], name: 'NotBinder' },
   { type: 'error', inputs: [], name: 'NotSnapshot' },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TrustGraphFactory
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const trustGraphFactoryAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: 'eas', internalType: 'contract IEAS', type: 'address' },
+      {
+        name: 'schemaRegistrar',
+        internalType: 'contract SchemaRegistrar',
+        type: 'address',
+      },
+      {
+        name: 'verifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+      {
+        name: 'instanceRegistry',
+        internalType: 'contract IInstanceRegistry',
+        type: 'address',
+      },
+      {
+        name: 'snapshotDeployer',
+        internalType: 'contract MerkleSnapshotDeployer',
+        type: 'address',
+      },
+      {
+        name: 'distributorDeployer',
+        internalType: 'contract MerkleFundDistributorDeployer',
+        type: 'address',
+      },
+      { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'DISTRIBUTOR_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract MerkleFundDistributorDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'EAS',
+    outputs: [{ name: '', internalType: 'contract IEAS', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'EPOCH_FLOOR',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'INSTANCE_REGISTRY',
+    outputs: [
+      { name: '', internalType: 'contract IInstanceRegistry', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_ITERATIONS',
+    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_NAME_BYTES',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_RANK_FP',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_TOLERANCE_FP',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_TRUSTED_SEEDS',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_TRUST_MULTIPLIER_FP',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_WEIGHT_FP',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'PRECISION_SCALE',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'PROGRAM',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'SCHEMA_REGISTRAR',
+    outputs: [
+      { name: '', internalType: 'contract SchemaRegistrar', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'SNAPSHOT_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract MerkleSnapshotDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'VERIFIER',
+    outputs: [
+      { name: '', internalType: 'contract IZkVerifier', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'VOUCH_SCHEMA',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'WEIGHT_FIELD_INDEX',
+    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creator', internalType: 'address', type: 'address' },
+      { name: 'name', internalType: 'string', type: 'string' },
+      { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'computeInstanceId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'args',
+        internalType: 'struct TrustGraphFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustMultiplierFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+    ],
+    name: 'createInstance',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+      { name: 'resolver', internalType: 'address', type: 'address' },
+      { name: 'distributor', internalType: 'address', type: 'address' },
+      { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'params',
+        internalType: 'struct ParamsCodec.Params',
+        type: 'tuple',
+        components: [
+          { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+          { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+          {
+            name: 'trustMultiplierFp',
+            internalType: 'uint256',
+            type: 'uint256',
+          },
+          { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
+          {
+            name: 'trustedSeeds',
+            internalType: 'address[]',
+            type: 'address[]',
+          },
+          { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+          { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
+          { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'envelope0DomainSeparators',
+            internalType: 'bytes32[]',
+            type: 'bytes32[]',
+          },
+          { name: 'lane2MaxHeadAge', internalType: 'uint64', type: 'uint64' },
+          { name: 'accumulator', internalType: 'address', type: 'address' },
+          { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+        ],
+      },
+    ],
+    name: 'validateParams',
+    outputs: [],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'creator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'admin',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'name', internalType: 'string', type: 'string', indexed: false },
+      {
+        name: 'metadataURI',
+        internalType: 'string',
+        type: 'string',
+        indexed: false,
+      },
+      {
+        name: 'resolver',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'schemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'distributor',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'distributorToken',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'epochLength',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'params',
+        internalType: 'struct ParamsCodec.Params',
+        type: 'tuple',
+        components: [
+          { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+          { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+          {
+            name: 'trustMultiplierFp',
+            internalType: 'uint256',
+            type: 'uint256',
+          },
+          { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
+          { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
+          {
+            name: 'trustedSeeds',
+            internalType: 'address[]',
+            type: 'address[]',
+          },
+          { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+          { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
+          { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'envelope0DomainSeparators',
+            internalType: 'bytes32[]',
+            type: 'bytes32[]',
+          },
+          { name: 'lane2MaxHeadAge', internalType: 'uint64', type: 'uint64' },
+          { name: 'accumulator', internalType: 'address', type: 'address' },
+          { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+        ],
+        indexed: false,
+      },
+    ],
+    name: 'InstanceCreated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'schemaUid',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'SchemaAdopted',
+  },
+  { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
+  { type: 'error', inputs: [], name: 'EmptyName' },
+  { type: 'error', inputs: [], name: 'InvalidAdmin' },
+  {
+    type: 'error',
+    inputs: [{ name: 'dampingFp', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidDamping',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
+    name: 'InvalidIterations',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidPrecisionScale',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'seed', internalType: 'address', type: 'address' }],
+    name: 'InvalidSeed',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidTolerance',
+  },
+  { type: 'error', inputs: [], name: 'InvalidTotalPool' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustDecay',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustMultiplierFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustMultiplier',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustShare',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidWeightBounds',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'InvalidWeightFieldIndex',
+  },
+  { type: 'error', inputs: [], name: 'Lane2NotSupported' },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'NameTooLong',
+  },
+  { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'factorFp', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'RankGrowthUnbounded',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'registered', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'SchemaUidMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
+    name: 'TooManyTrustedSeeds',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroEpochFloor' },
 ] as const

@@ -73,6 +73,18 @@ pub struct Params {
     /// drop for the epoch. MUST be nonzero when lane 2 is enabled.
     #[serde(default)]
     pub lane2_max_head_age: u64,
+    /// Domain separation (INSTANCE_FACTORY §6.1): the instance's on-chain accumulator
+    /// (`EASIndexerResolver`). Two identical clones — same seeds, same params, same (e.g. empty
+    /// genesis) edge set — would otherwise accept each other's proofs; folding the accumulator
+    /// address into `params_hash` makes every instance's journal digest instance-specific.
+    /// Defaults to zero so a pre-v2 `params.json` still deserializes; the deploy/factory path
+    /// always supplies the real address.
+    #[serde(default)]
+    pub accumulator: Address,
+    /// Domain separation (INSTANCE_FACTORY §6.1): `block.chainid` at instance creation. The
+    /// multi-chain prerequisite — the same instance mirrored on another chain hashes differently.
+    #[serde(default)]
+    pub chain_id: u64,
 }
 
 impl Params {

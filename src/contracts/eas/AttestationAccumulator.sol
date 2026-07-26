@@ -31,11 +31,8 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
     /// @param recipient The recipient address.
     /// @param uid The attestation uid.
     /// @param dataHash keccak256 of the raw attestation data.
-    function _fold(uint8 kind, address attester, address recipient, bytes32 uid, bytes32 dataHash)
-        internal
-    {
-        bytes32 leaf =
-            keccak256(abi.encode(kind, attester, recipient, uid, block.timestamp, dataHash));
+    function _fold(uint8 kind, address attester, address recipient, bytes32 uid, bytes32 dataHash) internal {
+        bytes32 leaf = keccak256(abi.encode(kind, attester, recipient, uid, block.timestamp, dataHash));
         acc = keccak256(abi.encode(acc, leaf));
         emit EdgeFolded(leafCount, leaf, acc);
         leafCount++;
@@ -50,9 +47,7 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
             revert NoNewInputs();
         }
         id = len;
-        checkpoints.push(
-            Checkpoint({acc: acc, leafCount: leafCount, blockNumber: uint64(block.number)})
-        );
+        checkpoints.push(Checkpoint({acc: acc, leafCount: leafCount, blockNumber: uint64(block.number)}));
         emit InputsCheckpointed(id, acc, leafCount, uint64(block.number));
     }
 

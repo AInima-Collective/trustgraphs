@@ -56,14 +56,43 @@ contract InstanceRegistryTest is Test {
         assertTrue(reg.hasRole(reg.OPERATOR_ROLE(), admin));
     }
 
+    /// `register` accepts either role, so its gate is a single explicit check rather than an
+    /// `onlyRole` modifier — a caller holding neither gets `NotRegistrar`.
     function test_RegisterRoleGated() public {
         IInstanceRegistry.Instance memory r = _rec(TG, 0x100);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), reg.OPERATOR_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IInstanceRegistry.NotRegistrar.selector, address(this)));
         reg.register(TG, r);
+    }
+
+    /// The split that gives the factory its blast radius: `REGISTRAR_ROLE` may append a row and
+    /// nothing else. Granting it must NOT confer the power to rewrite an existing record, which is
+    /// what a single shared role would have done.
+    function test_RegistrarCanRegisterButNotUpdate() public {
+        address factoryLike = address(0xFAC);
+        bytes32 registrarRole = reg.REGISTRAR_ROLE();
+        vm.prank(admin);
+        reg.grantRole(registrarRole, factoryLike);
+
+        vm.prank(factoryLike);
+        reg.register(TG, _rec(TG, 0x100));
+        assertEq(reg.getInstance(TG).snapshot, address(0x100), "the registrar appended a row");
+
+        IInstanceRegistry.Instance memory hijack = _rec(TG, 0xdead);
+        // Read the role BEFORE the prank: a getter is a call, and would otherwise spend it.
+        bytes32 operatorRole = reg.OPERATOR_ROLE();
+        vm.prank(factoryLike);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, factoryLike, operatorRole)
+        );
+        reg.update(TG, hijack);
+        assertEq(reg.getInstance(TG).snapshot, address(0x100), "and could not rewrite it");
+    }
+
+    /// `OPERATOR_ROLE` remains a superset: a timelock-driven deployment needs no new grant.
+    function test_OperatorCanStillRegister() public {
+        vm.prank(admin);
+        reg.register(TG, _rec(TG, 0x100));
+        assertTrue(reg.isRegistered(TG));
     }
 
     function test_UpdateRoleGated() public {

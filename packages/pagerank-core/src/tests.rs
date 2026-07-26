@@ -33,6 +33,11 @@ pub(crate) fn default_params() -> Params {
         weight_field_index: 1,
         envelope0_domain_separators: vec![],
         lane2_max_head_age: 0,
+        // Params-schema v2 domain separation; the compute pipeline ignores both fields (they only
+        // enter `params_hash`), so the default helper leaves them zero. Tests that care about
+        // separation set them explicitly (see `params_hash_domain_separates_instances`).
+        accumulator: Address::ZERO,
+        chain_id: 0,
     }
 }
 
@@ -117,6 +122,46 @@ fn trust_boosts_seed_neighbour() {
     assert_eq!(r.journal.total_value, input.params.total_pool);
     // Everyone is reachable; pool fully distributed among 3.
     assert_eq!(r.scores.len(), 3);
+}
+
+/// Params-schema v2 domain separation (INSTANCE_FACTORY §6.1). Two factory clones with identical
+/// seeds, identical params, and identical (empty-genesis) edge sets used to produce the identical
+/// journal digest, so either could submit the other's proof. Binding the accumulator address and
+/// the chain id into `params_hash` — which `MerkleSnapshot.submitProof` folds into the digest it
+/// verifies — makes the two journals disjoint. The compute pipeline must stay indifferent to both
+/// fields: they separate domains, they do not change scores.
+#[test]
+fn params_hash_domain_separates_instances() {
+    let base = default_params();
+
+    let mut instance_a = base.clone();
+    instance_a.accumulator = addr(0xA1);
+    instance_a.chain_id = 1;
+
+    let mut instance_b = base.clone();
+    instance_b.accumulator = addr(0xB2);
+    instance_b.chain_id = 1;
+
+    // Same instance, mirrored onto another chain.
+    let mut mirror_a = instance_a.clone();
+    mirror_a.chain_id = 10;
+
+    let h = crate::encode::params_hash;
+    assert_ne!(h(&instance_a), h(&instance_b), "clones must not share a paramsHash");
+    assert_ne!(h(&instance_a), h(&mirror_a), "chains must not share a paramsHash");
+    assert_ne!(h(&base), h(&instance_a), "v2 fields must be part of the hash");
+
+    // ...and the separation is hash-only: identical edge sets still score identically.
+    let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1)];
+    let a = compute(&GuestInput { edges: edges.clone(), params: instance_a, lane2: None });
+    let b = compute(&GuestInput { edges, params: instance_b, lane2: None });
+    assert_eq!(a.journal.output_root, b.journal.output_root);
+    assert_ne!(a.journal.params_hash, b.journal.params_hash);
+    assert_ne!(
+        crate::encode::journal_digest(&a.journal),
+        crate::encode::journal_digest(&b.journal),
+        "a proof for one instance must not verify against the other's snapshot"
+    );
 }
 
 #[test]

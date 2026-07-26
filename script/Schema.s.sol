@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import {
-    ISchemaRegistry, SchemaRecord
-} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
+import {ISchemaRegistry, SchemaRecord} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 import {EMPTY_UID} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
@@ -191,7 +189,8 @@ contract EasSchema is Common {
 
         // Basic validation - check for common patterns
         bool hasType = _containsPattern(schema, "uint") || _containsPattern(schema, "string")
-            || _containsPattern(schema, "bool") || _containsPattern(schema, "bytes") || _containsPattern(schema, "address");
+            || _containsPattern(schema, "bool") || _containsPattern(schema, "bytes")
+            || _containsPattern(schema, "address");
 
         if (!hasType) {
             console.log("WARNING: Schema doesn't appear to contain valid types");

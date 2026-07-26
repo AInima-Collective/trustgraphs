@@ -1,7 +1,7 @@
 import { revalidatePath } from 'next/cache'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { VISIBLE_NETWORKS } from '@/lib/config'
+import { getNetwork } from '@/lib/catalog.server'
 
 export async function GET(
   _: NextRequest,
@@ -22,11 +22,16 @@ export async function GET(
     if (networkId.toLowerCase() === 'all') {
       revalidatePath('/network/[id]', 'page')
     } else {
-      if (!VISIBLE_NETWORKS.find((network) => network.id === networkId)) {
-        return NextResponse.json(
-          { error: 'Network not found' },
-          { status: 404 }
-        )
+      // Resolved against the runtime catalog, so a freshly created instance can be revalidated
+      // without waiting for a redeploy.
+      const { network, catalogError } = await getNetwork(networkId)
+      if (!network) {
+        return catalogError
+          ? NextResponse.json(
+              { error: 'Network directory unavailable', reason: catalogError },
+              { status: 503 }
+            )
+          : NextResponse.json({ error: 'Network not found' }, { status: 404 })
       }
 
       revalidatePath(`/network/${networkId}`)

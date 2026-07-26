@@ -2,6 +2,9 @@ import { withPlausibleProxy } from 'next-plausible'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lets a second server (a dev server next to a running `next start`, say) build into its own
+  // directory instead of trampling the first one's `.next`. Inert unless the env var is set.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   eslint: {
     ignoreDuringBuilds: true,
   },

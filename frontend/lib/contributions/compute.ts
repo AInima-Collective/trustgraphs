@@ -40,6 +40,8 @@ import {
 } from '../pagerank/types'
 import { ZERO_HASH, cmpHex } from '../pagerank/words'
 
+const ZERO_ADDRESS = `0x${'00'.repeat(20)}` as const
+
 /**
  * The `pagerank` port's `Params` twin driving stage 1 (only the fields the trust pipeline
  * reads; the trust program's own params-hash fields are irrelevant here — the contributions
@@ -61,6 +63,10 @@ const trustParams = (p: ContributionsParams): PagerankParams => ({
   weightFieldIndex: p.weightFieldIndex,
   envelope0DomainSeparators: [],
   lane2MaxHeadAge: 0,
+  // The trust program's params-schema v2 domain separators; inert here for the same reason
+  // `schemaUid` is (this twin never hashes). Mirrors `compute::trust_params`.
+  accumulator: ZERO_ADDRESS,
+  chainId: 0n,
 })
 
 /**

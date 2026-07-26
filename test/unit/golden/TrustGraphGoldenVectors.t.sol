@@ -57,8 +57,16 @@ contract TrustGraphGoldenVectorsTest is Test {
 
         // Journal v2 (two-lane), field order FROZEN — must match MerkleSnapshot.submitProof.
         bytes memory encoded = abi.encode(
-            acc, leafCount, anchorAcc, anchorCount, paramsHash, outputRoot, ipfsHash, cidDigest,
-            totalValue, skippedDigest
+            acc,
+            leafCount,
+            anchorAcc,
+            anchorCount,
+            paramsHash,
+            outputRoot,
+            ipfsHash,
+            cidDigest,
+            totalValue,
+            skippedDigest
         );
         assertEq(keccak256(encoded), keccak256(expectedEncoded), "journal encoding mismatch");
         assertEq(keccak256(encoded), expectedDigest, "journal digest mismatch");
@@ -136,10 +144,38 @@ contract TrustGraphGoldenVectorsTest is Test {
         );
     }
 
-    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork) must reproduce the golden vector,
-    /// locking the on-chain 13-field encoding to pagerank-core::encode::params_hash.
+    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustGraphFactory) must
+    /// reproduce the golden vector, locking the on-chain 17-field encoding to
+    /// pagerank-core::encode::params_hash.
     function test_ParamsHashEncoding() public view {
-        ParamsCodec.Params memory p = ParamsCodec.Params({
+        assertEq(ParamsCodec.hash(_goldenParams()), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
+    }
+
+    /// Domain separation (INSTANCE_FACTORY §6.1, params-schema v2): two instances that are
+    /// byte-identical apart from their accumulator address — or their chain id — MUST hash to
+    /// different `paramsHash`es, so a proof produced for one cannot be replayed onto the other.
+    /// The unit-level half of the GOAL's replay-separation criterion; the real-stack half lives in
+    /// `test/integration/FactoryReplaySeparation.t.sol`.
+    function test_ParamsHashDomainSeparatesInstances() public view {
+        ParamsCodec.Params memory a = _goldenParams();
+
+        ParamsCodec.Params memory b = _goldenParams();
+        b.accumulator = address(uint160(a.accumulator) + 1);
+        assertTrue(
+            ParamsCodec.hash(a) != ParamsCodec.hash(b), "clones on different accumulators must not share a paramsHash"
+        );
+
+        ParamsCodec.Params memory c = _goldenParams();
+        c.chainId = a.chainId + 1;
+        assertTrue(
+            ParamsCodec.hash(a) != ParamsCodec.hash(c),
+            "the same instance mirrored on another chain must not share a paramsHash"
+        );
+    }
+
+    /// The golden params struct, read from the vector file.
+    function _goldenParams() internal view returns (ParamsCodec.Params memory) {
+        return ParamsCodec.Params({
             dampingFp: json.readUint(".params.dampingFp"),
             toleranceFp: json.readUint(".params.toleranceFp"),
             maxIterations: uint32(json.readUint(".params.maxIterations")),
@@ -154,8 +190,9 @@ contract TrustGraphGoldenVectorsTest is Test {
             schemaUid: json.readBytes32(".params.schemaUid"),
             weightFieldIndex: uint32(json.readUint(".params.weightFieldIndex")),
             envelope0DomainSeparators: json.readBytes32Array(".params.envelope0DomainSeparators"),
-            lane2MaxHeadAge: uint64(json.readUint(".params.lane2MaxHeadAge"))
+            lane2MaxHeadAge: uint64(json.readUint(".params.lane2MaxHeadAge")),
+            accumulator: json.readAddress(".params.accumulator"),
+            chainId: uint64(json.readUint(".params.chainId"))
         });
-        assertEq(ParamsCodec.hash(p), json.readBytes32(".params.paramsHash"), "paramsHash mismatch");
     }
 }

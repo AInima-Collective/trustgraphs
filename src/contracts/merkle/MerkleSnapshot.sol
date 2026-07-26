@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {
-    MerkleProof
-} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
@@ -121,10 +119,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Update the accumulator (constitutional).
-    function setAccumulator(IAttestationAccumulator _accumulator)
-        external
-        onlyRole(CONSTITUTIONAL_ROLE)
-    {
+    function setAccumulator(IAttestationAccumulator _accumulator) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
         accumulator = _accumulator;
         emit AccumulatorUpdated(address(_accumulator));
@@ -138,10 +133,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
     ///         inputs "the graph" means, exactly like the accumulator knob).
-    function setAnchorRegistry(IAnchorRegistry _anchorRegistry)
-        external
-        onlyRole(CONSTITUTIONAL_ROLE)
-    {
+    function setAnchorRegistry(IAnchorRegistry _anchorRegistry) external onlyRole(CONSTITUTIONAL_ROLE) {
         anchorRegistry = _anchorRegistry;
         emit AnchorRegistryUpdated(address(_anchorRegistry));
     }
@@ -182,10 +174,8 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
         // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
         if (address(anchorRegistry) != address(0)) {
-            anchorCheckpoints[checkpointId] = AnchorCheckpoint({
-                anchorAcc: anchorRegistry.anchorAcc(),
-                anchorCount: anchorRegistry.anchorCount()
-            });
+            anchorCheckpoints[checkpointId] =
+                AnchorCheckpoint({anchorAcc: anchorRegistry.anchorAcc(), anchorCount: anchorRegistry.anchorCount()});
         }
         AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
         emit AnchorsCheckpointed(checkpointId, ac.anchorAcc, ac.anchorCount);
@@ -270,10 +260,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         uint256 stateIndex;
 
         // If this is a new block, add it.
-        if (
-            stateBlocks.length == 0 ||
-            stateBlocks[stateBlocks.length - 1] != blockNumber
-        ) {
+        if (stateBlocks.length == 0 || stateBlocks[stateBlocks.length - 1] != blockNumber) {
             stateIndex = stateBlocks.length;
             blockToStateIndex[blockNumber] = stateIndex;
             stateBlocks.push(blockNumber);
@@ -310,73 +297,61 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @param value The value to verify
     /// @param proof The merkle proof
     /// @return valid Whether the proof is valid
-    function _verifyProof(
-        bytes32 root,
-        address account,
-        uint256 value,
-        bytes32[] calldata proof
-    ) internal pure returns (bool) {
+    function _verifyProof(bytes32 root, address account, uint256 value, bytes32[] calldata proof)
+        internal
+        pure
+        returns (bool)
+    {
         // solhint-disable-next-line
-        bytes32 leaf = keccak256(
-            bytes.concat(keccak256(abi.encode(account, value)))
-        );
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(account, value))));
         return MerkleProof.verifyCalldata(proof, root, leaf);
     }
 
     /// @notice Verify a merkle proof for a given account with the latest state
-    function verifyProof(
-        address account,
-        uint256 value,
-        bytes32[] calldata proof
-    ) public view returns (bool) {
+    function verifyProof(address account, uint256 value, bytes32[] calldata proof) public view returns (bool) {
         return _verifyProof(getLatestState().root, account, value, proof);
     }
 
     /// @notice Verify a merkle proof for the sender with the latest state
-    function verifyMyProof(
-        uint256 value,
-        bytes32[] calldata proof
-    ) public view returns (bool) {
+    function verifyMyProof(uint256 value, bytes32[] calldata proof) public view returns (bool) {
         return verifyProof(msg.sender, value, proof);
     }
 
     /// @notice Verify a merkle proof against the state at a specific block number
-    function verifyProofAtBlock(
-        address account,
-        uint256 value,
-        bytes32[] calldata proof,
-        uint256 blockNumber
-    ) public view returns (bool) {
+    function verifyProofAtBlock(address account, uint256 value, bytes32[] calldata proof, uint256 blockNumber)
+        public
+        view
+        returns (bool)
+    {
         MerkleState memory state = getStateAtBlock(blockNumber);
         return _verifyProof(state.root, account, value, proof);
     }
 
     /// @notice Verify a merkle proof for the sender against the state at a specific block number
-    function verifyMyProofAtBlock(
-        uint256 value,
-        bytes32[] calldata proof,
-        uint256 blockNumber
-    ) public view returns (bool) {
+    function verifyMyProofAtBlock(uint256 value, bytes32[] calldata proof, uint256 blockNumber)
+        public
+        view
+        returns (bool)
+    {
         return verifyProofAtBlock(msg.sender, value, proof, blockNumber);
     }
 
     /// @notice Verify a merkle proof against the state at a specific index
-    function verifyProofAtStateIndex(
-        address account,
-        uint256 value,
-        bytes32[] calldata proof,
-        uint256 stateIndex
-    ) public view returns (bool) {
+    function verifyProofAtStateIndex(address account, uint256 value, bytes32[] calldata proof, uint256 stateIndex)
+        public
+        view
+        returns (bool)
+    {
         MerkleState memory state = getStateAtIndex(stateIndex);
         return _verifyProof(state.root, account, value, proof);
     }
 
     /// @notice Verify a merkle proof for the sender against the state at a specific index
-    function verifyMyProofAtStateIndex(
-        uint256 value,
-        bytes32[] calldata proof,
-        uint256 stateIndex
-    ) public view returns (bool) {
+    function verifyMyProofAtStateIndex(uint256 value, bytes32[] calldata proof, uint256 stateIndex)
+        public
+        view
+        returns (bool)
+    {
         return verifyProofAtStateIndex(msg.sender, value, proof, stateIndex);
     }
 
@@ -393,9 +368,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Get the state at (or before) a specific block number
-    function getStateAtBlock(
-        uint256 blockNumber
-    ) public view returns (MerkleState memory state) {
+    function getStateAtBlock(uint256 blockNumber) public view returns (MerkleState memory state) {
         if (stateBlocks.length == 0) {
             revert NoMerkleStates();
         }
@@ -407,9 +380,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         }
 
         // Binary search for the latest state at (or before) the target block
-        (bool found, uint256 stateIndex) = _findStateIndexAtOrBeforeBlock(
-            blockNumber
-        );
+        (bool found, uint256 stateIndex) = _findStateIndexAtOrBeforeBlock(blockNumber);
         if (!found) {
             revert NoMerkleStateAtBlock(blockNumber, stateBlocks[0]);
         }
@@ -417,9 +388,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Get the state at a specific index
-    function getStateAtIndex(
-        uint256 index
-    ) public view returns (MerkleState memory state) {
+    function getStateAtIndex(uint256 index) public view returns (MerkleState memory state) {
         if (index >= stateBlocks.length) {
             revert NoMerkleStateAtIndex(index, stateBlocks.length);
         }
@@ -427,9 +396,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Binary search to find the state index at (or before) a given block
-    function _findStateIndexAtOrBeforeBlock(
-        uint256 blockNumber
-    ) internal view returns (bool found, uint256 index) {
+    function _findStateIndexAtOrBeforeBlock(uint256 blockNumber) internal view returns (bool found, uint256 index) {
         uint256 left = 0;
         uint256 right = stateBlocks.length;
         uint256 result = 0;
@@ -460,10 +427,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Get paginated block numbers that have states
-    function getStateBlocks(
-        uint256 offset,
-        uint256 limit
-    ) public view returns (uint256[] memory result_) {
+    function getStateBlocks(uint256 offset, uint256 limit) public view returns (uint256[] memory result_) {
         uint256 end = offset + limit;
         if (end > stateBlocks.length) {
             end = stateBlocks.length;
@@ -477,10 +441,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Get paginated states
-    function getStates(
-        uint256 offset,
-        uint256 limit
-    ) public view returns (MerkleState[] memory result_) {
+    function getStates(uint256 offset, uint256 limit) public view returns (MerkleState[] memory result_) {
         uint256 end = offset + limit;
         if (end > stateBlocks.length) {
             end = stateBlocks.length;
@@ -522,9 +483,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice List all hooks
     function getHooks() external view returns (IMerkleSnapshotHook[] memory) {
-        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](
-            hookCount
-        );
+        IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](hookCount);
         uint256 resultIndex = 0;
         for (uint256 i = 1; i < nextHookIndex; i++) {
             if (address(hooks[i]) == address(0)) {

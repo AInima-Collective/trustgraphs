@@ -15,6 +15,7 @@ includes:
   forge: ./taskfile/eas-forge.yml
   services: ./taskfile/services.yml
   zk: ./taskfile/zk.yml
+  instances: ./taskfile/instances.yml
   trustgraph: ./taskfile/trustgraph.yml
   contributions: ./taskfile/contributions.yml
   env:

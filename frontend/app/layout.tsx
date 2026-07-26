@@ -8,6 +8,7 @@ import { ReactNode } from 'react'
 import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
+import { getCatalog } from '@/lib/catalog.server'
 
 const paperMono = localFont({
   src: '../public/fonts/PaperMono-Regular.woff2',
@@ -46,17 +47,24 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: ReactNode
 }>) {
+  // The trust-graph directory is a RUNTIME read now (GOAL.md M3): networks are created by
+  // `TrustGraphFactory` at any moment, so the app asks the indexer which ones exist rather than
+  // shipping a list. Reading it once here means every screen — client and server — shares one
+  // fetch per request and renders the same set. `getCatalog` never throws; on an indexer failure
+  // it degrades to the shipped list and flags the error for the UI to show.
+  const catalog = await getCatalog()
+
   return (
     <html lang="en">
       <head></head>
       <body className={clsx(paperMono.variable, 'font-mono text-foreground')}>
         <div className="min-h-screen root flex flex-col p-safe-or-2 sm:p-safe-or-4 md:p-safe-or-6 max-w-7xl mx-auto">
-          <Providers>
+          <Providers catalog={catalog}>
             {/* Account for the footer, but make sure to push it down below the initial page */}
             <div className="flex flex-col min-h-[calc(100vh-2rem)]">
               <Nav />

@@ -46,7 +46,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { foundry } from 'viem/chains'
 
-import { CONTRIBUTIONS_NETWORKS, NETWORKS } from '../lib/config'
+import { CONTRIBUTIONS_NETWORKS, SEED_NETWORKS } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
 import { easAddress } from '../lib/contracts'
 import {
@@ -100,7 +100,7 @@ if (!network) {
 }
 
 // The trust network whose accumulator feeds journal slot A (the mirror wraps its resolver).
-const trustNetwork = NETWORKS.find(
+const trustNetwork = SEED_NETWORKS.find(
   (n) =>
     n.contracts.easIndexerResolver?.toLowerCase() ===
     network.contracts.trustAccumulator?.toLowerCase()

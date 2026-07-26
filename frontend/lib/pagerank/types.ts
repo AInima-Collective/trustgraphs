@@ -45,6 +45,15 @@ export interface Params {
   envelope0DomainSeparators?: Hex[]
   /** Rule-Φ staleness horizon in seconds (nonzero when lane 2 is enabled). */
   lane2MaxHeadAge?: number | bigint
+  /**
+   * Domain separation (params-schema v2): the instance's `EASIndexerResolver` address. Together
+   * with `chainId` this is what stops two identically-configured instances from accepting each
+   * other's proofs. Required — a recompute that guesses these produces a paramsHash that will not
+   * match the chain, and silently defaulting them is exactly the bug the field exists to prevent.
+   */
+  accumulator: Hex
+  /** Domain separation (params-schema v2): the chain id the instance was created on. */
+  chainId: number | bigint
 }
 
 /** Trust is enabled iff there is at least one trusted seed (mirrors `has_trust_enabled`). */

@@ -1,0 +1,222 @@
+/**
+ * Discovery — the trust-graph catalog, built from the chain (GOAL.md M2;
+ * research/INSTANCE_FACTORY.md §3).
+ *
+ * `TrustGraphFactory.InstanceCreated` is the frozen interface every consumer reconstructs an
+ * instance from: the hosted prover (registry → addresses, event → params), third parties auditing
+ * what a community actually computes, and this indexer. One handler turns it into one `instance`
+ * row, and the same event is what Ponder's `factory()` sources use to discover the instance's
+ * snapshot / resolver / distributor (indexer/ponder.config.ts) — so "the row exists" and "that
+ * network's attestations are being indexed" are the same fact, with no config edit and no restart
+ * between the transaction and the network being live.
+ */
+import { ponder } from 'ponder:registry'
+import { instance, merkleFundDistributor } from 'ponder:schema'
+import { type Hex, zeroAddress } from 'viem'
+
+import { revalidateNetwork } from './utils'
+import { paramsHash } from '../../frontend/lib/pagerank/encode'
+import { trustGraphFactoryAbi } from '../abis/trustGraphFactory'
+
+/**
+ * The full 17-field params struct as stored/served: every field that is a bigint on-chain
+ * (uint256/uint64) is a decimal string so the JSON round-trips losslessly; the two uint32s stay
+ * numbers. Field names and order mirror `ParamsCodec.Params` exactly.
+ */
+export type InstanceParamsJson = {
+  dampingFp: string
+  toleranceFp: string
+  maxIterations: number
+  minWeightFp: string
+  maxWeightFp: string
+  trustMultiplierFp: string
+  trustShareFp: string
+  trustDecayFp: string
+  trustedSeeds: Hex[]
+  totalPool: string
+  precisionScale: string
+  schemaUid: Hex
+  weightFieldIndex: number
+  envelope0DomainSeparators: Hex[]
+  lane2MaxHeadAge: string
+  /** Params-schema v2 domain separation: the instance's own accumulator … */
+  accumulator: Hex
+  /** … and the chain it was created on. Together they stop clones cross-feeding proofs. */
+  chainId: string
+}
+
+/** The canonical vouch schema, used if the on-chain constant can't be read (it is a constant). */
+const CANONICAL_VOUCH_SCHEMA = 'string comment,uint256 confidence'
+
+/**
+ * Resolve `metadataURI` to its presentation blob. Best effort by design: nothing in it is
+ * consensus-relevant, so an unreachable gateway must leave the instance indexed and renderable
+ * (name, addresses and params all come from the event) rather than wedge the indexer.
+ */
+const fetchMetadata = async (metadataURI: string): Promise<unknown | null> => {
+  if (!metadataURI) return null
+
+  let url: string
+  if (metadataURI.startsWith('ipfs://')) {
+    const gateway = process.env.IPFS_GATEWAY
+    if (!gateway) return null
+    // Use 127.0.0.1 instead of localhost to avoid subdomain redirects (as in src/merkle.ts).
+    url = (gateway + metadataURI.slice('ipfs://'.length)).replace(
+      'localhost',
+      '127.0.0.1'
+    )
+  } else if (
+    metadataURI.startsWith('http://') ||
+    metadataURI.startsWith('https://')
+  ) {
+    url = metadataURI
+  } else {
+    return null
+  }
+
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+    if (!response.ok) {
+      console.warn(
+        `factory: metadata fetch ${url} -> ${response.status} ${response.statusText}`
+      )
+      return null
+    }
+    return await response.json()
+  } catch (error) {
+    console.warn(`factory: metadata fetch ${url} failed:`, error)
+    return null
+  }
+}
+
+ponder.on('trustGraphFactory:InstanceCreated', async ({ event, context }) => {
+  const {
+    instanceId,
+    creator,
+    admin,
+    name,
+    metadataURI,
+    resolver,
+    schemaUid,
+    snapshot,
+    distributor,
+    distributorToken,
+    epochLength,
+    params,
+  } = event.args
+
+  const trustedSeeds = [...params.trustedSeeds]
+  const envelope0DomainSeparators = [...params.envelope0DomainSeparators]
+
+  const paramsJson: InstanceParamsJson = {
+    dampingFp: params.dampingFp.toString(),
+    toleranceFp: params.toleranceFp.toString(),
+    maxIterations: params.maxIterations,
+    minWeightFp: params.minWeightFp.toString(),
+    maxWeightFp: params.maxWeightFp.toString(),
+    trustMultiplierFp: params.trustMultiplierFp.toString(),
+    trustShareFp: params.trustShareFp.toString(),
+    trustDecayFp: params.trustDecayFp.toString(),
+    trustedSeeds,
+    totalPool: params.totalPool.toString(),
+    precisionScale: params.precisionScale.toString(),
+    schemaUid: params.schemaUid,
+    weightFieldIndex: params.weightFieldIndex,
+    envelope0DomainSeparators,
+    lane2MaxHeadAge: params.lane2MaxHeadAge.toString(),
+    accumulator: params.accumulator,
+    chainId: params.chainId.toString(),
+  }
+
+  // The governance-pinned hash, recomputed from the emitted fields with the same TS port the
+  // browser recompute uses. It always equals `MerkleSnapshot(snapshot).paramsHash()` — storing it
+  // is what lets a consumer check that this row and that contract describe the same instance.
+  const hash = paramsHash({
+    dampingFp: params.dampingFp,
+    toleranceFp: params.toleranceFp,
+    maxIterations: params.maxIterations,
+    minWeightFp: params.minWeightFp,
+    maxWeightFp: params.maxWeightFp,
+    trustMultiplierFp: params.trustMultiplierFp,
+    trustShareFp: params.trustShareFp,
+    trustDecayFp: params.trustDecayFp,
+    trustedSeeds,
+    totalPool: params.totalPool,
+    precisionScale: params.precisionScale,
+    schemaUid: params.schemaUid,
+    weightFieldIndex: params.weightFieldIndex,
+    envelope0DomainSeparators,
+    lane2MaxHeadAge: params.lane2MaxHeadAge,
+    accumulator: params.accumulator,
+    chainId: params.chainId,
+  })
+
+  let schemaString = CANONICAL_VOUCH_SCHEMA
+  try {
+    schemaString = await context.client.readContract({
+      address: event.log.address,
+      abi: trustGraphFactoryAbi,
+      functionName: 'VOUCH_SCHEMA',
+    })
+  } catch (error) {
+    console.warn(
+      'factory: VOUCH_SCHEMA read failed, using the constant:',
+      error
+    )
+  }
+
+  const metadata = await fetchMetadata(metadataURI)
+
+  console.log(
+    `factory: InstanceCreated ${instanceId} "${name}" @ block ${event.block.number} snapshot ${snapshot} resolver ${resolver}`
+  )
+
+  await context.db.insert(instance).values({
+    id: instanceId,
+    factory: event.log.address,
+    chainId: `${context.chain.id}`,
+    creator,
+    admin,
+    name,
+    metadataURI,
+    metadata,
+    resolver,
+    schemaUid,
+    schemaString,
+    snapshot,
+    distributor: distributor === zeroAddress ? null : distributor,
+    distributorToken:
+      distributorToken === zeroAddress ? null : distributorToken,
+    epochLength,
+    paramsHash: hash,
+    params: paramsJson,
+    trustedSeeds,
+    createdBlock: event.block.number,
+    createdTimestamp: event.block.timestamp,
+    createdTxHash: event.transaction.hash,
+  })
+
+  // Seed the distributor's config row from its birth state instead of reading it back in a `setup`
+  // handler. The factory constructs it with `owner = feeRecipient = admin`, no fee, no allowlist
+  // and unpaused, so this is exact — and it means the first `Distributed`/`Paused`/… event for a
+  // brand-new instance can never arrive before the row it updates.
+  if (distributor !== zeroAddress) {
+    await context.db
+      .insert(merkleFundDistributor)
+      .values({
+        address: distributor,
+        chainId: `${context.chain.id}`,
+        paused: false,
+        merkleSnapshot: snapshot,
+        owner: admin,
+        pendingOwner: zeroAddress,
+        feeRecipient: admin,
+        feePercentage: '0',
+        allowlistEnabled: false,
+        allowlist: [],
+      })
+      .onConflictDoNothing()
+  }
+
+  await revalidateNetwork()
+})

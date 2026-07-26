@@ -85,6 +85,15 @@ jq '{edges: [], params: .}' params.json | cargo run --release -- trust-graph par
 
 `params.json` is a serialized `pagerank_core::Params` (the governance-pinned PageRank parameters).
 
+> **params schema v2.** `Params` carries two domain separators at the end — `accumulator` (the
+> instance's `EASIndexerResolver`) and `chain_id` — so two identically-configured instances cannot
+> accept each other's proofs (`FACTORY.md` §1.1). They are properties of an *instance*, not of the
+> governance file: `DeployNetwork` / `TrustGraphFactory` supply them at creation, and
+> `input-exporter` fills them from the connection it is reading, erroring if `params.json` names a
+> different instance. A hand-computed `paramshash` over a `params.json` whose `accumulator` /
+> `chain_id` are still zero will NOT match the deployed snapshot — read the value off the chain
+> (`snapshot.paramsHash()`) or off the `InstanceCreated` event instead.
+
 ## Validate the guest matches native (do this before every deploy)
 
 ```bash
@@ -153,8 +162,9 @@ fork RPC, the gateway, and the proving backend); each is a real command, not a w
 > **paramsHash is computed by the deploy — no bootstrap.** `DeployNetwork` deploys the resolver,
 > registers the schema, then computes `paramsHash` from `params.json` + the fresh schema UID and builds
 > `MerkleSnapshot` with it — one pass, no precomputed `PARAMS_HASH`, no restart. For a single-network
-> deploy it also writes the schema UID back into `params.json`; for DEV/multi-network, copy it from
-> `config/network_deploy_<env>_<i>.json` into the prover's `params.json`. See
+> deploy it also writes the schema UID, resolver address and chain id back into `params.json`; for
+> DEV/multi-network, copy them from `config/network_deploy_<env>_<i>.json` into the prover's
+> `params.json` — or use the factory's enumeration loop, which reads all three off the chain. See
 > [`LOCAL_TESTING.md`](./LOCAL_TESTING.md) §"Deploy the full stack".
 
 ### Prerequisites / env

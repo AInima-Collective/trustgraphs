@@ -39,8 +39,21 @@ interface IInstanceRegistry {
     /// @notice Thrown when registering an instance id that already exists.
     error InstanceAlreadyExists(bytes32 instanceId);
 
+    /// @notice Thrown when the caller holds neither `REGISTRAR_ROLE` nor `OPERATOR_ROLE`.
+    error NotRegistrar(address caller);
+
     /// @notice Thrown when updating (or reading) an instance id that was never registered.
     error InstanceNotFound(bytes32 instanceId);
+
+    /// @notice Register a new instance. Open to `REGISTRAR_ROLE` or `OPERATOR_ROLE`; reverts if
+    ///         the id already exists.
+    /// @dev Declared here so `TrustGraphFactory` (a registrar) can register through the interface.
+    function register(bytes32 instanceId, Instance calldata record) external;
+
+    /// @notice Replace an existing instance's record. `OPERATOR_ROLE` ONLY — deliberately a
+    ///         different role from `register`, so a factory can append rows but can never rewrite
+    ///         one. This is the whole of a compromised factory's blast radius on the directory.
+    function update(bytes32 instanceId, Instance calldata record) external;
 
     /// @notice Read an instance's contract set. Reverts if unknown.
     function getInstance(bytes32 instanceId) external view returns (Instance memory);

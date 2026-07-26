@@ -21,10 +21,7 @@ contract MockSP1Gateway is ISP1Verifier {
         expectedVKey = v;
     }
 
-    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes)
-        external
-        view
-    {
+    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes) external view {
         require(accept, "MockSP1Gateway: rejected");
         if (expectedVKey != bytes32(0)) {
             require(programVKey == expectedVKey, "MockSP1Gateway: wrong vkey");

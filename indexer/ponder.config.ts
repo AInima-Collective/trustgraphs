@@ -1,11 +1,12 @@
 import path from 'path'
 
 import dotenv from 'dotenv'
-import { createConfig } from 'ponder'
-import { Hex } from 'viem'
+import { createConfig, factory } from 'ponder'
+import { Hex, getAbiItem } from 'viem'
 
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
+import { trustGraphFactoryAbi } from './abis/trustGraphFactory'
 import {
   contributionResolverAbi,
   easIndexerResolverAbi,
@@ -22,6 +23,8 @@ import {
  * typechecking doesn't depend on the box's current JSON shape.
  */
 interface DeployedNetwork {
+  /** Program discriminator; absent = the address-keyed trust-graph vouching program. */
+  program?: string
   contracts: {
     merkleSnapshot?: string
     easIndexerResolver?: string
@@ -34,6 +37,8 @@ interface DeployedNetwork {
 }
 const deploymentSummary = deploymentSummaryJson as {
   networks: DeployedNetwork[]
+  /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
+  factory?: { factory?: string; instance_registry?: string }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -49,14 +54,88 @@ if (!DEPLOY_ENV) {
 export const IS_PRODUCTION = DEPLOY_ENV.toUpperCase().trim() === 'PROD'
 const CORE_CHAIN = IS_PRODUCTION ? 'optimism' : 'local'
 
-// Dev start block for contracts that must backfill (they emit events — attestations, roots — that may
-// already exist when the indexer starts). On a plain local anvil this is ~genesis (1). On a MAINNET
-// FORK the contracts live just above the fork block, so starting at 1 would backfill millions of
-// pre-fork blocks; set PONDER_START_BLOCK=<fork block> (see LOCAL_TESTING.md §Indexer). Contracts whose
-// events only occur after the indexer starts (gov/fund/safe) use 'latest' and need no start block.
+// Dev start block for the ROOT sources — the ones whose addresses are known before any event is
+// read (the factory itself, and the non-factory program instances). On a plain local anvil this is
+// ~genesis (1). On a MAINNET FORK the contracts live just above the fork block, so starting at 1
+// would backfill millions of pre-fork blocks; set PONDER_START_BLOCK=<fork block> (see
+// LOCAL_TESTING.md §Indexer). Factory CHILDREN (every trust-graph instance's snapshot, resolver and
+// distributor) do NOT use this: Ponder starts each child at the block its `InstanceCreated` was
+// emitted, which is both exact and self-maintaining. Contracts whose events only occur after the
+// indexer starts (gov/safe) use 'latest' and need no start block.
 const DEV_START_BLOCK = process.env.PONDER_START_BLOCK
   ? Number(process.env.PONDER_START_BLOCK)
   : 1
+
+/**
+ * The permissionless instance factory (research/INSTANCE_FACTORY.md §3). When it is deployed, the
+ * chain — not this file — is the trust-graph catalog: every instance's `MerkleSnapshot`,
+ * `EASIndexerResolver` and `MerkleFundDistributor` is discovered from `InstanceCreated` through a
+ * Ponder `factory()` source, so a network created a minute ago is indexed with no config edit, no
+ * restart, and no redeploy.
+ */
+const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
+  | Hex
+  | undefined
+
+/**
+ * Whether to discover trust-graph children from the factory. Production (Optimism) predates the
+ * factory — its instances were stood up by `DeployNetwork.s.sol` and stay statically configured
+ * until the factory is deployed there; likewise a dev box whose deploy chain never ran
+ * `DeployFactory` (a lane-2-only hypercerts box) falls back to the static lists.
+ */
+const FACTORY_DISCOVERY = !IS_PRODUCTION && TRUST_GRAPH_FACTORY !== undefined
+
+/** The frozen discovery event. Every child address below is one of its arguments. */
+const INSTANCE_CREATED = getAbiItem({
+  abi: trustGraphFactoryAbi,
+  name: 'InstanceCreated',
+})
+
+/**
+ * A `factory()` address source for one of `InstanceCreated`'s child-contract arguments. Children
+ * are indexed from their creation block, so nothing here needs a start block of its own.
+ *
+ * `distributor` is `address(0)` for an instance created without one; a zero address simply never
+ * matches a log, so no special-casing is needed.
+ */
+const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
+  factory({
+    address: TRUST_GRAPH_FACTORY!,
+    event: INSTANCE_CREATED,
+    parameter,
+    startBlock: DEV_START_BLOCK,
+  })
+
+/** Is this summary entry a trust-graph (vouching) network? Absent `program` means yes. */
+const isTrustGraph = (network: DeployedNetwork) =>
+  (network.program ?? 'trust-graph') === 'trust-graph'
+
+/**
+ * Deployed addresses under `contracts[key]`, optionally restricted to a subset of the catalog.
+ * `flatMap` because entries are program-shaped: a lane-2-only (hypercerts) entry has no EAS
+ * resolver, a contributions entry has no gov module, and so on.
+ */
+const deployedAddresses = (
+  key: 'merkleSnapshot' | 'easIndexerResolver' | 'merkleFundDistributor',
+  filter: (network: DeployedNetwork) => boolean = () => true
+): Hex[] =>
+  deploymentSummary.networks
+    .filter(filter)
+    .flatMap((network) => (network.contracts[key] as Hex) || [])
+
+/**
+ * The non-factory program instances (contributions, hypercerts). These have their own
+ * `MerkleSnapshot`/`MerkleFundDistributor` deployed by their own scripts — they are not minted by
+ * the trust-graph factory in v1 — so they keep static sources. Empty (and their sources disabled)
+ * when factory discovery is off, because then the main sources already list every address.
+ */
+const otherProgram = (network: DeployedNetwork) => !isTrustGraph(network)
+const programSnapshots = FACTORY_DISCOVERY
+  ? deployedAddresses('merkleSnapshot', otherProgram)
+  : []
+const programFundDistributors = FACTORY_DISCOVERY
+  ? deployedAddresses('merkleFundDistributor', otherProgram)
+  : []
 
 export default createConfig({
   ordering: 'multichain',
@@ -78,15 +157,24 @@ export default createConfig({
         }),
   },
   contracts: {
+    // The instance directory itself: `InstanceCreated` is both the catalog row (src/factory.ts →
+    // the `instance` table, which replaces config/networks.json for trust-graph networks) and the
+    // address source for the three child contracts below.
+    trustGraphFactory: {
+      abi: trustGraphFactoryAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: TRUST_GRAPH_FACTORY! } }
+        : {},
+    },
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
       startBlock: IS_PRODUCTION ? 142786483 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
-          // flatMap: a lane-2-only (hypercerts) entry has no EAS resolver.
-          address: deploymentSummary.networks.flatMap(
-            (network) => (network.contracts.easIndexerResolver as Hex) || []
-          ),
+          address: FACTORY_DISCOVERY
+            ? instanceChildren('resolver')
+            : deployedAddresses('easIndexerResolver'),
         },
       },
     },
@@ -95,11 +183,49 @@ export default createConfig({
       startBlock: IS_PRODUCTION ? 142786328 : DEV_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
-          address: deploymentSummary.networks.flatMap(
-            (network) => (network.contracts.merkleSnapshot as Hex) || []
-          ),
+          address: FACTORY_DISCOVERY
+            ? instanceChildren('snapshot')
+            : deployedAddresses('merkleSnapshot'),
         },
       },
+    },
+    merkleFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: instanceChildren('distributor') } }
+        : deploymentSummary.networks.some(
+              (network) => network.contracts.merkleFundDistributor
+            )
+          ? {
+              [CORE_CHAIN]: {
+                address: deployedAddresses('merkleFundDistributor'),
+              },
+            }
+          : {},
+    },
+    // The non-factory programs' snapshots (contributions, hypercerts). Same ABI and same handlers
+    // as `merkleSnapshot` (src/merkle.ts, src/anchor.ts register both); a separate source only
+    // because Ponder's `address` is either a static list or a factory, never both.
+    programSnapshot: {
+      abi: merkleSnapshotAbi,
+      startBlock: DEV_START_BLOCK,
+      chain:
+        programSnapshots.length > 0
+          ? { [CORE_CHAIN]: { address: programSnapshots } }
+          : {},
+    },
+    // The non-factory programs' fund distributors (the contributions round's payout contract).
+    // Backfills from DEV_START_BLOCK like everything else that is known up front — the `latest`
+    // workaround the factory children used to need is gone, so a `Distributed` that predates the
+    // indexer is now caught on replay rather than lost.
+    programFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: DEV_START_BLOCK,
+      chain:
+        programFundDistributors.length > 0
+          ? { [CORE_CHAIN]: { address: programFundDistributors } }
+          : {},
     },
     // Lane-2 anchor registry (M2). Discovered from deployment_summary.json under
     // `network.contracts.anchorRegistry` — single instance for now; only present once a lane-2
@@ -151,29 +277,6 @@ export default createConfig({
             [CORE_CHAIN]: {
               address: deploymentSummary.networks.flatMap(
                 (network) => (network.contracts.merkleGovModule as Hex) || []
-              ),
-            },
-          }
-        : {},
-    },
-    merkleFundDistributor: {
-      abi: merkleFundDistributorAbi,
-      // Must stay 'latest' in dev (NOT DEV_START_BLOCK): the `setup` handler reads the distributor's
-      // live state via readContract at the start block, so it must run at a block where the contract
-      // is already deployed. Backfilling from block 1 makes setup revert (no code yet) → the config
-      // row is never created → every later `.update(merkleFundDistributor, ...)` throws
-      // RecordNotFound. A round's fund is caught as long as the indexer is running before the fund
-      // tx (the normal start-services-then-deploy flow); after a DB reset, restart the whole local
-      // stack (fresh anvil) or re-run the fund so `Distributed` fires while the indexer is live.
-      startBlock: IS_PRODUCTION ? 0 : 'latest',
-      chain: deploymentSummary.networks.some(
-        (network) => network.contracts.merkleFundDistributor
-      )
-        ? {
-            [CORE_CHAIN]: {
-              address: deploymentSummary.networks.flatMap(
-                (network) =>
-                  (network.contracts.merkleFundDistributor as Hex) || []
               ),
             },
           }

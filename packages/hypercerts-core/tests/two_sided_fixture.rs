@@ -81,10 +81,13 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 /// witness assembly (same shape as compute_fixture.rs / atproto_real.rs).
 fn load(did: &str, car_rel: &str, plc_rel: &str) -> (B256, AtprotoWitness) {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let car = std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{car_rel}")).unwrap();
+    let car = std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{car_rel}"))
+        .unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{plc_rel}"))
-            .unwrap(),
+        &std::fs::read_to_string(format!(
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/{plc_rel}"
+        ))
+        .unwrap(),
     )
     .unwrap();
     let mut plc_ops = Vec::new();

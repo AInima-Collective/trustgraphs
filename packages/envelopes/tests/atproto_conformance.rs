@@ -412,7 +412,8 @@ fn conformance_canonical_trees_walk_exact() {
         ("neighbor_two_layers_down.car", vec!["A0/374913", "B2/827649", "C0/451630"]),
     ] {
         let bytes =
-            std::fs::read(fixture(&format!("test/fixtures/atproto/interop/car/{car_file}"))).unwrap();
+            std::fs::read(fixture(&format!("test/fixtures/atproto/interop/car/{car_file}")))
+                .unwrap();
         let car = Car::parse(&bytes).expect("canonical CAR parses (content-addressed)");
         let walk = Walker::full(&car).run(&car.roots[0]).expect("canonical tree accepted");
         let got: Vec<String> =

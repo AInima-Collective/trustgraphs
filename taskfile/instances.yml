@@ -1,0 +1,70 @@
+version: "3"
+
+silent: true
+
+# Multi-instance proving — "chain is the config".
+#
+# The factory makes instances cheap, so the proving loop can no longer be per-network shell history
+# with a hand-maintained `params.json`. These tasks take an RPC endpoint and an `InstanceRegistry`
+# address and derive everything else: `instance-scan` enumerates the directory and rebuilds each
+# instance's params from its own `InstanceCreated` event, and `prove-all` then runs
+# trigger -> export -> prove -> pin -> submitProof for every instance that is past its epoch boundary
+# and has new edges. Each instance writes into `.trustgraph/trust-graph/<instanceId>/`, so N
+# instances of the same program never clobber each other's input/proof/blob.
+#
+# The loop body is `taskfile/instances.sh` (same shape as `task e2e` -> `test/e2e/run.sh`): it is a
+# long bash pipeline over cast + the existing binaries, and it stays runnable without go-task.
+#
+# Docs: `docs/trust-graph/FACTORY.md` §5.
+
+tasks:
+  scan:
+    desc: "Rebuild every registry instance's params from chain and self-check them (read-only, sends nothing)"
+    vars:
+      REGISTRY: '{{.REGISTRY}}'
+    cmds:
+      - DRY_RUN=1 RPC='{{.RPC_URL}}' REGISTRY='{{.REGISTRY}}' bash taskfile/instances.sh
+
+  prove-all:
+    desc: "Prove + submit every trust-graph instance in the registry (trigger -> export -> prove -> pin -> submit)"
+    vars:
+      REGISTRY: '{{.REGISTRY}}'
+      ONLY: '{{.ONLY}}'
+      GROTH16: '{{.GROTH16 | default "1"}}'
+    env:
+      # Pinned here rather than inherited from `.env`: the loop must be runnable on any box. Real
+      # proving is `task instances:prove-all PROVER=network` (or `cpu` on a 16-32 GiB box with
+      # `--features native-gnark`); under `mock` the guest still runs and commits its real public
+      # values, but the SNARK check at the gateway is a stub.
+      SP1_PROVER: '{{.PROVER | default "mock"}}'
+    cmds:
+      - RPC='{{.RPC_URL}}' REGISTRY='{{.REGISTRY}}' ONLY='{{.ONLY}}' GROTH16='{{.GROTH16}}' IPFS_API='{{.IPFS_ENDPOINT}}' bash taskfile/instances.sh
+
+  dev-mock-gateway:
+    desc: "LOCAL DEV ONLY: install MockSP1Gateway bytecode at the deployed verifier's gateway address (anvil cheat)"
+    vars:
+      # Any instance's verifier will do — they share one per (chain, program vkey).
+      VERIFIER: '{{.VERIFIER | default "" }}'
+    cmds:
+      - |
+        # A dev stack deployed with SP1_VERIFIER_GATEWAY pointing at Succinct's *mainnet* gateway has
+        # no code at that address on a non-fork anvil, so `submitProof` reverts inside the verifier's
+        # `gateway.verifyProof` call before any of the real checks are reached. `SP1JournalVerifier`
+        # pins its gateway as an immutable, so the repair is to put a gateway there — the same
+        # MockSP1Gateway `test/e2e/run.sh` deploys, installed with `anvil_setCode`. Everything the
+        # verifier does itself (journal-digest binding, vkey pinning, blob decoding) still runs; only
+        # the SNARK check is stubbed. Never do this anywhere but a local devnet.
+        set -euo pipefail
+        VERIFIER='{{.VERIFIER}}'
+        if [ -z "$VERIFIER" ]; then VERIFIER=$(jq -r .zk_verifier .docker/zk_verifier_deploy.json); fi
+        GATEWAY=$(cast call "$VERIFIER" "gateway()(address)" --rpc-url '{{.RPC_URL}}')
+        if [ "$(cast code "$GATEWAY" --rpc-url '{{.RPC_URL}}')" != "0x" ]; then
+          echo "gateway $GATEWAY already has code — nothing to do"; exit 0
+        fi
+        CODE=$(forge inspect MockSP1Gateway deployedBytecode)
+        cast rpc anvil_setCode "$GATEWAY" "$CODE" --rpc-url '{{.RPC_URL}}' >/dev/null
+        # `bool public accept = true` is a constructor-time initializer; setCode installs runtime code
+        # only, so slot 0 has to be set by hand or every proof is rejected.
+        cast rpc anvil_setStorageAt "$GATEWAY" 0x0 \
+          0x0000000000000000000000000000000000000000000000000000000000000001 --rpc-url '{{.RPC_URL}}' >/dev/null
+        echo "MockSP1Gateway installed at $GATEWAY (verifier $VERIFIER) — SNARK check is now a stub"

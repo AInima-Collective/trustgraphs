@@ -9,8 +9,10 @@ import { useAccount } from 'wagmi'
 import { Address, TableAddress } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { CreateProposalForm } from '@/components/CreateProposalForm'
+import { NetworkNav } from '@/components/NetworkNav'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
+import { useNetwork } from '@/contexts/NetworkContext'
 import {
   ProposalAction,
   ProposalCore,
@@ -19,6 +21,7 @@ import {
   useGovernance,
 } from '@/hooks/useGovernance'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
+import { trustGraphTabs } from '@/lib/network-nav'
 import { formatBigNumber } from '@/lib/utils'
 
 interface ProposalRow {
@@ -29,6 +32,7 @@ interface ProposalRow {
 export default function GovernancePage() {
   const router = useRouter()
   const { isConnected } = useAccount()
+  const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -197,6 +201,8 @@ export default function GovernancePage() {
             Decentralized decision making with merkle proof verification
           </p>
         </div>
+
+        <NetworkNav tabs={trustGraphTabs(network)} />
 
         {/* Key Statistics - Right under header */}
         <div className="flex flex-row gap-4 flex-wrap">

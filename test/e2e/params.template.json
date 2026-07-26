@@ -14,5 +14,7 @@
   "total_pool": "0xd3c21bcecceda1000000",
   "precision_scale": "0xde0b6b3a7640000",
   "schema_uid": "SCHEMA_UID_PLACEHOLDER",
-  "weight_field_index": 1
+  "weight_field_index": 1,
+  "accumulator": "0x0000000000000000000000000000000000000000",
+  "chain_id": 0
 }

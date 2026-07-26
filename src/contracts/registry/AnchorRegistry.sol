@@ -88,13 +88,10 @@ contract AnchorRegistry is AccessControl {
     /// @param head The per-identity completeness commitment (log head / commit CID digest).
     /// @param dataCommitment Where the data behind the head verifiably lives (blob versioned hash,
     ///        namespace commitment, or content root — availability-as-anchor-validity, §7).
-    function anchor(bytes32 nodeId, uint8 envelopeKind, bytes32 head, bytes32 dataCommitment)
-        external
-    {
+    function anchor(bytes32 nodeId, uint8 envelopeKind, bytes32 head, bytes32 dataCommitment) external {
         if (!registered[nodeId]) revert NotRegistered(nodeId);
         // Leaf format is FROZEN and golden-locked four ways (zk_core::anchor::anchor_leaf).
-        bytes32 leaf =
-            keccak256(abi.encode(nodeId, envelopeKind, head, dataCommitment, block.timestamp));
+        bytes32 leaf = keccak256(abi.encode(nodeId, envelopeKind, head, dataCommitment, block.timestamp));
         anchorAcc = keccak256(abi.encode(anchorAcc, leaf));
         emit HeadAnchored(anchorCount++, nodeId, envelopeKind, head, dataCommitment, block.timestamp);
     }

@@ -2,9 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {
-    MerkleFundDistributor
-} from "../../src/contracts/merkle/MerkleFundDistributor.sol";
+import {MerkleFundDistributor} from "../../src/contracts/merkle/MerkleFundDistributor.sol";
 import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -28,8 +26,7 @@ contract MerkleFundDistributorTest is Test {
 
     // Test merkle data
     bytes32 public constant TEST_ROOT = bytes32(uint256(0x1234567890abcdef));
-    bytes32 public constant TEST_IPFS_HASH =
-        bytes32(uint256(0x1111111111111111));
+    bytes32 public constant TEST_IPFS_HASH = bytes32(uint256(0x1111111111111111));
     string public constant TEST_IPFS_CID = "QmTest1";
     uint256 public constant TEST_TOTAL_VALUE = 1000;
 
@@ -81,9 +78,10 @@ contract MerkleFundDistributorTest is Test {
         assertEq(newDistributor.pendingOwner(), address(0));
     }
 
-    function test_Constructor_StartsTwoStepTransferWhenOwnerDiffersFromDeployer()
-        public
-    {
+    /// Bootstrap ownership is DIRECT, not a 2-step handshake: a factory (or script) that deploys a
+    /// distributor on someone else's behalf must not linger as its owner. Post-deployment
+    /// `transferOwnership` is still 2-step — see `test_TransferOwnership_*`.
+    function test_Constructor_SetsOwnerDirectlyWhenOwnerDiffersFromDeployer() public {
         vm.prank(alice);
         MerkleFundDistributor newDistributor = new MerkleFundDistributor(
             bob, // different from deployer (alice)
@@ -92,41 +90,28 @@ contract MerkleFundDistributorTest is Test {
             DEFAULT_FEE_PERCENTAGE,
             false
         );
-        assertEq(newDistributor.owner(), alice); // deployer is still owner
-        assertEq(newDistributor.pendingOwner(), bob); // bob is pending
+        assertEq(newDistributor.owner(), bob); // bob owns it outright
+        assertEq(newDistributor.pendingOwner(), address(0)); // nothing left pending
+    }
+
+    function test_Constructor_RevertsOnZeroOwner() public {
+        vm.expectRevert(IMerkleFundDistributor.InvalidAddress.selector);
+        new MerkleFundDistributor(address(0), address(mockMerkleSnapshot), feeRecipient, DEFAULT_FEE_PERCENTAGE, false);
     }
 
     function test_Constructor_RevertsOnZeroMerkleSnapshot() public {
         vm.expectRevert(IMerkleFundDistributor.InvalidAddress.selector);
-        new MerkleFundDistributor(
-            owner,
-            address(0),
-            feeRecipient,
-            DEFAULT_FEE_PERCENTAGE,
-            false
-        );
+        new MerkleFundDistributor(owner, address(0), feeRecipient, DEFAULT_FEE_PERCENTAGE, false);
     }
 
     function test_Constructor_RevertsOnZeroFeeRecipient() public {
         vm.expectRevert(IMerkleFundDistributor.InvalidAddress.selector);
-        new MerkleFundDistributor(
-            owner,
-            address(mockMerkleSnapshot),
-            address(0),
-            DEFAULT_FEE_PERCENTAGE,
-            false
-        );
+        new MerkleFundDistributor(owner, address(mockMerkleSnapshot), address(0), DEFAULT_FEE_PERCENTAGE, false);
     }
 
     function test_Constructor_RevertsOnFeePercentageTooHigh() public {
         vm.expectRevert(IMerkleFundDistributor.FeePercentageTooHigh.selector);
-        new MerkleFundDistributor(
-            owner,
-            address(mockMerkleSnapshot),
-            feeRecipient,
-            FEE_RANGE + 1,
-            false
-        );
+        new MerkleFundDistributor(owner, address(mockMerkleSnapshot), feeRecipient, FEE_RANGE + 1, false);
     }
 
     function test_Constructor_SetsAllParameters() public view {
@@ -210,10 +195,7 @@ contract MerkleFundDistributorTest is Test {
         uint256 newFee = 5e16; // 5%
         vm.prank(owner);
         vm.expectEmit(true, true, false, false);
-        emit IMerkleFundDistributor.FeePercentageSet(
-            DEFAULT_FEE_PERCENTAGE,
-            newFee
-        );
+        emit IMerkleFundDistributor.FeePercentageSet(DEFAULT_FEE_PERCENTAGE, newFee);
         distributor.setFeePercentage(newFee);
 
         assertEq(distributor.feePercentage(), newFee);
@@ -241,10 +223,7 @@ contract MerkleFundDistributorTest is Test {
         address newSnapshot = address(0x999);
         vm.prank(owner);
         vm.expectEmit(true, true, false, false);
-        emit IMerkleFundDistributor.MerkleSnapshotUpdated(
-            address(mockMerkleSnapshot),
-            newSnapshot
-        );
+        emit IMerkleFundDistributor.MerkleSnapshotUpdated(address(mockMerkleSnapshot), newSnapshot);
         distributor.setMerkleSnapshot(newSnapshot);
 
         assertEq(distributor.merkleSnapshot(), newSnapshot);
@@ -349,10 +328,7 @@ contract MerkleFundDistributorTest is Test {
         assertTrue(distributor.isAllowlisted(alice));
     }
 
-    function test_IsAllowlisted_ReturnsFalseForNonAllowlistedAddress()
-        public
-        view
-    {
+    function test_IsAllowlisted_ReturnsFalseForNonAllowlistedAddress() public view {
         assertFalse(distributor.isAllowlisted(alice));
     }
 
@@ -404,9 +380,7 @@ contract MerkleFundDistributorTest is Test {
         assertEq(lastOne[0], charlie);
     }
 
-    function test_GetAllowlistPaginated_ReturnsEmptyForOffsetBeyondLength()
-        public
-    {
+    function test_GetAllowlistPaginated_ReturnsEmptyForOffsetBeyondLength() public {
         vm.prank(owner);
         distributor.updateDistributorAllowance(alice, true);
 
@@ -424,8 +398,7 @@ contract MerkleFundDistributorTest is Test {
         // Create a distribution first
         _createERC20Distribution(alice, 100 ether);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.distributor, alice);
         assertEq(dist.token, address(mockToken));
         assertEq(dist.amountFunded, 100 ether);
@@ -438,14 +411,12 @@ contract MerkleFundDistributorTest is Test {
         _createERC20Distribution(alice, 200 ether);
         _createERC20Distribution(alice, 300 ether);
 
-        IMerkleFundDistributor.DistributionState[] memory firstTwo = distributor
-            .getDistributions(0, 2);
+        IMerkleFundDistributor.DistributionState[] memory firstTwo = distributor.getDistributions(0, 2);
         assertEq(firstTwo.length, 2);
         assertEq(firstTwo[0].amountFunded, 100 ether);
         assertEq(firstTwo[1].amountFunded, 200 ether);
 
-        IMerkleFundDistributor.DistributionState[] memory lastOne = distributor
-            .getDistributions(2, 5);
+        IMerkleFundDistributor.DistributionState[] memory lastOne = distributor.getDistributions(2, 5);
         assertEq(lastOne.length, 1);
         assertEq(lastOne[0].amountFunded, 300 ether);
     }
@@ -453,8 +424,7 @@ contract MerkleFundDistributorTest is Test {
     function test_GetDistributions_ReturnsEmptyForOffsetBeyondLength() public {
         _createERC20Distribution(alice, 100 ether);
 
-        IMerkleFundDistributor.DistributionState[] memory result = distributor
-            .getDistributions(10, 5);
+        IMerkleFundDistributor.DistributionState[] memory result = distributor.getDistributions(10, 5);
         assertEq(result.length, 0);
     }
 
@@ -468,26 +438,15 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), amount);
 
         vm.expectEmit(true, true, true, true);
-        emit IMerkleFundDistributor.Distributed(
-            0,
-            alice,
-            address(mockToken),
-            amount,
-            expectedFee
-        );
+        emit IMerkleFundDistributor.Distributed(0, alice, address(mockToken), amount, expectedFee);
 
-        uint256 distributionIndex = distributor.distribute(
-            address(mockToken),
-            amount,
-            bytes32(0)
-        );
+        uint256 distributionIndex = distributor.distribute(address(mockToken), amount, bytes32(0));
         vm.stopPrank();
 
         assertEq(distributionIndex, 0);
         assertEq(distributor.getDistributionCount(), 1);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.distributor, alice);
         assertEq(dist.token, address(mockToken));
         assertEq(dist.amountFunded, amount);
@@ -503,21 +462,13 @@ contract MerkleFundDistributorTest is Test {
 
         uint256 aliceBalanceBefore = mockToken.balanceOf(alice);
         uint256 feeRecipientBalanceBefore = mockToken.balanceOf(feeRecipient);
-        uint256 distributorBalanceBefore = mockToken.balanceOf(
-            address(distributor)
-        );
+        uint256 distributorBalanceBefore = mockToken.balanceOf(address(distributor));
 
         _createERC20Distribution(alice, amount);
 
         assertEq(mockToken.balanceOf(alice), aliceBalanceBefore - amount);
-        assertEq(
-            mockToken.balanceOf(feeRecipient),
-            feeRecipientBalanceBefore + expectedFee
-        );
-        assertEq(
-            mockToken.balanceOf(address(distributor)),
-            distributorBalanceBefore + amount - expectedFee
-        );
+        assertEq(mockToken.balanceOf(feeRecipient), feeRecipientBalanceBefore + expectedFee);
+        assertEq(mockToken.balanceOf(address(distributor)), distributorBalanceBefore + amount - expectedFee);
     }
 
     function test_Distribute_NativeToken_CreatesDistribution() public {
@@ -526,24 +477,13 @@ contract MerkleFundDistributorTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit IMerkleFundDistributor.Distributed(
-            0,
-            alice,
-            address(0),
-            amount,
-            expectedFee
-        );
+        emit IMerkleFundDistributor.Distributed(0, alice, address(0), amount, expectedFee);
 
-        uint256 distributionIndex = distributor.distribute{value: amount}(
-            address(0),
-            amount,
-            bytes32(0)
-        );
+        uint256 distributionIndex = distributor.distribute{value: amount}(address(0), amount, bytes32(0));
 
         assertEq(distributionIndex, 0);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.token, address(0));
         assertEq(dist.amountFunded, amount);
         assertEq(dist.feeAmount, expectedFee);
@@ -562,10 +502,7 @@ contract MerkleFundDistributorTest is Test {
 
         assertEq(alice.balance, aliceBalanceBefore - amount);
         assertEq(feeRecipient.balance, feeRecipientBalanceBefore + expectedFee);
-        assertEq(
-            address(distributor).balance,
-            distributorBalanceBefore + amount - expectedFee
-        );
+        assertEq(address(distributor).balance, distributorBalanceBefore + amount - expectedFee);
     }
 
     function test_Distribute_WithExpectedRoot_Succeeds() public {
@@ -584,11 +521,7 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), 100 ether);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.UnexpectedMerkleRoot.selector,
-                wrongRoot,
-                TEST_ROOT
-            )
+            abi.encodeWithSelector(IMerkleFundDistributor.UnexpectedMerkleRoot.selector, wrongRoot, TEST_ROOT)
         );
         distributor.distribute(address(mockToken), 100 ether, wrongRoot);
         vm.stopPrank();
@@ -614,9 +547,7 @@ contract MerkleFundDistributorTest is Test {
         vm.stopPrank();
     }
 
-    function test_Distribute_RevertsOnInvalidMerkleState_ZeroTotalValue()
-        public
-    {
+    function test_Distribute_RevertsOnInvalidMerkleState_ZeroTotalValue() public {
         mockMerkleSnapshot.setMerkleState(
             IMerkleSnapshot.MerkleState({
                 blockNumber: block.number,
@@ -638,28 +569,16 @@ contract MerkleFundDistributorTest is Test {
 
     function test_Distribute_NativeToken_RevertsOnWrongMsgValue() public {
         vm.prank(alice);
-        vm.expectRevert(
-            IMerkleFundDistributor.InvalidNativeTokenTransferAmount.selector
-        );
-        distributor.distribute{value: 5 ether}(
-            address(0),
-            10 ether,
-            bytes32(0)
-        );
+        vm.expectRevert(IMerkleFundDistributor.InvalidNativeTokenTransferAmount.selector);
+        distributor.distribute{value: 5 ether}(address(0), 10 ether, bytes32(0));
     }
 
     function test_Distribute_ERC20_RevertsIfMsgValueSent() public {
         vm.startPrank(alice);
         mockToken.approve(address(distributor), 100 ether);
 
-        vm.expectRevert(
-            IMerkleFundDistributor.InvalidNativeTokenTransfer.selector
-        );
-        distributor.distribute{value: 1 ether}(
-            address(mockToken),
-            100 ether,
-            bytes32(0)
-        );
+        vm.expectRevert(IMerkleFundDistributor.InvalidNativeTokenTransfer.selector);
+        distributor.distribute{value: 1 ether}(address(mockToken), 100 ether, bytes32(0));
         vm.stopPrank();
     }
 
@@ -706,17 +625,8 @@ contract MerkleFundDistributorTest is Test {
         distributor.setFeeRecipient(address(rejecter));
 
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.FailedToTransferFee.selector,
-                ""
-            )
-        );
-        distributor.distribute{value: 10 ether}(
-            address(0),
-            10 ether,
-            bytes32(0)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FailedToTransferFee.selector, ""));
+        distributor.distribute{value: 10 ether}(address(0), 10 ether, bytes32(0));
     }
 
     function test_Distribute_ZeroFeePercentage() public {
@@ -728,8 +638,7 @@ contract MerkleFundDistributorTest is Test {
 
         _createERC20Distribution(alice, amount);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.feeAmount, 0);
         // Fee recipient receives nothing (but SafeERC20 still calls transfer with 0)
         assertEq(mockToken.balanceOf(feeRecipient), feeRecipientBalanceBefore);
@@ -743,8 +652,7 @@ contract MerkleFundDistributorTest is Test {
 
         _createERC20Distribution(alice, amount);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.feeAmount, amount); // entire amount is fee
         assertEq(mockToken.balanceOf(feeRecipient), amount);
         assertEq(mockToken.balanceOf(address(distributor)), 0);
@@ -785,22 +693,12 @@ contract MerkleFundDistributorTest is Test {
         uint256 expectedAliceClaim = (distributable * 600) / 1000;
 
         vm.expectEmit(true, true, true, true);
-        emit IMerkleFundDistributor.Claimed(
-            0,
-            alice,
-            address(mockToken),
-            expectedAliceClaim,
-            600,
-            expectedAliceClaim
-        );
+        emit IMerkleFundDistributor.Claimed(0, alice, address(mockToken), expectedAliceClaim, 600, expectedAliceClaim);
 
         uint256 claimedAmount = distributor.claim(0, alice, 600, aliceProof);
 
         assertEq(claimedAmount, expectedAliceClaim);
-        assertEq(
-            mockToken.balanceOf(alice),
-            aliceBalanceBefore + expectedAliceClaim
-        );
+        assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + expectedAliceClaim);
         assertEq(distributor.claimed(0, alice), expectedAliceClaim);
     }
 
@@ -824,11 +722,7 @@ contract MerkleFundDistributorTest is Test {
         // Create native token distribution
         uint256 fundedAmount = 10 ether;
         vm.prank(alice);
-        distributor.distribute{value: fundedAmount}(
-            address(0),
-            fundedAmount,
-            bytes32(0)
-        );
+        distributor.distribute{value: fundedAmount}(address(0), fundedAmount, bytes32(0));
 
         uint256 feeAmount = (fundedAmount * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
         uint256 distributable = fundedAmount - feeAmount;
@@ -884,8 +778,7 @@ contract MerkleFundDistributorTest is Test {
         assertEq(aliceClaimed, expectedAlice);
         assertEq(bobClaimed, expectedBob);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.amountDistributed, aliceClaimed + bobClaimed);
     }
 
@@ -1002,21 +895,12 @@ contract MerkleFundDistributorTest is Test {
 
         // Create native token distribution
         vm.prank(alice);
-        distributor.distribute{value: 10 ether}(
-            address(0),
-            10 ether,
-            bytes32(0)
-        );
+        distributor.distribute{value: 10 ether}(address(0), 10 ether, bytes32(0));
 
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = bobLeaf;
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.FailedToTransferTokens.selector,
-                ""
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FailedToTransferTokens.selector, ""));
         distributor.claim(0, address(rejecter), 600, proof);
     }
 
@@ -1048,10 +932,7 @@ contract MerkleFundDistributorTest is Test {
         uint256 claimedAmount = distributor.claim(0, alice, 600, aliceProof);
 
         // Tokens go to alice, not charlie
-        assertEq(
-            mockToken.balanceOf(alice),
-            aliceBalanceBefore + claimedAmount
-        );
+        assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + claimedAmount);
     }
 
     /* ========== COMPLEX MERKLE TREE TESTS ========== */
@@ -1096,28 +977,22 @@ contract MerkleFundDistributorTest is Test {
 
     /* ========== CLAIM DEADLINE (DISTRIBUTE OVERLOAD) TESTS ========== */
 
-    function test_DistributeWithDeadline_StoresDeadlineAndZeroSweptAmount()
-        public
-    {
+    function test_DistributeWithDeadline_StoresDeadlineAndZeroSweptAmount() public {
         uint64 deadline = uint64(block.timestamp + 7 days);
         _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.claimDeadline, deadline);
         assertEq(dist.sweptAmount, 0);
         assertEq(dist.distributor, alice);
         assertEq(dist.amountFunded, 100 ether);
     }
 
-    function test_DistributeWithDeadline_ZeroDeadlineMatchesLegacyBehavior()
-        public
-    {
+    function test_DistributeWithDeadline_ZeroDeadlineMatchesLegacyBehavior() public {
         _setupTwoLeafTree();
         _createERC20DistributionWithDeadline(alice, 100 ether, 0);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.claimDeadline, 0);
 
         // Claims stay open forever.
@@ -1135,8 +1010,7 @@ contract MerkleFundDistributorTest is Test {
     function test_LegacyDistribute_CreatesZeroDeadlineDistribution() public {
         _createERC20Distribution(alice, 100 ether);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.claimDeadline, 0);
         assertEq(dist.sweptAmount, 0);
     }
@@ -1148,12 +1022,7 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), 100 ether);
 
         vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
-        distributor.distribute(
-            address(mockToken),
-            100 ether,
-            bytes32(0),
-            uint64(999)
-        );
+        distributor.distribute(address(mockToken), 100 ether, bytes32(0), uint64(999));
         vm.stopPrank();
     }
 
@@ -1164,12 +1033,7 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), 100 ether);
 
         vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
-        distributor.distribute(
-            address(mockToken),
-            100 ether,
-            bytes32(0),
-            uint64(1000)
-        );
+        distributor.distribute(address(mockToken), 100 ether, bytes32(0), uint64(1000));
         vm.stopPrank();
     }
 
@@ -1181,12 +1045,7 @@ contract MerkleFundDistributorTest is Test {
         mockToken.approve(address(distributor), 100 ether);
 
         vm.expectRevert(IMerkleFundDistributor.CannotDistribute.selector);
-        distributor.distribute(
-            address(mockToken),
-            100 ether,
-            bytes32(0),
-            uint64(block.timestamp + 1 days)
-        );
+        distributor.distribute(address(mockToken), 100 ether, bytes32(0), uint64(block.timestamp + 1 days));
         vm.stopPrank();
     }
 
@@ -1248,10 +1107,7 @@ contract MerkleFundDistributorTest is Test {
         uint256 aliceBalanceBefore = mockToken.balanceOf(alice);
         uint256 sweptAmount = distributor.sweep(0);
         assertEq(sweptAmount, distributable - aliceClaimed);
-        assertEq(
-            mockToken.balanceOf(alice),
-            aliceBalanceBefore + sweptAmount
-        );
+        assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + sweptAmount);
     }
 
     /* ========== SWEEP TESTS ========== */
@@ -1284,8 +1140,7 @@ contract MerkleFundDistributorTest is Test {
         assertEq(mockToken.balanceOf(alice), aliceBalanceBefore + sweptAmount);
         assertEq(mockToken.balanceOf(address(distributor)), 0);
 
-        IMerkleFundDistributor.DistributionState memory dist = distributor
-            .getDistribution(0);
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
         assertEq(dist.sweptAmount, sweptAmount);
         // Fee accounting untouched by the sweep.
         assertEq(dist.feeAmount, feeAmount);
@@ -1295,12 +1150,7 @@ contract MerkleFundDistributorTest is Test {
     function test_Sweep_NativeToken_ReturnsAllUnclaimedToFunder() public {
         uint64 deadline = uint64(block.timestamp + 7 days);
         vm.prank(alice);
-        distributor.distribute{value: 10 ether}(
-            address(0),
-            10 ether,
-            bytes32(0),
-            deadline
-        );
+        distributor.distribute{value: 10 ether}(address(0), 10 ether, bytes32(0), deadline);
 
         uint256 feeAmount = (10 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
         uint256 distributable = 10 ether - feeAmount;
@@ -1429,20 +1279,10 @@ contract MerkleFundDistributorTest is Test {
 
         uint64 deadline = uint64(block.timestamp + 7 days);
         vm.prank(address(rejecter));
-        distributor.distribute{value: 10 ether}(
-            address(0),
-            10 ether,
-            bytes32(0),
-            deadline
-        );
+        distributor.distribute{value: 10 ether}(address(0), 10 ether, bytes32(0), deadline);
 
         vm.warp(uint256(deadline) + 1);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.FailedToTransferTokens.selector,
-                ""
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FailedToTransferTokens.selector, ""));
         distributor.sweep(0);
     }
 
@@ -1461,10 +1301,7 @@ contract MerkleFundDistributorTest is Test {
 
         assertEq(swept0, 100 ether - fee0);
         // Distribution 1's pot is still fully held by the contract.
-        assertEq(
-            mockToken.balanceOf(address(distributor)),
-            50 ether - fee1
-        );
+        assertEq(mockToken.balanceOf(address(distributor)), 50 ether - fee1);
 
         uint256 swept1 = distributor.sweep(1);
         assertEq(swept1, 50 ether - fee1);
@@ -1474,19 +1311,12 @@ contract MerkleFundDistributorTest is Test {
     /* ========== SWEEP FUZZ TESTS ========== */
 
     /// forge-config: default.fuzz.runs = 512
-    function testFuzz_Sweep_ConservationInvariant(
-        uint256 fundedAmount,
-        uint256[4] memory values,
-        uint8 claimMask
-    ) public {
+    function testFuzz_Sweep_ConservationInvariant(uint256 fundedAmount, uint256[4] memory values, uint8 claimMask)
+        public
+    {
         fundedAmount = bound(fundedAmount, 1, 1e30);
 
-        address[4] memory accounts = [
-            alice,
-            bob,
-            charlie,
-            address(0x6666)
-        ];
+        address[4] memory accounts = [alice, bob, charlie, address(0x6666)];
 
         // Build a 4-leaf tree with fuzzed values (at least one non-zero).
         uint256 totalValue;
@@ -1517,8 +1347,7 @@ contract MerkleFundDistributorTest is Test {
         mockToken.mint(alice, fundedAmount);
         _createERC20DistributionWithDeadline(alice, fundedAmount, deadline);
 
-        uint256 feeAmount = (fundedAmount * DEFAULT_FEE_PERCENTAGE) /
-            FEE_RANGE;
+        uint256 feeAmount = (fundedAmount * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
         uint256 distributable = fundedAmount - feeAmount;
 
         // A random subset of accounts claims before the deadline.
@@ -1562,28 +1391,16 @@ contract MerkleFundDistributorTest is Test {
         vm.stopPrank();
     }
 
-    function _createERC20DistributionWithDeadline(
-        address from,
-        uint256 amount,
-        uint64 claimDeadline
-    ) internal {
+    function _createERC20DistributionWithDeadline(address from, uint256 amount, uint64 claimDeadline) internal {
         vm.startPrank(from);
         mockToken.approve(address(distributor), amount);
-        distributor.distribute(
-            address(mockToken),
-            amount,
-            bytes32(0),
-            claimDeadline
-        );
+        distributor.distribute(address(mockToken), amount, bytes32(0), claimDeadline);
         vm.stopPrank();
     }
 
     /// @dev Sets the mock snapshot to a two-leaf tree: alice=600, bob=400 (total=1000).
     function _setupTwoLeafTree() internal {
-        bytes32 root = _hashPair(
-            _generateLeaf(alice, 600),
-            _generateLeaf(bob, 400)
-        );
+        bytes32 root = _hashPair(_generateLeaf(alice, 600), _generateLeaf(bob, 400));
         mockMerkleSnapshot.setMerkleState(
             IMerkleSnapshot.MerkleState({
                 blockNumber: block.number,
@@ -1596,18 +1413,12 @@ contract MerkleFundDistributorTest is Test {
         );
     }
 
-    function _generateLeaf(
-        address account,
-        uint256 value
-    ) internal pure returns (bytes32) {
+    function _generateLeaf(address account, uint256 value) internal pure returns (bytes32) {
         return keccak256(bytes.concat(keccak256(abi.encode(account, value))));
     }
 
     function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
-        return
-            a < b
-                ? keccak256(abi.encodePacked(a, b))
-                : keccak256(abi.encodePacked(b, a));
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
     }
 }
 
@@ -1620,12 +1431,7 @@ contract MockMerkleSnapshot is IMerkleSnapshot {
         _state = state;
     }
 
-    function getLatestState()
-        external
-        view
-        override
-        returns (MerkleState memory)
-    {
+    function getLatestState() external view override returns (MerkleState memory) {
         return _state;
     }
 }

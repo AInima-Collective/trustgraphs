@@ -7,13 +7,31 @@ use alloy_primitives::{U256, U512};
 ///
 /// Panics on `d == 0` (a programming error — callers guard division by zero explicitly, matching
 /// the legacy `total_base_weight == 0` / `total_scaled_score.is_zero()` early-exits).
+///
+/// Panics if the QUOTIENT does not fit in 256 bits. This used to truncate silently, on the
+/// assumption that "the result always fits for our magnitudes" — an assumption nothing enforced
+/// and which a permissionless factory breaks: with a large trust multiplier, a seed whose only
+/// out-edge points at another seed multiplies its rank by `damping × multiplier` every iteration
+/// (ranks are normalized once, AFTER the loop — `pagerank::calculate_generic`), so ranks grow
+/// without bound and wrap. Truncation made that a *silently wrong* proven score. Worse, it broke
+/// cross-language parity outright: the TS port is arbitrary-precision `bigint` and does not wrap,
+/// so the browser preview and the guest disagreed on both payouts and ranking order.
+///
+/// Failing loudly is the honest behaviour: in the guest a panic means no proof exists, so an
+/// instance configured outside the representable range is unprovable rather than wrong. The
+/// factory's creation-time bounds exist to keep real instances far from here; this is the
+/// backstop that makes "far from here" a checkable claim instead of a hope.
 #[inline]
 pub fn mul_div(a: U256, b: U256, d: U256) -> U256 {
     debug_assert!(!d.is_zero(), "mul_div by zero");
     let prod = U512::from(a) * U512::from(b);
     let q = prod / U512::from(d);
-    // The mathematical result always fits in 256 bits for our magnitudes; truncation is a no-op.
-    U256::from_limbs([q.as_limbs()[0], q.as_limbs()[1], q.as_limbs()[2], q.as_limbs()[3]])
+    let limbs = q.as_limbs();
+    assert!(
+        limbs[4] == 0 && limbs[5] == 0 && limbs[6] == 0 && limbs[7] == 0,
+        "mul_div overflow: quotient exceeds 256 bits (params outside the representable range)"
+    );
+    U256::from_limbs([limbs[0], limbs[1], limbs[2], limbs[3]])
 }
 
 /// `(a * b) / S` — the canonical fixed-point multiply (both operands scaled by S).

@@ -22,10 +22,10 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Built** | `0x00aa4b4bec3cec5d3207be6a5bcea74a924ea059b4e848b8700c6e87c293c334` (box-derived; see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
-| **signer-sync** (Safe owner rotation) | **Built** | `0x00e06fc3677ab9f30e499dd4d47970945b47083c398158c4e009712e26e784dc` (box-derived; see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
-| **hypercerts** (AT-proto graph) | **Built** | `0x007b0fc964221d8496f4fae791235afe12b7790575f5b8c4c7287f319766d9b0` (SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
-| **contributions** (rep-weighted funding split) | **Built** | `0x0065cd065fabfe54a357afb4a22f2c44a5b88519421292bfc41e9c5c2fec1d90` (SP1 6.3.1, box-derived; see the reproducibility caveat below) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
+| **trust-graph** (root producer) | **Built** | `0x00d573370235fb42281f4b15682de43080cafac3ed34b759ddceea71fa09385f` (params-schema v2; box-derived, see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
+| **signer-sync** (Safe owner rotation) | **Built** | `0x003d711d740e0b590cc955afe815edcb9b2e892b961d8054b05a374a7341c022` (params-schema v2; box-derived, see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
+| **hypercerts** (AT-proto graph) | **Built** | `0x00dd6884c5e7e591822ee4f3c8a48bb03d3f6997056a084cf4731c8fd6e9db96` (SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
+| **contributions** (rep-weighted funding split) | **Built** | `0x00b66125a047f991056446fc6d8d2cc9d9408357d0b55978c35690d995210f08` (SP1 6.3.1, box-derived; rotated by params-schema v2 — its stage-1 twin is `pagerank_core::Params`) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
 
 > **vkeys:** a vkey identifies one exact guest binary, so it changes whenever the guest ELF
 > changes — including refactors that don't change semantics (the platform reorg rotated the
@@ -39,6 +39,31 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 > The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is never
 > migrated; re-derived vkeys apply to fresh deployments. Rotate live instances' vkeys in
 > **batches** through the constitutional-timelock path — don't dribble one rotation per change.
+>
+> **params-schema v2 (2026-07-24), measured per program.** The instance factory appended
+> `accumulator` + `chainId` to the trust-graph params (`docs/trust-graph/FACTORY.md` §1). ELFs were
+> byte-diffed across the change on one toolchain, baseline vs. after:
+>
+> | Program | ELF | vkey |
+> |---|---|---|
+> | trust-graph | changed | `0x00aa4b4b…` → `0x0033a6fa…` |
+> | signer-sync | changed (reuses the trust-graph `paramsHash`) | `0x005f28ed…` → `0x0075a449…` |
+> | hypercerts | **byte-identical** — its params schema is its own | `0x00daa9ad…` (unchanged) |
+> | contributions | changed — `compute::trust_params` builds a `pagerank_core::Params` | `0x0065cd06…` → `0x00ac5ded…` |
+>
+> Two of the four *baseline* values also differed from what this table previously recorded
+> (signer-sync `0x00e06fc3…`, hypercerts `0x007b0fc9…`) with no source change between them — the
+> reproducibility caveat above, observed again. Treat every value here as this box's, and derive
+> deployment vkeys on the pinned toolchain in the deploy runbook.
+>
+> **Overflow backstop (2026-07-24, same build).** The M6 security review found that
+> `zk_core::fixed::mul_div` truncated an over-256-bit quotient instead of failing, so a
+> badly-tuned instance proved WRONG scores and disagreed with the browser's arbitrary-precision
+> port. It now asserts, and the rank loop's accumulations are checked. Because `zk-core` is shared
+> by every program, this rotated **all four** vkeys — unlike the params change above, hypercerts
+> included. The values in the table are post-fix; the params-schema-v2-only values were
+> trust-graph `0x0033a6fa…`, signer `0x0075a449…`, contributions `0x00ac5ded…`, hypercerts
+> `0x00daa9ad…`.
 
 ## Layout
 

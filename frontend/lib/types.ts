@@ -3,7 +3,26 @@ import { Hex } from 'viem'
 export type Network = {
   /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
   program?: 'trust-graph'
+  /**
+   * The `/network/[id]` path segment. For a network created through `TrustGraphFactory` this is
+   * its `instanceId`; networks that predate the factory keep the human slug from
+   * `config/networks.<env>.json` so existing links keep working.
+   */
   id: string
+  /**
+   * `keccak256(abi.encode(creator, name, salt))` — present iff this network came from the runtime
+   * catalog (`lib/catalog.ts`). Always resolvable as a `/network/[id]` segment, even when `id` is
+   * a config slug.
+   */
+  instanceId?: Hex
+  /** The instance admin from `InstanceCreated` (catalog networks only). */
+  admin?: Hex
+  /** Blocks between provable epochs, as a decimal string (catalog networks only). */
+  epochLength?: string
+  /** The governance-pinned params hash the snapshot enforces (catalog networks only). */
+  paramsHash?: Hex
+  /** Unix seconds of the creating transaction (catalog networks only). */
+  createdTimestamp?: string
   name: string
   hidden?: boolean
   link?: {
@@ -25,6 +44,12 @@ export type Network = {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
     merkleFundDistributor?: Hex
+    /**
+     * The Safe governance module, when this network has one. Wired outside the factory (a factory
+     * instance has none until someone deploys one), so it lives in the config entry and survives
+     * the catalog merge.
+     */
+    merkleGovModule?: Hex
     safe?: {
       factory: Hex
       singleton: Hex
@@ -35,7 +60,12 @@ export type Network = {
   schemas: NetworkSchema[]
   pagerank: {
     enabled: boolean
-    pointsPool: number
+    /**
+     * `Params.totalPool`. A decimal string when it comes from the catalog: the on-chain value is
+     * routinely 1e24, which a JS number cannot represent exactly, and it is hashed into
+     * `paramsHash`. Numbers are still accepted for the hand-written config entries.
+     */
+    pointsPool: number | string
     trustMultiplier: number
     trustShare: number
     trustDecay: number
@@ -43,9 +73,11 @@ export type Network = {
     maxWeight: number
     trustedSeeds: Hex[]
     // Lane-2 (envelope-0) params. Both are hashed into the governance-pinned paramsHash
-    // (journal v2 hashes 15 param fields), so they must be threaded into the browser
+    // (params schema v2 hashes 17 fields), so they must be threaded into the browser
     // recompute even though envelope signatures are verified only in-guest. Absent/empty
-    // = lane 2 disabled (lane-1-only network).
+    // = lane 2 disabled (lane-1-only network). The other two v2 fields — the instance's
+    // accumulator address and its chain id — are read from `contracts.easIndexerResolver`
+    // and the configured chain, so they are not duplicated here.
     envelope0DomainSeparators?: Hex[]
     lane2MaxHeadAge?: number
   }

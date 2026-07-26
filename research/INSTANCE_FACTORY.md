@@ -302,6 +302,33 @@ Sustainable posture given "hosted by us initially":
    change) at the next planned vkey rotation — cheap insurance, batches
    with work `UPGRADE_GOVERNANCE.md` Lane C already schedules. Do not
    block the factory on it.
+   **DONE 2026-07-24, in the factory build itself** rather than after it
+   (`GOAL.md` M0; `docs/DEVIATIONS.md` #7): `Params` is now 17 fields,
+   ending `accumulator: address, chainId: uint64`. Rotating before the
+   first mainnet instance costs zero ceremony; rotating after the factory
+   ships would be contagious across N live instances. Journal v2
+   untouched. Operator-facing statement:
+   [`docs/trust-graph/FACTORY.md`](../docs/trust-graph/FACTORY.md) §1.1.
+
+   **CORRECTION to the paragraph above (measured during the build).** The
+   claim "two factory clones with identical seeds/params and identical
+   edge sets accept each other's proofs" is **false on a single chain**.
+   EAS derives `schemaUid = keccak256(abi.encodePacked(schema, resolver,
+   revocable))`, so the resolver address is already inside `schemaUid` —
+   and `schemaUid` has been a `paramsHash` field since v1. Every factory
+   instance has its own resolver, so it already had its own hash. The
+   same-chain hazard was covered by accident, not by design.
+   What was genuinely unprotected, and is what the two fields buy:
+   (a) **a cross-chain mirror** — same deployer + same nonce sequence
+   yields the *same* resolver address on another chain (measured:
+   identical EAS/SchemaRegistry addresses on chain 1 and chain 31337),
+   hence the same schemaUid and a byte-identical v1 `paramsHash`, with no
+   chain component anywhere in the 15 fields; (b) **a re-pointed
+   accumulator** via the constitutional `setAccumulator`, after which
+   `schemaUid` names a resolver that is no longer the input source;
+   (c) **two snapshots sharing one accumulator** (the contributions
+   `TrustAccumulatorMirror` shape). The change stands — but the reason is
+   (a)-(c), not the same-chain clone story this section told.
 2. **`setParamsHash` is a raw bytes32** with no bounds or rate limit
    (`UPGRADE_GOVERNANCE.md` §7). The factory bounds *creation-time*
    params (§2.2); post-creation rotation inherits the known gap and its

@@ -39,11 +39,13 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 }
 
 fn load_repo(root: &str, car_name: &str, plc_name: &str) -> (String, B256, AtprotoWitness) {
-    let car =
-        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{car_name}")).unwrap();
+    let car = std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{car_name}"))
+        .unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/{plc_name}"))
-            .unwrap(),
+        &std::fs::read_to_string(format!(
+            "{root}/test/fixtures/atproto/hypercerts/fixtures/{plc_name}"
+        ))
+        .unwrap(),
     )
     .unwrap();
     let mut did = String::new();

@@ -25,8 +25,8 @@ tasks:
         elif [ "$DEPLOY_ENV" = "DEV" ]; then
           # anvil --fork-url ${FORK_RPC_URL} --port ${PORT} &
           # removed the fork-url since this moved off of eigen and does not need (constantly hitting a Error: Failed to send transaction Context: - server returned an error response: error code -32003: Insufficient funds for gas * price + value)
-          anvil --port $PORT &
-          trap "killall anvil && echo -e '\nKilled anvil'" EXIT
+          # anvil --port $PORT &
+          # trap "killall anvil && echo -e '\nKilled anvil'" EXIT
           while ! cast block-number --rpc-url http://localhost:${PORT} > /dev/null 2>&1
           do
             sleep 0.25

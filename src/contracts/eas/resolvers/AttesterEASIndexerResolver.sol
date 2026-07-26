@@ -42,7 +42,14 @@ contract AttesterEASIndexerResolver is SchemaResolver, Ownable {
     /// @notice Indexes the attestation upon creation.
     /// @param attestation The new attestation.
     /// @return Whether the attestation is valid and was successfully indexed.
-    function onAttest(Attestation calldata attestation, uint256 /*value*/ ) internal override returns (bool) {
+    function onAttest(
+        Attestation calldata attestation,
+        uint256 /*value*/
+    )
+        internal
+        override
+        returns (bool)
+    {
         // Emitted so off-chain indexers can consume attestation events generically.
         emit IEAS.Attested(attestation.recipient, attestation.attester, attestation.uid, attestation.schema);
 
@@ -54,7 +61,14 @@ contract AttesterEASIndexerResolver is SchemaResolver, Ownable {
 
     /// @notice Handles attestation revocation.
     /// @return Whether the attestation can be revoked.
-    function onRevoke(Attestation calldata attestation, uint256 /*value*/ ) internal override returns (bool) {
+    function onRevoke(
+        Attestation calldata attestation,
+        uint256 /*value*/
+    )
+        internal
+        override
+        returns (bool)
+    {
         // Emit the attestation revoked event for off-chain indexers
         emit AttestationRevoked(address(_eas), attestation.uid);
         return true;

@@ -17,19 +17,10 @@ interface IMerkleSnapshot {
     /// @notice Thrown when a truth-defining address (verifier / accumulator) would be set to zero.
     error ZeroAddress();
 
-    event MerkleRootUpdated(
-        bytes32 indexed root,
-        bytes32 ipfsHash,
-        string ipfsHashCid,
-        uint256 totalValue
-    );
+    event MerkleRootUpdated(bytes32 indexed root, bytes32 ipfsHash, string ipfsHashCid, uint256 totalValue);
 
     /// @notice Emitted when a ZK proof successfully updates the merkle root for a checkpoint.
-    event MerkleProofSubmitted(
-        uint256 indexed checkpointId,
-        bytes32 indexed root,
-        address indexed prover
-    );
+    event MerkleProofSubmitted(uint256 indexed checkpointId, bytes32 indexed root, address indexed prover);
 
     /// @notice Emitted when a snapshot is triggered (a checkpoint is frozen).
     event SnapshotTriggered(uint256 indexed checkpointId);

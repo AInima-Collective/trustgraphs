@@ -4,7 +4,8 @@
 import { SchemaEncoder } from '@ethereum-attestation-service/eas-sdk'
 import { Hex, stringToHex, toHex } from 'viem'
 
-import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_NETWORKS } from './config'
+import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_SEED_NETWORKS } from './config'
+import { NetworkSchema } from './types'
 
 // Schema definitions with metadata for UI
 export type SchemaFieldType =
@@ -14,16 +15,37 @@ export type SchemaFieldType =
   | 'uint256'
   | 'address'
 
-// Contributions instances attest through the same EAS + SchemaManager flow, so their schemas
-// (claim / response / valuation) join the vouching schemas here.
-const SCHEMAS = [
-  ...VISIBLE_NETWORKS,
-  ...VISIBLE_CONTRIBUTIONS_NETWORKS,
-].flatMap((network) => network.schemas)
+// The known-schema table. It used to be a `const` built from the static network list at import
+// time, which meant a network created through `TrustGraphFactory` could not be attested to until
+// somebody rebuilt the app. It is now a registry the runtime catalog writes into:
+//   - `contexts/CatalogContext` registers every catalog network's schema on load and refresh;
+//   - `contexts/NetworkContext` registers the schemas of the network it is rendering, so a page
+//     served for a brand-new instance can encode a vouch on its very first paint;
+//   - the static seed below keeps everything that worked before working before either runs.
+const SCHEMAS = new Map<string, NetworkSchema>()
+
+/** Add schemas to the known set. Idempotent; first registration of a uid wins. */
+export const registerSchemas = (schemas: readonly NetworkSchema[]) => {
+  for (const schema of schemas) {
+    const key = schema.uid.toLowerCase()
+    if (!SCHEMAS.has(key)) {
+      SCHEMAS.set(key, schema)
+    }
+  }
+}
+
+// Seed: the networks shipped in `config/networks.<env>.json`. Contributions instances attest
+// through the same EAS + SchemaManager flow, so their schemas (claim / response / valuation) join
+// the vouching schemas here; they are not factory-minted in v1 and stay static.
+registerSchemas(
+  [...VISIBLE_SEED_NETWORKS, ...VISIBLE_CONTRIBUTIONS_NETWORKS].flatMap(
+    (network) => network.schemas
+  )
+)
 
 export class SchemaManager {
   static maybeSchemaForUid(uid: string) {
-    return SCHEMAS.find((s) => s.uid === uid)
+    return SCHEMAS.get(uid.toLowerCase())
   }
 
   static schemaForUid(uid: string) {

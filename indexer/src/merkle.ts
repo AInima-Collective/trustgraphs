@@ -22,7 +22,7 @@ import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
 import { ingestContributionsScores } from './contributions'
 import { contributionsInstanceForSnapshot } from './contributions-shared'
-import { revalidateNetwork } from './utils'
+import { type SharedArgs, revalidateNetwork, staticAddresses } from './utils'
 
 /**
  * The canonical score blob the ZK guest commits (`pagerank_core::cid::canonical_blob`): a flat map of
@@ -39,9 +39,16 @@ const offchainDb = drizzle(process.env.DATABASE_URL, {
   schema: offchainSchema,
 })
 
-ponder.on('merkleSnapshot:setup', async ({ context }) => {
-  for (const merkleSnapshotAddress of context.contracts.merkleSnapshot
-    .address || []) {
+/**
+ * Backfill the state history of statically-addressed snapshots. Factory-created instances need
+ * none of it: they are indexed from the block they were created in, so every `MerkleRootUpdated`
+ * they have ever emitted arrives as a normal event.
+ */
+const backfillSnapshotStates = async (
+  context: any,
+  addresses: readonly Hex[]
+) => {
+  for (const merkleSnapshotAddress of addresses) {
     try {
       const stateCount = await context.client.readContract({
         address: merkleSnapshotAddress,
@@ -76,9 +83,26 @@ ponder.on('merkleSnapshot:setup', async ({ context }) => {
       // Contract may not be deployed yet
     }
   }
+}
+
+ponder.on('merkleSnapshot:setup', async ({ context }) => {
+  await backfillSnapshotStates(
+    context,
+    staticAddresses(context.contracts.merkleSnapshot.address)
+  )
 })
 
-ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
+ponder.on('programSnapshot:setup', async ({ context }) => {
+  await backfillSnapshotStates(
+    context,
+    staticAddresses(context.contracts.programSnapshot.address)
+  )
+})
+
+const onMerkleRootUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:MerkleRootUpdated'>) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
   console.log(
     `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid}`
@@ -211,7 +235,10 @@ ponder.on('merkleSnapshot:MerkleRootUpdated', async ({ event, context }) => {
   }
 
   await revalidateNetwork()
-})
+}
+
+ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
+ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 
 async function insertMerkleData(
   scores: ScoreBlob,
@@ -322,70 +349,80 @@ async function insertMerkleData(
     })
 }
 
-ponder.on('merkleFundDistributor:setup', async ({ context }) => {
-  for (const merkleFundDistributorAddress of context.contracts
-    .merkleFundDistributor.address || []) {
-    try {
-      const [
-        merkleSnapshotAddress,
-        owner,
-        pendingOwner,
-        feeRecipient,
-        feePercentage,
-        feeRange,
-        allowlistEnabled,
-        paused,
-        allowlist,
-      ] = await Promise.all([
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'merkleSnapshot',
-          retryEmptyResponse: false,
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'owner',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'pendingOwner',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'feeRecipient',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'feePercentage',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'FEE_RANGE',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'allowlistEnabled',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'paused',
-        }),
-        context.client.readContract({
-          address: merkleFundDistributorAddress,
-          abi: merkleFundDistributorAbi,
-          functionName: 'getAllowlist',
-        }),
-      ])
+/**
+ * Read a distributor's configuration from chain state and write its config row. Used both by
+ * `setup` (statically-addressed distributors) and lazily on the first event of a distributor whose
+ * row is missing. Returns false when the contract has no code at this block — which is the normal
+ * case at a `setup` that runs at block 1, and is harmless: the row is then created on the
+ * distributor's first event instead (see `ensureDistributorConfig`).
+ */
+async function insertDistributorConfig(
+  context: any,
+  merkleFundDistributorAddress: Hex
+): Promise<boolean> {
+  try {
+    const [
+      merkleSnapshotAddress,
+      owner,
+      pendingOwner,
+      feeRecipient,
+      feePercentage,
+      feeRange,
+      allowlistEnabled,
+      paused,
+      allowlist,
+    ] = await Promise.all([
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'merkleSnapshot',
+        retryEmptyResponse: false,
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'owner',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'pendingOwner',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'feeRecipient',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'feePercentage',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'FEE_RANGE',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'allowlistEnabled',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'paused',
+      }),
+      context.client.readContract({
+        address: merkleFundDistributorAddress,
+        abi: merkleFundDistributorAbi,
+        functionName: 'getAllowlist',
+      }),
+    ])
 
-      await context.db.insert(merkleFundDistributor).values({
+    await context.db
+      .insert(merkleFundDistributor)
+      .values({
         address: merkleFundDistributorAddress,
         chainId: `${context.chain.id}`,
         paused,
@@ -397,142 +434,167 @@ ponder.on('merkleFundDistributor:setup', async ({ context }) => {
         allowlistEnabled,
         allowlist: [...allowlist],
       })
-    } catch {
-      // Contract may not be deployed yet
-    }
+      .onConflictDoNothing()
+    return true
+  } catch {
+    // Contract may not be deployed yet
+    return false
+  }
+}
+
+/**
+ * Ensure a distributor's config row exists before updating it. A factory-created distributor gets
+ * its row at birth from `InstanceCreated` (src/factory.ts) and a statically-addressed one from
+ * `setup`, but neither is guaranteed: `setup` runs at the source's start block, where the contract
+ * may not exist yet. Reading the state lazily at the event's own block makes an update-before-row
+ * impossible instead of merely unlikely — the old failure mode was a `RecordNotFound` throw that
+ * wedged the indexer until the whole local stack was restarted.
+ */
+async function ensureDistributorConfig(context: any, address: Hex) {
+  const existing = await context.db.find(merkleFundDistributor, { address })
+  if (existing) return existing
+  await insertDistributorConfig(context, address)
+  return await context.db.find(merkleFundDistributor, { address })
+}
+
+/** Ensure-then-update, the shape every config-change handler below wants. */
+async function updateDistributorConfig(
+  context: any,
+  address: Hex,
+  set: Record<string, unknown>
+) {
+  await ensureDistributorConfig(context, address)
+  await context.db.update(merkleFundDistributor, { address }).set(set)
+}
+
+ponder.on('merkleFundDistributor:setup', async ({ context }) => {
+  for (const address of staticAddresses(
+    context.contracts.merkleFundDistributor.address
+  )) {
+    await insertDistributorConfig(context, address)
   }
 })
 
-ponder.on(
-  'merkleFundDistributor:OwnershipTransferStarted',
-  async ({ event, context }) => {
-    const { pendingOwner } = event.args
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        pendingOwner,
-      })
+ponder.on('programFundDistributor:setup', async ({ context }) => {
+  for (const address of staticAddresses(
+    context.contracts.programFundDistributor.address
+  )) {
+    await insertDistributorConfig(context, address)
   }
-)
+})
 
-ponder.on(
-  'merkleFundDistributor:OwnershipTransferred',
-  async ({ event, context }) => {
-    const { newOwner } = event.args
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        owner: newOwner,
-        pendingOwner: '0x0000000000000000000000000000000000000000',
-      })
-  }
-)
+const onOwnershipTransferStarted = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:OwnershipTransferStarted'>) => {
+  const { pendingOwner } = event.args
+  await updateDistributorConfig(context, event.log.address, { pendingOwner })
+}
 
-ponder.on(
-  'merkleFundDistributor:FeeRecipientSet',
-  async ({ event, context }) => {
-    const { newFeeRecipient } = event.args
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        feeRecipient: newFeeRecipient,
-      })
-  }
-)
+const onOwnershipTransferred = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:OwnershipTransferred'>) => {
+  const { newOwner } = event.args
+  await updateDistributorConfig(context, event.log.address, {
+    owner: newOwner,
+    pendingOwner: '0x0000000000000000000000000000000000000000',
+  })
+}
 
-ponder.on(
-  'merkleFundDistributor:FeePercentageSet',
-  async ({ event, context }) => {
-    const { newFeePercentage } = event.args
-    // Read FEE_RANGE to calculate the percentage
-    const feeRange = await context.client.readContract({
-      address: event.log.address,
-      abi: merkleFundDistributorAbi,
-      functionName: 'FEE_RANGE',
-    })
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        feePercentage: (Number(newFeePercentage) / Number(feeRange)).toString(),
-      })
-  }
-)
+const onFeeRecipientSet = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:FeeRecipientSet'>) => {
+  const { newFeeRecipient } = event.args
+  await updateDistributorConfig(context, event.log.address, {
+    feeRecipient: newFeeRecipient,
+  })
+}
 
-ponder.on(
-  'merkleFundDistributor:MerkleSnapshotUpdated',
-  async ({ event, context }) => {
-    const { newContract } = event.args
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        merkleSnapshot: newContract,
-      })
-  }
-)
+const onFeePercentageSet = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:FeePercentageSet'>) => {
+  const { newFeePercentage } = event.args
+  // Read FEE_RANGE to calculate the percentage
+  const feeRange = await context.client.readContract({
+    address: event.log.address,
+    abi: merkleFundDistributorAbi,
+    functionName: 'FEE_RANGE',
+  })
+  await updateDistributorConfig(context, event.log.address, {
+    feePercentage: (Number(newFeePercentage) / Number(feeRange)).toString(),
+  })
+}
 
-ponder.on(
-  'merkleFundDistributor:DistributorAllowanceUpdated',
-  async ({ event, context }) => {
-    const { distributor, canDistribute } = event.args
-    // Read the current allowlist and update it
-    const current = await context.db.find(merkleFundDistributor, {
-      address: event.log.address,
-    })
-    if (!current) return
+const onMerkleSnapshotUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:MerkleSnapshotUpdated'>) => {
+  const { newContract } = event.args
+  await updateDistributorConfig(context, event.log.address, {
+    merkleSnapshot: newContract,
+  })
+}
 
-    let newAllowlist: `0x${string}`[]
-    if (canDistribute) {
-      // Add to allowlist if not already present
-      if (!current.allowlist.includes(distributor)) {
-        newAllowlist = [...current.allowlist, distributor]
-      } else {
-        newAllowlist = current.allowlist
-      }
+const onDistributorAllowanceUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:DistributorAllowanceUpdated'>) => {
+  const { distributor, canDistribute } = event.args
+  // Read the current allowlist and update it
+  const current = await ensureDistributorConfig(context, event.log.address)
+  if (!current) return
+
+  let newAllowlist: `0x${string}`[]
+  if (canDistribute) {
+    // Add to allowlist if not already present
+    if (!current.allowlist.includes(distributor)) {
+      newAllowlist = [...current.allowlist, distributor]
     } else {
-      // Remove from allowlist
-      newAllowlist = current.allowlist.filter((addr) => addr !== distributor)
+      newAllowlist = current.allowlist
     }
-
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        allowlist: newAllowlist,
-      })
+  } else {
+    // Remove from allowlist
+    newAllowlist = current.allowlist.filter((addr: Hex) => addr !== distributor)
   }
-)
 
-ponder.on(
-  'merkleFundDistributor:DistributorAllowlistUpdated',
-  async ({ event, context }) => {
-    const { enabled } = event.args
-    await context.db
-      .update(merkleFundDistributor, { address: event.log.address })
-      .set({
-        allowlistEnabled: enabled,
-      })
-  }
-)
-
-ponder.on('merkleFundDistributor:Paused', async ({ event, context }) => {
   await context.db
     .update(merkleFundDistributor, { address: event.log.address })
     .set({
-      paused: true,
+      allowlist: newAllowlist,
     })
-})
+}
 
-ponder.on('merkleFundDistributor:Unpaused', async ({ event, context }) => {
-  await context.db
-    .update(merkleFundDistributor, { address: event.log.address })
-    .set({
-      paused: false,
-    })
-})
+const onDistributorAllowlistUpdated = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:DistributorAllowlistUpdated'>) => {
+  const { enabled } = event.args
+  await updateDistributorConfig(context, event.log.address, {
+    allowlistEnabled: enabled,
+  })
+}
+
+const onPaused = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:Paused'>) => {
+  await updateDistributorConfig(context, event.log.address, { paused: true })
+}
+
+const onUnpaused = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:Unpaused'>) => {
+  await updateDistributorConfig(context, event.log.address, { paused: false })
+}
 
 /**
  * Ensure the distribution row exists, backfilling it from contract state when the Distributed
- * event predates the indexer (dev uses `startBlock: 'latest'` for the distributor, so a
- * distribution created before the indexer started has no row when its Claimed/Swept arrives).
+ * event was never seen (an indexer whose start block is above the funding block — the ordinary
+ * case on a mainnet fork, where PONDER_START_BLOCK is the fork block).
  */
 async function ensureDistribution(
   context: any,
@@ -576,7 +638,10 @@ async function ensureDistribution(
     .onConflictDoNothing()
 }
 
-ponder.on('merkleFundDistributor:Distributed', async ({ event, context }) => {
+const onDistributed = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:Distributed'>) => {
   const { distributionIndex, distributor, token, amountFunded, feeAmount } =
     event.args
 
@@ -608,10 +673,13 @@ ponder.on('merkleFundDistributor:Distributed', async ({ event, context }) => {
     sweptTo: null,
     sweptAt: null,
   })
-})
+}
 
 // M6 expiry + sweep: the funder reclaimed the unclaimed remainder after the claim deadline.
-ponder.on('merkleFundDistributor:Swept', async ({ event, context }) => {
+const onSwept = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:Swept'>) => {
   const { distributionIndex, to, amount } = event.args
   await ensureDistribution(context, event.log.address, distributionIndex)
   await context.db
@@ -624,9 +692,12 @@ ponder.on('merkleFundDistributor:Swept', async ({ event, context }) => {
       sweptTo: to,
       sweptAt: event.block.timestamp,
     })
-})
+}
 
-ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
+const onClaimed = async ({
+  event,
+  context,
+}: SharedArgs<'merkleFundDistributor:Claimed'>) => {
   const {
     distributionIndex,
     account,
@@ -637,7 +708,7 @@ ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
   } = event.args
 
   // Update the distribution's amountDistributed (backfilling the row if the Distributed event
-  // predates the indexer — dev distributor sources start at 'latest').
+  // was never seen — see ensureDistribution).
   await ensureDistribution(context, event.log.address, distributionIndex)
   await context.db
     .update(merkleFundDistribution, {
@@ -660,4 +731,57 @@ ponder.on('merkleFundDistributor:Claimed', async ({ event, context }) => {
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
   })
-})
+}
+
+/*///////////////////////////////////////////////////////////////
+   Distributor handlers, registered on BOTH distributor sources
+//////////////////////////////////////////////////////////////*/
+
+ponder.on(
+  'merkleFundDistributor:OwnershipTransferStarted',
+  onOwnershipTransferStarted
+)
+ponder.on(
+  'programFundDistributor:OwnershipTransferStarted',
+  onOwnershipTransferStarted
+)
+ponder.on('merkleFundDistributor:OwnershipTransferred', onOwnershipTransferred)
+ponder.on('programFundDistributor:OwnershipTransferred', onOwnershipTransferred)
+ponder.on('merkleFundDistributor:FeeRecipientSet', onFeeRecipientSet)
+ponder.on('programFundDistributor:FeeRecipientSet', onFeeRecipientSet)
+ponder.on('merkleFundDistributor:FeePercentageSet', onFeePercentageSet)
+ponder.on('programFundDistributor:FeePercentageSet', onFeePercentageSet)
+ponder.on(
+  'merkleFundDistributor:MerkleSnapshotUpdated',
+  onMerkleSnapshotUpdated
+)
+ponder.on(
+  'programFundDistributor:MerkleSnapshotUpdated',
+  onMerkleSnapshotUpdated
+)
+ponder.on(
+  'merkleFundDistributor:DistributorAllowanceUpdated',
+  onDistributorAllowanceUpdated
+)
+ponder.on(
+  'programFundDistributor:DistributorAllowanceUpdated',
+  onDistributorAllowanceUpdated
+)
+ponder.on(
+  'merkleFundDistributor:DistributorAllowlistUpdated',
+  onDistributorAllowlistUpdated
+)
+ponder.on(
+  'programFundDistributor:DistributorAllowlistUpdated',
+  onDistributorAllowlistUpdated
+)
+ponder.on('merkleFundDistributor:Paused', onPaused)
+ponder.on('programFundDistributor:Paused', onPaused)
+ponder.on('merkleFundDistributor:Unpaused', onUnpaused)
+ponder.on('programFundDistributor:Unpaused', onUnpaused)
+ponder.on('merkleFundDistributor:Distributed', onDistributed)
+ponder.on('programFundDistributor:Distributed', onDistributed)
+ponder.on('merkleFundDistributor:Swept', onSwept)
+ponder.on('programFundDistributor:Swept', onSwept)
+ponder.on('merkleFundDistributor:Claimed', onClaimed)
+ponder.on('programFundDistributor:Claimed', onClaimed)

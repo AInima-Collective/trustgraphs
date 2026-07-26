@@ -10,7 +10,5 @@ interface ISP1Verifier {
     /// @param publicValues The ABI-encoded public values the guest committed.
     /// @param proofBytes The proof bytes (Groth16/PLONK seal, prefixed with the verifier selector).
     /// @dev MUST revert if the proof is invalid.
-    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes)
-        external
-        view;
+    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes) external view;
 }

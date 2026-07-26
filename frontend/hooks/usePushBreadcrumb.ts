@@ -4,7 +4,7 @@ import { useSetAtom } from 'jotai'
 import { usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 
-import { VISIBLE_NETWORKS } from '@/lib/config'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { mightBeEnsName } from '@/lib/utils'
 import { Breadcrumb, breadcrumbsAtom } from '@/state/nav'
 
@@ -14,6 +14,8 @@ import { Breadcrumb, breadcrumbsAtom } from '@/state/nav'
 export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
   const pathname = usePathname()
   const setBreadcrumbs = useSetAtom(breadcrumbsAtom)
+  // Runtime catalog, so a factory-created network gets its name in the trail like any other.
+  const networks = useNetworks()
 
   return useCallback(
     (breadcrumb?: Partial<Breadcrumb>) => {
@@ -29,10 +31,10 @@ export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
         if (
           lastSegment &&
           pathname.startsWith('/network/') &&
-          VISIBLE_NETWORKS.some((n) => n.id === lastSegment)
+          networks.some((n) => n.id === lastSegment)
         ) {
           // Network name
-          finalBreadcrumb.title = VISIBLE_NETWORKS.find(
+          finalBreadcrumb.title = networks.find(
             (n) => n.id === lastSegment
           )!.name
         } else if (
@@ -60,6 +62,8 @@ export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
 
       setBreadcrumbs((b) => [...b, finalBreadcrumb])
     },
-    [setBreadcrumbs, pathname]
+    // `defaultBreadcrumb` is intentionally out of the deps (call sites pass a fresh object every
+    // render); `networks` is React Query data, stable until the catalog actually changes.
+    [setBreadcrumbs, pathname, networks]
   )
 }

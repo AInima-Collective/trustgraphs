@@ -104,8 +104,16 @@ contract HypercertsGoldenVectorsTest is Test {
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
         bytes memory encoded = abi.encode(
-            acc, leafCount, anchorAcc, anchorCount, paramsHash, outputRoot, ipfsHash, cidDigest,
-            totalValue, skippedDigest
+            acc,
+            leafCount,
+            anchorAcc,
+            anchorCount,
+            paramsHash,
+            outputRoot,
+            ipfsHash,
+            cidDigest,
+            totalValue,
+            skippedDigest
         );
         assertEq(keccak256(encoded), keccak256(expectedEncoded), "journal encoding mismatch");
         assertEq(keccak256(encoded), expectedDigest, "journal digest mismatch");

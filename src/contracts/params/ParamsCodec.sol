@@ -4,9 +4,9 @@ pragma solidity ^0.8.22;
 /// @title ParamsCodec
 /// @notice On-chain encoder for the governance-pinned PageRank `paramsHash`, byte-identical to
 ///         `pagerank-core::encode::params_hash` (Rust) and `frontend/lib/pagerank` (TS). The three
-///         encodings are locked together by `test/unit/GoldenVectors.t.sol`, which asserts this
+///         encodings are locked together by `test/unit/golden/TrustGraphGoldenVectors.t.sol`, which asserts this
 ///         library reproduces the golden vector exported from `pagerank-core`.
-/// @dev    `paramsHash` is `keccak256(abi.encode(...13 static fields...))`. Because every field is a
+/// @dev    `paramsHash` is `keccak256(abi.encode(...17 static fields...))`. Because every field is a
 ///         static ABI type, `abi.encode` is just the concatenation of 32-byte words — the same bytes
 ///         the Rust guest hand-rolls. Field order/types are FROZEN; changing them requires updating
 ///         the golden vectors and the Rust/TS ports in lockstep.
@@ -32,11 +32,17 @@ library ParamsCodec {
         bytes32[] envelope0DomainSeparators;
         /// Rule-Φ staleness horizon in seconds (nonzero when lane 2 is enabled).
         uint64 lane2MaxHeadAge;
+        /// Domain separation (INSTANCE_FACTORY §6.1): the instance's `EASIndexerResolver`.
+        address accumulator;
+        /// Domain separation (INSTANCE_FACTORY §6.1): `block.chainid` at instance creation.
+        uint64 chainId;
     }
 
-    /// @notice The 15-field `paramsHash`. Field order + types are frozen against `params_hash` in
-    ///         `pagerank-core` (slot 9 is the `seedSetRoot` over the sorted seeds; slot 14 is
-    ///         keccak over the concatenated lane-2 domain separators, 0 when the list is empty).
+    /// @notice The 17-field `paramsHash` (params-schema v2). Field order + types are frozen against
+    ///         `params_hash` in `pagerank-core` (slot 9 is the `seedSetRoot` over the sorted seeds;
+    ///         slot 14 is keccak over the concatenated lane-2 domain separators, 0 when the list is
+    ///         empty; slots 16-17 are the v2 domain separators — the instance's accumulator address
+    ///         and its chain id, so two identical clones cannot accept each other's proofs).
     function hash(Params memory p) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -54,7 +60,9 @@ library ParamsCodec {
                 p.schemaUid,
                 p.weightFieldIndex,
                 domainSetHash(p.envelope0DomainSeparators),
-                p.lane2MaxHeadAge
+                p.lane2MaxHeadAge,
+                p.accumulator,
+                p.chainId
             )
         );
     }

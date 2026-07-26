@@ -27,24 +27,16 @@ import { InfoTooltip } from '@/components/InfoTooltip'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { Tooltip } from '@/components/Tooltip'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { AttestationData } from '@/lib/attestation'
-import { VISIBLE_NETWORKS } from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { isTrustedSeed } from '@/lib/network'
 import { Network } from '@/lib/types'
 import { cn, formatBigNumber, isHexEqual } from '@/lib/utils'
 import { NetworkProfile, ponderQueries, ponderQueryFns } from '@/queries/ponder'
-
-// Pre-compute schema UID to network name mapping
-const SCHEMA_TO_NETWORK: Record<string, Network> = {}
-for (const network of VISIBLE_NETWORKS) {
-  for (const schema of network.schemas) {
-    SCHEMA_TO_NETWORK[schema.uid.toLowerCase()] = network
-  }
-}
 
 // Uses web2gl, which is not supported on the server
 const NetworkGraph = dynamic(
@@ -67,6 +59,19 @@ export const AccountProfilePage = ({
   ensName: string | null
 }) => {
   const router = useRouter()
+
+  // The runtime trust-graph catalog (GOAL.md M3): this page attributes scores and attestations to
+  // networks, and both lookups have to know about instances created since the last deploy.
+  const networks = useNetworks()
+  const schemaToNetwork = useMemo(() => {
+    const map: SchemaToNetwork = {}
+    for (const network of networks) {
+      for (const schema of network.schemas) {
+        map[schema.uid.toLowerCase()] = network
+      }
+    }
+    return map
+  }, [networks])
 
   const { address: connectedAddress } = useAccount()
   const pushBreadcrumb = usePushBreadcrumb({
@@ -110,7 +115,7 @@ export const AccountProfilePage = ({
       networkProfiles
         ?.flatMap((networkProfile): NetworkRow | [] => {
           // Find the network that this merkle snapshot contract belongs to.
-          const network = VISIBLE_NETWORKS.find((network) =>
+          const network = networks.find((network) =>
             isHexEqual(
               networkProfile.merkleSnapshotContract,
               network.contracts.merkleSnapshot
@@ -149,7 +154,7 @@ export const AccountProfilePage = ({
       averageScore,
       medianScore,
     }
-  }, [networkProfiles])
+  }, [networkProfiles, networks, address])
 
   const networksColumns: Column<NetworkRow>[] = [
     {
@@ -310,9 +315,7 @@ export const AccountProfilePage = ({
 
         <div className="flex flex-row gap-2">
           {!!selectedNetworkRow?.network.applicationUrl && (
-            <Tooltip
-              title={`Apply to join ${selectedNetworkRow.network.name}`}
-            >
+            <Tooltip title={`Apply to join ${selectedNetworkRow.network.name}`}>
               <ButtonLink
                 href={selectedNetworkRow.network.applicationUrl}
                 target="_blank"
@@ -522,7 +525,10 @@ export const AccountProfilePage = ({
 
             {!isLoading && attestationsReceived.length > 0 && (
               <Table
-                columns={attestationsReceivedColumns(pushBreadcrumb)}
+                columns={attestationsReceivedColumns(
+                  pushBreadcrumb,
+                  schemaToNetwork
+                )}
                 data={attestationsReceived}
                 cellClassName="text-sm"
                 defaultSortColumn="time"
@@ -578,7 +584,10 @@ export const AccountProfilePage = ({
 
             {!isLoading && attestationsGiven.length > 0 && (
               <Table
-                columns={attestationsGivenColumns(pushBreadcrumb)}
+                columns={attestationsGivenColumns(
+                  pushBreadcrumb,
+                  schemaToNetwork
+                )}
                 defaultSortColumn="time"
                 cellClassName="text-sm"
                 defaultSortDirection="desc"
@@ -619,8 +628,12 @@ export const AccountProfilePage = ({
   )
 }
 
+/** `{ lowercased schema uid -> network }`, built from the runtime catalog by the page. */
+type SchemaToNetwork = Record<string, Network>
+
 const commonAttestationColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>
+  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
+  schemaToNetwork: SchemaToNetwork
 ): Column<AttestationData>[] => [
   {
     key: 'network',
@@ -628,7 +641,7 @@ const commonAttestationColumns = (
     tooltip: 'The network this attestation was made on.',
     sortable: false,
     render: (row) => {
-      const networkName = SCHEMA_TO_NETWORK[row.schema.toLowerCase()]
+      const networkName = schemaToNetwork[row.schema.toLowerCase()]
       if (!networkName) {
         return <span className="text-gray-400 text-sm">—</span>
       }
@@ -693,7 +706,8 @@ const commonAttestationColumns = (
 ]
 
 const attestationsReceivedColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>
+  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
+  schemaToNetwork: SchemaToNetwork
 ): Column<AttestationData>[] => [
   {
     key: 'attester',
@@ -702,11 +716,12 @@ const attestationsReceivedColumns = (
     sortable: false,
     render: (row) => <TableAddress address={row.attester} showNavIcon />,
   },
-  ...commonAttestationColumns(pushBreadcrumb),
+  ...commonAttestationColumns(pushBreadcrumb, schemaToNetwork),
 ]
 
 const attestationsGivenColumns = (
-  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>
+  pushBreadcrumb: ReturnType<typeof usePushBreadcrumb>,
+  schemaToNetwork: SchemaToNetwork
 ): Column<AttestationData>[] => [
   {
     key: 'recipient',
@@ -715,5 +730,5 @@ const attestationsGivenColumns = (
     sortable: false,
     render: (row) => <TableAddress showNavIcon address={row.recipient} />,
   },
-  ...commonAttestationColumns(pushBreadcrumb),
+  ...commonAttestationColumns(pushBreadcrumb, schemaToNetwork),
 ]

@@ -125,6 +125,11 @@ abstract class EnvBase implements IEnv {
       service_id: '',
       rpc_url: this.rpcUrl,
       eas: readJsonIfFileExists('.docker/eas_deploy.json'),
+      // The instance factory + registry (absent until `DeployFactory` has run on this box). The
+      // indexer reads `factory.factory` from here and discovers every trust-graph instance's
+      // snapshot / resolver / distributor from its `InstanceCreated` events, so this one address is
+      // all the trust-graph configuration the indexer needs.
+      factory: readJsonIfFileExists('.docker/factory_deploy.json'),
       networks: readJsonIfFileExists(this.networksConfigFile),
       zodiac_safes: readJsonIfFileExists('.docker/zodiac_safes_deploy.json'),
     }
@@ -281,6 +286,22 @@ export class DevEnv extends EnvBase {
       networksConfigTemplateFile
     ).filter((network) => !network.program).length
 
+    // `SP1_VERIFIER_GATEWAY` names a real per-chain Succinct deployment. On a plain (non-fork)
+    // anvil that address has NO CODE, so every `MerkleSnapshot.submitProof` reverts inside
+    // `gateway.verifyProof` before any real check runs — a freshly deployed local stack silently
+    // cannot accept a proof at all. So dev stands up a `MockSP1Gateway` and points the verifier
+    // adapters at it. Set `DEV_MOCK_SP1_GATEWAY=false` when running against a fork, where the real
+    // gateway is part of forked state and `submitProof` genuinely verifies.
+    //
+    // The stub is at the GATEWAY seam only: the real `SP1JournalVerifier` still runs, so journal
+    // digest binding, vkey pinning and proof-blob decoding are all exercised. Same seam
+    // `test/e2e/run.sh` uses; recorded in docs/DEVIATIONS.md #1.
+    const mockGateway = process.env.DEV_MOCK_SP1_GATEWAY !== 'false'
+    const gatewayAddress = () =>
+      mockGateway
+        ? readJsonKey('.docker/mock_gateway_deploy.json', 'gateway')
+        : process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS
+
     super({
       rpcUrl,
       registry: 'http://localhost:8090',
@@ -299,35 +320,72 @@ export class DevEnv extends EnvBase {
           sig: 'run()',
           args: () => [],
         },
+        {
+          name: 'Mock SP1 Gateway',
+          script: 'script/DeployMockGateway.s.sol:DeployMockGateway',
+          sig: 'run(bytes32)',
+          // Left unpinned: the root and signer verifiers share this gateway, so pinning it to
+          // either program's vkey would reject the other. Each adapter pins its own vkey anyway.
+          args: () => [ZERO_BYTES32],
+          skip: () => !mockGateway,
+        },
         // Deploy the SP1 ZK verifier adapter that gates MerkleSnapshot root updates. This is the
-        // producer path: the root is proven by SP1 (see ZK_ARCHITECTURE.md). Points at an existing
-        // canonical SP1 gateway (SP1_VERIFIER_GATEWAY) and the guest image id (SP1_PROGRAM_VKEY);
-        // both default to zero for local scaffolding.
+        // producer path: the root is proven by SP1 (see ZK_ARCHITECTURE.md). Points at the gateway
+        // resolved above and the guest image id (SP1_PROGRAM_VKEY, zero = local scaffolding).
         {
           name: 'ZK Verifier',
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
           sig: 'run(string,bytes32,string)',
           args: () => [
-            process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS,
+            gatewayAddress(),
             process.env.SP1_PROGRAM_VKEY || ZERO_BYTES32,
             '',
           ],
         },
+        // The chain's instance directory. One per chain; the factory below is granted
+        // OPERATOR_ROLE on it so creating a network is permissionless *through the factory* while
+        // rewriting a record stays with the operational timelock.
         {
-          name: 'Network',
-          script: 'script/DeployNetwork.s.sol:DeployScript',
-          sig: 'run(string,string,string,string,bool,string,uint256,uint256)',
+          name: 'Instance Registry',
+          script: 'script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry',
+          sig: 'run(string,string)',
+          args: () => ['', ''],
+        },
+        // The permissionless instance factory (research/INSTANCE_FACTORY.md). Needs EAS, the
+        // schema registrar, the trust-graph verifier, and the registry — so it runs after all four.
+        {
+          name: 'Factory',
+          script: 'script/DeployFactory.s.sol:DeployFactory',
+          sig: 'run(string,string,string,string,uint64)',
           args: () => [
-            readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
-            // Path to the governance params; the script computes paramsHash from it on-chain after
-            // registering the schema (no precomputed PARAMS_HASH, no two-phase bootstrap).
-            process.env.PARAMS_JSON || 'params.json',
             readJsonKey('.docker/eas_deploy.json', 'eas'),
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
-            true,
+            readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
+            readJsonKey('.docker/instance_registry_deploy.json', 'instance_registry'),
+            // Epoch floor in blocks. Mainnet's is ~30 days (what hosted proving commits to);
+            // locally it is one block so a dev proving loop is never waiting on the schedule.
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+          ],
+        },
+        // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
+        // exercises the same path a community will. Still writes
+        // `config/network_deploy_dev_<i>.json` (a derived artifact now) because the Safe, timelock
+        // and contributions steps below read it; indices are unchanged, so nothing downstream
+        // shifts.
+        {
+          name: 'Create Instances',
+          script: 'script/CreateDevInstances.s.sol:CreateDevInstances',
+          sig: 'run(string,string,string,string,uint256,uint256,bool)',
+          args: () => [
+            readJsonKey('.docker/factory_deploy.json', 'factory'),
+            // The governance params. Unlike the old DeployNetwork path, the factory derives
+            // `schema_uid`, `accumulator` and `chain_id` itself — the file supplies only knobs.
+            process.env.PARAMS_JSON || 'params.json',
+            networksConfigTemplateFile,
             'dev',
             0,
             numNetworks,
+            true,
           ],
         },
         // Deploy the WHOLE contributions instance (fifth program): ContributionResolver + three
@@ -374,7 +432,7 @@ export class DevEnv extends EnvBase {
           script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
           sig: 'run(string,bytes32,string)',
           args: () => [
-            process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS,
+            gatewayAddress(),
             process.env.SP1_SIGNER_PROGRAM_VKEY || ZERO_BYTES32,
             'signer',
           ],
