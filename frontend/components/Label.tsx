@@ -6,8 +6,11 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+// Field labels are machine labels, same register as the buttons: uppercase,
+// tracked, small, mono. The helper text beneath a field stays sentence case,
+// because that is prose addressed to a person.
 const labelVariants = cva(
-  'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+  'text-xs uppercase leading-none tracking-wider text-text-muted peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
 )
 
 const Label = React.forwardRef<

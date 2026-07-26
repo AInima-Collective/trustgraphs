@@ -93,7 +93,7 @@ export function Modal({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 cursor-pointer"
+        className="tg-scrim fixed inset-0 cursor-pointer"
         onClick={
           onClose &&
           ((e) => {
@@ -141,7 +141,7 @@ export function Modal({
         </div>
 
         {footer && (
-          <div className="p-4 border-t border-gray-700 shrink-0">{footer}</div>
+          <div className="p-4 border-t border-border shrink-0">{footer}</div>
         )}
       </Card>
 

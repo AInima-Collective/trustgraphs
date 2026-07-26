@@ -151,7 +151,7 @@ export const InteractivePie = ({
               setActivePieLevel(activePieLevel.parent || rootPieLevel)
             }
             className={clsx(
-              'absolute -left-[1.75rem] text-sm text-gray-400 hover:text-gray-200 cursor-pointer'
+              'absolute -left-[1.75rem] text-sm text-text-subtle hover:text-text cursor-pointer'
             )}
           >
             <ChevronLeft className="w-5 h-5" />

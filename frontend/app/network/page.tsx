@@ -19,7 +19,7 @@ export default async function NetworkListPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="text-2xl font-bold">NETWORKS</div>
+      <h1 className="text-2xl">Networks</h1>
 
       {error && <CatalogDegradedNotice reason={error} />}
 
@@ -35,16 +35,16 @@ export default async function NetworkListPage() {
             href={`/network/${network.id}`}
             className="block"
           >
-            <div className="border border-gray-300 bg-white p-6 rounded-sm shadow-sm hover:shadow-md transition-all hover:border-gray-400 cursor-pointer">
+            <div className="cursor-pointer border border-border bg-surface p-6 transition-colors hover:border-hairline-strong hover:bg-surface-2">
               <div className="space-y-4">
                 {/* Network Name */}
-                <div className="text-xl text-gray-900">{network.name}</div>
+                <div className="text-xl text-text">{network.name}</div>
 
                 {/* About */}
-                <div className="text-sm text-gray-800">{network.about}</div>
+                <div className="text-sm text-text">{network.about}</div>
 
                 {/* View Link */}
-                <div className="text-sm text-gray-900 pt-2">VIEW NETWORK →</div>
+                <div className="text-sm text-text pt-2">VIEW NETWORK →</div>
               </div>
             </div>
           </Link>

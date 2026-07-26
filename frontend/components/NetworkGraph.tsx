@@ -26,14 +26,17 @@ import forceAtlas2, { ForceAtlas2Settings } from 'graphology-layout-forceatlas2'
 import ForceAtlas2LayoutWorker from 'graphology-layout-forceatlas2/worker'
 import { CircleDashed, LoaderCircle, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { EdgeArrowProgram } from 'sigma/rendering'
 import { NodeDisplayData } from 'sigma/types'
 import { animateNodes } from 'sigma/utils'
 import { Hex } from 'viem'
 
+import { BrandMark } from '@/components/BrandMark'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useBatchEnsQuery } from '@/hooks/useEns'
+import { nodeColorForValue, readGraphTokens } from '@/lib/graphTheme'
 import {
   NetworkGraphHoverState,
   NetworkGraphManager,
@@ -60,55 +63,6 @@ const getCurvature = (index: number, maxIndex: number): number => {
   return (maxCurvature * index) / maxIndex
 }
 
-// Helper function to get color based on value (0-100)
-const getColorFromValue = (value: number): string => {
-  // Clamp value between 0 and 100
-  const clampedValue = Math.max(0, Math.min(100, value))
-
-  // Purple -> Blue -> Cyan
-  // if (clampedValue <= 50) {
-  //   // Purple to Blue (0-50)
-  //   const ratio = clampedValue / 50
-  //   const red = Math.round(128 * (1 - ratio) + 65 * ratio)
-  //   const green = Math.round(0 * (1 - ratio) + 105 * ratio)
-  //   const blue = Math.round(128 * (1 - ratio) + 225 * ratio)
-  //   return `rgb(${red}, ${green}, ${blue})`
-  // } else {
-  //   // Blue to Cyan (50-100)
-  //   const ratio = (clampedValue - 50) / 50
-  //   const red = Math.round(65 * (1 - ratio) + 0 * ratio)
-  //   const green = Math.round(105 * (1 - ratio) + 206 * ratio)
-  //   const blue = Math.round(225 * (1 - ratio) + 209 * ratio)
-  //   return `rgb(${red}, ${green}, ${blue})`
-  // }
-
-  // Simplified viridis-like gradient: Dark Blue → Teal → Yellow
-  // const ratio = clampedValue / 100
-  // if (ratio < 0.5) {
-  //   const t = ratio * 2
-  //   const red = Math.round(68 * (1 - t) + 35 * t)
-  //   const green = Math.round(1 * (1 - t) + 139 * t)
-  //   const blue = Math.round(84 * (1 - t) + 140 * t)
-  //   return `rgb(${red}, ${green}, ${blue})`
-  // } else {
-  //   const t = (ratio - 0.5) * 2
-  //   const red = Math.round(35 * (1 - t) + 253 * t)
-  //   const green = Math.round(139 * (1 - t) + 231 * t)
-  //   const blue = Math.round(140 * (1 - t) + 37 * t)
-  //   return `rgb(${red}, ${green}, ${blue})`
-  // }
-
-  // Light blue to deep blue
-  const ratio = clampedValue / 100
-  const red = Math.round(173 * (1 - ratio) + 25 * ratio)
-  const green = Math.round(216 * (1 - ratio) + 25 * ratio)
-  const blue = Math.round(230 * (1 - ratio) + 112 * ratio)
-  return `rgb(${red}, ${green}, ${blue})`
-
-  // Grey
-  return '#888888'
-}
-
 export interface NetworkGraphProps {
   /** Title to display. */
   title?: string
@@ -129,6 +83,10 @@ export function NetworkGraph({
 
   const { isLoading, error, accountData, attestationsData, isTrustedSeed } =
     useNetwork()
+
+  // Sigma paints via WebGL and cannot read CSS variables, so the palette is
+  // resolved off <html> and the graph is rebuilt when the theme changes.
+  const { resolvedTheme } = useTheme()
 
   // Load ENS data
   const { data: ensData } = useBatchEnsQuery(
@@ -151,6 +109,8 @@ export function NetworkGraph({
     }
 
     setIsLoadingGraph(true)
+
+    const tokens = readGraphTokens()
 
     // Create the graph
     const graph = new MultiDirectedGraph<NetworkGraphNode, NetworkGraphEdge>()
@@ -222,8 +182,9 @@ export function NetworkGraph({
           minNodeSize +
           ((Number(value) - minValue) / (maxValue - minValue)) *
             (maxNodeSize - minNodeSize),
-        // Set node color gradient from red to yellow to green based on value
-        color: getColorFromValue(normalizedValue),
+        // Fill grades by PageRank mass alone: heaviest node is the one with
+        // the most contrast against the canvas, in either theme.
+        color: nodeColorForValue(normalizedValue, tokens),
       })
     }
 
@@ -316,7 +277,7 @@ export function NetworkGraph({
 
       resolve()
     })
-  }, [accountData, attestationsData, isTrustedSeed, ensData])
+  }, [accountData, attestationsData, isTrustedSeed, ensData, resolvedTheme])
 
   return (
     <div
@@ -326,20 +287,43 @@ export function NetworkGraph({
       )}
     >
       {isLoading || (isLoadingGraph && !graph) ? (
-        <div className="w-full h-full flex justify-center items-center border border-border rounded-md p-4">
-          <LoaderCircle size={24} className="animate-spin" />
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-4">
+          <LoaderCircle size={20} className="animate-spin text-text-subtle" />
+          <span className="tg-label">Building graph</span>
         </div>
       ) : error || !accountData || !attestationsData ? (
-        <div className="w-full h-full flex justify-center items-center border border-destructive rounded-md p-4">
-          <p className="text-sm text-destructive">
-            {error ? `Error: ${error}` : 'EMPTY NETWORK'}
+        // An empty network is not a failure — it is a network nobody has
+        // attested in yet, and it gets the neutral empty state. Only a real
+        // fetch error takes the error tone.
+        <div
+          className={cn(
+            'flex h-full w-full flex-col items-center justify-center gap-3 border p-6 text-center',
+            error ? 'border-error' : 'border-border'
+          )}
+        >
+          <BrandMark
+            size="lg"
+            className={error ? 'text-error/60' : 'text-text-subtle/40'}
+          />
+          <span
+            className={cn(
+              'text-xs uppercase tracking-wider',
+              error ? 'text-error' : 'text-text-subtle'
+            )}
+          >
+            {error ? 'Graph unavailable' : 'No attestations yet'}
+          </span>
+          <p className="max-w-[36ch] text-xs text-text-subtle">
+            {error
+              ? error
+              : 'The first attestation in this network will draw the first edge.'}
           </p>
         </div>
       ) : (
         graph && (
           <SigmaContainer
             className={cn(
-              'border border-border rounded-md',
+              'border border-border',
               showCursor && 'cursor-pointer'
             )}
             settings={{
@@ -591,7 +575,7 @@ const SigmaControls = ({
           if (hoverState.nodes.includes(node)) {
             newData.highlighted = true
           } else {
-            newData.color = '#E2E2E2'
+            newData.color = readGraphTokens().dim
             newData.highlighted = false
             newData.label = ''
             // newData.hidden = true

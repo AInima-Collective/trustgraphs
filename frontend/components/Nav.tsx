@@ -4,39 +4,30 @@ import Link from 'next/link'
 
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 
+import { BrandMark } from './BrandMark'
 import { ButtonLink } from './Button'
-import Logo from './Logo'
+import { ThemeToggle } from './ThemeToggle'
 
-// const menuItems: {
-//   label: string
-//   href: string
-//   Icon?: ComponentType<{ className?: string }>
-//   iconClassName?: string
-// }[] = [
-//   {
-//     label: 'Attestations',
-//     href: '/attestations',
-//   },
-//   {
-//     label: 'Governance',
-//     href: '/governance',
-//   },
-//   {
-//     label: 'Network',
-//     href: '/account',
-//   },
-// ]
-
+/**
+ * The nav is a single hairline with things sitting on it. No fill, no
+ * elevation, no pill — the rule under it is the only chrome, and it is the
+ * same rule that separates every other section on the page.
+ */
 export const Nav = () => {
   return (
-    <nav className="flex flex-row justify-between items-center pb-3 sm:pb-4 md:pb-6 border-b border-border">
-      <Link href="/">
-        <Logo className="w-8 h-8 sm:w-10 sm:h-10" />
+    <nav className="flex flex-row items-center justify-between border-b border-border pb-3 sm:pb-4">
+      <Link
+        href="/"
+        className="flex items-center gap-2.5 transition-opacity hover:opacity-70"
+        aria-label="TrustGraph — home"
+      >
+        <BrandMark size="md" className="text-text" />
+        <span className="text-base tracking-tight text-text">TrustGraph</span>
       </Link>
 
-      <div className="flex flex-row gap-2 sm:gap-3 items-stretch">
+      <div className="flex flex-row items-center gap-2">
         <ButtonLink href="/create" variant="ghost">
-          <span className="hidden sm:block">Create a </span>
+          <span className="hidden sm:inline">Create a&nbsp;</span>
           Network
         </ButtonLink>
 
@@ -46,33 +37,14 @@ export const Nav = () => {
           variant="outline"
           rel="noopener noreferrer"
         >
-          <span className="hidden sm:block">Contact </span>
+          <span className="hidden sm:inline">Contact&nbsp;</span>
           Support
         </ButtonLink>
 
         <WalletConnectionButton />
-      </div>
 
-      {/* <div className="flex justify-center items-stretch gap-4 sm:gap-6 text-foreground rounded-full bg-card border border-border transition-[background-color,box-shadow] hover:shadow-md px-4 sm:px-6 text-base h-10 sm:h-12">
-        {menuItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={clsx(
-              'transition-opacity hover:opacity-80 active:opacity-70 flex items-center gap-2',
-              // If home and none are selected, make all items active.
-              pathname === '/' || pathname === item.href
-                ? 'opacity-100'
-                : 'opacity-50'
-            )}
-          >
-            {item.Icon && <item.Icon className={item.iconClassName} />}
-            <span className="hidden md:block">{item.label}</span>
-          </Link>
-        ))}
+        <ThemeToggle />
       </div>
-
-      <WalletConnectionButton className="justify-self-end" /> */}
     </nav>
   )
 }

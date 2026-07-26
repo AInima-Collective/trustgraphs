@@ -115,14 +115,14 @@ export const Address = ({
     'transition-colors',
     shouldHighlight
       ? [
-          'text-brand',
+          'text-text',
           clickable &&
-            'group-hover/address:text-brand/80 peer-hover/copy:!text-brand',
+            'group-hover/address:text-text-muted peer-hover/copy:text-text!',
         ]
       : [
           'text-muted-foreground',
           clickable &&
-            'group-hover/address:text-brand peer-hover/copy:text-muted-foreground',
+            'group-hover/address:text-text peer-hover/copy:text-text-muted',
         ],
     textClassName
   )
@@ -130,9 +130,9 @@ export const Address = ({
   const textClasses = cn('break-all text-sm font-medium', hoverClasses)
 
   const copyIcon = copied ? (
-    <Check className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0" />
+    <Check className="w-3 h-3 text-success dark:text-success shrink-0" />
   ) : (
-    <Copy className="w-3 h-3 shrink-0 hover:text-brand" />
+    <Copy className="h-3 w-3 shrink-0 transition-colors hover:text-text" />
   )
 
   const renderText = () => {

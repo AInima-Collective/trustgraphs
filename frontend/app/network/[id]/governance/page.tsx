@@ -10,6 +10,7 @@ import { Address, TableAddress } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { CreateProposalForm } from '@/components/CreateProposalForm'
 import { NetworkNav } from '@/components/NetworkNav'
+import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
@@ -125,13 +126,13 @@ export default function GovernancePage() {
         const stateText = getProposalStateText(state)
         const stateStyles =
           state === ProposalState.Active
-            ? 'border-green-600/50 bg-green-50 text-green-700'
+            ? 'border-success/50 bg-success-soft text-success'
             : state === ProposalState.Passed
-              ? 'border-blue-600/50 bg-blue-50 text-blue-700'
+              ? 'border-hairline-strong bg-surface-2 text-text'
               : state === ProposalState.Executed
-                ? 'border-brand/50 bg-brand/10 text-brand'
+                ? 'border-hairline-strong bg-surface-2 text-text'
                 : state === ProposalState.Rejected
-                  ? 'border-red-600/50 bg-red-50 text-red-700'
+                  ? 'border-error/50 bg-error-soft text-error'
                   : 'border-border bg-muted text-muted-foreground'
 
         return (
@@ -159,11 +160,11 @@ export default function GovernancePage() {
           Number(row.core.abstainVotes)
         return (
           <div className="text-sm">
-            <span className="text-green-700">
+            <span className="text-success">
               {formatBigNumber(row.core.yesVotes, undefined, true)}
             </span>
             <span className="text-muted-foreground"> / </span>
-            <span className="text-red-700">
+            <span className="text-error">
               {formatBigNumber(row.core.noVotes, undefined, true)}
             </span>
             <span className="text-muted-foreground"> / </span>
@@ -244,8 +245,8 @@ export default function GovernancePage() {
 
       {/* Success Message */}
       {successMessage && (
-        <div className="border border-green-600 bg-green-50 p-3 rounded-md">
-          <div className="text-green-700 text-sm font-medium">
+        <div className="border border-success bg-success-soft p-3 rounded-md">
+          <div className="text-success text-sm font-medium">
             ✓ {successMessage}
           </div>
         </div>
@@ -260,7 +261,7 @@ export default function GovernancePage() {
 
       {/* Parameters & Contracts */}
       <div className="border-y border-border py-6 space-y-4">
-        <h2 className="font-bold">PARAMETERS</h2>
+        <SectionHeading>Parameters</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
             title="VOTING DELAY"
@@ -287,7 +288,7 @@ export default function GovernancePage() {
           />
         </div>
 
-        <h2 className="font-bold mt-6">CONTRACTS</h2>
+        <SectionHeading className="mt-6">Contracts</SectionHeading>
 
         {/* Contract Addresses */}
         <div className="flex flex-col gap-2 text-sm text-muted-foreground">
@@ -322,7 +323,7 @@ export default function GovernancePage() {
                   href={`https://app.safe.global/home?safe=eth:${safeAddress}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-brand hover:text-brand/80 transition-colors"
+                  className="text-text underline underline-offset-4 transition-colors hover:text-text-muted"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
@@ -337,7 +338,7 @@ export default function GovernancePage() {
       {/* Proposals Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-bold">PROPOSALS</h2>
+          <SectionHeading>Proposals</SectionHeading>
           <Button onClick={() => setShowCreateForm(!showCreateForm)} size="sm">
             {showCreateForm ? 'Cancel' : '+ New Proposal'}
           </Button>

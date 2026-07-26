@@ -104,8 +104,8 @@ export default function ProposalPage() {
 
       {/* Success Message */}
       {successMessage && (
-        <div className="border border-green-600 bg-green-50 p-3 rounded-md">
-          <div className="text-green-700 text-sm font-medium">
+        <div className="border border-success bg-success-soft p-3 rounded-md">
+          <div className="text-success text-sm font-medium">
             ✓ {successMessage}
           </div>
         </div>

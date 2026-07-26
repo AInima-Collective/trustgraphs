@@ -6,9 +6,9 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
-import { Button, ButtonLink } from '@/components/Button'
-import { Card } from '@/components/Card'
+import { ButtonLink } from '@/components/Button'
 import { Markdown } from '@/components/Markdown'
+import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { NetworkProvider } from '@/contexts/NetworkContext'
@@ -61,58 +61,67 @@ export function HomePage() {
   const columns: Column<NetworkRow>[] = [
     {
       key: 'name',
-      header: 'NAME',
-      render: (row) => <span className="font-medium">{row.network.name}</span>,
+      header: 'Network',
+      render: (row) => <span className="text-text">{row.network.name}</span>,
     },
     {
       key: 'members',
-      header: 'MEMBERS',
+      header: 'Members',
       tooltip: 'The number of participants in this network with a TrustScore.',
+      headerClassName: 'text-right',
+      cellClassName: 'text-right tabular-nums text-text-muted',
       render: (row) =>
         row.isLoading
-          ? '...'
+          ? '—'
           : formatBigNumber(row.memberCount ?? 0, undefined, true),
     },
     {
       key: 'attestations',
-      header: 'ATTESTATIONS',
+      header: 'Attestations',
       tooltip: 'The total number of attestations in this network.',
+      headerClassName: 'text-right',
+      cellClassName: 'text-right tabular-nums text-text-muted',
       render: (row) =>
         row.isLoading
-          ? '...'
+          ? '—'
           : formatBigNumber(row.attestationCount ?? 0, undefined, true),
     },
   ]
 
   return (
-    <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-stretch gap-12">
-      <div className="flex flex-col items-start gap-6">
-        <h1 className="text-3xl sm:text-5xl font-bold">
-          Networks that grow at the speed of trust
-        </h1>
+    <div className="grid grid-cols-1 items-start justify-start gap-12 lg:grid-cols-2 lg:gap-10">
+      <div className="flex flex-col items-start gap-10">
+        {/* ── Hero ──────────────────────────────────────────────────────── */}
+        <header className="flex flex-col items-start gap-5">
+          {/* Epigraph. Pure apparatus: it names the four steps the protocol
+           * actually performs, in the order it performs them. */}
+          <span className="tg-marker">
+            Attested · Ranked · Proven · Settled
+          </span>
 
-        <p>
-          TrustGraph is a governance tool that makes social trust visible and
-          measurable. Participants give and receive attestations — digital
-          endorsements that build a TrustGraph. Calculated TrustScores can be
-          exported and used to inform governance decisions on external
-          platforms, creating a foundation for legitimacy based on relationships
-          rather than tokens.
-        </p>
+          <h1 className="tg-hero max-w-[15ch]">
+            Networks that grow at the speed of trust
+          </h1>
 
-        {firstNetwork && (
-          <ButtonLink
-            variant="brand"
-            href={`/network/${firstNetwork.id}`}
-            size="lg"
-          >
-            View Pilot Network: {firstNetwork.name}
-          </ButtonLink>
-        )}
+          <p className="max-w-prose text-text-muted">
+            TrustGraph is a governance tool that makes social trust visible and
+            measurable. Participants give and receive attestations: signed,
+            public endorsements that build a graph. The resulting TrustScores
+            can be exported and used to inform governance decisions on external
+            platforms, so legitimacy rests on relationships rather than tokens.
+          </p>
 
+          {firstNetwork && (
+            <ButtonLink href={`/network/${firstNetwork.id}`} size="lg">
+              View pilot network: {firstNetwork.name}
+            </ButtonLink>
+          )}
+        </header>
+
+        {/* ── 01 · Directory ────────────────────────────────────────────── */}
         {networks.length > 1 && (
-          <div className="w-full space-y-3 mt-6">
-            <h2>ALL NETWORKS</h2>
+          <section className="flex w-full flex-col gap-4">
+            <SectionHeading n="01">All networks</SectionHeading>
             <Table
               columns={columns}
               data={networkRows}
@@ -120,33 +129,40 @@ export function HomePage() {
               onRowClick={(row) => router.push(`/network/${row.network.id}`)}
               rowClickTitle="View network"
             />
-          </div>
+          </section>
         )}
 
-        <h2 className="mt-6 -mb-3">FREQUENTLY ASKED QUESTIONS</h2>
-        <div className="flex flex-col items-stretch gap-3 self-stretch">
-          <FrequentlyAskedQuestion
-            question="What are attestations?"
-            answer="[Attestations](https://docs.attest.org/docs/core--concepts/attestations) are digital vouches — signed statements from one participant about another person, project, or claim. Each attestation adds to the collective TrustGraph, shaping reputation and governance rights."
-          />
-          <FrequentlyAskedQuestion
-            question="How does it work?"
-            answer="Participants issue, receive, and revoke attestations. These build a graph of trust, analyzed through verifiable algorithms (like [PageRank](https://en.wikipedia.org/wiki/PageRank)) to generate a TrustScore. That score unlocks permissions such as voting, proposal submission, or role claiming in a network or funding round."
-          />
-          <FrequentlyAskedQuestion
-            question="Why use TrustGraph?"
-            answer="Because legitimacy comes from relationships, not capital. Attestations make social credibility visible, portable, and measurable—reducing sybil risk and empowering real contributors."
-          />
-          <FrequentlyAskedQuestion
-            question="Where can I learn more?"
-            answer="Explore the [open-source repository](https://github.com/JakeHartnell/ZkTrustGraph) or join the [Telegram community](https://trustgraph.network/support)."
-          />
-        </div>
+        {/* ── 02 · FAQ ──────────────────────────────────────────────────── */}
+        <section className="flex w-full flex-col gap-4">
+          <SectionHeading n="02">Frequently asked questions</SectionHeading>
+          {/* Ruled rows rather than four separate boxes: a stack of bordered
+           * cards reads as four unrelated things, a ruled list reads as one
+           * set. */}
+          <div className="flex flex-col items-stretch self-stretch border-b border-border">
+            <FrequentlyAskedQuestion
+              question="What are attestations?"
+              answer="[Attestations](https://docs.attest.org/docs/core--concepts/attestations) are digital vouches: signed statements from one participant about another person, project, or claim. Each attestation adds to the collective TrustGraph, shaping reputation and governance rights."
+            />
+            <FrequentlyAskedQuestion
+              question="How does it work?"
+              answer="Participants issue, receive, and revoke attestations. These build a graph of trust, analyzed through verifiable algorithms (like [PageRank](https://en.wikipedia.org/wiki/PageRank)) to generate a TrustScore. That score unlocks permissions such as voting, proposal submission, or role claiming in a network or funding round."
+            />
+            <FrequentlyAskedQuestion
+              question="Why use TrustGraph?"
+              answer="Because legitimacy comes from relationships, not capital. Attestations make social credibility visible, portable, and measurable, reducing sybil risk and empowering real contributors."
+            />
+            <FrequentlyAskedQuestion
+              question="Where can I learn more?"
+              answer="Explore the [open-source repository](https://github.com/JakeHartnell/ZkTrustGraph) or join the [Telegram community](https://trustgraph.network/support)."
+            />
+          </div>
+        </section>
       </div>
 
-      <div className="space-y-10">
+      {/* ── Right column ────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-8 lg:sticky lg:top-6">
         {firstNetwork && (
-          <div className="h-[66vh] lg:h-4/5">
+          <div className="flex h-[66vh] flex-col lg:h-[70vh]">
             <Suspense fallback={null}>
               <NetworkProvider network={firstNetwork}>
                 <NetworkGraph
@@ -157,9 +173,10 @@ export function HomePage() {
           </div>
         )}
 
-        <Card type="accent" size="md" className="space-y-4">
-          <p className="text-sm">
-            TrustGraph is currently being piloted. If you're curious about how
+        <div className="flex flex-col gap-4 border border-border p-5">
+          <span className="tg-label">Pilot</span>
+          <p className="text-sm text-text-muted">
+            TrustGraph is currently being piloted. If you are curious about how
             it works, interested in testing early prototypes, want to use it in
             your network, or just want to stay in the loop, fill out this short
             form.
@@ -171,10 +188,11 @@ export function HomePage() {
             rel="noopener noreferrer"
             size="sm"
             variant="outline"
+            className="self-start"
           >
-            Open Interest Form
+            Open interest form
           </ButtonLink>
-        </Card>
+        </div>
       </div>
     </div>
   )
@@ -190,25 +208,27 @@ const FrequentlyAskedQuestion = ({
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <Button
-      variant="outline"
-      className="border-2 !px-4 !py-3 !h-auto shadow-md flex flex-col items-stretch gap-4 overflow-hidden !whitespace-normal text-left"
-      size="lg"
-      onClick={() => setIsOpen((o) => !o)}
-    >
-      <div className="flex flex-row items-center justify-between gap-6">
+    <div className="border-t border-border">
+      <button
+        type="button"
+        onClick={() => setIsOpen((o) => !o)}
+        aria-expanded={isOpen}
+        className="flex w-full flex-row items-center justify-between gap-6 py-3.5 text-left text-sm text-text transition-colors hover:text-text-muted"
+      >
         <span>{question}</span>
         <ChevronDown
           className={cn(
-            '!w-6 !h-6 transition-transform',
+            'h-4 w-4 shrink-0 text-text-subtle transition-transform',
             isOpen ? '-rotate-180' : 'rotate-0'
           )}
         />
-      </div>
+      </button>
 
       {isOpen && (
-        <Markdown className="text-sm animate-in fade-in-0">{answer}</Markdown>
+        <Markdown className="animate-in fade-in-0 pb-4 text-sm text-text-muted">
+          {answer}
+        </Markdown>
       )}
-    </Button>
+    </div>
   )
 }

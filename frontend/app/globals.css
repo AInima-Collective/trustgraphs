@@ -1,88 +1,88 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'tailwindcss-safe-area';
+@import './tokens.css';
 
-@custom-variant dark (&:is(.dark *));
+/* The dark variant keys off [data-theme] rather than a `.dark` class, because
+ * next-themes is configured with attribute="data-theme" and the token blocks
+ * in tokens.css are attribute-scoped. Only a handful of `dark:` call-sites
+ * exist — the token layer does the work. */
+@custom-variant dark (&:is([data-theme='dark'] *));
+
+/* ============================================================================
+ * TAILWIND BRIDGE
+ *
+ * The app was built against shadcn's semantic names (--background, --card,
+ * --muted-foreground, …) and there are ~150 files using them. Rather than
+ * rewrite every call-site, those names are re-pointed at the design tokens in
+ * tokens.css. Change a value there and it propagates everywhere.
+ *
+ * Two mappings are worth reading twice, because the old and new vocabularies
+ * disagree about what a word means:
+ *
+ *   --primary  → var(--accent)     Ink. `bg-primary` is the inverted fill.
+ *   --accent   → var(--surface-2)  A *hover wash*, not the brand colour. In
+ *                                  the design-system vocabulary the inversion
+ *                                  accent is --accent; in Tailwind's it is
+ *                                  --primary. Do not "fix" this to line up.
+ *
+ * New work should prefer the token utilities generated below (bg-surface,
+ * text-subtle, border-hairline, bg-ink) over the legacy shadcn names.
+ * ==========================================================================*/
 
 :root {
-  /* Light mode - grayscale focused */
-  --background: oklch(0.98 0 0); /* Off-white */
-  --foreground: oklch(0.2 0 0); /* Near-black */
-  --card: oklch(1 0 0); /* Pure white */
-  --card-foreground: oklch(0.2 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0 0);
-  --primary: oklch(0.3 0 0); /* Dark gray */
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.94 0 0); /* Light gray */
-  --secondary-foreground: oklch(0.2 0 0);
-  --muted: oklch(0.95 0 0); /* Very light gray */
-  --muted-foreground: oklch(0.5 0 0); /* Medium gray */
-  --accent: oklch(0.92 0 0);
-  --accent-foreground: oklch(0.2 0 0);
-  --destructive: oklch(0.5 0.18 30); /* Subtle red */
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.88 0 0); /* Light gray border */
-  --input: oklch(0.92 0 0);
-  --ring: oklch(0.5 0 0); /* Medium gray focus ring */
-  --chart-1: oklch(0.4 0 0); /* Dark gray */
-  --chart-2: oklch(0.5 0 0);
-  --chart-3: oklch(0.6 0 0);
-  --chart-4: oklch(0.35 0 0);
-  --chart-5: oklch(0.7 0 0);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.96 0 0);
-  --sidebar-foreground: oklch(0.2 0 0);
-  --sidebar-primary: oklch(0.3 0 0);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.92 0 0);
-  --sidebar-accent-foreground: oklch(0.2 0 0);
-  --sidebar-border: oklch(0.88 0 0);
-  --sidebar-ring: oklch(0.5 0 0);
-  --brand: #1a709e;
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
 
-  /* Trust indicators */
-  --trust-high: oklch(0.4 0 0);
-  --trust-medium: oklch(0.6 0 0);
-  --trust-low: oklch(0.8 0 0);
-}
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
+  --tertiary: var(--surface-3);
+  --tertiary-foreground: var(--text);
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --tertiary: oklch(0.73 0 0);
-  --tertiary-foreground: oklch(0.1 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
-  --brand: #1a709e;
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+
+  /* See the note above: this is the hover wash, not the brand. */
+  --accent-bg: var(--surface-2);
+  --accent-bg-foreground: var(--text);
+
+  --destructive: var(--error);
+  --destructive-foreground: var(--accent-fg);
+
+  --input: var(--border-strong);
+  --ring: var(--accent);
+
+  /* Retired brand blue. Aliased to ink so stray `bg-brand` goes monochrome
+   * rather than 404-ing to transparent. */
+  --brand: var(--accent);
+
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--accent-fg);
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--accent);
+
+  /* Charts read by value, not by hue — same discipline as the graph. */
+  --chart-1: var(--text);
+  --chart-2: var(--text-muted);
+  --chart-3: var(--text-subtle);
+  --chart-4: var(--border-strong);
+  --chart-5: var(--border);
+
+  /* Trust magnitude. Three steps of ink, darkest = most trusted on paper,
+   * lightest = most trusted on ink. */
+  --trust-high: var(--text);
+  --trust-medium: var(--text-muted);
+  --trust-low: var(--text-subtle);
 }
 
 .root {
@@ -90,7 +90,14 @@
 }
 
 @theme inline {
-  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  /* Type. The families resolve through tokens.css so the [data-type] axis can
+   * swap them at runtime; `inline` keeps Tailwind emitting the var reference
+   * instead of baking in the value at build time. */
+  --font-mono: var(--mono-family);
+  --font-display: var(--display-family);
+  --font-serif: var(--serif-family);
+
+  /* Legacy shadcn surface names. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -105,8 +112,8 @@
   --color-tertiary-foreground: var(--tertiary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent-bg);
+  --color-accent-foreground: var(--accent-bg-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -117,10 +124,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -130,9 +133,45 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-brand: var(--brand);
-  
+
+  /* Design-system names. Prefer these in new work. */
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-hairline: var(--border);
+  --color-hairline-strong: var(--border-strong);
+  --color-ink: var(--accent);
+  --color-ink-fg: var(--accent-fg);
+  --color-ink-soft: var(--accent-soft);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+
+  /* Everything is square. The three radius steps are kept (rather than
+   * deleted) so the ~60 existing `rounded-md` / `rounded-sm` call-sites
+   * flatten on their own instead of throwing an unresolved-var error. */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
+  --text-4xl: 56px;
+  --text-5xl: 72px;
+
   --breakpoint-xs: 410px;
-  --text-5xl: 2.8rem;
 }
 
 @layer base {
@@ -140,7 +179,13 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply text-foreground leading-[1.6rem];
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono-family);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   button {
     @apply cursor-pointer;
@@ -148,24 +193,138 @@
   ul {
     @apply list-disc list-outside pl-6;
   }
+  /* Tabular figures everywhere a number can change under you. Addresses,
+   * scores, and counts must not reflow column width as they update. */
+  table,
+  input[type='number'],
+  time,
+  code,
+  pre {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ============================================================================
+ * DISPLAY VOICE
+ *
+ * Headings carry the serif; h4 and below stay mono because at 14px they are
+ * functionally labels sitting beside other mono labels, and a serif there
+ * reads as an accident rather than a decision.
+ *
+ * The heading rules are wrapped in :where() so they contribute zero
+ * specificity — any component class can override the serif without a fight.
+ * Sizes multiply by --display-scale so swapping [data-type] does not change
+ * the optical size on the page.
+ * ==========================================================================*/
+
+:where(h1, h2, h3) {
+  font-family: var(--display-family);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: var(--leading-tight);
+}
+
+:where(h1) {
+  font-size: calc(var(--text-3xl) * var(--display-scale));
+}
+:where(h2) {
+  font-size: calc(var(--text-2xl) * var(--display-scale));
+}
+:where(h3) {
+  font-size: calc(var(--text-xl) * var(--display-scale));
+}
+:where(h4, h5, h6) {
+  font-family: var(--mono-family);
+  font-size: var(--text-base);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* The hero. Sized through --display-scale like the headings are, so switching
+ * [data-type] retunes it too — a raw `text-5xl` would leave Cormorant looking
+ * two steps smaller than Instrument at the same nominal size. */
+.tg-hero {
+  font-family: var(--display-family);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.05;
+  font-size: calc(var(--text-3xl) * var(--display-scale));
+}
+@media (min-width: 640px) {
+  .tg-hero {
+    font-size: calc(var(--text-4xl) * var(--display-scale));
+  }
+}
+
+/* Opt-in utilities for copy that is not a heading — hero decks, pull quotes,
+ * the italic asides that carry the voice. */
+.tg-display {
+  font-family: var(--display-family);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: var(--leading-tight);
+}
+.tg-serif {
+  font-family: var(--serif-family);
+}
+.tg-serif-italic {
+  font-family: var(--serif-family);
+  font-style: italic;
+}
+
+/* Machine labels — uppercase and tracked out. These stay mono: a serif set in
+ * all-caps loses everything that makes it a serif. */
+.tg-label {
+  font-family: var(--mono-family);
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+.tg-label-strong {
+  font-family: var(--mono-family);
+  font-size: var(--text-xs);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+
+/* A single hairline used as a section break. Full-bleed inside its container. */
+/* Modal / drawer backdrop. */
+.tg-scrim {
+  background: var(--scrim);
+}
+
+.tg-rule {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 0;
+}
+
+/* Numbered section marker, set in the mono at label size and hung in the
+ * left margin where there is room. Reads as apparatus, not decoration. */
+.tg-marker {
+  font-family: var(--mono-family);
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
 }
 
 html {
   position: relative;
+  background: var(--bg);
+  color-scheme: dark;
 }
 
-html,
-.react-sigma {
-  background: linear-gradient(
-    135deg,
-    oklch(0.98 0 0) 0%,
-    oklch(0.96 0 0) 100%
-  ) !important;
+[data-theme='light'] {
+  color-scheme: light;
 }
 
-h1 {
-  line-height: 1.3em;
-  letter-spacing: -1px;
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 @keyframes fadeIn {
@@ -179,27 +338,32 @@ h1 {
   }
 }
 
-/* Light mode scrollbar */
+/* Scrollbars follow the ink ramp — a scrollbar is chrome, not content. */
 .scrollbar-thin {
   scrollbar-width: thin;
 }
 
-/* Webkit scrollbar for better browser support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: oklch(0.95 0 0);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.7 0 0);
-  border-radius: 4px;
+  background: var(--border-strong);
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.5 0 0);
+  background: var(--text-subtle);
 }
 
 /* Mobile-specific styles */
@@ -237,8 +401,25 @@ pre {
   word-wrap: break-word;
 }
 
+/* Sigma paints its own canvas; the container just has to not fight the theme.
+ * The old rule forced a light gradient onto <html> with !important, which is
+ * why the graph could never go dark. */
+.react-sigma {
+  background: var(--graph-canvas);
+}
+
 .react-sigma-control > button {
   display: flex !important;
   justify-content: center;
   align-items: center;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.react-sigma-control > button:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }

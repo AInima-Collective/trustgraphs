@@ -27,11 +27,11 @@ export const Switch = ({
   return (
     <div
       className={cn(
-        'relative flex flex-none items-center rounded-full',
+        'relative flex flex-none items-center border',
         {
           'cursor-pointer hover:opacity-90': !readOnly,
-          'bg-brand': enabled,
-          'border border-border bg-transparent': !enabled,
+          'border-ink bg-ink': enabled,
+          'border-hairline-strong bg-transparent': !enabled,
           // Sizing.
           'h-[16px] w-[28px]': size === 'sm',
           'h-[27px] w-[47px]': size === 'md',
@@ -43,7 +43,8 @@ export const Switch = ({
     >
       <div
         className={cn(
-          'absolute flex items-center justify-center rounded-full transition-all bg-accent',
+          'absolute flex items-center justify-center transition-all',
+          enabled ? 'bg-ink-fg' : 'bg-text-subtle',
           // Sizing.
           {
             // Small

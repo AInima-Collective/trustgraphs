@@ -59,7 +59,7 @@ export function CopyableText({
         <span className="break-all">{display}</span>
       )}
       {copied ? (
-        <Check className="w-3 h-3 text-green-600 flex-shrink-0" />
+        <Check className="w-3 h-3 text-success flex-shrink-0" />
       ) : (
         <Copy
           className={cn(

@@ -7,6 +7,7 @@ import { useAccount } from 'wagmi'
 import { Address } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
 import { useAttestation } from '@/hooks/useAttestation'
 import { actorKey } from '@/lib/contributions'
@@ -110,8 +111,8 @@ export const RatePage = ({ network }: { network: ContributionsNetwork }) => {
       {/* The live budget bar. */}
       {isConnected && countedEntries.length > 0 && (
         <Card type="accent" size="lg" className="space-y-3">
-          <h2 className="font-bold text-sm">YOUR RATING POWER RIGHT NOW</h2>
-          <div className="flex flex-row w-full h-5 rounded-full overflow-hidden bg-secondary">
+          <SectionHeading>Your rating power right now</SectionHeading>
+          <div className="flex h-5 w-full flex-row overflow-hidden border border-border bg-surface-2">
             {countedEntries.map((entry, index) => (
               <div
                 key={entry.claimUid}

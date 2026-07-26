@@ -79,7 +79,7 @@ export const Slider = ({
     <div
       ref={ref}
       className={cn(
-        'relative flex w-full overflow-hidden touch-none select-none items-center cursor-pointer rounded-full bg-secondary h-5',
+        'relative flex h-5 w-full cursor-pointer touch-none select-none items-center overflow-hidden border border-border bg-surface-2',
         className
       )}
       onMouseDown={(e) => handleStart(e.nativeEvent)}
@@ -88,14 +88,14 @@ export const Slider = ({
     >
       {/* Progress bar */}
       <div
-        className="absolute left-0 h-5 bg-primary rounded-l-full"
+        className="absolute left-0 h-5 bg-ink"
         style={{
           width: `calc((100% - 1.25rem) * ${value} / 100 + 0.625rem)`,
         }}
       />
       {/* Thumb */}
       <div
-        className="absolute block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+        className="absolute block h-5 w-2.5 cursor-pointer border border-ink bg-surface transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
         style={{
           left: `calc((100% - 1.25rem) * ${value} / 100)`,
         }}

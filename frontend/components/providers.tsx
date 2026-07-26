@@ -14,6 +14,7 @@ import { makeQueryClient } from '@/lib/query'
 import { makeWagmiConfig } from '@/lib/wagmi'
 
 import { BreadcrumbSync } from './BreadcrumbSync'
+import { ThemeProvider } from './theme-provider'
 import { Toaster } from './toasts/Toaster'
 import { WalletConnectionProvider } from './WalletConnectionProvider'
 
@@ -38,24 +39,36 @@ export function Providers({
       taggedEvents
       trackOutboundLinks
     >
-      <WagmiProvider config={wagmiConfig}>
-        <PonderProvider client={ponderClient}>
-          <QueryClientProvider client={queryClient}>
-            <CatalogProvider initial={catalog}>
-              <WalletConnectionProvider>
-                {children}
+      {/* Dark is the default, not a preference we infer: TrustGraph's ramp is
+       * designed against the near-black canvas and the graph is tuned for it.
+       * enableSystem would hand first-time visitors the light theme roughly
+       * half the time, which is the wrong first impression. Light stays one
+       * click away in the nav. */}
+      <ThemeProvider
+        attribute="data-theme"
+        defaultTheme="dark"
+        enableSystem={false}
+        disableTransitionOnChange
+      >
+        <WagmiProvider config={wagmiConfig}>
+          <PonderProvider client={ponderClient}>
+            <QueryClientProvider client={queryClient}>
+              <CatalogProvider initial={catalog}>
+                <WalletConnectionProvider>
+                  {children}
 
-                <Toaster />
-                <BreadcrumbSync />
+                  <Toaster />
+                  <BreadcrumbSync />
 
-                {/* {process.env.NODE_ENV === "development" && (
+                  {/* {process.env.NODE_ENV === "development" && (
                 <ReactQueryDevtools initialIsOpen={false} />
               )} */}
-              </WalletConnectionProvider>
-            </CatalogProvider>
-          </QueryClientProvider>
-        </PonderProvider>
-      </WagmiProvider>
+                </WalletConnectionProvider>
+              </CatalogProvider>
+            </QueryClientProvider>
+          </PonderProvider>
+        </WagmiProvider>
+      </ThemeProvider>
     </PlausibleProvider>
   )
 }

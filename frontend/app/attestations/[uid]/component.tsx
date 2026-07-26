@@ -43,7 +43,7 @@ export const AttestationDetailPage = ({ uid }: AttestationDetailPageProps) => {
       />
 
       <div className="flex flex-row gap-x-8 gap-y-4 items-center justify-between">
-        <div className="text-xl">ATTESTATION</div>
+        <h1 className="text-2xl">Attestation</h1>
         {canRevoke && (
           <Button
             variant="destructive"

@@ -49,7 +49,7 @@ export default function AttestationsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="text-lg">ATTESTATIONS</div>
+        <h1 className="text-2xl">Attestations</h1>
       </div>
 
       {/* Filters */}
@@ -102,7 +102,7 @@ export default function AttestationsPage() {
       {/* Loading State */}
       {(isLoadingAttestations || isLoadingTotalAttestations) && (
         <div className="text-center py-8">
-          <div className="text-lg">LOADING ATTESTATIONS</div>
+          <h1 className="text-2xl">Loading attestations</h1>
           <div className="text-sm mt-2">Fetching data...</div>
         </div>
       )}

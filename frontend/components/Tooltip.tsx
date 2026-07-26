@@ -1,6 +1,6 @@
 import { Popover } from '@base-ui-components/react/popover'
 import clsx from 'clsx'
-import { ComponentProps, ReactNode } from 'react'
+import { ComponentProps, ReactElement, ReactNode, isValidElement } from 'react'
 
 import { Markdown } from './Markdown'
 import styles from './tooltip.module.css'
@@ -9,9 +9,23 @@ export type TooltipProps = {
   title: string | ReactNode
   className?: string
   children: ReactNode
+  /**
+   * Merge the trigger's behaviour into `children` instead of wrapping it.
+   *
+   * `Popover.Trigger` renders its own `<button>`. When the child is already a
+   * button that produces `<button><button/></button>`, which is invalid HTML —
+   * the parser hoists the inner one out and hydration fails on the reshaped
+   * tree. Set this whenever the child is interactive.
+   */
+  asChild?: boolean
 }
 
-export const Tooltip = ({ title, children, className }: TooltipProps) => {
+export const Tooltip = ({
+  title,
+  children,
+  className,
+  asChild = false,
+}: TooltipProps) => {
   if (!title) {
     return <>{children}</>
   }
@@ -22,15 +36,18 @@ export const Tooltip = ({ title, children, className }: TooltipProps) => {
         aria-label={typeof title === 'string' ? title : undefined}
         className={className}
         onClick={(e) => e.stopPropagation()}
+        {...(asChild && isValidElement(children)
+          ? { render: children as ReactElement<Record<string, unknown>> }
+          : {})}
       >
-        {children}
+        {asChild ? undefined : children}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner className="z-100" sideOffset={10} side="bottom">
           <Popover.Popup
             className={clsx(
               styles.Popup,
-              'text-xs text-primary-foreground/80 bg-popover-foreground shadow-2xl max-w-sm rounded-sm px-2 py-1.5 transition-[transform,opacity] duration-150 flex flex-col box-border'
+              'box-border flex max-w-sm flex-col bg-ink px-2 py-1.5 text-xs text-ink-fg transition-[transform,opacity] duration-150'
             )}
           >
             <Popover.Arrow

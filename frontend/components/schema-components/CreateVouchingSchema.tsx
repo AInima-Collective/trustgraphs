@@ -202,7 +202,7 @@ export function CreateVouchingSchema({
 
         {/* Success Display */}
         {isSuccess && hash && (
-          <div className="text-sm border border-green-600 bg-green-50 text-green-700 p-3 rounded-md">
+          <div className="text-sm border border-success bg-success-soft text-success p-3 rounded-md">
             <div>
               ✓ Vouch created successfully! Tx: {hash.slice(0, 10)}...
               {hash.slice(-8)}

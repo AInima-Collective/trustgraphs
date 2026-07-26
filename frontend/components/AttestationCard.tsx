@@ -40,7 +40,7 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
   //   if (Number(attestation.revocationTime) > 0) {
   //     return {
   //       status: 'revoked',
-  //       color: 'text-red-600 bg-red-50 border-red-200',
+  //       color: 'text-error bg-error-soft border-error',
   //     }
   //   }
   //   if (
@@ -49,12 +49,12 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
   //   ) {
   //     return {
   //       status: 'expired',
-  //       color: 'text-yellow-700 bg-yellow-50 border-yellow-200',
+  //       color: 'text-warn bg-warn-soft border-warn',
   //     }
   //   }
   //   return {
   //     status: 'verified',
-  //     color: 'text-green-700 bg-green-50 border-green-200',
+  //     color: 'text-success bg-success-soft border-success',
   //   }
   // }
 
@@ -116,7 +116,7 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
 
   if (!attestation) {
     return (
-      <Card type="primary" size="lg" className="border-yellow-200 bg-yellow-50">
+      <Card type="primary" size="lg" className="border-warn bg-warn-soft">
         <div className="space-y-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center space-x-3">
@@ -127,7 +127,7 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
                 </div>
               </div>
             </div>
-            <div className="text-yellow-700 text-xs font-medium">Not Found</div>
+            <div className="text-warn text-xs font-medium">Not Found</div>
           </div>
           <div className="text-muted-foreground text-xs font-mono">
             UID: {uid}
@@ -265,8 +265,8 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
 
         {/* Additional Status Messages */}
         {Number(attestation.revocationTime) > 0 && (
-          <div className="border border-red-200 bg-red-50 p-3 rounded-md">
-            <div className="text-red-700 text-sm font-medium">
+          <div className="border border-error bg-error-soft p-3 rounded-md">
+            <div className="text-error text-sm font-medium">
               ⚠️ Revoked: {formatTimestamp(Number(attestation.revocationTime))}
             </div>
           </div>
@@ -275,8 +275,8 @@ export function AttestationCard({ uid, onClick }: AttestationCardProps) {
         {Number(attestation.expirationTime) > 0 &&
           Number(attestation.expirationTime) <
             Math.floor(Date.now() / 1000) && (
-            <div className="border border-yellow-200 bg-yellow-50 p-3 rounded-md">
-              <div className="text-yellow-700 text-sm font-medium">
+            <div className="border border-warn bg-warn-soft p-3 rounded-md">
+              <div className="text-warn text-sm font-medium">
                 ⚠️ Expired:{' '}
                 {formatTimestamp(Number(attestation.expirationTime))}
               </div>

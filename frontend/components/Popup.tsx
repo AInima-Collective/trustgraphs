@@ -91,6 +91,17 @@ export const Popup = ({
   const open = trigger.type === 'manual' ? trigger.open : _open
   const setOpen = trigger.type === 'manual' ? trigger.setOpen : _setOpen
 
+  // The portal is gated on a mounted flag rather than on `typeof document`.
+  // A `typeof document !== 'undefined'` branch renders nothing on the server
+  // and a whole subtree on the very first client render, which is a hydration
+  // mismatch by construction. React tolerated it while the portal happened to
+  // be the last child of the nav — a trailing extra node is cheap to patch —
+  // but the moment anything rendered after it (the theme toggle), the child
+  // lists diverged mid-run and the whole nav got thrown away and rebuilt.
+  // `mounted` starts false on both sides, so the first render agrees.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   // On route change, close the popup.
   const pathname = usePathname()
   useEffect(() => {
@@ -234,13 +245,13 @@ export const Popup = ({
       </div>
 
       {/* Popup */}
-      {typeof document !== 'undefined' &&
+      {mounted &&
         createPortal(
           <Card
             type="popover"
             size="md"
             className={cn(
-              'fixed z-50 flex flex-col transition-all !overflow-hidden shadow-md',
+              'fixed z-50 flex flex-col overflow-hidden! border border-hairline-strong transition-all',
               // Prevent initial flash on page load by hiding until first open.
               !openedOnce.current && 'hidden',
               // Open.

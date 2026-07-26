@@ -96,9 +96,9 @@ export function ProposalCard({
   const getVoteTypeStyles = (voteType: VoteType) => {
     switch (voteType) {
       case VoteType.Yes:
-        return 'border-green-600/50 bg-green-50 text-green-700'
+        return 'border-success/50 bg-success-soft text-success'
       case VoteType.No:
-        return 'border-red-600/50 bg-red-50 text-red-700'
+        return 'border-error/50 bg-error-soft text-error'
       case VoteType.Abstain:
         return 'border-border bg-muted text-muted-foreground'
       default:
@@ -153,13 +153,13 @@ export function ProposalCard({
 
   const getStatusStyles = () => {
     if (isActive) {
-      return 'border-green-600/50 bg-green-50 text-green-700'
+      return 'border-success/50 bg-success-soft text-success'
     }
     if (state === ProposalState.Passed) {
-      return 'border-blue-600/50 bg-blue-50 text-blue-700'
+      return 'border-hairline-strong bg-surface-2 text-text'
     }
     if (state === ProposalState.Executed) {
-      return 'border-brand/50 bg-brand/10 text-brand'
+      return 'border-hairline-strong bg-surface-2 text-text'
     }
     return 'border-border bg-muted text-muted-foreground'
   }
@@ -195,8 +195,8 @@ export function ProposalCard({
 
       {/* Success Message */}
       {successMessage && (
-        <div className="border border-green-600/50 bg-green-50 p-4 rounded-md">
-          <div className="text-green-700 text-sm">✓ {successMessage}</div>
+        <div className="border border-success/50 bg-success-soft p-4 rounded-md">
+          <div className="text-success text-sm">✓ {successMessage}</div>
         </div>
       )}
 
@@ -262,9 +262,9 @@ export function ProposalCard({
                 {proposal.yesVotes.toString()}
               </span>
             </div>
-            <div className="bg-muted h-2 rounded-full overflow-hidden">
+            <div className="h-2 overflow-hidden bg-surface-2">
               <div
-                className="bg-green-600 h-2 transition-all"
+                className="bg-success h-2 transition-all"
                 style={{ width: `${forPercentage}%` }}
               />
             </div>
@@ -281,7 +281,7 @@ export function ProposalCard({
             </div>
             <div className="bg-muted h-2 rounded-full overflow-hidden">
               <div
-                className="bg-red-600 h-2 transition-all"
+                className="bg-error h-2 transition-all"
                 style={{ width: `${againstPercentage}%` }}
               />
             </div>
@@ -298,7 +298,7 @@ export function ProposalCard({
             </div>
             <div className="bg-muted h-2 rounded-full overflow-hidden">
               <div
-                className="bg-gray-500 h-2 transition-all"
+                className="bg-text-subtle h-2 transition-all"
                 style={{ width: `${abstainPercentage}%` }}
               />
             </div>

@@ -120,11 +120,11 @@ export const RespondPage = ({ network }: { network: ContributionsNetwork }) => {
                   </div>
                   <div className="text-sm">
                     {me.response === 'accept' ? (
-                      <span className="text-green-700">
+                      <span className="text-success">
                         Accepted: you&apos;ll receive your share
                       </span>
                     ) : me.response === 'reject' ? (
-                      <span className="text-red-700">
+                      <span className="text-error">
                         Declined: your share is removed
                       </span>
                     ) : isOwnClaim ? (
@@ -133,7 +133,7 @@ export const RespondPage = ({ network }: { network: ContributionsNetwork }) => {
                         unless you decline
                       </span>
                     ) : (
-                      <span className="text-yellow-700">
+                      <span className="text-warn">
                         No answer yet: your share counts at half weight until
                         you accept
                       </span>

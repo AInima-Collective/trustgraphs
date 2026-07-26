@@ -13,6 +13,7 @@ import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
+import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { contributionsQueries } from '@/lib/contributions-api'
@@ -340,7 +341,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
         const alreadyClaimed = claimedByDistribution.get(row.id)
         if (alreadyClaimed && alreadyClaimed > 0n) {
           return (
-            <span className="flex items-center gap-1 text-green-600">
+            <span className="flex items-center gap-1 text-success">
               <Check className="w-4 h-4" />
               Claimed {formatToken(alreadyClaimed)}
             </span>
@@ -392,21 +393,21 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
       <ContributionsNav network={network} />
 
       {isPaused && (
-        <Card type="outline" size="lg" className="border-yellow-500">
-          <p className="text-sm text-yellow-700">
+        <Card type="outline" size="lg" className="border-warn">
+          <p className="text-sm text-warn">
             Payouts are paused right now. Funding and claiming will resume when
             the operator unpauses the contract.
           </p>
         </Card>
       )}
 
-      {error && <p className="text-sm text-red-700">{error}</p>}
+      {error && <p className="text-sm text-error">{error}</p>}
 
       {/* Fund the round payout */}
       {isConnected && !isPaused && (
         <Card type="accent" size="lg" className="space-y-4 max-w-xl">
           <div>
-            <h2 className="font-bold text-lg">FUND THE ROUND PAYOUT</h2>
+            <SectionHeading>Fund the round payout</SectionHeading>
             <p className="text-sm text-muted-foreground mt-1">
               Deposit {tokenSymbol} against the round&apos;s latest proven
               scores. The deposit is locked to the exact score table shown
@@ -465,7 +466,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
               />
             </p>
           ) : (
-            <p className="text-xs text-yellow-700">
+            <p className="text-xs text-warn">
               Funding is disabled until the round&apos;s first proven score
               table lands on-chain.
             </p>
@@ -484,7 +485,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
 
       {/* Distributions table */}
       <div className="space-y-4">
-        <h2 className="font-bold">ROUND PAYOUTS</h2>
+        <SectionHeading>Round payouts</SectionHeading>
         {isLoadingDistributions ? (
           <p className="text-sm text-muted-foreground">Loading payouts...</p>
         ) : distributions.length === 0 ? (

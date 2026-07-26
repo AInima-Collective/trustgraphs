@@ -51,7 +51,7 @@ export function VotingPowerCard({
             </div>
             <div
               className={`text-sm font-medium ${
-                hasVotingPower ? 'text-green-700' : 'text-muted-foreground'
+                hasVotingPower ? 'text-success' : 'text-muted-foreground'
               }`}
             >
               {hasVotingPower
@@ -69,18 +69,16 @@ export function VotingPowerCard({
                 </span>
                 <span
                   className={`font-medium ${
-                    canCreateProposal
-                      ? 'text-green-700'
-                      : 'text-muted-foreground'
+                    canCreateProposal ? 'text-success' : 'text-muted-foreground'
                   }`}
                 >
                   {canCreateProposal ? '✓ Met' : '✗ Not met'}
                 </span>
               </div>
-              <div className="bg-muted h-2 rounded-full overflow-hidden">
+              <div className="h-2 overflow-hidden bg-surface-2">
                 <div
-                  className={`h-2 rounded-full transition-all ${
-                    canCreateProposal ? 'bg-green-600' : 'bg-gray-400'
+                  className={`h-2 transition-all ${
+                    canCreateProposal ? 'bg-success' : 'bg-text-subtle'
                   }`}
                   style={{
                     width: `${Math.min(

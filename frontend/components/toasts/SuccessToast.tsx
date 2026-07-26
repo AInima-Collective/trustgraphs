@@ -12,7 +12,7 @@ export const SuccessToast = (props: SuccessToastProps) => (
     preMessage={
       <CheckCircle2
         size={20}
-        className="text-green-600 dark:text-green-400 flex-shrink-0"
+        className="text-success dark:text-success flex-shrink-0"
       />
     }
     {...props}

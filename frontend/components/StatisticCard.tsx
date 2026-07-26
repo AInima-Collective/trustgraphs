@@ -6,7 +6,9 @@ import { cn } from '@/lib/utils'
 import { Card } from './Card'
 import { InfoTooltip } from './InfoTooltip'
 
-const textClassNames = 'text-3xl font-bold'
+// The number is the point of this card, so it gets the display size. Tabular
+// figures keep a row of cards from twitching as values land.
+const textClassNames = 'text-3xl tabular-nums'
 
 export const StatisticCard = ({
   title,
@@ -22,9 +24,9 @@ export const StatisticCard = ({
   href?: string
 }) => {
   return (
-    <Card type="accent" size="md" className="flex flex-col gap-2">
+    <Card type="primary" size="md" className="flex flex-col gap-3">
       <div className="flex flex-row items-center gap-2">
-        <p className="text-sm">{title}</p>
+        <p className="tg-label">{title}</p>
         <InfoTooltip title={tooltip} />
       </div>
       {children ? (
@@ -34,7 +36,7 @@ export const StatisticCard = ({
           href={href}
           className={cn(
             textClassNames,
-            'inline-flex items-center gap-2 transition-colors hover:text-brand'
+            'inline-flex items-center gap-2 transition-colors hover:text-text-muted'
           )}
           target="_blank"
           rel="noopener noreferrer"

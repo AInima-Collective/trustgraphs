@@ -21,7 +21,7 @@ export const InfoTooltip = ({
     <Tooltip
       title={title}
       className={cn(
-        'inline-flex items-center justify-center rounded-full p-0.5 transition-colors',
+        'inline-flex items-center justify-center p-0.5 transition-colors',
         'text-[#a1a1a1] hover:text-[#818181] focus:text-[#818181]',
         'focus:outline-none focus:ring-1 focus:ring-[#a1a1a1] focus:ring-offset-1',
         className

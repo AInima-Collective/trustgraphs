@@ -17,7 +17,7 @@ export const CatalogUnavailable = ({
   networkId?: string
 }) => (
   <div className="flex flex-col justify-center items-center pt-12 gap-4 text-center">
-    <h1 className="text-2xl font-bold">NETWORK DIRECTORY UNAVAILABLE</h1>
+    <h1>Network directory unavailable</h1>
     <p className="text-sm max-w-prose">
       We could not reach the service that lists networks, so we cannot tell
       whether{' '}

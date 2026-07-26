@@ -16,6 +16,7 @@ import { Markdown } from '@/components/Markdown'
 import { NetworkFeatures } from '@/components/NetworkFeatures'
 import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
+import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
@@ -142,7 +143,7 @@ export const NetworkPage = () => {
           <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
             {link.prefix && <span>{link.prefix}</span>}
             <a
-              className="inline-flex flex-row items-center gap-1.5 text-brand hover:text-brand/80 transition-colors underline"
+              className="inline-flex flex-row items-center gap-1.5 text-text underline underline-offset-4 transition-colors hover:text-text-muted"
               href={link.href}
               target="_blank"
               rel="noopener noreferrer"
@@ -158,7 +159,7 @@ export const NetworkPage = () => {
 
       <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-start gap-12">
         <div className="flex flex-col items-start gap-4">
-          <h2 className="-mb-3 font-bold">ABOUT NETWORK</h2>
+          <SectionHeading>About network</SectionHeading>
           <Markdown>{about}</Markdown>
 
           {callToAction && (
@@ -185,7 +186,7 @@ export const NetworkPage = () => {
             </ButtonLink>
           )}
 
-          <h2 className="mt-2 -mb-3 font-bold">CRITERIA</h2>
+          <SectionHeading className="mt-2">Criteria</SectionHeading>
           <Markdown>{criteria}</Markdown>
 
           <div className="flex flex-row gap-3 mt-3 flex-wrap">
@@ -201,7 +202,7 @@ export const NetworkPage = () => {
       </div>
 
       <div className="border-y border-border py-12 space-y-6">
-        <h2 className="font-bold">NETWORK STATISTICS</h2>
+        <SectionHeading>Network statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
             title="TOTAL MEMBERS"
@@ -247,7 +248,7 @@ export const NetworkPage = () => {
 
       <div className="space-y-6">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">
-          <h2 className="font-bold">NETWORK MEMBERS</h2>
+          <SectionHeading>Network members</SectionHeading>
 
           {!isLoading && (
             <div className="flex flex-row items-stretch gap-2 flex-wrap">
@@ -289,10 +290,8 @@ export const NetworkPage = () => {
         {/* Loading State */}
         {isLoading && (
           <div className="text-center py-8">
-            <div className="text-sm text-gray-900">
-              ◉ LOADING NETWORK DATA ◉
-            </div>
-            <div className="text-xs mt-2 text-gray-600">
+            <div className="text-sm text-text">◉ LOADING NETWORK DATA ◉</div>
+            <div className="text-xs mt-2 text-text-muted">
               Fetching latest TrustGraph data...
             </div>
           </div>
@@ -300,8 +299,8 @@ export const NetworkPage = () => {
 
         {/* Error State */}
         {error && (
-          <div className="border border-red-500 bg-red-50 p-4 rounded-sm">
-            <div className="error-text text-sm text-red-700">⚠️ {error}</div>
+          <div className="border border-error bg-error-soft p-4 rounded-sm">
+            <div className="error-text text-sm text-error">⚠️ {error}</div>
             <Button onClick={refresh} className="mt-3 !px-4 !py-2">
               <span className="text-xs">RETRY</span>
             </Button>
@@ -331,9 +330,9 @@ export const NetworkPage = () => {
               getRowKey={(row) => row.account}
             />
           ) : (
-            <div className="text-center py-8 border border-gray-300 bg-white rounded-sm shadow-sm">
-              <div className="text-sm text-gray-600">NO MEMBERS FOUND</div>
-              <div className="text-xs mt-2 text-gray-700">
+            <div className="border border-border bg-surface py-8 text-center">
+              <div className="text-sm text-text-muted">NO MEMBERS FOUND</div>
+              <div className="text-xs mt-2 text-text-muted">
                 TRY ADJUSTING YOUR FILTER SETTINGS
               </div>
             </div>
@@ -342,10 +341,10 @@ export const NetworkPage = () => {
         {/* No Data Message */}
         {!isLoading && (!networkData || networkData.length === 0) && !error && (
           <Card type="primary" size="lg" className="text-center py-8">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-text-muted">
               NO NETWORK MEMBERS FOUND
             </div>
-            <div className="text-xs mt-2 text-gray-700">
+            <div className="text-xs mt-2 text-text-muted">
               CREATE ATTESTATIONS TO START BUILDING THE NETWORK
             </div>
           </Card>

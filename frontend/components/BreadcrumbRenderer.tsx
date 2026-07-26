@@ -44,7 +44,7 @@ export const BreadcrumbRenderer = ({
     <Link
       href={breadcrumb.route}
       className={cn(
-        'flex items-center gap-2 text-sm text-brand hover:text-brand/80 transition-colors',
+        'flex items-center gap-2 text-sm text-text-muted transition-colors hover:text-text',
         className
       )}
     >

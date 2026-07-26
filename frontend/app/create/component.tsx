@@ -156,7 +156,7 @@ export const CreateNetworkWizard = () => {
   if (!isFactoryAvailable()) {
     return (
       <div className="space-y-4">
-        <h1 className="text-lg">CREATE A NETWORK</h1>
+        <h1 className="text-2xl">Create a network</h1>
         <Card type="outline" size="md">
           <p className="text-sm">
             Networks cannot be created on {getTargetChainConfig().name} yet.
@@ -171,7 +171,7 @@ export const CreateNetworkWizard = () => {
   return (
     <div className="space-y-8 max-w-3xl">
       <div className="space-y-4">
-        <h1 className="text-lg">CREATE A NETWORK</h1>
+        <h1 className="text-2xl">Create a network</h1>
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
           {STEPS.map((label, index) => (

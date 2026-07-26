@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ButtonLink } from '@/components/Button'
 import { Markdown } from '@/components/Markdown'
+import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useDidHandle } from '@/hooks/useDidHandle'
@@ -23,7 +24,7 @@ const NodeLabel = ({ row }: { row: ScoreRow }) => {
 
   if (!row.did) {
     return (
-      <span className="font-mono text-gray-500" title={row.nodeId}>
+      <span className="font-mono text-text-muted" title={row.nodeId}>
         {shortNodeId(row.nodeId)}
       </span>
     )
@@ -31,7 +32,9 @@ const NodeLabel = ({ row }: { row: ScoreRow }) => {
   return (
     <span title={row.did}>
       {handle ?? row.did}
-      {handle && <span className="text-gray-500 text-xs ml-2">{row.did}</span>}
+      {handle && (
+        <span className="text-text-muted text-xs ml-2">{row.did}</span>
+      )}
     </span>
   )
 }
@@ -110,7 +113,7 @@ export const HypercertsNetworkPage = ({
           <div className="space-y-2">
             <h1 className="text-2xl font-bold">{name.toUpperCase()}</h1>
             {link && (
-              <p className="text-sm text-gray-800">
+              <p className="text-sm text-text">
                 {link.prefix}{' '}
                 <a
                   href={link.href}
@@ -140,7 +143,7 @@ export const HypercertsNetworkPage = ({
 
       {/* Statistics */}
       <div className="border-y border-border py-12 space-y-6">
-        <h2 className="font-bold">INSTANCE STATISTICS</h2>
+        <SectionHeading>Instance statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
             title="NODES SCORED"
@@ -175,13 +178,13 @@ export const HypercertsNetworkPage = ({
 
       {/* Scores */}
       <div className="space-y-6">
-        <h2 className="font-bold">PROVEN SCORES</h2>
+        <SectionHeading>Proven scores</SectionHeading>
         {error ? (
-          <p className="text-sm text-red-700">
+          <p className="text-sm text-error">
             Failed to load scores: {String(error)}
           </p>
         ) : !isLoading && rows.length === 0 ? (
-          <p className="text-sm text-gray-800">
+          <p className="text-sm text-text">
             No proven root indexed yet for this instance. Scores appear after
             the first successful <code>submitProof</code> is ingested.
           </p>

@@ -7,35 +7,47 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * Buttons are machine labels: uppercase, tracked out, mono, square. That is a
+ * deliberate register shift away from sentence-case chrome — a control should
+ * not look like prose. Long labels survive it ("VIEW PILOT NETWORK: DEMO
+ * CO-OP" reads as intentional); anything that genuinely must stay in sentence
+ * case can pass `normal-case` through className.
+ *
+ * `brand` is kept as an alias of `default` rather than deleted, because the
+ * blue it used to paint no longer exists and ~a dozen call-sites still ask for
+ * it. Both now render ink.
+ */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-1 border-transparent',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap border text-xs uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80',
-        destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline:
-          'border-primary bg-background hover:bg-accent hover:text-accent-foreground',
+          'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
         brand:
-          'bg-brand text-primary-foreground hover:bg-brand/90 active:bg-brand/80',
+          'border-ink bg-ink text-ink-fg hover:opacity-90 active:opacity-80',
+        destructive:
+          'border-error bg-error text-ink-fg hover:opacity-90 active:opacity-80',
+        outline:
+          'border-hairline-strong bg-transparent text-text hover:bg-surface-2',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-accent/80 active:bg-accent',
+          'border-transparent bg-surface-2 text-text hover:bg-surface-3',
+        tertiary:
+          'border-transparent bg-surface-3 text-text hover:bg-surface-2',
         ghost:
-          'bg-transparent text-foreground hover:bg-muted active:bg-secondary',
+          'border-transparent bg-transparent text-text-muted hover:bg-surface-2 hover:text-text',
         ghostDestructive:
-          'bg-transparent text-destructive hover:bg-destructive/10 active:bg-destructive/15',
-        link: 'text-primary underline-offset-4 hover:underline',
-        tertiary: 'bg-tertiary text-tertiary-foreground hover:bg-tertiary/80',
+          'border-transparent bg-transparent text-error hover:bg-error-soft',
+        link: 'border-transparent normal-case tracking-normal text-text underline-offset-4 hover:underline',
         custom: '',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        xs: 'px-2 py-1 text-xs',
-        sm: 'h-9 px-3',
-        lg: 'h-11 px-8',
-        icon: 'h-10 w-10',
+        default: 'h-9 px-4',
+        xs: 'h-6 px-2 text-[10px]',
+        sm: 'h-8 px-3',
+        lg: 'h-11 px-6 text-sm',
+        icon: 'h-9 w-9',
       },
     },
     defaultVariants: {

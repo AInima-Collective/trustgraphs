@@ -11,6 +11,35 @@ type Props = {
   onSelect: (voteType: VoteType) => void
 }
 
+/**
+ * Three exclusive choices. Unselected is a hairline in the option's own
+ * colour; selected fills solid. The ring-plus-tint treatment this replaced
+ * made all three look pre-selected, so nothing signalled the actual choice.
+ *
+ * Abstain reads neutral on purpose — it is the absence of a position, not a
+ * third position, so it never takes a hue.
+ */
+const OPTIONS: { vote: VoteType; label: string; on: string; off: string }[] = [
+  {
+    vote: VoteType.Yes,
+    label: 'Vote for',
+    on: 'border-success bg-success text-ink-fg hover:opacity-90',
+    off: 'border-success/50 bg-transparent text-success hover:bg-success-soft',
+  },
+  {
+    vote: VoteType.No,
+    label: 'Vote against',
+    on: 'border-error bg-error text-ink-fg hover:opacity-90',
+    off: 'border-error/50 bg-transparent text-error hover:bg-error-soft',
+  },
+  {
+    vote: VoteType.Abstain,
+    label: 'Abstain',
+    on: 'border-ink bg-ink text-ink-fg hover:opacity-90',
+    off: 'border-border bg-transparent text-text-muted hover:bg-surface-2 hover:text-text',
+  },
+]
+
 export function VoteButtons({
   disabled = false,
   isLoading = false,
@@ -20,49 +49,25 @@ export function VoteButtons({
   const baseDisabled = disabled || isLoading
 
   return (
-    <div className="flex flex-col sm:flex-row gap-3">
-      <Button
-        onClick={() => onSelect(VoteType.Yes)}
-        disabled={baseDisabled}
-        type="button"
-        variant="custom"
-        className={cn(
-          'grow !px-4 !py-2 ring-1',
-          selected === VoteType.Yes
-            ? '!bg-green-600 ring-green-600 !text-green-100 hover:opacity-90 transition-all'
-            : '!bg-green-50 !text-green-700 ring-green-300'
-        )}
-      >
-        <span className="text-xs">VOTE FOR</span>
-      </Button>
-      <Button
-        onClick={() => onSelect(VoteType.No)}
-        disabled={baseDisabled}
-        type="button"
-        variant="custom"
-        className={cn(
-          'grow !px-4 !py-2 ring-1',
-          selected === VoteType.No
-            ? '!bg-red-600 ring-red-600 !text-red-100 hover:opacity-90 transition-all'
-            : '!bg-red-50 !text-red-700 ring-red-300'
-        )}
-      >
-        <span className="text-xs">VOTE AGAINST</span>
-      </Button>
-      <Button
-        onClick={() => onSelect(VoteType.Abstain)}
-        disabled={baseDisabled}
-        type="button"
-        variant="custom"
-        className={cn(
-          'grow !px-4 !py-2 ring-1',
-          selected === VoteType.Abstain
-            ? '!bg-gray-700 ring-gray-700 !text-gray-100 hover:opacity-90 transition-all'
-            : '!bg-gray-50 !text-gray-700 ring-gray-300'
-        )}
-      >
-        <span className="text-xs">ABSTAIN</span>
-      </Button>
+    <div
+      role="radiogroup"
+      aria-label="Cast a vote"
+      className="flex flex-col gap-2 sm:flex-row"
+    >
+      {OPTIONS.map(({ vote, label, on, off }) => (
+        <Button
+          key={label}
+          onClick={() => onSelect(vote)}
+          disabled={baseDisabled}
+          type="button"
+          role="radio"
+          aria-checked={selected === vote}
+          variant="custom"
+          className={cn('grow transition-colors', selected === vote ? on : off)}
+        >
+          {label}
+        </Button>
+      ))}
     </div>
   )
 }

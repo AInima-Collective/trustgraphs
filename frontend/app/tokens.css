@@ -1,0 +1,258 @@
+/*
+ * TrustGraph design tokens.
+ *
+ * ── The one rule ────────────────────────────────────────────────────────────
+ * There is no brand hue. `--accent` is the text colour itself, so "accent"
+ * means *inversion* — solid ink on paper, solid paper on ink. Hue survives in
+ * exactly one place: the semantic triad (success / warn / error) and the graph
+ * edge states that mirror it, and even there it is pulled well below full
+ * chroma. Colour in this UI means the protocol is telling you something.
+ *
+ * The retired `--brand: #1a709e` is kept as an alias of `--accent` so any
+ * straggling `bg-brand` call-site goes monochrome instead of going missing.
+ *
+ * ── Two axes are live-switchable from /lab ──────────────────────────────────
+ *   [data-theme]  dark | light          (dark is the default — see globals.css)
+ *   [data-type]   instrument | cormorant | garamond | spectral | newsreader
+ *                 | mono
+ * Both are set on <html>: [data-theme] by next-themes, [data-type] by the boot
+ * script in layout.tsx and by lib/labTheme.ts. Defaults live in the base
+ * blocks below, so the app renders correctly with no attribute present at all.
+ *
+ * The families themselves are loaded by next/font/google in app/layout.tsx and
+ * handed here as --font-*-src variables. Once a direction is chosen, prune
+ * layout.tsx to the one surviving serif — it is currently ~5 families of
+ * payload carried purely so the lab can compare them live.
+ */
+
+:root {
+  /* Data, labels, and every control speak mono. PaperMono is TrustGraph's own
+   * face and does not change across the [data-type] axis — only the display
+   * serif does, so a lab comparison isolates one variable. */
+  --mono-family: var(--font-paper-mono), ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace;
+
+  /* Display = headings, hero copy, pull quotes. Serif = the same family used
+   * inline for italic asides. Defaults here are overridden per [data-type]. */
+  --display-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
+
+  /* Serif faces differ wildly in x-height, stroke weight, and default fit.
+   * Each [data-type] stack retunes these three so a heading lands at the same
+   * optical size and weight regardless of which family is mounted. */
+  --display-weight: 400;
+  --display-tracking: -0.005em;
+  --display-scale: 1.12;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
+  --text-4xl: 56px;
+
+  --leading-tight: 1.15;
+  --leading-normal: 1.55;
+  --tracking-wide: 0.05em;
+  --tracking-wider: 0.12em;
+  --tracking-widest: 0.22em;
+
+  --border-width: 1px;
+  --radius: 0;
+  --transition: 120ms ease-out;
+}
+
+/* ============================================================================
+ * THEMES
+ *
+ * Both ramps are near-total grayscale with a whisper of cool in the neutrals
+ * (chroma sits around 0.003 — you cannot name the hue, you can only tell it
+ * apart from a warm gray when the two are side by side). That is TrustGraph's
+ * only deviation from the commitments ramp, which is warm-neutral.
+ *
+ * Contrast floors, measured against --bg and held deliberately:
+ *   dark  — text 15.9:1 · muted 7.6:1 · subtle 4.88:1
+ *   light — text 18.4:1 · muted 7.7:1 · subtle 4.90:1
+ * --text-subtle is the WCAG AA 4.5:1 floor and is used on 11px labels and
+ * table column headers. Do not lighten it in dark, or darken it in light.
+ * ==========================================================================*/
+
+/* `:root` carries the dark values too, so the page is never unstyled in the
+ * window before next-themes stamps the attribute. [data-theme='light'] has
+ * equal specificity and comes later in source order, so it still wins. */
+:root,
+[data-theme='dark'] {
+  --bg: #0a0b0c;
+  --surface: #111213;
+  --surface-2: #191a1c;
+  --surface-3: #222325;
+  --border: #232426;
+  --border-strong: #3a3c3f;
+
+  --text: #eceef0;
+  --text-muted: #a1a5a9;
+  --text-subtle: #7b7f83;
+
+  --accent: #eceef0;
+  --accent-fg: #0a0b0c;
+  --accent-soft: rgba(236, 238, 240, 0.08);
+
+  /* Desaturated semantic triad, dark-adjusted. All three clear 4.5:1 on --bg. */
+  --success: #6f9c7c;
+  --warn: #b09a5c;
+  --error: #c47f79;
+  --danger: #c47f79;
+
+  --success-soft: rgba(111, 156, 124, 0.11);
+  --warn-soft: rgba(176, 154, 92, 0.11);
+  --error-soft: rgba(196, 127, 121, 0.11);
+  --danger-soft: rgba(196, 127, 121, 0.11);
+
+  --focus-ring: 0 0 0 1px var(--accent);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.55);
+  /* Modal/drawer backdrop. Heavier in dark than light because the panel it
+   * sits behind is only a few steps off the page colour. */
+  --scrim: rgba(0, 0, 0, 0.72);
+
+  /* === Graph palette ===
+   * The graph is the product, so it gets the most careful ramp. Node fill is
+   * graded by PageRank mass, not by category — a heavier node is a lighter
+   * node against the dark canvas. Edges stay near-hairline so a dense graph
+   * reads as texture rather than as noise. */
+  --graph-canvas: #0a0b0c;
+  --graph-node-lo: #3f4245;
+  --graph-node-mid: #7b7f83;
+  --graph-node-hi: #eceef0;
+  --graph-node-stroke: #0a0b0c;
+  --graph-node-selected: #eceef0;
+  --graph-edge: #34363a;
+  --graph-edge-strong: #6a6e72;
+  --graph-edge-active: #eceef0;
+  --graph-edge-revoked: #c47f79;
+  --graph-label: #a1a5a9;
+  --graph-label-hi: #eceef0;
+  --graph-dim: #1a1b1d;
+}
+
+[data-theme='light'] {
+  --bg: #f7f8f8;
+  --surface: #ffffff;
+  --surface-2: #f0f1f2;
+  --surface-3: #e7e8ea;
+  --border: #e2e4e6;
+  --border-strong: #c3c6c9;
+
+  --text: #0b0c0d;
+  --text-muted: #4f5356;
+  --text-subtle: #696d71;
+
+  --accent: #0b0c0d;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(11, 12, 13, 0.06);
+
+  /* Desaturated semantic triad. All three clear 4.5:1 on --bg. */
+  --success: #3f6b4c;
+  --warn: #7a6428;
+  --error: #8f3a35;
+  --danger: #8f3a35;
+
+  --success-soft: rgba(63, 107, 76, 0.09);
+  --warn-soft: rgba(122, 100, 40, 0.09);
+  --error-soft: rgba(143, 58, 53, 0.09);
+  --danger-soft: rgba(143, 58, 53, 0.09);
+
+  --focus-ring: 0 0 0 1px var(--accent);
+  --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --scrim: rgba(0, 0, 0, 0.45);
+
+  /* Mirror of the dark graph: mass still reads by value, but inverted — a
+   * heavier node is a darker node against paper. */
+  --graph-canvas: #f7f8f8;
+  --graph-node-lo: #c5c8cb;
+  --graph-node-mid: #8a8e92;
+  --graph-node-hi: #0b0c0d;
+  --graph-node-stroke: #ffffff;
+  --graph-node-selected: #0b0c0d;
+  --graph-edge: #d3d6d9;
+  --graph-edge-strong: #92969a;
+  --graph-edge-active: #0b0c0d;
+  --graph-edge-revoked: #8f3a35;
+  --graph-label: #4f5356;
+  --graph-label-hi: #0b0c0d;
+  --graph-dim: #e7e8ea;
+}
+
+/* ============================================================================
+ * TYPE STACKS — [data-type] on <html>.
+ *
+ * All six keep PaperMono for data, labels, and controls; they differ only in
+ * which serif carries the display voice. --display-scale compensates for
+ * x-height (Garamond and Cormorant are small on the body, so they get a size
+ * bump); --display-weight and --display-tracking compensate for stroke and fit.
+ *
+ * 'instrument' is the default and is also declared in :root above.
+ * ==========================================================================*/
+
+/* INSTRUMENT SERIF — single weight, very high stroke contrast, tight fit.
+ * The most "book cover" of the set. No bold available; size does the work. */
+[data-type='instrument'] {
+  --display-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
+  --display-weight: 400;
+  --display-tracking: -0.005em;
+  --display-scale: 1.12;
+}
+
+/* CORMORANT GARAMOND — extreme contrast, very light stems, very small
+ * x-height. The thinnest and most severe; pushes furthest toward the
+ * Urbanomic look but is fragile below ~20px, so the scale bump is largest. */
+[data-type='cormorant'] {
+  --display-family: var(--font-cormorant), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-cormorant), 'Iowan Old Style', Georgia, serif;
+  --display-weight: 500;
+  --display-tracking: 0;
+  --display-scale: 1.24;
+}
+
+/* EB GARAMOND — old-style, small x-height, humanist. The printed-grimoire
+ * register: oldest voice in the set, needs the second-most compensation. */
+[data-type='garamond'] {
+  --display-family: var(--font-garamond), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-garamond), 'Iowan Old Style', Georgia, serif;
+  --display-weight: 500;
+  --display-tracking: -0.005em;
+  --display-scale: 1.16;
+}
+
+/* SPECTRAL — sturdier, lower contrast, engineered for screens. The safest of
+ * the five: holds up at paragraph length and at small sizes. */
+[data-type='spectral'] {
+  --display-family: var(--font-spectral), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-spectral), 'Iowan Old Style', Georgia, serif;
+  --display-weight: 300;
+  --display-tracking: -0.01em;
+  --display-scale: 1;
+}
+
+/* NEWSREADER — variable weight + optical size, generous italic. Reads as a
+ * text face rather than a display face. This is what commitments ships, so
+ * selecting it maximises sibling-ness between the two products. */
+[data-type='newsreader'] {
+  --display-family: var(--font-newsreader), 'Iowan Old Style', Georgia, serif;
+  --serif-family: var(--font-newsreader), 'Iowan Old Style', Georgia, serif;
+  --display-weight: 400;
+  --display-tracking: -0.015em;
+  --display-scale: 1;
+}
+
+/* MONO — the control group. No serif anywhere; this is what TrustGraph looked
+ * like before the overhaul, so a side-by-side is one keystroke away rather
+ * than a git stash. */
+[data-type='mono'] {
+  --display-family: var(--mono-family);
+  --serif-family: var(--mono-family);
+  --display-weight: 400;
+  --display-tracking: -0.02em;
+  --display-scale: 0.86;
+}

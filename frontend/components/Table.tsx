@@ -135,12 +135,12 @@ export function Table<T>({
     if (!column.sortable) return null
 
     if (sortColumn !== column.key) {
-      return <span className="text-gray-400 ml-1">↕</span>
+      return <span className="ml-1 text-text-subtle">↕</span>
     }
     return sortDirection === 'asc' ? (
-      <span className="text-gray-900 ml-1">↑</span>
+      <span className="ml-1 text-text">↑</span>
     ) : (
-      <span className="text-gray-900 ml-1">↓</span>
+      <span className="ml-1 text-text">↓</span>
     )
   }
 
@@ -161,16 +161,18 @@ export function Table<T>({
   }
 
   // Base cell classes for consistent styling
+  // Rows are ruled, not filled. The old treatment gave every row its own
+  // rounded grey slab, which turned a dense list into a stack of buttons and
+  // made the column grid impossible to read down.
   const baseCellClasses = cn(
-    onRowClick
-      ? 'cursor-pointer transition-colors bg-accent/70 group-hover/row:bg-accent'
-      : 'bg-accent/70',
+    'border-b border-border',
+    onRowClick && 'cursor-pointer transition-colors',
     cellClassName
   )
 
   return (
     <div className={cn('w-full min-w-0 grow overflow-x-auto', className)}>
-      <table className="border-separate border-spacing-y-2 w-full h-full">
+      <table className="h-full w-full border-collapse">
         <thead>
           <tr>
             {columns.map((column) => {
@@ -178,17 +180,21 @@ export function Table<T>({
                 <th
                   key={column.key}
                   className={cn(
-                    'text-left px-4 py-2 text-xs text-black transition-colors select-none',
-                    column.sortable && 'cursor-pointer hover:text-gray-900',
+                    'select-none border-b border-hairline-strong px-3 py-2 text-left text-xs font-normal uppercase tracking-wider text-text-subtle transition-colors',
+                    column.sortable && 'cursor-pointer hover:text-text',
                     column.headerClassName
                   )}
                   onClick={() => handleSort(column)}
                 >
-                  <div className="flex items-center gap-1">
+                  {/* inline-flex, not flex: a block-level flex container fills
+                   * the cell and ignores the th's text-align, so a column
+                   * declaring `text-right` in headerClassName would keep its
+                   * header stuck on the left while its values moved right. */}
+                  <span className="inline-flex items-center gap-1 align-middle">
                     <span>{column.header}</span>
                     {column.tooltip && <InfoTooltip title={column.tooltip} />}
                     {getSortIndicator(column)}
-                  </div>
+                  </span>
                 </th>
               )
             })}
@@ -200,19 +206,16 @@ export function Table<T>({
               <tr
                 key={getRowKey(row)}
                 className={cn(
-                  'group/row whitespace-nowrap',
+                  'group/row whitespace-nowrap transition-colors',
+                  onRowClick && 'hover:bg-surface-2',
                   getRowClassName(row)
                 )}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 title={onRowClick ? rowClickTitle : undefined}
               >
-                {columns.map((column, index) => {
-                  const isFirst = index === 0
-                  const isLast = index === columns.length - 1
+                {columns.map((column) => {
                   const cellClasses = cn(
-                    'p-4',
-                    isFirst && 'rounded-l-md',
-                    isLast && 'rounded-r-md',
+                    'px-3 py-3',
                     baseCellClasses,
                     rowCellClassName?.(row),
                     getCellClassName(column, row)

@@ -22,6 +22,7 @@ import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { NetworkNav } from '@/components/NetworkNav'
+import { SectionHeading } from '@/components/SectionHeading'
 import {
   Select,
   SelectContent,
@@ -562,7 +563,7 @@ export const DistributePage = () => {
 
         if (alreadyClaimed && alreadyClaimed > 0n) {
           return (
-            <span className="flex items-center gap-1 text-green-600">
+            <span className="flex items-center gap-1 text-success">
               <Check className="w-4 h-4" />
               Claimed
             </span>
@@ -636,7 +637,7 @@ export const DistributePage = () => {
 
       {/* Statistics */}
       <div className="border-y border-border py-8 space-y-6">
-        <h2 className="font-bold">DISTRIBUTION STATISTICS</h2>
+        <SectionHeading>Distribution statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
             title="TOTAL DISTRIBUTIONS"
@@ -676,7 +677,7 @@ export const DistributePage = () => {
       {isConnected && claimableSummary.totalCount > 0 && (
         <Card type="accent" size="lg" className="space-y-4 self-start">
           <div>
-            <h2 className="font-bold text-lg">CLAIM YOUR FUNDS</h2>
+            <SectionHeading>Claim your funds</SectionHeading>
             <p className="text-sm text-muted-foreground mt-1">
               You have unclaimed funds from {claimableSummary.totalCount}{' '}
               distribution{claimableSummary.totalCount > 1 ? 's' : ''}.
@@ -731,7 +732,7 @@ export const DistributePage = () => {
       {isConnected && canDistribute && !isPaused && (
         <Card type="accent" size="lg" className="space-y-6">
           <div>
-            <h2 className="font-bold text-lg">CREATE DISTRIBUTION</h2>
+            <SectionHeading>Create distribution</SectionHeading>
             <p className="text-sm text-muted-foreground mt-1">
               Fund a new distribution for network members. Funds will be
               instantly claimable by all current members at their current
@@ -796,7 +797,7 @@ export const DistributePage = () => {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm bg-red-50 dark:bg-red-950 p-3 rounded-md">
+            <div className="text-error text-sm bg-error-soft dark:bg-error-soft p-3 rounded-md">
               {error}
             </div>
           )}
@@ -836,7 +837,7 @@ export const DistributePage = () => {
                 />
               </p>
             ) : (
-              <p className="text-xs text-yellow-600">
+              <p className="text-xs text-warn">
                 Distribution is disabled because the network graph does not yet
                 exist. Once attestations are made and the graph is computed, you
                 will be able to create distributions.
@@ -870,9 +871,9 @@ export const DistributePage = () => {
         <Card
           type="outline"
           size="lg"
-          className="text-center space-y-4 border-yellow-500"
+          className="text-center space-y-4 border-warn"
         >
-          <h2 className="font-bold text-yellow-600">Contract Paused</h2>
+          <h2 className="font-bold text-warn">Contract Paused</h2>
           <p className="text-muted-foreground">
             The fund distributor contract is currently paused. Distributions and
             claims are temporarily disabled.
@@ -882,7 +883,7 @@ export const DistributePage = () => {
 
       {/* Distributions Table */}
       <div className="space-y-6">
-        <h2 className="font-bold">DISTRIBUTIONS</h2>
+        <SectionHeading>Distributions</SectionHeading>
 
         {isLoading && (
           <div className="text-center py-8">

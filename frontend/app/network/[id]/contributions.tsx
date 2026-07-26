@@ -8,6 +8,7 @@ import { Address } from '@/components/Address'
 import { ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
+import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { contributionsQueries } from '@/lib/contributions-api'
 import { ClaimView } from '@/lib/contributions-view'
@@ -73,7 +74,7 @@ const ClaimCard = ({
             <span>·</span>
             <span>{dateLabel(claim.timestamp)}</span>
             {claim.inWindow === false && (
-              <span className="text-yellow-700">
+              <span className="text-warn">
                 · Outside the round window, so it won&apos;t be funded this
                 round
               </span>
@@ -129,9 +130,9 @@ const ClaimCard = ({
                   <span
                     className={
                       contributor.response === 'accept'
-                        ? 'text-green-700'
+                        ? 'text-success'
                         : contributor.response === 'reject'
-                          ? 'text-red-700'
+                          ? 'text-error'
                           : 'text-muted-foreground'
                     }
                   >
@@ -228,7 +229,7 @@ export const ContributionsNetworkPage = ({
       <div className="space-y-4">
         <h1 className="text-3xl font-bold">{name}</h1>
         {link && (
-          <p className="text-sm text-gray-800">
+          <p className="text-sm text-text">
             {link.prefix}{' '}
             <a
               href={link.href}
@@ -284,7 +285,7 @@ export const ContributionsNetworkPage = ({
       </div>
 
       {!roundLoading && !roundAvailable && (
-        <p className="text-sm text-yellow-700">
+        <p className="text-sm text-warn">
           The round summary service isn&apos;t reachable yet, so the window,
           pool, and scores are hidden. Everything below comes straight from the
           chain.
@@ -309,7 +310,7 @@ export const ContributionsNetworkPage = ({
 
       {/* Claims */}
       <div className="space-y-4">
-        <h2 className="font-bold">CONTRIBUTIONS</h2>
+        <SectionHeading>Contributions</SectionHeading>
         {claimsLoading ? (
           <p className="text-sm text-muted-foreground">
             Loading contributions...

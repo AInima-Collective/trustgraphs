@@ -8,6 +8,7 @@ import { Hex, formatEther } from 'viem'
 import { useBalance } from 'wagmi'
 
 import { Card } from '@/components/Card'
+import { SectionHeading } from '@/components/SectionHeading'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { contributionsRoundsFor } from '@/lib/network-nav'
 import { cn } from '@/lib/utils'
@@ -93,7 +94,7 @@ export const NetworkFeatures = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="font-bold">WHAT YOU CAN DO HERE</h2>
+      <SectionHeading>What you can do here</SectionHeading>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {govModule && (

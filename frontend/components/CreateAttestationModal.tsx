@@ -262,6 +262,7 @@ export const CreateAttestationModal = ({
 
   const defaultTrigger = (
     <Tooltip
+      asChild
       title={!isConnected ? 'Connect your wallet to make attestations' : ''}
     >
       <Button
@@ -303,9 +304,9 @@ export const CreateAttestationModal = ({
       sortable: true,
       accessor: (row) => Number(row.time),
       render: (row) => (
-        <div className="text-gray-800">
+        <div className="text-text">
           <div>{row.formattedTime}</div>
-          <div className="text-xs text-gray-600">{row.formattedTimeAgo}</div>
+          <div className="text-xs text-text-muted">{row.formattedTimeAgo}</div>
         </div>
       ),
     },
@@ -456,11 +457,11 @@ export const CreateAttestationModal = ({
                                   }
                                 >
                                   {isResolvingEnsName ? (
-                                    <LoaderCircle className="w-4 h-4 text-brand animate-spin" />
+                                    <LoaderCircle className="h-4 w-4 animate-spin text-text-muted" />
                                   ) : invalidResolvedEnsName ? (
                                     <X className="w-4 h-4 text-destructive" />
                                   ) : validResolvedEnsAddress ? (
-                                    <Check className="w-4 h-4 text-brand" />
+                                    <Check className="h-4 w-4 text-success" />
                                   ) : null}
                                 </Tooltip>
                               </div>
@@ -479,7 +480,7 @@ export const CreateAttestationModal = ({
                         truncate
                         truncateEnds={[10, 8]}
                         text={resolvedEnsName.address}
-                        className="text-brand text-sm"
+                        className="text-sm text-text-muted"
                       />
                     </div>
                   )}
@@ -533,14 +534,14 @@ export const CreateAttestationModal = ({
                     truncate
                     truncateEnds={[7, 5]}
                     text={resolvedEnsName.address}
-                    className="text-brand text-sm"
+                    className="text-sm text-text-muted"
                   />
                 </div>
               )}
 
               {attestationsGivenToRecipient.length > 0 && (
-                <Card type="outline" size="sm" className="border-yellow-700">
-                  <p className="text-sm text-yellow-700">
+                <Card type="outline" size="sm" className="border-warn">
+                  <p className="text-sm text-warn">
                     <span className="font-bold">Note:</span> You may want to
                     revoke your other attestation
                     {attestationsGivenToRecipient.length > 1 ? 's' : ''} for

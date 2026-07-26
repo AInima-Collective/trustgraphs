@@ -24,6 +24,7 @@ import { Button, ButtonLink } from '@/components/Button'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { InfoTooltip } from '@/components/InfoTooltip'
+import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { Tooltip } from '@/components/Tooltip'
@@ -341,8 +342,8 @@ export const AccountProfilePage = ({
       {/* Loading State */}
       {isLoading && (
         <div className="text-center py-8">
-          <div className="text-sm text-gray-900">◉ LOADING PROFILE DATA ◉</div>
-          <div className="text-xs mt-2 text-gray-600">
+          <div className="text-sm text-text">◉ LOADING PROFILE DATA ◉</div>
+          <div className="text-xs mt-2 text-text-muted">
             Fetching account information...
           </div>
         </div>
@@ -350,8 +351,8 @@ export const AccountProfilePage = ({
 
       {/* Error State */}
       {error && (
-        <div className="border border-red-500 bg-red-50 p-4 rounded-sm">
-          <div className="error-text text-sm text-red-700">
+        <div className="border border-error bg-error-soft p-4 rounded-sm">
+          <div className="error-text text-sm text-error">
             ⚠️ {parseErrorMessage(error)}
           </div>
           <Button
@@ -385,12 +386,12 @@ export const AccountProfilePage = ({
               }}
             />
           ) : (
-            <div className="my-6 border border-yellow-500 bg-yellow-50 p-4 rounded-md">
-              <div className="text-sm text-yellow-700">
+            <div className="my-6 border border-warn bg-warn-soft p-4 rounded-md">
+              <div className="text-sm text-warn">
                 ⚠️ This account is not currently a participant in any
                 TrustNetworks.
               </div>
-              <div className="text-xs mt-1 text-yellow-600">
+              <div className="text-xs mt-1 text-warn">
                 Participate in attestations to appear in Network rankings.
               </div>
             </div>
@@ -404,7 +405,7 @@ export const AccountProfilePage = ({
             )}
           >
             <div className="space-y-6">
-              <h2 className="font-bold">STATISTICS</h2>
+              <SectionHeading>Statistics</SectionHeading>
               <div className="flex flex-row gap-4 flex-wrap">
                 <StatisticCard
                   title="NETWORKS"
@@ -517,9 +518,7 @@ export const AccountProfilePage = ({
 
             {isLoading && (
               <div className="text-center py-8">
-                <div className="text-sm text-gray-900">
-                  LOADING ATTESTATIONS
-                </div>
+                <div className="text-sm text-text">LOADING ATTESTATIONS</div>
               </div>
             )}
 
@@ -576,9 +575,7 @@ export const AccountProfilePage = ({
 
             {isLoading && (
               <div className="text-center py-8">
-                <div className="text-sm text-gray-900">
-                  LOADING ATTESTATIONS
-                </div>
+                <div className="text-sm text-text">LOADING ATTESTATIONS</div>
               </div>
             )}
 
@@ -643,7 +640,7 @@ const commonAttestationColumns = (
     render: (row) => {
       const networkName = schemaToNetwork[row.schema.toLowerCase()]
       if (!networkName) {
-        return <span className="text-gray-400 text-sm">—</span>
+        return <span className="text-text-subtle text-sm">—</span>
       }
       return (
         <Link
@@ -654,10 +651,10 @@ const commonAttestationColumns = (
           }}
           href={`/network/${networkName.id}`}
         >
-          <span className="text-sm text-muted-foreground group-hover/network:text-brand">
+          <span className="text-sm text-text-muted transition-colors group-hover/network:text-text">
             {networkName.name}
           </span>
-          <ArrowUpRight className="w-3 h-3 shrink-0 text-muted-foreground group-hover/network:text-brand" />
+          <ArrowUpRight className="h-3 w-3 shrink-0 text-text-muted transition-colors group-hover/network:text-text" />
         </Link>
       )
     },
@@ -669,7 +666,7 @@ const commonAttestationColumns = (
     sortable: true,
     accessor: (row) => Number(row.decodedData?.confidence || '0'),
     render: (row) => (
-      <div className="text-sm text-gray-900">
+      <div className="text-sm text-text">
         {formatBigNumber(row.decodedData?.confidence || '0', undefined, true)}
       </div>
     ),
@@ -697,9 +694,9 @@ const commonAttestationColumns = (
     sortable: true,
     accessor: (row) => Number(row.time),
     render: (row) => (
-      <div className="text-sm text-gray-800">
+      <div className="text-sm text-text">
         <div>{row.formattedTime}</div>
-        <div className="text-xs text-gray-600">{row.formattedTimeAgo}</div>
+        <div className="text-xs text-text-muted">{row.formattedTimeAgo}</div>
       </div>
     ),
   },

@@ -156,8 +156,8 @@ export const ContributePage = ({
       <ContributionsNav network={network} />
 
       {windowClosed && (
-        <Card type="outline" size="lg" className="border-yellow-500">
-          <p className="text-sm text-yellow-700">
+        <Card type="outline" size="lg" className="border-warn">
+          <p className="text-sm text-warn">
             The round window is closed right now. You can still submit, but
             contributions outside the window won&apos;t be funded this round.
           </p>
@@ -287,7 +287,7 @@ export const ContributePage = ({
           )
         )}
 
-        {formError && <p className="text-sm text-red-700">{formError}</p>}
+        {formError && <p className="text-sm text-error">{formError}</p>}
 
         <Button
           variant="brand"
