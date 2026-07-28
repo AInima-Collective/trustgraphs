@@ -211,13 +211,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         if (hasCheckpoints()) {
             IAttestationAccumulator.Checkpoint memory prev =
                 accumulator.getCheckpoint(accumulator.checkpointCount() - 1);
-            AnchorCheckpoint memory prevAnchor =
-                anchorCheckpoints[accumulator.checkpointCount() - 1];
+            AnchorCheckpoint memory prevAnchor = anchorCheckpoints[accumulator.checkpointCount() - 1];
             (bytes32 liveAnchorAcc, uint64 liveAnchorCount) = _liveAnchors();
             if (
                 accumulator.acc() == prev.acc && accumulator.leafCount() == prev.leafCount
-                    && liveAnchorAcc == prevAnchor.anchorAcc
-                    && liveAnchorCount == prevAnchor.anchorCount
+                    && liveAnchorAcc == prevAnchor.anchorAcc && liveAnchorCount == prevAnchor.anchorCount
             ) {
                 revert IAttestationAccumulator.NoNewInputs();
             }
