@@ -128,8 +128,14 @@ raw `bytes32 paramsHash` accepts anything (`UPGRADE_GOVERNANCE.md:91-93`):
 - params bounds: damping ∈ (0,1), trustShare ≤ 1, non-empty seed set,
   `precisionScale` = the platform constant, iteration/tolerance in the
   proven-safe envelope
-- `epochLength` floor (e.g. ≥ 1 day): bounds hosted-proving cost per
-  instance and blocks trigger-spam instances
+- `epochLength` floor (e.g. ≥ 1 day): blocks trigger-spam instances.
+  **Correction 2026-07-27:** it does *not* bound hosted-proving cost.
+  The admin holds `CONSTITUTIONAL_ROLE` from the creating transaction
+  and `setEpochLength` is constitutional, so a creator can lower their
+  own epoch immediately afterwards (`TrustGraphFactory.sol:317-319`).
+  The floor binds creation, nothing after it; ongoing cost is bounded by
+  operator policy (curated subsidy) and the vault's on-chain paid
+  cadence — `research/PROOF_SCHEDULER.md` §4.2 banner and §10.1.
 - name uniqueness per creator via the `instanceId` derivation; global
   vanity-name squatting is a curation problem, not a registry problem
 
@@ -375,8 +381,9 @@ Sustainable posture given "hosted by us initially":
 1. **Home chain** — ANSWERED 2026-07-24 (Jake): **Ethereum mainnet**.
    (EAS + the Succinct gateway are both live there. Cost consequences —
    creation tx and per-root submit gas are mainnet-priced, and the
-   public mempool forces commit-reveal on permissionless bounty claims
-   — are worked in `research/PROOF_SCHEDULER.md` §3.2/§4.3.)
+   public mempool forces an anti-theft mitigation on permissionless
+   bounty claims — are worked in `research/PROOF_SCHEDULER.md`
+   §3.2/§4.3, resolved as recipient-in-journal in its §9.1.)
 2. **Creator-as-admin default** (§2.3) — ANSWERED 2026-07-24 (Jake):
    **yes, creator holds both snapshot roles in v1**; graduation is a
    later, separate flow.

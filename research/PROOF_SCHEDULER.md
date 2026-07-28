@@ -1,6 +1,9 @@
 # Proof Scheduling & Proving Economics
 
-**Status:** research / proposal (2026-07-24). No build decision yet.
+**Status:** **BUILD DECIDED 2026-07-27** — the execution spec is [`GOAL.md`](../GOAL.md), covering
+all four phases of §6. Every question this doc raised is answered in §7, §8, and §9; §9 also
+records the three architecture decisions taken at build time, one of which **supersedes §4.3's
+commit-reveal recommendation**.
 **Depends on:** `research/INSTANCE_FACTORY.md` (instance enumeration, params-in-calldata),
 `research/UPGRADE_GOVERNANCE.md` (rotation + Lane D constraints on provers),
 `research/ZK_ARCHITECTURE.md` (journal, checkpoint model).
@@ -250,6 +253,20 @@ This is CAC: a community's first contact with TrustGraph must not be a bill. Bou
 predictable: `N_active × cost per root / month`. The floor never draws the vault —
 everything above it does; that keeps "free tier" an honest sentence.
 
+> **SUPERSEDED 2026-07-27 (Jake): curated subsidy, not a universal floor.** Two errors
+> above. (a) `N_active` is *not* bounded: the factory is permissionless, so an attacker
+> mints instances and keeps each one barely active for ~1 attestation of gas per epoch,
+> making us pay a ~600k-gas submit — roughly 4-5x gas leverage, indefinitely. (b) The
+> factory `epochLength` floor does not bound per-instance cost either: the admin holds
+> `CONSTITUTIONAL_ROLE` from the creating transaction and `setEpochLength` is
+> constitutional, so any creator can lower their own epoch immediately after creation
+> (`TrustGraphFactory.sol:317-319`). The floor binds creation, nothing after it.
+> The replacement: the hosted operator proves a **curated set**; everyone else
+> self-proves (free, permissionless, unchanged) or funds a vault. Three intervals are
+> now distinct — the factory's creation floor (anti-spam), the operator's subsidy
+> cadence (policy), and the vault's `minPaidIntervalBlocks` (the only one enforceable
+> on-chain). See §10.1.
+
 **Layer 1 — the proving vault (communities pay for more).** A per-instance prepaid gas-tank
 — the Gelato 1Balance / Chainlink Automation "upkeep balance" pattern, which is the
 proven UX for exactly this problem:
@@ -286,6 +303,11 @@ of the same operator (`OPERATOR_INSTANCES=0x…`, own `NETWORK_PRIVATE_KEY`, own
 submitter). The escape valve made runnable; also our own dogfood path.
 
 ### 4.3 The bounty front-running problem (live on mainnet from day one)
+
+> **SUPERSEDED 2026-07-27 (Jake).** The three-step ladder below (private orderflow →
+> commit-reveal → journal v3) collapses into its last rung: **recipient-in-journal is built now**,
+> commit-reveal is never built. See §9.1 for the decision and §9.2 for the payout seam it enables.
+> The analysis below stands as the reason the fix is needed at all.
 
 A naive "vault pays `msg.sender` of `submitProof`" is snipeable wherever a public mempool
 exists: the proof rides in calldata, so a watcher copies the pending tx and lands it
@@ -348,6 +370,11 @@ a correct root.
 
 ## 6. Build plan
 
+*(Phasing as researched. The executable version, with milestones, exit criteria and the §9
+architecture, is [`GOAL.md`](../GOAL.md): IF + M0 journal v3, M1 `operator-core`, M2 daemon,
+M3 lane 2, M4 vault, M5 wiring, M6 fork e2e. Phases 3 and 4 merged there, because §9.1 moved the
+rotation to the front.)*
+
 - **Phase 1 — the daemon (unblocks everything):** `zk/operator` crate, static catalog,
   trust-graph + contributions + signer handlers, Succinct network backend, request
   journal, docker-compose service, alerting. No payment code. This alone retires "a
@@ -384,8 +411,8 @@ a correct root.
 
 1. **Home chain: Ethereum mainnet** (also answers INSTANCE_FACTORY §8.1). Consequences
    folded in above: submit gas dominates per-root cost (§3.2, basefee-gating), and the
-   public mempool makes commit-reveal a v1 vault requirement rather than a later option
-   (§4.3).
+   public mempool makes a v1 anti-theft mitigation mandatory rather than a later option
+   (§4.3 — which §9.1 then resolved in favour of recipient-in-journal over commit-reveal).
 2. **Fee-schedule governance: FEE_SETTER = us for the MVP.** Moving it behind the
    operational timelock is a post-MVP hardening item; the per-instance `maxPerRoot` cap
    is what protects communities in the meantime.
@@ -394,4 +421,175 @@ a correct root.
    on any instance that exceeds the supported size band instead of silently buying a
    $90 proof. Revisit when a big atproto community actually shows up.
 
-Every question this doc raised is now decided; what remains is the build (§6).
+## 9. Decisions, round 3 (Jake, 2026-07-27) — and the architecture they force
+
+Taken while writing [`GOAL.md`](../GOAL.md). The first two change what gets built; the rest are
+consequences worked out against the code and recorded here so the build has one design to follow.
+
+### 9.1 Journal v3 now: the bounty recipient is proven, not hidden
+
+**Decision: build recipient-in-journal in this program; never build commit-reveal.**
+
+`Journal` gains an eleventh field, `recipient`, passed through the guest as a pass-through
+commitment (nothing computes from it), and `submitProof` takes it as an argument folded into the
+digest rebuild. A proof is therefore *non-fungible between claimants*: copying a pending
+transaction reproduces the original prover's recipient.
+
+Two reasons this beats §4.3's ladder:
+
+1. **The rotation is free today and contagious tomorrow.** This is the identical argument that
+   moved domain separation into the factory build (`INSTANCE_FACTORY.md` §8.6): mainnet has
+   nothing deployed, so rotating before the first mainnet instance costs zero ceremony, while
+   rotating after N live instances is a coordinated migration. The four-leg parity dance was just
+   exercised for params-schema v2; running it again is a known procedure, not a research project.
+2. **It is strictly stronger than hiding the claim.** Commit-reveal makes theft *hard to target*;
+   a proven recipient makes it *unprofitable by construction*. It also deletes an extra
+   transaction per root, the commitment/expiry contract surface, and the hosted operator's
+   private-orderflow dependency.
+
+Cost, stated honestly: one vkey rotation across all four programs (contagion — `PROGRAMS.md`
+records the measurement methodology), plus regenerating three golden vector files and the frontend
+TS port.
+
+### 9.2 The payout seam: `submitAndClaim`, not a hook, not a passive claim
+
+The vault cannot observe a root that landed through a plain `submitProof` — the submitter is in an
+event, not in storage, and `IMerkleSnapshotHook.onMerkleUpdate` receives only a `MerkleState`
+(no checkpoint id, no submitter, no recipient), so hooks cannot attribute a payout either.
+Therefore the vault *is* the submit path for anyone claiming: `submitAndClaim(instanceId, args)`
+forwards to `snapshot.submitProof(...)`, confirms `lastAppliedCheckpoint == checkpointId`, marks
+the checkpoint claimed, and pays. The snapshot address is resolved from `InstanceRegistry`, never
+from calldata, so a caller cannot point the vault at a fake snapshot that "lands" a root trivially.
+
+**The split that finishes the front-running story:** the **proving fee follows the journal's
+`recipient`**, the **gas reimbursement follows `msg.sender`**. A copier is refunded exactly the gas
+they actually burned and earns nothing else, while the party who paid the prover network keeps the
+fee. Claiming is opt-in: roots landed directly through `submitProof` are still perfectly valid,
+they simply pay nobody.
+
+### 9.3 Withdrawal notice (new guard)
+
+Vault withdrawals are request-then-wait (7 days), top-ups instant. Instant withdrawal would let a
+community rug a prover mid-proof, which is precisely the reliability the hosted service sells, and
+"check the balance, then spend a minute proving" has no atomicity otherwise. Per-instance
+authority is `MerkleSnapshot.hasRole(OPERATIONAL_ROLE, …)`, so it tracks graduation with no new
+role plumbing.
+
+### 9.4 Where the daemon's logic lives
+
+Split, rather than one crate: **`packages/operator-core`** (root workspace, alloy only, no
+sp1-sdk) holds everything that can be *wrong* — instance reconstruction lifted out of
+`instance_scan.rs`, the pure `plan(state, policy) -> Action` decision function, the rotation guard,
+the crash-safe request journal — so `cargo test --workspace` in CI covers it. **`zk/operator`**
+(detached beside `zk/prover`, where the sp1-sdk graph already lives) is a thin adapter that turns
+an `Action::Prove` into a network request. `zk/prover` gains a `[lib]` with value-returning
+`execute`/`prove` entry points, which also deletes the stdout-scraping seam
+`taskfile/instances.sh` currently relies on.
+
+### 9.5 Scope and target
+
+Full §6 (phases 1–4) as one program. Exit target is **local anvil plus a mainnet-forked anvil**
+with real Groth16 verified by the canonical SP1 gateway in forked state; deploying the hosted
+operator to mainnet (custody, PROVE funding, on-call) is a separate later GOAL.
+
+## 10. Corrections from external design review (2026-07-27)
+
+A second agent reviewed the design and `GOAL.md`. Most findings held; the ones that changed the
+design are below, together with the two claims that did not survive checking and the two problems
+the check turned up in *shipped* code. Everything here is folded into `GOAL.md`.
+
+### 10.1 Economics: curated subsidy, and where a cadence limit can actually live
+
+`epochLength` is not a cost bound after creation (see the §4.2 banner), so both the "free monthly
+root for every instance" promise and the "the floor bounds hosted cost" justification fail
+together. Resolved as **curated subsidy** (§4.2 banner). The consequence for the vault: since
+operator policy cannot bind a stranger, a funded instance needs **on-chain paid eligibility** or
+anyone can route a checkpoint through `submitAndClaim` and draw the community's funds at whatever
+rate they like. That is a per-instance `minPaidIntervalBlocks` plus `maxPerRootUsd`, replacing the
+§4.2 period/count pair — the same guard, expressed as the cadence the community is paying for.
+
+### 10.2 Journal v3 carries an instance domain too
+
+Recipient-only (§9.1) is not sufficient. `hypercerts_core::compute::Params` contains **no
+instance-unique field at all** — no accumulator, no chainId, no registry address, no schema UID —
+so two identically-configured hypercerts instances have byte-identical `paramsHash` and, anchoring
+the same heads, byte-identical journals. They accept each other's proofs today. Rather than patch
+each program's params codec, `submitProof` now derives an `instanceDomain` from `address(this)` and
+`block.chainid` and folds it into the digest, with the guest committing it as a pass-through input.
+Structural, universal, and it cannot be forgotten by a future program.
+
+### 10.3 Rotation safety: pin params per checkpoint, never the verifier
+
+"Never spend on an unlandable proof" is unachievable by re-reads alone: a creator-admin can rotate
+configuration one block after any preflight. Two changes shrink the unpreventable set instead of
+pretending it is empty. `trigger()` pins `paramsHash` into the checkpoint and `submitProof` uses
+the pinned value (unpinned ⇒ revert), which makes rotations take effect at the next boundary
+automatically — what §5.6 currently asks operators to arrange by hand. The **verifier is
+deliberately not pinned**: a verifier rotation is the response to an SP1 soundness bug (§5.5's
+design load), and pinning it would let proofs under a known-broken verifier keep landing. What
+remains unpreventable is carried by per-instance and global **loss budgets**, and the invariant is
+restated as "avoid preventable spend".
+
+### 10.4 Checkpoint minting is currently unbound (shipped-code bug)
+
+`AttestationAccumulator.checkpoint()` (`AttestationAccumulator.sol:42-52`) has no access control
+and no snapshot binding, so anyone can freeze a lane-1 instance's inputs at a block of their
+choosing, bypassing `MerkleSnapshot`'s `epochLength` gate and contradicting the
+never-prover-chosen-boundary invariant asserted at `MerkleSnapshot.sol:44-46`.
+`TrustAccumulatorMirror.sol:99-102` already implements the correct pattern. Fixed by a bind-once
+snapshot setter, which is also what makes §10.3's `UnpinnedCheckpoint` revert safe rather than a
+denial-of-service surface.
+
+### 10.5 "Zero per-instance config" was overclaimed
+
+True only for factory-minted trust-graph instances. Contributions is not in `InstanceRegistry` at
+all, hypercerts registers an opaque `paramsHash` with no params-bearing event, and
+`SignerSyncZkModule` is not discoverable from the registry in any form. Everything outside the
+factory path gets an explicit manifest entry, said plainly. Related: catalog failures are now
+**per-instance skips** — `instance_scan.rs` aborts the whole run on one mismatch, which is right
+for a one-shot human-run tool and wrong for a daemon.
+
+### 10.6 Vault mechanics
+
+Four corrections, all adopted: payouts are **pull credits** (a recipient that rejects ETH must not
+be able to revert a verified root); accounts **bind to their snapshot at first deposit** (resolving
+through the registry per call would let `OPERATOR_ROLE` redirect a funded balance); under partial
+funding the **proven fee is paid before the submitter's gas** (otherwise a copier consumes the
+remainder as gas and the prover gets nothing); and gas reimbursement is **capped and conservative,
+not exact** — `gasleft()` deltas cannot see intrinsic cost and `block.basefee` excludes the
+priority fee, so the testable property is `reimbursement <= demonstrable caller cost`. Vault
+authority moves from `OPERATIONAL_ROLE` to `CONSTITUTIONAL_ROLE`: operational is the short-lane
+params role and should not become fund custody.
+
+### 10.7 Operator: idempotency and finality are protocol states
+
+A Succinct request id cannot be journaled before the request that mints it. The journal now writes
+an **intent record with a client-side nonce** before the request and appends the id after; the
+ambiguous window resolves by backend lookup or becomes `RequestOutcomeUnknown`, surfaced to a human
+and never auto-retried. Separately, proving must **await finality** on the trigger/checkpoint
+transactions, with block hashes tracked, so a reorg cannot erase a checkpoint we already paid to
+prove.
+
+### 10.8 What did not survive the check
+
+- **"A funded community cannot get faster roots."** False: `EPOCH_FLOOR` binds creation only
+  (§4.2 banner). The recommended decoupling is right, for the opposite reason.
+- **"Require timelocked configuration for paid proving."** Rejected: it contradicts the decided
+  creator-as-admin model and would make the vault unusable for exactly the young communities it
+  exists for.
+- **"Creation bond" as the anti-spam lever.** Rejected: it reinstates the creation paywall the
+  factory deliberately removed. Curated subsidy achieves the same bound with no cost to honest
+  creators.
+
+### 10.9 Lane 2, deferred
+
+No hypercerts / lane-2 handler in this program (Jake 2026-07-27). The corrected sequencing —
+**fetch and verify → durably pin → anchor captured heads → await finality → trigger → build from
+the pinned bundle → prove** — replaces the self-contradictory version in §2.3/§5 (which says anchor
+→ trigger → fetch, and also that only already-captured heads may be anchored). Two further traps
+for whoever picks it up: `EmptyLaneAccumulator.leafCount()` is always zero, so lane-2 readiness
+must compare anchor commitments rather than leaf counts, and the vault's leafCount-derived size
+band misprices a lane-2-only program for the same reason — hence per-program band functions with
+an *unsupported ⇒ zero fee* default.
+
+Every question this doc raised is decided; what remains is the build ([`GOAL.md`](../GOAL.md)).
