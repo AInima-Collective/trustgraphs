@@ -3681,6 +3681,15 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'checkpointRecipient',
+    outputs: [{ name: 'recipient', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'epochLength',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
@@ -3826,6 +3835,13 @@ export const merkleSnapshotAbi = [
     type: 'function',
     inputs: [],
     name: 'hasAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'hasCheckpoints',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
@@ -4392,6 +4408,7 @@ export const merkleSnapshotAbi = [
     name: 'NoMerkleStateAtIndex',
   },
   { type: 'error', inputs: [], name: 'NoMerkleStates' },
+  { type: 'error', inputs: [], name: 'NoNewInputs' },
   {
     type: 'error',
     inputs: [

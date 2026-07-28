@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockAnchorRegistry} from "../mocks/MockAnchorRegistry.sol";
@@ -235,8 +236,13 @@ contract MerkleSnapshotTest is Test {
     function test_EpochLengthZeroFreeTrigger() public {
         assertEq(ms.epochLength(), 0);
         vm.roll(30);
+        accer.setState(bytes32(uint256(1)), 1);
         uint256 id0 = ms.trigger();
-        uint256 id1 = ms.trigger(); // no schedule ⇒ back-to-back allowed
+        // No schedule ⇒ back-to-back allowed, as long as something actually moved. (`trigger()`
+        // refuses a checkpoint identical to the last one across both lanes — that is what stops
+        // one proof being replayed against an unlimited run of them.)
+        accer.setState(bytes32(uint256(2)), 2);
+        uint256 id1 = ms.trigger();
         assertEq(id1, id0 + 1);
         assertEq(ms.lastTriggerBlock(), 30, "lastTriggerBlock advances even when unscheduled");
     }
@@ -253,10 +259,13 @@ contract MerkleSnapshotTest is Test {
 
         // At the boundary it fires and records the trigger block.
         vm.roll(50);
+        accer.setState(bytes32(uint256(1)), 1);
         ms.trigger();
         assertEq(ms.lastTriggerBlock(), 50);
 
-        // Before the next boundary (50 + 50 = 100) it reverts again.
+        // Before the next boundary (50 + 50 = 100) it reverts again — on the EPOCH gate, which is
+        // what this test is about, so give it fresh inputs to prove it is not the movement check.
+        accer.setState(bytes32(uint256(2)), 2);
         vm.roll(99);
         vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(50), uint64(50)));
         ms.trigger();
@@ -265,6 +274,45 @@ contract MerkleSnapshotTest is Test {
         vm.roll(100);
         ms.trigger();
         assertEq(ms.lastTriggerBlock(), 100);
+    }
+
+    /// A checkpoint identical to the last one across BOTH lanes is refused.
+    ///
+    /// The journal digest does not commit the checkpoint id, so two checkpoints with identical
+    /// commitments accept the same proof. `AttestationAccumulator` has always refused this for
+    /// lane 1, but `TrustAccumulatorMirror` and `EmptyLaneAccumulator` deliberately do not — on
+    /// those, a stranger could mint an unlimited run of identical checkpoints and collect a vault
+    /// bounty against each one for a single piece of proving work. Checking both lanes here is
+    /// what makes the refusal total, because `trigger()` is the only minter and the only caller
+    /// that sees both lanes.
+    function test_TriggerRefusesACheckpointNothingMovedIn() public {
+        accer.setState(bytes32(uint256(1)), 1);
+        ms.trigger();
+
+        vm.roll(50);
+        vm.expectRevert(IAttestationAccumulator.NoNewInputs.selector);
+        ms.trigger();
+
+        accer.setState(bytes32(uint256(2)), 2);
+        ms.trigger();
+        assertEq(accer.checkpointCount(), 2);
+    }
+
+    /// Lane 2 moving alone is enough — which is the case the mirror's missing guard exists for.
+    function test_Lane2MovementAloneJustifiesACheckpoint() public {
+        MockAnchorRegistry areg = new MockAnchorRegistry();
+        vm.prank(constitutional);
+        ms.setAnchorRegistry(areg);
+
+        accer.setState(bytes32(uint256(1)), 1);
+        areg.setState(bytes32(uint256(1)), 1);
+        ms.trigger();
+
+        // Lane 1 is silent; lane 2 gained an anchor. A contributions round closing while the
+        // vouch graph is quiet is exactly this shape.
+        areg.setState(bytes32(uint256(2)), 2);
+        ms.trigger();
+        assertEq(accer.checkpointCount(), 2);
     }
 
     /*///////////////////////////////////////////////////////////////

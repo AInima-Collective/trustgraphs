@@ -123,8 +123,10 @@ pub enum InFlightState {
 pub struct VaultView {
     /// False when the cadence guard, the per-root cap, or an empty tank would pay nothing.
     pub eligible: bool,
-    /// Combined value in wei the account can actually cover right now.
-    pub payable_wei: u128,
+    /// Combined value the account can actually cover right now, in USD scaled by 1e8 — the same
+    /// units `IProvingVault.Quote.payableUsd` reports. Named `_wei` in an earlier draft, which
+    /// pre-loaded a 1e10 scale error into an adapter nobody had written yet.
+    pub payable_usd: u128,
     /// The vault's machine-readable ineligibility code (`IProvingVault.IneligibleReason`).
     pub reason: u8,
 }

@@ -96,6 +96,14 @@ interface IProvingVault {
         /// @notice The journal-committed payee. The fee follows THIS, not `msg.sender`.
         address recipient;
         bytes proof;
+        /// @notice The least the prover will accept, in USD scaled by 1e8. Below it, the whole
+        ///         call reverts and nothing lands.
+        /// @dev The prover's own guard, and the answer to every "the payout was zeroed in the
+        ///      same block" attack: a community that front-runs `setPolicy(0, 0)`, or drains its
+        ///      own tank, or lets the price feed go stale, now gets a reverted transaction rather
+        ///      than a free root. Zero means "land it regardless of payment", which is the
+        ///      correct setting for a curated instance or a community self-proving.
+        uint256 minPayoutUsd;
     }
 
     /// @notice What a claim would pay right now, and whether it would pay at all.
@@ -103,10 +111,10 @@ interface IProvingVault {
         /// @notice Proving fee in USD, scaled by 1e8. Zero when the program/band is unpriced or
         ///         the price feed is unusable.
         uint256 feeUsd;
-        /// @notice Conservative gas reimbursement in wei, priced at `block.basefee`.
-        uint256 gasWei;
-        /// @notice Combined value in wei the account can actually cover right now.
-        uint256 payableWei;
+        /// @notice Conservative gas reimbursement in USD, scaled by 1e8, priced at `block.basefee`.
+        uint256 gasUsd;
+        /// @notice Combined value in USD (1e8) the account can actually cover right now.
+        uint256 payableUsd;
         /// @notice False when the cadence guard, the per-root cap, or an empty tank would make
         ///         this claim pay nothing.
         bool eligible;
@@ -122,6 +130,10 @@ interface IProvingVault {
         CadenceNotElapsed,
         InsufficientBalance,
         UnknownProgram,
+        /// @notice Retained for the UI's vault panel. Deliberately NOT a blocker: a pending
+        ///         withdrawal no longer removes funds from the spendable balance, so a prover
+        ///         proving today is still paid today. Making it a blocker was how an earlier
+        ///         version let a community take roots for free.
         WithdrawalPending
     }
 
@@ -143,8 +155,10 @@ interface IProvingVault {
         uint256 indexed checkpointId,
         address indexed recipient,
         address submitter,
-        uint256 feeWei,
-        uint256 gasWei
+        uint256 feeUsd,
+        uint256 gasUsd,
+        uint256 ethSpent,
+        uint256 usdcSpent
     );
 
     /// @notice A root landed through the vault but paid nothing (empty tank, cadence, stale feed).
@@ -179,9 +193,21 @@ interface IProvingVault {
     error AlreadyClaimed(bytes32 instanceId, uint256 checkpointId);
     /// @notice `submitProof` returned without advancing `lastAppliedCheckpoint` to this id.
     error CheckpointNotApplied(uint256 expected, uint256 actual);
+    /// @notice A withdrawal request larger than the spendable balance.
+    error InsufficientBalance(uint128 ethBalance, uint128 usdcBalance);
     error NothingPending(bytes32 instanceId);
     error WithdrawalNotReady(uint64 readyAt);
     error NoCredit(address account, address token);
+    /// @notice Band 0 is the "we do not price this" sentinel and can never carry a price.
+    error UnpricedBandIsReserved();
+    /// @notice The price feed does not report 8 decimals, which every conversion here assumes.
+    error FeedDecimalsUnsupported(uint8 decimals);
+    /// @notice The claim would pay less than `SubmitArgs.minPayoutUsd`.
+    error PayoutBelowMinimum(uint256 offeredUsd, uint256 requiredUsd);
+    /// @notice `claim` called for a checkpoint whose root has not been applied.
+    error CheckpointNotApplied2(uint256 checkpointId);
+    /// @notice This exact proven statement has already paid a bounty under another checkpoint id.
+    error StatementAlreadyPaid(bytes32 statement);
 
     /*///////////////////////////////////////////////////////////////
                             FUNDING
@@ -205,11 +231,14 @@ interface IProvingVault {
     ///      `args.recipient` → credit gas to `msg.sender`. Fee before gas so a copier cannot eat
     ///      the remaining balance as reimbursement. A `StaleCheckpoint` revert propagates: someone
     ///      landed a newer root, and the operator treats that as success, not failure.
-    /// @return feeWei Proving fee credited to `args.recipient`.
-    /// @return gasWei Gas reimbursement credited to `msg.sender`.
+    /// @return feeUsd Proving fee credited to `args.recipient`, in USD scaled by 1e8.
+    /// @return gasUsd Gas reimbursement credited to `msg.sender`, in USD scaled by 1e8.
+    /// @dev Both legs are quoted and capped in USD, then settled out of the account ETH-first and
+    ///      USDC-second (USDC valued at $1 in v1 — deliberate; `maxPerRootUsd` bounds the exposure
+    ///      a depeg could create). The `Claimed` event carries the token amounts actually moved.
     function submitAndClaim(bytes32 instanceId, SubmitArgs calldata args)
         external
-        returns (uint256 feeWei, uint256 gasWei);
+        returns (uint256 feeUsd, uint256 gasUsd);
 
     /// @notice What `submitAndClaim` would pay for this instance at this block.
     /// @dev The operator calls this BEFORE proving. Discovering mid-flight that a proof will not
@@ -218,6 +247,17 @@ interface IProvingVault {
 
     /// @notice Whether a bounty was already paid for this checkpoint.
     function isClaimed(bytes32 instanceId, uint256 checkpointId) external view returns (bool);
+
+    /// @notice Pay the bounty for a root that has ALREADY been applied, to the recipient the
+    ///         journal committed.
+    /// @dev The other half of "the bounty cannot be stolen". `MerkleSnapshot.submitProof` is
+    ///      permissionless, so anyone can lift a pending claim's proof out of the mempool and land
+    ///      it directly, bypassing the vault: the prover's `submitAndClaim` then reverts
+    ///      `StaleCheckpoint` and, because monotonicity is permanent, the fee would be unpayable
+    ///      by anyone. This settles against `MerkleSnapshot.checkpointRecipient`, so the copier
+    ///      buys nothing and the prover is still paid. Permissionless: anyone may trigger the
+    ///      payment, but it can only ever go to the journal's recipient.
+    function claim(bytes32 instanceId, uint256 checkpointId) external returns (uint256 feeUsd);
 
     /*///////////////////////////////////////////////////////////////
                         PULL PAYMENTS
@@ -248,6 +288,14 @@ interface IProvingVault {
 
     /// @notice Complete a withdrawal whose notice period has elapsed.
     function executeWithdrawal(bytes32 instanceId, address to) external;
+
+    /// @notice Re-resolve this account's snapshot from the registry: the explicit,
+    ///         community-authorized migration that bind-at-first-deposit implies.
+    /// @dev Gated on the CURRENTLY bound snapshot's constitutional role, so a registry update on
+    ///      its own still redirects nothing. Without this, binding would be a trap rather than a
+    ///      protection: anyone can bind an account with one wei, and a community that later
+    ///      migrated would find its tank stranded on the old snapshot forever.
+    function migrate(bytes32 instanceId) external;
 
     /// @notice The notice period, in seconds.
     function withdrawalNotice() external view returns (uint64);

@@ -360,6 +360,32 @@ fn an_unsupported_program_is_skipped_before_anything_else_is_considered() {
     );
 }
 
+/// The operator's refusal boundary and the vault's top fee band must be the SAME number, or we
+/// price proofs we will not produce (or produce proofs nobody will pay for). The Solidity half of
+/// this assertion is `test_TheTopBandAndTheOperatorsCycleLimitAgree`.
+#[test]
+fn the_refusal_boundary_is_exactly_the_vaults_top_priced_band() {
+    use operator_core::policy::MAX_PRICED_INPUTS;
+    let p = curated();
+    let mut s = healthy();
+
+    s.size = InstanceSize { leaf_count: MAX_PRICED_INPUTS, anchor_count: 0 };
+    assert_eq!(
+        plan(&s, &p, Spend::default()),
+        Action::Prove { checkpoint_id: 0 },
+        "the largest priced instance must still be provable"
+    );
+
+    s.size = InstanceSize { leaf_count: MAX_PRICED_INPUTS + 1, anchor_count: 0 };
+    assert!(
+        matches!(plan(&s, &p, Spend::default()), Action::Skip(SkipReason::TooLarge { .. })),
+        "one input past the top band must be refused"
+    );
+
+    // And the derivation is the thing that keeps them equal, not a coincidence of two literals.
+    assert_eq!(p.cycle_limit, p.base_cycles + MAX_PRICED_INPUTS * p.cycles_per_input);
+}
+
 #[test]
 fn an_oversized_instance_is_refused_before_the_request_not_after_the_timeout() {
     let mut s = healthy();
@@ -551,11 +577,12 @@ fn an_unfunded_uncurated_instance_stops_and_says_so_rather_than_being_subsidized
     assert_eq!(plan(&s, &paid, Spend::default()), Action::Hold(HoldReason::Unfunded { reason: 1 }));
 
     // An account that would pay nothing (e.g. cadence not elapsed = reason 3).
-    s.vault = Some(VaultView { eligible: false, payable_wei: 0, reason: 3 });
+    s.vault = Some(VaultView { eligible: false, payable_usd: 0, reason: 3 });
     assert_eq!(plan(&s, &paid, Spend::default()), Action::Hold(HoldReason::Unfunded { reason: 3 }));
 
     // Funded and eligible: prove.
-    s.vault = Some(VaultView { eligible: true, payable_wei: 10u128.pow(17), reason: 0 });
+    s.vault =
+        Some(VaultView { eligible: true, payable_usd: 50 * 100_000_000 /* $50 */, reason: 0 });
     assert_eq!(plan(&s, &paid, Spend::default()), Action::Prove { checkpoint_id: 0 });
 }
 

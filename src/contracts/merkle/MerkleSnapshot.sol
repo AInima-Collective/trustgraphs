@@ -64,6 +64,16 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     ///         bug (§5.5), and pinning would let proofs under a known-broken verifier keep landing.
     mapping(uint256 checkpointId => bytes32 paramsHash) public checkpointParamsHash;
 
+    /// @notice The journal-committed payee of the proof that applied a checkpoint, recorded so a
+    ///         bounty can be settled against the ROOT rather than against who submitted it.
+    /// @dev Without this, `submitProof` being permissionless is a way to strip a prover's fee for
+    ///      the price of one transaction: copy their pending claim out of the mempool, land the
+    ///      identical proof directly here, and their vault call reverts `StaleCheckpoint` while
+    ///      the checkpoint can never be applied again. The fee would be unpayable by anyone. Now
+    ///      the recipient survives the submission, so `ProvingVault.claim` pays it afterwards and
+    ///      the copier has bought nothing.
+    mapping(uint256 checkpointId => address recipient) public checkpointRecipient;
+
     /// @notice The last checkpoint id whose proof was applied (monotonic).
     uint256 public lastAppliedCheckpoint;
 
@@ -181,6 +191,38 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         if (epochLength > 0 && block.number < uint256(lastTriggerBlock) + epochLength) {
             revert EpochNotElapsed(lastTriggerBlock, epochLength);
         }
+
+        // Refuse to freeze a checkpoint identical to the last one, across BOTH lanes.
+        //
+        // `AttestationAccumulator` has always refused this for lane 1 (`NoNewInputs`), but the two
+        // other lane-1 seams deliberately do not: `TrustAccumulatorMirror` must let a contributions
+        // round close while the vouch graph is quiet, and `EmptyLaneAccumulator`'s lane 1 is the
+        // constant zero pair. On those, `trigger()` could mint an unlimited run of checkpoints with
+        // byte-identical commitments — and the journal digest does not include the checkpoint id,
+        // so ONE proof verifies against every one of them. That is a bounty paid repeatedly for a
+        // single piece of work, and a stale root re-filed at ever-later blocks as if its inputs
+        // were fresh.
+        //
+        // Checking here rather than in each accumulator is what makes it total: `trigger()` is the
+        // only minter (the accumulators are bound to their snapshot), and it is the only place that
+        // sees both lanes. "Nothing this instance reads has moved" is exactly the right condition,
+        // and it is also why the mirror's missing guard was correct — lane 1 alone was never the
+        // question.
+        if (hasCheckpoints()) {
+            IAttestationAccumulator.Checkpoint memory prev =
+                accumulator.getCheckpoint(accumulator.checkpointCount() - 1);
+            AnchorCheckpoint memory prevAnchor =
+                anchorCheckpoints[accumulator.checkpointCount() - 1];
+            (bytes32 liveAnchorAcc, uint64 liveAnchorCount) = _liveAnchors();
+            if (
+                accumulator.acc() == prev.acc && accumulator.leafCount() == prev.leafCount
+                    && liveAnchorAcc == prevAnchor.anchorAcc
+                    && liveAnchorCount == prevAnchor.anchorCount
+            ) {
+                revert IAttestationAccumulator.NoNewInputs();
+            }
+        }
+
         lastTriggerBlock = uint64(block.number);
 
         checkpointId = accumulator.checkpoint();
@@ -191,9 +233,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
         // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
-        if (address(anchorRegistry) != address(0)) {
-            anchorCheckpoints[checkpointId] =
-                AnchorCheckpoint({anchorAcc: anchorRegistry.anchorAcc(), anchorCount: anchorRegistry.anchorCount()});
+        {
+            (bytes32 a, uint64 n) = _liveAnchors();
+            if (a != bytes32(0) || n != 0) {
+                anchorCheckpoints[checkpointId] = AnchorCheckpoint({anchorAcc: a, anchorCount: n});
+            }
         }
         AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
         emit AnchorsCheckpointed(checkpointId, ac.anchorAcc, ac.anchorCount);
@@ -266,6 +310,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         lastAppliedCheckpoint = checkpointId;
         hasAppliedCheckpoint = true;
+        checkpointRecipient[checkpointId] = recipient;
 
         // File at the checkpoint's INPUT-FREEZE block, not the submission block, so "score as of
         // block N" stays honest despite permissionless, delayed, racy proving.
@@ -273,6 +318,17 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
         emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender, recipient);
+    }
+
+    /// @notice Whether this instance has ever frozen a checkpoint.
+    function hasCheckpoints() public view returns (bool) {
+        return accumulator.checkpointCount() > 0;
+    }
+
+    /// The lane-2 state right now, or the zero pair on a lane-1-only instance.
+    function _liveAnchors() internal view returns (bytes32, uint64) {
+        if (address(anchorRegistry) == address(0)) return (bytes32(0), 0);
+        return (anchorRegistry.anchorAcc(), anchorRegistry.anchorCount());
     }
 
     /// @notice This instance's journal-v3 domain separator: `keccak256(abi.encode(address(this),
