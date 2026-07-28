@@ -6,6 +6,7 @@ import {
   merkleFundDistributionClaim,
   merkleFundDistributor,
   merkleSnapshot,
+  proofSubmission,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -236,6 +237,36 @@ const onMerkleRootUpdated = async ({
 
   await revalidateNetwork()
 }
+
+/**
+ * `MerkleProofSubmitted` — who produced a root, and who is owed for it.
+ *
+ * Recorded separately from `MerkleRootUpdated` because the two answer different questions and
+ * carry different fields. In particular `prover` (`msg.sender`, who paid the gas) and `recipient`
+ * (what the guest committed in the journal, who the bounty is owed to) are distinct, and keeping
+ * them apart is the whole visible consequence of the front-running defence: a relayed root shows
+ * one address paying and another being paid.
+ */
+const onMerkleProofSubmitted = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:MerkleProofSubmitted'>) => {
+  const { checkpointId, root, prover, recipient } = event.args
+  await context.db.insert(proofSubmission).values({
+    id: event.id,
+    snapshot: event.log.address,
+    chainId: `${context.chain.id}`,
+    checkpointId,
+    root,
+    prover,
+    recipient,
+    blockNumber: event.block.number,
+    timestamp: event.block.timestamp,
+  })
+}
+
+ponder.on('merkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
+ponder.on('programSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)

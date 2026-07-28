@@ -10,6 +10,7 @@ import hypercerts from './hypercerts'
 import instances from './instances'
 import merkle from './merkle'
 import network from './network'
+import vault from './vault'
 
 const app = new Hono()
 
@@ -24,5 +25,6 @@ app.route('/hypercerts', hypercerts)
 app.route('/instances', instances)
 app.route('/merkle', merkle)
 app.route('/network', network)
+app.route('/vault', vault)
 
 export default app

@@ -2,7 +2,7 @@
 
 import { CheckCircle2, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
-import { Hex, decodeEventLog, zeroAddress } from 'viem'
+import { Hex, decodeEventLog, parseEther, zeroAddress } from 'viem'
 import { usePublicClient, useSimulateContract } from 'wagmi'
 
 import { Button } from '@/components/Button'
@@ -52,6 +52,10 @@ export const ReviewStep = ({
   const [failure, setFailure] = useState<string | null>(null)
 
   // The factory runs the same checks as a view, so a bad setting shows up here rather than as a
+  // The optional prepay rides along as `msg.value`; the factory forwards it into the new
+  // instance's proving tank inside the same transaction. Blank means none, which is the default.
+  const prepay = data.prepayEth.trim() ? parseEther(data.prepayEth.trim()) : 0n
+
   // failed signature.
   const {
     error: preflightError,
@@ -62,6 +66,7 @@ export const ReviewStep = ({
     abi: trustGraphFactoryAbi,
     functionName: 'createInstance',
     args: [args] as any,
+    ...(prepay > 0n ? { value: prepay } : {}),
     query: { enabled: !!FACTORY_ADDRESS && !!args.name },
   })
 
@@ -78,6 +83,7 @@ export const ReviewStep = ({
           abi: trustGraphFactoryAbi,
           functionName: 'createInstance',
           args: [args] as any,
+          ...(prepay > 0n ? { value: prepay } : {}),
         })
         gas = estimate ? (estimate * 125n) / 100n : undefined
       } catch {
@@ -91,6 +97,7 @@ export const ReviewStep = ({
           functionName: 'createInstance',
           args: [args],
           ...(gas ? { gas } : {}),
+          ...(prepay > 0n ? { value: prepay } : {}),
         } as any,
         successMessage: 'Your network is live!',
       })

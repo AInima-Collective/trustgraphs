@@ -13,6 +13,7 @@ import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/f
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 import {Common} from "script/Common.s.sol";
 
@@ -64,6 +65,10 @@ contract DeployFactory is Common {
             "DeployFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
         );
 
+        // Zero disables the prepay path on this factory; `createInstance` then reverts on any
+        // `msg.value` rather than silently keeping it.
+        IProvingVault vault = IProvingVault(vm.envOr("PROVING_VAULT", address(0)));
+
         vm.startBroadcast(_privateKey);
 
         // The two children whose creation code will not fit inside the factory (EIP-170).
@@ -77,7 +82,8 @@ contract DeployFactory is Common {
             IInstanceRegistry(instanceRegistry),
             snapshotDeployer,
             distributorDeployer,
-            epochFloor
+            epochFloor,
+            vault
         );
         factory = address(trustGraphFactory);
 

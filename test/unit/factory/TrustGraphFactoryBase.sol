@@ -22,6 +22,9 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
 import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
+import {MockEthUsdFeed} from "../../mocks/MockEthUsdFeed.sol";
+import {ProvingVault} from "contracts/vault/ProvingVault.sol";
+import {TestUSDC} from "contracts/tokens/TestUSDC.sol";
 
 /// @title TrustGraphFactoryBase
 /// @notice Shared rig for the M1 factory battery: a real EAS + `SchemaRegistry` (so created
@@ -89,6 +92,10 @@ abstract contract TrustGraphFactoryBase is Test {
         Vm.Log[] logs;
     }
 
+    ProvingVault internal vault;
+    TestUSDC internal usdc;
+    MockEthUsdFeed internal feed;
+
     function setUp() public virtual {
         schemaRegistry = new SchemaRegistry();
         eas = new EAS(ISchemaRegistry(address(schemaRegistry)));
@@ -97,6 +104,12 @@ abstract contract TrustGraphFactoryBase is Test {
         registry = new InstanceRegistry(registryAdmin);
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
+        // A real vault, so the prepay path in `createInstance` is exercised rather than stubbed.
+        usdc = new TestUSDC();
+        feed = new MockEthUsdFeed();
+        vault = new ProvingVault(
+            IInstanceRegistry(address(registry)), usdc, feed, 1 hours, 100e8, 100_000e8, address(this), address(this)
+        );
 
         factory = new TrustGraphFactory(
             IEAS(address(eas)),
@@ -105,7 +118,8 @@ abstract contract TrustGraphFactoryBase is Test {
             IInstanceRegistry(address(registry)),
             snapshotDeployer,
             distributorDeployer,
-            EPOCH_FLOOR
+            EPOCH_FLOOR,
+            vault
         );
 
         // The factory's ONLY privilege anywhere: APPEND rows. Deliberately not `OPERATOR_ROLE`,

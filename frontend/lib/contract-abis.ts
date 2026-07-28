@@ -4907,6 +4907,11 @@ export const trustGraphFactoryAbi = [
         type: 'address',
       },
       { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
+      {
+        name: 'vault',
+        internalType: 'contract IProvingVault',
+        type: 'address',
+      },
     ],
     stateMutability: 'nonpayable',
   },
@@ -5034,6 +5039,15 @@ export const trustGraphFactoryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'VAULT',
+    outputs: [
+      { name: '', internalType: 'contract IProvingVault', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'VERIFIER',
     outputs: [
       { name: '', internalType: 'contract IZkVerifier', type: 'address' },
@@ -5151,7 +5165,7 @@ export const trustGraphFactoryAbi = [
       { name: 'distributor', internalType: 'address', type: 'address' },
       { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
     ],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -5312,6 +5326,26 @@ export const trustGraphFactoryAbi = [
         type: 'bytes32',
         indexed: true,
       },
+      { name: 'from', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'InstancePrepaid',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
       {
         name: 'schemaUid',
         internalType: 'bytes32',
@@ -5395,6 +5429,7 @@ export const trustGraphFactoryAbi = [
     name: 'NameTooLong',
   },
   { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
+  { type: 'error', inputs: [], name: 'NoVaultConfigured' },
   {
     type: 'error',
     inputs: [

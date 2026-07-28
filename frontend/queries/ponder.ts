@@ -12,6 +12,8 @@ export const ponderKeys = {
   all: ['ponder'] as const,
   latestMerkleTree: (snapshot: string) =>
     [...ponderKeys.all, 'latestMerkleTree', snapshot] as const,
+  provingTank: (instanceId: string) =>
+    [...ponderKeys.all, 'provingTank', instanceId] as const,
   merkleTree: (options?: { snapshot?: string; root?: string }) =>
     [...ponderKeys.all, 'merkleTree', options] as const,
   merkleTreeEntry: (options?: {
@@ -102,6 +104,40 @@ export type MerkleEntry = {
   received?: number
 }
 
+/**
+ * What `/vault/:instanceId` returns. `funded: false` collapses to the two-field shape, because an
+ * unfunded instance has no balance, no burn rate and no runway to report — inventing zeros for
+ * them would make "not funded" look like "funded and empty", which are different situations with
+ * different fixes.
+ */
+export type ProvingTankResponse =
+  | { funded: false; instanceId: string }
+  | {
+      funded: true
+      instanceId: string
+      vault: string
+      snapshot: string
+      ethBalance: string
+      usdcBalance: string
+      totalDepositedEth: string
+      totalDepositedUsdc: string
+      totalSpentEth: string
+      totalSpentUsdc: string
+      lastPaidBlock: string
+      withdrawalReadyAt: string
+      burn: {
+        windowSeconds: number
+        rootsInWindow: number
+        spentEth: string
+        spentUsdc: string
+        /** Null when there is not enough history to project a runway honestly. */
+        secondsRemaining: number | null
+      }
+      lastPaidAt: number | null
+      /** Roots that landed but paid nothing since the last payment: the tank-ran-dry signal. */
+      unpaidRootsSinceLastPayment: number
+    }
+
 export type MerkleTreeResponse = {
   tree: MerkleMetadata
   entries: MerkleEntry[]
@@ -186,6 +222,26 @@ export const ponderQueries = {
         }
       },
       enabled: !!APIS.ponder && !!snapshot,
+    }),
+  /**
+   * The proving tank for one instance: what is in it, how fast it is going, and how long that
+   * leaves. `funded: false` is a normal answer, not an error — most instances are curated,
+   * self-proving, or simply not being proven, and the UI has to be able to say so.
+   */
+  provingTank: (instanceId: string) =>
+    queryOptions({
+      queryKey: ponderKeys.provingTank(instanceId),
+      queryFn: async (): Promise<ProvingTankResponse> => {
+        const response = await fetch(`${APIS.ponder}/vault/${instanceId}`)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch the proving tank: ${response.status}`)
+        }
+        return (await response.json()) as ProvingTankResponse
+      },
+      enabled: !!APIS.ponder && !!instanceId,
+      // The tank moves once per epoch at most. Refetching it every few seconds would cost more
+      // than the information is worth.
+      staleTime: 60_000,
     }),
   latestMerkleTree: (snapshot: string) =>
     queryOptions({

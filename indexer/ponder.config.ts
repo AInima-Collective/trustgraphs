@@ -15,6 +15,7 @@ import {
   merkleGovModuleAbi,
   merkleSnapshotAbi,
 } from '../frontend/lib/contract-abis'
+import { provingVaultAbi } from './abis/provingVault'
 
 /**
  * The deployment summary is a generated, machine-local file whose entries vary by which instances
@@ -73,6 +74,15 @@ const DEV_START_BLOCK = process.env.PONDER_START_BLOCK
  * Ponder `factory()` source, so a network created a minute ago is indexed with no config edit, no
  * restart, and no redeploy.
  */
+/**
+ * The shared `ProvingVault`. One per chain, not per instance: accounts are keyed by `instanceId`
+ * inside it. Absent from the summary on a box that has not deployed one, in which case the source
+ * is disabled rather than pointed at a zero address.
+ */
+const PROVING_VAULT = (deploymentSummary as { provingVault?: string }).provingVault as
+  | Hex
+  | undefined
+
 const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
   | Hex
   | undefined
@@ -188,6 +198,13 @@ export default createConfig({
             : deployedAddresses('merkleSnapshot'),
         },
       },
+    },
+    // The proving tank. Its events answer the two questions the vault panel asks — how much is
+    // left, and who is being paid — neither of which is derivable from the snapshot alone.
+    provingVault: {
+      abi: provingVaultAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: PROVING_VAULT ? { [CORE_CHAIN]: { address: PROVING_VAULT } } : {},
     },
     merkleFundDistributor: {
       abi: merkleFundDistributorAbi,

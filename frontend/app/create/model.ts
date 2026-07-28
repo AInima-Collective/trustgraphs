@@ -30,7 +30,7 @@ export const MAX_SEEDS = 64
 const ONE = 1_000_000_000_000_000_000n
 
 /**
- * Everything that is the same for every network on TrustGraph. These are the envelope the proving
+ * Everything that is the same for every network on trustgraphs. These are the envelope the proving
  * program is checked against plus the three fields that identify the instance (which the factory
  * derives and rejects if supplied), so none of them is a choice a community gets to make.
  */
@@ -106,6 +106,12 @@ export type WizardData = {
   withFund: boolean
   fundToken: FundToken
   fundTokenAddress: string
+  /**
+   * ETH to put in the network's proving tank at creation, as a decimal string. Empty means none,
+   * which is the normal case: scores still refresh, they just depend on somebody choosing to do
+   * the work rather than being paid for it.
+   */
+  prepayEth: string
 }
 
 export const EMPTY_WIZARD_DATA: WizardData = {
@@ -119,6 +125,7 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   withFund: false,
   fundToken: 'eth',
   fundTokenAddress: '',
+  prepayEth: '',
 }
 
 /** The presentation blob the on-chain `metadataURI` points at. Nothing here affects scores. */
@@ -278,6 +285,19 @@ export const seedProblem = (candidate: Hex, existing: Hex[]): string | null => {
   }
   if (existing.length >= MAX_SEEDS) {
     return `You can pick up to ${MAX_SEEDS} starting accounts.`
+  }
+  return null
+}
+
+/** The prepay must parse as a non-negative decimal, or the create transaction reverts on send. */
+export const prepayProblem = (data: WizardData): string | null => {
+  const trimmed = data.prepayEth.trim()
+  if (!trimmed) return null
+  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
+    return 'Enter an amount like 0.5, or leave it blank.'
+  }
+  if (Number(trimmed) === 0) {
+    return 'Leave it blank rather than entering zero.'
   }
   return null
 }

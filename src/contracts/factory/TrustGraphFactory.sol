@@ -13,6 +13,7 @@ import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/f
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title TrustGraphFactory
 /// @notice Creates a complete, working trust-graph instance in ONE transaction: an attestation
@@ -91,6 +92,9 @@ contract TrustGraphFactory {
         ParamsCodec.Params params
     );
 
+    /// @notice A creator endowed the new instance's proving tank in the creating transaction.
+    event InstancePrepaid(bytes32 indexed instanceId, address indexed from, uint256 amount);
+
     /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
     ///         creator-customizable schema would fork `weightFieldIndex` and multiply the surface
     ///         every consumer (guest, indexer, frontend) has to handle.
@@ -142,6 +146,15 @@ contract TrustGraphFactory {
     /// @notice The chain's instance directory. This factory holds `OPERATOR_ROLE` on it and nothing
     ///         else; `update()` stays timelock-only so a factory bug cannot rewrite history.
     IInstanceRegistry public immutable INSTANCE_REGISTRY;
+
+    /// @notice The `ProvingVault` a creator's `msg.value` is forwarded into. Zero disables the
+    ///         prepay path entirely (and makes a non-zero `msg.value` revert rather than being
+    ///         silently kept).
+    /// @dev The factory holds no role on the vault and never touches an existing account: it can
+    ///      only add funds to the id it just created. Deliberately immutable — a re-pointable
+    ///      vault address on a permissionless factory is a way to route every creator's prepay
+    ///      somewhere else.
+    IProvingVault public immutable VAULT;
     /// @notice Creation-code holders for the two large children (see `InstanceDeployers.sol`).
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
     MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
@@ -161,6 +174,8 @@ contract TrustGraphFactory {
     /// @notice The factory may not be an instance's admin (see `createInstance`).
     error InvalidAdmin();
     error EmptyName();
+    /// @notice `msg.value` was sent to a factory deployed without a vault.
+    error NoVaultConfigured();
     error NameTooLong(uint256 length);
     /// @notice A derived field (`schemaUid`, `accumulator`, `chainId`) was not submitted as zero.
     error DerivedFieldNotZero();
@@ -204,7 +219,8 @@ contract TrustGraphFactory {
         IInstanceRegistry instanceRegistry,
         MerkleSnapshotDeployer snapshotDeployer,
         MerkleFundDistributorDeployer distributorDeployer,
-        uint64 epochFloor
+        uint64 epochFloor,
+        IProvingVault vault
     ) {
         if (
             address(eas) == address(0) || address(schemaRegistrar) == address(0) || address(verifier) == address(0)
@@ -220,6 +236,9 @@ contract TrustGraphFactory {
         EAS = eas;
         SCHEMA_REGISTRAR = schemaRegistrar;
         VERIFIER = verifier;
+        // Zero is allowed and means "no prepay path on this factory". Sending value to such a
+        // factory reverts rather than being kept.
+        VAULT = vault;
         INSTANCE_REGISTRY = instanceRegistry;
         SNAPSHOT_DEPLOYER = snapshotDeployer;
         DISTRIBUTOR_DEPLOYER = distributorDeployer;
@@ -241,10 +260,16 @@ contract TrustGraphFactory {
     /// @return resolver The new `EASIndexerResolver` (this instance's attestation accumulator).
     /// @return distributor The new `MerkleFundDistributor`, or zero when not requested.
     /// @return schemaUid The instance's vouching schema UID (what members attest against).
+    /// @dev Payable: `msg.value` is forwarded into the instance's `ProvingVault` account, so a
+    ///      community can deploy its network endowed with a year of roots in one transaction
+    ///      rather than discovering the funding step after its first epoch goes unproven. Sending
+    ///      nothing is the normal case and costs nothing.
     function createInstance(CreateArgs calldata args)
         external
+        payable
         returns (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid)
     {
+        if (msg.value != 0 && address(VAULT) == address(0)) revert NoVaultConfigured();
         // --- 0. Validate everything before deploying anything. -------------------------------
         uint256 nameLength = bytes(args.name).length;
         if (nameLength == 0) revert EmptyName();
@@ -344,6 +369,14 @@ contract TrustGraphFactory {
                 paramsHash: paramsHash
             })
         );
+
+        // --- 8. The optional prepay. AFTER the registry row, because the vault resolves the ---
+        //        instance through it at first deposit — depositing first would revert on an id
+        //        the directory does not yet know.
+        if (msg.value != 0) {
+            VAULT.depositETH{value: msg.value}(instanceId);
+            emit InstancePrepaid(instanceId, msg.sender, msg.value);
+        }
 
         emit InstanceCreated(
             instanceId,

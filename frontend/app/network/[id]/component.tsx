@@ -16,11 +16,14 @@ import { Markdown } from '@/components/Markdown'
 import { NetworkFeatures } from '@/components/NetworkFeatures'
 import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
+import { ProvingTank } from '@/components/ProvingTank'
+import { RootFreshness } from '@/components/RootFreshness'
 import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
+import { PROVING_VAULT } from '@/lib/config'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { trustGraphTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
@@ -83,7 +86,7 @@ export const NetworkPage = () => {
       key: 'validated',
       header: 'VALIDATED',
       tooltip:
-        'Indicates if this member has attained a significant TrustScore in the network.',
+        'Indicates if this member has attained a significant trust score in the network.',
       sortable: false,
       render: (row) =>
         isValidatedInNetwork(network, row.value) ? (
@@ -201,12 +204,22 @@ export const NetworkPage = () => {
         </div>
       </div>
 
+      {/* How fresh the scores are, and who is paying to keep them that way. Both belong above
+          the statistics: a number nobody can tell the age of is worse than no number. */}
+      <div className="border-y border-border py-12 space-y-6">
+        <RootFreshness snapshot={network.contracts.merkleSnapshot} />
+        <ProvingTank
+          instanceId={network.id as `0x${string}`}
+          vaultAddress={PROVING_VAULT}
+        />
+      </div>
+
       <div className="border-y border-border py-12 space-y-6">
         <SectionHeading>Network statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
             title="TOTAL MEMBERS"
-            tooltip="The total number of participants in this TrustGraph network who have a TrustScore above this network's threshold."
+            tooltip="The total number of participants in this trustgraph who have a trust score above this network's threshold."
             value={
               isLoading
                 ? '...'
@@ -268,7 +281,7 @@ export const NetworkPage = () => {
                 size="sm"
                 className="text-xs"
                 data={networkData}
-                filename={`TrustGraph_${name}_${new Date().toISOString()}`}
+                filename={`trustgraph_${name}_${new Date().toISOString()}`}
               />
 
               <Dropdown
@@ -292,7 +305,7 @@ export const NetworkPage = () => {
           <div className="text-center py-8">
             <div className="text-sm text-text">◉ LOADING NETWORK DATA ◉</div>
             <div className="text-xs mt-2 text-text-muted">
-              Fetching latest TrustGraph data...
+              Fetching latest trustgraph data...
             </div>
           </div>
         )}

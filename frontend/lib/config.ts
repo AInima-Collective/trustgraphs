@@ -50,3 +50,13 @@ export const VISIBLE_CONTRIBUTIONS_NETWORKS = CONTRIBUTIONS_NETWORKS.filter(
 export const CHAIN = CONFIG.chain
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
+
+/**
+ * The chain's shared `ProvingVault`, or undefined on a deployment without one.
+ *
+ * Undefined is a real state, not a misconfiguration: a network can be curated (proven on us) or
+ * self-proved by its own community, and neither needs a vault. The UI says which rather than
+ * rendering an empty balance.
+ */
+export const PROVING_VAULT = (CONFIG.contracts as { ProvingVault?: { address?: string } })
+  .ProvingVault?.address as `0x${string}` | undefined

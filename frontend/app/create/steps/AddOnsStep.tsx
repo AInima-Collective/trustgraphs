@@ -9,7 +9,7 @@ import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { cn } from '@/lib/utils'
 
-import { WizardData, fundTokenProblem } from '../model'
+import { WizardData, fundTokenProblem, prepayProblem } from '../model'
 import { Field, Note, StepHeader } from '../ui'
 
 export const AddOnsStep = ({
@@ -49,6 +49,7 @@ export const AddOnsStep = ({
     tokenLooksValid && tokenInfo && tokenInfo[0]?.status === 'failure'
 
   const tokenError = showErrors ? fundTokenProblem(data) : null
+  const prepayError = showErrors ? prepayProblem(data) : null
 
   return (
     <div className="space-y-6">
@@ -72,6 +73,28 @@ export const AddOnsStep = ({
             onClick={() => onChange({ withFund: !data.withFund })}
           />
         </div>
+      </Card>
+
+      {/* The proving tank. Deliberately its own card rather than a sub-option of the fund: the
+          two are unrelated, and burying it would leave creators discovering the funding step
+          after their first month of scores went stale. */}
+      <Card type="detail" size="md">
+        <Field
+          label="Pay for score refreshes up front?"
+          hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put some ETH in now and whoever refreshes your scores gets paid for it. You can add more at any time, and take back what is left."
+          error={prepayError}
+        >
+          <div className="flex items-center gap-2">
+            <input
+              className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+              inputMode="decimal"
+              placeholder="0.5"
+              value={data.prepayEth}
+              onChange={(e) => onChange({ prepayEth: e.target.value })}
+            />
+            <span className="text-sm opacity-60">ETH (optional)</span>
+          </div>
+        </Field>
       </Card>
 
       {data.withFund && (

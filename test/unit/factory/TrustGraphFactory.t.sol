@@ -12,6 +12,7 @@ import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
 import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
@@ -440,7 +441,8 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
                 IInstanceRegistry(holes[3]),
                 MerkleSnapshotDeployer(holes[4]),
                 MerkleFundDistributorDeployer(holes[5]),
-                EPOCH_FLOOR
+                EPOCH_FLOOR,
+                vault
             );
         }
     }
@@ -456,7 +458,8 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
             IInstanceRegistry(address(registry)),
             snapshotDeployer,
             distributorDeployer,
-            0
+            0,
+            vault
         );
     }
 
@@ -498,19 +501,53 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         assertEq(registry.getInstance(c.instanceId).snapshot, c.snapshot, "the row must be untouched");
     }
 
-    /// `createInstance` is non-payable in v1: the deploy-and-prepay vault seam belongs to the
-    /// proof-scheduler build, and a payable entry point would silently accept value it cannot spend.
-    function test_CreateIsNotPayable() public {
+    /// Deploy your network endowed with a year of roots, in one transaction. The alternative is
+    /// discovering the funding step after the first epoch goes unproven.
+    function test_CreateForwardsMsgValueIntoTheInstancesTank() public {
         TrustGraphFactory.CreateArgs memory args = _args("paid");
-        bytes memory call = abi.encodeWithSelector(TrustGraphFactory.createInstance.selector, args);
+        vm.deal(address(this), 5 ether);
+
+        bytes32 id = factory.computeInstanceId(address(this), args.name, args.salt);
+        vm.expectEmit(true, true, true, true);
+        emit TrustGraphFactory.InstancePrepaid(id, address(this), 5 ether);
+        factory.createInstance{value: 5 ether}(args);
+
+        IProvingVault.Account memory a = vault.accountOf(id);
+        assertEq(a.ethBalance, 5 ether, "the tank is funded");
+        assertEq(a.snapshot, registry.getInstance(id).snapshot, "and bound to the new snapshot");
+        assertEq(address(vault).balance, 5 ether, "the factory kept nothing");
+    }
+
+    /// Sending nothing is the normal case and must stay free.
+    function test_CreateWithNoValueTouchesNoVault() public {
+        Created memory c = _create(_args("free"));
+        assertEq(vault.accountOf(c.instanceId).snapshot, address(0), "no account was opened");
+    }
+
+    /// A factory deployed without a vault must reject value rather than silently keeping it.
+    function test_AFactoryWithNoVaultRejectsValue() public {
+        TrustGraphFactory factory2 = new TrustGraphFactory(
+            IEAS(address(eas)),
+            registrar,
+            IZkVerifier(address(verifier)),
+            IInstanceRegistry(address(registry)),
+            snapshotDeployer,
+            distributorDeployer,
+            EPOCH_FLOOR,
+            IProvingVault(address(0))
+        );
+        // Read the role BEFORE the prank: a getter is a call, and `vm.prank` applies to the next
+        // one, so inlining it here spends the prank on the getter.
+        bytes32 registrar = registry.REGISTRAR_ROLE();
+        vm.prank(registryAdmin);
+        registry.grantRole(registrar, address(factory2));
+
         vm.deal(address(this), 1 ether);
+        vm.expectRevert(TrustGraphFactory.NoVaultConfigured.selector);
+        factory2.createInstance{value: 1 ether}(_args("novault"));
 
-        (bool withValue,) = address(factory).call{value: 1 ether}(call);
-        assertFalse(withValue, "createInstance must reject value");
-
-        // ...and the same calldata succeeds with none, so the rejection is the value, not the shape.
-        (bool withoutValue,) = address(factory).call(call);
-        assertTrue(withoutValue, "the same call must succeed without value");
+        // ...and the same call succeeds with none, so the rejection is the value, not the shape.
+        factory2.createInstance(_args("novault"));
     }
 
     /*//////////////////////////////////////////////////////////////
