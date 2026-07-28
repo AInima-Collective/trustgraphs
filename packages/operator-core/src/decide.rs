@@ -112,7 +112,11 @@ fn prove_or_wait(state: &InstanceState, policy: &Policy, cp: &CheckpointRef) -> 
     }
 
     // Money, last: a prover must never discover mid-flight that it will not be paid.
-    if !policy.curated {
+    //
+    // Only for instances that DRAW a vault. A curated instance is proven on us, and a self-proving
+    // run has no vault at all — holding either of them for "unfunded" would be the operator
+    // refusing to do the thing it was started to do.
+    if policy.requires_vault {
         match state.vault {
             None => return Action::Hold(HoldReason::Unfunded { reason: 1 /* NoAccount */ }),
             Some(v) if !v.eligible => {

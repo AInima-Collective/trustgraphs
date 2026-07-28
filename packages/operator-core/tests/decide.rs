@@ -223,7 +223,7 @@ fn our_subsidy_cadence_binds_on_top_of_the_contracts() {
         Action::Idle(IdleReason::SubsidyCadence { next_block: 1_001, boundary: 216_900 })
     );
     // And a non-curated (vault-funded) instance is NOT held by our cadence — it pays for its own.
-    let paid = Policy { curated: false, subsidy_min_blocks: 216_000, ..Policy::default() };
+    let paid = Policy { subsidy_min_blocks: 216_000, ..Policy::funded() };
     assert_eq!(plan(&s, &paid, Spend::default()), Action::Trigger);
 }
 
@@ -570,7 +570,7 @@ fn an_unknown_request_outcome_holds_for_a_human_and_is_never_retried() {
 
 #[test]
 fn an_unfunded_uncurated_instance_stops_and_says_so_rather_than_being_subsidized() {
-    let paid = Policy { curated: false, ..Policy::default() };
+    let paid = Policy::funded();
     let mut s = healthy();
 
     // No vault account at all.
@@ -596,7 +596,32 @@ fn a_curated_instance_never_consults_a_vault() {
 fn eligibility_is_checked_before_proving_not_after() {
     // The failure this prevents: discovering mid-flight that a proof will not be paid for. So the
     // unfunded hold must beat the Prove action for the SAME state.
-    let paid = Policy { curated: false, ..Policy::default() };
     let s = healthy();
-    assert!(matches!(plan(&s, &paid, Spend::default()), Action::Hold(HoldReason::Unfunded { .. })));
+    assert!(matches!(
+        plan(&s, &Policy::funded(), Spend::default()),
+        Action::Hold(HoldReason::Unfunded { .. })
+    ));
+}
+
+/// The third state, and the one a two-flag model gets wrong.
+///
+/// An operator run with `[paid]` off is a community self-proving with its own keys — the thing the
+/// hosted service explicitly does not gate. It is not curated (nobody is subsidizing it) and it
+/// draws no vault (there isn't one). Collapsing that into `curated` would also throttle it to our
+/// monthly subsidy cadence, which is our budget decision and none of their business.
+#[test]
+fn a_self_proving_run_needs_neither_curation_nor_a_vault() {
+    let self_prove = Policy::default(); // curated: false, requires_vault: false
+    let s = healthy(); // vault: None
+    assert_eq!(plan(&s, &self_prove, Spend::default()), Action::Prove { checkpoint_id: 0 });
+
+    // ...and it is not held back by the subsidy cadence either.
+    let mut s2 = healthy();
+    s2.checkpoints = vec![checkpoint(0, 900, 3)];
+    s2.last_applied_checkpoint = Some(0);
+    s2.live_commitments = commitments(4);
+    s2.last_trigger_block = 900;
+    s2.head_block = 1_000;
+    let throttled = Policy { subsidy_min_blocks: 216_000, ..Policy::default() };
+    assert_eq!(plan(&s2, &throttled, Spend::default()), Action::Trigger);
 }

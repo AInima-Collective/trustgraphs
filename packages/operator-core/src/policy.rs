@@ -68,6 +68,16 @@ pub struct Policy {
     /// unbounded liability: an attacker pays ~1 attestation of gas per epoch to make us pay a
     /// ~600k-gas submit.
     pub curated: bool,
+    /// Whether a vault must cover this instance before we prove it.
+    ///
+    /// This is a separate flag from `curated` because there are THREE states, not two, and
+    /// collapsing them broke the one the GOAL calls out by name. A curated instance is proven on
+    /// us. A funded instance draws a vault. And an operator run with `[paid]` off — a community
+    /// self-proving with its own keys, which the hosted service is explicitly not supposed to gate
+    /// — pays for everything itself and has no vault to consult. Overloading `curated` for that
+    /// third case would also throttle a self-prover to our monthly subsidy cadence, which is our
+    /// budget decision and none of their business.
+    pub requires_vault: bool,
     /// How often we will pay for a curated instance. Distinct from the factory's creation floor
     /// (anti-spam) and from the vault's `minPaidIntervalBlocks` (the only enforceable one) — see
     /// `INSTANCE_FACTORY.md` §2.2 and `PROOF_SCHEDULER.md` §4.2, both corrected.
@@ -110,6 +120,7 @@ impl Default for Policy {
     fn default() -> Self {
         Self {
             curated: false,
+            requires_vault: false,
             subsidy_min_blocks: 216_000,     // ~1 month at 12s blocks
             max_basefee_wei: 40_000_000_000, // 40 gwei
             confirmations: 12,
@@ -127,8 +138,13 @@ impl Default for Policy {
 }
 
 impl Policy {
-    /// A curated policy for the hosted subsidy set.
+    /// A curated policy for the hosted subsidy set: proven on us, no vault.
     pub fn curated() -> Self {
-        Self { curated: true, ..Self::default() }
+        Self { curated: true, requires_vault: false, ..Self::default() }
+    }
+
+    /// A funded policy: not ours to subsidize, so a vault must cover it first.
+    pub fn funded() -> Self {
+        Self { curated: false, requires_vault: true, ..Self::default() }
     }
 }

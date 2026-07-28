@@ -1,0 +1,42 @@
+[package]
+name = "trustgraph-operator"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "operator"
+path = "src/main.rs"
+
+# Detached from the root workspace for the same reason `zk/prover` is: sp1-sdk brings a large
+# dependency graph that must not be unified with the main workspace's alloy graph. Note what is
+# NOT here as a result — none of the decision logic. `operator-core` is a path dependency from the
+# ROOT workspace, so `cargo test --workspace` at the repo root exercises every branch of it on
+# every commit, while this crate stays a thin adapter that CI can only compile-check.
+[workspace]
+
+[features]
+default = []
+# Real proving through the Succinct network (`SP1_PROVER=network` + `NETWORK_PRIVATE_KEY`).
+network = ["trustgraph-prover/network"]
+# Local Groth16 wrapping (needs ~16-32 GiB and a gnark toolchain).
+native-gnark = ["trustgraph-prover/native-gnark"]
+
+[dependencies]
+operator-core = { path = "../../packages/operator-core" }
+trustgraph-prover = { path = "../prover" }
+pagerank-core = { path = "../../packages/pagerank-core" }
+contributions-core = { path = "../../packages/contributions-core" }
+
+alloy-primitives = { version = "1", features = ["serde"] }
+alloy-sol-types = { version = "1", features = ["json"] }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+alloy-consensus = "1"
+alloy-signer = "1"
+alloy-signer-local = "1"

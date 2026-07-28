@@ -10,6 +10,12 @@ use crate::common;
 use crate::programs::trust_graph::sample_input;
 
 /// The signer-sync guest ELF (second bin of the program crate).
+/// This program's guest ELF, for callers that drive the prover as a library (`zk/operator`).
+/// The vkey it derives is the one the deployed `SignerSyncZkModule`'s verifier must be pinned to.
+pub fn elf() -> Elf {
+    load_signer_elf()
+}
+
 fn load_signer_elf() -> Elf {
     include_elf!("trustgraph-signer-program")
 }
