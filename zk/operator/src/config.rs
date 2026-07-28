@@ -122,6 +122,17 @@ pub struct Budget {
     pub per_instance_usd_per_day: u64,
     #[serde(default = "d_global_usd")]
     pub global_usd_per_day: u64,
+    /// What a billion guest cycles costs us, in cents. This is what turns a cycle estimate into
+    /// the number the budget is denominated in.
+    ///
+    /// Deliberately a single crude constant rather than a live price feed: the budget's job is to
+    /// stop a runaway, not to do accounting. Being 2x wrong moves the halt point by 2x; being
+    /// ABSENT — which is what shipping without it meant — moves it to never.
+    #[serde(default = "d_cents_per_gcycle")]
+    pub cents_per_billion_cycles: u64,
+    /// The rolling window the caps are measured over, in seconds.
+    #[serde(default = "d_budget_window")]
+    pub window_seconds: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,6 +186,12 @@ fn d_per_instance_usd() -> u64 {
 fn d_global_usd() -> u64 {
     250
 }
+fn d_cents_per_gcycle() -> u64 {
+    100
+}
+fn d_budget_window() -> u64 {
+    86_400
+}
 fn d_journal_path() -> String {
     "./.trustgraph/operator/journal.jsonl".into()
 }
@@ -217,7 +234,12 @@ impl Default for Prover {
 }
 impl Default for Budget {
     fn default() -> Self {
-        Self { per_instance_usd_per_day: d_per_instance_usd(), global_usd_per_day: d_global_usd() }
+        Self {
+            per_instance_usd_per_day: d_per_instance_usd(),
+            global_usd_per_day: d_global_usd(),
+            cents_per_billion_cycles: d_cents_per_gcycle(),
+            window_seconds: d_budget_window(),
+        }
     }
 }
 impl Default for Ops {

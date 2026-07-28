@@ -43,6 +43,7 @@
 //! must call the lower-level `NetworkClient::request_proof` with the hash we already computed,
 //! rather than the convenience builder.
 
+use crate::policy::Spend;
 use alloy_primitives::B256;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
@@ -72,6 +73,19 @@ pub enum Record {
         /// Unix seconds. Supplied by the caller — this crate has no clock, so tests are
         /// deterministic and resume is reproducible.
         at: u64,
+        /// What this request is expected to cost US, in cents, at the moment we committed to it.
+        ///
+        /// Recorded here rather than derived later because it is the ONLY place the number is
+        /// knowable: the estimate depends on the instance's size at request time, and by the time
+        /// a budget question is asked the graph has moved. Without it, `LossBudget` is unreachable
+        /// code — the daemon passed `Spend::default()` forever and the budget could never fire.
+        ///
+        /// `serde(default)` so journals written before this field still replay; those lines
+        /// contribute zero, which is the safe direction (a budget cannot halt an instance on
+        /// spend it cannot see, and the alternative — guessing — would halt on a number nobody
+        /// recorded).
+        #[serde(default)]
+        cost_cents: u64,
     },
     /// Written after the request returns a handle.
     Requested { key: WorkKey, request_id: B256, at: u64 },
@@ -187,7 +201,7 @@ impl Journal {
         let mut status = Status::Untouched;
         for rec in self.records.iter() {
             match rec {
-                Record::Intent { key: k, public_values_hash, vk_hash, at } if k == key => {
+                Record::Intent { key: k, public_values_hash, vk_hash, at, .. } if k == key => {
                     status = Status::OutcomeUnknown {
                         public_values_hash: *public_values_hash,
                         vk_hash: *vk_hash,
@@ -236,6 +250,27 @@ impl Journal {
     /// happen".
     pub fn may_request(&self, key: &WorkKey) -> bool {
         matches!(self.status(key), Status::Untouched)
+    }
+
+    /// Rolling spend inside `window_secs` ending at `now`, for the budget check.
+    ///
+    /// Counts INTENTS, not settlements: an intent is the moment money is committed, and a request
+    /// that fails still cost something. Counting settlements would let a run of failures spend
+    /// without ever registering.
+    pub fn spend(&self, instance_id: B256, now: u64, window_secs: u64) -> Spend {
+        let floor = now.saturating_sub(window_secs);
+        let mut s = Spend::default();
+        for r in &self.records {
+            if let Record::Intent { key, at, cost_cents, .. } = r {
+                if *at >= floor {
+                    s.global_cents_today = s.global_cents_today.saturating_add(*cost_cents);
+                    if key.instance_id == instance_id {
+                        s.instance_cents_today = s.instance_cents_today.saturating_add(*cost_cents);
+                    }
+                }
+            }
+        }
+        s
     }
 
     pub fn records(&self) -> &[Record] {

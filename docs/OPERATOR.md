@@ -145,6 +145,8 @@ timeout_s    = 3_600
 [budget]
 per_instance_usd_per_day = 25
 global_usd_per_day       = 250
+cents_per_billion_cycles = 100   # what turns a cycle estimate into the budget's units
+window_seconds           = 86400 # the rolling window the caps are measured over
 
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
@@ -174,6 +176,8 @@ log_format   = "json"
 | `prover.backend` | `network` \| `cpu` \| `mock` | `network` |
 | `prover.cycle_limit` | refuse-to-prove ceiling | 1e9 |
 | `budget.*_usd_per_day` | halt thresholds | 25 / 250 |
+| `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
+| `budget.window_seconds` | rolling window for both caps | 86400 |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
 ### Keys and balances
@@ -295,7 +299,7 @@ and what each actually means:
 | `submitter key has a zero balance` | every send will fail | fund it |
 | `<instance>: Unfunded` | a paid instance's tank will not cover the next root | tell the community, or move it to `curated` |
 | `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
-| `<instance>: Halted` | a loss budget was exceeded | investigate before raising the budget |
+| `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
 
 ### Recovering
 
@@ -382,7 +386,8 @@ transaction; the tank paying the prover for every root it bought; a stranger's d
 `accumulator.checkpoint()` refused; five spam checkpoints coalescing to one paid proof; a params
 rotation leaving an already-pinned checkpoint alone while the next one binds the new value; the
 operator refusing to spend on an instance whose params it can no longer reproduce; `kill -9`
-mid-proof followed by a clean re-attach; and a verifier rotation held rather than proved into.
+mid-proof followed by a clean re-attach; a loss budget halting an instance rather than bleeding on
+it; and a verifier rotation held rather than proved into.
 
 **The front-run, specifically.** A second key was handed the daemon's held proof — strictly more
 than a mempool observer could see — and landed the claim itself. The fee still went to the address

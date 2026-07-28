@@ -10,8 +10,8 @@ use operator_core::catalog::{scan as catalog_scan, CatalogEntry};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, WorkKey};
+use operator_core::plan;
 use operator_core::types::{Action, InFlight, InFlightState, InstanceSize, InstanceState, Program};
-use operator_core::{plan, Spend};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -23,6 +23,20 @@ use crate::config::Config;
 use crate::handlers;
 use crate::ops::{alert, write_status, InstanceStatus, Logger, Status as OpsStatus};
 use crate::tx::{await_receipt, Sender};
+
+/// What one proof of this instance is expected to cost us, in cents.
+///
+/// Crude on purpose, and crude in the safe direction: it prices the whole guest run at a flat
+/// cents-per-billion-cycles, using the same cycle estimate that decides whether an instance is
+/// provable at all. The budget it feeds exists to stop a runaway, not to bill anyone.
+fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
+    let cycles = state.size.estimated_cycles(
+        operator_core::policy::CYCLES_PER_INPUT,
+        operator_core::policy::BASE_CYCLES,
+    );
+    // Round UP: a per-proof estimate that rounds to zero would make small instances free forever.
+    cycles.saturating_mul(cfg.budget.cents_per_billion_cycles).div_ceil(1_000_000_000).max(1)
+}
 
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
 fn supported() -> BTreeSet<Program> {
@@ -188,10 +202,11 @@ fn tick(
             };
 
             let policy = cfg.policy_for(entry.instance_id, supported());
-            // Spend accounting is journal-derived and lands with the loss-budget work; until then
-            // the budget cannot fire, which is the safe direction for a decision engine (it never
-            // halts an instance on a number it does not have).
-            let action = plan(&state, &policy, Spend::default());
+            // Rolling spend, from the journal. This is what makes `LossBudget` reachable at all:
+            // it was `Spend::default()` here, so the budget could never fire and "unpreventable
+            // spend is budgeted" was a property of the library rather than of the daemon.
+            let spend = journal.spend(entry.instance_id, now(), cfg.budget.window_seconds);
+            let action = plan(&state, &policy, spend);
             logger.action(&format!("{:#x}", entry.instance_id), &action);
 
             if matches!(action, Action::Idle(operator_core::types::IdleReason::Proving { .. })) {
@@ -433,11 +448,15 @@ fn act(
 
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".
+            // What this is about to cost us, priced from the size we are about to prove. Recorded
+            // now because it is only knowable now — by the next tick the graph has moved.
+            let cost_cents = estimated_cost_cents(cfg, state);
             journal.append(Record::Intent {
                 key,
                 public_values_hash: built.public_values_hash,
                 vk_hash: built.vk_hash,
                 at: now(),
+                cost_cents,
             })?;
 
             let proof = handlers::prove(cfg, &built)?;

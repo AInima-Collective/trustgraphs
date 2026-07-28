@@ -8,11 +8,16 @@ fn key(checkpoint_id: u64) -> WorkKey {
 }
 
 fn intent(k: WorkKey, at: u64) -> Record {
+    priced_intent(k, at, 0)
+}
+
+fn priced_intent(k: WorkKey, at: u64, cost_cents: u64) -> Record {
     Record::Intent {
         key: k,
         public_values_hash: B256::from([0x7B; 32]),
         vk_hash: B256::from([0x9C; 32]),
         at,
+        cost_cents,
     }
 }
 
@@ -157,4 +162,74 @@ fn a_corrupt_line_is_a_hard_error_not_a_silent_skip() {
     )
     .unwrap();
     assert!(Journal::open(&path).is_err());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rolling spend. This is what makes `LossBudget` reachable: the daemon passed `Spend::default()`
+// forever, so the budget could never fire on any input at all.
+// ---------------------------------------------------------------------------------------------
+
+fn other_instance(checkpoint_id: u64) -> WorkKey {
+    WorkKey { chain_id: 31337, instance_id: B256::from([0x02; 32]), checkpoint_id }
+}
+
+#[test]
+fn spend_sums_this_instance_and_everything_globally() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(priced_intent(key(0), 1_000, 300)).unwrap();
+    j.append(priced_intent(key(1), 1_100, 200)).unwrap();
+    j.append(priced_intent(other_instance(0), 1_200, 700)).unwrap();
+
+    let s = j.spend(B256::from([0x01; 32]), 2_000, 86_400);
+    assert_eq!(s.instance_cents_today, 500, "only this instance's two intents");
+    assert_eq!(s.global_cents_today, 1_200, "every instance's intents");
+}
+
+#[test]
+fn spend_drops_intents_older_than_the_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(priced_intent(key(0), 100, 5_000)).unwrap(); // yesterday
+    j.append(priced_intent(key(1), 90_000, 250)).unwrap(); // today
+
+    let s = j.spend(B256::from([0x01; 32]), 100_000, 86_400);
+    assert_eq!(s.instance_cents_today, 250, "the old intent must not keep an instance halted");
+}
+
+#[test]
+fn spend_counts_intents_not_settlements() {
+    // A request that FAILED still cost money. Counting settlements would let a run of failures
+    // spend without ever registering against the budget.
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(priced_intent(key(0), 1_000, 400)).unwrap();
+    j.append(Record::Settled { key: key(0), outcome: Outcome::Failed, at: 1_010 }).unwrap();
+
+    let s = j.spend(B256::from([0x01; 32]), 1_100, 86_400);
+    assert_eq!(s.instance_cents_today, 400);
+}
+
+#[test]
+fn a_journal_written_before_costs_existed_still_replays_at_zero() {
+    // `serde(default)`. Zero is the safe direction: a budget cannot halt an instance on spend it
+    // cannot see, and the alternative — guessing a cost nobody recorded — halts on fiction.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    std::fs::write(
+        &path,
+        r#"{"kind":"intent","key":{"chain_id":31337,"instance_id":"0x0101010101010101010101010101010101010101010101010101010101010101","checkpoint_id":0},"public_values_hash":"0x7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b","vk_hash":"0x9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c","at":1000}
+"#,
+    )
+    .unwrap();
+    let j = Journal::open(&path).unwrap();
+    assert_eq!(j.spend(B256::from([0x01; 32]), 1_100, 86_400).instance_cents_today, 0);
+    assert_eq!(
+        j.status(&key(0)),
+        Status::OutcomeUnknown {
+            public_values_hash: B256::from([0x7B; 32]),
+            vk_hash: B256::from([0x9C; 32]),
+            since: 1_000,
+        }
+    );
 }

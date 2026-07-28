@@ -504,6 +504,27 @@ check "the restart re-attached rather than re-requesting" \
 check "the daemon recovered and kept landing roots" \
       "$([ "$(applied)" -gt "$APPLIED_PRE" ] && echo 0 || echo 1)"
 
+step "the loss budget halts an instance rather than bleeding on it"
+# Unpreventable spend is real: a creator-admin can rotate config one block after any preflight, so
+# no amount of preflighting drives waste to zero. The budget is the backstop, and until this run it
+# was unreachable code — the daemon passed `Spend::default()` forever, so no input could ever trip
+# it. Set a cap below what this instance has already spent today and it must stop.
+sed 's/^\[budget\]$//' "$WORK/operator.toml" > "$WORK/broke.toml"
+cat >> "$WORK/broke.toml" <<'EOF'
+
+[budget]
+per_instance_usd_per_day = 0
+global_usd_per_day       = 0
+EOF
+INTENTS_BUDGET=$(intents)
+attest "$PK"; mine $((EPOCH + 2))
+cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
+  --config "$WORK/broke.toml" --once >"$WORK/budget.log" 2>&1
+grep -qi 'loss_budget' "$WORK/budget.log"
+check "held on the loss budget" "$?"
+check "and spent nothing while halted ($(( $(intents) - INTENTS_BUDGET )) new request(s))" \
+      "$([ "$(intents)" = "$INTENTS_BUDGET" ] && echo 0 || echo 1)"
+
 step "a verifier it cannot satisfy is a hold, not a loss"
 # Freeze-shaped: point the instance at a verifier nothing this binary produces can satisfy, and
 # confirm the daemon reports it rather than burning proof after proof against it.
