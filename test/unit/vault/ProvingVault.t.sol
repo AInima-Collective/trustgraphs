@@ -127,11 +127,7 @@ contract ProvingVaultTest is Test {
         id = snapshot.trigger();
     }
 
-    function _args(uint256 checkpointId, address recipient)
-        internal
-        pure
-        returns (IProvingVault.SubmitArgs memory)
-    {
+    function _args(uint256 checkpointId, address recipient) internal pure returns (IProvingVault.SubmitArgs memory) {
         return _args(checkpointId, recipient, 0);
     }
 
@@ -205,8 +201,7 @@ contract ProvingVaultTest is Test {
         address boundBefore = vault.accountOf(INSTANCE).snapshot;
 
         MockAccumulator rogueAcc = new MockAccumulator();
-        MerkleSnapshot rogue =
-            new MerkleSnapshot(verifier, PARAMS, rogueAcc, address(this), address(this));
+        MerkleSnapshot rogue = new MerkleSnapshot(verifier, PARAMS, rogueAcc, address(this), address(this));
         registry.update(
             INSTANCE,
             IInstanceRegistry.Instance({
@@ -255,9 +250,7 @@ contract ProvingVaultTest is Test {
         assertGt(feeUsd, 0, "the fee was paid");
         assertGt(vault.creditOf(alice, address(0)), 0, "alice is owed the fee she never sent a tx for");
         assertEq(
-            vault.creditOf(mallory, address(0)),
-            _weiFor(gasUsd),
-            "mallory is owed exactly her gas, and nothing else"
+            vault.creditOf(mallory, address(0)), _weiFor(gasUsd), "mallory is owed exactly her gas, and nothing else"
         );
         assertLt(
             vault.creditOf(mallory, address(0)),
@@ -334,9 +327,7 @@ contract ProvingVaultTest is Test {
         _fund(10 ether, 0);
         _policy(0, 1_000 * vault.USD());
         uint256 id = _mint(bytes32(uint256(1)), 5, 100);
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.CheckpointNotApplied2.selector, id)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IProvingVault.CheckpointNotApplied2.selector, id));
         vault.claim(INSTANCE, id);
     }
 
@@ -363,9 +354,7 @@ contract ProvingVaultTest is Test {
         uint256 minPayout = 5 * vault.USD();
         IProvingVault.SubmitArgs memory args = _args(id, alice, minPayout);
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.PayoutBelowMinimum.selector, 0, minPayout)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IProvingVault.PayoutBelowMinimum.selector, 0, minPayout));
         vault.submitAndClaim(INSTANCE, args);
 
         // Nothing landed and nothing was consumed, so the prover can simply try again later.
@@ -680,9 +669,7 @@ contract ProvingVaultTest is Test {
 
         // A stranger cannot move it.
         vm.prank(mallory);
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, mallory)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, mallory));
         vault.migrate(INSTANCE);
 
         // The instance's constitutional authority can, and the balance comes with it.
@@ -696,9 +683,7 @@ contract ProvingVaultTest is Test {
         _fund(1 ether, 0);
         vm.prank(constitutional);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IProvingVault.SnapshotMismatch.selector, address(snapshot), address(snapshot)
-            )
+            abi.encodeWithSelector(IProvingVault.SnapshotMismatch.selector, address(snapshot), address(snapshot))
         );
         vault.migrate(INSTANCE);
     }
@@ -722,10 +707,7 @@ contract ProvingVaultTest is Test {
     /// burned, priced at `block.basefee`. The caller additionally paid intrinsic gas (21k plus
     /// calldata), everything before and after the measured span, and any priority fee. So the
     /// reimbursement must be strictly below even a floor estimate of what they spent.
-    function testFuzz_ReimbursementNeverExceedsDemonstrableCallerCost(
-        uint128 basefee,
-        uint96 balance
-    ) public {
+    function testFuzz_ReimbursementNeverExceedsDemonstrableCallerCost(uint128 basefee, uint96 balance) public {
         basefee = uint128(bound(basefee, 1, 500 gwei));
         balance = uint96(bound(balance, 0.01 ether, 50 ether));
 
@@ -902,15 +884,11 @@ contract ProvingVaultTest is Test {
         for (uint256 i = 0; i < 3; i++) {
             address who = i == 0 ? operational : (i == 1 ? admin : mallory);
             vm.prank(who);
-            vm.expectRevert(
-                abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, who)
-            );
+            vm.expectRevert(abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, who));
             vault.setPolicy(INSTANCE, 0, 1);
 
             vm.prank(who);
-            vm.expectRevert(
-                abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, who)
-            );
+            vm.expectRevert(abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, who));
             vault.requestWithdrawal(INSTANCE, 1 ether, 0);
         }
 

@@ -21,6 +21,16 @@ pub struct Config {
     #[serde(default)]
     pub chain_id: Option<u64>,
 
+    /// The block `registry` was deployed at. The `InstanceRegistered` scan starts here.
+    ///
+    /// Zero is correct on a fresh devnet and wrong everywhere else. Left at zero against a
+    /// registry deployed at block 21,000,000 the daemon issues ~2,100 empty `eth_getLogs` calls
+    /// before it can decide anything, and most public providers reject the range outright as an
+    /// archive request — so the failure is not "slow", it is "no catalog, every tick". Startup
+    /// says so out loud rather than letting it be discovered in production.
+    #[serde(default)]
+    pub registry_from_block: u64,
+
     #[serde(default)]
     pub manifest: Vec<ManifestEntry>,
     #[serde(default)]

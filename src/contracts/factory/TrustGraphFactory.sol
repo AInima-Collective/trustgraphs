@@ -269,7 +269,9 @@ contract TrustGraphFactory {
         payable
         returns (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid)
     {
-        if (msg.value != 0 && address(VAULT) == address(0)) revert NoVaultConfigured();
+        if (msg.value != 0 && address(VAULT) == address(0)) {
+            revert NoVaultConfigured();
+        }
         // --- 0. Validate everything before deploying anything. -------------------------------
         uint256 nameLength = bytes(args.name).length;
         if (nameLength == 0) revert EmptyName();

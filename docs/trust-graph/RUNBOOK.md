@@ -120,6 +120,19 @@ Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its
 
 ## Produce a root (the permissionless loop)
 
+> **This is the fallback, not the primary path.** The proof scheduler
+> ([`docs/OPERATOR.md`](../OPERATOR.md)) runs this whole sequence unattended — it freezes the
+> checkpoint on the contract's cadence, reconstructs the input, proves it, and submits, with a
+> journal that keeps a crash from paying twice. Reach for the manual loop when you are debugging
+> the daemon, bringing up a network before the daemon knows about it, or self-proving a one-off.
+> The on-chain path is identical either way; `submitProof` is permissionless and does not care who
+> called it.
+>
+> Self-hosting the daemon against your own instance is documented in
+> [`OPERATOR.md`](../OPERATOR.md) §5 and needs no relationship with us.
+
+### Manual proving
+
 ```bash
 # 1. Anyone freezes a checkpoint:
 cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc, leafCount, block)

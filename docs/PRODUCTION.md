@@ -38,3 +38,47 @@ The `{account → score}` root is produced by a permissionless SP1 proof — any
 via `MerkleSnapshot.submitProof`. Real STARK → Groth16 proving needs ≥16–32 GiB of RAM or the Succinct
 prover network (`SP1_PROVER=network`). See [`docs/trust-graph/RUNBOOK.md`](./trust-graph/RUNBOOK.md) for the guest/host build
 and the checkpoint → prove → submit flow.
+
+In production that loop is not driven by hand. Deploy the **proof scheduler** and it keeps every
+instance's scores fresh with nobody watching: [`docs/OPERATOR.md`](./OPERATOR.md) is the whole
+contract — what it does, how to configure it, what it alerts on, and how to recover it.
+
+Three things to get right before the first tick:
+
+1. **`registry_from_block`.** Set it to the `InstanceRegistry` deployment block. Left at 0 the
+   daemon scans from genesis, which most providers reject outright as an archive request — the
+   failure is not slowness, it is no catalog and every tick failing. Startup alerts if you forget.
+2. **Two keys, separately funded.** `NETWORK_PRIVATE_KEY` (prover network requester) and
+   `SUBMITTER_PRIVATE_KEY` (submit gas). They are split because the payee lives in the journal, so
+   the submitting key holds no value and rotates freely.
+3. **A real Groth16 proof, verified by the canonical gateway, before anything else.** This is the
+   one thing the build could not exercise (11 GiB box, no network key — [`DEVIATIONS`](./DEVIATIONS.md)
+   #20). Every proof in CI wraps at a mock gateway. Prove one checkpoint for real, submit it, watch
+   it land, and only then start the daemon.
+
+### Run the proving vault
+
+Optional, and only if you intend to pay for roots or let communities pay for their own.
+[`ProvingVault`](../src/contracts/vault/ProvingVault.sol) is the tank a community tops up so
+somebody keeps proving its scores; [`IProvingVault`](../src/interfaces/vault/IProvingVault.sol)
+documents why each piece is shaped the way it is. Deploy order and the settings that matter:
+
+```
+ProvingVault(registry, usdc, ethUsdFeed, feedMaxStaleness, minEthUsd, maxEthUsd, feeSetter, admin)
+```
+
+- **The price feed must be 8-decimal** — the constructor asserts it. An 18-decimal feed would
+  underpay every prover by 1e10.
+- **`minEthUsd` / `maxEthUsd` are a sanity band, not decoration.** `maxPerRootUsd` is denominated
+  in oracle-USD and the ETH leg converts at the same oracle, so a low-but-fresh price caps nothing:
+  at $1/ETH a $50 claim withdraws 50 ETH. An out-of-band answer is treated as no answer.
+- **Price the bands before anyone creates an instance** (`setFeePerRootUsd(program, band, usd)`),
+  or the first roots land and pay nothing. Band 0 is reserved for "we do not price this" and
+  refuses to be set.
+- **The factory's `vault` constructor argument** is what makes `createInstance` payable, so a
+  community can deploy its network endowed with a year of roots in one transaction. Passing zero
+  means "no prepay path", and sending value to such a factory reverts rather than being kept.
+
+Communities then set their own limits with `setPolicy(instanceId, minPaidIntervalBlocks,
+maxPerRootUsd)`. That is the only enforceable cadence: `EPOCH_FLOOR` binds at creation only, since
+`setEpochLength` is constitutional and any creator can lower their own epoch afterwards.

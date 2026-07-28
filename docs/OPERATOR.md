@@ -68,6 +68,7 @@ listed is not configurable.
 rpc      = "https://…"          # required. JSON-RPC endpoint
 registry = "0x…"                # required. InstanceRegistry address
 chain_id = 1                    # optional; checked against eth_chainId at startup, never trusted over it
+registry_from_block = 21000000  # the block `registry` was deployed at. SET THIS on any real chain.
 
 # ── which instances ─────────────────────────────────────────────────────────
 # Factory-minted trust-graph instances need ZERO per-instance config: the daemon reconstructs
@@ -160,6 +161,7 @@ log_format   = "json"
 | `rpc` | JSON-RPC endpoint | required |
 | `registry` | `InstanceRegistry` address | required |
 | `chain_id` | expected chain; startup aborts on mismatch | read from chain |
+| `registry_from_block` | where the `InstanceRegistered` scan starts | 0 (alerts on any chain but 31337) |
 | `manifest[]` | instances the chain cannot describe | empty |
 | `curated.instances` | proven on us, no vault | empty |
 | `paid.enabled` / `paid.vault` / `paid.recipient` | the funded path | off |
@@ -237,23 +239,124 @@ This operator's config sets `cycle_limit`. So the adapter must call the lower-le
 
 ---
 
-## 4. Self-hosting *(planned: M2)*
-
-The hosted service sells convenience, not access. A community running the operator against its own
-instance, with its own keys, produces the same root:
+## 4. Running it
 
 ```bash
-operator --config ./my-network.toml --once
+# one pass over every instance, then exit. What CI and a human debugging use.
+cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml --once
+
+# decide and report, send nothing. Safe against production config.
+cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml --once --dry-run
+
+# the daemon.
+cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml
 ```
 
-with a config naming one instance and no `[paid]` section. Nothing about the on-chain path differs
-from what we run: `submitProof` is permissionless, the journal binds the same values, and the root
-that lands is byte-identical. The manual fallback — `taskfile/instances.sh`, the loop a human used
-to run — stays documented in [`docs/trust-graph/RUNBOOK.md`](./trust-graph/RUNBOOK.md).
+`--dry-run` is the first thing to run against any config you have just changed. It performs every
+chain read and every decision and skips only the sends, so the decision log it prints is exactly
+what the real loop would act on.
+
+### `registry_from_block` is not optional in practice
+
+Left at 0 against a registry deployed at block 21,000,000, the scan issues ~2,100 empty
+`eth_getLogs` calls before it can decide anything — and most public providers reject that range as
+an archive request, so the daemon gets **no catalog at all and every tick fails**. Startup alerts
+when it is 0 on any chain but 31337. Set it to the registry's deployment block.
+
+### Reading the output
+
+Two files, both rewritten in place, both meant to be scraped:
+
+- **`ops.status_path`** — the heartbeat. `head_block`, `tick_at`, one row per instance with its
+  decided action, and the current `unresolved` list. If `tick_at` stops advancing, the daemon is
+  wedged; nothing else in this file matters more than that.
+- **`ops.journal_path`** — the append-only money record. One `intent` per proof request, one
+  `settled` per resolved one. It is the only file whose loss costs money, and the only one worth
+  backing up.
+
+Useful one-liners:
+
+```bash
+jq -c '{head_block, tick_at, instances: [.instances[] | {name, action: .action}]}' status.json
+jq -c 'select(.kind=="intent")' journal.jsonl | tail             # what has been paid for
+jq -r 'select(.event=="instance_skipped") | .reason' run.log | sort | uniq -c
+```
+
+### Alerts
+
+`ops.alert_webhook` receives a plain-text POST for anything a human has to act on. What raises one,
+and what each actually means:
+
+| alert | what happened | what to do |
+|---|---|---|
+| `tick failed: …` | a whole pass errored (usually RPC) | nothing, if it clears; the next tick re-reads everything from chain |
+| `N proof request(s) with an unknown outcome` | a crash landed in the ambiguous window (§3) | resolve each by hand; **never** auto-retried |
+| `registry_from_block is 0 on chain N` | the scan will start at genesis | set it, restart |
+| `submitter key has a zero balance` | every send will fail | fund it |
+| `<instance>: Unfunded` | a paid instance's tank will not cover the next root | tell the community, or move it to `curated` |
+| `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
+| `<instance>: Halted` | a loss budget was exceeded | investigate before raising the budget |
+
+### Recovering
+
+The contracts are the database, so recovery is mostly "start it again".
+
+- **Ordinary crash / `kill -9`.** Restart. The journal re-attaches to any in-flight request and the
+  disk re-attaches to any finished-but-unsubmitted proof. Verified in `test/e2e/fork.sh`: killed
+  mid-proof, restarted, no second request and roots kept landing.
+- **Someone else landed the root first.** Nothing to do; that is the design. The bounty follows the
+  journal's recipient, so `ProvingVault.claim(instanceId, checkpointId)` still pays the prover
+  afterwards — anyone may call it.
+- **`RequestOutcomeUnknown`.** The one case needing a human. Query the prover network for the
+  request (§3 says how), then append a `Resolved` record to the journal. Do not delete the line and
+  do not restart hoping it clears — that is how you pay twice.
+- **Lost journal.** Recoverable but expensive: the daemon will re-request proofs it already paid
+  for. Roots are unaffected (`submitProof` is monotonic, so a duplicate simply reverts). Back the
+  journal up; nothing else.
+- **Wrong `paramsHash` after a governance rotation.** Expected, and self-healing for new
+  checkpoints only. In-flight checkpoints keep the params they were pinned with; the operator
+  skips the instance until its own reconstruction matches again, and says
+  `params_hash(reconstruction) != snapshot.paramsHash()` while it does.
 
 ---
 
-## 5. What the operator can and cannot promise
+## 5. Self-hosting
+
+The hosted service sells convenience, not access. A community running the operator against its own
+instance, with its own keys, produces the same root — byte-identical, verified by the same
+contract, with no relationship to us of any kind.
+
+```toml
+rpc                 = "https://…"
+registry            = "0x…"
+registry_from_block = 21000000
+
+[curated]
+instances = ["0x…your instance id…"]   # "prove this on my own money"
+
+[prover]
+backend = "network"                    # or "cpu" with 16-32 GiB
+
+[ops]
+journal_path = "./.trustgraph/operator/journal.jsonl"
+status_path  = "./.trustgraph/operator/status.json"
+```
+
+No `[paid]` section: with it off the operator is self-proving and pays for everything it proves.
+Listing your instance under `[curated]` is what tells it "this one is proven on us" — from your
+config's point of view, *you* are the host.
+
+Nothing about the on-chain path differs from what we run. `submitProof` is permissionless and
+monotonic, the journal binds the same values, and N operators on one instance compose rather than
+race: the first root to land wins and the others revert, having spent only gas.
+
+The manual fallback — the loop a human drives by hand, one command per step — stays documented in
+[`docs/trust-graph/RUNBOOK.md`](./trust-graph/RUNBOOK.md) §"Manual proving". It is the same
+sequence the daemon automates, and it is what to fall back to if the daemon itself is the problem.
+
+---
+
+## 6. What the operator can and cannot promise
 
 - **Cannot** guarantee a root lands: proving is best-effort, and any of gas, prover capacity, or a
   paused instance can delay one.
@@ -268,7 +371,48 @@ to run — stays documented in [`docs/trust-graph/RUNBOOK.md`](./trust-graph/RUN
 
 ---
 
-## 6. Related
+## 7. What has and has not been run
+
+Written down because "there is a test for it" and "it has been proven on a real chain" are
+different claims, and only one of them is true here.
+
+**Exercised end to end, unattended, on `test/e2e/fork.sh`:** three epochs of trigger → prove →
+submit with no human in the loop; a network created and its proving tank endowed in one
+transaction; the tank paying the prover for every root it bought; a stranger's direct
+`accumulator.checkpoint()` refused; five spam checkpoints coalescing to one paid proof; a params
+rotation leaving an already-pinned checkpoint alone while the next one binds the new value; the
+operator refusing to spend on an instance whose params it can no longer reproduce; `kill -9`
+mid-proof followed by a clean re-attach; and a verifier rotation held rather than proved into.
+
+**The front-run, specifically.** A second key was handed the daemon's held proof — strictly more
+than a mempool observer could see — and landed the claim itself. The fee still went to the address
+the journal named (1.67e15 wei, the band-1 price); the copier got 1.3e10 wei, gas only. Copying
+works. Stealing does not.
+
+**Not run: a real Groth16 proof verified by the canonical gateway.** Local Groth16 needs 16–32 GiB
+(this box has 11) and there is no prover-network key, so every proof above wraps at a
+`MockSP1Gateway`. The fork e2e does the next best thing and asks the *real* mainnet gateway
+directly: it has 1,975 bytes of deployed code and it refuses a fabricated proof. So the seam is
+demonstrably not something mainnet would accept — but the positive direction is unproven, and it is
+the one thing on this page that a deployment must do before trusting the rest. Recorded as
+[`DEVIATIONS`](./DEVIATIONS.md) #20; the rehearsal belongs in the session that first funds a
+prover-network key, alongside the vkey pinning check in
+[`PROGRAMS.md`](./PROGRAMS.md).
+
+**Not run: the daemon scheduling a contributions round or a signer-sync rotation.** The fork run
+drives two trust-graph instances — one curated, one vault-funded, in the same loop, which is the
+pair that can disagree with each other. Both other programs have handlers, and `test/e2e/run.sh`
+proves each one's full pipeline through the CLI, but nothing yet shows the daemon deciding and
+landing them unattended. Everything between the decision and the submit is program-agnostic; the
+per-program difference is input reconstruction. Recorded as [`DEVIATIONS`](./DEVIATIONS.md) #23.
+
+**Also not run:** a multi-day soak, a real reorg (the block-hash finality check is unit-tested
+against a synthetic one), and the `RequestOutcomeUnknown` resolution path against the live prover
+network — that last one is measured against the SDK source in §3 rather than executed.
+
+---
+
+## 8. Related
 
 - [`research/PROOF_SCHEDULER.md`](../research/PROOF_SCHEDULER.md) — the design, its economics and
   its failure semantics

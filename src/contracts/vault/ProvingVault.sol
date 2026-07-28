@@ -105,9 +105,9 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         address admin
     ) {
         if (
-            address(registry) == address(0) || address(usdc) == address(0)
-                || address(feed) == address(0) || feeSetter == address(0) || admin == address(0)
-                || feedMaxStaleness == 0 || minEthUsd == 0 || maxEthUsd <= minEthUsd
+            address(registry) == address(0) || address(usdc) == address(0) || address(feed) == address(0)
+                || feeSetter == address(0) || admin == address(0) || feedMaxStaleness == 0 || minEthUsd == 0
+                || maxEthUsd <= minEthUsd
         ) revert ZeroAmount();
         // Every conversion in this file assumes an 8-decimal answer. Assert it once here rather
         // than discovering an 18-decimal feed through a 1e10 underpayment.
@@ -236,23 +236,17 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         );
         uint256 gasUsed = gasBefore - gasleft();
 
-        if (!snapshot.hasAppliedCheckpoint() || snapshot.lastAppliedCheckpoint() != args.checkpointId)
-        {
+        if (!snapshot.hasAppliedCheckpoint() || snapshot.lastAppliedCheckpoint() != args.checkpointId) {
             revert CheckpointNotApplied(args.checkpointId, snapshot.lastAppliedCheckpoint());
         }
 
-        (feeUsd, gasUsd) =
-            _settle(instanceId, a, t, args.checkpointId, args.recipient, gasUsed, args.minPayoutUsd);
+        (feeUsd, gasUsd) = _settle(instanceId, a, t, args.checkpointId, args.recipient, gasUsed, args.minPayoutUsd);
     }
 
     /// @inheritdoc IProvingVault
     /// @dev The other half of "the bounty cannot be stolen". Pays no gas leg: whoever calls this
     ///      did not submit the root, and the account that did is not identifiable from here.
-    function claim(bytes32 instanceId, uint256 checkpointId)
-        external
-        nonReentrant
-        returns (uint256 feeUsd)
-    {
+    function claim(bytes32 instanceId, uint256 checkpointId) external nonReentrant returns (uint256 feeUsd) {
         Account storage a = _accounts[instanceId];
         if (a.snapshot == address(0)) revert UnknownInstance(instanceId);
         _requireUnclaimed(instanceId, checkpointId);
@@ -312,8 +306,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             _skip(instanceId, checkpointId, IneligibleReason.PolicyDisabled, minPayoutUsd);
             return (0, 0);
         }
-        if (t.lastPaidBlock != 0 && block.number < uint256(t.lastPaidBlock) + t.minPaidIntervalBlocks)
-        {
+        if (t.lastPaidBlock != 0 && block.number < uint256(t.lastPaidBlock) + t.minPaidIntervalBlocks) {
             _skip(instanceId, checkpointId, IneligibleReason.CadenceNotElapsed, minPayoutUsd);
             return (0, 0);
         }
@@ -362,33 +355,23 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             _claimed[instanceId][checkpointId] = true;
             _paidStatement[instanceId][t.statement] = true;
             _policies[instanceId].lastPaidBlock = uint64(block.number);
-            emit Claimed(
-                instanceId, checkpointId, recipient, msg.sender, feeUsd, gasUsd, ethSpent, usdcSpent
-            );
+            emit Claimed(instanceId, checkpointId, recipient, msg.sender, feeUsd, gasUsd, ethSpent, usdcSpent);
         } else {
             _skip(instanceId, checkpointId, IneligibleReason.InsufficientBalance, minPayoutUsd);
         }
     }
 
-    function _skip(
-        bytes32 instanceId,
-        uint256 checkpointId,
-        IneligibleReason reason,
-        uint256 minPayoutUsd
-    ) internal {
+    function _skip(bytes32 instanceId, uint256 checkpointId, IneligibleReason reason, uint256 minPayoutUsd) internal {
         // A prover that asked to be paid gets a revert, not a shrug.
         if (minPayoutUsd != 0) revert PayoutBelowMinimum(0, minPayoutUsd);
         emit ClaimSkipped(instanceId, checkpointId, uint8(reason));
     }
 
     /// Credit `usdAmount` to `to`, ETH first then USDC, returning what was actually paid.
-    function _pay(
-        Account storage a,
-        address to,
-        uint256 usdAmount,
-        uint256 ethUsdPrice,
-        bool feedOk
-    ) internal returns (uint256 paidUsd, uint256 ethSpent, uint256 usdcSpent) {
+    function _pay(Account storage a, address to, uint256 usdAmount, uint256 ethUsdPrice, bool feedOk)
+        internal
+        returns (uint256 paidUsd, uint256 ethSpent, uint256 usdcSpent)
+    {
         if (usdAmount == 0 || to == address(0)) return (0, 0, 0);
 
         if (feedOk && ethUsdPrice != 0 && a.ethBalance != 0) {
@@ -430,8 +413,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     {
         MerkleSnapshot snapshot = MerkleSnapshot(snapshotAddr);
         try snapshot.accumulator() returns (IAttestationAccumulator acc) {
-            try acc.getCheckpoint(checkpointId) returns (IAttestationAccumulator.Checkpoint memory c)
-            {
+            try acc.getCheckpoint(checkpointId) returns (IAttestationAccumulator.Checkpoint memory c) {
                 leafCount = c.leafCount;
                 known = true;
             } catch {
@@ -458,11 +440,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     /// @inheritdoc IProvingVault
     /// @dev Per program, and defaulting to a band whose fee is zero for anything unrecognised.
     ///      Band 0 is reserved as the "we do not price this" band and is never set.
-    function bandOf(bytes32 program, uint64 leafCount, uint64 anchorCount)
-        public
-        pure
-        returns (uint8)
-    {
+    function bandOf(bytes32 program, uint64 leafCount, uint64 anchorCount) public pure returns (uint8) {
         // Size is the SUM of both lanes, for every program, because that is exactly what the
         // operator's cycle estimate sums (`InstanceSize::estimated_cycles`). An earlier version
         // used `max` for contributions and `leafCount` alone for trust-graph, which meant the
@@ -489,10 +467,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// @inheritdoc IProvingVault
-    function setFeePerRootUsd(bytes32 program, uint8 band, uint256 usdPerRoot)
-        external
-        onlyRole(FEE_SETTER_ROLE)
-    {
+    function setFeePerRootUsd(bytes32 program, uint8 band, uint256 usdPerRoot) external onlyRole(FEE_SETTER_ROLE) {
         // Band 0 means "we do not price this": an unknown program, an oversized instance, or a
         // size read that failed. Letting it carry a price would quietly turn every one of those
         // into a paid claim, which is the exact opposite of "unknown ⇒ zero fee, never the
@@ -525,9 +500,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     ///      3. Everything downstream assumes 8 decimals, so the constructor asserts it rather than
     ///         trusting the deployment. An 18-decimal feed would underpay a prover by 1e10.
     function _ethUsd() internal view returns (uint256 price, bool ok) {
-        try ETH_USD_FEED.latestRoundData() returns (
-            uint80, int256 answer, uint256, uint256 updatedAt, uint80
-        ) {
+        try ETH_USD_FEED.latestRoundData() returns (uint80, int256 answer, uint256, uint256 updatedAt, uint80) {
             if (answer <= 0) return (0, false);
             uint256 p = uint256(answer);
             if (p < MIN_ETH_USD || p > MAX_ETH_USD) return (0, false);
@@ -550,8 +523,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     modifier onlyConstitutional(bytes32 instanceId) {
         address snapshot = _accounts[instanceId].snapshot;
         if (snapshot == address(0)) revert UnknownInstance(instanceId);
-        if (!MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), msg.sender))
-        {
+        if (!MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), msg.sender)) {
             revert NotConstitutional(instanceId, msg.sender);
         }
         _;
@@ -608,11 +580,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     /// @inheritdoc IProvingVault
-    function executeWithdrawal(bytes32 instanceId, address to)
-        external
-        nonReentrant
-        onlyConstitutional(instanceId)
-    {
+    function executeWithdrawal(bytes32 instanceId, address to) external nonReentrant onlyConstitutional(instanceId) {
         PendingWithdrawal memory w = _pending[instanceId];
         if (w.readyAt == 0) revert NothingPending(instanceId);
         if (block.timestamp < w.readyAt) revert WithdrawalNotReady(w.readyAt);
@@ -672,11 +640,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IProvingVault
-    function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount)
-        external
-        view
-        returns (Quote memory q)
-    {
+    function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount) external view returns (Quote memory q) {
         Account storage a = _accounts[instanceId];
         if (a.snapshot == address(0)) {
             q.reason = uint8(IneligibleReason.NoAccount);
@@ -687,8 +651,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             q.reason = uint8(IneligibleReason.PolicyDisabled);
             return q;
         }
-        if (p.lastPaidBlock != 0 && block.number < uint256(p.lastPaidBlock) + p.minPaidIntervalBlocks)
-        {
+        if (p.lastPaidBlock != 0 && block.number < uint256(p.lastPaidBlock) + p.minPaidIntervalBlocks) {
             q.reason = uint8(IneligibleReason.CadenceNotElapsed);
             return q;
         }
@@ -706,8 +669,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             // Bounded so this view cannot overflow-revert. `quote()` is the pre-flight the
             // operator is instructed to trust before spending proving time; a reverting quote is
             // indistinguishable from an unreachable node and stops the loop for every instance.
-            q.gasUsd = ((_min(nominalGasUnits, maxGasUnitsPerClaim) * block.basefee) / 1e9)
-                * ethUsdPrice / 1e9;
+            q.gasUsd = ((_min(nominalGasUnits, maxGasUnitsPerClaim) * block.basefee) / 1e9) * ethUsdPrice / 1e9;
             uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
             if (q.gasUsd > room) q.gasUsd = room;
         }
@@ -716,19 +678,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         uint256 wanted = q.feeUsd + q.gasUsd;
         q.eligible = wanted != 0 && q.payableUsd >= wanted;
         if (!q.eligible && q.reason == uint8(IneligibleReason.None)) {
-            q.reason = uint8(
-                wanted == 0
-                    ? IneligibleReason.UnknownProgram
-                    : IneligibleReason.InsufficientBalance
-            );
+            q.reason = uint8(wanted == 0 ? IneligibleReason.UnknownProgram : IneligibleReason.InsufficientBalance);
         }
     }
 
-    function _payableUsd(Account storage a, uint256 ethUsdPrice, bool feedOk)
-        internal
-        view
-        returns (uint256)
-    {
+    function _payableUsd(Account storage a, uint256 ethUsdPrice, bool feedOk) internal view returns (uint256) {
         uint256 usd = (uint256(a.usdcBalance) * USD) / 1e6;
         if (feedOk && ethUsdPrice != 0) {
             usd += (uint256(a.ethBalance) * ethUsdPrice) / 1e18;

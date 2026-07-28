@@ -6,7 +6,7 @@
 
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{bail, Context, Result};
-use operator_core::catalog::{scan, CatalogEntry};
+use operator_core::catalog::{scan as catalog_scan, CatalogEntry};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, WorkKey};
@@ -16,7 +16,9 @@ use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use crate::chain::{expected_instance_domain, read_snapshot, verifier_vkey, Rpc, RpcCatalog};
+use crate::chain::{
+    expected_instance_domain, read_snapshot, verifier_vkey, RegistryScan, Rpc, RpcCatalog,
+};
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{alert, write_status, InstanceStatus, Logger, Status as OpsStatus};
@@ -76,6 +78,26 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
         json!(vkeys.iter().map(|(p, k)| (p.name(), format!("{k:#x}"))).collect::<Vec<_>>()),
     );
 
+    // A registry scan from genesis is the difference between a daemon that works on mainnet and
+    // one that never gets a catalog at all (most providers reject the range as an archive
+    // request). Say it once, loudly, at startup.
+    if cfg.registry_from_block == 0 && chain_id != 31_337 {
+        alert(
+            &logger,
+            cfg.ops.alert_webhook.as_deref(),
+            &format!(
+                "registry_from_block is 0 on chain {chain_id}: the InstanceRegistered scan will \
+                 start at genesis. Set it to the registry's deployment block — many providers \
+                 reject that range outright and the daemon then has no catalog at all."
+            ),
+        );
+    }
+
+    // Registrations are append-only and a scanned block never changes its logs, so the history is
+    // built once and extended. Previously this was rebuilt from `from_block` once per program per
+    // tick: three identical full scans a minute, for a list that grows by a row a week.
+    let mut scan = RegistryScan::default();
+
     let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
@@ -91,7 +113,8 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     }
 
     loop {
-        match tick(&cfg, &rpc, chain_id, sender.as_ref(), &mut journal, &logger, dry_run) {
+        match tick(&cfg, &rpc, chain_id, sender.as_ref(), &mut journal, &mut scan, &logger, dry_run)
+        {
             Ok(()) => {}
             Err(e) => {
                 // A failed tick is not a failed daemon: the next one re-reads everything from
@@ -107,12 +130,14 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tick(
     cfg: &Config,
     rpc: &Rpc,
     chain_id: u64,
     sender: Option<&Sender>,
     journal: &mut Journal,
+    scan: &mut RegistryScan,
     logger: &Logger,
     dry_run: bool,
 ) -> Result<()> {
@@ -120,14 +145,17 @@ fn tick(
     let basefee = rpc.basefee()?;
     let manifest = cfg.manifest_struct();
 
+    // Once per tick, not once per program.
+    scan.refresh(rpc, cfg.registry, cfg.registry_from_block, head)?;
+    let reader = RpcCatalog::new(rpc, cfg.registry, scan);
+
     let mut statuses = Vec::new();
     let mut alerts_raised = Vec::new();
     let mut in_flight_now = 0usize;
     let vkeys = guest_vkeys()?;
 
     for program in supported() {
-        let reader = RpcCatalog::new(rpc, cfg.registry, 0)?;
-        let catalog = scan(&reader, program, &manifest)?;
+        let catalog = catalog_scan(&reader, program, &manifest)?;
 
         // Say what was skipped. A silently shorter list is indistinguishable from a healthy one.
         for s in &catalog.skipped {

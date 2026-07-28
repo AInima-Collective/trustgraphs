@@ -240,27 +240,138 @@ impl RawLog {
     }
 }
 
-/// `operator-core`'s catalog, over live RPC.
-pub struct RpcCatalog<'a> {
-    pub rpc: &'a Rpc,
-    pub registry: Address,
-    /// instance id -> the transaction that registered it. Built once per scan.
+/// The registry's `InstanceRegistered` history, scanned once and then kept up to date
+/// incrementally.
+///
+/// Two things here were operational defects, and both were found by running the daemon against a
+/// mainnet fork rather than a fresh anvil.
+///
+/// 1. **The scan started at block 0.** On a chain whose registry was deployed at block 21,000,000
+///    that is ~2,100 `eth_getLogs` calls returning nothing, every tick — and most public providers
+///    refuse the range outright ("archive requests require a personal token"), so the daemon did
+///    not merely run slowly, it never got a catalog at all and every tick failed. `from_block` is
+///    now the registry's deployment block, and it is configuration rather than a constant.
+/// 2. **It rescanned per program, per tick.** Three supported programs meant three identical full
+///    scans a minute. Registrations are append-only and a scanned block never changes its logs, so
+///    the map is now built once and extended from `scanned_to + 1` on each subsequent pass.
+///
+/// The one thing this deliberately does NOT do is rewind on a reorg. A registration that gets
+/// re-orged out leaves a stale map entry, which makes `created_params` read a receipt that no
+/// longer exists — a per-instance `ReadFailed` skip, self-healing on the next restart. Dropping
+/// entries newer than `head - confirmations` instead would delete real ones every time the chain
+/// merely paused.
+#[derive(Debug, Default)]
+pub struct RegistryScan {
+    /// instance id -> (block, registering transaction).
     pub registered_in: BTreeMap<B256, (u64, B256)>,
+    /// Highest block already covered. `None` before the first scan.
+    pub scanned_to: Option<u64>,
 }
 
-impl<'a> RpcCatalog<'a> {
-    pub fn new(rpc: &'a Rpc, registry: Address, from_block: u64) -> Result<Self> {
-        let head = rpc.block_number()?;
-        let logs =
-            rpc.logs(registry, InstanceRegistered::SIGNATURE_HASH, from_block, head, 10_000)?;
-        let mut registered_in = BTreeMap::new();
+/// The block range a refresh should ask for, or `None` when there is nothing to ask.
+///
+/// Split out from [`RegistryScan::refresh`] so the bookkeeping is testable without a chain. Every
+/// off-by-one here costs either a missed registration (an instance that never gets proven) or a
+/// re-scan of the whole history (the defect this exists to fix), so it is worth its own tests.
+fn scan_range(scanned_to: Option<u64>, from_block: u64, head: u64) -> Option<(u64, u64)> {
+    match scanned_to {
+        // Already covered. A head that went BACKWARDS lands here too, which is right: a reorg
+        // shallower than the scan does not un-register anything.
+        Some(to) if to >= head => None,
+        Some(to) => Some((to + 1, head)),
+        None if from_block > head => None,
+        None => Some((from_block, head)),
+    }
+}
+
+impl RegistryScan {
+    /// Bring the map up to `head`, scanning only what is new.
+    pub fn refresh(
+        &mut self,
+        rpc: &Rpc,
+        registry: Address,
+        from_block: u64,
+        head: u64,
+    ) -> Result<()> {
+        let Some((start, end)) = scan_range(self.scanned_to, from_block, head) else {
+            return Ok(());
+        };
+        let logs = rpc.logs(registry, InstanceRegistered::SIGNATURE_HASH, start, end, 10_000)?;
         for log in &logs {
             if let Some(id) = log.topics.get(1) {
                 // First registration wins; `update()` emits a different event.
-                registered_in.entry(*id).or_insert((log.block_number, log.transaction_hash));
+                self.registered_in.entry(*id).or_insert((log.block_number, log.transaction_hash));
             }
         }
-        Ok(Self { rpc, registry, registered_in })
+        self.scanned_to = Some(end);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod scan_range_tests {
+    use super::scan_range;
+
+    #[test]
+    fn a_first_scan_starts_at_the_registry_deployment_not_at_genesis() {
+        // The whole point of `registry_from_block`. Starting at 0 against a mainnet registry is
+        // ~2,100 empty getLogs calls, and most providers reject the range outright.
+        assert_eq!(scan_range(None, 21_000_000, 21_000_500), Some((21_000_000, 21_000_500)));
+    }
+
+    #[test]
+    fn a_later_scan_covers_only_new_blocks() {
+        assert_eq!(
+            scan_range(Some(21_000_500), 21_000_000, 21_000_512),
+            Some((21_000_501, 21_000_512))
+        );
+    }
+
+    #[test]
+    fn no_new_blocks_asks_for_nothing() {
+        assert_eq!(scan_range(Some(21_000_500), 21_000_000, 21_000_500), None);
+    }
+
+    #[test]
+    fn a_shallow_reorg_does_not_trigger_a_rescan() {
+        // Head going backwards is not a reason to re-read history: nothing un-registers.
+        assert_eq!(scan_range(Some(21_000_500), 21_000_000, 21_000_490), None);
+    }
+
+    #[test]
+    fn a_registry_from_a_future_block_asks_for_nothing() {
+        // Misconfiguration, or a node still syncing. Asking for an inverted range would error;
+        // asking for nothing lets the next tick recover on its own.
+        assert_eq!(scan_range(None, 21_000_000, 20_999_999), None);
+    }
+
+    #[test]
+    fn consecutive_scans_leave_no_gap() {
+        // The invariant that matters: every block from `from_block` to the final head is covered
+        // exactly once across a sequence of refreshes.
+        let mut covered: Vec<u64> = Vec::new();
+        let mut scanned_to = None;
+        for head in [105u64, 105, 110, 112] {
+            if let Some((s, e)) = scan_range(scanned_to, 100, head) {
+                covered.extend(s..=e);
+                scanned_to = Some(e);
+            }
+        }
+        assert_eq!(covered, (100..=112).collect::<Vec<_>>());
+    }
+}
+
+/// `operator-core`'s catalog, over live RPC. Borrows a [`RegistryScan`] rather than owning one, so
+/// the history survives the tick that built it.
+pub struct RpcCatalog<'a> {
+    pub rpc: &'a Rpc,
+    pub registry: Address,
+    pub registered_in: &'a BTreeMap<B256, (u64, B256)>,
+}
+
+impl<'a> RpcCatalog<'a> {
+    pub fn new(rpc: &'a Rpc, registry: Address, scan: &'a RegistryScan) -> Self {
+        Self { rpc, registry, registered_in: &scan.registered_in }
     }
 }
 

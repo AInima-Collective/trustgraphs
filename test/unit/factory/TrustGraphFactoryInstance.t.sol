@@ -209,9 +209,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
         // refused if it commits to A's params, which is exactly the clone-cross-feed attempt.
         IAttestationAccumulator.Checkpoint memory cpB = IAttestationAccumulator(b.resolver).getCheckpoint(0);
         // A's params, B's inputs.
-        verifier.setExpectedDigest(
-            _digest(b.snapshot, cpB.acc, cpB.leafCount, MerkleSnapshot(a.snapshot).paramsHash())
-        );
+        verifier.setExpectedDigest(_digest(b.snapshot, cpB.acc, cpB.leafCount, MerkleSnapshot(a.snapshot).paramsHash()));
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
         MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
