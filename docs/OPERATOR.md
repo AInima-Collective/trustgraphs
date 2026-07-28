@@ -16,11 +16,11 @@ unconditional free tier is an unbounded liability: an attacker pays roughly one 
 per epoch to make somebody else pay for a ~600k-gas submit. So the promise is "every **eligible**
 instance", and this page says which ones those are rather than implying it covers everyone.
 
-> **Status.** The daemon (`zk/operator`) and the decision engine (`packages/operator-core`) are
-> built in milestones M1-M2 of the proof-scheduler program; the vault it draws from is M3. This
-> page is the frozen configuration contract they are built against, written at the interface
-> freeze so the indexer and frontend could be built in parallel. Sections marked *(planned)*
-> describe behaviour whose configuration shape is fixed but whose code lands in a later milestone.
+> **Status.** The decision engine (`packages/operator-core`) is **built**: every branch below is a
+> test in `packages/operator-core/tests/`. The daemon that drives it (`zk/operator`) is M2, and the
+> vault it draws from is M3. This page is the configuration contract they are built against, frozen
+> at the interface freeze so the indexer and frontend could be built in parallel. Sections marked
+> *(planned)* describe behaviour whose configuration shape is fixed but whose code lands later.
 
 ---
 
@@ -82,17 +82,20 @@ chain_id = 1                    # optional; checked against eth_chainId at start
 
 [[manifest]]
 program      = "contributions"
-snapshot     = "0x…"
+snapshot     = "0x…"            # the contributions MerkleSnapshot
 params       = "./params.contributions.json"
 eas          = "0x…"
-submit_to    = "0x…"            # defaults to `snapshot`
-depends_on   = []               # instance ids that must have a fresh root first
+from_block   = 0                # first block to scan for this instance's logs
+# submit_to defaults to `snapshot`
+# depends_on = ["0x…"]          # instance ids that must have a fresh root first
 
 [[manifest]]
-program      = "signer"
-module       = "0x…"            # SignerSyncZkModule
-trust_instance = "0x…"          # woken by MerkleRootUpdated on this instance
+program      = "signer-sync"
+snapshot     = "0x…"            # the TRUST instance it follows (woken by its MerkleRootUpdated)
+submit_to    = "0x…"            # SignerSyncZkModule — the one entry where these differ
+params       = "./params.json"  # the trust instance's params; the signer reuses them
 selection    = "./selection.json"
+eas          = "0x…"
 
 # ── who we prove for ────────────────────────────────────────────────────────
 [curated]
@@ -205,9 +208,32 @@ that mints it. If the backend can answer "what happened to nonce N?", the window
 automatically. If it cannot, the record becomes `RequestOutcomeUnknown`, which is surfaced to a
 human and **never auto-retried** — the failure mode of auto-retry here is paying twice.
 
-*(The measured answer for sp1-sdk 6.3.1 — what it offers for request idempotency and status lookup
-by requester — is recorded here at M1, and it decides whether `RequestOutcomeUnknown` is rare or
-routine.)*
+### Measured: what sp1-sdk 6.3.1 actually offers
+
+Read against the pinned SDK source, because whether that last row is rare or routine is entirely a
+property of the backend:
+
+- **There is no client-supplied idempotency key.** `NetworkClient::request_proof` takes no caller
+  nonce. The `nonce` in the signed request body is `self.get_nonce()`, fetched server-side
+  immediately before signing, so it cannot be journaled in advance. The convenience builder
+  (`NetworkProveBuilder::request()`) exposes no idempotency knob at all.
+- **But `public_values_hash` is a natural one, and it round-trips.** `request_proof` accepts it,
+  and the `ProofRequest` record returned by both `get_proof_request_details` and
+  `get_filtered_proof_requests` carries it back. For this operator it is fully determined *before*
+  the request — ground rule 4 computes the journal natively first — so it is a content-addressed
+  request key we did not have to invent, and it distinguishes checkpoints because the journal
+  commits the checkpoint's accumulator state.
+- **Status lookup by requester exists**: `get_filtered_proof_requests(version, fulfillment_status,
+  execution_status, minimum_deadline, vk_hash, requester, fulfiller, from, to, limit, page, …)`.
+
+So the resolution is: filter on `requester = us`, `vk_hash = our program`, `from = intent time −
+slack`, and match `public_values_hash`. **`RequestOutcomeUnknown` is rare, not routine** — it
+survives only for index lag or a request created but not yet visible.
+
+One trap, because it silently disarms all of the above: the SDK attaches `public_values_hash` only
+when it simulates, and it skips simulation when **both** `cycle_limit` and `gas_limit` are set.
+This operator's config sets `cycle_limit`. So the adapter must call the lower-level
+`NetworkClient::request_proof` with the hash it already computed, not the convenience builder.
 
 ---
 

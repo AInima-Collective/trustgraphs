@@ -1,0 +1,23 @@
+[package]
+name = "operator-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The proof operator's decision engine: what to do next for an instance, and why."
+
+# Deliberately NO sp1-sdk, no signer, no HTTP client. Everything that can be *wrong* — when to
+# trigger, which checkpoint to prove, when to hold, when to claim — lives here, in the root
+# workspace, where `cargo test --workspace` runs it in CI. The thin sp1-sdk adapter and the actual
+# sends live in the detached `zk/operator` workspace.
+[dependencies]
+alloy-primitives = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+pagerank-core = { path = "../pagerank-core" }
+
+[dev-dependencies]
+tempfile = "3"

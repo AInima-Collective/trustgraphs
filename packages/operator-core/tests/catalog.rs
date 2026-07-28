@@ -1,0 +1,304 @@
+//! The catalog against a fake chain: what gets reconstructed, what gets skipped, and — the point
+//! of the whole module — that a skip is per-instance and never takes the run down with it.
+
+use alloy_primitives::{address, Address, B256, U256};
+use operator_core::catalog::{
+    scan, Catalog, ChainReader, CreatedParams, RegistryRecord, SkipCause,
+};
+use operator_core::manifest::{Manifest, ManifestEntry};
+use operator_core::types::Program;
+use pagerank_core::{encode, Params};
+use std::collections::BTreeMap;
+
+fn params(seed: u8) -> Params {
+    let s = U256::from(10u64).pow(U256::from(18u64));
+    Params {
+        damping_fp: s * U256::from(85u64) / U256::from(100u64),
+        tolerance_fp: s / U256::from(1_000_000u64),
+        max_iterations: 100,
+        min_weight_fp: U256::ZERO,
+        max_weight_fp: U256::from(100u64) * s,
+        trust_multiplier_fp: U256::from(2u64) * s,
+        trust_share_fp: s * U256::from(15u64) / U256::from(100u64),
+        trust_decay_fp: s * U256::from(80u64) / U256::from(100u64),
+        trusted_seeds: vec![Address::from([seed; 20])],
+        total_pool: U256::from(1_000_000u64),
+        precision_scale: s,
+        schema_uid: B256::from([seed; 32]),
+        weight_field_index: 1,
+        envelope0_domain_separators: vec![],
+        lane2_max_head_age: 0,
+        accumulator: Address::from([seed.wrapping_add(1); 20]),
+        chain_id: 31337,
+    }
+}
+
+#[derive(Default)]
+struct FakeChain {
+    ids: Vec<B256>,
+    records: BTreeMap<B256, RegistryRecord>,
+    created: BTreeMap<B256, CreatedParams>,
+    snapshot_hashes: BTreeMap<Address, B256>,
+    factory_eas: BTreeMap<Address, Address>,
+    /// Instance ids whose reads blow up, to prove one flaky read does not stop the rest.
+    poisoned: Vec<B256>,
+}
+
+#[derive(Debug)]
+struct FakeError(String);
+impl std::fmt::Display for FakeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ChainReader for FakeChain {
+    type Error = FakeError;
+
+    fn chain_id(&self) -> Result<u64, Self::Error> {
+        Ok(31337)
+    }
+    fn instance_ids(&self) -> Result<Vec<B256>, Self::Error> {
+        Ok(self.ids.clone())
+    }
+    fn instance_record(&self, id: B256) -> Result<RegistryRecord, Self::Error> {
+        if self.poisoned.contains(&id) {
+            return Err(FakeError("rpc exploded".into()));
+        }
+        self.records.get(&id).copied().ok_or_else(|| FakeError("no such instance".into()))
+    }
+    fn created_params(&self, id: B256) -> Result<Option<CreatedParams>, Self::Error> {
+        Ok(self.created.get(&id).cloned())
+    }
+    fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error> {
+        self.snapshot_hashes.get(&snapshot).copied().ok_or_else(|| FakeError("no snapshot".into()))
+    }
+    fn factory_eas(&self, factory: Address) -> Result<Address, Self::Error> {
+        self.factory_eas.get(&factory).copied().ok_or_else(|| FakeError("no factory".into()))
+    }
+}
+
+const FACTORY: Address = address!("00000000000000000000000000000000000000F1");
+const EAS: Address = address!("00000000000000000000000000000000000000E1");
+
+/// Register a healthy, self-consistent trust-graph instance.
+fn add_healthy(chain: &mut FakeChain, seed: u8) -> B256 {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let resolver = Address::from([seed.wrapping_add(0x20); 20]);
+    let p = params(seed);
+    let hash = encode::params_hash(&p);
+
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::TrustGraph.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: resolver,
+            params_hash: hash,
+        },
+    );
+    chain.created.insert(
+        id,
+        CreatedParams {
+            factory: FACTORY,
+            name: format!("net-{seed}"),
+            snapshot,
+            resolver,
+            created_block: 100,
+            params: p,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, hash);
+    chain.factory_eas.insert(FACTORY, EAS);
+    id
+}
+
+fn scan_all(chain: &FakeChain) -> Catalog {
+    scan(chain, Program::TrustGraph, &Manifest::default()).unwrap()
+}
+
+#[test]
+fn a_healthy_instance_is_reconstructed_with_zero_per_instance_config() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("reconstructed");
+    assert_eq!(entry.program, Program::TrustGraph);
+    assert_eq!(entry.eas, Some(EAS));
+    assert_eq!(entry.name, "net-1");
+    assert!(entry.manifest.is_none(), "the chain described it; no manifest needed");
+    // The self-check: our Rust encoder reproduced the hash the Solidity codec wrote at creation.
+    assert_eq!(entry.reconstructed_params_hash, chain.snapshot_hashes[&entry.snapshot]);
+}
+
+#[test]
+fn one_bad_row_does_not_stop_every_healthy_instance() {
+    // The behaviour that deliberately differs from `instance_scan`, which aborts the whole run.
+    let mut chain = FakeChain::default();
+    let good_a = add_healthy(&mut chain, 1);
+    let bad = add_healthy(&mut chain, 2);
+    let good_b = add_healthy(&mut chain, 3);
+
+    // The middle instance's snapshot rotated to something our reconstruction cannot reproduce.
+    let bad_snapshot = chain.records[&bad].snapshot;
+    chain.snapshot_hashes.insert(bad_snapshot, B256::from([0xFF; 32]));
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.get(good_a).is_some(), "a healthy instance must survive its neighbour");
+    assert!(catalog.get(good_b).is_some());
+    assert!(catalog.get(bad).is_none());
+    assert_eq!(catalog.skipped.len(), 1);
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::ParamsMismatch { .. }));
+}
+
+#[test]
+fn a_flaky_read_skips_one_instance_and_keeps_going() {
+    let mut chain = FakeChain::default();
+    let good = add_healthy(&mut chain, 1);
+    let flaky = add_healthy(&mut chain, 2);
+    chain.poisoned.push(flaky);
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.get(good).is_some());
+    assert_eq!(catalog.skipped.len(), 1);
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::ReadFailed(_)));
+}
+
+#[test]
+fn an_instance_owned_by_another_program_is_skipped_not_proven() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+    chain.records.get_mut(&id).unwrap().program = Program::Hypercerts.id();
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.entries.is_empty());
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::OtherProgram(_)));
+}
+
+#[test]
+fn an_instance_the_chain_cannot_describe_is_named_as_such() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+    chain.created.remove(&id); // registered, but not by the factory
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.entries.is_empty());
+    assert_eq!(catalog.skipped[0].reason, SkipCause::Undescribable);
+    // And the message says what to do about it rather than just refusing.
+    assert!(catalog.skipped[0].reason.to_string().contains("manifest"));
+}
+
+#[test]
+fn an_event_that_disagrees_with_the_directory_is_refused() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+    chain.created.get_mut(&id).unwrap().snapshot =
+        address!("00000000000000000000000000000000DEADBEEF");
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.entries.is_empty());
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::RecordDisagreement { .. }));
+}
+
+#[test]
+fn a_manifest_covers_what_the_chain_cannot_describe() {
+    // Contributions is not in `InstanceRegistry` at all. This is the honest half of
+    // "chain is the config".
+    let mut chain = FakeChain::default();
+    add_healthy(&mut chain, 1);
+    let contrib_snapshot = address!("00000000000000000000000000000000000000C0");
+    chain.snapshot_hashes.insert(contrib_snapshot, B256::from([0x77; 32]));
+
+    let manifest = Manifest {
+        entries: vec![ManifestEntry {
+            program: Program::Contributions,
+            snapshot: contrib_snapshot,
+            params: "params.contributions.json".into(),
+            eas: Some(EAS),
+            submit_to: None,
+            selection: None,
+            depends_on: vec![],
+            from_block: 42,
+        }],
+    };
+    manifest.validate().unwrap();
+
+    // Scanning for trust-graph does not pick up the contributions entry...
+    let tg = scan(&chain, Program::TrustGraph, &manifest).unwrap();
+    assert_eq!(tg.entries.len(), 1);
+    assert!(tg.entries.iter().all(|e| e.manifest.is_none()));
+
+    // ...and scanning for contributions finds exactly it, with no registry row at all.
+    let cc = scan(&chain, Program::Contributions, &manifest).unwrap();
+    assert_eq!(cc.entries.len(), 1);
+    let e = &cc.entries[0];
+    assert_eq!(e.snapshot, contrib_snapshot);
+    assert_eq!(e.created_block, 42);
+    assert!(e.manifest.is_some());
+    assert!(e.params.is_none(), "a manifest is a pointer to a params file, not the params");
+}
+
+#[test]
+fn the_chain_wins_when_a_manifest_duplicates_a_registered_instance() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+    let snapshot = chain.records[&id].snapshot;
+
+    let manifest = Manifest {
+        entries: vec![ManifestEntry {
+            program: Program::TrustGraph,
+            snapshot,
+            params: "stale.json".into(),
+            eas: Some(EAS),
+            submit_to: None,
+            selection: None,
+            depends_on: vec![],
+            from_block: 0,
+        }],
+    };
+    let catalog = scan(&chain, Program::TrustGraph, &manifest).unwrap();
+    assert_eq!(catalog.entries.len(), 1);
+    assert!(
+        catalog.entries[0].manifest.is_none(),
+        "a stale manifest file must never shadow what the chain says"
+    );
+}
+
+#[test]
+fn a_manifest_entry_that_cannot_work_is_rejected_at_load_time() {
+    use operator_core::manifest::ManifestError;
+
+    let base = ManifestEntry {
+        program: Program::Signer,
+        snapshot: address!("00000000000000000000000000000000000000C0"),
+        params: "p.json".into(),
+        eas: None,
+        submit_to: None,
+        selection: None,
+        depends_on: vec![],
+        from_block: 0,
+    };
+    assert_eq!(base.validate(), Err(ManifestError::SignerNeedsSelection));
+
+    let mut zero = base.clone();
+    zero.snapshot = Address::ZERO;
+    assert_eq!(zero.validate(), Err(ManifestError::ZeroSnapshot));
+
+    let mut no_params = base.clone();
+    no_params.selection = Some("s.json".into());
+    no_params.params = String::new();
+    assert_eq!(no_params.validate(), Err(ManifestError::MissingParams));
+
+    let mut no_eas = base.clone();
+    no_eas.program = Program::Contributions;
+    assert_eq!(no_eas.validate(), Err(ManifestError::NeedsEas(Program::Contributions)));
+
+    let mut ok = base;
+    ok.selection = Some("s.json".into());
+    assert_eq!(ok.validate(), Ok(()));
+}
