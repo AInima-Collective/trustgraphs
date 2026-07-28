@@ -355,6 +355,20 @@ export const contributionResolverAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '_snapshot', internalType: 'address', type: 'address' }],
+    name: 'bindSnapshot',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'binder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'checkpoint',
     outputs: [{ name: 'id', internalType: 'uint256', type: 'uint256' }],
@@ -529,6 +543,13 @@ export const contributionResolverAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'snapshot',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'valuationSchemaUid',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
@@ -645,22 +666,44 @@ export const contributionResolverAbi = [
     ],
     name: 'SchemasSet',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'SnapshotBound',
+  },
   { type: 'error', inputs: [], name: 'AccessDenied' },
+  { type: 'error', inputs: [], name: 'AlreadyBound' },
   { type: 'error', inputs: [], name: 'DuplicateSchemaUid' },
   { type: 'error', inputs: [], name: 'InsufficientValue' },
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NotBinder' },
   { type: 'error', inputs: [], name: 'NotPayable' },
   { type: 'error', inputs: [], name: 'NotSchemaAdmin' },
+  { type: 'error', inputs: [], name: 'NotSnapshot' },
   { type: 'error', inputs: [], name: 'SchemasAlreadySet' },
   { type: 'error', inputs: [], name: 'SchemasNotSet' },
+  {
+    type: 'error',
+    inputs: [{ name: 'reads', internalType: 'address', type: 'address' }],
+    name: 'SnapshotReadsAnotherAccumulator',
+  },
   {
     type: 'error',
     inputs: [{ name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' }],
     name: 'UnknownSchema',
   },
   { type: 'error', inputs: [], name: 'ZeroSchemaUid' },
+  { type: 'error', inputs: [], name: 'ZeroSnapshot' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1306,6 +1349,20 @@ export const easIndexerResolverAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '_snapshot', internalType: 'address', type: 'address' }],
+    name: 'bindSnapshot',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'binder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'boundSchema',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
@@ -1448,6 +1505,13 @@ export const easIndexerResolverAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'snapshot',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'version',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
     stateMutability: 'view',
@@ -1545,7 +1609,21 @@ export const easIndexerResolverAbi = [
     ],
     name: 'SchemaBound',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'SnapshotBound',
+  },
   { type: 'error', inputs: [], name: 'AccessDenied' },
+  { type: 'error', inputs: [], name: 'AlreadyBound' },
   {
     type: 'error',
     inputs: [
@@ -1558,8 +1636,16 @@ export const easIndexerResolverAbi = [
   { type: 'error', inputs: [], name: 'InvalidEAS' },
   { type: 'error', inputs: [], name: 'InvalidLength' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NotBinder' },
   { type: 'error', inputs: [], name: 'NotPayable' },
+  { type: 'error', inputs: [], name: 'NotSnapshot' },
   { type: 'error', inputs: [], name: 'SchemaAlreadyBound' },
+  {
+    type: 'error',
+    inputs: [{ name: 'reads', internalType: 'address', type: 'address' }],
+    name: 'SnapshotReadsAnotherAccumulator',
+  },
+  { type: 'error', inputs: [], name: 'ZeroSnapshot' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3586,6 +3672,15 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'checkpointParamsHash',
+    outputs: [{ name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'epochLength',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
@@ -3780,6 +3875,13 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'instanceDomain',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'lastAppliedCheckpoint',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
@@ -3921,6 +4023,7 @@ export const merkleSnapshotAbi = [
       { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
       { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
       { name: 'skippedDigest', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'recipient', internalType: 'address', type: 'address' },
       { name: 'proof', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'submitProof',
@@ -4075,6 +4178,25 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'paramsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'CheckpointParamsPinned',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'epochLength',
         internalType: 'uint64',
         type: 'uint64',
@@ -4099,6 +4221,12 @@ export const merkleSnapshotAbi = [
         internalType: 'address',
         type: 'address',
         indexed: true,
+      },
+      {
+        name: 'recipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
       },
     ],
     name: 'MerkleProofSubmitted',
@@ -4272,7 +4400,15 @@ export const merkleSnapshotAbi = [
     ],
     name: 'StaleCheckpoint',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'UnpinnedCheckpoint',
+  },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroParamsHash' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

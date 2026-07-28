@@ -53,6 +53,7 @@ fn base(p: Params) -> (GuestInput, [Address; 5], [B256; 2]) {
             ),
         ],
         params: p,
+        binding: Default::default(),
     };
     input.params.trusted_seeds = vec![seed];
     (input, [seed, r1, r2, x, y], [uid(10), uid(11)])

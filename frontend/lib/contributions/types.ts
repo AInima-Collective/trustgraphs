@@ -65,4 +65,9 @@ export interface ContributionsInput {
    */
   records: RawEdge[]
   params: ContributionsParams
+  /**
+   * Journal-v3 pass-through commitments. Omitted, both are zero: the payouts and output root
+   * still reproduce, but the digest is the digest of an unbound journal.
+   */
+  binding?: { recipient: Hex; instanceDomain: Hex }
 }

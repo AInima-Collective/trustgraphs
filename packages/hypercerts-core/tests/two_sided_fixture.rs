@@ -128,6 +128,7 @@ fn two_repo_input() -> GuestInput {
         ],
         witnesses: vec![alice_w, bob_w],
         strongref_targets: BTreeMap::new(),
+        binding: Default::default(),
     }
 }
 

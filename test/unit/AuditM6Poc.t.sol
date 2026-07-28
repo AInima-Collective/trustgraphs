@@ -108,7 +108,9 @@ contract AuditM6Poc is Test {
         (bytes32 hAnchorAcc, uint64 hAnchorCount) = snapshot.anchorCheckpoints(honestId);
         assertEq(hAnchorCount, 2, "honest trigger binds the real contribution count");
         assertTrue(hAnchorAcc != bytes32(0), "honest trigger binds the real contribution acc");
-        snapshot.submitProof(honestId, HONEST_ROOT, bytes32(uint256(1)), "cid-honest", 1000, bytes32(0), hex"");
+        snapshot.submitProof(
+            honestId, HONEST_ROOT, bytes32(uint256(1)), "cid-honest", 1000, bytes32(0), address(0), hex""
+        );
 
         // More contributions arrive; the live log now has 3 leaves.
         _foldContribution(hex"3333");

@@ -11,7 +11,7 @@ use clap::Parser;
 use input_exporter::reconstruct;
 use input_exporter::rpc::{parse_addr, Rpc};
 use pagerank_core::{
-    AnchorRecord, GuestInput, Lane2Witness, Params, RawEdge, SelectionParams, SignerInput,
+    AnchorRecord, Binding, GuestInput, Lane2Witness, Params, RawEdge, SelectionParams, SignerInput,
 };
 use std::collections::BTreeSet;
 
@@ -78,10 +78,17 @@ struct Args {
     /// error).
     #[arg(long)]
     envelope0_log: Vec<String>,
-    /// Lane 2: the MerkleSnapshot address, to self-check the re-folded anchorAcc against the
-    /// stored anchor checkpoint.
+    /// The MerkleSnapshot this input will be proven against. REQUIRED for a `GuestInput`: it is
+    /// half of the journal-v3 `instanceDomain` the contract rebuilds from `address(this)` and
+    /// `block.chainid`, so an export without it produces a proof no snapshot can accept. Also
+    /// used to self-check the re-folded lane-2 anchorAcc against the stored anchor checkpoint.
     #[arg(long)]
     snapshot: Option<String>,
+    /// Journal-v3 bounty payee, committed verbatim by the guest and bound by `submitProof`.
+    /// Defaults to the zero address, which means "no bounty" — correct for a curated instance
+    /// or a community self-proving for free.
+    #[arg(long)]
+    recipient: Option<String>,
 }
 
 #[tokio::main]
@@ -121,6 +128,32 @@ async fn main() -> Result<()> {
         ),
         (true, None) => bail!("--signer requires --selection <selection.json>"),
         (false, _) => None,
+    };
+
+    // Journal-v3 bindings. `instanceDomain` is derived from the snapshot this input will be proven
+    // against and the chain it lives on, byte-identically to the rebuild inside
+    // `MerkleSnapshot.submitProof` — so naming the wrong snapshot fails here, at export time,
+    // instead of after a proof has been paid for. A `SignerInput` carries no bindings.
+    let binding = if args.signer {
+        Binding::default()
+    } else {
+        let Some(snap) = &args.snapshot else {
+            bail!(
+                "--snapshot <0x…> is required: it is half of the journal-v3 instanceDomain that \
+                 MerkleSnapshot.submitProof rebuilds from address(this) and block.chainid, so an \
+                 input exported without it proves nothing any snapshot will accept"
+            );
+        };
+        let snapshot = parse_addr(snap)?;
+        let recipient = match &args.recipient {
+            Some(r) => parse_addr(r)?,
+            None => Address::ZERO,
+        };
+        let instance_domain = pagerank_core::encode::instance_domain(snapshot, chain_id);
+        eprintln!(
+            "journal v3: snapshot={snapshot:#x} recipient={recipient:#x} instanceDomain={instance_domain:#x}"
+        );
+        Binding { recipient, instance_domain }
     };
 
     // 1. Checkpoint.
@@ -323,9 +356,11 @@ async fn main() -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let out_json = if let Some(selection) = selection {
+        // `SignerInput` has no journal-v3 bindings: `SignerSyncZkModule` pays no bounty and there
+        // is one module per trust instance, so there is nothing for either word to separate.
         serde_json::to_string_pretty(&SignerInput { edges, params, selection })?
     } else {
-        serde_json::to_string_pretty(&GuestInput { edges, params, lane2 })?
+        serde_json::to_string_pretty(&GuestInput { edges, params, lane2, binding })?
     };
     std::fs::write(&out_path, out_json)?;
     eprintln!("wrote {} ({} edges)", out_path.display(), cp.leafCount);

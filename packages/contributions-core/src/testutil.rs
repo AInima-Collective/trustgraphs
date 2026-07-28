@@ -193,7 +193,17 @@ pub fn fixture() -> crate::compute::GuestInput {
         ),
     ];
 
-    crate::compute::GuestInput { trust_edges, records, params: p }
+    // Journal-v3 bindings, deliberately non-zero and matching the other programs' fixtures, so
+    // the golden vectors, the prover CLI's built-in sample and the TS port all commit the same
+    // two words. A fixture that left them zero would exercise neither.
+    let binding = pagerank_core::Binding {
+        recipient: alloy_primitives::Address::from([0xBE; 20]),
+        instance_domain: pagerank_core::encode::instance_domain(
+            alloy_primitives::Address::from([0x5A; 20]),
+            31337,
+        ),
+    };
+    crate::compute::GuestInput { trust_edges, records, params: p, binding }
 }
 
 /// The canonical dev params: 1e18 scale, standard trust params, IF golden-vector round window,

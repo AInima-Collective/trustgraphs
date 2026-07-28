@@ -37,6 +37,10 @@ for tool in forge cast anvil cargo jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: '$tool' not found in PATH"; exit 1; }
 done
 
+# Journal v3: the bounty payee the guest commits and submitProof binds. A non-zero default so the
+# e2e actually exercises the binding rather than the all-zero path.
+RECIPIENT="${RECIPIENT:-0x00000000000000000000000000000000000000BE}"
+
 # --- chain -------------------------------------------------------------------
 if ! cast block-number --rpc-url "$RPC" >/dev/null 2>&1; then
   echo "== starting anvil =="
@@ -53,9 +57,13 @@ forge script script/DeployEasResolver.s.sol:DeployEasResolver \
 EAS=$(jq -r .eas test/e2e/deploy.json)
 RESOLVER=$(jq -r .resolver test/e2e/deploy.json)
 SCHEMA=$(jq -r .schema_uid test/e2e/deploy.json)
+SNAPSHOT=$(jq -r .snapshot test/e2e/deploy.json)
+PARAMS_HASH=$(jq -r .params_hash test/e2e/deploy.json)
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC")
 echo "   EAS=$EAS"
 echo "   RESOLVER=$RESOLVER"
 echo "   SCHEMA=$SCHEMA"
+echo "   SNAPSHOT=$SNAPSHOT (accumulator bound; trigger() is the only checkpoint mint)"
 
 # --- attest ------------------------------------------------------------------
 echo "== attest ring (3) =="
@@ -77,10 +85,22 @@ cast send "$EAS" "revoke((bytes32,(bytes32,uint256)))" "($SCHEMA,($ATT_UID,0))" 
 echo "   revoked uid=$ATT_UID"
 
 # --- checkpoint --------------------------------------------------------------
-echo "== freeze checkpoint 0 =="
-cast send "$RESOLVER" "checkpoint()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+# Through trigger(), never the resolver directly: the accumulator is bound to this snapshot, so
+# trigger() is the only mint (issue #10) and the only thing that pins the checkpoint's paramsHash.
+echo "== freeze checkpoint 0 (via trigger) =="
+cast send "$SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
 LEAF=$(cast call "$RESOLVER" "leafCount()(uint64)" --rpc-url "$RPC")
+PINNED=$(cast call "$SNAPSHOT" "checkpointParamsHash(uint256)(bytes32)" 0 --rpc-url "$RPC")
 echo "   leafCount=$LEAF (expected 4)"
+[ "$PINNED" = "$PARAMS_HASH" ] || { echo "FATAL: checkpoint 0 pinned $PINNED != $PARAMS_HASH"; exit 1; }
+echo "   checkpoint 0 pinned paramsHash=$PINNED ✓"
+
+# A stranger cannot mint a checkpoint behind the snapshot's back (issue #10 regression).
+if cast send "$RESOLVER" "checkpoint()" --rpc-url "$RPC" --private-key "$PK" >/dev/null 2>&1; then
+  echo "FATAL: direct accumulator.checkpoint() succeeded — the snapshot binding is not enforced"
+  exit 1
+fi
+echo "   direct accumulator.checkpoint() rejected ✓"
 
 # --- params (schema_uid from the deploy) -------------------------------------
 jq --arg s "$SCHEMA" '.schema_uid = $s' test/e2e/params.template.json > "$WORK/params.json"
@@ -89,7 +109,8 @@ jq --arg s "$SCHEMA" '.schema_uid = $s' test/e2e/params.template.json > "$WORK/p
 echo "== export GuestInput =="
 cargo run -q -p input-exporter -- \
   --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
-  --checkpoint 0 --params "$WORK/params.json" --out "$WORK/input.json"
+  --checkpoint 0 --params "$WORK/params.json" --snapshot "$SNAPSHOT" \
+  --recipient "$RECIPIENT" --out "$WORK/input.json"
 
 echo "== export SignerInput =="
 cargo run -q -p input-exporter -- \
@@ -123,11 +144,15 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "== derive vkeys + params hashes via the CLI =="
   VKEY=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph vkey )
   SIGNER_VKEY=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer vkey )
-  PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash "$WORK/input.json" )
+  # The exporter's params must hash to what the deploy already pinned into the snapshot; if they
+  # ever drift, every proof for this instance is dead on arrival, so check rather than assume.
+  EXPORTED_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash "$WORK/input.json" )
+  [ "$EXPORTED_PARAMS_HASH" = "$PARAMS_HASH" ] || {
+    echo "FATAL: exporter paramsHash $EXPORTED_PARAMS_HASH != deployed $PARAMS_HASH"; exit 1; }
   SELECTION_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer selectionparamshash "$WORK/signer_input.json" )
   echo "   vkey=$VKEY signerVkey=$SIGNER_VKEY"
 
-  echo "== deploy mock gateway + real SP1JournalVerifiers + MerkleSnapshot =="
+  echo "== deploy mock gateway + real SP1JournalVerifiers, re-point the snapshot =="
   GATEWAY=$(forge create test/mocks/MockSP1Gateway.sol:MockSP1Gateway \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
   cast send "$GATEWAY" "setExpectedVKey(bytes32)" "$VKEY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
@@ -140,9 +165,11 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   SIGNER_VERIFIER=$(forge create src/contracts/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
     --constructor-args "$SIGNER_GATEWAY" "$SIGNER_VKEY" | jq -r .deployedTo)
-  SNAPSHOT=$(forge create src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot \
-    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-    --constructor-args "$VERIFIER" "$PARAMS_HASH" "$RESOLVER" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
+  # The snapshot already exists (it had to: only its trigger() can mint a checkpoint). Swap the
+  # accept-all deploy verifier for the real SP1JournalVerifier through the constitutional knob the
+  # deployer still holds. Deliberately NOT pinned per checkpoint — a verifier rotation is the
+  # SP1-soundness emergency path and must invalidate in-flight proofs.
+  cast send "$SNAPSHOT" "setZkVerifier(address)" "$VERIFIER" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   echo "   gateway=$GATEWAY verifier=$VERIFIER snapshot=$SNAPSHOT signerVerifier=$SIGNER_VERIFIER"
 
   echo "== submitProof (root producer) =="
@@ -150,10 +177,16 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   IPFS_HASH=$(echo "$EXEC_OUT" | awk '/^ipfsHash:/{print $2}')
   CID=$(echo "$EXEC_OUT" | awk '/^cid:/{print $2}')
   TOTAL_VALUE=$(echo "$EXEC_OUT" | awk '/^totalValue:/{print $2}')
-  # Journal v2: lane-1-only run, skippedDigest is the zero word.
+  # Journal v3: lane-1-only run, skippedDigest is the zero word; `recipient` is echoed back from
+  # the guest, because submitProof folds it into the digest.
   ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
-  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$ZERO32" "$(hex_file .trustgraph/trust-graph/proof.bin)" \
+  PROVEN_RECIPIENT=$(echo "$EXEC_OUT" | awk '/^recipient:/{print $2}')
+  lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+  [ "$(lower "$PROVEN_RECIPIENT")" = "$(lower "$RECIPIENT")" ] || {
+    echo "FATAL: guest committed recipient $PROVEN_RECIPIENT != requested $RECIPIENT"; exit 1; }
+  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+    0 "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$ZERO32" "$PROVEN_RECIPIENT" \
+    "$(hex_file .trustgraph/trust-graph/proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ROOT_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$ROOT_ONCHAIN" = "$OUTPUT_ROOT" ] || { echo "FATAL: on-chain root $ROOT_ONCHAIN != proven $OUTPUT_ROOT"; exit 1; }
@@ -211,27 +244,41 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     "$WITHHELD_NODE" 0 0x00000000000000000000000000000000000000000000000000000000deadbeef "$ZERO32" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
 
+  # Enabling lane 2 changes the params, and params take effect at the NEXT boundary: every
+  # checkpoint is proven under the hash pinned when its inputs froze. So rotate FIRST, then
+  # trigger. (Rotating after the trigger would leave checkpoint 1 pinned to the lane-1 params and
+  # this lane-2 proof would not verify — which is the point of pinning, exercised below.)
+  echo "== two-lane: rotate params (lane 2 on) BEFORE the boundary =="
+  jq --arg s "$SCHEMA" --arg d "$DS" \
+    '.schema_uid = $s | .envelope0_domain_separators = [$d] | .lane2_max_head_age = 1000000000' \
+    test/e2e/params.template.json > "$WORK/params2.json"
+  # Filled from the connection the way input-exporter does, so the hash matches what the guest
+  # will commit for this instance.
+  jq --arg a "$RESOLVER" --argjson c "$CHAIN_ID" '.accumulator = $a | .chain_id = $c' \
+    "$WORK/params2.json" > "$WORK/params2.filled.json"
+  PARAMS2_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash --params "$WORK/params2.filled.json" )
+  cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PARAMS2_HASH" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+
   echo "== two-lane: fresh lane-1 inputs + trigger() checkpoints BOTH lanes =="
   forge script script/E2eAttest.s.sol:E2eAttest --sig "run(address,bytes32)" "$EAS" "$SCHEMA" \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >/dev/null
   cast send "$SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ANCHOR_CP=$(cast call "$SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" 1 --rpc-url "$RPC")
+  PINNED2=$(cast call "$SNAPSHOT" "checkpointParamsHash(uint256)(bytes32)" 1 --rpc-url "$RPC")
   echo "   anchorCheckpoints(1): $ANCHOR_CP"
+  [ "$PINNED2" = "$PARAMS2_HASH" ] || { echo "FATAL: checkpoint 1 pinned $PINNED2 != $PARAMS2_HASH"; exit 1; }
+  [ "$PINNED2" != "$PARAMS_HASH" ] || { echo "FATAL: the rotation did not bind the new checkpoint"; exit 1; }
+  echo "   checkpoint 1 pinned the ROTATED paramsHash ✓ (checkpoint 0 keeps $PARAMS_HASH)"
 
   echo "== two-lane: export (lane-1 re-fold + lane-2 anchor re-fold self-checks) =="
-  jq --arg s "$SCHEMA" --arg d "$DS" \
-    '.schema_uid = $s | .envelope0_domain_separators = [$d] | .lane2_max_head_age = 1000000000' \
-    test/e2e/params.template.json > "$WORK/params2.json"
   cargo run -q -p input-exporter -- \
     --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
     --checkpoint 1 --params "$WORK/params2.json" \
-    --anchor-registry "$REGISTRY" --snapshot "$SNAPSHOT" \
+    --anchor-registry "$REGISTRY" --snapshot "$SNAPSHOT" --recipient "$RECIPIENT" \
     --envelope0-log "$WORK/envelope0_log.json" \
     --out "$WORK/input2.json"
 
-  echo "== two-lane: prove via the CLI and land the journal-v2 proof =="
-  PARAMS2_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash "$WORK/input2.json" )
-  cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PARAMS2_HASH" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "== two-lane: prove via the CLI and land the journal-v3 proof =="
   EXEC2_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph execute "$WORK/input2.json" )
   echo "$EXEC2_OUT"
   ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph prove "$WORK/input2.json" --groth16 >/dev/null )
@@ -242,8 +289,10 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   SKIPPED2=$(echo "$EXEC2_OUT" | awk '/^skippedDigest:/{print $2}')
   [ "$SKIPPED2" != "$ZERO32" ] || { echo "FATAL: withheld head did not produce a skippedDigest"; exit 1; }
   echo "   skippedDigest (withheld node recorded): $SKIPPED2 ✓"
-  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$(hex_file .trustgraph/trust-graph/proof.bin)" \
+  RECIPIENT2=$(echo "$EXEC2_OUT" | awk '/^recipient:/{print $2}')
+  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+    1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$RECIPIENT2" \
+    "$(hex_file .trustgraph/trust-graph/proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   ROOT2_ONCHAIN=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$ROOT2_ONCHAIN" = "$OUTPUT_ROOT2" ] || { echo "FATAL: two-lane root $ROOT2_ONCHAIN != proven $OUTPUT_ROOT2"; exit 1; }
@@ -280,7 +329,12 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
     --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
   cast send "$HC_SNAPSHOT" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  # Bind the lane-1 seam to this snapshot: on a lane-2-only instance lane 1 is constant (0, 0), so
+  # the checkpoint id is the ONLY thing separating one epoch's inputs from another's.
+  cast send "$HC_EMPTY_ACC" "bindSnapshot(address)" "$HC_SNAPSHOT" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  HC_DOMAIN=$(cast keccak "$(cast abi-encode "f(address,uint256)" "$HC_SNAPSHOT" "$CHAIN_ID")")
   echo "   registry=$HC_REGISTRY snapshot=$HC_SNAPSHOT verifier=$HC_VERIFIER (vkey=$HC_VKEY)"
+  echo "   instanceDomain=$HC_DOMAIN — the ONLY instance-unique word in this program's journal"
 
   echo "== hypercerts: register DID nodes (REGISTRAR gate = PDS-allowlist stand-in) + anchor heads =="
   cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$HC_NODE_A" 1 --rpc-url "$RPC" --private-key "$PK" >/dev/null
@@ -293,8 +347,11 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   TS_B=$(cast block latest --field timestamp --rpc-url "$RPC")
   # The witness anchors must carry the REAL chain timestamps so the guest re-fold matches
   # the checkpointed anchorAcc.
-  jq --argjson a "$TS_A" --argjson b "$TS_B" \
-    '.anchors[0].block_timestamp = $a | .anchors[1].block_timestamp = $b' \
+  # ...and the journal-v3 bindings must name THIS snapshot, or submitProof rebuilds a different
+  # digest. `emit_fixture_input` cannot know the address, so it is filled here.
+  jq --argjson a "$TS_A" --argjson b "$TS_B" --arg d "$HC_DOMAIN" --arg r "$RECIPIENT" \
+    '.anchors[0].block_timestamp = $a | .anchors[1].block_timestamp = $b
+     | .binding = {recipient: $r, instance_domain: $d}' \
     "$WORK/hc_input.json" > "$WORK/hc_input_chain.json"
 
   echo "== hypercerts: trigger checkpoints both lanes (lane 1 = the empty accumulator) =="
@@ -310,13 +367,39 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   HC_CID=$(echo "$HC_EXEC" | awk '/^cid:/{print $2}')
   HC_TOTAL=$(echo "$HC_EXEC" | awk '/^totalValue:/{print $2}')
   HC_SKIPPED=$(echo "$HC_EXEC" | awk '/^skippedDigest:/{print $2}')
+  HC_RECIPIENT=$(echo "$HC_EXEC" | awk '/^recipient:/{print $2}')
+  HC_PROVEN_DOMAIN=$(echo "$HC_EXEC" | awk '/^instanceDomain:/{print $2}')
   [ "$HC_SKIPPED" != "$ZERO32" ] || { echo "FATAL: fixture self-edge did not land in skippedDigest"; exit 1; }
-  cast send "$HC_SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$(hex_file .trustgraph/hypercerts/hypercerts_proof.bin)" \
+  [ "$(lower "$HC_PROVEN_DOMAIN")" = "$(lower "$HC_DOMAIN")" ] || {
+    echo "FATAL: guest committed domain $HC_PROVEN_DOMAIN != this instance's $HC_DOMAIN"; exit 1; }
+  cast send "$HC_SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+    0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$HC_RECIPIENT" \
+    "$(hex_file .trustgraph/hypercerts/hypercerts_proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   HC_ROOT_ONCHAIN=$(cast call "$HC_SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
   [ "$HC_ROOT_ONCHAIN" = "$HC_ROOT" ] || { echo "FATAL: hypercerts root $HC_ROOT_ONCHAIN != proven $HC_ROOT"; exit 1; }
   echo "   hypercerts root landed on-chain: $HC_ROOT_ONCHAIN ✓ (skippedDigest $HC_SKIPPED)"
+
+  echo "== hypercerts: an identically-configured twin refuses the same proof (issue #9) =="
+  # Same vkey, same paramsHash, same (empty) lane 1, same anchor set: before journal v3 these two
+  # instances accepted each other's proofs, because nothing in this program's params names an
+  # instance. The twin's checkpoint is frozen at the same anchor state, so ONLY the domain differs.
+  HC_TWIN_ACC=$(forge create src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
+  HC_TWIN=$(forge create src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot \
+    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+    --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_TWIN_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
+  cast send "$HC_TWIN" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  cast send "$HC_TWIN_ACC" "bindSnapshot(address)" "$HC_TWIN" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  cast send "$HC_TWIN" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  if cast send "$HC_TWIN" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+      0 "$HC_ROOT" "$HC_IPFS" "$HC_CID" "$HC_TOTAL" "$HC_SKIPPED" "$HC_RECIPIENT" \
+      "$(hex_file .trustgraph/hypercerts/hypercerts_proof.bin)" \
+      --rpc-url "$RPC" --private-key "$PK" >/dev/null 2>&1; then
+    echo "FATAL: the twin accepted another instance's proof — domain separation is not working"
+    exit 1
+  fi
+  echo "   twin=$HC_TWIN refused it ✓"
 
   echo "== hypercerts: register the instance in InstanceRegistry =="
   IREG=$(forge create src/contracts/registry/InstanceRegistry.sol:InstanceRegistry \

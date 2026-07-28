@@ -23,6 +23,7 @@ contract MerkleSnapshotTest is Test {
     bytes32 constant IPFS = bytes32(uint256(0x1F5));
     string constant CID = "bafkreiexamplecidstring";
     uint256 constant TOTAL = 1_000_000 ether;
+    address constant RECIPIENT = address(0xBE);
 
     function setUp() public {
         verifier = new MockZkVerifier();
@@ -30,19 +31,50 @@ contract MerkleSnapshotTest is Test {
         ms = new MerkleSnapshot(verifier, paramsHash, accer, constitutional, operational);
     }
 
-    function _expectDigest(bytes32 acc, uint64 leafCount) internal {
-        // Journal v2: lane-2 fields are the zero accumulator on this lane-1-only instance.
-        bytes32 digest = keccak256(
+    /*///////////////////////////////////////////////////////////////
+                                HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// Mint a checkpoint the way production does — through `trigger()`, which is the only path
+    /// that pins `paramsHash` (and, once the accumulator is bound to its snapshot, the only path
+    /// that exists at all). Freeze block = `blockNumber`.
+    function _mint(bytes32 acc, uint64 leafCount, uint64 blockNumber) internal returns (uint256 id) {
+        accer.setState(acc, leafCount);
+        vm.roll(blockNumber);
+        id = ms.trigger();
+    }
+
+    /// The full journal-v3 digest the contract will compute, for a lane-1-only instance.
+    function _digest(bytes32 acc, uint64 leafCount, bytes32 pinned, address recipient) internal view returns (bytes32) {
+        return keccak256(
             abi.encode(
-                acc, leafCount, bytes32(0), uint64(0), paramsHash, ROOT, IPFS, keccak256(bytes(CID)), TOTAL, bytes32(0)
+                acc,
+                leafCount,
+                bytes32(0),
+                uint64(0),
+                pinned,
+                ROOT,
+                IPFS,
+                keccak256(bytes(CID)),
+                TOTAL,
+                bytes32(0),
+                recipient,
+                ms.instanceDomain()
             )
         );
-        verifier.setExpectedDigest(digest);
+    }
+
+    function _expectDigest(bytes32 acc, uint64 leafCount) internal {
+        verifier.setExpectedDigest(_digest(acc, leafCount, paramsHash, RECIPIENT));
     }
 
     function _submit(uint256 checkpointId) internal {
-        ms.submitProof(checkpointId, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        ms.submitProof(checkpointId, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
     }
+
+    /*///////////////////////////////////////////////////////////////
+                                LIFECYCLE
+    //////////////////////////////////////////////////////////////*/
 
     function test_TriggerCreatesCheckpoint() public {
         accer.setState(bytes32(uint256(1)), 3);
@@ -53,10 +85,10 @@ contract MerkleSnapshotTest is Test {
 
     function test_SubmitProofHappyPath() public {
         bytes32 acc = bytes32(uint256(0xABCD));
-        accer.pushCheckpoint(acc, 5, 42);
+        uint256 id = _mint(acc, 5, 42);
         _expectDigest(acc, 5);
 
-        _submit(0);
+        _submit(id);
 
         IMerkleSnapshot.MerkleState memory s = ms.getLatestState();
         assertEq(s.root, ROOT);
@@ -67,23 +99,23 @@ contract MerkleSnapshotTest is Test {
     }
 
     function test_SubmitProofRevertsOnInvalidProof() public {
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 10);
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
         verifier.setAccept(false);
         vm.expectRevert(bytes("MockZkVerifier: rejected"));
-        _submit(0);
+        _submit(id);
     }
 
     function test_SubmitProofBindsWrongJournalReverts() public {
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 10);
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
         // Expect a digest for the WRONG leafCount; the contract's real digest won't match.
         _expectDigest(bytes32(uint256(1)), 999);
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        _submit(0);
+        _submit(id);
     }
 
     function test_StaleCheckpointRejected() public {
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 10); // id 0
-        accer.pushCheckpoint(bytes32(uint256(2)), 2, 20); // id 1
+        _mint(bytes32(uint256(1)), 1, 10); // id 0
+        _mint(bytes32(uint256(2)), 2, 20); // id 1
         _submit(1); // apply newer first
         // Applying an older one now is stale.
         vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.StaleCheckpoint.selector, uint256(0), uint256(1)));
@@ -94,16 +126,16 @@ contract MerkleSnapshotTest is Test {
     }
 
     function test_MonotonicIncreasingAllowed() public {
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 10);
-        accer.pushCheckpoint(bytes32(uint256(2)), 2, 20);
+        _mint(bytes32(uint256(1)), 1, 10);
+        _mint(bytes32(uint256(2)), 2, 20);
         _submit(0);
         _submit(1);
         assertEq(ms.lastAppliedCheckpoint(), 1);
     }
 
     function test_FreezeBlockFilingKeepsBlocksAscending() public {
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 42);
-        accer.pushCheckpoint(bytes32(uint256(2)), 2, 100);
+        _mint(bytes32(uint256(1)), 1, 42);
+        _mint(bytes32(uint256(2)), 2, 100);
         _submit(0);
         _submit(1);
         assertEq(ms.getStateCount(), 2);
@@ -114,7 +146,7 @@ contract MerkleSnapshotTest is Test {
     }
 
     function test_EmptyCheckpointProvable() public {
-        accer.pushCheckpoint(bytes32(0), 0, 7);
+        uint256 id = _mint(bytes32(0), 0, 7);
         bytes32 digest = keccak256(
             abi.encode(
                 bytes32(0),
@@ -126,11 +158,13 @@ contract MerkleSnapshotTest is Test {
                 bytes32(0),
                 keccak256(bytes("")),
                 uint256(0),
-                bytes32(0)
+                bytes32(0),
+                RECIPIENT,
+                ms.instanceDomain()
             )
         );
         verifier.setExpectedDigest(digest);
-        ms.submitProof(0, bytes32(0), bytes32(0), "", 0, bytes32(0), hex"");
+        ms.submitProof(id, bytes32(0), bytes32(0), "", 0, bytes32(0), RECIPIENT, hex"");
         assertEq(ms.getLatestState().blockNumber, 7);
     }
 
@@ -139,8 +173,8 @@ contract MerkleSnapshotTest is Test {
         vm.prank(constitutional);
         ms.addHook(hook);
 
-        accer.pushCheckpoint(bytes32(uint256(1)), 1, 10);
-        _submit(0);
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
+        _submit(id);
         assertEq(hook.calls(), 1);
         assertEq(hook.lastRoot(), ROOT);
     }
@@ -194,7 +228,7 @@ contract MerkleSnapshotTest is Test {
     }
 
     /*///////////////////////////////////////////////////////////////
-                    JOURNAL v2 — EPOCH SCHEDULE
+                        EPOCH SCHEDULE
     //////////////////////////////////////////////////////////////*/
 
     /// epochLength = 0 keeps the current free-trigger behavior; lastTriggerBlock still advances.
@@ -234,7 +268,7 @@ contract MerkleSnapshotTest is Test {
     }
 
     /*///////////////////////////////////////////////////////////////
-                JOURNAL v2 — TWO-LANE CHECKPOINT + DIGEST
+                TWO-LANE CHECKPOINT + DIGEST
     //////////////////////////////////////////////////////////////*/
 
     /// Without an anchor registry, a trigger checkpoints the lane-2 accumulator as zeros.
@@ -266,15 +300,26 @@ contract MerkleSnapshotTest is Test {
         assertEq(storedAcc, anchorAcc);
         assertEq(storedCount, 9);
 
-        // The digest must bind both lanes AND the skippedDigest (journal v2, field order frozen).
+        // The digest must bind both lanes AND the skippedDigest (journal v3, field order frozen).
         bytes32 skipped = keccak256("skip-set");
         bytes32 digest = keccak256(
             abi.encode(
-                laneAcc, uint64(5), anchorAcc, uint64(9), paramsHash, ROOT, IPFS, keccak256(bytes(CID)), TOTAL, skipped
+                laneAcc,
+                uint64(5),
+                anchorAcc,
+                uint64(9),
+                paramsHash,
+                ROOT,
+                IPFS,
+                keccak256(bytes(CID)),
+                TOTAL,
+                skipped,
+                RECIPIENT,
+                ms.instanceDomain()
             )
         );
         verifier.setExpectedDigest(digest);
-        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, skipped, hex"");
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, skipped, RECIPIENT, hex"");
 
         IMerkleSnapshot.MerkleState memory s = ms.getLatestState();
         assertEq(s.root, ROOT);
@@ -303,13 +348,15 @@ contract MerkleSnapshotTest is Test {
                 IPFS,
                 keccak256(bytes(CID)),
                 TOTAL,
-                skippedA
+                skippedA,
+                RECIPIENT,
+                ms.instanceDomain()
             )
         );
         verifier.setExpectedDigest(digestA);
         // ... but the prover submits skipped = B, so the contract's digest won't match.
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, keccak256("B"), hex"");
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, keccak256("B"), RECIPIENT, hex"");
     }
 
     /// A proof that assumes the wrong lane-2 anchorAcc (not the checkpointed one) fails the digest bind,
@@ -336,17 +383,199 @@ contract MerkleSnapshotTest is Test {
                 IPFS,
                 keccak256(bytes(CID)),
                 TOTAL,
-                skipped
+                skipped,
+                RECIPIENT,
+                ms.instanceDomain()
             )
         );
         verifier.setExpectedDigest(bogusDigest);
         // The contract computes the digest with the checkpointed realAnchorAcc, so it mismatches.
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, skipped, hex"");
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, skipped, RECIPIENT, hex"");
     }
 
     /*///////////////////////////////////////////////////////////////
-                JOURNAL v2 — SETTER ROLE GATING
+                JOURNAL v3 — RECIPIENT BINDING
+    //////////////////////////////////////////////////////////////*/
+
+    /// The bounty payee is proven, not asserted: a proof produced for recipient A cannot be
+    /// resubmitted naming recipient B. This is what makes a copied `submitAndClaim` pay the
+    /// original prover (PROOF_SCHEDULER.md §4.3) rather than the copier.
+    function test_ProofForRecipientARevertsUnderRecipientB() public {
+        address alice = address(0xA11CE);
+        address mallory = address(0x4A110);
+
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 id = _mint(acc, 5, 42);
+
+        // The guest committed alice as the payee, so the verifier will only accept alice's digest.
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, alice));
+
+        // Mallory copies the transaction verbatim except for the payee.
+        vm.prank(mallory);
+        vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), mallory, hex"");
+
+        // Copying it faithfully still works — and still pays alice. Front-running buys the copier
+        // nothing but the gas bill; the vault's split (M3) is what turns that into a refund.
+        vm.prank(mallory);
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), alice, hex"");
+        assertEq(ms.lastAppliedCheckpoint(), id);
+    }
+
+    /// The event separates who paid gas from who is owed the bounty.
+    function test_EventCarriesBothProverAndRecipient() public {
+        address alice = address(0xA11CE);
+        address relayer = address(0x9E1A1);
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 id = _mint(acc, 5, 42);
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, alice));
+
+        vm.expectEmit(true, true, true, true);
+        emit IMerkleSnapshot.MerkleProofSubmitted(id, ROOT, relayer, alice);
+        vm.prank(relayer);
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), alice, hex"");
+    }
+
+    /// A zero recipient is legitimate and means "no bounty" — the curated / self-proving path.
+    function test_ZeroRecipientIsAValidNoBountyProof() public {
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 id = _mint(acc, 5, 42);
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, address(0)));
+        ms.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), address(0), hex"");
+        assertEq(ms.getLatestState().root, ROOT);
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                JOURNAL v3 — DOMAIN SEPARATION
+    //////////////////////////////////////////////////////////////*/
+
+    /// Two instances identical in EVERY parameter still reject each other's proofs, because the
+    /// domain is derived from `address(this)` rather than from anything the params carry. This is
+    /// the hypercerts case (issue #9): its params have no instance-unique field at all, modelled
+    /// here by giving both snapshots the same `paramsHash` and the same input commitment.
+    function test_IdenticalTwinsRejectEachOthersProofs() public {
+        MockAccumulator accerB = new MockAccumulator();
+        MerkleSnapshot twin = new MerkleSnapshot(verifier, paramsHash, accerB, constitutional, operational);
+
+        assertTrue(ms.instanceDomain() != twin.instanceDomain(), "clones must not share a domain");
+
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 idA = _mint(acc, 5, 42);
+        accerB.setState(acc, 5);
+        uint256 idB = twin.trigger();
+        assertEq(idA, idB, "twins agree on everything except who they are");
+
+        // A proof minted for instance A (A's domain in the journal).
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, RECIPIENT));
+
+        // It lands on A ...
+        ms.submitProof(idA, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
+        // ... and is worthless on B.
+        vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
+        twin.submitProof(idB, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
+    }
+
+    /// The same instance on another chain hashes differently — the multi-chain prerequisite.
+    function test_InstanceDomainIsChainSpecific() public {
+        bytes32 here = ms.instanceDomain();
+        vm.chainId(10);
+        assertTrue(ms.instanceDomain() != here, "domain must move with block.chainid");
+        assertEq(ms.instanceDomain(), keccak256(abi.encode(address(ms), uint256(10))));
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                CHECKPOINT-PINNED PARAMS
+    //////////////////////////////////////////////////////////////*/
+
+    /// trigger() records the params a checkpoint must be proven under, and says so on-chain.
+    function test_TriggerPinsParamsHash() public {
+        vm.roll(11);
+        vm.expectEmit(true, true, true, true);
+        emit IMerkleSnapshot.CheckpointParamsPinned(0, paramsHash);
+        uint256 id = ms.trigger();
+        assertEq(ms.checkpointParamsHash(id), paramsHash);
+    }
+
+    /// The whole point: a params rotation between trigger and submit does NOT invalidate the
+    /// in-flight proof. `UPGRADE_GOVERNANCE.md` §5.6 asks operators to arrange this by hand today.
+    function test_RotationBetweenTriggerAndSubmitDoesNotWasteTheProof() public {
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 id = _mint(acc, 5, 42);
+
+        // The proof was computed against the OLD params.
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, RECIPIENT));
+
+        // Governance rotates one block later.
+        bytes32 newParams = keccak256("params-v2");
+        vm.prank(operational);
+        ms.setParamsHash(newParams);
+        assertEq(ms.paramsHash(), newParams);
+
+        // The in-flight proof still lands, because the digest is built from the PINNED value.
+        _submit(id);
+        assertEq(ms.lastAppliedCheckpoint(), id);
+    }
+
+    /// ...and the rotation does bind the NEXT checkpoint, so it is a delay, not a bypass.
+    function test_RotationBindsTheNextCheckpoint() public {
+        _mint(bytes32(uint256(1)), 1, 10);
+        bytes32 newParams = keccak256("params-v2");
+        vm.prank(operational);
+        ms.setParamsHash(newParams);
+
+        bytes32 acc = bytes32(uint256(2));
+        uint256 id2 = _mint(acc, 2, 20);
+        assertEq(ms.checkpointParamsHash(id2), newParams, "next checkpoint pins the new params");
+
+        // A proof under the OLD params no longer verifies for the new checkpoint.
+        verifier.setExpectedDigest(_digest(acc, 2, paramsHash, RECIPIENT));
+        vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
+        _submit(id2);
+
+        // Under the new params it does.
+        verifier.setExpectedDigest(_digest(acc, 2, newParams, RECIPIENT));
+        _submit(id2);
+    }
+
+    /// A checkpoint minted behind the snapshot's back has no pinned params and cannot be proven.
+    /// (With the accumulator bound to its snapshot this is unreachable in production; the revert
+    /// is the backstop that keeps "built from the pinned value" total.)
+    function test_CheckpointMintedBehindTheSnapshotIsUnprovable() public {
+        uint256 id = accer.pushCheckpoint(bytes32(uint256(1)), 1, 10);
+        assertEq(ms.checkpointParamsHash(id), bytes32(0));
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.UnpinnedCheckpoint.selector, id));
+        _submit(id);
+    }
+
+    /// Zero is the "not pinned" sentinel, so it can never be a real params hash.
+    function test_ZeroParamsHashRejected() public {
+        vm.expectRevert(IMerkleSnapshot.ZeroParamsHash.selector);
+        new MerkleSnapshot(verifier, bytes32(0), accer, constitutional, operational);
+
+        vm.prank(operational);
+        vm.expectRevert(IMerkleSnapshot.ZeroParamsHash.selector);
+        ms.setParamsHash(bytes32(0));
+    }
+
+    /// The verifier is deliberately NOT pinned: rotating it is the SP1-soundness emergency path,
+    /// and it MUST invalidate proofs already in flight under the broken key.
+    function test_VerifierRotationInvalidatesInFlightProofs() public {
+        bytes32 acc = bytes32(uint256(0xABCD));
+        uint256 id = _mint(acc, 5, 42);
+        verifier.setExpectedDigest(_digest(acc, 5, paramsHash, RECIPIENT));
+
+        MockZkVerifier replacement = new MockZkVerifier();
+        replacement.setAccept(false); // the new verifier rejects what the old one accepted
+        vm.prank(constitutional);
+        ms.setZkVerifier(replacement);
+
+        vm.expectRevert(bytes("MockZkVerifier: rejected"));
+        _submit(id);
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                        SETTER ROLE GATING
     //////////////////////////////////////////////////////////////*/
 
     function test_OnlyConstitutionalCanSetAnchorRegistry() public {

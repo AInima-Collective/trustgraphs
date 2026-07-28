@@ -127,9 +127,14 @@ cast send $MERKLE_SNAPSHOT "trigger()"        # emits InputsCheckpointed(id, acc
 # 2. Reconstruct the checkpoint's exact edge set from chain (self-checks it re-folds to `acc`):
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
-  --checkpoint $CHECKPOINT_ID --params params.json
+  --checkpoint $CHECKPOINT_ID --params params.json \
+  --snapshot $MERKLE_SNAPSHOT [--recipient 0x…]
 # (writes .trustgraph/trust-graph/input.json; override with --out)
 # $ACCUMULATOR = the EASIndexerResolver address; params.json = serialized pagerank_core::Params.
+# --snapshot is REQUIRED: it is half of the journal-v3 instanceDomain that submitProof rebuilds
+# from address(this) + block.chainid, so an input exported without it proves nothing any snapshot
+# will accept. --recipient is the bounty payee (default zero = no bounty, which is what you want
+# when self-proving).
 # For a large history set --from-block <deployBlock>; RPCs that cap eth_getLogs ranges: tune --chunk.
 
 # 3. Prove:
@@ -143,14 +148,31 @@ cd ../..
 ipfs add --cid-version=1 --raw-leaves .trustgraph/trust-graph/blob.json   # CID must equal the guest's cid
 
 # 5. Submit:
+# $SKIPPED_DIGEST and $RECIPIENT come from the `execute` output above; echo them exactly.
 cast send $MERKLE_SNAPSHOT \
-  "submitProof(uint256,bytes32,bytes32,string,uint256,bytes)" \
-  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $(xxd -p -c0 .trustgraph/trust-graph/proof.bin)
+  "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+  $CHECKPOINT_ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE $SKIPPED_DIGEST $RECIPIENT \
+  $(xxd -p -c0 .trustgraph/trust-graph/proof.bin)
 ```
 
-`submitProof` recomputes the journal digest from the chain-pinned checkpoint + stored `paramsHash` +
-the submitted outputs, and reverts unless the proof binds exactly that digest. It files the result at
-the checkpoint's freeze block, so historical `states[...]` mean "inputs as of block N".
+`submitProof` recomputes the journal digest from the chain-pinned checkpoint + the `paramsHash`
+**pinned at that checkpoint's `trigger()`** + the submitted outputs + `recipient` + an
+`instanceDomain` it derives from its own address and chain id, and reverts unless the proof binds
+exactly that digest. It files the result at the checkpoint's freeze block, so historical
+`states[...]` mean "inputs as of block N".
+
+Three consequences worth knowing before you debug a revert:
+
+- **A params rotation between trigger and submit does not invalidate your proof.** Every checkpoint
+  is proven under the hash pinned when its inputs froze; the rotation binds the *next* one. A
+  verifier rotation is different and deliberately does invalidate in-flight proofs — that is the
+  SP1-soundness emergency path.
+- **`recipient` must match what the guest committed**, byte for byte. It is how the bounty is made
+  unstealable: copy someone's pending transaction and you pay them their fee and refund yourself
+  only gas. Zero is legitimate and means "no bounty".
+- **`UnpinnedCheckpoint` means the checkpoint was not minted by `trigger()`.** With the accumulator
+  bound to its snapshot that should be unreachable; if you see it, something minted a checkpoint
+  out of band.
 
 ## Real end-to-end on a mainnet fork (with the UI)
 

@@ -186,6 +186,12 @@ pub enum Command {
         /// Max blocks per eth_getLogs request (many RPCs cap the range).
         #[arg(long, default_value_t = 10_000)]
         chunk: u64,
+        /// Journal-v3 bounty payee, committed verbatim by the guest and bound by `submitProof`.
+        /// Defaults to the zero address ("no bounty"), which is correct for a curated instance or
+        /// a community self-proving. The other half of the binding, `instanceDomain`, is derived
+        /// from `--snapshot` + the chain id and is never typed in.
+        #[arg(long)]
+        recipient: Option<String>,
         /// Output path (default: `<repo root>/.trustgraph/contributions/contributions_input.json`).
         #[arg(long)]
         out: Option<String>,
@@ -230,6 +236,7 @@ pub fn run(cmd: Command) -> Result<()> {
             trust_schema_uid,
             from_block,
             chunk,
+            recipient,
             out,
         } => {
             let out = match out {
@@ -248,6 +255,7 @@ pub fn run(cmd: Command) -> Result<()> {
                 trust_schema_uid,
                 from_block,
                 chunk,
+                recipient,
                 out,
             })
         }
@@ -283,6 +291,10 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     println!("cid:           {}", native.cid);
     println!("totalValue:    {}", native.journal.total_value);
     println!("skippedDigest: 0x{}", hex::encode(native.journal.skipped_digest));
+    // The two journal-v3 pass-throughs. `submitProof` takes `recipient` as an argument and folds
+    // it into the digest, so a submitter must echo exactly what the guest committed.
+    println!("recipient:     0x{}", hex::encode(native.journal.recipient));
+    println!("instanceDomain: 0x{}", hex::encode(native.journal.instance_domain));
 
     // The canonical payout blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so
     // it can be pinned (the UI/indexer fetch the {account -> payout} split from IPFS at that cid).
@@ -362,6 +374,7 @@ mod fetch {
         pub trust_schema_uid: Option<String>,
         pub from_block: u64,
         pub chunk: u64,
+        pub recipient: Option<String>,
         pub out: String,
     }
 
@@ -389,6 +402,12 @@ mod fetch {
                 bail!("{method} RPC error: {e}");
             }
             Ok(resp.get("result").cloned().unwrap_or(Value::Null))
+        }
+
+        fn eth_chain_id(&self) -> Result<u64> {
+            let r = self.call("eth_chainId", json!([]))?;
+            let s = r.as_str().ok_or_else(|| anyhow!("eth_chainId returned no data"))?;
+            Ok(u64::from_str_radix(s.trim_start_matches("0x"), 16)?)
         }
 
         fn eth_call(&self, to: Address, data: Vec<u8>) -> Result<Vec<u8>> {
@@ -712,7 +731,25 @@ mod fetch {
         )?;
         eprintln!("contribution reconstruction self-check OK: re-folded acc == anchorAcc ✓");
 
-        let input = GuestInput { trust_edges, records, params: p };
+        // Journal-v3 bindings. `instanceDomain` is derived from the snapshot this input will be
+        // proven against and the chain it lives on, byte-identically to the rebuild inside
+        // `MerkleSnapshot.submitProof`, so a wrong snapshot fails here rather than after paying
+        // for a proof.
+        let recipient: Address = match &args.recipient {
+            Some(r) => r.parse().context("--recipient")?,
+            None => Address::ZERO,
+        };
+        let chain_id = rpc.eth_chain_id().context("eth_chainId failed")?;
+        let binding = pagerank_core::Binding {
+            recipient,
+            instance_domain: pagerank_core::encode::instance_domain(snapshot, chain_id),
+        };
+        eprintln!(
+            "journal v3: snapshot={snapshot:#x} recipient={recipient:#x} instanceDomain={:#x}",
+            binding.instance_domain
+        );
+
+        let input = GuestInput { trust_edges, records, params: p, binding };
         std::fs::write(&args.out, serde_json::to_string_pretty(&input)?)?;
         eprintln!(
             "wrote {} ({} trust edges, {} contribution records)",

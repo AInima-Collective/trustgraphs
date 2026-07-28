@@ -99,10 +99,15 @@ contract HypercertsGoldenVectorsTest is Test {
         bytes32 cidDigest = json.readBytes32(".journal.cidDigest");
         uint256 totalValue = json.readUint(".journal.totalValue");
         bytes32 skippedDigest = json.readBytes32(".journal.skippedDigest");
+        address recipient = json.readAddress(".journal.recipient");
+        bytes32 instanceDomain = json.readBytes32(".journal.instanceDomain");
 
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
+        // Journal v3. `instanceDomain` matters MORE here than anywhere else: this program's
+        // params carry no instance-unique field at all, so before v3 two identically-configured
+        // hypercerts instances accepted each other's proofs (issue #9).
         bytes memory encoded = abi.encode(
             acc,
             leafCount,
@@ -113,7 +118,9 @@ contract HypercertsGoldenVectorsTest is Test {
             ipfsHash,
             cidDigest,
             totalValue,
-            skippedDigest
+            skippedDigest,
+            recipient,
+            instanceDomain
         );
         assertEq(keccak256(encoded), keccak256(expectedEncoded), "journal encoding mismatch");
         assertEq(keccak256(encoded), expectedDigest, "journal digest mismatch");

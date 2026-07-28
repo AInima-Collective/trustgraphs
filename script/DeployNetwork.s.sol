@@ -111,6 +111,13 @@ contract DeployScript is Common {
                 deployer
             );
 
+            // Bind the resolver both ways, in the same script run the factory does them in one
+            // transaction: to its schema (so a stranger's second schema cannot fold a foreign edge
+            // into this instance's `acc`) and to its snapshot (so `trigger()` is the only way to
+            // mint a checkpoint, which is what makes the epoch schedule binding — issue #10).
+            indexerResolver.bindSchema(schemaUid);
+            indexerResolver.bindSnapshot(address(merkleSnapshot));
+
             // Create the distributor.
             if (deployFundDistributor) {
                 MerkleFundDistributor merkleFundDistributor = new MerkleFundDistributor(

@@ -113,15 +113,18 @@ native and prints the submit args. `prove` writes
 
 ```bash
 task contributions:submit-proof
-# = cast send $SNAP "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-#     <checkpointId> <outputRoot> <ipfsHash> <cid> <totalValue> 0x00…00 <proof>
+# = cast send $SNAP "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+#     <checkpointId> <outputRoot> <ipfsHash> <cid> <totalValue> 0x00…00 <recipient> <proof>
 ```
 
 The contract reconstructs the journal digest from its own checkpointed
-storage + pinned `paramsHash` + the submitted outputs and verifies the proof
-against the contributions vkey. `skippedDigest` is always zero for this
-program (v1). Checkpoint ids must be strictly increasing across applied
-proofs.
+storage + the `paramsHash` pinned at that checkpoint's `trigger()` + the
+submitted outputs + `recipient` + an `instanceDomain` derived from its own
+address and chain id, and verifies the proof against the contributions vkey.
+`skippedDigest` is always zero for this program (v1). `recipient` is the
+journal-v3 bounty payee and must echo exactly what the guest committed;
+`fetch --recipient` sets it and `execute` prints it back. Checkpoint ids must
+be strictly increasing across applied proofs.
 
 ### 6. Fund (anyone with the pool tokens)
 

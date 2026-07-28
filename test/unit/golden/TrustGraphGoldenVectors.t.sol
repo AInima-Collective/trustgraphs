@@ -51,11 +51,14 @@ contract TrustGraphGoldenVectorsTest is Test {
         bytes32 cidDigest = json.readBytes32(".journal.cidDigest");
         uint256 totalValue = json.readUint(".journal.totalValue");
         bytes32 skippedDigest = json.readBytes32(".journal.skippedDigest");
+        address recipient = json.readAddress(".journal.recipient");
+        bytes32 instanceDomain = json.readBytes32(".journal.instanceDomain");
 
         bytes memory expectedEncoded = json.readBytes(".journal.encoded");
         bytes32 expectedDigest = json.readBytes32(".journal.digest");
 
-        // Journal v2 (two-lane), field order FROZEN — must match MerkleSnapshot.submitProof.
+        // Journal v3 (two-lane + the two bindings), field order FROZEN — must match
+        // MerkleSnapshot.submitProof.
         bytes memory encoded = abi.encode(
             acc,
             leafCount,
@@ -66,10 +69,25 @@ contract TrustGraphGoldenVectorsTest is Test {
             ipfsHash,
             cidDigest,
             totalValue,
-            skippedDigest
+            skippedDigest,
+            recipient,
+            instanceDomain
         );
         assertEq(keccak256(encoded), keccak256(expectedEncoded), "journal encoding mismatch");
         assertEq(keccak256(encoded), expectedDigest, "journal digest mismatch");
+    }
+
+    /// Journal-v3 domain separator: keccak256(abi.encode(address snapshot, uint256 chainId)) —
+    /// must match `zk_core::journal::instance_domain` and the rebuild inside
+    /// `MerkleSnapshot.submitProof` (which substitutes `address(this)` and `block.chainid`).
+    function test_InstanceDomain() public view {
+        address snapshot = json.readAddress(".instanceDomain.snapshot");
+        uint256 chainId = json.readUint(".instanceDomain.chainId");
+        bytes32 expected = json.readBytes32(".instanceDomain.domain");
+
+        assertEq(keccak256(abi.encode(snapshot, chainId)), expected, "instanceDomain mismatch");
+        // ...and it is the value the journal vector commits, so the two cannot drift apart.
+        assertEq(expected, json.readBytes32(".journal.instanceDomain"), "journal domain mismatch");
     }
 
     /// Anchor-log leaf: keccak256(abi.encode(bytes32, uint8, bytes32, bytes32, uint256)) — must

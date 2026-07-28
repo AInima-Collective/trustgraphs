@@ -71,6 +71,11 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
         // The signer journal has no lane-2 fields to bind, so signer selection is lane-1-only
         // until its journal shape deliberately grows (a vkey + module event, not a default).
         lane2: None,
+        // Nor does it carry the v3 bindings: `SignerSyncZkModule` pays no bounty and there is
+        // exactly one module per trust instance, so the recipient/domain words have nothing to
+        // bind to. The base computation only supplies `acc`/`leafCount`/`paramsHash` here, all
+        // three independent of the binding, so the default is not a silent hole.
+        binding: Default::default(),
     });
 
     let selection_params_hash = encode::selection_params_hash(&input.selection);

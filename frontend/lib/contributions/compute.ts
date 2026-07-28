@@ -146,8 +146,9 @@ export const computeContributions = (
   const cid = cidV1Raw(digest)
   const cidDigest = keccak256(stringToBytes(cid))
 
-  // Journal v2 reused unmodified: slot A = trust, slot B = contributions;
-  // skippedDigest = 0 in v1 (skips are derivable from committed inputs — INTERFACES.md §4).
+  // Journal v3 reused unmodified: slot A = trust, slot B = contributions;
+  // skippedDigest = 0 in v1 (skips are derivable from committed inputs — INTERFACES.md §4);
+  // the two v3 words pass straight through from the input.
   const journal: Journal = {
     acc,
     leafCount,
@@ -159,6 +160,8 @@ export const computeContributions = (
     cidDigest,
     totalValue,
     skippedDigest: ZERO_HASH,
+    recipient: input.binding?.recipient ?? ZERO_ADDRESS,
+    instanceDomain: input.binding?.instanceDomain ?? ZERO_HASH,
   }
 
   return {

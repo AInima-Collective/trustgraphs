@@ -109,6 +109,7 @@ fn main() {
         ],
         witnesses: vec![wa, wb],
         strongref_targets: BTreeMap::new(),
+        binding: Default::default(),
     };
 
     let out = std::env::args().nth(1).unwrap_or_else(|| "hypercerts_input.json".to_string());

@@ -173,6 +173,11 @@ const input = {
   trustEdges: (gc.input.trustEdges as any[]).map(toEdge),
   records: (gc.input.records as any[]).map(toEdge),
   params: toParams(gc.input.params),
+  // The journal-v3 bindings the vectors pin (pass-throughs, not computed).
+  binding: {
+    recipient: gc.journal.recipient as Hex,
+    instanceDomain: gc.journal.instanceDomain as Hex,
+  },
 }
 const result = computeContributions(input)
 

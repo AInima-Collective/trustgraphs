@@ -55,6 +55,15 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @notice keccak256 of the canonical PageRank parameters the guest must use.
     bytes32 public paramsHash;
 
+    /// @notice The `paramsHash` a checkpoint must be proven under, pinned by `trigger()` at the
+    ///         moment the inputs froze. Zero = never pinned (see `UnpinnedCheckpoint`).
+    /// @dev    Pinning is what lets a params rotation take effect at the next epoch boundary
+    ///         instead of invalidating whatever proof is in flight — the hand-timed dance
+    ///         `UPGRADE_GOVERNANCE.md` §5.6 asks operators to perform today. The VERIFIER is
+    ///         deliberately NOT pinned: rotating it is the emergency response to an SP1 soundness
+    ///         bug (§5.5), and pinning would let proofs under a known-broken verifier keep landing.
+    mapping(uint256 checkpointId => bytes32 paramsHash) public checkpointParamsHash;
+
     /// @notice The last checkpoint id whose proof was applied (monotonic).
     uint256 public lastAppliedCheckpoint;
 
@@ -96,6 +105,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         if (address(_zkVerifier) == address(0) || address(_accumulator) == address(0)) {
             revert ZeroAddress();
         }
+        if (_paramsHash == bytes32(0)) revert ZeroParamsHash();
         zkVerifier = _zkVerifier;
         paramsHash = _paramsHash;
         accumulator = _accumulator;
@@ -126,7 +136,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Update the canonical params hash (operational).
+    /// @dev Takes effect at the NEXT `trigger()`, not immediately: every checkpoint is proven
+    ///      under the hash pinned when its inputs froze. A rotation therefore never invalidates a
+    ///      proof already being computed.
     function setParamsHash(bytes32 _paramsHash) external onlyRole(OPERATIONAL_ROLE) {
+        if (_paramsHash == bytes32(0)) revert ZeroParamsHash();
         paramsHash = _paramsHash;
         emit ParamsHashUpdated(_paramsHash);
     }
@@ -171,6 +185,10 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         checkpointId = accumulator.checkpoint();
 
+        // Pin the params this checkpoint must be proven under, at the block its inputs froze.
+        checkpointParamsHash[checkpointId] = paramsHash;
+        emit CheckpointParamsPinned(checkpointId, paramsHash);
+
         // Checkpoint BOTH lanes at the same boundary (OFFCHAIN doc §4). No registry ⇒ the empty
         // lane is the zero accumulator, which is exactly what the lane-1-only guest commits.
         if (address(anchorRegistry) != address(0)) {
@@ -191,6 +209,9 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @param totalValue The summed points.
     /// @param skippedDigest The guest's rule-Φ/deterministic-skip commitment (proven output;
     ///        bytes32(0) when nothing was skipped or the instance has no lane 2).
+    /// @param recipient The bounty payee the guest committed. Bound into the digest, so a proof
+    ///        naming payee A cannot be replayed naming payee B. Zero is legitimate: it means the
+    ///        root carries no bounty (a curated instance, or a community self-proving).
     /// @param proof The verifier-specific proof blob.
     function submitProof(
         uint256 checkpointId,
@@ -199,6 +220,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         string calldata ipfsHashCid,
         uint256 totalValue,
         bytes32 skippedDigest,
+        address recipient,
         bytes calldata proof
     ) external {
         // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
@@ -210,22 +232,32 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(checkpointId);
         AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
 
-        // The journal is the ENTIRE ABI between contract and guest (journal v2 — two-lane, field
-        // order FROZEN, golden-locked four ways). Bind all of it — including the CID *string*
-        // consumers fetch by, whose 32-byte digest alone is otherwise unproven. Checkpointed
-        // storage pins both lanes; skippedDigest is the guest's own audited-discretion output.
+        // The params this checkpoint froze under, NOT the current ones (see `checkpointParamsHash`).
+        bytes32 pinnedParamsHash = checkpointParamsHash[checkpointId];
+        if (pinnedParamsHash == bytes32(0)) revert UnpinnedCheckpoint(checkpointId);
+
+        // The journal is the ENTIRE ABI between contract and guest (journal v3 — two-lane plus the
+        // two v3 bindings, field order FROZEN, golden-locked four ways). Bind all of it — including
+        // the CID *string* consumers fetch by, whose 32-byte digest alone is otherwise unproven.
+        // Checkpointed storage pins both lanes; skippedDigest is the guest's own
+        // audited-discretion output. The last two words are what the SUBMITTER cannot forge:
+        // `recipient` is this call's argument, and `instanceDomain` is rebuilt here from our own
+        // identity, so no program's params codec has to carry an instance-unique field for its
+        // proofs to be instance-specific.
         bytes32 journalDigest = keccak256(
             abi.encode(
                 c.acc, // lane-1 inputs   (chain-pinned)
                 c.leafCount,
                 ac.anchorAcc, // lane-2 inputs   (chain-pinned; zeros for a lane-1-only instance)
                 ac.anchorCount,
-                paramsHash, // which params    (governance-pinned)
+                pinnedParamsHash, // which params    (pinned at this checkpoint's trigger)
                 outputRoot, // scored tree
                 ipfsHash, // canonical-blob digest
                 keccak256(bytes(ipfsHashCid)), // ...and the CID string that points at that blob
                 totalValue, // summed points
-                skippedDigest // rule-Φ audit commitment
+                skippedDigest, // rule-Φ audit commitment
+                recipient, // v3: who the bounty is owed to
+                instanceDomain() // v3: which instance, derived not accepted
             )
         );
 
@@ -240,7 +272,17 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         _updateStateAtBlock(c.blockNumber, outputRoot, ipfsHash, ipfsHashCid, totalValue);
 
         emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
-        emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender);
+        emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender, recipient);
+    }
+
+    /// @notice This instance's journal-v3 domain separator: `keccak256(abi.encode(address(this),
+    ///         block.chainid))`. Provers read it to fill the journal field; `submitProof` rebuilds
+    ///         it rather than trusting an argument.
+    /// @dev Universal separation. Trust-graph's params-v2 `accumulator`/`chainId` fields are now
+    ///      belt-and-braces (kept: golden-locked and harmless); hypercerts, whose params carry no
+    ///      instance-unique field at all, gets separation here for the first time (issue #9).
+    function instanceDomain() public view returns (bytes32) {
+        return keccak256(abi.encode(address(this), block.chainid));
     }
 
     /// @notice Update the state at a specific (input-freeze) block, overriding any existing state

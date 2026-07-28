@@ -11,6 +11,9 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 // The word encoders and the accumulator fold are program-agnostic and live in `zk-core`;
 // re-exported so every existing `encode::word_*` / `encode::fold` call site is unchanged.
 pub use zk_core::fold::fold;
+// Journal-v3 domain separation is universal, so it lives in `zk-core` and every program crate
+// re-exports it from the same place its journal encoder lives.
+pub use zk_core::journal::instance_domain;
 pub use zk_core::words::{word_addr, word_u256, word_u32, word_u64, word_u8};
 
 /// The accumulator edge leaf:
@@ -46,13 +49,19 @@ pub fn accumulate(edges: &[crate::RawEdge]) -> (B256, u64) {
     (acc, edges.len() as u64)
 }
 
-/// The ABI-encoded journal-v2 tuple — the exact bytes the SP1 guest commits as `publicValues`,
-/// and the preimage of the journal digest (field order FROZEN, OFFCHAIN doc §4.3):
+/// The ABI-encoded journal-v3 tuple — the exact bytes the SP1 guest commits as `publicValues`,
+/// and the preimage of the journal digest (field order FROZEN, OFFCHAIN doc §4.3 + the two v3
+/// bindings appended):
 /// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 anchorAcc, uint64 anchorCount,
 ///             bytes32 paramsHash, bytes32 outputRoot, bytes32 ipfsHash, bytes32 cidDigest,
-///             uint256 totalValue, bytes32 skippedDigest)`.
+///             uint256 totalValue, bytes32 skippedDigest,
+///             address recipient, bytes32 instanceDomain)`.
+///
+/// The last two words are pass-throughs the guest copies from its witness; both are made binding
+/// by `MerkleSnapshot.submitProof`, which rebuilds the digest with its own `recipient` argument
+/// and an `instanceDomain` derived from `address(this)` + `block.chainid`.
 pub fn journal_encoded(j: &Journal) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(32 * 10);
+    let mut buf = Vec::with_capacity(32 * 12);
     buf.extend_from_slice(j.acc.as_slice());
     buf.extend_from_slice(&word_u64(j.leaf_count));
     buf.extend_from_slice(j.anchor_acc.as_slice());
@@ -63,6 +72,8 @@ pub fn journal_encoded(j: &Journal) -> Vec<u8> {
     buf.extend_from_slice(j.cid_digest.as_slice());
     buf.extend_from_slice(&word_u256(j.total_value));
     buf.extend_from_slice(j.skipped_digest.as_slice());
+    buf.extend_from_slice(&word_addr(j.recipient));
+    buf.extend_from_slice(j.instance_domain.as_slice());
     buf
 }
 

@@ -18,6 +18,8 @@ import { compute, journalDigest } from './compute'
 import {
   accumulate,
   edgeLeaf,
+  instanceDomain,
+  journalEncoded,
   paramsHash,
   selectionParamsHash,
   signerJournalEncoded,
@@ -77,6 +79,12 @@ const params: Params = {
   chainId: 31337n,
 }
 
+// Journal-v3 bindings (matches export_golden.rs: recipient addr(0xBE), domain over addr(0x5A)/31337).
+const binding = {
+  recipient: `0x${'be'.repeat(20)}` as Hex,
+  instanceDomain: instanceDomain(`0x${'5a'.repeat(20)}` as Hex, 31337n),
+}
+
 const input: GuestInput = {
   edges: [
     edge(1, 2, 1, 100n, 50n),
@@ -84,6 +92,7 @@ const input: GuestInput = {
     edge(3, 1, 3, 102n, 90n),
   ],
   params,
+  binding,
 }
 
 const selection: SelectionParams = { topN: 3, minThreshold: 1, targetThresholdBps: 5000 }
@@ -97,7 +106,13 @@ const GOLDEN = {
   ipfsHash: '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
   cid: 'bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4',
   cidDigest: '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
-  journalDigest: '0xf9defecce3f274369e3b74f23546f97e5cf0f3e76c276869a7e642fb7cb4d1a2', // journal v2 (two-lane; empty lane 2)
+  journalEncoded:
+    '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d1510000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d7570eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f41800000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
+  journalDigest: '0x8bc0aa702bd294c61b3487f4f97c48642ec511707f1057fde32f31b62fc8ec64', // journal v3 (two-lane + recipient/instanceDomain)
+  recipient: '0xbebebebebebebebebebebebebebebebebebebebe',
+  instanceDomain: '0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
+  instanceDomainSnapshot: '0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a',
+  instanceDomainChainId: 31337n,
   totalValue: 1_000_000_000_000_000_000_000_000n, // 1e24
   edge0DataHash: '0x00bcd6ff29ae71d399fb597d99792fa72d0863bd723b9ab11f79d0b8d8ac5bc8',
   edge0Leaf: '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
@@ -164,6 +179,14 @@ check('cid', result.cid, GOLDEN.cid)
 check('cidDigest', result.journal.cidDigest.toLowerCase(), GOLDEN.cidDigest)
 check('totalValue', result.journal.totalValue, GOLDEN.totalValue)
 check('blob', result.blob, GOLDEN.blob)
+check('journal recipient', result.journal.recipient.toLowerCase(), GOLDEN.recipient)
+check('journal instanceDomain', result.journal.instanceDomain.toLowerCase(), GOLDEN.instanceDomain)
+check(
+  'instanceDomain derivation',
+  instanceDomain(GOLDEN.instanceDomainSnapshot as Hex, GOLDEN.instanceDomainChainId).toLowerCase(),
+  GOLDEN.instanceDomain
+)
+check('journalEncoded', journalEncoded(result.journal).toLowerCase(), GOLDEN.journalEncoded)
 check('journalDigest', journalDigest(result.journal).toLowerCase(), GOLDEN.journalDigest)
 
 // Per-account values.

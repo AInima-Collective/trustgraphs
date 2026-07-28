@@ -22,10 +22,10 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Built** | `0x00d573370235fb42281f4b15682de43080cafac3ed34b759ddceea71fa09385f` (params-schema v2; box-derived, see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
-| **signer-sync** (Safe owner rotation) | **Built** | `0x003d711d740e0b590cc955afe815edcb9b2e892b961d8054b05a374a7341c022` (params-schema v2; box-derived, see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
-| **hypercerts** (AT-proto graph) | **Built** | `0x00dd6884c5e7e591822ee4f3c8a48bb03d3f6997056a084cf4731c8fd6e9db96` (SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
-| **contributions** (rep-weighted funding split) | **Built** | `0x00b66125a047f991056446fc6d8d2cc9d9408357d0b55978c35690d995210f08` (SP1 6.3.1, box-derived; rotated by params-schema v2 — its stage-1 twin is `pagerank_core::Params`) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
+| **trust-graph** (root producer) | **Built** | `0x005c236fe2e6157bd911925c2faefcae4d903e229dee2fc0ef555763dd31c496` (journal v3; box-derived, see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
+| **signer-sync** (Safe owner rotation) | **Built** | `0x00ae498beaea90c508eb3462169d6c516e864672fcadf135bb8a36f5b3ce51f0` (rotated by journal-v3 contagion — its own `SignerJournal` shape is unchanged; box-derived, see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
+| **hypercerts** (AT-proto graph) | **Built** | `0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346` (journal v3; SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
+| **contributions** (rep-weighted funding split) | **Built** | `0x00ad63b643bf1af6995e0fd21e444db6d9b831375b601f951c1666f2e1a7231d` (journal v3; SP1 6.3.1, box-derived) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
 
 > **vkeys:** a vkey identifies one exact guest binary, so it changes whenever the guest ELF
 > changes — including refactors that don't change semantics (the platform reorg rotated the
@@ -55,6 +55,20 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 > (signer-sync `0x00e06fc3…`, hypercerts `0x007b0fc9…`) with no source change between them — the
 > reproducibility caveat above, observed again. Treat every value here as this box's, and derive
 > deployment vkeys on the pinned toolchain in the deploy runbook.
+>
+> **journal v3 (2026-07-28).** The proof-scheduler program appended two words to the journal —
+> `recipient` (the bounty payee) and `instanceDomain` (`keccak256(abi.encode(snapshot, chainId))`,
+> rebuilt on-chain by `submitProof`). Because the shape lives in `pagerank_core::Journal` /
+> `encode::journal_encoded`, which every program's guest commits, this rotated **all four** vkeys.
+> The signer program is the odd one out and worth stating plainly: its own `SignerJournal` is
+> untouched at six fields, and it stays outside the vault — its vkey moved purely by contagion,
+> because `compute_signers` calls the shared `compute`.
+>
+> **The four values above are NOT a clean measurement of that change.** The `succinct` toolchain
+> was reinstalled on this box in the same session, and the caveat above says exactly what that
+> does. So the delta from the params-schema-v2 row mixes a source change with a toolchain change,
+> and no conclusion should be drawn from comparing them. Derive deployment vkeys on the pinned
+> toolchain in the deploy runbook.
 >
 > **Overflow backstop (2026-07-24, same build).** The M6 security review found that
 > `zk_core::fixed::mul_div` truncated an over-256-bit quotient instead of failing, so a

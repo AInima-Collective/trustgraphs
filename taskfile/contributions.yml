@@ -106,6 +106,7 @@ tasks:
         (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions fetch \
           --rpc {{.RPC_URL}} --snapshot "$SNAPSHOT" --eas "$EAS" --checkpoint "$ID" \
           --params ../../{{.PARAMS_FILE}} --trust-schema-uid "$VOUCH_UID" \
+          --recipient "{{.RECIPIENT | default "0x0000000000000000000000000000000000000000"}}" \
           --out ../../{{.OUT_DIR}}/contributions_input.json)
         echo "== execute (guest == native byte-assert) =="
         EXEC=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions execute ../../{{.OUT_DIR}}/contributions_input.json)
@@ -116,6 +117,9 @@ tasks:
           echo "IPFS_HASH=$(echo "$EXEC" | awk '/ipfsHash:/{print $2}')"
           echo "CID=$(echo "$EXEC" | awk '/^cid:/{print $2}')"
           echo "TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')"
+          # Journal v3: submitProof folds `recipient` into the digest, so the submit must echo
+          # exactly what the guest committed. Read it back rather than re-deriving it.
+          echo "RECIPIENT=$(echo "$EXEC" | awk '/^recipient:/{print $2}')"
         } > {{.SUBMIT_ENV}}
         echo "== prove (mock groth16) =="
         (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions prove ../../{{.OUT_DIR}}/contributions_input.json --groth16)
@@ -135,9 +139,10 @@ tasks:
         . ./{{.SUBMIT_ENV}}
         SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
         PROOF="0x$(od -An -v -tx1 {{.OUT_DIR}}/contributions_proof.bin | tr -d ' \n')"
-        cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
+        cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
           "$CHECKPOINT_ID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" \
-          0x0000000000000000000000000000000000000000000000000000000000000000 "$PROOF" \
+          0x0000000000000000000000000000000000000000000000000000000000000000 \
+          "${RECIPIENT:-0x0000000000000000000000000000000000000000}" "$PROOF" \
           --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
         echo "submitProof OK: checkpoint $CHECKPOINT_ID root $OUTPUT_ROOT"
 

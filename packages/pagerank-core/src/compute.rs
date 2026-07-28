@@ -48,9 +48,10 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let cid_str = cid::cid_v1_raw(&digest);
     let cid_digest = keccak256(cid_str.as_bytes());
 
-    // Journal v2: lane-2 fields come from the processed witness (the zero accumulator when
+    // Journal v3: lane-2 fields come from the processed witness (the zero accumulator when
     // the lane is empty — empty-lane-as-zero; the guest, not the contract, decides what an
-    // empty lane means). skippedDigest commits every rule-Φ deviation.
+    // empty lane means). skippedDigest commits every rule-Φ deviation. The last two fields are
+    // pass-throughs the contract re-derives and binds.
     let journal = Journal {
         acc,
         leaf_count,
@@ -62,6 +63,8 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         cid_digest,
         total_value,
         skipped_digest: skipped_digest(&lane2_result.skips),
+        recipient: input.binding.recipient,
+        instance_domain: input.binding.instance_domain,
     };
     ComputeResult { journal, scores: assigned, blob, cid: cid_str }
 }

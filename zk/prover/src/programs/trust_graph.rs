@@ -4,7 +4,7 @@
 use alloy_primitives::{Address, B256, U256};
 use anyhow::Result;
 use clap::Subcommand;
-use pagerank_core::{compute::compute, encode, GuestInput, Params, RawEdge};
+use pagerank_core::{compute::compute, encode, Binding, GuestInput, Params, RawEdge};
 use sp1_sdk::{include_elf, Elf};
 
 use crate::common;
@@ -60,7 +60,14 @@ pub fn sample_input() -> GuestInput {
     };
     let edges =
         vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
-    GuestInput { edges, params, lane2: None }
+    // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays byte-identical
+    // to test/golden/trust-graph.json. Both non-zero: a sample that left them at the default would
+    // exercise neither new word.
+    let binding = Binding {
+        recipient: addr(0xBE),
+        instance_domain: encode::instance_domain(addr(0x5A), 31337),
+    };
+    GuestInput { edges, params, lane2: None, binding }
 }
 
 fn load_input(path: Option<&String>) -> Result<GuestInput> {
@@ -77,7 +84,16 @@ pub enum Command {
     /// Print the guest program verification key (bytes32) for deployment.
     Vkey,
     /// Print keccak256 of the canonical params (for the operational timelock).
-    Paramshash { input: Option<String> },
+    ///
+    /// Reads a `GuestInput` by default. `--params <params.json>` reads a bare
+    /// `pagerank_core::Params` instead, which is what a DEPLOY needs: the snapshot's params hash
+    /// has to exist before the snapshot does, and the snapshot has to exist before any checkpoint
+    /// (and therefore any `GuestInput`) can be produced.
+    Paramshash {
+        input: Option<String>,
+        #[arg(long)]
+        params: Option<String>,
+    },
     /// Run the guest via the SP1 executor and assert it matches native `compute` (no proof).
     Execute {
         input: Option<String>,
@@ -103,9 +119,12 @@ const OUT_DIR: &str = "trust-graph";
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
         Command::Vkey => common::print_vkey(load_elf()),
-        Command::Paramshash { input } => {
-            let input = load_input(input.as_ref())?;
-            println!("0x{}", hex::encode(encode::params_hash(&input.params)));
+        Command::Paramshash { input, params } => {
+            let p: Params = match params {
+                Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
+                None => load_input(input.as_ref())?.params,
+            };
+            println!("0x{}", hex::encode(encode::params_hash(&p)));
             Ok(())
         }
         Command::Execute { input, out_dir } => {
@@ -132,6 +151,11 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     println!("cid:           {}", native.cid);
     println!("totalValue:    {}", native.journal.total_value);
     println!("skippedDigest: 0x{}", hex::encode(native.journal.skipped_digest));
+    // The two journal-v3 pass-throughs. `submitProof` takes `recipient` as an argument and folds
+    // it into the digest, so a submitter must echo exactly what the guest committed; it is printed
+    // here so the submit step never has to guess.
+    println!("recipient:     0x{}", hex::encode(native.journal.recipient));
+    println!("instanceDomain: 0x{}", hex::encode(native.journal.instance_domain));
 
     // The canonical score blob whose sha256 is `ipfsHash` and whose CID is `cid`. Write it out so it
     // can be pinned (the UI/indexer fetch the {account -> score} scores from IPFS at that cid).

@@ -71,10 +71,11 @@ export const accumulate = (edges: RawEdge[]): { acc: Hex; leafCount: bigint } =>
 }
 
 /**
- * The ABI-encoded journal-v2 tuple — the preimage of the journal digest (field order FROZEN):
+ * The ABI-encoded journal-v3 tuple — the preimage of the journal digest (field order FROZEN):
  * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 anchorAcc, uint64 anchorCount,
  *             bytes32 paramsHash, bytes32 outputRoot, bytes32 ipfsHash, bytes32 cidDigest,
- *             uint256 totalValue, bytes32 skippedDigest)`.
+ *             uint256 totalValue, bytes32 skippedDigest,
+ *             address recipient, bytes32 instanceDomain)`.
  */
 export const journalEncoded = (j: Journal): Hex =>
   concat([
@@ -88,7 +89,17 @@ export const journalEncoded = (j: Journal): Hex =>
     j.cidDigest,
     wordU256(j.totalValue),
     j.skippedDigest,
+    wordAddr(j.recipient),
+    j.instanceDomain,
   ])
+
+/**
+ * Universal domain separation: `keccak256(abi.encode(address snapshot, uint256 chainId))`.
+ * `MerkleSnapshot.submitProof` rebuilds this from `address(this)` and `block.chainid` rather than
+ * accepting it as an argument, so a submitter cannot lie about which instance a proof is for.
+ */
+export const instanceDomain = (snapshot: Hex, chainId: bigint): Hex =>
+  keccak256(concat([wordAddr(snapshot), wordU256(chainId)]))
 
 /** The journal digest = `keccak256(journalEncoded(j))`. This is what the on-chain verifier binds. */
 export const journalDigest = (j: Journal): Hex => keccak256(journalEncoded(j))

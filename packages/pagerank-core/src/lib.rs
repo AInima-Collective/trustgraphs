@@ -127,6 +127,25 @@ pub mod skip_reason {
     pub const DROPPED: u8 = 2;
 }
 
+/// The two pass-through commitments every program's journal carries in v3. Neither is computed
+/// from anything: the prover supplies both, the guest copies them verbatim into the journal, and
+/// the CONTRACT is what makes them binding — `MerkleSnapshot.submitProof` rebuilds the digest with
+/// the recipient it was called with and an `instanceDomain` derived from `address(this)` and
+/// `block.chainid`, so a proof that names a different payee or a different instance simply does
+/// not verify.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Binding {
+    /// The bounty payee. `Address::ZERO` is legitimate and means "no bounty" — a curated
+    /// instance proven on the hosted operator, or a community self-proving for free.
+    #[serde(default)]
+    pub recipient: Address,
+    /// `keccak256(abi.encode(snapshot, chainId))` — see [`zk_core::journal::instance_domain`].
+    /// A zero value is never legitimate on-chain (the contract's rebuild is a keccak), so a
+    /// forgotten binding fails at `submitProof` rather than landing somewhere wrong.
+    #[serde(default)]
+    pub instance_domain: B256,
+}
+
 /// The complete input the guest receives.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuestInput {
@@ -136,15 +155,18 @@ pub struct GuestInput {
     /// Lane-2 witness; None/absent for a lane-1-only instance (journal commits zero lane).
     #[serde(default)]
     pub lane2: Option<Lane2Witness>,
+    /// Journal-v3 pass-through commitments (payee + instance domain).
+    #[serde(default)]
+    pub binding: Binding,
 }
 
-/// The 10 public fields the guest commits (journal v2 — two-lane, OFFCHAIN doc §4.3).
+/// The 12 public fields the guest commits (journal v3 — two-lane plus the v3 bindings).
 /// `keccak256(abi.encode(..))` of these is the journal digest the on-chain verifier binds.
 /// Field order is FROZEN — see [`encode::journal_digest`]. An instance with an empty lane
 /// encodes it as the zero accumulator: lane-1-only ⇒ `anchor_acc = 0, anchor_count = 0,
 /// skipped_digest = 0`; lane-2-only ⇒ `acc = 0, leaf_count = 0`. The guest, not the
 /// contract, decides what an empty lane means. (Journal v1 exists solely as the frozen
-/// live deployment; there is no v1 code path.)
+/// live deployment; there is no v1 code path. v2 is the 10-field shape v3 appends to.)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Journal {
     pub acc: B256,
@@ -161,6 +183,14 @@ pub struct Journal {
     /// Chained fold over rule-Φ / deterministic-skip entries (`zk_core::anchor::skipped_digest`);
     /// `bytes32(0)` when nothing was skipped (or the instance has no lane 2).
     pub skipped_digest: B256,
+    /// v3: the bounty payee, committed verbatim from [`Binding::recipient`]. Bound because
+    /// `submitProof` folds its own `recipient` argument into the digest, so the fee provably
+    /// follows the journal rather than `msg.sender` — a copied transaction pays the original
+    /// prover (PROOF_SCHEDULER.md §4.3, superseding commit-reveal).
+    pub recipient: Address,
+    /// v3: the instance this proof is for, committed verbatim from [`Binding::instance_domain`].
+    /// Bound because `submitProof` rebuilds it from `address(this)` and `block.chainid`.
+    pub instance_domain: B256,
 }
 
 /// Full result of a canonical computation: the journal plus the artifacts the host needs to pin

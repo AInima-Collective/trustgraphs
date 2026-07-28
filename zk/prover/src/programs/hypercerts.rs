@@ -112,6 +112,15 @@ pub fn sample_input() -> GuestInput {
         }],
         witnesses: vec![AtprotoWitness { did: seed_did.clone(), car, plc_ops }],
         strongref_targets: BTreeMap::new(),
+        // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays
+        // byte-identical to test/golden/hypercerts.json.
+        binding: pagerank_core::Binding {
+            recipient: alloy_primitives::Address::from([0xBE; 20]),
+            instance_domain: pagerank_core::encode::instance_domain(
+                alloy_primitives::Address::from([0x5A; 20]),
+                31337,
+            ),
+        },
     }
 }
 
@@ -166,6 +175,19 @@ pub enum Command {
         /// Full `Params` JSON override; without it, the §6.1 launch params + --seed-did are used.
         #[arg(long)]
         params: Option<String>,
+        /// The MerkleSnapshot this input will be proven against. Half of the journal-v3
+        /// `instanceDomain` that `submitProof` rebuilds from `address(this)` + `block.chainid`.
+        /// Omitted, the domain is zero and the resulting proof cannot be submitted anywhere —
+        /// useful only for offline `execute` runs.
+        #[arg(long)]
+        snapshot: Option<String>,
+        /// The chain the snapshot lives on (default 1, Ethereum mainnet). Only read when
+        /// `--snapshot` is given.
+        #[arg(long, default_value_t = 1)]
+        chain_id: u64,
+        /// Journal-v3 bounty payee. Defaults to the zero address ("no bounty").
+        #[arg(long)]
+        recipient: Option<String>,
         /// Output path (default: `<repo root>/.trustgraph/hypercerts/hypercerts_input.json`).
         #[arg(long)]
         out: Option<String>,
@@ -197,14 +219,46 @@ pub fn run(cmd: Command) -> Result<()> {
             common::out_dir(out_dir.as_ref(), OUT_DIR)?,
         ),
         #[cfg(feature = "witness-atproto")]
-        Command::Buildinput { archive_dir, seed_dids, params, out } => {
+        Command::Buildinput { archive_dir, seed_dids, params, snapshot, chain_id, recipient, out } => {
             let out = match out {
                 Some(o) => std::path::PathBuf::from(o),
                 None => common::out_dir(None, OUT_DIR)?.join("hypercerts_input.json"),
             };
-            cmd_buildinput(&archive_dir, &seed_dids, params.as_deref(), &out)
+            let binding = build_binding(snapshot.as_deref(), chain_id, recipient.as_deref())?;
+            cmd_buildinput(&archive_dir, &seed_dids, params.as_deref(), binding, &out)
         }
     }
+}
+
+/// Assemble the journal-v3 bindings from CLI flags. Warns loudly rather than failing when the
+/// snapshot is omitted: an unbound input is legitimate for an offline `execute`, but the resulting
+/// proof will not verify against any snapshot, and the operator must not discover that late.
+#[cfg(feature = "witness-atproto")]
+fn build_binding(
+    snapshot: Option<&str>,
+    chain_id: u64,
+    recipient: Option<&str>,
+) -> Result<pagerank_core::Binding> {
+    use alloy_primitives::Address;
+    use anyhow::Context;
+    let recipient: Address = match recipient {
+        Some(r) => r.parse().context("--recipient")?,
+        None => Address::ZERO,
+    };
+    let instance_domain = match snapshot {
+        Some(s) => {
+            let addr: Address = s.parse().context("--snapshot")?;
+            pagerank_core::encode::instance_domain(addr, chain_id)
+        }
+        None => {
+            eprintln!(
+                "WARNING: no --snapshot given, so instanceDomain is zero. This input can be \
+                 executed offline but a proof over it will NOT verify against any snapshot."
+            );
+            B256::ZERO
+        }
+    };
+    Ok(pagerank_core::Binding { recipient, instance_domain })
 }
 
 /// `buildinput`: archived witness bundle → serialized `GuestInput` + the register/anchor lines.
@@ -213,6 +267,7 @@ fn cmd_buildinput(
     archive_dir: &str,
     seed_dids: &[String],
     params_path: Option<&str>,
+    binding: pagerank_core::Binding,
     out: &std::path::Path,
 ) -> Result<()> {
     use crate::witness::atproto::{witness_from_entry, Bundle};
@@ -292,7 +347,8 @@ fn cmd_buildinput(
         }
     }
 
-    let input = GuestInput { params: p, anchors: anchors.clone(), witnesses, strongref_targets };
+    let input =
+        GuestInput { params: p, anchors: anchors.clone(), witnesses, strongref_targets, binding };
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -366,6 +422,10 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     println!("cid:           {}", native.cid);
     println!("totalValue:    {}", native.journal.total_value);
     println!("skippedDigest: 0x{}", hex::encode(native.journal.skipped_digest));
+    // The two journal-v3 pass-throughs. `submitProof` takes `recipient` as an argument and folds
+    // it into the digest, so a submitter must echo exactly what the guest committed.
+    println!("recipient:     0x{}", hex::encode(native.journal.recipient));
+    println!("instanceDomain: 0x{}", hex::encode(native.journal.instance_domain));
 
     // The canonical nodeId-keyed score blob whose sha256 is `ipfsHash` and whose CID is `cid`.
     let blob_path = common::write_out(&out, "hypercerts_blob.json", &native.blob)?;

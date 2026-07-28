@@ -59,18 +59,33 @@ export interface Params {
 /** Trust is enabled iff there is at least one trusted seed (mirrors `has_trust_enabled`). */
 export const hasTrustEnabled = (p: Params): boolean => p.trustedSeeds.length > 0
 
+/**
+ * The two journal-v3 pass-through commitments. Neither is computed: the prover supplies both, the
+ * guest copies them verbatim, and `MerkleSnapshot.submitProof` is what makes them binding (it
+ * rebuilds the digest with its own `recipient` argument and an `instanceDomain` derived from
+ * `address(this)` and `block.chainid`). Mirrors `pagerank_core::Binding`.
+ */
+export interface Binding {
+  /** The bounty payee. The zero address is legitimate and means "no bounty". */
+  recipient: Hex
+  /** `keccak256(abi.encode(snapshot, chainId))` — see `encode.instanceDomain`. */
+  instanceDomain: Hex
+}
+
 /** The complete input the canonical computer receives. Mirrors `pagerank_core::GuestInput`. */
 export interface GuestInput {
   /** Edges in accumulator fold order (index = `leafCount` position). */
   edges: RawEdge[]
   params: Params
+  /** Journal-v3 pass-through commitments. Absent = both zero (no bounty, no domain). */
+  binding?: Binding
 }
 
 /**
- * The 10 public journal fields (journal v2 — two-lane). `keccak256(abi.encode(..))` of these is
- * the digest the on-chain verifier binds. Field order is FROZEN — see `encode.journalDigest`.
- * An empty lane is the zero accumulator (lane-1-only: anchorAcc = 0x0, anchorCount = 0,
- * skippedDigest = 0x0).
+ * The 12 public journal fields (journal v3 — two-lane plus the two bindings).
+ * `keccak256(abi.encode(..))` of these is the digest the on-chain verifier binds. Field order is
+ * FROZEN — see `encode.journalDigest`. An empty lane is the zero accumulator (lane-1-only:
+ * anchorAcc = 0x0, anchorCount = 0, skippedDigest = 0x0).
  */
 export interface Journal {
   acc: Hex
@@ -83,6 +98,10 @@ export interface Journal {
   cidDigest: Hex
   totalValue: bigint
   skippedDigest: Hex
+  /** v3: the bounty payee, committed verbatim from `Binding.recipient`. */
+  recipient: Hex
+  /** v3: the instance this proof is for, committed verbatim from `Binding.instanceDomain`. */
+  instanceDomain: Hex
 }
 
 /** Full result of a canonical computation. Mirrors `pagerank_core::ComputeResult`. */

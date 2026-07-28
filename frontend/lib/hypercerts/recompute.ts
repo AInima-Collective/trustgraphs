@@ -32,7 +32,7 @@ import { merkleRoot, outputLeaf } from '../pagerank/merkle'
 import { calculate } from '../pagerank/pagerank'
 import { type Graph } from '../pagerank/reconcile'
 import { type Journal, type Params as PagerankParams } from '../pagerank/types'
-import { cmpHex, wordU256, wordU64, wordU8, ZERO_HASH } from '../pagerank/words'
+import { cmpHex, wordU256, wordU64, wordU8, ZERO_ADDRESS, ZERO_HASH } from '../pagerank/words'
 
 // ---- indexer-served input shape ---------------------------------------------
 //
@@ -120,6 +120,13 @@ export interface RecomputeInput {
   acc?: Hex
   /** Lane-1 leaf count — always `0` for the lane-2-only hypercerts program. */
   leafCount?: bigint
+  /**
+   * Journal-v3 pass-through commitments. To reproduce the digest of a root that actually landed,
+   * pass the `recipient` from `MerkleProofSubmitted` and the snapshot's `instanceDomain()`.
+   * Omitted, both are zero: the scores and the output root still reproduce, but the digest is
+   * the digest of an unbound journal, not of the on-chain one.
+   */
+  binding?: { recipient: Hex; instanceDomain: Hex }
 }
 
 // ---- hashing helpers not already in the pagerank port -----------------------
@@ -290,7 +297,7 @@ export const recompute = (input: RecomputeInput): RecomputeResult => {
   const cid = cidV1Raw(digest)
   const cidDigest = keccak256(stringToBytes(cid))
 
-  // 5. Journal v2, lane-2-only shape (lane 1 is the zero accumulator; anchor lane from chain state).
+  // 5. Journal v3, lane-2-only shape (lane 1 is the zero accumulator; anchor lane from chain state).
   const journal: Journal = {
     acc: input.acc ?? ZERO_HASH,
     leafCount: input.leafCount ?? 0n,
@@ -302,10 +309,12 @@ export const recompute = (input: RecomputeInput): RecomputeResult => {
     cidDigest,
     totalValue,
     skippedDigest: skippedDigest(input.skips),
+    recipient: input.binding?.recipient ?? ZERO_ADDRESS,
+    instanceDomain: input.binding?.instanceDomain ?? ZERO_HASH,
   }
 
   return { journal, scores: assigned, blob, cid }
 }
 
-/** The journal digest the on-chain verifier binds (reuses the canonical journal-v2 encoding). */
+/** The journal digest the on-chain verifier binds (reuses the canonical journal-v3 encoding). */
 export const journalDigest = (j: Journal): Hex => encodeJournalDigest(j)

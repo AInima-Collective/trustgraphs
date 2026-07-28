@@ -13,7 +13,7 @@
 //!   - nodeIds     — didNodeId for two sample DIDs + one artifactNodeId
 //!   - outputLeaf  — one `node_output_leaf(nodeId, value)` sample
 //!   - edges       — E1–E4 edge-weight vectors (§6.1 params, exact expected weights)
-//!   - journal     — the FULL fixture compute journal (all 10 fields + encoded + digest)
+//!   - journal     — the FULL fixture compute journal (all 12 fields + encoded + digest)
 //!   - skipped     — the fixture's skippedDigest preimage (nodeId/reason/epochObserved list),
 //!                   independently reconstructed (verify → derive) and self-checked
 
@@ -133,6 +133,16 @@ fn fixture_input() -> (GuestInput, B256, String) {
         }],
         witnesses: vec![AtprotoWitness { did: seed_did.clone(), car, plc_ops }],
         strongref_targets: BTreeMap::new(),
+        // Journal-v3 bindings, deliberately non-zero. For THIS program the instance domain is
+        // the only instance-unique thing in the whole journal (its params carry none), so a
+        // vector that left it zero would lock in the very hole v3 exists to close (issue #9).
+        binding: pagerank_core::Binding {
+            recipient: alloy_primitives::Address::from([0xBE; 20]),
+            instance_domain: encode::instance_domain(
+                alloy_primitives::Address::from([0x5A; 20]),
+                31337,
+            ),
+        },
     };
     (input, head, seed_did)
 }
@@ -467,6 +477,8 @@ fn main() {
             "cidDigest": hx(j.cid_digest.as_slice()),
             "totalValue": j.total_value.to_string(),
             "skippedDigest": hx(j.skipped_digest.as_slice()),
+            "recipient": hx(j.recipient.as_slice()),
+            "instanceDomain": hx(j.instance_domain.as_slice()),
             "encoded": hx(&encode::journal_encoded(j)),
             "digest": hx(encode::journal_digest(j).as_slice())
         },

@@ -63,6 +63,10 @@ contract DeployHypercertsInstance is Common {
             operational
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(anchorRegistry)));
+        // Only this snapshot's trigger() may mint checkpoints (issue #10). It matters more on a
+        // lane-2-only instance than anywhere else: lane 1 is constant (0, 0), so the checkpoint id
+        // is the ONLY thing separating one epoch's inputs from another's.
+        emptyAcc.bindSnapshot(address(snapshot));
         if (epochLength > 0) {
             snapshot.setEpochLength(epochLength);
         }

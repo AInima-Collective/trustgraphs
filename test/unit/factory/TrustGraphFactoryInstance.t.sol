@@ -32,6 +32,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     bytes32 internal constant IPFS = bytes32(uint256(0x1F5));
     string internal constant CID = "bafkreiexamplecidstring";
     uint256 internal constant TOTAL = 1_000_000 ether;
+    address internal constant RECIPIENT = address(0xBE);
 
     /*//////////////////////////////////////////////////////////////
                       THE INSTANCE ACTUALLY WORKS
@@ -115,7 +116,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
         snapshot.trigger();
 
         verifier.setExpectedDigest(_journalDigest(c, 0));
-        snapshot.submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        snapshot.submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
         assertEq(snapshot.getLatestState().root, ROOT);
         assertEq(snapshot.getLatestState().blockNumber, block.number, "filed at the freeze block");
@@ -198,24 +199,26 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
         // A's proof is valid on A.
         bytes32 digestA = _journalDigest(a, 0);
         verifier.setExpectedDigest(digestA);
-        MerkleSnapshot(a.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        MerkleSnapshot(a.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
         // Replayed verbatim onto B, the same journal is refused.
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
         // Isolating the paramsHash leg: even a journal built over B's OWN checkpointed inputs is
         // refused if it commits to A's params, which is exactly the clone-cross-feed attempt.
         IAttestationAccumulator.Checkpoint memory cpB = IAttestationAccumulator(b.resolver).getCheckpoint(0);
         // A's params, B's inputs.
-        verifier.setExpectedDigest(_digest(cpB.acc, cpB.leafCount, MerkleSnapshot(a.snapshot).paramsHash()));
+        verifier.setExpectedDigest(
+            _digest(b.snapshot, cpB.acc, cpB.leafCount, MerkleSnapshot(a.snapshot).paramsHash())
+        );
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
         // And B's own journal, with B's own params, is accepted — so the rejection above was the
         // domain separation doing its job, not a broken instance.
         verifier.setExpectedDigest(_journalDigest(b, 0));
-        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        MerkleSnapshot(b.snapshot).submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
         assertEq(MerkleSnapshot(b.snapshot).getLatestState().root, ROOT);
     }
 
@@ -265,12 +268,16 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     /// @dev Journal v2 for a lane-1-only instance, over its own checkpoint and its own paramsHash.
     function _journalDigest(Created memory c, uint256 checkpointId) internal view returns (bytes32) {
         IAttestationAccumulator.Checkpoint memory cp = IAttestationAccumulator(c.resolver).getCheckpoint(checkpointId);
-        return _digest(cp.acc, cp.leafCount, MerkleSnapshot(c.snapshot).paramsHash());
+        return _digest(c.snapshot, cp.acc, cp.leafCount, MerkleSnapshot(c.snapshot).paramsHash());
     }
 
-    /// @dev Journal v2, field order FROZEN (`MerkleSnapshot.submitProof`): lane-2 is the zero
-    ///      accumulator on every v1 factory instance.
-    function _digest(bytes32 inputAcc, uint64 leafCount, bytes32 paramsHash) internal pure returns (bytes32) {
+    /// @dev Journal v3, field order FROZEN (`MerkleSnapshot.submitProof`): lane-2 is the zero
+    ///      accumulator on every v1 factory instance, and the last two words are the v3 bindings.
+    function _digest(address snapshot, bytes32 inputAcc, uint64 leafCount, bytes32 paramsHash)
+        internal
+        view
+        returns (bytes32)
+    {
         return keccak256(
             abi.encode(
                 inputAcc,
@@ -282,7 +289,9 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
                 IPFS,
                 keccak256(bytes(CID)),
                 TOTAL,
-                bytes32(0)
+                bytes32(0),
+                RECIPIENT,
+                MerkleSnapshot(snapshot).instanceDomain()
             )
         );
     }

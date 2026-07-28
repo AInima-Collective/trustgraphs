@@ -73,6 +73,8 @@ cargo run -p input-exporter -- \
   --checkpoint $CHECKPOINT_ID --params params.json \
   --signer --selection selection.json
 # (writes .trustgraph/signer-sync/signer_input.json; override with --out)
+# No --snapshot here: a SignerInput carries no journal-v3 bindings. SignerSyncZkModule pays no
+# bounty and there is one module per trust instance, so neither word has anything to separate.
 
 cd zk/prover
 SP1_PROVER=cpu cargo run --release -- signer execute ../../.trustgraph/signer-sync/signer_input.json   # guest == native (no proof)

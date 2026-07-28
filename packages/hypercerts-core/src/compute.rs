@@ -14,7 +14,7 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 use envelopes::atproto::{self, AtprotoWitness};
 use pagerank_core::distribute::distribute_points_generic;
 use pagerank_core::pagerank::{calculate_generic, RankConfig};
-use pagerank_core::{cid, merkle, skip_reason as phi_reason, AnchorRecord};
+use pagerank_core::{cid, merkle, skip_reason as phi_reason, AnchorRecord, Binding};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use zk_core::anchor::{anchor_leaf, skipped_digest, SkipEntry};
@@ -123,9 +123,15 @@ pub struct GuestInput {
     /// Content-verified strongRef target blocks (badge definitions), keyed by CID string.
     #[serde(default)]
     pub strongref_targets: BTreeMap<String, Vec<u8>>,
+    /// Journal-v3 pass-through commitments (payee + instance domain), identical in every program.
+    /// `instance_domain` is what gives this program domain separation at all: its `Params` carry
+    /// no instance-unique field, so before v3 two identically-configured hypercerts instances
+    /// accepted each other's proofs (issue #9).
+    #[serde(default)]
+    pub binding: Binding,
 }
 
-/// Journal v2 — identical 10-field shape as every instance (lane 1 empty for hypercerts).
+/// Journal v3 — identical 12-field shape as every instance (lane 1 empty for hypercerts).
 pub use pagerank_core::Journal;
 
 /// Full result: journal + artifacts the host pins/serves.
@@ -286,7 +292,8 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let cid_str = cid::cid_v1_raw(&digest);
     let cid_digest = keccak256(cid_str.as_bytes());
 
-    // 7. Journal v2, lane-2-only shape: lane 1 is the zero accumulator.
+    // 7. Journal v3, lane-2-only shape: lane 1 is the zero accumulator; the two v3 bindings pass
+    //    straight through from the witness.
     skips.sort();
     let skipped = skipped_digest(&skips);
     let journal = Journal {
@@ -300,6 +307,8 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         cid_digest,
         total_value,
         skipped_digest: skipped,
+        recipient: input.binding.recipient,
+        instance_domain: input.binding.instance_domain,
     };
     ComputeResult { journal, scores: assigned, bindings: graph.bindings, skips, blob, cid: cid_str }
 }

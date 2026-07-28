@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {TrustAccumulatorMirror} from "contracts/merkle/TrustAccumulatorMirror.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {TestAccumulator} from "../mocks/TestAccumulator.sol";
+import {MockSnapshotView} from "../mocks/MockSnapshotView.sol";
 
 /// @title TrustAccumulatorMirrorTest
 /// @notice The contributions slot-A seam: the mirror freezes the TRUST accumulator's live
@@ -14,9 +15,14 @@ import {TestAccumulator} from "../mocks/TestAccumulator.sol";
 contract TrustAccumulatorMirrorTest is Test {
     TestAccumulator trust;
     TrustAccumulatorMirror mirror;
+    MockSnapshotView trustSnapshot;
 
     function setUp() public {
         trust = new TestAccumulator();
+        // The trust accumulator has its own bound snapshot (its own instance's), which is exactly
+        // why the contributions instance reads it through a mirror instead of pushing into it.
+        trustSnapshot = new MockSnapshotView(address(trust));
+        trust.bindSnapshot(address(trustSnapshot));
         mirror = new TrustAccumulatorMirror(trust);
         // This test doubles as the bound snapshot (in production: the contributions
         // MerkleSnapshot, whose trigger() is then the only checkpoint mint — AUDIT_M6 M6-1).
@@ -78,7 +84,9 @@ contract TrustAccumulatorMirrorTest is Test {
         assertEq(a.leafCount, b.leafCount);
 
         // Contrast: the wrapped accumulator itself WOULD wedge on the second checkpoint.
+        vm.prank(address(trustSnapshot));
         trust.checkpoint();
+        vm.prank(address(trustSnapshot));
         vm.expectRevert(IAttestationAccumulator.NoNewInputs.selector);
         trust.checkpoint();
     }

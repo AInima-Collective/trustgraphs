@@ -98,6 +98,7 @@ fn fixture_input() -> (GuestInput, B256) {
         }],
         witnesses: vec![AtprotoWitness { did: ALICE.to_string(), car, plc_ops }],
         strongref_targets: BTreeMap::new(),
+        binding: Default::default(),
     };
     (input, head)
 }

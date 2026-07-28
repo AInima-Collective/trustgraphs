@@ -59,7 +59,7 @@ fn generate(seed: u64) -> Scenario {
     let t0 = p.round_start;
 
     let mut sc = Scenario {
-        input: GuestInput { trust_edges: vec![], records: vec![], params: p },
+        input: GuestInput { trust_edges: vec![], records: vec![], params: p, binding: Default::default() },
         uid_counter: 0,
     };
 
@@ -259,7 +259,7 @@ fn padding_recapture_never_exceeds_the_full_consent_ceiling() {
                 encode_response(c1, 1),
             ));
         }
-        GuestInput { trust_edges, records, params: p }
+        GuestInput { trust_edges, records, params: p, binding: Default::default() }
     };
 
     // Ceiling: unpadded, Z accepts (claim 1 at full consent).

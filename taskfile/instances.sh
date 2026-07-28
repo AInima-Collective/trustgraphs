@@ -28,9 +28,12 @@
 #   FROM_BLOCK first block scanned for registry logs (default 0)
 #   ONLY       prove only this instanceId
 #   DRY_RUN    1 = scan and self-check, then stop
+#   RECIPIENT  journal-v3 bounty payee (default zero = no bounty)
 #
-# Scope: this is the enumeration seam only. The operator daemon, the prepay vault, bounties and
-# commit-reveal submission belong to `research/PROOF_SCHEDULER.md`, whose §2 consumes exactly this.
+# Scope: this is the DOCUMENTED FALLBACK. The operator daemon (`zk/operator`) does this loop
+# unattended, with finality tracking, coalescing, loss budgets, holds and vault claims; see
+# `docs/OPERATOR.md`. Keep this script working — it is what a community runs to prove its own
+# instance by hand, and what we run when the daemon is the thing that is broken.
 #
 # Caveat on backends: `SP1_PROVER=mock` runs the guest for real and commits its real public values,
 # but the SNARK itself is a stub — the on-chain gateway check is only meaningful with
@@ -49,6 +52,9 @@ IPFS_API="${IPFS_API:-http://127.0.0.1:5001}"
 FROM_BLOCK="${FROM_BLOCK:-0}"
 ONLY="${ONLY:-}"
 DRY_RUN="${DRY_RUN:-0}"
+# Journal v3: the bounty payee the guest commits and submitProof binds. Zero (the default) means
+# "no bounty" — correct for this script, which is the manual fallback, not the paid operator.
+RECIPIENT="${RECIPIENT:-0x0000000000000000000000000000000000000000}"
 GROTH16="${GROTH16:-1}"
 # The prover backend. Default mock so the loop runs on any box; override for a real proof.
 export SP1_PROVER="${SP1_PROVER:-mock}"
@@ -109,6 +115,7 @@ FAILED=0
 # `declare -A` is a syntax error and every lookup below would silently report nothing.
 OUTCOMES=""
 ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
+ZERO_ADDR=0x0000000000000000000000000000000000000000
 
 record_outcome() { OUTCOMES="${OUTCOMES}$1 $2
 "; }
@@ -149,7 +156,8 @@ while read -r row; do
   rm -f "$OUTDIR/input.json" "$OUTDIR/proof.bin"
   cargo run -q -p input-exporter -- \
     --rpc "$RPC" --accumulator "$ACC" --eas "$EAS" --checkpoint "$CPID" \
-    --params "$PARAMS" --out "$OUTDIR/input.json" --from-block "$CREATED" 2>&1 \
+    --params "$PARAMS" --snapshot "$SNAPSHOT" --recipient "$RECIPIENT" \
+    --out "$OUTDIR/input.json" --from-block "$CREATED" 2>&1 \
     | strip_cargo_noise | sed 's/^/   /'
   if [ "${PIPESTATUS[0]}" -ne 0 ] || [ ! -f "$OUTDIR/input.json" ]; then
     fail_instance "$ID" "$NAME: input-exporter failed (no verified input set for checkpoint #$CPID)"
@@ -167,6 +175,10 @@ while read -r row; do
   TOTAL_VALUE=$(awk '/^totalValue:/{print $2}'    <<<"$EXEC")
   SKIPPED=$(awk '/^skippedDigest:/{print $2}'     <<<"$EXEC")
   SKIPPED="${SKIPPED:-$ZERO32}"
+  # Journal v3: submitProof folds `recipient` into the digest, so the submit MUST echo exactly the
+  # value the guest committed. Read it back from the guest rather than re-deriving it here.
+  PROVEN_RECIPIENT=$(awk '/^recipient:/{print $2}'  <<<"$EXEC")
+  PROVEN_RECIPIENT="${PROVEN_RECIPIENT:-$ZERO_ADDR}"
   say "   guest == native ✓  root=$OUTPUT_ROOT"
 
   # 4. Prove.
@@ -191,8 +203,9 @@ while read -r row; do
   fi
 
   # 6. Submit.
-  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-    "$CPID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED" "$(hex_file "$OUTDIR/proof.bin")" \
+  cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+    "$CPID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED" "$PROVEN_RECIPIENT" \
+    "$(hex_file "$OUTDIR/proof.bin")" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null 2>&1 || {
     fail_instance "$ID" "$NAME: submitProof reverted"; continue
   }

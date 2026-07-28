@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {ISnapshotAccumulatorView} from "interfaces/merkle/ISnapshotAccumulatorView.sol";
 
 /// @title EmptyLaneAccumulator
 /// @notice The lane-1 seam for a LANE-2-ONLY instance (e.g. the hypercerts pilot, which has
@@ -16,6 +17,48 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 contract EmptyLaneAccumulator is IAttestationAccumulator {
     Checkpoint[] private _checkpoints;
 
+    /// @notice The only address allowed to mint checkpoints (the instance's `MerkleSnapshot`).
+    /// @dev Same one-time binding as `AttestationAccumulator` and `TrustAccumulatorMirror`, and
+    ///      needed for the same reason (issue #10): an id minted outside `trigger()` has no
+    ///      pinned `paramsHash` and no paired lane-2 freeze. It matters MORE here than anywhere
+    ///      else, because on a lane-2-only instance lane 1 is constant `(0, 0)` — so the id is
+    ///      the ONLY thing distinguishing one epoch's inputs from another's.
+    address public snapshot;
+
+    /// @notice The deployer, and the only address that may perform the one-shot `bindSnapshot`.
+    address public immutable binder;
+
+    /// @notice Emitted once, when the accumulator is bound to the snapshot that owns its epochs.
+    event SnapshotBound(address snapshot);
+
+    /// @notice `checkpoint()` called by anything other than the bound snapshot (or before binding).
+    error NotSnapshot();
+    /// @notice `bindSnapshot` called twice.
+    error AlreadyBound();
+    /// @notice `bindSnapshot` called by anyone but the deployer.
+    error NotBinder();
+    /// @notice `bindSnapshot` given the zero address.
+    error ZeroSnapshot();
+    /// @notice `bindSnapshot` given a snapshot whose `accumulator()` is not this contract.
+    error SnapshotReadsAnotherAccumulator(address reads);
+
+    constructor() {
+        binder = msg.sender;
+    }
+
+    /// @notice One-shot: bind the `MerkleSnapshot` whose `trigger()` may mint checkpoints here.
+    function bindSnapshot(address _snapshot) external {
+        if (msg.sender != binder) revert NotBinder();
+        if (snapshot != address(0)) revert AlreadyBound();
+        if (_snapshot == address(0)) revert ZeroSnapshot();
+
+        address reads = ISnapshotAccumulatorView(_snapshot).accumulator();
+        if (reads != address(this)) revert SnapshotReadsAnotherAccumulator(reads);
+
+        snapshot = _snapshot;
+        emit SnapshotBound(_snapshot);
+    }
+
     /// @inheritdoc IAttestationAccumulator
     function acc() external pure returns (bytes32) {
         return bytes32(0);
@@ -28,6 +71,8 @@ contract EmptyLaneAccumulator is IAttestationAccumulator {
 
     /// @inheritdoc IAttestationAccumulator
     function checkpoint() external returns (uint256 id) {
+        if (msg.sender != snapshot || snapshot == address(0)) revert NotSnapshot();
+
         id = _checkpoints.length;
         _checkpoints.push(Checkpoint({acc: bytes32(0), leafCount: 0, blockNumber: uint64(block.number)}));
         emit InputsCheckpointed(id, bytes32(0), 0, uint64(block.number));

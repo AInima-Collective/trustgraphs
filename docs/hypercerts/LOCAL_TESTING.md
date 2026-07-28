@@ -108,8 +108,14 @@ curl -s -X POST https://api.hi.gainforest.app/graphql -H "Content-Type: applicat
 $PROVER hypercerts buildinput \
   --seed-did did:plc:rrpj5emotskpamzcr3642qk6 \
   --seed-did did:plc:wjthxgygf2hwaknaekgmmthi \
+  --snapshot $HC_SNAPSHOT --chain-id 31337 \
   > $HC/anchors.txt
 # (reads $HC/witness-archive, writes $HC/hypercerts_input.json; --archive-dir/--out override)
+# --snapshot is what fills the journal-v3 `instanceDomain`. It matters MORE for this program than
+# any other: its params carry no instance-unique field and lane 1 is permanently (0, 0), so the
+# domain is the ONLY thing separating two identically-configured instances (issue #9). Omit it and
+# `buildinput` warns, `execute` still works, and `submitProof` refuses the proof. If the snapshot
+# does not exist yet, run step 3 first and re-run this.
 
 # real repos through the SP1 guest, guest == native byte-assert (no proof yet).
 # (On a <16 GiB box, prefix executor-only commands with SP1_PROVER=mock — see troubleshooting.)
@@ -227,10 +233,11 @@ EXEC=$($PROVER hypercerts execute $HC/hypercerts_input.json)
 ROOT=$(echo "$EXEC" | awk '/^outputRoot:/{print $2}');   IPFS=$(echo "$EXEC" | awk '/^ipfsHash:/{print $2}')
 CID=$(echo "$EXEC" | awk '/^cid:/{print $2}');           TOTAL=$(echo "$EXEC" | awk '/^totalValue:/{print $2}')
 SKIPPED=$(echo "$EXEC" | awk '/^skippedDigest:/{print $2}')
+RECIPIENT=$(echo "$EXEC" | awk '/^recipient:/{print $2}')
 
 # (no xxd? use: "0x$(od -An -v -tx1 $HC/hypercerts_proof.bin | tr -d ' \n')")
-cast send $HC_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  0 $ROOT $IPFS $CID $TOTAL $SKIPPED "0x$(xxd -p $HC/hypercerts_proof.bin | tr -d '\n')" \
+cast send $HC_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+  0 $ROOT $IPFS $CID $TOTAL $SKIPPED $RECIPIENT "0x$(xxd -p $HC/hypercerts_proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
 
 # the root is on-chain:

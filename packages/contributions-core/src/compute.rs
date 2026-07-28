@@ -22,7 +22,7 @@ use crate::reconcile::{consent_mult_fp, reconcile, LiveState};
 use crate::{params, Params};
 use alloy_primitives::{keccak256, Address, B256, U256};
 use pagerank_core::{cid, distribute, encode, merkle, pagerank, reconcile as trust_reconcile};
-use pagerank_core::{ComputeResult, Journal, RawEdge};
+use pagerank_core::{Binding, ComputeResult, Journal, RawEdge};
 use std::collections::{BTreeMap, BTreeSet};
 use zk_core::fixed::{fp_mul, mul_div};
 
@@ -35,6 +35,9 @@ pub struct GuestInput {
     /// Kinds per INTERFACES.md §2 (0–5).
     pub records: Vec<RawEdge>,
     pub params: Params,
+    /// Journal-v3 pass-through commitments (payee + instance domain), identical in every program.
+    #[serde(default)]
+    pub binding: Binding,
 }
 
 /// Stage-1 reputation: the trust program's exact pipeline (reconcile → Trust-Aware PageRank),
@@ -281,8 +284,9 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let cid_str = cid::cid_v1_raw(&digest);
     let cid_digest = keccak256(cid_str.as_bytes());
 
-    // Journal v2 reused unmodified: slot A = trust, slot B = contributions;
-    // skippedDigest = 0 in v1 (skips are derivable from committed inputs — INTERFACES.md §4).
+    // Journal v3 reused unmodified: slot A = trust, slot B = contributions;
+    // skippedDigest = 0 in v1 (skips are derivable from committed inputs — INTERFACES.md §4);
+    // the two v3 bindings pass straight through from the witness.
     let journal = Journal {
         acc,
         leaf_count,
@@ -294,6 +298,8 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         cid_digest,
         total_value,
         skipped_digest: B256::ZERO,
+        recipient: input.binding.recipient,
+        instance_domain: input.binding.instance_domain,
     };
     ComputeResult { journal, scores: assigned, blob, cid: cid_str }
 }

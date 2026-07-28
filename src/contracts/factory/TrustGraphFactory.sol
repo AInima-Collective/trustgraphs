@@ -308,6 +308,13 @@ contract TrustGraphFactory {
             SNAPSHOT_DEPLOYER.deploy(VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), admin);
         snapshot = address(merkleSnapshot);
 
+        //        Bind the accumulator to that snapshot, in the same transaction. `trigger()` is
+        //        then the ONLY way to mint a checkpoint here, which is what makes the epoch
+        //        schedule below binding rather than advisory (issue #10). This factory is the
+        //        resolver's deployer and therefore its `binder`; the window in which the
+        //        accumulator is unbound never leaves this call.
+        indexerResolver.bindSnapshot(snapshot);
+
         // --- 5. The epoch schedule, then hand the constitutional key over. --------------------
         //        `setEpochLength` is constitutional-only and not a constructor argument, which is
         //        the sole reason this factory ever holds a role. GRANT BEFORE RENOUNCE: the

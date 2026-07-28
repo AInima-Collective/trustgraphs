@@ -3,6 +3,9 @@ import { pad, toHex, type Hex } from 'viem'
 /** The 32-byte zero word / zero hash. */
 export const ZERO_HASH: Hex = `0x${'00'.repeat(32)}`
 
+/** The zero address, the journal-v3 "no bounty" recipient. */
+export const ZERO_ADDRESS: Hex = `0x${'00'.repeat(20)}`
+
 /** A 32-byte ABI word from a `bigint` (uint256). */
 export const wordU256 = (x: bigint): Hex => toHex(x, { size: 32 })
 

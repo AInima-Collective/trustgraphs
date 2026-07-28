@@ -64,6 +64,7 @@ contract ContributionsInstanceTest is Test {
     bytes32 constant IPFS = bytes32(uint256(0x1F5));
     string constant CID = "bafkreiexamplecontributionscid";
     uint256 constant TOTAL = 5_000e6;
+    address constant RECIPIENT = address(0xBE);
 
     function setUp() public {
         schemaRegistry = new SchemaRegistry();
@@ -192,11 +193,11 @@ contract ContributionsInstanceTest is Test {
 
     function _journalDigest(bytes32 slotAAcc, uint64 slotACount, bytes32 slotBAcc, uint64 slotBCount)
         internal
-        pure
+        view
         returns (bytes32)
     {
-        // Journal v2, field order frozen: slot A (acc, leafCount) then slot B
-        // (anchorAcc, anchorCount) — INTERFACES.md §4.
+        // Journal v3, field order frozen: slot A (acc, leafCount) then slot B
+        // (anchorAcc, anchorCount) — INTERFACES.md §4 — then the two v3 bindings.
         return keccak256(
             abi.encode(
                 slotAAcc,
@@ -208,7 +209,9 @@ contract ContributionsInstanceTest is Test {
                 IPFS,
                 keccak256(bytes(CID)),
                 TOTAL,
-                bytes32(0)
+                bytes32(0),
+                RECIPIENT,
+                snapshot.instanceDomain()
             )
         );
     }
@@ -229,7 +232,7 @@ contract ContributionsInstanceTest is Test {
         assertTrue(trustAcc != contribAcc, "distinct lane states or the binding test is vacuous");
 
         verifier.setExpectedDigest(_journalDigest(trustAcc, 2, contribAcc, 2));
-        snapshot.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        snapshot.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
 
         IMerkleSnapshot.MerkleState memory s = snapshot.getLatestState();
         assertEq(s.root, ROOT);
@@ -248,6 +251,6 @@ contract ContributionsInstanceTest is Test {
 
         verifier.setExpectedDigest(_journalDigest(contribResolver.acc(), 2, trustResolver.acc(), 1));
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        snapshot.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), hex"");
+        snapshot.submitProof(id, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
     }
 }

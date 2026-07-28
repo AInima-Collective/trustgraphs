@@ -36,7 +36,7 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 | `packages/envelopes` | Envelope-1 (atproto) verification: CAR/MST walk, commit signature, PLC key-chain, `link.evm` EIP-712. Verified in-guest. |
 | `zk/program` (bin `trustgraph-hypercerts-program`) | The hypercerts guest `[[bin]]`. |
 | `zk/prover` (`trustgraph-prover hypercerts …`) | Host CLI group: `hypercerts {vkey \| paramshash \| fetch \| execute \| prove}`. Witness assembly is the shared `witness fetch` group behind `--features witness-atproto`. |
-| `src/contracts/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). |
+| `src/contracts/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). Bound one-shot to its `MerkleSnapshot` at deploy, so only `trigger()` may mint — on a lane-2-only instance the checkpoint id is the only thing separating one epoch's inputs from another's. |
 | `src/contracts/registry/AnchorRegistry.sol` | Lane-2 input commitment: chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` gates DID-node registration (the PDS-allowlist gate). |
 | `src/contracts/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v2) + two-tier authority + `epochLength` schedule. |
 | `src/contracts/merkle/SP1JournalVerifier.sol` | The SP1 gateway adapter, one labeled instance pinned to the **hypercerts vkey**. |
@@ -229,15 +229,23 @@ ipfs add --cid-version=1 --raw-leaves .trustgraph/hypercerts/hypercerts_blob.jso
 
 ### 5. submitProof + post-checks
 
-Journal v2 is a 7-arg `submitProof` — note the `skippedDigest` argument (absent from journal v1):
+Journal v3 is an 8-arg `submitProof` — `skippedDigest` (added in v2) and `recipient` (v3):
 
 ```bash
-# From `hypercerts execute` output: outputRoot, ipfsHash, cid, totalValue, skippedDigest.
+# From `hypercerts execute`: outputRoot, ipfsHash, cid, totalValue, skippedDigest, recipient.
 cast send "$HC_SNAPSHOT" \
-  "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  "$CP" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED_DIGEST" "$(xxd -p -c0 .trustgraph/hypercerts/hypercerts_proof.bin)" \
+  "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+  "$CP" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" "$SKIPPED_DIGEST" "$RECIPIENT" \
+  "$(xxd -p -c0 .trustgraph/hypercerts/hypercerts_proof.bin)" \
   --rpc-url "$RPC" --private-key "$PK"
 ```
+
+> **This program depends on journal v3 more than any other.** Its params carry no instance-unique
+> field, and lane 1 is permanently `(0, 0)`, so before v3 two identically-configured hypercerts
+> instances accepted each other's proofs (issue #9). The `instanceDomain` the guest commits — and
+> `submitProof` rebuilds from `address(this)` + `block.chainid` — is what separates them. Set it
+> from the snapshot you are submitting to (`--snapshot` on `buildinput`), or the proof lands
+> nowhere.
 
 `submitProof` recomputes the journal digest from the chain-pinned checkpoint (both lanes) + stored
 `paramsHash` + submitted outputs and reverts unless the proof binds exactly that digest. After it lands,

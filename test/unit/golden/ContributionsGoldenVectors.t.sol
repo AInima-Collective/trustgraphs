@@ -104,7 +104,7 @@ contract ContributionsGoldenVectorsTest is Test {
         );
     }
 
-    /// Journal v2 reused unmodified (slot A = trust acc, slot B = contribution acc): abi.encode
+    /// Journal v3 reused unmodified (slot A = trust acc, slot B = contribution acc): abi.encode
     /// of the 10 fields reproduces the committed encoding, and its keccak the digest —
     /// exactly what the contrib `MerkleSnapshot.submitProof` binds.
     function test_ComputeJournalEncodingAndDigest() public view {
@@ -118,7 +118,9 @@ contract ContributionsGoldenVectorsTest is Test {
             json.readBytes32(".compute.journal.ipfsHash"),
             keccak256(bytes(json.readString(".compute.cid"))),
             json.readUint(".compute.journal.totalValue"),
-            json.readBytes32(".compute.journal.skippedDigest")
+            json.readBytes32(".compute.journal.skippedDigest"),
+            json.readAddress(".compute.journal.recipient"),
+            json.readBytes32(".compute.journal.instanceDomain")
         );
         assertEq(encoded, json.readBytes(".compute.journal.encoded"), "journal encoding mismatch");
         assertEq(keccak256(encoded), json.readBytes32(".compute.journal.digest"), "journal digest mismatch");

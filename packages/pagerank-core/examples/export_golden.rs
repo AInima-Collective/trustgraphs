@@ -65,10 +65,21 @@ fn params() -> Params {
     }
 }
 
+/// The journal-v3 bindings the vectors pin. Both deliberately non-zero, and the domain is the
+/// real derivation over a fixed `(snapshot, chainId)` pair, so the vectors catch a port that
+/// silently drops either word or encodes the domain preimage differently.
+fn binding() -> pagerank_core::Binding {
+    pagerank_core::Binding {
+        recipient: addr(0xBE),
+        instance_domain: encode::instance_domain(addr(0x5A), 31337),
+    }
+}
+
 fn main() {
     let edges =
         vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
-    let input = GuestInput { edges: edges.clone(), params: params(), lane2: None };
+    let input =
+        GuestInput { edges: edges.clone(), params: params(), lane2: None, binding: binding() };
     let result = compute(&input);
     let j = &result.journal;
 
@@ -156,8 +167,17 @@ fn main() {
             "cidDigest": hx(j.cid_digest.as_slice()),
             "totalValue": j.total_value.to_string(),
             "skippedDigest": hx(j.skipped_digest.as_slice()),
+            "recipient": hx(j.recipient.as_slice()),
+            "instanceDomain": hx(j.instance_domain.as_slice()),
             "encoded": hx(&encode::journal_encoded(j)),
             "digest": hx(encode::journal_digest(j).as_slice())
+        },
+        "instanceDomain": {
+            // The universal domain-separation preimage: keccak256(abi.encode(snapshot, chainId)),
+            // rebuilt on-chain by submitProof from address(this) + block.chainid.
+            "snapshot": hx(addr(0x5A).as_slice()),
+            "chainId": 31337u64,
+            "domain": hx(encode::instance_domain(addr(0x5A), 31337).as_slice())
         },
         "anchor": {
             // Anchor-log leaf (AnchorRegistry fold) + a nonempty skippedDigest vector,

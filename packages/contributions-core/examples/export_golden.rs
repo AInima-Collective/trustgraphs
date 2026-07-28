@@ -148,6 +148,9 @@ fn main() {
 
     // The M1 compute family: the 6-persona worked example (the cross-lane oracle) end to end —
     // full guest input, per-claim scores, final payouts, blob/CID, and the journal + digest.
+    // The fixture already carries the journal-v3 bindings (non-zero, shared with every other
+    // program's fixture), so the vectors, the prover CLI's built-in sample and the TS port all
+    // commit the same two words.
     let input = contributions_core::testutil::fixture();
     let result = contributions_core::compute::compute(&input);
     let rep = contributions_core::compute::reputation(&input.trust_edges, &input.params);
@@ -212,6 +215,8 @@ fn main() {
             "cidDigest": hx(j.cid_digest.as_slice()),
             "totalValue": j.total_value.to_string(),
             "skippedDigest": hx(j.skipped_digest.as_slice()),
+            "recipient": hx(j.recipient.as_slice()),
+            "instanceDomain": hx(j.instance_domain.as_slice()),
             "encoded": hx(&encoded),
             "digest": hx(pagerank_core::encode::journal_digest(j).as_slice()),
         },

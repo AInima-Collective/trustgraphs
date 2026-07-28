@@ -38,7 +38,7 @@ What it does (`test/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
 
 1. **Reconstruction + guest cross-check** — deploys `SchemaRegistry` + `EAS` + `EASIndexerResolver`
    + a `(string comment, uint256 confidence)` schema → attests a 3-account ring and revokes one
-   (4 folds) → `checkpoint()` → `input-exporter` rebuilds both the `GuestInput` and the
+   (4 folds) → `trigger()` → `input-exporter` rebuilds both the `GuestInput` and the
    `SignerInput` from chain (each self-checks the re-fold against the on-chain `acc`) → the
    prover's `trust-graph execute` / `signer execute` assert `guest == native`.
 2. **On-chain submit (both programs)** — proves with `SP1_PROVER=mock`, deploys the real
@@ -221,7 +221,7 @@ export ID=$(( $(cast call $EAS_INDEXER_RESOLVER "checkpointCount()(uint256)" --r
 FORK_BLOCK=$(cast rpc anvil_nodeInfo --rpc-url $RPC | jq -r '.forkConfig.forkBlockNumber')
 cargo run -p input-exporter -- --rpc $RPC \
   --accumulator $EAS_INDEXER_RESOLVER --eas $EAS --checkpoint $ID --params params.json \
-  --from-block $(( FORK_BLOCK + 1 ))
+  --snapshot $MERKLE_SNAPSHOT --from-block $(( FORK_BLOCK + 1 ))
 
 # execute (fast, no proof) to get the submitProof args — and blob.json
 EXEC=$( ( cd zk/prover && cargo run -q --release -- trust-graph execute ../../.trustgraph/trust-graph/input.json ) ); echo "$EXEC"
@@ -229,6 +229,9 @@ export OUTPUT_ROOT=$(echo "$EXEC" | awk '/outputRoot:/{print $2}')
 export IPFS_HASH=$(  echo "$EXEC" | awk '/ipfsHash:/{print $2}')
 export CID=$(        echo "$EXEC" | awk '/cid:/{print $2}')
 export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
+# Journal v3: submitProof folds `recipient` into the digest, so echo back exactly what the guest
+# committed. Zero here — the loop above passed no --recipient, i.e. no bounty.
+export RECIPIENT=$(   echo "$EXEC" | awk '/^recipient:/{print $2}')
 
 # prove — cpu Groth16 needs --features native-gnark + ~16-32 GiB RAM (drop it for SP1_PROVER=network)
 ( cd zk/prover && cargo run --release --features native-gnark -- trust-graph prove ../../.trustgraph/trust-graph/input.json --groth16 )
@@ -236,11 +239,12 @@ export TOTAL_VALUE=$(echo "$EXEC" | awk '/totalValue:/{print $2}')
 # pin the score blob so the UI can fetch it (kubo HTTP API — no ipfs CLI needed)
 curl -sF file=@.trustgraph/trust-graph/blob.json "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
-# submit. The extra bytes32(0) is the journal-v2 `skippedDigest` — always zero on this
-# lane-1-only path (no anchor registry wired ⇒ the guest asserts the empty lane).
+# submit. The bytes32(0) is `skippedDigest` — always zero on this lane-1-only path (no anchor
+# registry wired ⇒ the guest asserts the empty lane). $RECIPIENT is the journal-v3 payee.
 # (no xxd? use: "0x$(od -An -v -tx1 .trustgraph/trust-graph/proof.bin | tr -d ' \n')")
-cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,bytes)" \
-  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 "0x$(xxd -p .trustgraph/trust-graph/proof.bin | tr -d '\n')" \
+cast send $MERKLE_SNAPSHOT "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
+  $ID $OUTPUT_ROOT $IPFS_HASH $CID $TOTAL_VALUE 0x0000000000000000000000000000000000000000000000000000000000000000 \
+  $RECIPIENT "0x$(xxd -p .trustgraph/trust-graph/proof.bin | tr -d '\n')" \
   --rpc-url $RPC --private-key $PK
 ```
 
@@ -306,8 +310,9 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   Only attestations against the **wired vouching schema** (the `schema_uid` whose resolver is that
   network's `EASIndexerResolver`) fold. Re-attest (e.g. `task trustgraph:create-network` or the UI's
   *Create Attestation*), confirm `leafCount()` bumped, then `trigger()` again. There's no separate
-  "checkpoint the accumulator" call — `trigger()` **is** it (it just calls `accumulator.checkpoint()`);
-  you can also call `checkpoint()` directly on the resolver for the same effect.
+  "checkpoint the accumulator" call — `trigger()` **is** it, and it is the only one: the accumulator
+  is bound to its snapshot, so calling `checkpoint()` directly on the resolver reverts `NotSnapshot`
+  (issue #10). That is what keeps the epoch schedule binding and both lanes frozen at one block.
 
 See [`README.md`](../../README.md), [`docs/PROGRAMS.md`](../PROGRAMS.md) (the program index),
 [`RUNBOOK.md`](./RUNBOOK.md), and

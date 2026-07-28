@@ -74,7 +74,7 @@ fn edge(from: u8, to: u8, uid: u8, ts: u64, weight: u64) -> RawEdge {
 fn sample_input() -> GuestInput {
     // Alice -> Bob -> Charlie -> Alice, symmetric ring, all weight 1.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    GuestInput { edges, params: default_params(), lane2: None }
+    GuestInput { edges, params: default_params(), lane2: None, binding: Default::default() }
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn journal_binds_inputs() {
 fn trust_boosts_seed_neighbour() {
     // Alice (seed) -> Bob, Bob -> Charlie, Charlie -> Alice.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
-    let input = GuestInput { edges, params: trust_params(vec![addr(1)]), lane2: None };
+    let input = GuestInput { edges, params: trust_params(vec![addr(1)]), lane2: None, binding: Default::default() };
     let r = compute(&input);
     assert_eq!(r.journal.total_value, input.params.total_pool);
     // Everyone is reachable; pool fully distributed among 3.
@@ -153,8 +153,8 @@ fn params_hash_domain_separates_instances() {
 
     // ...and the separation is hash-only: identical edge sets still score identically.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1)];
-    let a = compute(&GuestInput { edges: edges.clone(), params: instance_a, lane2: None });
-    let b = compute(&GuestInput { edges, params: instance_b, lane2: None });
+    let a = compute(&GuestInput { edges: edges.clone(), params: instance_a, lane2: None, binding: Default::default() });
+    let b = compute(&GuestInput { edges, params: instance_b, lane2: None, binding: Default::default() });
     assert_eq!(a.journal.output_root, b.journal.output_root);
     assert_ne!(a.journal.params_hash, b.journal.params_hash);
     assert_ne!(
@@ -166,7 +166,7 @@ fn params_hash_domain_separates_instances() {
 
 #[test]
 fn empty_input_is_valid() {
-    let input = GuestInput { edges: vec![], params: default_params(), lane2: None };
+    let input = GuestInput { edges: vec![], params: default_params(), lane2: None, binding: Default::default() };
     let r = compute(&input);
     assert_eq!(r.journal.leaf_count, 0);
     assert_eq!(r.journal.acc, B256::ZERO);
@@ -288,6 +288,7 @@ mod lane2_compute {
                 }],
                 envelopes: vec![w],
             }),
+            binding: Default::default(),
         };
         let r = compute(&input);
 
@@ -323,6 +324,7 @@ mod lane2_compute {
                 }],
                 envelopes: vec![],
             }),
+            binding: Default::default(),
         };
         let r = compute(&input);
 

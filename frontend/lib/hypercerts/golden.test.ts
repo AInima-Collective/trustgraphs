@@ -27,6 +27,7 @@ const ZERO: Hex = `0x${'00'.repeat(32)}`
 const wordU256 = (x: bigint): Hex => toHex(x, { size: 32 })
 const wordU32 = (x: number): Hex => toHex(BigInt(x), { size: 32 })
 const wordU64 = (x: bigint): Hex => toHex(x, { size: 32 })
+const wordAddr = (a: Hex): Hex => toHex(BigInt(a), { size: 32 })
 
 const cmpHex = (a: Hex, b: Hex): number => {
   const x = a.toLowerCase()
@@ -106,6 +107,8 @@ const journalDigest = (): Hex =>
       j.cidDigest as Hex,
       wordU256(BigInt(j.totalValue)),
       j.skippedDigest as Hex,
+      wordAddr(j.recipient as Hex),
+      j.instanceDomain as Hex,
     ])
   )
 
@@ -184,6 +187,10 @@ const rcInput: RecomputeInput = {
   anchorCount: BigInt(rc.anchorCount),
   acc: rc.acc as Hex,
   leafCount: BigInt(rc.leafCount),
+  // The v3 bindings the vectors pin. In the browser these come from `MerkleProofSubmitted`'s
+  // recipient and the snapshot's `instanceDomain()`; here they come from the same fixture the
+  // guest used, which is what makes the digest reproduce at all.
+  binding: { recipient: j.recipient as Hex, instanceDomain: j.instanceDomain as Hex },
 }
 
 const result = recompute(rcInput)

@@ -17,10 +17,30 @@ interface IMerkleSnapshot {
     /// @notice Thrown when a truth-defining address (verifier / accumulator) would be set to zero.
     error ZeroAddress();
 
+    /// @notice Thrown when `paramsHash` would be set to zero. Zero is reserved as the "not pinned"
+    ///         sentinel for `checkpointParamsHash`, and a snapshot with a zero params hash is
+    ///         unprovable in any case (no real params tuple keccaks to zero).
+    error ZeroParamsHash();
+
+    /// @notice Thrown when a proof targets a checkpoint whose `paramsHash` was never pinned —
+    ///         i.e. a checkpoint that `trigger()` did not mint. With the accumulator bound to its
+    ///         snapshot this is unreachable for new instances; it remains as the backstop that
+    ///         makes "the digest is built from the PINNED params" total rather than best-effort.
+    error UnpinnedCheckpoint(uint256 checkpointId);
+
     event MerkleRootUpdated(bytes32 indexed root, bytes32 ipfsHash, string ipfsHashCid, uint256 totalValue);
 
     /// @notice Emitted when a ZK proof successfully updates the merkle root for a checkpoint.
-    event MerkleProofSubmitted(uint256 indexed checkpointId, bytes32 indexed root, address indexed prover);
+    /// @param prover The account that sent the transaction (gas payer).
+    /// @param recipient The journal-committed bounty payee. Distinct from `prover` on purpose: a
+    ///        copied transaction pays the original prover their fee and refunds the copier only
+    ///        their gas (PROOF_SCHEDULER.md §4.3).
+    event MerkleProofSubmitted(
+        uint256 indexed checkpointId, bytes32 indexed root, address indexed prover, address recipient
+    );
+
+    /// @notice Emitted when `trigger()` pins the params hash a checkpoint must be proven under.
+    event CheckpointParamsPinned(uint256 indexed checkpointId, bytes32 paramsHash);
 
     /// @notice Emitted when a snapshot is triggered (a checkpoint is frozen).
     event SnapshotTriggered(uint256 indexed checkpointId);
