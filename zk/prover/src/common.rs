@@ -60,18 +60,36 @@ pub fn abi_encode_two_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Print the guest program verification key (bytes32) for the given ELF (deployment / config value).
-pub fn print_vkey(elf: Elf) -> Result<()> {
+/// The guest program verification key (bytes32) for the given ELF.
+pub fn vkey(elf: Elf) -> Result<String> {
     let client = ProverClient::from_env();
     let pk = client.setup(elf).map_err(|e| anyhow!("setup failed: {e:?}"))?;
-    println!("{}", pk.verifying_key().bytes32());
+    Ok(pk.verifying_key().bytes32())
+}
+
+/// Print the guest program verification key (bytes32) for the given ELF (deployment / config value).
+pub fn print_vkey(elf: Elf) -> Result<()> {
+    println!("{}", vkey(elf)?);
     Ok(())
 }
 
-/// Run the guest via the SP1 executor and assert its public values match the native `native_pub`
-/// (the guest-vs-native cross-check; no proof). Prints the cycle count and the `guest == native ✓`
-/// line. This is the parity layer — it must byte-assert, never soften to a warning.
-pub fn execute_and_check<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -> Result<()> {
+/// What the guest actually committed, plus what it cost. The value-returning half of
+/// [`execute_and_check`], for callers that are programs rather than people.
+#[derive(Clone, Debug)]
+pub struct Execution {
+    /// The guest's `publicValues` — byte-identical to the native journal encoding, or this
+    /// function returned an error.
+    pub public_values: Vec<u8>,
+    pub cycles: u64,
+}
+
+/// Run the guest and byte-assert it against `native_pub`, returning the result instead of printing
+/// it.
+///
+/// This assertion is the operator's submit precondition (GOAL ground rule 4): it is free, and it
+/// is the same check `execute` has always made. A caller that skips it is submitting bytes it has
+/// not verified are the bytes it computed.
+pub fn execute_values<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -> Result<Execution> {
     let client = ProverClient::from_env();
     let mut stdin = SP1Stdin::new();
     stdin.write(input);
@@ -80,7 +98,6 @@ pub fn execute_and_check<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -
         client.execute(elf, stdin).run().map_err(|e| anyhow!("execute failed: {e:?}"))?;
     let guest_pub = public_values.as_slice().to_vec();
 
-    println!("guest cycles: {}", report.total_instruction_count());
     if guest_pub != native_pub {
         return Err(anyhow!(
             "MISMATCH guest vs native public values\n guest:  0x{}\n native: 0x{}",
@@ -88,6 +105,15 @@ pub fn execute_and_check<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -
             hex::encode(native_pub)
         ));
     }
+    Ok(Execution { public_values: guest_pub, cycles: report.total_instruction_count() })
+}
+
+/// Run the guest via the SP1 executor and assert its public values match the native `native_pub`
+/// (the guest-vs-native cross-check; no proof). Prints the cycle count and the `guest == native ✓`
+/// line. This is the parity layer — it must byte-assert, never soften to a warning.
+pub fn execute_and_check<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -> Result<()> {
+    let exec = execute_values(elf, input, native_pub)?;
+    println!("guest cycles: {}", exec.cycles);
     println!("guest == native  ✓");
     Ok(())
 }
@@ -100,13 +126,40 @@ pub fn prove_and_verify<T: Serialize>(
     input: &T,
     groth16: bool,
 ) -> Result<(Vec<u8>, Vec<u8>)> {
+    let p = prove_values(elf, input, groth16)?;
+    println!("vkey: {}", p.vkey);
+    println!("local verify ✓");
+    Ok((p.public_values, p.seal))
+}
+
+/// A finished proof, ready to submit.
+#[derive(Clone, Debug)]
+pub struct Proof {
+    pub public_values: Vec<u8>,
+    pub seal: Vec<u8>,
+    pub vkey: String,
+}
+
+impl Proof {
+    /// The on-chain blob `abi.encode(publicValues, seal)` that `SP1JournalVerifier` decodes.
+    pub fn blob(&self) -> Vec<u8> {
+        abi_encode_two_bytes(&self.public_values, &self.seal)
+    }
+}
+
+/// Prove and locally verify, returning the result instead of printing it.
+///
+/// The value-returning half of [`prove_and_verify`]. `zk/operator` calls this; the CLI wraps it.
+/// Before this existed, the only way to get a root out of the prover was to scrape stdout with
+/// `awk` (`taskfile/instances.sh`), which is a seam that breaks silently the first time a log line
+/// changes.
+pub fn prove_values<T: Serialize>(elf: Elf, input: &T, groth16: bool) -> Result<Proof> {
     let client = ProverClient::from_env();
     let mut stdin = SP1Stdin::new();
     stdin.write(input);
 
     let pk = client.setup(elf).map_err(|e| anyhow!("setup failed: {e:?}"))?;
     let vk = pk.verifying_key();
-    println!("vkey: {}", vk.bytes32());
 
     let req = client.prove(&pk, stdin);
     let proof = if groth16 { req.groth16() } else { req.core() }
@@ -114,9 +167,10 @@ pub fn prove_and_verify<T: Serialize>(
         .map_err(|e| anyhow!("prove failed: {e:?}"))?;
 
     client.verify(&proof, vk, None).map_err(|e| anyhow!("local verify failed: {e:?}"))?;
-    println!("local verify ✓");
 
-    let public_values = proof.public_values.as_slice().to_vec();
-    let seal = proof.bytes();
-    Ok((public_values, seal))
+    Ok(Proof {
+        public_values: proof.public_values.as_slice().to_vec(),
+        seal: proof.bytes(),
+        vkey: vk.bytes32(),
+    })
 }

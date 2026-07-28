@@ -18,6 +18,13 @@ use std::collections::BTreeMap;
 use crate::common;
 
 /// The hypercerts guest ELF, built by build.rs (`sp1_build::build_program`).
+/// This program's guest ELF, for callers that drive the prover as a library (`zk/operator`).
+/// The vkey it derives is the one the deployed `SP1JournalVerifier` must be pinned to; the daemon
+/// checks that at startup rather than discovering it on a failed submit.
+pub fn elf() -> Elf {
+    load_elf()
+}
+
 fn load_elf() -> Elf {
     include_elf!("trustgraph-hypercerts-program")
 }

@@ -3,6 +3,10 @@ name = "trustgraph-prover"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "trustgraph_prover"
+path = "src/lib.rs"
+
 [[bin]]
 name = "trustgraph-prover"
 path = "src/main.rs"

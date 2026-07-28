@@ -21,13 +21,11 @@
 //! `contributions_core::compute::GuestInput`. Omit it to use the built-in sample (identical to
 //! test/golden/trust-graph.json / test/golden/contributions.json).
 
-mod common;
-mod programs;
-#[cfg(feature = "witness-atproto")]
-mod witness;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use trustgraph_prover::programs;
+#[cfg(feature = "witness-atproto")]
+use trustgraph_prover::witness;
 
 #[derive(Parser)]
 #[command(name = "trustgraph-prover")]
