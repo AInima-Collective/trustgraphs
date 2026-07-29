@@ -118,10 +118,23 @@ reverts on any prepay. Locally the vault brings its own `MockEthUsdFeed` and `Te
 Check the wiring, and that the factory can append directory rows but never rewrite one:
 
 ```bash
-R=http://127.0.0.1:8545
+# Every later section assumes these. They come from deploy artifacts, not from shell history, so
+# this block is safe to re-run in a new terminal at any point — and you will need to, because a
+# heredoc or a `cast call` with an unset variable fails in ways that do not name the variable
+# (`rpc = ""`, or `invalid value '...' for '[TO]'`).
+R=${R:-http://127.0.0.1:8545}
+EAS=$(jq   -r .eas                .docker/eas_deploy.json)
 VAULT=$(jq -r .proving_vault      .docker/proving_vault_deploy.json)
 FAC=$(jq   -r .factory            .docker/factory_deploy.json)
 REG=$(jq   -r .instance_registry  .docker/instance_registry_deploy.json)
+# These three only exist once §5 has run.
+if [ -f .trustgraph/create-instance.json ]; then
+  ID=$(jq     -r .instanceId .trustgraph/create-instance.json)
+  SNAP=$(jq   -r .snapshot   .trustgraph/create-instance.json)
+  SCHEMA=$(jq -r .schemaUid  .trustgraph/create-instance.json)
+fi
+: "${R:?}" "${EAS:?}" "${VAULT:?}" "${FAC:?}" "${REG:?}" \
+  "${FUNDED_KEY:?run 'set -a; . ./.env; set +a' first}"
 
 cast call $FAC 'VAULT()(address)' --rpc-url $R                       # == $VAULT
 cast call $REG 'instanceCount()(uint256)' --rpc-url $R               # 3
@@ -149,6 +162,8 @@ SNAP=$(jq   -r .snapshot   .trustgraph/create-instance.json)
 SCHEMA=$(jq -r .schemaUid  .trustgraph/create-instance.json)
 ```
 
+(These three are also in §4's address block, which is the one to re-run if you open a new terminal.)
+
 One transaction created the resolver, adopted the vouching schema, bound both, deployed the
 snapshot, handed the constitutional key to the creator, registered the directory row, **and put 2
 ETH in the network's proving tank**:
@@ -175,7 +190,6 @@ cast send $VAULT 'setPolicy(bytes32,uint64,uint96)' $ID 0 5000000000 \
 ## 6. Vouch — before the first trigger
 
 ```bash
-EAS=$(jq -r .eas .docker/eas_deploy.json)
 forge script script/E2eAttest.s.sol:E2eAttest --sig 'run(address,bytes32)' $EAS $SCHEMA \
   --rpc-url $R --private-key $FUNDED_KEY --broadcast --skip-simulation
 
@@ -196,13 +210,23 @@ This is the part that replaces the runbook. Write a config — the daemon finds 
 trust-graph instances from the chain alone, so there is nothing per-instance in it:
 
 ```bash
-# Re-derive the addresses rather than trusting §4's variables to still be set. A heredoc happily
-# interpolates an unset variable into `rpc = ""`, which parses as valid TOML and only goes wrong
-# later; `${VAR:?}` makes the shell refuse instead.
+# Every later section assumes these. They come from deploy artifacts, not from shell history, so
+# this block is safe to re-run in a new terminal at any point — and you will need to, because a
+# heredoc or a `cast call` with an unset variable fails in ways that do not name the variable
+# (`rpc = ""`, or `invalid value '...' for '[TO]'`).
 R=${R:-http://127.0.0.1:8545}
-REG=$(jq   -r .instance_registry .docker/instance_registry_deploy.json)
-VAULT=$(jq -r .proving_vault     .docker/proving_vault_deploy.json)
-: "${R:?}" "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?run 'set -a; . ./.env; set +a' first}"
+EAS=$(jq   -r .eas                .docker/eas_deploy.json)
+VAULT=$(jq -r .proving_vault      .docker/proving_vault_deploy.json)
+FAC=$(jq   -r .factory            .docker/factory_deploy.json)
+REG=$(jq   -r .instance_registry  .docker/instance_registry_deploy.json)
+# These three only exist once §5 has run.
+if [ -f .trustgraph/create-instance.json ]; then
+  ID=$(jq     -r .instanceId .trustgraph/create-instance.json)
+  SNAP=$(jq   -r .snapshot   .trustgraph/create-instance.json)
+  SCHEMA=$(jq -r .schemaUid  .trustgraph/create-instance.json)
+fi
+: "${R:?}" "${EAS:?}" "${VAULT:?}" "${FAC:?}" "${REG:?}" \
+  "${FUNDED_KEY:?run 'set -a; . ./.env; set +a' first}"
 
 mkdir -p .demo
 cat > .demo/operator.toml <<EOF
@@ -276,6 +300,28 @@ cast call $VAULT 'creditOf(address,address)(uint256)' \
 A root landed and **the tank paid for it**, priced by the band the community's own policy allows.
 The credit is a pull payment: `withdrawCredit(token, to)` collects it. A recipient that reverts on
 receive can never revert a successfully verified root.
+
+**If either number is wrong, ask the daemon rather than guessing.** `hasAppliedCheckpoint` false or
+a zero credit almost always means it has not finished the cycle yet — three ticks is the *minimum*,
+one each for trigger, prove and submit, and a tick that does nothing still counts as one:
+
+```bash
+jq -c '[.instances[] | {name, do: .action.action,
+                        why: (.action.hold // .action.idle // .action.skip)}]' .demo/status.json
+```
+
+- `trigger` / `prove` / `submit` — mid-cycle. Run more ticks.
+- `hold: "unfunded"` — this instance has no tank and is not curated. Did `setPolicy` run (§5), and
+  did the prepay land? `cast call $VAULT 'accountOf(bytes32)((address,bytes32,uint128,uint128))' $ID
+  --rpc-url $R`
+- `hold: "verifier_rotated"` — §3. The deployed verifier wants a vkey this binary cannot produce.
+- `skip` with a params hash — the reconstruction disagrees with the chain; the instance was not
+  created by this factory, or its params were rotated.
+- `idle: "quiet"` — nothing to do, because nothing changed since the last root. Vouch again.
+
+A landed-but-unpaid root is the one case that is *not* impatience: the root is in, the fee is zero.
+That means the fee schedule (§4) or the community's `maxPerRootUsd` (§5) is zero, or the price feed
+is stale — the vault treats an unusable price as no price and pays nothing rather than guessing.
 
 The heartbeat shows the two tiers side by side. The three dev networks have no tank and are not
 curated, so the daemon holds rather than quietly subsidising them:
