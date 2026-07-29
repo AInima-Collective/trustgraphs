@@ -56,9 +56,9 @@ because it will not pay for a proof no verifier on this chain can accept:
 
 ```bash
 cd zk/prover
-export SP1_PROGRAM_VKEY=$(cargo run -q --release -- trust-graph vkey)
-export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer vkey)
-export CONTRIBUTIONS_PROGRAM_VKEY=$(cargo run -q --release -- contributions vkey)
+export SP1_PROGRAM_VKEY=$(cargo run --features "network" -q --release -- trust-graph vkey)
+export SP1_SIGNER_PROGRAM_VKEY=$(cargo run --features "network" -q --release -- signer vkey)
+export CONTRIBUTIONS_PROGRAM_VKEY=$(cargo run --features "network" -q --release -- contributions vkey)
 cd ../..
 echo $SP1_PROGRAM_VKEY   # 0x005c236fe2e6157bd911925c2faefcae4d903e229dee2fc0ef555763dd31c496
 ```
@@ -193,21 +193,23 @@ log_format   = "json"
 EOF
 
 export SUBMITTER_PRIVATE_KEY=$FUNDED_KEY
-OP="cargo run -q --release --manifest-path zk/operator/Cargo.toml -- --config .demo/operator.toml"
+# A function, not a string variable: bash word-splits `$OP` and zsh does not, so the string form
+# fails in zsh with `no such file or directory: cargo run -q ...`.
+op() { cargo run -q --release --manifest-path zk/operator/Cargo.toml -- --config .demo/operator.toml "$@"; }
 ```
 
 Look before you leap — `--dry-run` does every chain read and every decision and skips only the
 sends:
 
 ```bash
-$OP --once --dry-run | jq -c 'select(.event=="decision") | {instance, action}'
+op --once --dry-run | jq -c 'select(.event=="decision") | {instance, action}'
 ```
 
 Then run it. Three ticks is a full trigger → prove → submit cycle; `anvil_mine` stands in for time
 passing, because anvil only mines on transactions:
 
 ```bash
-for i in 1 2 3; do cast rpc anvil_mine 8 --rpc-url $R >/dev/null; $OP --once; done
+for i in 1 2 3; do cast rpc anvil_mine 8 --rpc-url $R >/dev/null; op --once; done
 ```
 
 What actually happened, with nobody touching it:
@@ -241,8 +243,10 @@ jq -c '[.instances[] | {name, action: .action.action, hold: .action.hold}]' .dem
 DEV_ID=$(cast call $REG 'getInstanceIds()(bytes32[])' --rpc-url $R \
   | tr -d '[] ' | tr ',' '\n' | head -1)
 # …attest against that instance's schema, then:
-sed -i "s|instances = \[\]|instances = [\"$DEV_ID\"]|" .demo/operator.toml
-for i in 1 2 3; do cast rpc anvil_mine 8 --rpc-url $R >/dev/null; $OP --once; done
+# Not `sed -i`: BSD/macOS sed requires an argument to -i, so the in-place form is not portable.
+sed "s|instances = \[\]|instances = [\"$DEV_ID\"]|" .demo/operator.toml > .demo/o.toml \
+  && mv .demo/o.toml .demo/operator.toml
+for i in 1 2 3; do cast rpc anvil_mine 8 --rpc-url $R >/dev/null; op --once; done
 ```
 
 Its root lands too, and its vault account stays empty — `(0x0, 0x0, 0, 0)`. Proven on us, not on
