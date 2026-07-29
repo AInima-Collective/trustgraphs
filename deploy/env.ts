@@ -351,12 +351,26 @@ export class DevEnv extends EnvBase {
           sig: 'run(string,string)',
           args: () => ['', ''],
         },
+        // The proving tank communities top up so somebody keeps proving their scores
+        // (docs/OPERATOR.md). MUST precede the factory: the vault is a factory constructor
+        // argument and it is what makes `createInstance` payable, so the reverse order gives you a
+        // factory that permanently reverts on any prepay. Locally it brings its own mock ETH/USD
+        // feed and TestUSDC; off-devnet both are required from the environment.
+        {
+          name: 'Proving Vault',
+          script: 'script/DeployProvingVault.s.sol:DeployProvingVault',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey('.docker/instance_registry_deploy.json', 'instance_registry'),
+          ],
+          skip: () => process.env.SKIP_PROVING_VAULT === 'true',
+        },
         // The permissionless instance factory (research/INSTANCE_FACTORY.md). Needs EAS, the
         // schema registrar, the trust-graph verifier, and the registry — so it runs after all four.
         {
           name: 'Factory',
           script: 'script/DeployFactory.s.sol:DeployFactory',
-          sig: 'run(string,string,string,string,uint64)',
+          sig: 'run(string,string,string,string,uint64,string)',
           args: () => [
             readJsonKey('.docker/eas_deploy.json', 'eas'),
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
@@ -365,6 +379,12 @@ export class DevEnv extends EnvBase {
             // Epoch floor in blocks. Mainnet's is ~30 days (what hosted proving commits to);
             // locally it is one block so a dev proving loop is never waiting on the schedule.
             process.env.FACTORY_EPOCH_FLOOR || '1',
+            // The vault, if one was deployed. Empty = no prepay path on this factory, and
+            // `createInstance` then reverts on any `msg.value` rather than silently keeping it.
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
           ],
         },
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack

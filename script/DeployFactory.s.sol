@@ -45,6 +45,22 @@ contract DeployFactory is Common {
         string calldata instanceRegistryAddr,
         uint64 epochFloor
     ) public returns (address factory) {
+        return run(easAddr, schemaRegistrarAddr, zkVerifierAddr, instanceRegistryAddr, epochFloor, "");
+    }
+
+    /// @notice Deploy the factory, naming the `ProvingVault` prepay goes to.
+    /// @param provingVaultAddr The chain's `ProvingVault`, or "" for none. Empty falls back to the
+    ///        `PROVING_VAULT` environment variable, and zero disables the prepay path — a factory
+    ///        with no vault reverts on any `msg.value` rather than silently keeping it. IMMUTABLE,
+    ///        so a factory deployed before its vault can never be given one.
+    function run(
+        string calldata easAddr,
+        string calldata schemaRegistrarAddr,
+        string calldata zkVerifierAddr,
+        string calldata instanceRegistryAddr,
+        uint64 epochFloor,
+        string memory provingVaultAddr
+    ) public returns (address factory) {
         address eas = vm.parseAddress(easAddr);
         address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
         address zkVerifier = vm.parseAddress(zkVerifierAddr);
@@ -67,7 +83,11 @@ contract DeployFactory is Common {
 
         // Zero disables the prepay path on this factory; `createInstance` then reverts on any
         // `msg.value` rather than silently keeping it.
-        IProvingVault vault = IProvingVault(vm.envOr("PROVING_VAULT", address(0)));
+        IProvingVault vault = IProvingVault(
+            bytes(provingVaultAddr).length > 0
+                ? vm.parseAddress(provingVaultAddr)
+                : vm.envOr("PROVING_VAULT", address(0))
+        );
 
         vm.startBroadcast(_privateKey);
 
@@ -106,6 +126,7 @@ contract DeployFactory is Common {
 
         vm.stopBroadcast();
 
+        console.log("ProvingVault:", address(vault), address(vault) == address(0) ? "(no prepay path)" : "");
         console.log("MerkleSnapshotDeployer:", address(snapshotDeployer));
         console.log("MerkleFundDistributorDeployer:", address(distributorDeployer));
         console.log("TrustGraphFactory:", factory);

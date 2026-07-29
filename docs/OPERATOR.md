@@ -419,6 +419,9 @@ network — that last one is measured against the SDK source in §3 rather than 
 
 ## 8. Related
 
+- [`DEMO.md`](../DEMO.md) — the local walkthrough: deploy, create a funded network, and watch this
+  daemon prove and pay for it
+
 - [`research/PROOF_SCHEDULER.md`](../research/PROOF_SCHEDULER.md) — the design, its economics and
   its failure semantics
 - [`research/INSTANCE_FACTORY.md`](../research/INSTANCE_FACTORY.md) §5 — the enumeration seam this

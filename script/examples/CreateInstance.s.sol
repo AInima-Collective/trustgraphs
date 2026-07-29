@@ -8,15 +8,15 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-/// @title ForkCreate
+/// @title CreateInstance
 /// @notice Create one instance through the factory AND endow its proving tank in the same
-///         transaction, for `test/e2e/fork.sh`.
+///         transaction. Used by `test/e2e/fork.sh` and by the demo in `DEMO.md`.
 /// @dev Exists so the fork e2e exercises the real `createInstance` entry point (payable, with the
 ///      full `CreateArgs` struct and every creation-time bound) rather than a hand-rolled
 ///      approximation of it. Writes the resulting id to `/tmp/fork-create.json` because the
 ///      instance id is a hash of (creator, name, salt) and the script is the only thing that knows
 ///      all three.
-contract ForkCreate is Script {
+contract CreateInstance is Script {
     using stdJson for string;
 
     uint256 constant S = 1e18;
@@ -66,13 +66,18 @@ contract ForkCreate is Script {
         (instanceId, snapshot, resolver,, schemaUid) = f.createInstance{value: prepayWei}(args);
         vm.stopBroadcast();
 
+        // The directory is not guaranteed to exist: it is gitignored, and a `rm -rf .trustgraph`
+        // between runs is routine. Without this the whole script reverts AFTER the instance has
+        // already been created and paid for on chain.
+        vm.createDir(".trustgraph", true);
+
         string memory out = "fork";
         vm.serializeUint(out, "prepayWei", prepayWei);
         vm.serializeAddress(out, "snapshot", snapshot);
         vm.serializeAddress(out, "resolver", resolver);
         vm.serializeBytes32(out, "schemaUid", schemaUid);
         string memory json = vm.serializeBytes32(out, "instanceId", instanceId);
-        vm.writeFile(".trustgraph/fork-create.json", json);
+        vm.writeFile(".trustgraph/create-instance.json", json);
 
         console.log("instanceId:");
         console.logBytes32(instanceId);

@@ -249,14 +249,14 @@ ok "fee schedule set: \$5 / \$10 / \$15 per root by size band"
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 step "create a network AND endow its proving tank in one transaction"
-forge script script/examples/ForkCreate.s.sol:ForkCreate \
+forge script script/examples/CreateInstance.s.sol:CreateInstance \
   --sig "run(address,uint256)" "$FACTORY" 3000000000000000000 \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >"$WORK/create.log" 2>&1 \
   || { tail -30 "$WORK/create.log"; die "createInstance failed"; }
-INSTANCE=$(jq -r .instanceId .trustgraph/fork-create.json)
-SNAPSHOT=$(jq -r .snapshot .trustgraph/fork-create.json)
-RESOLVER=$(jq -r .resolver .trustgraph/fork-create.json)
-SCHEMA=$(jq -r .schemaUid .trustgraph/fork-create.json)
+INSTANCE=$(jq -r .instanceId .trustgraph/create-instance.json)
+SNAPSHOT=$(jq -r .snapshot .trustgraph/create-instance.json)
+RESOLVER=$(jq -r .resolver .trustgraph/create-instance.json)
+SCHEMA=$(jq -r .schemaUid .trustgraph/create-instance.json)
 [ -n "$INSTANCE" ] && [ "$INSTANCE" != "null" ] || die "no instance id"
 say "   instance=$INSTANCE"
 say "   snapshot=$SNAPSHOT  accumulator=$RESOLVER"
@@ -277,14 +277,14 @@ step "a second network, curated: proven on us, no tank at all"
 # through plain `submitProof`. Running one alongside the funded instance in the same loop is the
 # only way to see that the two policy branches coexist — an earlier bug had the operator treat
 # every non-vault instance as unfunded and refuse to work at all.
-forge script script/examples/ForkCreate.s.sol:ForkCreate \
+forge script script/examples/CreateInstance.s.sol:CreateInstance \
   --sig "run(address,uint256,string)" "$FACTORY" 0 "fork-curated" \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >"$WORK/create2.log" 2>&1 \
   || { tail -30 "$WORK/create2.log"; die "the curated createInstance failed"; }
-CURATED=$(jq -r .instanceId .trustgraph/fork-create.json)
-CUR_SNAPSHOT=$(jq -r .snapshot .trustgraph/fork-create.json)
-CUR_RESOLVER=$(jq -r .resolver .trustgraph/fork-create.json)
-CUR_SCHEMA=$(jq -r .schemaUid .trustgraph/fork-create.json)
+CURATED=$(jq -r .instanceId .trustgraph/create-instance.json)
+CUR_SNAPSHOT=$(jq -r .snapshot .trustgraph/create-instance.json)
+CUR_RESOLVER=$(jq -r .resolver .trustgraph/create-instance.json)
+CUR_SCHEMA=$(jq -r .schemaUid .trustgraph/create-instance.json)
 [ "$CURATED" != "$INSTANCE" ] || die "the second instance reused the first id"
 say "   curated=$CURATED  snapshot=$CUR_SNAPSHOT"
 CUR_ACCOUNT=$(cast call "$VAULT" "accountOf(bytes32)((address,bytes32,uint128,uint128))" "$CURATED" --rpc-url "$RPC")

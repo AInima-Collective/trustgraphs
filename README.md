@@ -23,6 +23,10 @@ reputation, contribution-funding splits) with the same discipline — one canoni
 per program, compiled into the SP1 guest and cross-checked byte-for-byte against Solidity
 and TypeScript ports.
 
+Want to see it run? [`DEMO.md`](./DEMO.md) is the local walkthrough: deploy the stack, create a
+funded network in one transaction, and watch the proof scheduler keep its scores fresh with nobody
+in the loop.
+
 New to all of this? Start with the plain-language [`docs/ELI5.md`](./docs/ELI5.md).
 The algorithm itself is specified in [`docs/ALGORITHM.md`](./docs/ALGORITHM.md), and the
 ZK design in [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md).

@@ -1,5 +1,14 @@
 # Running the instance-factory demo
 
+> **This is the factory half only, and its step 4 is the manual proving loop.** For the full stack —
+> creation *and* the proof scheduler that keeps roots fresh without anyone running that loop — start
+> at [`DEMO.md`](../../DEMO.md) in the repo root. This page stays as the deeper reference for the
+> factory's own security claims (§5), which the root demo does not repeat.
+>
+> Two things here have drifted since it was written: `MerkleSnapshot.submitProof` gained `recipient`
+> (journal v3), and the local deploy now includes a `ProvingVault` that must precede the factory.
+> The commands in §4 have not been re-run against the current code.
+
 The demo is one sentence: **a stranger creates a community network in one transaction, and it is
 live in the app seconds later — no rebuild, no restart, no config edit.**
 
