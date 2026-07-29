@@ -130,6 +130,13 @@ abstract class EnvBase implements IEnv {
       // snapshot / resolver / distributor from its `InstanceCreated` events, so this one address is
       // all the trust-graph configuration the indexer needs.
       factory: readJsonIfFileExists('.docker/factory_deploy.json'),
+      // The chain's ProvingVault, as a bare address string — `indexer/ponder.config.ts` reads
+      // `summary.provingVault` and disables the source entirely when it is absent, so omitting it
+      // here does not fail loudly, it just silently indexes no deposits, claims or credits.
+      provingVault: readJsonKeyIfFileExists<string>(
+        '.docker/proving_vault_deploy.json',
+        'proving_vault'
+      ),
       networks: readJsonIfFileExists(this.networksConfigFile),
       zodiac_safes: readJsonIfFileExists('.docker/zodiac_safes_deploy.json'),
     }

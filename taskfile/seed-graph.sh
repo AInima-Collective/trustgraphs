@@ -13,7 +13,11 @@
 #     bash taskfile/seed-graph.sh                     # lists what is on chain, then stops
 #     DRY_RUN=1 bash taskfile/seed-graph.sh "RegenHub"
 #
-# Then prove it:
+# Then prove it — normally by letting the proof scheduler do it:
+#
+#     task demo:prove
+#
+# or by hand, which is now the documented fallback (docs/trust-graph/RUNBOOK.md):
 #
 #     REGISTRY=$(jq -r .instance_registry .docker/instance_registry_deploy.json) \
 #     PK=$(grep -E '^FUNDED_KEY=' .env | cut -d= -f2) bash taskfile/instances.sh
@@ -66,4 +70,5 @@ forge script script/SeedGraph.s.sol:SeedGraph --sig 'run(address,bytes32,address
 AFTER=$(cast call "$INSTANCE_RESOLVER" 'leafCount()(uint256)' --rpc-url "$RPC")
 echo "  edges now:    $AFTER  (+$((AFTER - BEFORE)))"
 echo
-echo "next: REGISTRY=\$(jq -r .instance_registry .docker/instance_registry_deploy.json) PK=\$(grep -E '^FUNDED_KEY=' .env | cut -d= -f2) bash taskfile/instances.sh"
+echo "next: task demo:prove          # the daemon freezes, proves and lands it"
+echo "  or: REGISTRY=\$(jq -r .instance_registry .docker/instance_registry_deploy.json) PK=\$(grep -E '^FUNDED_KEY=' .env | cut -d= -f2) bash taskfile/instances.sh   # by hand"

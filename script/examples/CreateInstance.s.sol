@@ -32,6 +32,20 @@ contract CreateInstance is Script {
         public
         returns (bytes32 instanceId, address snapshot, address resolver, bytes32 schemaUid)
     {
+        return run(factory, prepayWei, name, msg.sender);
+    }
+
+    /// @notice Create an instance whose trust graph is rooted at `trustedSeed`.
+    /// @param trustedSeed The single trusted seed. Defaults to the creator in the shorter
+    ///        overloads, which is right for `fork.sh` (it creates and vouches from one key) and
+    ///        wrong for the local demo, where the deployer is `FUNDED_KEY` but the vouches come
+    ///        from anvil's well-known accounts. A graph the seed cannot reach scores every member
+    ///        at the same floor, so this is not cosmetic.
+    function run(address factory, uint256 prepayWei, string memory name, address trustedSeed)
+        public
+        returns (bytes32 instanceId, address snapshot, address resolver, bytes32 schemaUid)
+    {
+        require(trustedSeed != address(0), "CreateInstance: trustedSeed is zero");
         TrustGraphFactory f = TrustGraphFactory(factory);
 
         ParamsCodec.Params memory p;
@@ -44,7 +58,7 @@ contract CreateInstance is Script {
         p.trustShareFp = (15 * S) / 100;
         p.trustDecayFp = (80 * S) / 100;
         p.trustedSeeds = new address[](1);
-        p.trustedSeeds[0] = msg.sender;
+        p.trustedSeeds[0] = trustedSeed;
         p.totalPool = 1_000_000 * S;
         p.precisionScale = S;
         p.weightFieldIndex = 1;

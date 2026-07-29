@@ -9,9 +9,23 @@ Two claims, one stack:
 > contract's cadence, proves them and lands them. Networks we curate are proven on us; a network
 > that funded its own tank pays whoever produced its root.
 
-Everything in §2–§7 was run end to end on a clean box and the numbers below are real. §1's Docker
+Everything in §2–§7 was run end to end on a clean box, via `task demo`, and the numbers below are
+real. §1's Docker
 step and §8 (the indexer and the app) are the parts not verified here — each says so where it
 appears. Budget ~30 minutes the first time, most of it the SP1 guest build.
+
+## The short version
+
+```bash
+anvil --silent &        # §1 — plus `task start-all-local` if you want §8's UI
+task demo               # deploy, create a funded network, seed it, prove it, get paid
+```
+
+That is the whole of §2–§7, and every step below is also its own task (`task --list | grep demo`)
+because the useful thing about a demo is re-running one piece of it: `demo:deploy`, `demo:create`,
+`demo:seed`, `demo:dry-run`, `demo:prove`, `demo:report`, `demo:clean`. The prose below is what
+those tasks do and why each step is shaped the way it is — read it when something goes wrong, or
+when you want to drive it by hand.
 
 Design docs: [`INSTANCE_FACTORY.md`](research/INSTANCE_FACTORY.md) for creation,
 [`docs/OPERATOR.md`](docs/OPERATOR.md) for the daemon,
@@ -201,11 +215,21 @@ cast send $VAULT 'setPolicy(bytes32,uint64,uint96)' $ID 0 5000000000 \
 ## 6. Vouch — before the first trigger
 
 ```bash
-forge script script/E2eAttest.s.sol:E2eAttest --sig 'run(address,bytes32)' $EAS $SCHEMA \
-  --rpc-url $R --private-key $FUNDED_KEY --broadcast --skip-simulation
-
-cast call $(jq -r .resolver .trustgraph/create-instance.json) 'leafCount()(uint64)' --rpc-url $R  # 3
+task demo:seed
+#   trusted seed: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+#   edges now:    21  (+21)
 ```
+
+21 vouches over 14 accounts, rooted at the instance's own trusted seed. That last part is the
+reason to use this rather than a handful of `cast send`s: a graph the seed cannot reach scores every
+member at the same floor, which looks like a working demo and demonstrates nothing. The script reads
+the schema and the seed off the instance's `InstanceCreated` event, so there is nothing to paste —
+and vouching against a foreign schema reverts (`ForeignSchema`) rather than quietly polluting the
+accumulator.
+
+`task demo:create` roots the graph at anvil account 0 for exactly this reason; the deployer
+(`FUNDED_KEY`) is not one of anvil's well-known keys, and `seed-graph.sh` has to be able to sign as
+the accounts it vouches from.
 
 **Order matters, and getting it wrong wedges the network.** If the daemon triggers before anyone has
 vouched, checkpoint 0 freezes over an empty graph; its root proves to `0x0` with `totalValue = 0`,
@@ -425,6 +449,8 @@ Everything below cost someone real time.
   `eth_chainId` with reqwest's `relative URL without a base`, naming neither the field nor the file.
   The operator now rejects it at load with the reason; §7 re-derives the addresses so it should not
   arise.
+- **`task demo` will not start your chain.** It refuses to run without one rather than starting an
+  anvil it would then have to own. Same reason it leaves Postgres and IPFS to `start-all-local`.
 - **`pkill -f anvil` matches the shell running it** and will kill your own session. `pkill -x anvil`.
 - **Proving is mocked locally, and here is exactly where that stops.** `SP1_PROVER=mock` runs the
   guest for real and commits its real public values; the dev gateway is a stub too. The params

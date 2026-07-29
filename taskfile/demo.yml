@@ -1,0 +1,237 @@
+# The demo, as tasks. Prose walkthrough: DEMO.md
+#
+# `task demo` is the whole thing: deploy, create a funded network, seed a real graph, then let the
+# proof scheduler prove it and pay for it. Every step is also its own task, because the interesting
+# part of a demo is usually re-running one piece of it.
+#
+# What this does NOT do is start anvil, Postgres or IPFS — `task start-all-local` owns those, and
+# owning them from here would mean tearing them down when the demo ends.
+version: '3'
+
+vars:
+  RPC: '{{.RPC | default "http://127.0.0.1:8545"}}'
+  # The network the demo creates. Its id is keccak256(abi.encode(creator, name, salt)), so the name
+  # is the only handle you need — nothing is read from a scratch file.
+  NAME: '{{.NAME | default "Demo Co-op"}}'
+  # Anvil account 0. The trust graph is ROOTED here, and `seed-graph.sh` signs its vouches with
+  # anvil's well-known keys, so a seed outside 0-9 gives a graph the seed cannot reach and every
+  # score flattens to the same floor.
+  SEED_ACCOUNT: '{{.SEED_ACCOUNT | default "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"}}'
+  PREPAY_WEI: '{{.PREPAY_WEI | default "2000000000000000000"}}'
+  # Pay for every root, at most $50 of it.
+  MAX_PER_ROOT_USD: '{{.MAX_PER_ROOT_USD | default "5000000000"}}'
+  TICKS: '{{.TICKS | default "6"}}'
+  WORK: .demo
+
+tasks:
+  default:
+    desc: 'The whole demo: deploy, create a funded network, seed it, prove it, pay for it'
+    cmds:
+      - task: preflight
+      - task: deploy
+      - task: create
+      - task: seed
+      - task: prove
+      - task: report
+
+  preflight:
+    desc: 'Refuse to start rather than fail halfway'
+    cmds:
+      - |
+        fail() { echo "✗ $1" >&2; exit 1; }
+        command -v anvil  >/dev/null || fail "anvil not found (foundryup)"
+        command -v jq     >/dev/null || fail "jq not found"
+        command -v cargo  >/dev/null || fail "cargo not found"
+        cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
+          || fail "no chain at {{.RPC}} — start one: anvil --silent &"
+        [ -n "${FUNDED_KEY:-}" ] || fail "FUNDED_KEY unset (it comes from .env)"
+
+        # FUNDED_KEY is not an anvil default, so on a fresh chain it has nothing and the first
+        # deploy step dies with `Insufficient funds`. Top it up rather than explaining it.
+        DEPLOYER=$(cast wallet address --private-key "$FUNDED_KEY")
+        BAL=$(cast balance "$DEPLOYER" --rpc-url {{.RPC}})
+        if [ "$BAL" = "0" ]; then
+          echo "→ funding the deployer $DEPLOYER"
+          cast send "$DEPLOYER" --value 1000ether --rpc-url {{.RPC}} \
+            --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 >/dev/null
+        fi
+        echo "✓ chain {{.RPC}}, deployer $DEPLOYER funded"
+
+  vkeys:
+    desc: 'Print the guest vkeys this checkout produces (deploy pins them immutably)'
+    cmds:
+      - |
+        cd zk/prover
+        for p in trust-graph signer contributions; do
+          printf '%-14s %s\n' "$p" "$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- $p vkey)"
+        done
+
+  deploy:
+    desc: 'Deploy the stack, with the verifier pinned to THIS checkout''s guest'
+    cmds:
+      - |
+        # The one ordering that silently ruins a demo: SP1JournalVerifier pins its vkey at
+        # construction and never again, so deploying against a stale .env value gives a stack that
+        # looks healthy and then refuses to prove anything (`hold: verifier_rotated`). Derive them
+        # here rather than trusting the file.
+        cd zk/prover
+        export SP1_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-graph vkey)
+        export SP1_SIGNER_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- signer vkey)
+        export CONTRIBUTIONS_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- contributions vkey)
+        cd ../..
+        echo "→ deploying against trust-graph vkey $SP1_PROGRAM_VKEY"
+        pnpm deploy:contracts
+      - task: addresses
+
+  addresses:
+    desc: 'Print every address the demo uses, read from chain and deploy artifacts'
+    cmds:
+      - |
+        R={{.RPC}}
+        VAULT=$(jq -r .proving_vault     .docker/proving_vault_deploy.json)
+        FAC=$(jq   -r .factory           .docker/factory_deploy.json)
+        REG=$(jq   -r .instance_registry .docker/instance_registry_deploy.json)
+        printf '  %-12s %s\n' factory "$FAC" registry "$REG" vault "$VAULT"
+        printf '  %-12s %s\n' 'fee band 1' \
+          "$(cast call $VAULT 'feePerRootUsd(bytes32,uint8)(uint256)' $(cast keccak "trust-graph") 1 --rpc-url $R)"
+        [ "$(cast call $FAC 'VAULT()(address)' --rpc-url $R)" = "$VAULT" ] \
+          && echo "  ✓ the factory's prepay path points at that vault" \
+          || echo "  ✗ factory VAULT() does not match — createInstance will reject any prepay"
+
+  create:
+    desc: 'Create the network AND endow its proving tank, in one transaction'
+    cmds:
+      - |
+        FAC=$(jq -r .factory .docker/factory_deploy.json)
+        forge script script/examples/CreateInstance.s.sol:CreateInstance \
+          --sig 'run(address,uint256,string,address)' \
+          "$FAC" {{.PREPAY_WEI}} '{{.NAME}}' {{.SEED_ACCOUNT}} \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --skip-simulation >/dev/null
+      - |
+        # The community's own limit. Only it can set this: EPOCH_FLOOR binds at creation, but
+        # setEpochLength is constitutional, so the paid cadence has to live in the vault.
+        VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
+        ID=$(task --silent demo:id)
+        cast send "$VAULT" 'setPolicy(bytes32,uint64,uint96)' "$ID" 0 {{.MAX_PER_ROOT_USD}} \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" >/dev/null
+        echo "✓ created {{.NAME}}"
+        echo "  id     $ID"
+        echo "  tank   $(cast call "$VAULT" 'accountOf(bytes32)((address,bytes32,uint128,uint128))' "$ID" --rpc-url {{.RPC}})"
+
+  id:
+    desc: 'The instance id, derived from the chain (no scratch files)'
+    cmds:
+      - |
+        FAC=$(jq -r .factory .docker/factory_deploy.json)
+        cast call "$FAC" 'computeInstanceId(address,string,bytes32)(bytes32)' \
+          "$(cast wallet address --private-key "$FUNDED_KEY")" '{{.NAME}}' \
+          0x0000000000000000000000000000000000000000000000000000000000000000 --rpc-url {{.RPC}}
+
+  seed:
+    desc: 'Vouch: 21 edges over 14 accounts, rooted at the instance''s trusted seed'
+    cmds:
+      - |
+        # BEFORE the first trigger, always. A checkpoint frozen over an empty graph proves to a
+        # zero root, the gov hook rejects it, and its contents are immutable — see issue #15.
+        PK="$FUNDED_KEY" RPC={{.RPC}} bash taskfile/seed-graph.sh '{{.NAME}}'
+
+  config:
+    desc: 'Write the operator config'
+    cmds:
+      - |
+        mkdir -p {{.WORK}}
+        REG=$(jq   -r .instance_registry .docker/instance_registry_deploy.json)
+        VAULT=$(jq -r .proving_vault     .docker/proving_vault_deploy.json)
+        : "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?}"
+        cat > {{.WORK}}/operator.toml <<EOF
+        rpc      = "{{.RPC}}"
+        registry = "$REG"
+        chain_id = $(cast chain-id --rpc-url {{.RPC}})
+
+        # Proven on us. This list IS the free tier; there is no unconditional one.
+        [curated]
+        instances = []
+
+        # Everyone else draws their own tank, and the same loop pays whoever produced the root.
+        [paid]
+        enabled   = true
+        vault     = "$VAULT"
+        recipient = "$(cast wallet address --private-key "$FUNDED_KEY")"
+
+        [cadence]
+        tick_seconds       = 2
+        subsidy_min_blocks = 0
+
+        [finality]
+        confirmations = 0
+
+        [prover]
+        backend = "mock"
+        groth16 = true
+
+        [ops]
+        journal_path = "{{.WORK}}/journal.jsonl"
+        status_path  = "{{.WORK}}/status.json"
+        log_format   = "json"
+        EOF
+        echo "✓ {{.WORK}}/operator.toml"
+
+  dry-run:
+    desc: 'Every chain read and every decision, no sends'
+    deps: [config]
+    cmds:
+      - |
+        SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true \
+        cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
+          --config {{.WORK}}/operator.toml --once --dry-run 2>/dev/null \
+          | jq -c 'select(.event=="decision") | {instance, action}'
+
+  prove:
+    desc: 'Run the daemon until it has landed a root and been paid for it'
+    deps: [config]
+    cmds:
+      - |
+        export SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true
+        SNAP=$(task --silent demo:snapshot)
+        for i in $(seq 1 {{.TICKS}}); do
+          # anvil only mines on transactions, so nudge it or the epoch gate never opens.
+          cast rpc anvil_mine 8 --rpc-url {{.RPC}} >/dev/null
+          cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
+            --config {{.WORK}}/operator.toml --once >> {{.WORK}}/run.log 2>&1 || true
+          grep -Eo '"event":"(triggered|proved|submitted|action_failed)"' {{.WORK}}/run.log \
+            | tail -1 | sed 's/^/  tick '"$i"': /'
+          if [ "$(cast call "$SNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url {{.RPC}})" = "true" ]; then
+            echo "  ✓ a root landed on tick $i"; break
+          fi
+        done
+
+  snapshot:
+    desc: 'The instance''s MerkleSnapshot address, from the registry'
+    cmds:
+      - |
+        REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
+        cast call "$REG" 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' \
+          "$(task --silent demo:id)" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f2 | tr -d ' '
+
+  report:
+    desc: 'What happened: the root, the payment, and every instance''s decision'
+    cmds:
+      - |
+        R={{.RPC}}
+        VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
+        ID=$(task --silent demo:id); SNAP=$(task --silent demo:snapshot)
+        PAYEE=$(cast wallet address --private-key "$FUNDED_KEY")
+        echo
+        echo "  root landed   $(cast call "$SNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url $R) (checkpoint $(cast call "$SNAP" 'lastAppliedCheckpoint()(uint256)' --rpc-url $R))"
+        echo "  tank left     $(cast call "$VAULT" 'accountOf(bytes32)((address,bytes32,uint128,uint128))' "$ID" --rpc-url $R)"
+        echo "  prover paid   $(cast call "$VAULT" 'creditOf(address,address)(uint256)' "$PAYEE" 0x0000000000000000000000000000000000000000 --rpc-url $R) wei"
+        echo
+        # The one thing worth reading when a number above is wrong.
+        [ -f {{.WORK}}/status.json ] && jq -c '[.instances[] | {name, do: .action.action,
+          why: (.action.hold // .action.idle // .action.skip)}]' {{.WORK}}/status.json
+
+  clean:
+    desc: 'Throw away the demo''s local state (not the chain)'
+    cmds:
+      - rm -rf {{.WORK}} .trustgraph/operator
+      - echo "✓ removed {{.WORK}} and .trustgraph/operator"
