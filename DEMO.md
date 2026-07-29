@@ -127,12 +127,23 @@ EAS=$(jq   -r .eas                .docker/eas_deploy.json)
 VAULT=$(jq -r .proving_vault      .docker/proving_vault_deploy.json)
 FAC=$(jq   -r .factory            .docker/factory_deploy.json)
 REG=$(jq   -r .instance_registry  .docker/instance_registry_deploy.json)
-# These three only exist once §5 has run.
-if [ -f .trustgraph/create-instance.json ]; then
-  ID=$(jq     -r .instanceId .trustgraph/create-instance.json)
-  SNAP=$(jq   -r .snapshot   .trustgraph/create-instance.json)
-  SCHEMA=$(jq -r .schemaUid  .trustgraph/create-instance.json)
+
+# The network from §5, derived FROM THE CHAIN rather than from a scratch file. `.trustgraph/` is
+# gitignored working space and does not survive a clean, so anything that depended on the JSON the
+# create script writes would break the moment it was cleared. Nothing here needs it:
+# `computeInstanceId` is a pure view (keccak256(abi.encode(creator, name, salt))), and the registry
+# row carries the rest. Change NAME if you created yours with a different one.
+NAME=${NAME:-Demo Co-op}
+ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
+ID=$(cast call $FAC 'computeInstanceId(address,string,bytes32)(bytes32)' \
+  $(cast wallet address --private-key $FUNDED_KEY) "$NAME" $ZERO32 --rpc-url $R)
+if [ "$(cast call $REG 'isRegistered(bytes32)(bool)' $ID --rpc-url $R)" = "true" ]; then
+  REC=$(cast call $REG 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' $ID --rpc-url $R)
+  SNAP=$(echo $REC | tr -d '()' | cut -d, -f2 | tr -d ' ')
+  RES=$(echo  $REC | tr -d '()' | cut -d, -f4 | tr -d ' ')
+  SCHEMA=$(cast call $RES 'boundSchema()(bytes32)' --rpc-url $R)
 fi
+
 : "${R:?}" "${EAS:?}" "${VAULT:?}" "${FAC:?}" "${REG:?}" \
   "${FUNDED_KEY:?run 'set -a; . ./.env; set +a' first}"
 
@@ -219,12 +230,23 @@ EAS=$(jq   -r .eas                .docker/eas_deploy.json)
 VAULT=$(jq -r .proving_vault      .docker/proving_vault_deploy.json)
 FAC=$(jq   -r .factory            .docker/factory_deploy.json)
 REG=$(jq   -r .instance_registry  .docker/instance_registry_deploy.json)
-# These three only exist once §5 has run.
-if [ -f .trustgraph/create-instance.json ]; then
-  ID=$(jq     -r .instanceId .trustgraph/create-instance.json)
-  SNAP=$(jq   -r .snapshot   .trustgraph/create-instance.json)
-  SCHEMA=$(jq -r .schemaUid  .trustgraph/create-instance.json)
+
+# The network from §5, derived FROM THE CHAIN rather than from a scratch file. `.trustgraph/` is
+# gitignored working space and does not survive a clean, so anything that depended on the JSON the
+# create script writes would break the moment it was cleared. Nothing here needs it:
+# `computeInstanceId` is a pure view (keccak256(abi.encode(creator, name, salt))), and the registry
+# row carries the rest. Change NAME if you created yours with a different one.
+NAME=${NAME:-Demo Co-op}
+ZERO32=0x0000000000000000000000000000000000000000000000000000000000000000
+ID=$(cast call $FAC 'computeInstanceId(address,string,bytes32)(bytes32)' \
+  $(cast wallet address --private-key $FUNDED_KEY) "$NAME" $ZERO32 --rpc-url $R)
+if [ "$(cast call $REG 'isRegistered(bytes32)(bool)' $ID --rpc-url $R)" = "true" ]; then
+  REC=$(cast call $REG 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' $ID --rpc-url $R)
+  SNAP=$(echo $REC | tr -d '()' | cut -d, -f2 | tr -d ' ')
+  RES=$(echo  $REC | tr -d '()' | cut -d, -f4 | tr -d ' ')
+  SCHEMA=$(cast call $RES 'boundSchema()(bytes32)' --rpc-url $R)
 fi
+
 : "${R:?}" "${EAS:?}" "${VAULT:?}" "${FAC:?}" "${REG:?}" \
   "${FUNDED_KEY:?run 'set -a; . ./.env; set +a' first}"
 
