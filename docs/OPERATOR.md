@@ -160,7 +160,7 @@ log_format   = "json"
 
 | key | meaning | default |
 |---|---|---|
-| `rpc` | JSON-RPC endpoint | required |
+| `rpc` | JSON-RPC endpoint; must be an absolute `http(s)://` URL | required |
 | `registry` | `InstanceRegistry` address | required |
 | `chain_id` | expected chain; startup aborts on mismatch | read from chain |
 | `registry_from_block` | where the `InstanceRegistered` scan starts | 0 (alerts on any chain but 31337) |
@@ -255,6 +255,11 @@ cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operato
 # the daemon.
 cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml
 ```
+
+Startup refuses a config that cannot work rather than dying on the first call: an empty or
+scheme-less `rpc`, a zero `registry`, or `[paid]` naming a zero vault or recipient. An empty `rpc` is
+the common one, because a config written by a shell heredoc whose variable was unset produces
+`rpc = ""`, which is perfectly valid TOML.
 
 `--dry-run` is the first thing to run against any config you have just changed. It performs every
 chain read and every decision and skips only the sends, so the decision log it prints is exactly
