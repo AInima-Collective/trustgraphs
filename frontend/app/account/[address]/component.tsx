@@ -177,7 +177,7 @@ export const AccountProfilePage = ({
       key: 'validated',
       header: 'VALIDATED',
       tooltip:
-        'Indicates if this member has attained a significant TrustScore in the network.',
+        'Indicates if this member has attained a significant trust score in the network.',
       sortable: false,
       render: (row) => (row.validated ? <Check className="w-4 h-4" /> : ''),
     },

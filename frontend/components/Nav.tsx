@@ -19,26 +19,16 @@ export const Nav = () => {
       <Link
         href="/"
         className="flex items-center gap-2.5 transition-opacity hover:opacity-70"
-        aria-label="TrustGraph — home"
+        aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />
-        <span className="text-base tracking-tight text-text">TrustGraph</span>
+        <span className="text-base tracking-tight text-text">Trustgraphs</span>
       </Link>
 
       <div className="flex flex-row items-center gap-2">
         <ButtonLink href="/create" variant="ghost">
           <span className="hidden sm:inline">Create a&nbsp;</span>
           Network
-        </ButtonLink>
-
-        <ButtonLink
-          href="/support"
-          target="_blank"
-          variant="outline"
-          rel="noopener noreferrer"
-        >
-          <span className="hidden sm:inline">Contact&nbsp;</span>
-          Support
         </ButtonLink>
 
         <WalletConnectionButton />

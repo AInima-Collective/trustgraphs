@@ -19,7 +19,8 @@
     "networks:link": "rm -f networks.json || true && test -f ../config/networks.${NODE_ENV:-development}.json && ln -s ../config/networks.${NODE_ENV:-development}.json networks.json || echo \"Error: ../config/networks.${NODE_ENV:-development}.json does not exist\"",
     "claude-code": "docker compose -f .claude/docker-compose.claude.yml run --rm --remove-orphans -it claude-code-sandbox bash -c 'claude; exec'",
     "claude-code:unrestricted": "docker compose -f .claude/docker-compose.claude.yml run --rm --remove-orphans -it claude-code-sandbox bash -c 'claude --dangerously-skip-permissions; exec'",
-    "wagmi:generate": "wagmi generate"
+    "wagmi:generate": "wagmi generate",
+    "brand:assets": "node scripts/generate-brand-assets.mjs"
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-beta.4",
@@ -131,6 +132,7 @@
     "tailwindcss": "^4.1.9",
     "tsx": "^4.20.5",
     "tw-animate-css": "1.3.3",
-    "typescript": "5.5.4"
+    "typescript": "5.5.4",
+    "wawoff2": "^2.0.1"
   }
 }

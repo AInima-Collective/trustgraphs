@@ -1,7 +1,7 @@
 {
-  "name": "TrustGraph",
-  "short_name": "TrustGraph",
-  "description": "Mapping trust networks through attestations.",
+  "name": "Trustgraphs",
+  "short_name": "Trustgraphs",
+  "description": "Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.",
   "icons": [
     {
       "src": "/images/icon-192.png",
@@ -14,7 +14,7 @@
       "type": "image/png"
     }
   ],
-  "theme_color": "#1f88c1",
-  "background_color": "#f5f5f5",
+  "theme_color": "#0a0b0c",
+  "background_color": "#0a0b0c",
   "display": "standalone"
 }

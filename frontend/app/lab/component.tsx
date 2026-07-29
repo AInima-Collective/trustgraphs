@@ -39,7 +39,7 @@ const TYPE_NOTES: Record<TypeId, string> = {
   spectral: 'built for screens · lowest contrast · safest at paragraph length',
   newsreader:
     'a text face, not a display face · this is what commitments ships',
-  mono: 'control group — no serif anywhere · what TrustGraph looked like before',
+  mono: 'control group — no serif anywhere · what trustgraphs looked like before',
 }
 
 function Section({
@@ -76,7 +76,7 @@ export function LabComponent() {
     <div className="flex flex-col gap-12 pb-16">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex flex-col gap-4">
-        <span className="tg-marker">TrustGraph · design lab</span>
+        <span className="tg-marker">trustgraphs · design lab</span>
         <h1 className="max-w-2xl">Pick a mark. Pick a voice.</h1>
         <p className="max-w-2xl text-text-muted">
           Both axes below are live and persist across reloads. Everything under
@@ -200,27 +200,27 @@ export function LabComponent() {
             <div className="tg-label">In the nav, at size</div>
             <div className="flex items-center gap-3">
               <BrandMark size="md" className="text-text" />
-              <span className="text-lg">TrustGraph</span>
+              <span className="text-lg">Trustgraphs</span>
             </div>
             <div className="flex items-center gap-2.5">
               <BrandMark size="sm" className="text-text" />
-              <span className="text-sm">TrustGraph</span>
+              <span className="text-sm">Trustgraphs</span>
             </div>
             <div className="flex items-center gap-2">
               <BrandMark size="xs" className="text-text" />
-              <span className="text-xs">TrustGraph</span>
+              <span className="text-xs">Trustgraphs</span>
             </div>
           </div>
           <div className="flex flex-col gap-6 bg-surface p-6">
             <div className="tg-label">Wordmark set in the display face</div>
             <div className="flex items-center gap-3">
               <BrandMark size="md" className="text-text" />
-              <span className="tg-display text-2xl">TrustGraph</span>
+              <span className="tg-display text-2xl">Trustgraphs</span>
             </div>
             <div className="flex items-baseline gap-3">
               <span className="tg-display text-2xl">Trust</span>
               <BrandMark size="sm" className="text-text-muted" />
-              <span className="tg-display text-2xl">Graph</span>
+              <span className="tg-display text-2xl">graphs</span>
             </div>
           </div>
         </div>
@@ -354,11 +354,11 @@ export function LabComponent() {
         <div className="grid gap-px border border-border bg-border sm:grid-cols-2">
           <div className="flex items-center justify-center gap-4 bg-[#0a0b0c] p-10 text-[#eceef0]">
             <BrandMark size="xl" />
-            <span className="tg-display text-2xl">TrustGraph</span>
+            <span className="tg-display text-2xl">Trustgraphs</span>
           </div>
           <div className="flex items-center justify-center gap-4 bg-[#f7f8f8] p-10 text-[#0b0c0d]">
             <BrandMark size="xl" />
-            <span className="tg-display text-2xl">TrustGraph</span>
+            <span className="tg-display text-2xl">Trustgraphs</span>
           </div>
         </div>
       </Section>

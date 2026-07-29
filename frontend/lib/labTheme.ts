@@ -50,10 +50,11 @@ export const TYPE_IDS = [
 
 export type TypeId = (typeof TYPE_IDS)[number]
 
-// `orbit` is the standing recommendation, not a placeholder: three elements,
-// legible down to 12px, and it argues the product's actual thesis — under
-// eigenvector rank the heaviest node is not the one in the middle.
-export const DEFAULT_MARK: MarkId = 'orbit'
+// `chord` is Jake's pick (2026-07-28): a ring with an inscribed scalene
+// triangle and a node at each vertex — three parties corroborating each other
+// inside one boundary. Every generated brand asset is drawn from it, so if this
+// changes, re-run `pnpm run brand:assets`.
+export const DEFAULT_MARK: MarkId = 'chord'
 export const DEFAULT_TYPE: TypeId = 'instrument'
 
 const MARK_KEY = 'tg-mark'

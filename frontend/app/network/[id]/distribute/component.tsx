@@ -628,7 +628,7 @@ export const DistributePage = () => {
 
         <h1 className="text-3xl font-bold">Fund Distribution</h1>
         <p className="text-muted-foreground">
-          Distribute funds to network members based on their TrustScore, or
+          Distribute funds to network members based on their trust score, or
           claim your share from existing distributions.
         </p>
 
@@ -735,9 +735,9 @@ export const DistributePage = () => {
             <SectionHeading>Create distribution</SectionHeading>
             <p className="text-sm text-muted-foreground mt-1">
               Fund a new distribution for network members. Funds will be
-              instantly claimable by all current members at their current
-              TrustScore weights. Future network graph updates will not
-              retroactively apply to this distribution.
+              instantly claimable by all current members at their current trust
+              score weights. Future network graph updates will not retroactively
+              apply to this distribution.
             </p>
           </div>
 

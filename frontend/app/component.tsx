@@ -67,7 +67,7 @@ export function HomePage() {
     {
       key: 'members',
       header: 'Members',
-      tooltip: 'The number of participants in this network with a TrustScore.',
+      tooltip: 'The number of participants in this network with a trust score.',
       headerClassName: 'text-right',
       cellClassName: 'text-right tabular-nums text-text-muted',
       render: (row) =>
@@ -104,10 +104,10 @@ export function HomePage() {
           </h1>
 
           <p className="max-w-prose text-text-muted">
-            TrustGraph is a governance tool that makes social trust visible and
-            measurable. Participants give and receive attestations: signed,
-            public endorsements that build a graph. The resulting TrustScores
-            can be exported and used to inform governance decisions on external
+            A trustgraph is a governance tool that makes social trust visible
+            and measurable. Participants give and receive attestations: signed,
+            public endorsements that build a graph. The resulting scores can be
+            exported and used to inform governance decisions on external
             platforms, so legitimacy rests on relationships rather than tokens.
           </p>
 
@@ -141,19 +141,19 @@ export function HomePage() {
           <div className="flex flex-col items-stretch self-stretch border-b border-border">
             <FrequentlyAskedQuestion
               question="What are attestations?"
-              answer="[Attestations](https://docs.attest.org/docs/core--concepts/attestations) are digital vouches: signed statements from one participant about another person, project, or claim. Each attestation adds to the collective TrustGraph, shaping reputation and governance rights."
+              answer="[Attestations](https://docs.attest.org/docs/core--concepts/attestations) are digital vouches: signed statements from one participant about another person, project, or claim. Each attestation adds to the collective trustgraph, shaping reputation and governance rights."
             />
             <FrequentlyAskedQuestion
               question="How does it work?"
-              answer="Participants issue, receive, and revoke attestations. These build a graph of trust, analyzed through verifiable algorithms (like [PageRank](https://en.wikipedia.org/wiki/PageRank)) to generate a TrustScore. That score unlocks permissions such as voting, proposal submission, or role claiming in a network or funding round."
+              answer="Participants issue, receive, and revoke attestations. These build a graph of trust, analyzed through verifiable algorithms (like [PageRank](https://en.wikipedia.org/wiki/PageRank)) to generate a trust score. That score unlocks permissions such as voting, proposal submission, or role claiming in a network or funding round."
             />
             <FrequentlyAskedQuestion
-              question="Why use TrustGraph?"
+              question="Why use a trustgraph?"
               answer="Because legitimacy comes from relationships, not capital. Attestations make social credibility visible, portable, and measurable, reducing sybil risk and empowering real contributors."
             />
             <FrequentlyAskedQuestion
               question="Where can I learn more?"
-              answer="Explore the [open-source repository](https://github.com/JakeHartnell/ZkTrustGraph) or join the [Telegram community](https://trustgraph.network/support)."
+              answer="Explore the [open-source repository](https://github.com/JakeHartnell/ZkTrustGraph), or fill out the interest form to hear about early prototypes."
             />
           </div>
         </section>
@@ -176,10 +176,9 @@ export function HomePage() {
         <div className="flex flex-col gap-4 border border-border p-5">
           <span className="tg-label">Pilot</span>
           <p className="text-sm text-text-muted">
-            TrustGraph is currently being piloted. If you are curious about how
-            it works, interested in testing early prototypes, want to use it in
-            your network, or just want to stay in the loop, fill out this short
-            form.
+            This is currently a pilot. If you are curious about how it works,
+            interested in testing early prototypes, want to use it in your
+            network, or just want to stay in the loop, fill out this short form.
           </p>
 
           <ButtonLink

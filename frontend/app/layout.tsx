@@ -17,7 +17,7 @@ import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
 import { getCatalog } from '@/lib/catalog.server'
 
-// PaperMono is TrustGraph's own face and carries every label, control, and
+// PaperMono is the trustgraphs face and carries every label, control, and
 // number. It does not change across the [data-type] axis — only the display
 // serif does, so a lab comparison isolates exactly one variable.
 const paperMono = localFont({
@@ -77,26 +77,36 @@ const fontVariables = [
 // inline and dependency-free so it runs ahead of any bundle.
 const TYPE_BOOT = `try{var t=localStorage.getItem('tg-type');if(t)document.documentElement.setAttribute('data-type',t)}catch(e){}`
 
+const DESCRIPTION =
+  'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.'
+
+// No `icons` key on purpose. Next picks up app/icon.svg, app/apple-icon.png and
+// app/favicon.ico from the file conventions, and a manual `icons` array
+// silently replaces all three — which is how the old blue asterisk PNGs
+// outlived the mark they were drawn from. Same for `openGraph.images`:
+// app/opengraph-image.png and app/twitter-image.png are wired automatically.
+// Regenerate every one of them with `pnpm run brand:assets`.
 export const metadata: Metadata = {
   metadataBase: new URL('https://trustgraph.network'),
-  title: 'TrustGraph',
-  description: 'Mapping trust networks through attestations.',
-  applicationName: 'Trust Graph',
-  icons: [
-    {
-      url: '/images/icon-192.png',
-      sizes: '192x192',
-      type: 'image/png',
-    },
-    {
-      url: '/images/icon-512.png',
-      sizes: '512x512',
-      type: 'image/png',
-    },
-  ],
+  title: {
+    default: 'Trustgraphs',
+    template: '%s | Trustgraphs',
+  },
+  description: DESCRIPTION,
+  applicationName: 'Trustgraphs',
   openGraph: {
     type: 'website',
     url: 'https://trustgraph.network',
+    siteName: 'Trustgraphs',
+    title: 'Trustgraphs',
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@trustgraphs',
+    creator: '@trustgraphs',
+    title: 'Trustgraphs',
+    description: DESCRIPTION,
   },
 }
 

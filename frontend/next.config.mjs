@@ -23,11 +23,6 @@ const nextConfig = {
   },
   redirects: () => [
     {
-      source: '/support',
-      destination: 'https://t.me/%2BvzEeMpBDzWUwMThh',
-      permanent: false,
-    },
-    {
       source: '/attestation',
       destination: '/attestations',
       permanent: false,
@@ -37,7 +32,7 @@ const nextConfig = {
       destination: '/attestations/:uid',
       permanent: false,
     },
-  ]
+  ],
 }
 
 export default withPlausibleProxy()(nextConfig)

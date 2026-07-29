@@ -39,7 +39,7 @@ export function Providers({
       taggedEvents
       trackOutboundLinks
     >
-      {/* Dark is the default, not a preference we infer: TrustGraph's ramp is
+      {/* Dark is the default, not a preference we infer: the trustgraphs ramp is
        * designed against the near-black canvas and the graph is tuned for it.
        * enableSystem would hand first-time visitors the light theme roughly
        * half the time, which is the wrong first impression. Light stays one

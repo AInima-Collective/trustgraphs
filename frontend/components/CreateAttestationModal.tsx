@@ -180,7 +180,7 @@ export const CreateAttestationModal = ({
       ? '**Note:**\n' +
         [
           (networkProfile.attestationsGiven.inNetwork.length > 0 ? '- ' : '') +
-            `Your **TrustScore** determines how much influence your attestations carry — currently **${formatPercentage(
+            `Your **trust score** determines how much influence your attestations carry — currently **${formatPercentage(
               (Number(networkProfile.score) / totalValue) * 100
             )} of total network trust**.`,
           ...(networkProfile.attestationsGiven.inNetwork.length > 0

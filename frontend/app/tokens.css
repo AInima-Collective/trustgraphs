@@ -1,5 +1,5 @@
 /*
- * TrustGraph design tokens.
+ * trustgraphs design tokens.
  *
  * ── The one rule ────────────────────────────────────────────────────────────
  * There is no brand hue. `--accent` is the text colour itself, so "accent"
@@ -26,7 +26,7 @@
  */
 
 :root {
-  /* Data, labels, and every control speak mono. PaperMono is TrustGraph's own
+  /* Data, labels, and every control speak mono. PaperMono is the trustgraphs
    * face and does not change across the [data-type] axis — only the display
    * serif does, so a lab comparison isolates one variable. */
   --mono-family: var(--font-paper-mono), ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace;
@@ -68,7 +68,7 @@
  *
  * Both ramps are near-total grayscale with a whisper of cool in the neutrals
  * (chroma sits around 0.003 — you cannot name the hue, you can only tell it
- * apart from a warm gray when the two are side by side). That is TrustGraph's
+ * apart from a warm gray when the two are side by side). That is the trustgraphs
  * only deviation from the commitments ramp, which is warm-neutral.
  *
  * Contrast floors, measured against --bg and held deliberately:
@@ -246,7 +246,7 @@
   --display-scale: 1;
 }
 
-/* MONO — the control group. No serif anywhere; this is what TrustGraph looked
+/* MONO — the control group. No serif anywhere; this is what trustgraphs looked
  * like before the overhaul, so a side-by-side is one keystroke away rather
  * than a git stash. */
 [data-type='mono'] {
