@@ -127,6 +127,151 @@ export const merkleSnapshot = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
+        WHO PRODUCED A ROOT, AND WHO GETS PAID FOR IT
+//////////////////////////////////////////////////////////////*/
+
+// MerkleSnapshot.MerkleProofSubmitted — one row per landed proof.
+//
+// `prover` and `recipient` are deliberately separate columns. The prover paid the gas; the
+// recipient is what the guest committed in the journal and is who the bounty is owed to. They
+// differ whenever a root was relayed, and keeping them apart is what lets the UI say "proven by X,
+// paid to Y" instead of guessing.
+export const proofSubmission = onchainTable(
+  'proof_submission',
+  (t) => ({
+    id: t.text().primaryKey(),
+    snapshot: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    checkpointId: t.bigint().notNull(),
+    root: t.hex().notNull(),
+    /** `msg.sender` — whoever paid the gas. */
+    prover: t.hex().notNull(),
+    /** The journal-committed payee. Zero means the root carries no bounty. */
+    recipient: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+  }),
+  (t) => ({
+    snapshotIdx: index().on(t.snapshot),
+    checkpointIdx: index().on(t.checkpointId),
+    proverIdx: index().on(t.prover),
+    recipientIdx: index().on(t.recipient),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
+            THE PROVING TANK (ProvingVault)
+//////////////////////////////////////////////////////////////*/
+
+// One row per instance: the current tank, maintained by folding deposits, claims and withdrawals.
+// A running balance rather than a per-event log because the question the UI asks is "how much is
+// left and how fast is it going", which a log answers only after a scan.
+export const provingVaultAccount = onchainTable(
+  'proving_vault_account',
+  (t) => ({
+    /** `instanceId`. */
+    id: t.hex().primaryKey(),
+    chainId: t.text().notNull(),
+    vault: t.hex().notNull(),
+    /** Bound at first deposit and never re-resolved; a registry update cannot move it. */
+    snapshot: t.hex().notNull(),
+    program: t.hex().notNull(),
+    ethBalance: t.bigint().notNull(),
+    usdcBalance: t.bigint().notNull(),
+    /** Cumulative, so a burn rate is (spent since T) / (T .. now) without walking the log. */
+    totalDepositedEth: t.bigint().notNull(),
+    totalDepositedUsdc: t.bigint().notNull(),
+    totalSpentEth: t.bigint().notNull(),
+    totalSpentUsdc: t.bigint().notNull(),
+    /** Block of the most recent PAID root, which is what the cadence guard keys on. */
+    lastPaidBlock: t.bigint().notNull(),
+    /** Non-zero while a withdrawal is in its notice period. */
+    withdrawalReadyAt: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (t) => ({
+    vaultIdx: index().on(t.vault),
+    snapshotIdx: index().on(t.snapshot),
+  })
+)
+
+// Every top-up, so "who funded this community" is answerable and a burn rate has a denominator.
+export const provingVaultDeposit = onchainTable(
+  'proving_vault_deposit',
+  (t) => ({
+    id: t.text().primaryKey(),
+    instanceId: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    /** Zero address = ETH. */
+    token: t.hex().notNull(),
+    from: t.hex().notNull(),
+    amount: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    fromIdx: index().on(t.from),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+// Every bounty actually paid, and every one that was not.
+//
+// `skipped` rows matter as much as paid ones: a root that landed and paid nothing is the signal
+// that a tank ran dry or a feed went stale, and without it the UI cannot tell "nobody is proving
+// this" from "everybody is proving it for free".
+export const provingVaultClaim = onchainTable(
+  'proving_vault_claim',
+  (t) => ({
+    id: t.text().primaryKey(),
+    instanceId: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    checkpointId: t.bigint().notNull(),
+    /** Null on a skipped claim. */
+    recipient: t.hex(),
+    submitter: t.hex(),
+    /** USD scaled by 1e8. */
+    feeUsd: t.bigint().notNull(),
+    gasUsd: t.bigint().notNull(),
+    ethSpent: t.bigint().notNull(),
+    usdcSpent: t.bigint().notNull(),
+    /** True when the root landed but paid nothing; `reason` is `IneligibleReason`. */
+    skipped: t.boolean().notNull(),
+    reason: t.integer().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    recipientIdx: index().on(t.recipient),
+    blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+// Pull-payment credits, per (account, token). The vault pays by credit, so "what am I owed" is a
+// balance rather than a sum over events.
+export const provingVaultCredit = onchainTable(
+  'proving_vault_credit',
+  (t) => ({
+    /** `${account}-${token}`. */
+    id: t.text().primaryKey(),
+    chainId: t.text().notNull(),
+    account: t.hex().notNull(),
+    token: t.hex().notNull(),
+    accrued: t.bigint().notNull(),
+    withdrawn: t.bigint().notNull(),
+    /** `accrued - withdrawn` — what the recipient can pull right now. */
+    outstanding: t.bigint().notNull(),
+    updatedAt: t.bigint().notNull(),
+  }),
+  (t) => ({
+    accountIdx: index().on(t.account),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
               LANE 2 — offchain-attestation anchors (M2)
 //////////////////////////////////////////////////////////////*/
 
