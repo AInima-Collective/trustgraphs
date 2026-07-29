@@ -9,9 +9,9 @@ Two claims, one stack:
 > contract's cadence, proves them and lands them. Networks we curate are proven on us; a network
 > that funded its own tank pays whoever produced its root.
 
-Everything in §1–§6 was run end to end on a clean box and the numbers below are real. §7 (the
-indexer and the app) is the one part not re-verified here — see the note there. Budget ~30 minutes
-the first time, most of it the SP1 guest build.
+Everything in §2–§7 was run end to end on a clean box and the numbers below are real. §1's Docker
+step and §8 (the indexer and the app) are the parts not verified here — each says so where it
+appears. Budget ~30 minutes the first time, most of it the SP1 guest build.
 
 Design docs: [`INSTANCE_FACTORY.md`](research/INSTANCE_FACTORY.md) for creation,
 [`docs/OPERATOR.md`](docs/OPERATOR.md) for the daemon,
@@ -22,7 +22,7 @@ supersedes.
 
 ## 0. Toolchain, once
 
-The SP1 `succinct` Rust toolchain is not part of a normal checkout, and you need it from §3 on.
+The SP1 `succinct` Rust toolchain is not part of a normal checkout, and you need it from §4 on.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/succinctlabs/sp1/main/sp1up/sp1up | bash
@@ -31,11 +31,48 @@ export PATH="$HOME/.sp1/bin:$PATH"
 export SP1_PROVER=mock          # runs the guest for real; only the SNARK is stubbed
 ```
 
-## 1. A chain, and a funded deployer
+## 1. Services
+
+Four things, and **§2–§7 need only the first**. The daemon computes each root's IPFS hash and CID
+in-circuit from the blob bytes, so it never contacts an IPFS node, and nothing before §8 touches
+Postgres. That is why the chain-and-daemon half of this demo runs with no Docker at all.
+
+| | What | Port | Needed by |
+|---|---|---|---|
+| 1 | anvil | 8545 | everything |
+| 2 | Postgres (`ponder-db`) | 6432 | §8 (the indexer) |
+| 3 | IPFS (kubo) | 5001 / 8080 | §8 (fetching a score blob by its CID) |
+| 4 | Ponder + Next.js | 65421 / 3000 | §8 |
+
+anvil first, because the services task below **waits** for it rather than starting it:
 
 ```bash
 anvil --silent &
+```
 
+Then 2 and 3, from `docker-compose.dev.yml`:
+
+```bash
+task start-all-local
+```
+
+Two things about that command. It **stays in the foreground** and traps `EXIT` to
+`docker compose down`, so it needs its own terminal — background it and you tear the containers
+down with it. And it polls for anvil before doing anything, so starting it first just hangs. If you
+would rather not hand it the containers' lifecycle:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d      # ipfs + ponder-db, detached
+docker compose -f docker-compose.dev.yml down       # when you are done
+```
+
+*(Not verified in this pass: the box this was written on has no reachable Docker daemon and no
+`task` binary. The two commands are read off `Taskfile.yml` → `taskfile/services.yml` and
+`docker-compose.dev.yml`. Everything in §2–§7 was run without them.)*
+
+## 2. A funded deployer
+
+```bash
 # .env's FUNDED_KEY is NOT an anvil default account, so on a fresh chain it has zero balance and
 # the first deploy step dies with `Insufficient funds`.
 set -a; . ./.env; set +a
@@ -43,7 +80,7 @@ cast send $(cast wallet address --private-key $FUNDED_KEY) --value 1000ether \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-## 2. Pin the verifier to the guest you actually built
+## 3. Pin the verifier to the guest you actually built
 
 **Do this before deploying, not after.** `SP1_PROGRAM_VKEY` in `.env` is whatever was current when
 someone last edited it, and `SP1JournalVerifier` pins its vkey **immutably** at construction. Deploy
@@ -63,7 +100,7 @@ cd ../..
 echo $SP1_PROGRAM_VKEY   # 0x005c236fe2e6157bd911925c2faefcae4d903e229dee2fc0ef555763dd31c496
 ```
 
-## 3. Deploy everything
+## 4. Deploy everything
 
 ```bash
 pnpm deploy:contracts
@@ -100,7 +137,7 @@ cast call $REG 'hasRole(bytes32,address)(bool)' \
 The fee schedule is set at deploy rather than left to a follow-up call, because an unpriced band is
 not a smaller demo — it is a silent one. Roots land, claims run, every payout is zero.
 
-## 4. Create a network, endowed, in one transaction
+## 5. Create a network, endowed, in one transaction
 
 ```bash
 forge script script/examples/CreateInstance.s.sol:CreateInstance \
@@ -135,7 +172,7 @@ cast send $VAULT 'setPolicy(bytes32,uint64,uint96)' $ID 0 5000000000 \
   --rpc-url $R --private-key $FUNDED_KEY
 ```
 
-## 5. Vouch — before the first trigger
+## 6. Vouch — before the first trigger
 
 ```bash
 EAS=$(jq -r .eas .docker/eas_deploy.json)
@@ -153,7 +190,7 @@ tick forever instead of freezing a fresh one. Recovery is one permissionless cal
 'trigger()'`, because `submitProof` requires only `checkpointId > lastAppliedCheckpoint` and not
 contiguity. Tracked as [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
 
-## 6. Let the daemon do the rest
+## 7. Let the daemon do the rest
 
 This is the part that replaces the runbook. Write a config — the daemon finds factory-created
 trust-graph instances from the chain alone, so there is nothing per-instance in it:
@@ -252,15 +289,17 @@ for i in 1 2 3; do cast rpc anvil_mine 8 --rpc-url $R >/dev/null; op --once; don
 Its root lands too, and its vault account stays empty — `(0x0, 0x0, 0, 0)`. Proven on us, not on
 its own money. That is the whole difference between the tiers, running in one loop.
 
-## 7. The indexer and the app
+## 8. The indexer and the app
 
 > Not re-verified in this pass: the dev server and Ponder both need more memory than the box this
 > was written on had. The commands are unchanged from
 > [`docs/trust-graph/DEMO.md`](docs/trust-graph/DEMO.md) §3, which was verified when it was written;
-> treat §7 as that document's, not this one's.
+> treat §8 as that document's, not this one's.
+
+Needs services 2 and 3 from §1 up.
 
 ```bash
-cd indexer  && pnpm dev      # :65421   needs Postgres on 6432
+cd indexer  && pnpm dev      # :65421
 cd frontend && pnpm dev      # :3000
 ```
 
@@ -278,9 +317,11 @@ shows a runway only when there is evidence for one.
 
 Everything below cost someone real time.
 
-- **Export the vkeys before deploying.** §2. The verifier pins its vkey immutably, so a stale
+- **Start anvil before `task start-all-local`, and give that command its own terminal.** It waits
+  for anvil rather than starting it, and it tears the containers down when it exits. §1.
+- **Export the vkeys before deploying.** §3. The verifier pins its vkey immutably, so a stale
   `.env` value means a stack that deploys cleanly and then refuses to prove.
-- **Attest before the first trigger.** §5, and [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
+- **Attest before the first trigger.** §6, and [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
 - **`registry_from_block` is not optional off-devnet.** Left at 0 against a registry deployed at
   block 21,000,000 the scan issues ~2,100 empty `eth_getLogs` calls, and most providers reject the
   range outright as an archive request — so the daemon gets *no catalog at all and every tick
