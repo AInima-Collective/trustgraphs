@@ -305,19 +305,31 @@ export const resolveNetwork = (
  * decide how to degrade (see `Catalog.error`); silently returning an empty directory would render
  * "this network does not exist" for networks that plainly do.
  */
+export const CATALOG_TIMEOUT_MS = 3_000
+
 export const fetchInstances = async (
   init?: RequestInit & { next?: { revalidate?: number } }
 ): Promise<InstanceRow[]> => {
   const url = `${APIS.ponder}/instances?limit=${CATALOG_PAGE_SIZE}`
-  const response = await fetch(url, init)
-  if (!response.ok) {
-    throw new Error(`GET /instances responded ${response.status}`)
+  // The root layout awaits this on EVERY route, and `fetch` has no timeout of its own. An
+  // indexer that is down rejects immediately and degrades fine; one that accepts the
+  // connection and then stops talking would hold `/`, `/networks` and `/faq` open until the
+  // platform's limit. Same budget the per-row summaries already use.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, { signal: controller.signal, ...init })
+    if (!response.ok) {
+      throw new Error(`GET /instances responded ${response.status}`)
+    }
+    const body = (await response.json()) as InstancesResponse
+    if (!body || !Array.isArray(body.instances)) {
+      throw new Error('GET /instances returned an unexpected body')
+    }
+    return body.instances
+  } finally {
+    clearTimeout(timer)
   }
-  const body = (await response.json()) as InstancesResponse
-  if (!body || !Array.isArray(body.instances)) {
-    throw new Error('GET /instances returned an unexpected body')
-  }
-  return body.instances
 }
 
 /** `fetchInstances` + `mergeCatalog`, as one already-degraded-or-not `Catalog`. */
