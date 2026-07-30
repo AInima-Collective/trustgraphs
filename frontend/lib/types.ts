@@ -4,14 +4,14 @@ export type Network = {
   /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
   program?: 'trust-graph'
   /**
-   * The `/network/[id]` path segment. For a network created through `TrustGraphFactory` this is
+   * The `/networks/[id]` path segment. For a network created through `TrustGraphFactory` this is
    * its `instanceId`; networks that predate the factory keep the human slug from
    * `config/networks.<env>.json` so existing links keep working.
    */
   id: string
   /**
    * `keccak256(abi.encode(creator, name, salt))` — present iff this network came from the runtime
-   * catalog (`lib/catalog.ts`). Always resolvable as a `/network/[id]` segment, even when `id` is
+   * catalog (`lib/catalog.ts`). Always resolvable as a `/networks/[id]` segment, even when `id` is
    * a config slug.
    */
   instanceId?: Hex

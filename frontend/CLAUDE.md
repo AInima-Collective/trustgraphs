@@ -23,7 +23,7 @@ frontend/
 │   ├── api/               # API routes (IPFS, RPC proxy)
 │   ├── account/[address]/ # Account profile pages
 │   ├── attestations/      # Attestation management pages
-│   ├── network/[id]/      # Network pages (governance, distribute)
+│   ├── networks/[id]/     # Network pages (governance, distribute)
 │   ├── layout.tsx         # Root layout with providers
 │   └── page.tsx           # Home page
 ├── components/            # React components (shadcn/ui primitives + feature components)

@@ -382,7 +382,7 @@ export const AccountProfilePage = ({
               getRowKey={(row) => row.network.id}
               onRowClick={(row) => {
                 pushBreadcrumb()
-                router.push(`/network/${row.network.id}`)
+                router.push(`/networks/${row.network.id}`)
               }}
             />
           ) : (
@@ -649,7 +649,7 @@ const commonAttestationColumns = (
             e.stopPropagation()
             pushBreadcrumb()
           }}
-          href={`/network/${networkName.id}`}
+          href={`/networks/${networkName.id}`}
         >
           <span className="text-sm text-text-muted transition-colors group-hover/network:text-text">
             {networkName.name}

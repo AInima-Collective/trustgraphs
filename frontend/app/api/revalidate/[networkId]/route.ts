@@ -20,7 +20,7 @@ export async function GET(
     revalidatePath('/')
 
     if (networkId.toLowerCase() === 'all') {
-      revalidatePath('/network/[id]', 'page')
+      revalidatePath('/networks/[id]', 'page')
     } else {
       // Resolved against the runtime catalog, so a freshly created instance can be revalidated
       // without waiting for a redeploy.
@@ -34,7 +34,7 @@ export async function GET(
           : NextResponse.json({ error: 'Network not found' }, { status: 404 })
       }
 
-      revalidatePath(`/network/${networkId}`)
+      revalidatePath(`/networks/${networkId}`)
     }
 
     return NextResponse.json({ message: 'Revalidated' })

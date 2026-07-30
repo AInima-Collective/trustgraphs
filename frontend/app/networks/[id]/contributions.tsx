@@ -294,16 +294,19 @@ export const ContributionsNetworkPage = ({
 
       {/* Actions */}
       <div className="flex flex-row gap-3 flex-wrap">
-        <ButtonLink href={`/network/${network.id}/contribute`} variant="brand">
+        <ButtonLink href={`/networks/${network.id}/contribute`} variant="brand">
           Claim a contribution
         </ButtonLink>
-        <ButtonLink href={`/network/${network.id}/rate`} variant="secondary">
+        <ButtonLink href={`/networks/${network.id}/rate`} variant="secondary">
           Rate contributions
         </ButtonLink>
-        <ButtonLink href={`/network/${network.id}/respond`} variant="secondary">
+        <ButtonLink
+          href={`/networks/${network.id}/respond`}
+          variant="secondary"
+        >
           Respond to being named
         </ButtonLink>
-        <ButtonLink href={`/network/${network.id}/payout`} variant="secondary">
+        <ButtonLink href={`/networks/${network.id}/payout`} variant="secondary">
           Payouts
         </ButtonLink>
       </div>

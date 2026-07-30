@@ -30,7 +30,7 @@ export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
         const lastSegment = pathname.split('/').pop()
         if (
           lastSegment &&
-          pathname.startsWith('/network/') &&
+          pathname.startsWith('/networks/') &&
           networks.some((n) => n.id === lastSegment)
         ) {
           // Network name
@@ -51,7 +51,7 @@ export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
           pathname.startsWith('/account/') ||
           pathname.startsWith('/attestations/') ||
           // Should never happen...
-          pathname.startsWith('/network/')
+          pathname.startsWith('/networks/')
         ) {
           // Resource type
           finalBreadcrumb.title = pathname.split('/')[1]!

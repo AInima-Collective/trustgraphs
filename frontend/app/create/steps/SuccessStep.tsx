@@ -18,7 +18,7 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
     />
 
     <div className="flex flex-row flex-wrap gap-2">
-      <ButtonLink href={`/network/${created.instanceId}`}>
+      <ButtonLink href={`/networks/${created.instanceId}`}>
         Go to your network
       </ButtonLink>
     </div>

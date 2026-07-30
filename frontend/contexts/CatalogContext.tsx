@@ -33,7 +33,7 @@ const REFETCH_MS = 30_000
 export type CatalogContextType = Catalog & {
   /** True while the first browser-side read is still outstanding. */
   isLoading: boolean
-  /** Resolve a `/network/[id]` segment (slug, instanceId or snapshot address). */
+  /** Resolve a `/networks/[id]` segment (slug, instanceId or snapshot address). */
   find: (id: string | undefined) => Network | undefined
 }
 

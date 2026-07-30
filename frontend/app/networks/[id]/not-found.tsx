@@ -7,7 +7,7 @@ export default function NetworkNotFoundPage() {
       <p className="text-sm text-muted-foreground">
         Please check the URL or view all networks below.
       </p>
-      <ButtonLink href="/network" className="mt-4">
+      <ButtonLink href="/networks" className="mt-4">
         View all networks
       </ButtonLink>
     </div>

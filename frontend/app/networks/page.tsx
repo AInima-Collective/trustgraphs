@@ -32,7 +32,7 @@ export default async function NetworkListPage() {
         ].map((network) => (
           <Link
             key={network.id}
-            href={`/network/${network.id}`}
+            href={`/networks/${network.id}`}
             className="block"
           >
             <div className="cursor-pointer border border-border bg-surface p-6 transition-colors hover:border-hairline-strong hover:bg-surface-2">

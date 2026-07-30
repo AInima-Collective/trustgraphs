@@ -281,7 +281,7 @@ export const mergeCatalog = (
 }
 
 /**
- * Resolve a `/network/[id]` path segment. A network created through the factory is addressed by
+ * Resolve a `/networks/[id]` path segment. A network created through the factory is addressed by
  * its `instanceId`; the networks that predate the factory keep their config slug; and the
  * snapshot address works for both because it is the one identifier every other surface (indexer
  * routes, explorer links, proofs) already uses.

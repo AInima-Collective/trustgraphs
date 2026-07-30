@@ -13,17 +13,13 @@ import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { Markdown } from '@/components/Markdown'
-import { NetworkFeatures } from '@/components/NetworkFeatures'
 import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
-import { ProvingTank } from '@/components/ProvingTank'
-import { RootFreshness } from '@/components/RootFreshness'
 import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
-import { PROVING_VAULT } from '@/lib/config'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { trustGraphTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
@@ -204,16 +200,6 @@ export const NetworkPage = () => {
         </div>
       </div>
 
-      {/* How fresh the scores are, and who is paying to keep them that way. Both belong above
-          the statistics: a number nobody can tell the age of is worse than no number. */}
-      <div className="border-y border-border py-12 space-y-6">
-        <RootFreshness snapshot={network.contracts.merkleSnapshot} />
-        <ProvingTank
-          instanceId={network.id as `0x${string}`}
-          vaultAddress={PROVING_VAULT}
-        />
-      </div>
-
       <div className="border-y border-border py-12 space-y-6">
         <SectionHeading>Network statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
@@ -254,10 +240,6 @@ export const NetworkPage = () => {
           /> */}
         </div>
       </div>
-
-      {/* Above the members table on purpose: the table is long, and everything this network can
-          actually DO would be below the fold if it came after. */}
-      <NetworkFeatures />
 
       <div className="space-y-6">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">

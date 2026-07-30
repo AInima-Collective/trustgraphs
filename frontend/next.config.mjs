@@ -32,6 +32,17 @@ const nextConfig = {
       destination: '/attestations/:uid',
       permanent: false,
     },
+    // The network directory and the detail pages moved to `/networks/*`; these keep old links alive.
+    {
+      source: '/network',
+      destination: '/networks',
+      permanent: true,
+    },
+    {
+      source: '/network/:path*',
+      destination: '/networks/:path*',
+      permanent: true,
+    },
   ],
 }
 

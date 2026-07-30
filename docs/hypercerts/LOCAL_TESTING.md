@@ -287,7 +287,7 @@ EOF
 pnpm indexer dev
 
 # d. Frontend (restart it if it was already running — networks.json is imported statically):
-pnpm frontend dev        # → http://localhost:3000/network/hypercerts
+pnpm frontend dev        # → http://localhost:3000/networks/hypercerts
 ```
 
 > **Addresses must match YOUR deploy.** The `hypercerts` entries in

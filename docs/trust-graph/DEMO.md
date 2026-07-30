@@ -134,7 +134,7 @@ Watch it arrive, with nothing restarted:
 curl -s localhost:65421/instances | jq '.instances[] | select(.name=="Bakers Guild") | {id, contracts}'
 ```
 
-Then open `http://localhost:3000/network/<that id>` — live, with a working Vouch button. Measured on
+Then open `http://localhost:3000/networks/<that id>` — live, with a working Vouch button. Measured on
 a production build in an earlier run: **transaction at 23:10:41, page rendering at 23:10:52.**
 Nothing was rebuilt, restarted or edited: Ponder discovers each snapshot, resolver and distributor
 through a `factory()` source on `InstanceCreated`, so the chain is the catalog.
@@ -171,7 +171,7 @@ curl -s localhost:65421/instances | jq '.pagination.total, .instances[].name'
 curl -s localhost:65421/vault/$(task --silent demo:id) | jq '{ethBalance, burn, unpaidRootsSinceLastPayment}'
 ```
 
-Open `http://localhost:3000/network/<id>`. The **proving tank** panel reads that vault endpoint: how
+Open `http://localhost:3000/networks/<id>`. The **proving tank** panel reads that vault endpoint: how
 much is left, how fast it is going, and what happens when it runs out. It deliberately distinguishes
 "nobody has funded this" from "the money ran out" — different situations, different fixes — and
 shows a runway only when there is evidence for one.

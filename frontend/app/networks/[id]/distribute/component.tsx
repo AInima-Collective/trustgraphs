@@ -622,7 +622,7 @@ export const DistributePage = () => {
           className="mb-2"
           fallback={{
             title: 'Network',
-            route: `/network/${network.id}`,
+            route: `/networks/${network.id}`,
           }}
         />
 

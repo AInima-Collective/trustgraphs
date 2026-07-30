@@ -1,7 +1,7 @@
 //! What a network instance can actually DO, as a navigable list.
 //!
-//! One place decides which sub-pages exist for a given instance, so the tab bar, the overview's
-//! feature cards, and any future entry point can never disagree about what is reachable.
+//! One place decides which sub-pages exist for a given instance, so every page presents the same
+//! navigation and any future entry point can reuse it.
 //!
 //! Tabs are CONTRACT-GATED, not hard-coded. A network minted by `TrustGraphFactory` has no Safe
 //! gov module and no fund distributor until someone deploys them, so offering those tabs would
@@ -14,9 +14,10 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
+  icon?: 'governance' | 'distribute' | 'contributions'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
-   * siblings' (the overview `/network/[id]`), which would otherwise read as active everywhere.
+   * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
    */
   exact?: boolean
   /**
@@ -47,22 +48,34 @@ export const contributionsRoundsFor = (
       )
   )
 
-/** Sub-pages of an address-keyed trust-graph network, plus the rounds that score against it. */
+/** Sub-pages of an address-keyed trust-graph network, including its contributions experience. */
 export const trustGraphTabs = (network: Network): NetworkTab[] => {
-  const base = `/network/${network.id}`
+  const base = `/networks/${network.id}`
 
   return [
     { href: base, label: 'Overview', exact: true },
     ...(network.contracts.merkleGovModule
-      ? [{ href: `${base}/governance`, label: 'Governance' }]
+      ? [
+          {
+            href: `${base}/governance`,
+            label: 'Governance',
+            icon: 'governance' as const,
+          },
+        ]
       : []),
     ...(network.contracts.merkleFundDistributor
-      ? [{ href: `${base}/distribute`, label: 'Distribute' }]
+      ? [
+          {
+            href: `${base}/distribute`,
+            label: 'Distribute',
+            icon: 'distribute' as const,
+          },
+        ]
       : []),
     ...contributionsRoundsFor(network).map((round) => ({
-      href: `/network/${round.id}`,
-      label: round.name,
-      crossInstance: true,
+      href: `/networks/${round.id}`,
+      label: 'Contributions',
+      icon: 'contributions' as const,
     })),
   ]
 }
@@ -89,7 +102,7 @@ export const trustNetworkFor = (
 export const contributionsTabs = (
   network: ContributionsNetwork
 ): NetworkTab[] => {
-  const base = `/network/${network.id}`
+  const base = `/networks/${network.id}`
   const trustNetwork = trustNetworkFor(network)
 
   return [
@@ -103,7 +116,7 @@ export const contributionsTabs = (
     ...(trustNetwork
       ? [
           {
-            href: `/network/${trustNetwork.id}`,
+            href: `/networks/${trustNetwork.id}`,
             label: trustNetwork.name,
             crossInstance: true,
           },

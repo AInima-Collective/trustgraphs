@@ -32,7 +32,7 @@ export const CatalogUnavailable = ({
     <p className="text-xs text-muted-foreground break-all max-w-prose">
       {reason}
     </p>
-    <ButtonLink href="/network" className="mt-4">
+    <ButtonLink href="/networks" className="mt-4">
       View all networks
     </ButtonLink>
   </div>

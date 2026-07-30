@@ -29,9 +29,9 @@ import { Network } from './types'
  *
  * The catalog-driven routes set the SAME number as their `export const revalidate`, written out as
  * a literal because Next statically analyses that export and rejects an imported identifier:
- * `app/page.tsx`, `app/network/page.tsx`, `app/network/[id]/page.tsx`,
- * `app/network/[id]/distribute/page.tsx`, `app/network/[id]/governance/layout.tsx`.
- * Change one, change all six.
+ * `app/page.tsx`, `app/networks/page.tsx`, `app/networks/[id]/page.tsx`,
+ * `app/networks/[id]/distribute/page.tsx`, `app/networks/[id]/governance/layout.tsx`.
+ * Change one, change all six: this constant plus those five files.
  */
 export const CATALOG_REVALIDATE_SECONDS = 10
 
@@ -48,7 +48,7 @@ export const getCatalog = cache(
 const isInstanceId = (id: string) => /^0x[0-9a-fA-F]{64}$/.test(id)
 
 /**
- * Resolve one `/network/[id]` segment against the catalog.
+ * Resolve one `/networks/[id]` segment against the catalog.
  *
  * `network` is undefined when the id is genuinely unknown. `catalogError` is set when the runtime
  * catalog could not be read at all — a caller that 404s in that case is reporting a network as

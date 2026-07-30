@@ -135,7 +135,7 @@ export const ContributePage = ({
           shares: cleaned.map((row) => row.share),
         },
       })
-      router.push(`/network/${network.id}`)
+      router.push(`/networks/${network.id}`)
     } catch {
       // The attestation hook already surfaced the error via toast.
     }

@@ -112,7 +112,7 @@ export function HomePage() {
           </p>
 
           {firstNetwork && (
-            <ButtonLink href={`/network/${firstNetwork.id}`} size="lg">
+            <ButtonLink href={`/networks/${firstNetwork.id}`} size="lg">
               View pilot network: {firstNetwork.name}
             </ButtonLink>
           )}
@@ -126,7 +126,7 @@ export function HomePage() {
               columns={columns}
               data={networkRows}
               getRowKey={(row) => row.network.id}
-              onRowClick={(row) => router.push(`/network/${row.network.id}`)}
+              onRowClick={(row) => router.push(`/networks/${row.network.id}`)}
               rowClickTitle="View network"
             />
           </section>
