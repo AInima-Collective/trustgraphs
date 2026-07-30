@@ -413,6 +413,18 @@ cd indexer  && pnpm dev      # :65421
 cd frontend && pnpm dev      # :3000
 ```
 
+**Mine first, or you will see nothing.** Ponder does not serve unfinalized blocks and anvil stops
+mining the moment the demo does, so everything that just happened sits inside the finality window.
+`task demo` ends with `demo:settle` to handle this; if you drove the daemon by hand, or the app is
+empty after a step you ran yourself:
+
+```bash
+task demo:settle             # or: cast rpc anvil_mine 0x40
+```
+
+`task demo:report` says outright whether the indexer is serving this network, so you do not have to
+open a browser to find out.
+
 ```bash
 curl -s localhost:65421/instances | jq '.pagination.total, .instances[].name'
 curl -s localhost:65421/vault/$ID | jq '{ethBalance, burn, unpaidRootsSinceLastPayment}'
@@ -436,8 +448,14 @@ Everything below cost someone real time.
   block 21,000,000 the scan issues ~2,100 empty `eth_getLogs` calls, and most providers reject the
   range outright as an archive request — so the daemon gets *no catalog at all and every tick
   fails*. Startup alerts if you forget. Irrelevant on a fresh anvil, fatal on a real chain.
-- **anvil only mines on transactions.** An idle chain stops advancing Ponder's finalized head and
-  stalls the daemon's finality check. `cast rpc anvil_mine 20`, or `anvil --block-time 1`.
+- **anvil only mines on transactions, and 20 blocks is not enough.** An idle chain stops advancing
+  Ponder's finalized head, and Ponder does not serve unfinalized blocks. It moves that head only
+  when `latest >= finalized + 2 * N`, then sets finalized to `latest - N`; chain 31337 is not in
+  its table so `N` falls through to the default **30**. The moment the demo stops, the last ~60
+  blocks — the attestations, the checkpoint and the root among them — sit one block short of
+  visible, and the indexer looks perfectly healthy while the page stays empty. `task demo` now ends
+  with `demo:settle`, which mines 64. By hand: `cast rpc anvil_mine 0x40`. Better: run the chain as
+  `anvil --block-time 1` and it never arises.
 - **Restarting anvil silently breaks the indexer.** Ponder caches RPC data by chain id, and a fresh
   anvil is the same chain id with different contents, so it replays the old chain and indexes zero
   events while looking healthy (`cache_rate=100%`, `event_count=0`). `DROP SCHEMA ponder_sync

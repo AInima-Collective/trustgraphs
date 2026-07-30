@@ -189,9 +189,11 @@ resolver and attest against it: the attestation reverts `ForeignSchema` and the 
   DROP SCHEMA ponder_sync CASCADE;
   ```
   Use a fresh `--schema` name too; Ponder refuses to reuse one after any indexing-code edit.
-- **anvil only mines on transactions.** If the chain goes idle, Ponder's finalized head stops
-  advancing and a just-created network can sit unindexed. `cast rpc anvil_mine 20`, or run
-  `anvil --block-time 1`.
+- **anvil only mines on transactions, and 20 blocks is not enough.** If the chain goes idle,
+  Ponder's finalized head stops advancing and a just-created network sits unindexed — looking
+  healthy the whole time. Chain 31337 is not in Ponder's finality table so it takes the default
+  `finalityBlockCount = 30`, and the head only moves once `latest >= finalized + 2 * 30`. Mine
+  **64**: `cast rpc anvil_mine 0x40`, or `task demo:settle`. Durable fix: `anvil --block-time 1`.
 - **Deploy artifacts are not chain-scoped.** `.docker/*.json` and `config/networks.development.json`
   have fixed filenames, so deploying to a second chain overwrites the first's. It fails
   *confidently*: the same deployer and nonce sequence produces the same addresses on both chains, so

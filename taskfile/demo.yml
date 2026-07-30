@@ -21,6 +21,10 @@ vars:
   # Pay for every root, at most $50 of it.
   MAX_PER_ROOT_USD: '{{.MAX_PER_ROOT_USD | default "5000000000"}}'
   TICKS: '{{.TICKS | default "6"}}'
+  # 2 x Ponder's finality default for an unrecognised chain id (30), plus margin. See `settle`.
+  SETTLE_BLOCKS: '{{.SETTLE_BLOCKS | default "64"}}'
+  # Where the indexer serves, so `report` can say whether the app will actually see any of this.
+  PONDER: '{{.PONDER | default "http://127.0.0.1:65421"}}'
   IPFS_API: '{{.IPFS_API | default "http://127.0.0.1:5001"}}'
   # The reader's view, and the exact string the indexer uses (indexer/.env IPFS_GATEWAY). Keep the
   # trailing `/ipfs/`: both sides build the URL by plain concatenation.
@@ -46,6 +50,7 @@ tasks:
       # nothing is worse than one that fails.
       - defer: { task: report }
       - task: prove
+      - task: settle
 
   preflight:
     desc: 'Refuse to start rather than fail halfway'
@@ -360,6 +365,25 @@ tasks:
           exit 1
         fi
 
+  settle:
+    desc: 'Mine past Ponder''s finality window so the indexer will actually serve what just happened'
+    cmds:
+      - |
+        # anvil mines only on transactions, so the chain stops dead the moment the demo does — and
+        # Ponder does not serve unfinalized blocks. It advances its finalized head only when
+        # `latest >= finalized + 2 * finalityBlockCount`, then sets finalized to `latest - N`
+        # (ponder/src/sync-realtime/index.ts). For chain 31337 there is no entry in Ponder's table,
+        # so it falls through to the default N = 30 (`src/utils/finality.ts`).
+        #
+        # The consequence: the last ~60 blocks — the attestations, the checkpoint and the root
+        # among them — sit forever one block short of visible. The indexer looks healthy, the API
+        # 404s, and the page is empty. Mining 2N+ past the end is the whole fix.
+        #
+        # `anvil --block-time 1` avoids this permanently and is the better way to run a demo box.
+        BEFORE=$(cast block-number --rpc-url {{.RPC}})
+        cast rpc anvil_mine {{.SETTLE_BLOCKS}} --rpc-url {{.RPC}} >/dev/null
+        echo "  ✓ mined to block $(cast block-number --rpc-url {{.RPC}}) (from $BEFORE) so Ponder can finalize"
+
   resolver:
     desc: 'The instance''s EASIndexerResolver (its accumulator), from the registry'
     cmds:
@@ -408,6 +432,22 @@ tasks:
             echo "                will stall on this event and every network page renders empty."
             echo "                the add and this read are hitting different nodes: compare"
             echo "                {{.IPFS_API}}/api/v0/id with whatever serves {{.IPFS_GATEWAY}}"
+          fi
+        fi
+
+        # And the only question a demo viewer actually asks: does the app show anything? This is
+        # the exact endpoint the network page reads its roster and attestation feed from, so a 404
+        # here IS the empty page — no need to open a browser to find out. Skipped, not failed, when
+        # no indexer is running: `task demo` does not require one.
+        if curl -s -o /dev/null -m 5 "{{.PONDER}}/" 2>/dev/null; then
+          CODE=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "{{.PONDER}}/network/$SNAP" || echo 000)
+          if [ "$CODE" = "200" ]; then
+            echo "  indexer       serving {{.PONDER}}/network/$SNAP"
+          else
+            echo "  indexer       ✗ HTTP $CODE at {{.PONDER}}/network/$SNAP — the app will be empty"
+            echo "                if the scores line above is fine, the indexer is either behind"
+            echo "                (mine more: task demo:settle) or replaying a previous anvil"
+            echo "                (DROP SCHEMA ponder_sync CASCADE, then restart with a new --schema)"
           fi
         fi
         echo
