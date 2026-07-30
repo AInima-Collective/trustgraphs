@@ -34,7 +34,10 @@ export function ThemeToggle({ className }: { className?: string }) {
       }
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
       className={cn(
-        'inline-flex h-9 w-9 shrink-0 items-center justify-center border border-border',
+        // 44px, not 36px: this is a touch target on every phone that loads the
+        // app, and it sits in a nav row where every other control now clears
+        // the same floor.
+        'inline-flex h-11 w-11 shrink-0 items-center justify-center border border-border',
         'text-text-muted transition-colors hover:border-hairline-strong hover:text-text',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         className

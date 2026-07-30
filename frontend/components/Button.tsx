@@ -17,9 +17,15 @@ import { cn } from '@/lib/utils'
  * `brand` is kept as an alias of `default` rather than deleted, because the
  * blue it used to paint no longer exists and ~a dozen call-sites still ask for
  * it. Both now render ink.
+ *
+ * FOCUS IS AN OUTLINE, NOT A RING. The old `ring-1 ring-ring` resolved to
+ * --accent, which is also what `default`, `brand` and `destructive` fill with:
+ * the indicator was painted in the button's own colour at 1.00:1, so focusing a
+ * primary CTA looked like it had grown a pixel. An outline with an offset sits
+ * on the page behind the control, where ink clears 15:1 in both themes.
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap border text-xs uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap border text-xs uppercase tracking-wider transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0',
   {
     variants: {
       variant: {

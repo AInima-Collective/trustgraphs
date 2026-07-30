@@ -81,21 +81,33 @@ export const WalletConnectionButton = ({
               variant={open ? 'outline' : 'default'}
               onClick={onClick}
               size="default"
+              // 44px rather than the default 36px. On a phone this collapses to
+              // an icon-only control, which is exactly the case where an
+              // undersized target is hardest to hit.
+              className="h-11"
+              // ...and the same collapse takes the accessible name with it: the
+              // label span is `hidden sm:block`, so below `sm` the only child is
+              // an unlabelled lucide icon and the button announces as nothing.
+              aria-label={isConnected ? 'Account menu' : 'Connect account'}
             >
               {isConnecting ? (
                 <LoaderCircle
                   size={20}
+                  aria-hidden="true"
                   className="sm:hidden animate-spin text-inherit"
                 />
               ) : (
-                <Wallet className="sm:hidden w-5 h-5 text-inherit" />
+                <Wallet
+                  aria-hidden="true"
+                  className="sm:hidden w-5 h-5 text-inherit"
+                />
               )}
               <span className="hidden sm:block">
                 {isConnected && address
                   ? formatAddress(address)
                   : isConnecting
-                    ? 'Connecting...'
-                    : 'Connect Account'}
+                    ? 'Connecting…'
+                    : 'Connect account'}
               </span>
             </Button>
           ),
