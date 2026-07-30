@@ -27,7 +27,7 @@ import ForceAtlas2LayoutWorker from 'graphology-layout-forceatlas2/worker'
 import { CircleDashed, LoaderCircle, Waypoints } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EdgeArrowProgram } from 'sigma/rendering'
 import { NodeDisplayData } from 'sigma/types'
 import { animateNodes } from 'sigma/utils'
@@ -87,6 +87,28 @@ export function NetworkGraph({
   // Sigma paints via WebGL and cannot read CSS variables, so the palette is
   // resolved off <html> and the graph is rebuilt when the theme changes.
   const { resolvedTheme } = useTheme()
+  const graphTokens = useMemo(() => readGraphTokens(), [resolvedTheme])
+
+  // React Sigma otherwise falls back to its light-only defaults (#ccc edges,
+  // black labels). Keep every canvas/WebGL colour on the same token snapshot
+  // used to build the graph, so a theme change updates the whole renderer.
+  const sigmaSettings = useMemo(
+    () => ({
+      renderLabels: true,
+      allowInvalidContainer: true,
+      defaultNodeColor: graphTokens.nodeMid,
+      defaultEdgeColor: graphTokens.edge,
+      defaultEdgeType: 'straight' as const,
+      labelColor: { color: graphTokens.label },
+      edgeLabelColor: { color: graphTokens.label },
+      enableEdgeEvents: true,
+      edgeProgramClasses: {
+        straight: EdgeArrowProgram,
+        curved: EdgeCurvedArrowProgram,
+      },
+    }),
+    [graphTokens]
+  )
 
   // Load ENS data
   const { data: ensData } = useBatchEnsQuery(
@@ -109,8 +131,6 @@ export function NetworkGraph({
     }
 
     setIsLoadingGraph(true)
-
-    const tokens = readGraphTokens()
 
     // Create the graph
     const graph = new MultiDirectedGraph<NetworkGraphNode, NetworkGraphEdge>()
@@ -162,6 +182,7 @@ export function NetworkGraph({
         maxValue === minValue
           ? 50 // Default to middle if all values are the same
           : ((Number(value) - minValue) / (maxValue - minValue)) * 100
+      const normalizedRatio = normalizedValue / 100
 
       const ensName = ensData?.[account]?.name
       const href = `/account/${ensName || account}`
@@ -178,13 +199,10 @@ export function NetworkGraph({
         sent,
         received,
         // Set size to relative value, scaled to a range
-        size:
-          minNodeSize +
-          ((Number(value) - minValue) / (maxValue - minValue)) *
-            (maxNodeSize - minNodeSize),
+        size: minNodeSize + normalizedRatio * (maxNodeSize - minNodeSize),
         // Fill grades by PageRank mass alone: heaviest node is the one with
         // the most contrast against the canvas, in either theme.
-        color: nodeColorForValue(normalizedValue, tokens),
+        color: nodeColorForValue(normalizedValue, graphTokens),
       })
     }
 
@@ -277,7 +295,7 @@ export function NetworkGraph({
 
       resolve()
     })
-  }, [accountData, attestationsData, isTrustedSeed, ensData, resolvedTheme])
+  }, [accountData, attestationsData, isTrustedSeed, ensData, graphTokens])
 
   return (
     <div
@@ -326,16 +344,7 @@ export function NetworkGraph({
               'border border-border',
               showCursor && 'cursor-pointer'
             )}
-            settings={{
-              renderLabels: true,
-              allowInvalidContainer: true,
-              defaultEdgeType: 'straight',
-              enableEdgeEvents: true,
-              edgeProgramClasses: {
-                straight: EdgeArrowProgram,
-                curved: EdgeCurvedArrowProgram,
-              },
-            }}
+            settings={sigmaSettings}
             graph={MultiDirectedGraph}
           >
             <SigmaControls

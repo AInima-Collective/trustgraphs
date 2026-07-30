@@ -26,7 +26,12 @@ const schemaUidsForSnapshot = async (
   const configured = NETWORKS.find((network) =>
     isHexEqual(network.contracts.merkleSnapshot, merkleSnapshotContract)
   )
-  if (configured) {
+  // `demo:govern` adds presentation/governance data for the factory-created
+  // demo to the static catalog before it knows the instance schema. An empty
+  // `schemas` array is therefore not an authoritative "no schemas" result:
+  // fall through to the on-chain factory catalog, or every indexed vouch is
+  // excluded by the empty `inArray` below and the graph appears blank.
+  if (configured && configured.schemas.length > 0) {
     return configured.schemas.map((schema) => schema.uid as Hex)
   }
 

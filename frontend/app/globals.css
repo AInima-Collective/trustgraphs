@@ -404,11 +404,26 @@ pre {
 /* Sigma paints its own canvas; the container just has to not fight the theme.
  * The old rule forced a light gradient onto <html> with !important, which is
  * why the graph could never go dark. */
+/* @react-sigma's component-level stylesheet is loaded after this file and its
+ * more-specific `div.react-sigma` rule paints `--sigma-background-color`.
+ * Override the variables on the graph itself: then either rule resolves to
+ * the active TrustGraph theme, independent of CSS chunk order. */
 .react-sigma {
+  --sigma-background-color: var(--graph-canvas);
+  --sigma-controls-background-color: var(--surface);
+  --sigma-controls-background-color-hover: var(--surface-2);
+  --sigma-controls-border-color: var(--border);
+  --sigma-controls-color: var(--text-muted);
   background: var(--graph-canvas);
 }
 
-.react-sigma-control > button {
+div.react-sigma .react-sigma-controls {
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+div.react-sigma .react-sigma-control > button {
   display: flex !important;
   justify-content: center;
   align-items: center;
@@ -419,7 +434,7 @@ pre {
   box-shadow: none;
 }
 
-.react-sigma-control > button:hover {
+div.react-sigma .react-sigma-control > button:hover {
   background: var(--surface-2);
   color: var(--text);
 }

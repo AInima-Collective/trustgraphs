@@ -81,6 +81,9 @@ export const CreateAttestationModal = ({
   // Outside a network page the picker lists the RUNTIME catalog, so a network created through the
   // factory can be vouched in without a rebuild.
   const networks = useNetworks()
+  const attestableNetworks = networks.filter(
+    (network) => network.schemas.length > 0
+  )
 
   const [internalIsOpen, setInternalIsOpen] = useState(false)
   const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen
@@ -93,12 +96,12 @@ export const CreateAttestationModal = ({
   }
 
   const defaultSchemaUid =
-    networkContext?.network.schemas[0].uid ||
-    networks[0]?.schemas[0]?.uid ||
+    networkContext?.network.schemas[0]?.uid ||
+    attestableNetworks[0]?.schemas[0]?.uid ||
     zeroAddress
   const form = useForm<AttestationFormData>({
     defaultValues: {
-      networkId: networkContext?.network.id || networks[0]?.id || '',
+      networkId: networkContext?.network.id || attestableNetworks[0]?.id || '',
       schema: defaultSchemaUid,
       recipient: defaultRecipient,
       data: {},
@@ -263,11 +266,17 @@ export const CreateAttestationModal = ({
   const defaultTrigger = (
     <Tooltip
       asChild
-      title={!isConnected ? 'Connect your wallet to make attestations' : ''}
+      title={
+        !isConnected
+          ? 'Connect your wallet to make attestations'
+          : !currentNetwork?.schemas.length
+            ? 'This network schema is not available yet'
+            : ''
+      }
     >
       <Button
         onClick={() => setIsOpen(true)}
-        disabled={!isConnected}
+        disabled={!isConnected || !currentNetwork?.schemas.length}
         variant={variant}
         className={className}
       >
@@ -375,7 +384,7 @@ export const CreateAttestationModal = ({
                           const network = networks.find(
                             (network) => network.id === value
                           )
-                          if (network) {
+                          if (network?.schemas[0]) {
                             form.setValue('schema', network.schemas[0].uid)
                           }
                         }}
@@ -387,7 +396,7 @@ export const CreateAttestationModal = ({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {networks.map((network) => (
+                          {attestableNetworks.map((network) => (
                             <SelectItem
                               key={network.id as string}
                               value={network.id as string}
