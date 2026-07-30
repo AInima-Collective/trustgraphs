@@ -40,9 +40,12 @@ already has.
 
 **Why don’t bot armies work?**
 Score comes from trust flowing out of the starting accounts. A thousand bots vouching for
-each other form an island with lots of arrows and nothing flowing in, so not one of those
-vouches moves any score. Reserve the whole head start for your starting accounts when you
-create a network, or accounts that nobody vouched for still hold a share of the scoreboard.
+each other form an island with lots of arrows and nothing flowing in, so none of those
+vouches earns any trust. They do still land on the scoreboard. Every account a round has
+seen gets an equal slice of whatever head start you did not reserve for your starting
+accounts, and the create form reserves 15% by default, so a big enough island can hold a
+real share. Set “Head start for your starting accounts” to 100% and an island nobody
+vouched for from outside holds nothing.
 
 **Is my data private?**
 No. Vouches, rules, code, and scores are all public. That is what makes the scoreboard
@@ -66,19 +69,20 @@ Anyone. It takes one transaction and nobody approves it. It appears in the app o
 indexer has caught up with the chain, which takes a minute or two.
 
 **What does it cost?**
-Proving costs real money, so each network funds a tank that pays whoever produces its
-scoreboard. Networks we curate will be proven at our expense. Pricing for everyone else is
-still being worked out.
+Proving costs real money, so each network has a tank to pay whoever produces its
+scoreboard, once someone sets its per-round limit. Networks we curate will be proven at our
+expense. Pricing for everyone else is still being worked out.
 
 **Do I have to run a server?**
-No. Proving is permissionless: a prover watches the chain, freezes each round on your
-network’s schedule, and lands the result, and your network's tank pays whoever does it. If
-every machine we run vanished, anyone could recompute the scores from public data and prove
-them.
+Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a
+round and land the result, and no operator can lock you out. Today that mostly means you or
+us: a tank cannot pay a bounty until someone sets its per-round limit with a direct
+contract call, and the networks we curate are proven at our expense. If every machine we
+run vanished, anyone could recompute the scores from public data and prove them.
 
 **Can I use the scores somewhere else?**
-Yes. The published scoreboard downloads as CSV or JSON, and any contract can read the
-on-chain scoreboard directly.
+Yes. The scoreboard downloads as CSV or JSON, and any contract can check one account’s
+score against the on-chain root, given the score and its proof.
 
 ---
 

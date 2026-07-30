@@ -34,7 +34,7 @@ export const Nav = () => {
     >
       <Link
         href="/"
-        className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-70"
+        className="flex h-11 shrink-0 items-center gap-2.5 transition-opacity hover:opacity-70"
         aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />

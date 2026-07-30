@@ -20,6 +20,23 @@ export interface WalletConnectionButtonProps {
   className?: string
 }
 
+/**
+ * wagmi connector ids that are not the name of anything a person owns.
+ *
+ * `injected` is the big one: it is wagmi's word for "whatever extension put an
+ * `ethereum` object on the page", and it shipped into the picker as the literal
+ * string "Injected". It is one click from the nav on every public page, and a
+ * normal reader has no way to know what it means. See LANDING_PAGE_COPY.md,
+ * "Site chrome".
+ */
+const CONNECTOR_LABELS: Record<string, string> = {
+  injected: 'Browser wallet',
+  safe: 'Safe',
+}
+
+const connectorLabel = (id: string, name: string) =>
+  CONNECTOR_LABELS[id] ?? name
+
 export const WalletConnectionButton = ({
   className,
 }: WalletConnectionButtonProps) => {
@@ -210,21 +227,22 @@ export const WalletConnectionButton = ({
                     disabled={isConnecting}
                   >
                     {connector.icon ? (
-                      <img
-                        alt={connector.name}
-                        src={connector.icon}
-                        className="!w-5 !h-5"
-                      />
+                      // The name is already the button's own text, so the icon
+                      // is decoration and repeating it reads the wallet twice.
+                      <img alt="" src={connector.icon} className="!w-5 !h-5" />
                     ) : (
-                      <Wallet className="w-5 h-5" />
+                      <Wallet className="w-5 h-5" aria-hidden="true" />
                     )}
-                    <p>{connector.name}</p>
+                    <p>{connectorLabel(connector.id, connector.name)}</p>
                   </Button>
                 ))}
               </div>
             ) : (
+              // The condition is `connectors.length === 0`, which is a
+              // configuration state rather than a detection result: nothing has
+              // been looked for. Say what the reader can do about it.
               <div className="text-muted-foreground text-sm">
-                No wallets detected.
+                No wallets available in this browser.
               </div>
             )}
           </div>

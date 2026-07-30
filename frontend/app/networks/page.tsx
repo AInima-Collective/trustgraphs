@@ -35,7 +35,11 @@ import { DirectorySearch } from './DirectorySearch'
 // stops appearing here.
 export const revalidate = 10
 
-const STANDFIRST = 'Every network on this chain, and what each one counts.'
+// "Every" was three things this page is not. The vouching section reads one page of the registry,
+// capped at 200 by the indexer with the returned total discarded. The funding-round and repo
+// sections are filtered slices of the shipped config file rather than a chain read, so a stranger's
+// instance in either program appears only once someone edits that JSON. Issue filed for the cap.
+const STANDFIRST = 'The networks on this chain, and what each one counts.'
 
 /**
  * Was "Every number in a row is read off the same scoreboard as its date", which is not true of
@@ -57,6 +61,13 @@ export const metadata: Metadata = {
     title: 'Networks | Trustgraphs',
     description: STANDFIRST,
     url: '/networks',
+  },
+  // Overridden alongside `openGraph`, never left to inherit: the root layout
+  // sets both, and overriding one gave this URL a Slack unfurl and an X card
+  // carrying two different sentences.
+  twitter: {
+    title: 'Networks | Trustgraphs',
+    description: STANDFIRST,
   },
   alternates: { canonical: '/networks' },
 }
@@ -163,7 +174,7 @@ const toView = (section: DirectorySection): DirectorySectionView => {
 
 /** Where a directory of other people's networks sends someone who wants their own. */
 const CreateCta = () => (
-  <section className="space-y-5 border-t border-border pt-8">
+  <section className="space-y-5 pt-8">
     <h2>Bring your own community.</h2>
     <ButtonLink href="/create" size="lg">
       Create a network
@@ -198,7 +209,9 @@ export default async function NetworksPage() {
     <div className="space-y-10 sm:space-y-12">
       <header className="space-y-2">
         <PageTitle>Networks</PageTitle>
-        <p className="max-w-prose text-text-muted">{STANDFIRST}</p>
+        <p className="max-w-prose text-lg text-balance text-text-muted">
+          {STANDFIRST}
+        </p>
         {!isEmpty && (
           <p className="max-w-prose text-sm text-text-subtle">{COLUMN_NOTE}</p>
         )}
@@ -215,7 +228,7 @@ export default async function NetworksPage() {
           {directory.total >= SEARCH_THRESHOLD ? (
             <DirectorySearch sections={sections} />
           ) : (
-            <div className="space-y-8 sm:space-y-10">
+            <div className="space-y-16 sm:space-y-20">
               {sections.map((section) => (
                 <DirectorySectionBlock key={section.key} section={section} />
               ))}

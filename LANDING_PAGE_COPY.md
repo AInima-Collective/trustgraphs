@@ -36,12 +36,24 @@ it back whenever you want.
 
 **2. Score**
 Trust starts at a handful of accounts your community picked and flows outward along the
-vouches. A vouch from a trusted account carries weight. A bot island nobody real vouches
-for gains nothing from vouching for itself.
+vouches. A vouch from a trusted account carries weight. A bot island has no trust flowing
+into it, so vouching for itself earns it nothing. Whether it keeps a share anyway is a dial
+you set when you create the network.
+
+`[the last sentence is not decoration. The node set is built from the edges
+(pagerank-core/src/reconcile.rs), so vouching for each other is exactly how an island
+becomes a set of scored accounts, and calculate_generic still credits every one of them
+their slice of the head start you did not reserve. The wizard reserves 15% by default.
+Saying "a bot island gains nothing" without this is backwards, not merely incomplete.]`
 
 **3. Use**
-When a round is proven, its scoreboard is committed on-chain. Any contract can read it:
-voting weight, funding splits, access, whatever you need a real member count for.
+When a round is proven, its scoreboard is committed on-chain. Any contract can check a
+score against it: voting weight, funding splits, access, whatever you need a real member
+count for.
+
+`[a contract checks, it does not read. MerkleSnapshot stores a root, not scores
+(MerkleState in src/contracts/merkle/MerkleSnapshot.sol), and the only entry point is
+verifyProof(account, value, proof) — the caller has to already hold both.]`
 
 `[three panels, each with its own ink figure pinned to the bottom so all three
 sit on one baseline. 1: one account pointing at another, a weight on the edge,
@@ -123,7 +135,12 @@ deployment today.
 Say what a vouch means in your network, and where newcomers apply.
 
 **Exportable scoreboards**
-The published scoreboard downloads as CSV or JSON, so you can use the scores off-chain too.
+A network’s scoreboard downloads as CSV or JSON, so you can use the scores off-chain. The
+file carries the scores, not the proofs.
+
+`["the published scoreboard" was doing work the export does not: the button writes whatever
+the page is currently showing, which the simulation toggle beside it can change. Issue
+filed. The claim here is only about the file's contents, which is true either way.]`
 
 **Mixed sources**
 Vouches on Ethereum today. Reputation over AT-Protocol accounts is a second program, proven
@@ -138,12 +155,19 @@ the same way, and not self-serve yet.
 **Section heading:** Bring your own community.
 
 Create a network in one transaction. Nobody approves it, and it shows up in the app once
-the indexer catches up. Proving is permissionless, so there is no operator to hire and no
-server for you to run.
+the indexer catches up. Proving is permissionless, so anyone can produce your scoreboard
+and no operator can lock you out.
 
-Proving costs real money. Fund your network’s tank and whoever produces your scoreboard
-gets paid out of it. You can also prove it yourself: the prover is open source, and running
-it is free forever.
+Proving costs real money. Your network has a tank to pay whoever produces its scoreboard,
+though switching that on still takes a direct contract call. You can also prove it
+yourself: the prover is open source, and the only bill is your own machine and gas.
+
+`[both sentences were stronger than the code. "No server for you to run" implies somebody
+else runs one; permissionless only means nobody can stop you. And the tank cannot pay
+anything until maxPerRootUsd is set: TrustGraphFactory forwards the deposit and never calls
+ProvingVault.setPolicy, so _settle short-circuits to PolicyDisabled and the operator holds
+Unfunded. "Free forever" also skipped the 16-32 GiB and the gas. Issue filed for the
+policy gap.]`
 
 **Button:** Create a network
 
@@ -207,6 +231,37 @@ and meant nothing.]`
 
 **Nav, theme toggle (assistive):** Switch to light theme / Switch to dark theme
 
+**Nav, theme toggle before the page hydrates (assistive):** Switch theme
+
+`[the toggle cannot know which theme it is switching to until next-themes has
+resolved, and guessing then correcting shifts the nav. "Switch theme" is what a
+reader with no JavaScript gets, and it is true in both directions.]`
+
+**Nav, main landmark (assistive):** Main
+
+**Nav, wordmark below 410px:** hidden, the mark carries the link on its own.
+
+**Wallet picker, one row per wallet:** Browser wallet · MetaMask · Coinbase Wallet · WalletConnect
+
+`["Browser wallet" replaces wagmi's connector id, which shipped as the literal
+string "Injected". It is one click from the nav on all three pages and a normal
+reader has no way to know what it means.]`
+
+**Wallet picker, no wallets:** No wallets available in this browser.
+
+**Wallet menu, sign out:** Disconnect
+
+**Page titles**, from a template: Networks | Trustgraphs · Questions | Trustgraphs.
+The landing page is Trustgraphs alone, not Trustgraphs | Trustgraphs.
+
+**Per-page share cards.** Each route sets its own description for search results,
+Open Graph and X together. `/` uses the site description below, `/networks` uses
+its standfirst, `/faq` uses "What people ask before they trust a scoreboard."
+
+`[all three have to move together. The root layout sets an openGraph block AND a
+twitter block, so overriding only one gave a page whose Slack unfurl and whose X
+card carried two different sentences for the same URL.]`
+
 **Site description**, used for search results and share cards on every page:
 Reputation you can’t buy. A trustgraph turns the vouches your community already makes into
 a score anyone can verify, published on-chain each round.
@@ -221,7 +276,12 @@ with nothing in it is left out rather than shown empty.
 
 **Page title:** Networks
 
-**Standfirst:** Every network on this chain, and what each one counts.
+**Standfirst:** The networks on this chain, and what each one counts.
+
+`["Every" was three things it is not. The vouching section reads one page of the registry,
+capped at 200. The funding-round and repo sections are filtered slices of the shipped
+config file, not a chain read, so a stranger's instance in either program appears only when
+someone edits that JSON. Issue filed for the cap.]`
 
 **Section: Vouching networks**
 Members vouch for each other, and the vouches become a score.

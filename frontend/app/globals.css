@@ -370,19 +370,19 @@ html {
   background: var(--text-subtle);
 }
 
-/* Mobile-specific styles */
-@media (max-width: 640px) {
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  /* Prevent zoom on input focus on iOS.
-   *
-   * This rule is load-bearing: it is the reason the viewport export can leave
-   * pinch-zoom unlocked (see app/layout.tsx). iOS zooms the page when a focused
-   * field is under 16px, and this system's --text-base is 14px, so EVERY text
-   * field needs to be listed here. `search` was missing, which is the type the
-   * directory filter uses. */
+/* Prevent zoom on input focus on iOS.
+ *
+ * This rule is load-bearing: it is the reason the viewport export can leave
+ * pinch-zoom unlocked (see app/layout.tsx). iOS zooms the page when a focused
+ * field is under 16px, and this system's --text-base is 14px, so EVERY text
+ * field has to be listed here.
+ *
+ * KEYED ON THE POINTER, NOT THE WIDTH. It used to live inside the 640px mobile
+ * block, which meant it stopped applying at exactly the widths iPhones report
+ * in landscape: 667, 736, 844, 932. Turning a phone sideways got the 14px field
+ * and the zoom back, on the one input on the public surface. A phone is a phone
+ * in both orientations. */
+@media (pointer: coarse) {
   input[type='text'],
   input[type='email'],
   input[type='number'],
@@ -392,6 +392,13 @@ html {
   input[type='password'],
   textarea {
     font-size: 16px;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 6px;
   }
 
   .break-words {

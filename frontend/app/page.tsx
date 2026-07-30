@@ -67,6 +67,13 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     url: '/',
   },
+  // `twitter` is set here too, not left to inherit. The root layout sets both
+  // blocks, so overriding only `openGraph` gave this URL a Slack unfurl reading
+  // one sentence and an X card reading a different one.
+  twitter: {
+    title: 'Trustgraphs',
+    description: DESCRIPTION,
+  },
   alternates: { canonical: '/' },
 }
 
@@ -144,17 +151,27 @@ export default async function LandingPage() {
             it. Change it or take it back whenever you want.
           </Move>
 
+          {/* The last sentence is not a hedge. `reconcile.rs` builds the node
+           * set from the EDGES, so a clique vouching for each other is exactly
+           * how it becomes a set of scored accounts, and `calculate_generic`
+           * still credits every one of them their slice of the head start you
+           * did not reserve. The wizard reserves 15% by default. "A bot island
+           * gains nothing" is backwards, not merely incomplete. See issue #18. */}
           <Move n="2" title="Score" figure={<ScoreFigure />}>
             Trust starts at a handful of accounts your community picked and
             flows outward along the vouches. A vouch from a trusted account
-            carries weight. A bot island nobody real vouches for gains nothing
-            from vouching for itself.
+            carries weight. A bot island has no trust flowing into it, so
+            vouching for itself earns it nothing. Whether it keeps a share
+            anyway is a dial you set when you create the network.
           </Move>
 
+          {/* "Check", not "read". `MerkleSnapshot` stores a root, not scores,
+           * and `verifyProof(account, value, proof)` needs the caller to hold
+           * both already. There is no enumeration on chain. */}
           <Move n="3" title="Use" figure={<UseFigure />}>
             When a round is proven, its scoreboard is committed on-chain. Any
-            contract can read it: voting weight, funding splits, access,
-            whatever you need a real member count for.
+            contract can check a score against it: voting weight, funding
+            splits, access, whatever you need a real member count for.
           </Move>
         </div>
       </Section>
@@ -242,13 +259,14 @@ export default async function LandingPage() {
           <Feature title="Published criteria">
             Say what a vouch means in your network, and where newcomers apply.
           </Feature>
-          {/* Was "Every round downloads as CSV or JSON, proofs included", which
-           * the export button does not do: it writes rank, account, sent,
-           * received and score for the CURRENT scoreboard, and carries no
-           * proofs. See the claim-audit note in GOAL.md's bug capture. */}
+          {/* Twice corrected. It never carried proofs (issue #17), and it is
+           * not necessarily "the published scoreboard" either: the button
+           * writes whatever the page is currently showing, and the simulation
+           * toggle beside it can change that. The claim here is only about what
+           * lands in the file, which is true either way. */}
           <Feature title="Exportable scoreboards">
-            The published scoreboard downloads as CSV or JSON, so you can use
-            the scores off-chain too.
+            A network’s scoreboard downloads as CSV or JSON, so you can use the
+            scores off-chain. The file carries the scores, not the proofs.
           </Feature>
           <Feature title="Mixed sources">
             Vouches on Ethereum today. Reputation over AT-Protocol accounts is a
@@ -264,21 +282,26 @@ export default async function LandingPage() {
            * full-width heading left two thirds of the section empty and made
            * the last thing before the call to action look like an afterthought. */}
           <div className="grid gap-4 text-text-muted lg:grid-cols-2 lg:gap-12">
-            {/* Was "A prover picks it up on its own schedule", which promises
-             * something docs/OPERATOR.md explicitly does not: there are three
-             * tiers (self-prove, curated, funded) and no fourth where every
-             * network is proven for free. Permissionless is the true claim. */}
+            {/* Both sentences were stronger than the code, twice over. "No
+             * server for you to run" implies somebody else runs one, and
+             * permissionless only means nobody can stop you: for a network made
+             * through the app, the only working tier is self-prove. And the
+             * tank cannot pay anything until `maxPerRootUsd` is set, which
+             * `TrustGraphFactory` never does and this app has no screen for, so
+             * `_settle` short-circuits to `PolicyDisabled` and the operator
+             * holds `Unfunded`. "Free forever" also skipped the 16-32 GiB and
+             * the gas. */}
             <p className="max-w-prose">
               Create a network in one transaction. Nobody approves it, and it
               shows up in the app once the indexer catches up. Proving is
-              permissionless, so there is no operator to hire and no server for
-              you to run.
+              permissionless, so anyone can produce your scoreboard and no
+              operator can lock you out.
             </p>
             <p className="max-w-prose">
-              Proving costs real money. Fund your network’s tank and whoever
-              produces your scoreboard gets paid out of it. You can also prove
-              it yourself: the prover is open source, and running it is free
-              forever.
+              Proving costs real money. Your network has a tank to pay whoever
+              produces its scoreboard, though switching that on still takes a
+              direct contract call. You can also prove it yourself: the prover
+              is open source, and the only bill is your own machine and gas.
             </p>
           </div>
 
@@ -370,9 +393,9 @@ function Move({
       <span className="tg-marker">{n}</span>
       <h3 className="mt-2">{title}</h3>
 
-      <div className="mt-3 flex flex-1 flex-col gap-8 sm:flex-row sm:items-end sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
+      <div className="mt-3 flex flex-1 flex-col gap-8 sm:flex-row sm:items-start sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
         <p className="max-w-prose text-text-muted">{children}</p>
-        <div className="shrink-0 text-text lg:mt-auto lg:pt-8 [&>svg]:h-auto [&>svg]:w-60 [&>svg]:max-w-full">
+        <div className="shrink-0 text-text sm:self-end lg:mt-auto lg:self-auto lg:pt-8 [&>svg]:h-auto [&>svg]:w-60 [&>svg]:max-w-full">
           {figure}
         </div>
       </div>

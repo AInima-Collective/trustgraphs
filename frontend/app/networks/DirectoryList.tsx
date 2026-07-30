@@ -59,6 +59,18 @@ export type DirectorySectionView = {
 
 const FRESHNESS_HEADER = 'Scores proven'
 
+/**
+ * A right-aligned column label.
+ *
+ * `tg-label` tracks out 0.12em, and CSS appends that space AFTER the last glyph
+ * rather than distributing it between them, so a right-aligned label's box ends
+ * a fraction past its ink: measured two to three pixels short of the numbers
+ * underneath it. The left-aligned label in the same row lines up exactly, which
+ * is the tell. Tracking only breaks the edge you align to when that edge is the
+ * right one, so the trailing space is pulled back off.
+ */
+const LABEL_RIGHT = 'tg-label -mr-[0.12em] text-right'
+
 const NetworkRow = ({
   row,
   gridClass,
@@ -86,7 +98,7 @@ const NetworkRow = ({
       >
         {row.name}
       </Link>
-      <p className="line-clamp-2 text-sm text-text-muted lg:truncate">
+      <p className="line-clamp-2 max-w-prose text-sm text-text-muted lg:max-w-none lg:truncate">
         {row.blurb}
       </p>
     </div>
@@ -131,7 +143,9 @@ export const DirectorySectionBlock = ({
 }) => (
   <section className="space-y-3">
     <SectionHeading>{section.title}</SectionHeading>
-    <p className="max-w-prose text-sm text-text-muted">{section.standfirst}</p>
+    <p className="max-w-prose text-sm text-balance text-text-muted">
+      {section.standfirst}
+    </p>
 
     <div>
       {/* Column labels. Hidden below md, where the figures reflow into a sentence that carries its
@@ -145,11 +159,11 @@ export const DirectorySectionBlock = ({
       >
         <span className="tg-label">{section.nameLabel}</span>
         {section.columns.map((column) => (
-          <span key={column} className="tg-label text-right">
+          <span key={column} className={LABEL_RIGHT}>
             {column}
           </span>
         ))}
-        <span className="tg-label text-right">{FRESHNESS_HEADER}</span>
+        <span className={LABEL_RIGHT}>{FRESHNESS_HEADER}</span>
       </div>
 
       <ul className="list-none pl-0">

@@ -94,10 +94,27 @@ export const SECTION_META: Record<
   },
 }
 
-/** Trim a description to one line's worth without cutting a word in half. */
-export const oneLine = (text: string, max = 120): string => {
+/**
+ * The one line under a row's name: the first sentence of the network's own
+ * description.
+ *
+ * A SENTENCE, not a character count. Clamping at 120 characters ended rows on
+ * "Members…" and "respond…" — a subject with its verb amputated, which reads as
+ * a rendering bug rather than as a summary. The first sentence of a description
+ * is the sentence the author wrote to be read first.
+ *
+ * The character clamp survives as the fallback for a description whose first
+ * sentence is itself a paragraph, and for one with no sentence break at all.
+ */
+export const oneLine = (text: string, max = 160): string => {
   const flat = text.replace(/\s+/g, ' ').trim()
   if (flat.length <= max) return flat
+
+  // A full stop, question mark or exclamation followed by a space and a capital.
+  // Requiring the capital keeps "e.g." and "Co-op." from ending the sentence.
+  const boundary = flat.search(/[.!?]\s+[A-Z0-9“"']/)
+  if (boundary > 0 && boundary + 1 <= max) return flat.slice(0, boundary + 1)
+
   const cut = flat.slice(0, max)
   const lastSpace = cut.lastIndexOf(' ')
   return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:]$/, '')}…`

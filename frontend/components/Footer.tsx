@@ -28,12 +28,16 @@ export const Footer = () => {
     <footer className="mt-12 flex flex-col gap-1 border-t border-border py-2 text-xs text-text-subtle sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-h-11 items-center gap-2.5">
         <BrandMark size="xs" className="text-text-subtle" />
-        <span className="tracking-wider uppercase">trustgraphs</span>
+        {/* Tracked, not uppercased. The brand has exactly two cases:
+         * `trustgraphs` in copy and `Trustgraphs` in the wordmark and titles.
+         * `text-transform: uppercase` invented a third one, in the single place
+         * the brand appears as prose rather than as a wordmark. */}
+        <span className="tracking-wider">trustgraphs</span>
         <span aria-hidden="true">·</span>
         <span>Trust, made legible</span>
       </div>
 
-      <div className="-ml-3 flex flex-row items-center gap-1 sm:-mr-3.5 sm:ml-0">
+      <div className="-ml-2 flex flex-row items-center gap-1 sm:-mr-3.5 sm:ml-0">
         <Link href="/faq" className={`${LINK} px-3`}>
           FAQ
         </Link>

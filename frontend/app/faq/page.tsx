@@ -28,6 +28,10 @@ const DESCRIPTION = 'What people ask before they trust a scoreboard.'
 
 // Its own share card, for the same reason as /networks: inheriting the root
 // layout's openGraph block gives every route one card titled "Trustgraphs".
+//
+// `twitter` is overridden alongside `openGraph`, not left to inherit. The root
+// layout sets both, and overriding only one produced a page whose Slack unfurl
+// and whose X card carried two different sentences for the same URL.
 export const metadata: Metadata = {
   title: 'Questions',
   description: DESCRIPTION,
@@ -35,6 +39,10 @@ export const metadata: Metadata = {
     title: 'Questions | Trustgraphs',
     description: DESCRIPTION,
     url: '/faq',
+  },
+  twitter: {
+    title: 'Questions | Trustgraphs',
+    description: DESCRIPTION,
   },
   alternates: { canonical: '/faq' },
 }
@@ -97,9 +105,16 @@ const GROUPS: Group[] = [
       },
       {
         id: 'why-dont-bot-armies-work',
-        question: "Why don't bot armies work?",
+        question: 'Why don’t bot armies work?',
+        // Rewritten twice. "Not one of those vouches moves any score" was
+        // false: the node set is built from the edges, so vouching for each
+        // other is how the island gets scored at all. And "accounts that
+        // nobody vouched for" named the wrong set, since the bots are vouched
+        // for, by each other. What matters is being unreachable from the seeds.
+        // Measured at the wizard's own default: 8 bots take 27% of the board,
+        // 1000 take 53%. At 100% they take nothing. See issue #18.
         answer:
-          'Score comes from trust flowing out of the starting accounts. A thousand bots vouching for each other form an island with lots of arrows and nothing flowing in, so not one of those vouches moves any score. Reserve the whole head start for your starting accounts when you create a network, or accounts that nobody vouched for still hold a share of the scoreboard.',
+          'Score comes from trust flowing out of the starting accounts. A thousand bots vouching for each other form an island with lots of arrows and nothing flowing in, so none of those vouches earns any trust. They do still land on the scoreboard. Every account a round has seen gets an equal slice of whatever head start you did not reserve for your starting accounts, and the create form reserves 15% by default, so a big enough island can hold a real share. Set “Head start for your starting accounts” to 100% and an island nobody vouched for from outside holds nothing.',
       },
       {
         id: 'is-my-data-private',
@@ -111,13 +126,13 @@ const GROUPS: Group[] = [
         id: 'then-what-does-the-zero-knowledge-proof-hide',
         question: 'Then what does the zero-knowledge proof hide?',
         answer:
-          "Nothing. It isn't there for privacy. It's there so a whole scoreboard can be verified in one cheap on-chain check instead of everyone recomputing millions of scores.",
+          'Nothing. It isn’t there for privacy. It’s there so a whole scoreboard can be verified in one cheap on-chain check instead of everyone recomputing millions of scores.',
       },
       {
         id: 'how-do-you-know-a-prover-didnt-leave-someone-out',
-        question: "How do you know a prover didn't leave someone out?",
+        question: 'How do you know a prover didn’t leave someone out?',
         answer:
-          "The chain keeps a running commitment to every attestation as it lands. A proof only verifies if it consumed exactly that set, so a prover can't quietly drop the vouches they dislike or add ones that never happened.",
+          'The chain keeps a running commitment to every attestation as it lands. A proof only verifies if it consumed exactly that set, so a prover can’t quietly drop the vouches they dislike or add ones that never happened.',
       },
     ],
   },
@@ -134,20 +149,30 @@ const GROUPS: Group[] = [
       {
         id: 'what-does-it-cost',
         question: 'What does it cost?',
+        // Same correction as "Do I have to run a server?": a tank that has not
+        // had its per-round limit set cannot pay anyone, and nothing in this
+        // app sets it.
         answer:
-          'Proving costs real money, so each network funds a tank that pays whoever produces its scoreboard. Networks we curate will be proven at our expense. Pricing for everyone else is still being worked out.',
+          'Proving costs real money, so each network has a tank to pay whoever produces its scoreboard, once someone sets its per-round limit. Networks we curate will be proven at our expense. Pricing for everyone else is still being worked out.',
       },
       {
         id: 'do-i-have-to-run-a-server',
         question: 'Do I have to run a server?',
+        // "A prover watches the chain" described a daemon nobody is running for
+        // a stranger's network: the vault quotes every factory-made instance as
+        // ineligible, so the operator holds rather than proving, and the only
+        // other path is a hand-edited curated allowlist.
         answer:
-          "No. Proving is permissionless: a prover watches the chain, freezes each round on your network's schedule, and lands the result, and your network's tank pays whoever does it. If every machine we run vanished, anyone could recompute the scores from public data and prove them.",
+          'Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a round and land the result, and no operator can lock you out. Today that mostly means you or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct contract call, and the networks we curate are proven at our expense. If every machine we run vanished, anyone could recompute the scores from public data and prove them.',
       },
       {
         id: 'can-i-use-the-scores-somewhere-else',
         question: 'Can I use the scores somewhere else?',
+        // The two halves did not compose: the download carries neither root nor
+        // proof, and the chain holds a root rather than a board, so nothing can
+        // be "read directly". A contract checks one pair at a time.
         answer:
-          'Yes. The published scoreboard downloads as CSV or JSON, and any contract can read the on-chain scoreboard directly.',
+          'Yes. The scoreboard downloads as CSV or JSON, and any contract can check one account’s score against the on-chain root, given the score and its proof.',
       },
     ],
   },
@@ -279,7 +304,7 @@ export default function FaqPage() {
           key={group.id}
           id={group.id}
           aria-label={group.name}
-          className="mt-10 scroll-mt-6"
+          className="mt-20 scroll-mt-6"
         >
           <SectionHeading>{group.name}</SectionHeading>
           {group.questions.map((question) => (

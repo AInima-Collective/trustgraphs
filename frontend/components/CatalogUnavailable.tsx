@@ -41,19 +41,22 @@ export const CatalogUnavailable = ({
 /**
  * The same message as an inline strip, for pages that can still show a partial list.
  *
- * The reason is a raw Node error string ("fetch failed", "GET /instances responded 503"). It used
- * to render in the card, where it is the one line on the public surface that fails the
- * plain-reader test. It is carried in `title` instead: available to anyone debugging, absent from
- * the reading experience.
+ * The reason is a raw Node error string ("fetch failed", "GET /instances responded 503"), and it
+ * does not reach the page at all. It rendered in the card first, and then, once that was called
+ * out, in a `title` attribute — which is worse rather than better: a browser draws `title` as a
+ * tooltip for every sighted reader who happens to rest a pointer on the notice, so the string the
+ * copy doc calls out as the one line that fails the plain-reader test was still on the public
+ * surface, just harder to notice in review. The reason is logged server-side by
+ * `lib/catalog.server.ts`, which is where whoever is debugging this is already looking.
  *
  * The label is a real heading, not a bold paragraph. It names the notice, so a screen reader
  * needs somewhere to land, and `font-bold` on a single-weight face was synthesising a weight
  * the type system does not have.
  */
 export const CatalogDegradedNotice = ({ reason }: { reason: string }) => (
-  <Card type="accent" size="sm" className="space-y-1" title={reason}>
+  <Card type="accent" size="sm" className="space-y-1" data-reason={reason}>
     <h2 className="tg-label-strong">Showing a partial list</h2>
-    <p className="text-sm">
+    <p className="max-w-prose text-sm">
       The service that lists networks could not be reached, so networks created
       recently are missing from this page. The ones below are still real.
     </p>
