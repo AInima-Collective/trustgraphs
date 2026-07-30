@@ -1,42 +1,20 @@
 import type { MetadataRoute } from 'next'
 
-import { getCatalog } from '@/lib/catalog.server'
-import {
-  VISIBLE_CONTRIBUTIONS_NETWORKS,
-  VISIBLE_HYPERCERTS_NETWORKS,
-} from '@/lib/config'
-
 /**
- * The sitemap.
+ * The sitemap: the three public pages, and nothing else.
  *
- * The three public pages are the point of it, and they are listed as
- * constants: a crawler must be able to find `/`, `/networks` and `/faq`
- * whether or not anything else in this system is answering.
+ * The app routes are deliberately absent. `/create` is a wizard that wants a
+ * wallet, `/networks/[id]/*` are instrument screens whose numbers move every
+ * round, and `/account/[address]` is a page about one stranger. None of them is
+ * a thing a search result should land someone on, and a sitemap that listed
+ * them would be a sitemap that needs the indexer to build.
  *
- * Every network the catalog knows about is listed after them, because
- * `/networks` promises every network on this chain and a directory nobody can
- * crawl into is half a directory. `getCatalog` never throws — an unreachable
- * indexer degrades to the shipped seed — so the worst case here is a short
- * sitemap, never a failed one.
+ * Constants, not a read. A crawler has to be able to find `/`, `/networks` and
+ * `/faq` whether or not anything else in this system is answering.
  */
-
-// Same window as the pages'. See CATALOG_REVALIDATE_SECONDS in catalog.server.ts.
-export const revalidate = 10
-
 const SITE = 'https://trustgraph.network'
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const { networks } = await getCatalog()
-
-  // The same three sources `/networks` groups its sections from, so the sitemap
-  // and the directory list the same things. Funding rounds and repo-reputation
-  // instances are static config, not a catalog read.
-  const ids = [
-    ...networks.map((network) => network.id),
-    ...VISIBLE_CONTRIBUTIONS_NETWORKS.map((network) => network.id),
-    ...VISIBLE_HYPERCERTS_NETWORKS.map((network) => network.id),
-  ]
-
+export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
       url: SITE,
@@ -53,10 +31,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.6,
     },
-    ...ids.map((id) => ({
-      url: `${SITE}/networks/${id}`,
-      changeFrequency: 'hourly' as const,
-      priority: 0.5,
-    })),
   ]
 }
