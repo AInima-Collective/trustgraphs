@@ -22,10 +22,12 @@ const paperMono = localFont({
   display: 'swap',
 })
 
+// Roman only. The italic was loaded, preloaded and never painted: `.tg-serif-italic` has
+// no call sites and the app's `italic` classes are all on mono text. It was 27% of the
+// preloaded font bytes on every page.
 const instrument = Instrument_Serif({
   subsets: ['latin'],
   weight: '400',
-  style: ['normal', 'italic'],
   variable: '--font-instrument',
   display: 'swap',
 })
@@ -102,7 +104,11 @@ export default async function RootLayout({
             <div className="flex flex-col min-h-[calc(100vh-2rem)]">
               <Nav />
 
-              <main className="p-2 mt-4 sm:px-0 sm:py-4 sm:mt-6 flex-1 grow">
+              {/* Vertical padding only. `main` used to carry `p-2` below `sm`
+               * inside an already-padded frame, which inset every rule and word
+               * on the page 8px further than the nav rule above them and the
+               * footer rule below them. One gutter, owned by the frame. */}
+              <main className="py-2 mt-4 sm:py-4 sm:mt-6 flex-1 grow">
                 {children}
               </main>
             </div>

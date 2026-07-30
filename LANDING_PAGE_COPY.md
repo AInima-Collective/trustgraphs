@@ -9,14 +9,20 @@ Every claim below is something the code does today unless the line says otherwis
 
 **Eyebrow:** Vouch · Score · Prove · Use
 
-**Headline:** Reputation you can't buy.
+**Headline:** Reputation you can’t buy.
 
 **Subhead:** A trustgraph maps who vouches for whom. That map becomes a score any app or
 contract can read, so votes and money follow the people your community actually trusts.
 
 **Primary button:** Open the Demo Co-op
 
+**Secondary button:** How it works
+
 `[the live graph is the hero image. It should be moving before anyone scrolls.]`
+
+`[two buttons, because a stranger wants one of two things: to poke at a real
+network, or to be told what this is first. The second is an anchor to "Three
+moves.", not a route.]`
 
 ---
 
@@ -30,14 +36,18 @@ it back whenever you want.
 
 **2. Score**
 Trust starts at a handful of accounts your community picked and flows outward along the
-vouches. A vouch from a trusted account carries weight. A thousand bots vouching for each
-other carry none, because no trust ever reaches them.
+vouches. A vouch from a trusted account carries weight. A bot island nobody real vouches
+for gains nothing from vouching for itself.
 
 **3. Use**
-Each round, the scoreboard is published on-chain. Any contract can read it: voting weight,
-funding splits, access, whatever you need a real member count for.
+When a round is proven, its scoreboard is committed on-chain. Any contract can read it:
+voting weight, funding splits, access, whatever you need a real member count for.
 
-`[three panels. Panel 2 wants the bot island: a dense cluster sitting dark next to a lit graph.]`
+`[three panels, each with its own ink figure pinned to the bottom so all three
+sit on one baseline. 1: one account pointing at another, a weight on the edge,
+and a dashed return path for taking it back. 2: the bot island, a dense cluster
+sitting dark next to a lit graph. 3: a ranked scoreboard read by three
+contracts.]`
 
 ---
 
@@ -45,7 +55,7 @@ funding splits, access, whatever you need a real member count for.
 
 **Section heading:** Anyone can run the math.
 
-Most scoring systems ask you to trust whoever owns the server. This one doesn't have a
+Most scoring systems ask you to trust whoever owns the server. This one doesn’t have a
 server to trust. The rules are public and exact, so anyone can run them and get the same
 answer down to the last digit.
 
@@ -55,8 +65,23 @@ number your way, and no valid receipt exists.
 
 You never trust the person who did the math. You check the receipt.
 
+`[that last line is the sentence the section exists to earn, so it is set as a
+pull quote beside the argument rather than as its third paragraph.]`
+
 `[if one thing on this page gets a diagram, it's this. inputs → proof → chain, with the
 rejected path drawn.]`
+
+**Diagram, accepted path:** Every vouch in the round → One short proof → The chain checks
+the proof
+
+**Diagram, rejected path:** A vouch dropped, or one invented → No proof exists to check
+
+`[both rows sit on the same three columns so the second reads as the first with
+something changed. The rejected row gets a figure too: the same receipt, drawn
+as an empty dashed outline and struck through.]`
+
+**Diagram caption:** The vouches go in, one short proof comes out, and the chain checks the
+proof by itself. Change the vouches and there is no proof to check.
 
 ---
 
@@ -84,22 +109,25 @@ place can be read in another.
 **Section heading:** What you can turn on.
 
 **Trust-weighted voting**
-Votes weigh by score instead of tokens, through a module on your existing Safe.
+A Safe module weighs votes by score instead of tokens. Connecting it is a manual deployment
+today.
 
 **Score-weighted payouts**
-Split a pot by score, or run a round where peers rate the work and the split follows.
+Split a pot by score, and let anyone claim their share against the published scoreboard.
 
 **Self-updating multisig**
-The top accounts by score become your Safe owners, and the set keeps up with the graph.
+A module can rotate a Safe’s owners to the top accounts by score. Wiring it is a manual
+deployment today.
 
 **Published criteria**
 Say what a vouch means in your network, and where newcomers apply.
 
 **Exportable scoreboards**
-Every round downloads as CSV or JSON, proofs included. Use it off-chain too.
+The published scoreboard downloads as CSV or JSON, so you can use the scores off-chain too.
 
 **Mixed sources**
-Vouches on Ethereum today, plus reputation proven over AT-Protocol accounts.
+Vouches on Ethereum today. Reputation over AT-Protocol accounts is a second program, proven
+the same way, and not self-serve yet.
 
 `[six-up grid, two rows. no icons unless they can be ink-only.]`
 
@@ -109,12 +137,13 @@ Vouches on Ethereum today, plus reputation proven over AT-Protocol accounts.
 
 **Section heading:** Bring your own community.
 
-Create a network in one transaction. Nobody approves it, and it shows up in the app seconds
-later. A prover picks it up on its own schedule, so there is no operator to hire and no
+Create a network in one transaction. Nobody approves it, and it shows up in the app once
+the indexer catches up. Proving is permissionless, so there is no operator to hire and no
 server for you to run.
 
-Proving costs real money. Fund your network's tank and whoever produces your scoreboard
-gets paid out of it.
+Proving costs real money. Fund your network’s tank and whoever produces your scoreboard
+gets paid out of it. You can also prove it yourself: the prover is open source, and running
+it is free forever.
 
 **Button:** Create a network
 
@@ -142,9 +171,107 @@ gets paid out of it.
 
 **Graph caption:** Demo Co-op, live. Each line is a vouch. Size is score.
 
-**Network table:** Network · Members · Attestations
+**Graph caption, before the data arrives or when it does not:** Demo Co-op. Each line is a
+vouch. Size is score.
+
+`[the word "live" is a claim about data that has actually arrived. The caption drops it
+until the graph has something in it.]`
+
+**Graph unavailable:** The Demo Co-op is not reachable right now. Every network on the
+directory is still live on chain.
+
+**Graph, while it is loading:** Building graph
 
 **Empty state:** No networks yet. Create the first one.
+
+---
+
+## Site chrome
+
+Shared by all three pages, so it belongs here rather than on any one of them.
+
+**Nav, wordmark:** Trustgraphs
+
+**Nav, home link label (assistive):** Trustgraphs, home
+
+**Nav, links:** Networks · Create a network
+
+`[below sm the create link shortens to "Create": "NETWORK" on its own sat next to "NETWORKS"
+and meant nothing.]`
+
+**Nav, wallet button:** Connect account
+
+**Nav, wallet button while connecting:** Connecting…
+
+**Nav, wallet button once connected (assistive):** Account menu
+
+**Nav, theme toggle (assistive):** Switch to light theme / Switch to dark theme
+
+**Site description**, used for search results and share cards on every page:
+Reputation you can’t buy. A trustgraph turns the vouches your community already makes into
+a score anyone can verify, published on-chain each round.
+
+---
+
+## Networks directory
+
+Route `/networks`, linked from the nav. Three different programs share this page and they do
+not score the same thing, so each gets a heading and a line saying what it scores. A section
+with nothing in it is left out rather than shown empty.
+
+**Page title:** Networks
+
+**Standfirst:** Every network on this chain, and what each one counts.
+
+**Section: Vouching networks**
+Members vouch for each other, and the vouches become a score.
+Columns: Network · Members · Vouches · Scores proven
+
+**Section: Funding rounds**
+Members claim work and rate each other, and the pot follows the ratings.
+Columns: Round · Contributions · Scores proven
+
+**Section: Repo reputation**
+Accounts are scored on the repositories they have actually worked on.
+Columns: Instance · Accounts · Scores proven
+
+**Column note:** Members and the date come from the last proven scoreboard. Vouches are
+counted live.
+
+`[the first draft said every number came off the same scoreboard as its date. It doesn't:
+the indexer counts attestations that are un-revoked at query time, among the accounts in the
+latest root. Members and the date are as-of-root, vouches are live.]`
+
+**Never proven:** Not proven yet
+
+**Unreadable:** Unknown
+
+**Row figures on a phone, where there are no column headers to inherit a label from:**
+48 members · 214 vouches · proven 3 days ago
+
+**Row figures, nothing proven yet:** Not proven yet
+
+**Row figures, read failed:** Scores unknown
+
+**Search placeholder:** Filter networks
+
+**No search results:** Nothing matches that.
+
+**Empty state heading:** No networks yet. Create the first one.
+
+**Empty state body:** Creating one takes a single transaction, and nobody has to approve it.
+
+**Ending CTA heading:** Bring your own community.
+
+**Ending CTA button:** Create a network
+
+**Degraded heading:** Showing a partial list
+
+**Degraded body:** The service that lists networks could not be reached, so networks created
+recently are missing from this page. The ones below are still real.
+
+`[the underlying error string is carried in a title attribute, not rendered. "fetch failed"
+is the one line on the public surface that fails the plain-reader test.]`
 
 ---
 

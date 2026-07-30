@@ -255,6 +255,14 @@
     font-size: calc(var(--text-4xl) * var(--display-scale));
   }
 }
+/* One more step on a desktop, where the hero shares the screen with the graph
+ * and has a whole column to itself. Two lines of Instrument at 80px is the
+ * loudest thing on the page, which is the correct thing for it to be. */
+@media (min-width: 1024px) {
+  .tg-hero {
+    font-size: calc(var(--text-5xl) * var(--display-scale));
+  }
+}
 
 /* Opt-in utilities for copy that is not a heading — hero decks, pull quotes,
  * the italic asides that carry the voice. */
@@ -266,10 +274,6 @@
 }
 .tg-serif {
   font-family: var(--serif-family);
-}
-.tg-serif-italic {
-  font-family: var(--serif-family);
-  font-style: italic;
 }
 
 /* Machine labels — uppercase and tracked out. These stay mono: a serif set in
@@ -372,10 +376,20 @@ html {
     width: 6px;
   }
 
-  /* Prevent zoom on input focus on iOS */
+  /* Prevent zoom on input focus on iOS.
+   *
+   * This rule is load-bearing: it is the reason the viewport export can leave
+   * pinch-zoom unlocked (see app/layout.tsx). iOS zooms the page when a focused
+   * field is under 16px, and this system's --text-base is 14px, so EVERY text
+   * field needs to be listed here. `search` was missing, which is the type the
+   * directory filter uses. */
   input[type='text'],
   input[type='email'],
   input[type='number'],
+  input[type='search'],
+  input[type='url'],
+  input[type='tel'],
+  input[type='password'],
   textarea {
     font-size: 16px;
   }
@@ -394,6 +408,32 @@ html {
 
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ============================================================================
+ * REDUCED MOTION
+ *
+ * One rule for the whole app rather than a `motion-safe:` prefix per call-site,
+ * which is the version that stays true as components are added. Spinners, the
+ * pulse above, `animate-in` entrances and every CSS transition collapse to a
+ * single frame: the end state still arrives, it just arrives immediately.
+ *
+ * Smooth scrolling goes too — an unrequested scroll animation is exactly the
+ * vestibular trigger this media query exists for.
+ *
+ * What this cannot reach is anything painted to a canvas. The hero graph runs
+ * one short force-atlas pass and then holds still, which is a settle rather
+ * than an animation, and Sigma redraws nothing after it.
+ * ==========================================================================*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 pre {

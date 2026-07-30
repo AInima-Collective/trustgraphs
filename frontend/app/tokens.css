@@ -49,6 +49,12 @@
   --text-2xl: 28px;
   --text-3xl: 40px;
   --text-4xl: 56px;
+  /* Display-only, and only the hero uses it. It lives here rather than being
+   * read off the `@theme` block in globals.css: that block is `@theme inline`,
+   * which inlines its values into utilities instead of emitting custom
+   * properties, so `var(--text-5xl)` in a hand-written rule resolves to
+   * nothing and takes the whole declaration down with it. */
+  --text-5xl: 72px;
 
   --leading-tight: 1.15;
   --leading-normal: 1.55;
