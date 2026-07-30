@@ -34,26 +34,27 @@ is never recalculated.
 ## Trust and gaming
 
 **Can someone buy a high score?**
-Not with money, and not with accounts. Buying score means getting genuinely trusted people
-to vouch for you. What no algorithm stops is a trusted person vouching badly, which is a
-problem every community already has.
+Not with money. Buying score means getting genuinely trusted people to vouch for you. What
+no algorithm stops is a trusted person vouching badly, which is a problem every community
+already has.
 
-**Why don't bot armies work?**
+**Why don’t bot armies work?**
 Score comes from trust flowing out of the starting accounts. A thousand bots vouching for
-each other form an island with lots of arrows and nothing flowing in, so every one of those
-vouches moves zero score.
+each other form an island with lots of arrows and nothing flowing in, so not one of those
+vouches moves any score. Reserve the whole head start for your starting accounts when you
+create a network, or accounts that nobody vouched for still hold a share of the scoreboard.
 
 **Is my data private?**
 No. Vouches, rules, code, and scores are all public. That is what makes the scoreboard
 checkable by anyone.
 
 **Then what does the zero-knowledge proof hide?**
-Nothing. It isn't there for privacy. It's there so a whole scoreboard can be verified in
+Nothing. It isn’t there for privacy. It’s there so a whole scoreboard can be verified in
 one cheap on-chain check instead of everyone recomputing millions of scores.
 
-**How do you know a prover didn't leave someone out?**
+**How do you know a prover didn’t leave someone out?**
 The chain keeps a running commitment to every attestation as it lands. A proof only
-verifies if it consumed exactly that set, so a prover can't quietly drop the vouches they
+verifies if it consumed exactly that set, so a prover can’t quietly drop the vouches they
 dislike or add ones that never happened.
 
 ---
@@ -61,31 +62,33 @@ dislike or add ones that never happened.
 ## Running a network
 
 **Who can create one?**
-Anyone. It takes one transaction, nobody approves it, and it appears in the app seconds
-later.
+Anyone. It takes one transaction and nobody approves it. It appears in the app once the
+indexer has caught up with the chain, which takes a minute or two.
 
 **What does it cost?**
 Proving costs real money, so each network funds a tank that pays whoever produces its
-scoreboard. Networks we curate are proven at our expense. Pricing for everyone else is
+scoreboard. Networks we curate will be proven at our expense. Pricing for everyone else is
 still being worked out.
 
 **Do I have to run a server?**
-No. A prover watches the chain, freezes each round on your network's schedule, and lands
-the result. If every machine we run vanished, anyone could recompute the scores from public
-data and prove them.
+No. Proving is permissionless: a prover watches the chain, freezes each round on your
+network’s schedule, and lands the result, and your network's tank pays whoever does it. If
+every machine we run vanished, anyone could recompute the scores from public data and prove
+them.
 
 **Can I use the scores somewhere else?**
-Yes. Every round downloads as CSV or JSON with proofs attached, and any contract can read
-the on-chain scoreboard directly.
+Yes. The published scoreboard downloads as CSV or JSON, and any contract can read the
+on-chain scoreboard directly.
 
 ---
 
 ## Status
 
 **Is this ready for production?**
-No. The proof loop is built and running, and the pieces around it are not finished:
-governance upgrades are designed but not implemented, and more attestation sources are in
-progress.
+No. The proof loop is built and runs end to end on a test chain, and the pieces around it
+are not finished. A network created through the app is governed by one wallet: the timelock
+that should hold those powers exists but is not wired up yet. More attestation sources are
+in progress.
 
 **Has it been audited?**
 Not by an outside firm. Point a network at something you can afford to get wrong.
