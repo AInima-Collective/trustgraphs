@@ -140,27 +140,21 @@ export default async function LandingPage() {
            * alone next to a drawing, which read as one finished panel and two
            * that had not been got to yet. */}
           <Move n="1" title="Vouch" figure={<VouchFigure />}>
-            <p>
-              Sign a public statement that you trust an account, with a weight
-              on it. Change it or take it back whenever you want.
-            </p>
+            Sign a public statement that you trust an account, with a weight on
+            it. Change it or take it back whenever you want.
           </Move>
 
           <Move n="2" title="Score" figure={<ScoreFigure />}>
-            <p>
-              Trust starts at a handful of accounts your community picked and
-              flows outward along the vouches. A vouch from a trusted account
-              carries weight. A bot island nobody real vouches for gains nothing
-              from vouching for itself.
-            </p>
+            Trust starts at a handful of accounts your community picked and
+            flows outward along the vouches. A vouch from a trusted account
+            carries weight. A bot island nobody real vouches for gains nothing
+            from vouching for itself.
           </Move>
 
           <Move n="3" title="Use" figure={<UseFigure />}>
-            <p>
-              When a round is proven, its scoreboard is committed on-chain. Any
-              contract can read it: voting weight, funding splits, access,
-              whatever you need a real member count for.
-            </p>
+            When a round is proven, its scoreboard is committed on-chain. Any
+            contract can read it: voting weight, funding splits, access,
+            whatever you need a real member count for.
           </Move>
         </div>
       </Section>
@@ -347,11 +341,18 @@ function Section({
 /**
  * One of the three panels.
  *
- * The figure is a slot rather than part of `children` so it can be pinned to
- * the bottom of the panel: grid items stretch to the tallest row, so `mt-auto`
- * puts all three drawings on one baseline however long the paragraphs above
- * them run. Three figures floating at three different heights is the difference
- * between a row of panels and a row of boxes.
+ * The figure is a slot rather than part of `children` because where it belongs
+ * changes with the width. Three columns at `lg`: the drawing goes under the
+ * paragraph and is pinned to the bottom of the panel, so all three sit on one
+ * baseline however long the text above them runs. One column between `sm` and
+ * `lg`: the panel is a wide band, so the drawing moves to the right of the
+ * paragraph and the paragraph keeps a readable measure instead of running the
+ * whole 720px. On a phone it is a column again.
+ *
+ * `h-auto` on the svg rather than a fixed height: a fixed height letterboxes
+ * the drawing inside its own box and leaves it floating small in the middle of
+ * a wide panel. All three share a viewBox, so sizing by width keeps them at the
+ * same scale as each other at every breakpoint.
  */
 function Move({
   n,
@@ -368,13 +369,12 @@ function Move({
     <div className="flex flex-col bg-background p-5 sm:p-6">
       <span className="tg-marker">{n}</span>
       <h3 className="mt-2">{title}</h3>
-      <div className="mt-3 text-text-muted">{children}</div>
-      {/* `w-full h-auto` rather than a fixed height: a fixed height letterboxes
-       * the drawing inside its own box and leaves it floating small in the
-       * middle of a wide panel. All three share a viewBox, so sizing by width
-       * keeps them the same scale as each other at every breakpoint. */}
-      <div className="mt-auto pt-8 text-text [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-60">
-        {figure}
+
+      <div className="mt-3 flex flex-1 flex-col gap-8 sm:flex-row sm:items-end sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
+        <p className="max-w-prose text-text-muted">{children}</p>
+        <div className="shrink-0 text-text lg:mt-auto lg:pt-8 [&>svg]:h-auto [&>svg]:w-60 [&>svg]:max-w-full">
+          {figure}
+        </div>
       </div>
     </div>
   )
@@ -390,7 +390,9 @@ function Reason({
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-5">
       <h3 className="text-balance">{title}</h3>
-      <p className="text-text-muted">{children}</p>
+      {/* Capped, because this grid is one column below `lg` and 14px mono run
+       * the full 720px of a tablet is about ninety characters to a line. */}
+      <p className="max-w-prose text-text-muted">{children}</p>
     </div>
   )
 }
@@ -405,7 +407,7 @@ function Feature({
   return (
     <li className="flex flex-col gap-2 bg-background p-5 sm:p-6">
       <h3 className="tg-label-strong">{title}</h3>
-      <p className="text-text-muted">{children}</p>
+      <p className="max-w-prose text-text-muted">{children}</p>
     </li>
   )
 }
