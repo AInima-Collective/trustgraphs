@@ -24,9 +24,19 @@ import { PageTitle, SectionHeading } from '@/components/SectionHeading'
  * disclosure around it, while an id on the details itself would only scroll to
  * a still-closed row.
  */
+const DESCRIPTION = 'What people ask before they trust a scoreboard.'
+
+// Its own share card, for the same reason as /networks: inheriting the root
+// layout's openGraph block gives every route one card titled "Trustgraphs".
 export const metadata: Metadata = {
   title: 'Questions',
-  description: 'What people ask before they trust a scoreboard.',
+  description: DESCRIPTION,
+  openGraph: {
+    title: 'Questions | Trustgraphs',
+    description: DESCRIPTION,
+    url: '/faq',
+  },
+  alternates: { canonical: '/faq' },
 }
 
 const REPO = 'https://github.com/JakeHartnell/ZkTrustGraph'

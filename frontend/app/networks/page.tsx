@@ -46,9 +46,19 @@ const STANDFIRST = 'Every network on this chain, and what each one counts.'
 const COLUMN_NOTE =
   'Members and the date come from the last proven scoreboard. Vouches are counted live.'
 
+// The share card is set explicitly rather than inherited. Without it, the
+// root layout's openGraph block wins and every route shares one card titled
+// "Trustgraphs" — a link to the directory and a link to the questions page look
+// identical when someone pastes them.
 export const metadata: Metadata = {
   title: 'Networks',
   description: STANDFIRST,
+  openGraph: {
+    title: 'Networks | Trustgraphs',
+    description: STANDFIRST,
+    url: '/networks',
+  },
+  alternates: { canonical: '/networks' },
 }
 
 /** A filter is furniture until the list outgrows one screen. Twelve rows is where it earns its place. */
