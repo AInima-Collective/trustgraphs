@@ -1,6 +1,6 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
+import { usePonderQueryOptions } from '@ponder/react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Dispatch,
@@ -25,6 +25,7 @@ import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { Network, NetworkEntry } from '@/lib/types'
 import { getCurrentChainConfig } from '@/lib/wagmi'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { nullable } from '@/lib/ponder-query'
 
 export type NetworkSimulationConfig = {
   enabled: boolean
@@ -129,10 +130,12 @@ export const NetworkProvider = ({
     data: gnosisSafeData,
     isLoading: gnosisSafeLoading,
     refetch: refetchGnosisSafe,
-  } = usePonderQuery({
-    queryFn: ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress),
-    // Bug when live is enabled where query doesn't refetch stale server data AND doesn't refetch when DB is updated as live is supposed to.
-    live: false,
+    // `usePonderQueryOptions` + `useQuery` rather than `usePonderQuery`, so the result can go
+    // through `nullable()`. `live` was already false here, which is all `usePonderQuery` adds.
+  } = useQuery({
+    ...nullable(
+      usePonderQueryOptions(ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress))
+    ),
     refetchInterval: 30_000,
     enabled: !!safeProxy,
   })

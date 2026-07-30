@@ -13,6 +13,8 @@ import {
 import { ponderClient } from '@/lib/ponder'
 import { makeQueryClient } from '@/lib/query'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { realAddress } from '@/lib/utils'
+import { nullable } from '@/lib/ponder-query'
 
 import { NetworkPage } from './component'
 import { ContributionsNetworkPage } from './contributions'
@@ -91,12 +93,18 @@ export default async function NetworkPageServer({
       // Refetch right away on page load.
       staleTime: 0,
     }),
-    // Gnosis Safe
-    network.contracts.safe?.proxy &&
+    // Gnosis Safe, when this network actually has one. `realAddress`, not `?.proxy`: a network
+    // created without a Safe still carries the field, set to the zero address, which is a truthy
+    // string. Prefetching it lands an `undefined` in the dehydrated cache and the client throws
+    // "Query data cannot be undefined" on hydration — before any component guard can help, which
+    // is why fixing only the client-side hook did not stop it.
+    realAddress(network.contracts.safe?.proxy) &&
       queryClient.prefetchQuery({
-        ...getPonderQueryOptions(
-          ponderClient,
-          ponderQueryFns.getGnosisSafe(network.contracts.safe.proxy)
+        ...nullable(
+          getPonderQueryOptions(
+            ponderClient,
+            ponderQueryFns.getGnosisSafe(realAddress(network.contracts.safe?.proxy)!)
+          )
         ),
         // Refetch right away on page load.
         staleTime: 0,
