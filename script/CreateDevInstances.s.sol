@@ -35,6 +35,8 @@ contract CreateDevInstances is Common {
     /// @param firstIndex Index of the first network to create.
     /// @param count How many to create.
     /// @param withDistributor Whether each instance gets a fund distributor.
+    /// @param prepayWei ETH deposited into each instance's proving tank during creation.
+    /// @param maxPerRootUsd Optional initial proving policy, set before governance is handed off.
     function run(
         string calldata factoryAddr,
         string calldata paramsPath,
@@ -42,11 +44,14 @@ contract CreateDevInstances is Common {
         string calldata env,
         uint256 firstIndex,
         uint256 count,
-        bool withDistributor
+        bool withDistributor,
+        uint256 prepayWei,
+        uint96 maxPerRootUsd
     ) public {
         TrustGraphFactory factory = TrustGraphFactory(vm.parseAddress(factoryAddr));
         address deployer = vm.addr(_privateKey);
         string memory template = vm.readFile(templatePath);
+        require(maxPerRootUsd == 0 || prepayWei > 0, "CreateDevInstances: policy needs a funded tank");
 
         // The governance knobs, with every derived (instance-identity) field left at zero — the
         // factory rejects anything else, and fills them itself.
@@ -57,7 +62,9 @@ contract CreateDevInstances is Common {
         for (uint256 i = firstIndex; i < firstIndex + count; i++) {
             string memory name = template.readString(string.concat("$[", Strings.toString(i), "].name"));
 
-            (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid) = factory.createInstance(
+            (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid) = factory.createInstance{
+                value: prepayWei
+            }(
                 TrustGraphFactory.CreateArgs({
                     name: name,
                     // The dev catalog's presentation comes from the networks template, not IPFS.
@@ -75,6 +82,12 @@ contract CreateDevInstances is Common {
                     salt: keccak256(abi.encode(i, block.number, block.timestamp))
                 })
             );
+
+            // This must happen before DeployTimelocks renounces the deployer's constitutional
+            // role. A post-deploy demo task cannot set policy without waiting out that timelock.
+            if (maxPerRootUsd > 0) {
+                factory.VAULT().setPolicy(instanceId, 0, maxPerRootUsd);
+            }
 
             console.log("instance", i, name);
             console.log("  id:       ", vm.toString(instanceId));

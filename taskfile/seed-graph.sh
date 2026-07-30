@@ -11,7 +11,7 @@
 #
 #     bash taskfile/seed-graph.sh <instance>          # id, or a piece of the name: "Demo Co-op"
 #     bash taskfile/seed-graph.sh                     # lists what is on chain, then stops
-#     DRY_RUN=1 bash taskfile/seed-graph.sh "RegenHub"
+#     DRY_RUN=1 bash taskfile/seed-graph.sh "Demo Co-op"
 #
 # Then prove it — normally by letting the proof scheduler do it:
 #

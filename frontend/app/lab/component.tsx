@@ -278,10 +278,8 @@ export function LabComponent() {
               </thead>
               <tbody>
                 {[
-                  ['Demo Co-op', '48', '0.4471'],
-                  ['RegenHub', '121', '0.2083'],
-                  ['Safe Demo', '9', '0.1902'],
-                  ['Example Network', '4', '0.0644'],
+                  ['Demo Co-op', '14', '0.4471'],
+                  ['Demo Co-op Contributions', '6', '0.2083'],
                 ].map(([name, members, score]) => (
                   <tr
                     key={name}

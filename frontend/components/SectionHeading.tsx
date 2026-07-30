@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
  * under them. That is a deliberate split from the page title, which carries
  * the display serif:
  *
- *   page title      serif, sentence case, large   "RegenHub"
+ *   page title      serif, sentence case, large   "Demo Co-op"
  *   section heading mono, uppercase, small        "NETWORK STATISTICS"
  *
  * The reason is that a serif set in all-caps loses its case contrast, its

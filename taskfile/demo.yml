@@ -1,8 +1,8 @@
 # The demo, as tasks. Prose walkthrough: docs/trust-graph/DEMO.md
 #
-# `task demo` is the whole thing: deploy, create a funded network, seed a real graph, then let the
-# proof scheduler prove it and pay for it. Every step is also its own task, because the interesting
-# part of a demo is usually re-running one piece of it.
+# `task demo` is the whole thing: deploy one complete funded network, seed its real graph, then
+# let the proof scheduler prove it and pay for it. Every step is also its own task, because the
+# interesting part of a demo is usually re-running one piece of it.
 #
 # What this does NOT do is start anvil, Postgres or IPFS — `task start-all-local` owns those, and
 # owning them from here would mean tearing them down when the demo ends.
@@ -10,12 +10,12 @@ version: '3'
 
 vars:
   RPC: '{{.RPC | default "http://127.0.0.1:8545"}}'
-  # The network the demo creates. Its id is keccak256(abi.encode(creator, name, salt)), so the name
-  # is the only handle you need — nothing is read from a scratch file.
+  # The seeded network the complete demo operates. `demo:create` can still create an additional
+  # runtime network by passing a different NAME (the walkthrough uses "Bakers Guild").
   NAME: '{{.NAME | default "Demo Co-op"}}'
-  # Anvil account 0. The trust graph is ROOTED here, and `seed-graph.sh` signs its vouches with
-  # anvil's well-known keys, so a seed outside 0-9 gives a graph the seed cannot reach and every
-  # score flattens to the same floor.
+  # Anvil account 0. Both the seeded Demo Co-op and networks made by `demo:create` are rooted here.
+  # `seed-graph.sh` signs with anvil's well-known keys, so a seed outside 0-9 gives a graph the seed
+  # cannot reach and every score flattens to the same floor.
   SEED_ACCOUNT: '{{.SEED_ACCOUNT | default "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"}}'
   PREPAY_WEI: '{{.PREPAY_WEI | default "2000000000000000000"}}'
   # Pay for every root, at most $50 of it.
@@ -33,7 +33,7 @@ vars:
 
 tasks:
   default:
-    desc: 'The whole demo: deploy, create a funded network with governance, rewards and contributions, seed it, prove it, pay for it'
+    desc: 'The whole demo: deploy one complete funded Demo Co-op, seed it, prove it and pay for it'
     cmds:
       # `clean` FIRST, because this task deploys a fresh stack and the journal from the last one
       # would block it. An instance id is keccak(creator, name, salt) and a restarted anvil counts
@@ -42,10 +42,7 @@ tasks:
       - task: clean
       - task: preflight
       - task: deploy
-      - task: create
       - task: seed
-      - task: govern
-      - task: contributions
       # Report whatever happened, including when `prove` fails. A demo that lands nothing and says
       # nothing is worse than one that fails.
       - defer: { task: report }
@@ -85,7 +82,7 @@ tasks:
         done
 
   deploy:
-    desc: 'Deploy the stack, with the verifier pinned to THIS checkout''s guest'
+    desc: 'Deploy the stack and complete Demo Co-op, with verifiers pinned to THIS checkout''s guests'
     cmds:
       - |
         # The one ordering that silently ruins a demo: SP1JournalVerifier pins its vkey at
@@ -97,9 +94,33 @@ tasks:
         export SP1_SIGNER_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- signer vkey)
         export CONTRIBUTIONS_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- contributions vkey)
         cd ../..
+        # Give the one seeded network the same reachable anvil seed as `demo:create`. Use demo-local
+        # params so the deploy never mutates a developer's params.json.
+        mkdir -p {{.WORK}}
+        jq --arg seed '{{.SEED_ACCOUNT}}' '
+          .trusted_seeds = [$seed]
+          | .schema_uid = ("0x" + ("0" * 64))
+          | .accumulator = "0x0000000000000000000000000000000000000000"
+          | .chain_id = 0
+        ' test/e2e/params.template.json > {{.WORK}}/params.json
         echo "→ deploying against trust-graph vkey $SP1_PROGRAM_VKEY"
-        pnpm deploy:contracts
+        PARAMS_JSON={{.WORK}}/params.json \
+          DEV_SEED_PREPAY_WEI={{.PREPAY_WEI}} \
+          DEV_SEED_MAX_PER_ROOT_USD={{.MAX_PER_ROOT_USD}} \
+          pnpm deploy:contracts
       - task: addresses
+
+  fund:
+    desc: 'Top up Demo Co-op''s proving tank after deployment'
+    cmds:
+      - |
+        VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
+        ID=$(task --silent demo:id NAME='{{.NAME}}')
+        cast send "$VAULT" 'depositETH(bytes32)' "$ID" --value {{.PREPAY_WEI}} \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" >/dev/null
+        echo "✓ topped up {{.NAME}}"
+        echo "  id     $ID"
+        echo "  tank   $(cast call "$VAULT" 'accountOf(bytes32)((address,bytes32,uint128,uint128))' "$ID" --rpc-url {{.RPC}})"
 
   addresses:
     desc: 'Print every address the demo uses, read from chain and deploy artifacts'
@@ -117,9 +138,13 @@ tasks:
           || echo "  ✗ factory VAULT() does not match — createInstance will reject any prepay"
 
   create:
-    desc: 'Create the network AND endow its proving tank, in one transaction'
+    desc: 'Create and fund an additional runtime network (pass a NAME other than Demo Co-op)'
     cmds:
       - |
+        [ '{{.NAME}}' != 'Demo Co-op' ] || {
+          echo "fatal: Demo Co-op is already deployed; pass NAME='Bakers Guild' (or another name)" >&2
+          exit 1
+        }
         FAC=$(jq -r .factory .docker/factory_deploy.json)
         forge script script/examples/CreateInstance.s.sol:CreateInstance \
           --sig 'run(address,uint256,string,address)' \
@@ -137,13 +162,16 @@ tasks:
         echo "  tank   $(cast call "$VAULT" 'accountOf(bytes32)((address,bytes32,uint128,uint128))' "$ID" --rpc-url {{.RPC}})"
 
   id:
-    desc: 'The instance id, derived from the chain (no scratch files)'
+    desc: 'The instance id, resolved from the factory event (no scratch files)'
     cmds:
       - |
         FAC=$(jq -r .factory .docker/factory_deploy.json)
-        cast call "$FAC" 'computeInstanceId(address,string,bytes32)(bytes32)' \
-          "$(cast wallet address --private-key "$FUNDED_KEY")" '{{.NAME}}' \
-          0x0000000000000000000000000000000000000000000000000000000000000000 --rpc-url {{.RPC}}
+        bash -c '
+          set -euo pipefail
+          . taskfile/lib/instance.sh
+          resolve_instance "$1" "$2" "$3"
+          printf "%s\n" "$INSTANCE_ID"
+        ' _ '{{.NAME}}' "$FAC" '{{.RPC}}'
 
   seed:
     desc: 'Vouch: 21 edges over 14 accounts, rooted at the instance''s trusted seed'
@@ -240,8 +268,7 @@ tasks:
       - |
         # A contributions instance is its own snapshot + verifier + distributor, reading rep from a
         # trust accumulator through a TrustAccumulatorMirror. The main deploy already stands one up
-        # over dev network 0; this points a SECOND one at the demo network's resolver, so the round
-        # is scored by the graph seeded in `demo:seed` rather than by an unrelated network.
+        # over Demo Co-op; this task is for an additional network created with `demo:create`.
         # From the chain, not from `.trustgraph/create-instance.json`: that file is last-write-wins
         # scratch, so any other `CreateInstance` run since clobbers it and this silently wires the
         # round to a DIFFERENT network's graph. It did exactly that once.

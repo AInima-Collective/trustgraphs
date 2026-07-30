@@ -397,12 +397,12 @@ export class DevEnv extends EnvBase {
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
         // exercises the same path a community will. Still writes
         // `config/network_deploy_dev_<i>.json` (a derived artifact now) because the Safe, timelock
-        // and contributions steps below read it; indices are unchanged, so nothing downstream
-        // shifts.
+        // and contributions steps below read it. The post-deploy merge prunes artifacts when this
+        // seed list shrinks so an old index cannot be mistaken for a current network.
         {
           name: 'Create Instances',
           script: 'script/CreateDevInstances.s.sol:CreateDevInstances',
-          sig: 'run(string,string,string,string,uint256,uint256,bool)',
+          sig: 'run(string,string,string,string,uint256,uint256,bool,uint256,uint96)',
           args: () => [
             readJsonKey('.docker/factory_deploy.json', 'factory'),
             // The governance params. Unlike the old DeployNetwork path, the factory derives
@@ -413,9 +413,11 @@ export class DevEnv extends EnvBase {
             0,
             numNetworks,
             true,
+            process.env.DEV_SEED_PREPAY_WEI || '0',
+            process.env.DEV_SEED_MAX_PER_ROOT_USD || '0',
           ],
         },
-        // Deploy the WHOLE contributions instance (fifth program): ContributionResolver + three
+        // Deploy the WHOLE contributions instance: ContributionResolver + three
         // schemas, TrustAccumulatorMirror over network 0's trust accumulator (journal slot A),
         // its own SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = dev scaffolding with a
         // MockSP1Gateway), contrib MerkleSnapshot + MerkleFundDistributor, and the TestUSDC pool
@@ -502,6 +504,17 @@ export class DevEnv extends EnvBase {
       ],
       // After all contracts are deployed, update the networks config file.
       postDeployContracts: () => {
+        // The number of dev seeds can shrink. Per-network deploy files are derived artifacts, but
+        // their fixed names survive between runs; without pruning the now-out-of-range files, the
+        // merge below treats an old network_deploy_dev_1.json as the program entry at index 1 (or
+        // errors when the stale index is beyond the shorter template).
+        for (const file of fs.readdirSync('config')) {
+          const match = file.match(/^network_deploy_dev_(\d+)\.json$/)
+          if (match && Number(match[1]) >= numNetworks) {
+            fs.unlinkSync(path.join('config', file))
+          }
+        }
+
         // Replace the networks config file with the template.
         fs.copyFileSync(networksConfigTemplateFile, this.networksConfigFile)
         this.updateNetworksConfigWithDeployments('dev')

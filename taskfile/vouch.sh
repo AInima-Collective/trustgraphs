@@ -18,7 +18,7 @@
 # Examples:
 #
 #     bash taskfile/vouch.sh "Demo Co-op" 0 10 90 "promoted to steward"
-#     bash taskfile/vouch.sh "Example Network" 2 4 75
+#     bash taskfile/vouch.sh "Demo Co-op" 2 4 75
 #     DRY_RUN=1 bash taskfile/vouch.sh "Demo Co-op" 3 7 40      # simulate, send nothing
 #
 # Then produce the proof that picks it up:

@@ -1,11 +1,13 @@
 # Running the demo
 
-Two claims, one stack:
+One complete demo network, plus the permissionless path:
 
-> **A stranger creates a community network in one transaction, and it is live in the app seconds
-> later.** No rebuild, no restart, no config edit.
+> **The local stack ships one fully worked Demo Co-op:** real vouches and scores, explicit vouching
+> criteria, an application link, a Safe, trust-weighted governance, distributions, and a
+> contribution-funding round. The empty Example Network, RegenHub, and Safe Demo seeds are gone.
 >
-> **Nobody then runs the runbook.** A daemon watches the chain, freezes checkpoints on the
+> **A stranger can still create another community in one transaction, live in the app seconds
+> later.** Nobody then runs the runbook: a daemon watches the chain, freezes checkpoints on the
 > contract's cadence, proves them and lands them. Networks we curate are proven on us; a network
 > that funded its own tank pays whoever produced its root.
 
@@ -64,8 +66,8 @@ member list is built by fetching that blob by CID.
 task demo
 ```
 
-Which is: fund the deployer, derive the guest vkeys and deploy the stack pinned to them, create a
-funded network, seed it a real graph, bolt on governance and a contributions round, then let the
+Which is: fund the deployer, derive the guest vkeys, deploy one factory-created and prepaid Demo
+Co-op with governance, distributions and a contribution round, seed a real graph, then let the
 scheduler prove it and collect the bounty. It ends by mining past Ponder's finality window and
 saying whether the app can actually see any of it:
 
@@ -89,7 +91,7 @@ it:
 task --list-all | grep demo:
 ```
 
-`demo:deploy`, `demo:create`, `demo:seed`, `demo:govern`, `demo:contributions`, `demo:dry-run`,
+`demo:deploy`, `demo:fund`, `demo:create`, `demo:seed`, `demo:govern`, `demo:contributions`, `demo:dry-run`,
 `demo:prove`, `demo:settle`, `demo:report`, `demo:clean` — plus `demo:id`, `demo:snapshot`,
 `demo:resolver` and `demo:addresses`, which answer "what is this network's X" from the chain rather
 than from a scratch file.
@@ -103,7 +105,7 @@ Sanity check — the factory can *append* directory rows but not rewrite them:
 ```bash
 REG=$(jq -r .instance_registry .docker/factory_deploy.json)
 FAC=$(jq -r .factory           .docker/factory_deploy.json)
-cast call $REG 'instanceCount()(uint256)'                                                            # 4
+cast call $REG 'instanceCount()(uint256)'                                                            # 1
 cast call $REG 'hasRole(bytes32,address)(bool)' $(cast call $REG 'REGISTRAR_ROLE()(bytes32)') $FAC   # true
 cast call $REG 'hasRole(bytes32,address)(bool)' $(cast call $REG 'OPERATOR_ROLE()(bytes32)')  $FAC   # false
 ```
@@ -188,7 +190,7 @@ snapshot.paramsHash()`. It refuses to prove anything at all if a single instance
 
 ```bash
 task instances:scan
-# 4 registered instance(s)
+# 1 registered instance(s)
 # …
 # dry run: params self-check passed for every reconstructed instance
 ```
