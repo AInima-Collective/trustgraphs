@@ -452,8 +452,8 @@ network — that last one is measured against the SDK source in §3 rather than 
 
 ## 8. Related
 
-- [`DEMO.md`](../DEMO.md) — the local walkthrough: deploy, create a funded network, and watch this
-  daemon prove and pay for it
+- [`trust-graph/DEMO.md`](./trust-graph/DEMO.md) — the local walkthrough (`task demo`): deploy,
+  create a funded network, and watch this daemon prove and pay for it
 
 - [`research/PROOF_SCHEDULER.md`](../research/PROOF_SCHEDULER.md) — the design, its economics and
   its failure semantics

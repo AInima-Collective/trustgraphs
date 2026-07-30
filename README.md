@@ -23,9 +23,11 @@ reputation, contribution-funding splits) with the same discipline — one canoni
 per program, compiled into the SP1 guest and cross-checked byte-for-byte against Solidity
 and TypeScript ports.
 
-Want to see it run? [`DEMO.md`](./DEMO.md) is the local walkthrough: deploy the stack, create a
-funded network in one transaction, and watch the proof scheduler keep its scores fresh with nobody
-in the loop.
+Want to see it run? `task demo` does the whole thing on a local anvil — deploy the stack, create a
+funded network in one transaction, seed it a real graph, and watch the proof scheduler prove it and
+pay whoever produced the root. [`docs/trust-graph/DEMO.md`](./docs/trust-graph/DEMO.md) is the
+walkthrough: what each step does, the security properties worth demonstrating, and every gotcha
+that has cost someone an afternoon.
 
 New to all of this? Start with the plain-language [`docs/ELI5.md`](./docs/ELI5.md).
 The algorithm itself is specified in [`docs/ALGORITHM.md`](./docs/ALGORITHM.md), and the

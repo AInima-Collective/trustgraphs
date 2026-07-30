@@ -1,4 +1,4 @@
-# The demo, as tasks. Prose walkthrough: DEMO.md
+# The demo, as tasks. Prose walkthrough: docs/trust-graph/DEMO.md
 #
 # `task demo` is the whole thing: deploy, create a funded network, seed a real graph, then let the
 # proof scheduler prove it and pay for it. Every step is also its own task, because the interesting

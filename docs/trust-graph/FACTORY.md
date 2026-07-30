@@ -347,10 +347,11 @@ its §2 consumes exactly this seam.
 
 ## 6. Cold run
 
-[`DEMO.md`](./DEMO.md) is the verified end-to-end runbook: every service you need, the create →
-vouch → prove → pay loop, the two security demonstrations (replay separation and squat resistance),
-and the gotchas that actually bite — chief among them that restarting anvil silently poisons the
-indexer's RPC cache.
+[`DEMO.md`](./DEMO.md) is the end-to-end runbook, and `task demo` is all of it in one command:
+every service you need, the create → vouch → prove → pay loop, four security demonstrations (params
+self-check, replay separation, squat resistance and foreign-schema rejection), and the gotchas that
+actually bite — chief among them that restarting anvil silently poisons the indexer's RPC cache
+*and* wedges the proof scheduler's request journal.
 
 ## 7. Related
 

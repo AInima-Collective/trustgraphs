@@ -1,54 +1,28 @@
-# Running the instance-factory demo
+# Running the demo
 
-> **This is the factory half only, and its step 4 is the manual proving loop.** For the full stack —
-> creation *and* the proof scheduler that keeps roots fresh without anyone running that loop — start
-> at [`DEMO.md`](../../DEMO.md) in the repo root. This page stays as the deeper reference for the
-> factory's own security claims (§5), which the root demo does not repeat.
+Two claims, one stack:
+
+> **A stranger creates a community network in one transaction, and it is live in the app seconds
+> later.** No rebuild, no restart, no config edit.
 >
-> Two things here have drifted since it was written: `MerkleSnapshot.submitProof` gained `recipient`
-> (journal v3), and the local deploy now includes a `ProvingVault` that must precede the factory.
-> The commands in §4 have not been re-run against the current code.
+> **Nobody then runs the runbook.** A daemon watches the chain, freezes checkpoints on the
+> contract's cadence, proves them and lands them. Networks we curate are proven on us; a network
+> that funded its own tank pays whoever produced its root.
 
-The demo is one sentence: **a stranger creates a community network in one transaction, and it is
-live in the app seconds later — no rebuild, no restart, no config edit.**
+`task demo` does the whole thing. The prose here is what it does, why each step is shaped that way,
+and what to read when something goes wrong.
 
-Everything below was run end to end on a clean box and the outputs are real. Budget ~20 minutes the
-first time, most of it the SP1 guest build. Design: [`FACTORY.md`](./FACTORY.md).
+Design: [`FACTORY.md`](./FACTORY.md) for creation, [`../OPERATOR.md`](../OPERATOR.md) for the daemon.
 
-## What you need running
-
-Five services. Four are ordinary; the fifth (Postgres) is the one that usually bites, because this
-repo normally gets it from Docker.
-
-| | What | Port | Notes |
-|---|---|---|---|
-| 1 | anvil | 8545 | the chain |
-| 2 | IPFS (kubo) | 5001 / 8080 | score blobs; `--offline` is fine |
-| 3 | Postgres | 6432 | the indexer's database |
-| 4 | Ponder indexer | 65421 | the catalog + score API |
-| 5 | Next.js frontend | 3000 | the app |
-
-```bash
-task start-all-local     # if Docker is available, this does 1-3 for you
-```
-
-If Docker is not available, run them by hand:
-
-```bash
-anvil &
-
-# kubo, if you don't already have it
-curl -sSL https://dist.ipfs.tech/kubo/v0.32.1/kubo_v0.32.1_linux-arm64.tar.gz | tar xz
-export IPFS_PATH=$PWD/ipfsrepo && ./kubo/ipfs init --profile server
-./kubo/ipfs daemon --offline &
-
-# any Postgres on 6432 with a `ponder` role and database will do; the indexer expects
-# postgresql://ponder:ponder@localhost:6432/ponder  (indexer/.env.local)
-```
+> **What has been re-run, and what is inherited.** §0–§4 were run end to end on a clean anvil
+> against current code, via `task demo`; the outputs below are from that run. §5 (the indexer and
+> the app) and the three experiments in §6 were verified when written and have **not** been re-run
+> since — the box this was last edited on has no Postgres and no dev server. Budget ~30 minutes the
+> first time, most of it the SP1 guest build.
 
 ## 0. Toolchain, once
 
-The SP1 `succinct` Rust toolchain is not part of a normal checkout, and you need it for step 4.
+The SP1 `succinct` Rust toolchain is not part of a normal checkout, and proving needs it.
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/succinctlabs/sp1/main/sp1up/sp1up | bash
@@ -56,37 +30,134 @@ sp1up --version v6.3.1
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
-## 1. Fund the deployer
+## 1. Services
 
-`.env`'s `FUNDED_KEY` is **not** an anvil default account, so on a fresh chain it has zero balance
-and the very first deploy step dies with `Insufficient funds`.
+| | What | Port | Needed by |
+|---|---|---|---|
+| 1 | anvil | 8545 | everything |
+| 2 | IPFS (kubo) | 5001 / 8080 | publishing the score blob, and reading it back |
+| 3 | Postgres (`ponder-db`) | 6432 | the indexer |
+| 4 | Ponder + Next.js | 65421 / 3000 | the app |
+
+**anvil first**, because the services task waits for it rather than starting it — and give that
+task its own terminal, since it traps `EXIT` to `docker compose down`:
 
 ```bash
-cast send $(cast wallet address --private-key $FUNDED_KEY) --value 1000ether \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+anvil --block-time 1 &     # --block-time saves you a whole class of confusion; see Gotchas
+task start-all-local       # 2 and 3, from docker-compose.dev.yml
 ```
 
-## 2. Deploy everything
+If you would rather own the containers' lifecycle yourself:
 
 ```bash
-pnpm deploy:contracts
+docker compose -f docker-compose.dev.yml up -d      # ipfs + ponder-db, detached
+docker compose -f docker-compose.dev.yml down       # when you are done
 ```
 
-Twelve steps: EAS, a dev SP1 gateway stub, the ZK verifier, the instance registry, the
-**factory**, three dev networks *created through the factory*, the contributions instance, the
-signer verifier, three Safes, and the timelocks.
+IPFS is **not** optional. The daemon computes each root's IPFS hash and CID in-circuit, but it must
+still publish the blob those commit to: the chain carries the root, never the scores, and every
+member list is built by fetching that blob by CID.
 
-Sanity check — the factory can append directory rows but not rewrite them:
+## 2. Everything, in one command
+
+```bash
+task demo
+```
+
+Which is: fund the deployer, derive the guest vkeys and deploy the stack pinned to them, create a
+funded network, seed it a real graph, bolt on governance and a contributions round, then let the
+scheduler prove it and collect the bounty. It ends by mining past Ponder's finality window and
+saying whether the app can actually see any of it:
+
+```
+  tick 1: triggered
+  tick 2: proved
+  tick 3: submitted
+  ✓ a root landed on tick 3
+  ✓ mined to block 220 (from 156) so Ponder can finalize
+
+  root landed   true (checkpoint 0)
+  tank left     (0xD9Fef…, 0xdb036dae…, 1998333333333333334 [1.998e18], 0)
+  prover paid   1666666666666666 [1.666e15] wei
+  scores        readable at http://127.0.0.1:8080/ipfs/bafkreiclfxhopt…
+```
+
+Every step is also its own task, because the useful thing about a demo is re-running one piece of
+it:
+
+```bash
+task --list-all | grep demo:
+```
+
+`demo:deploy`, `demo:create`, `demo:seed`, `demo:govern`, `demo:contributions`, `demo:dry-run`,
+`demo:prove`, `demo:settle`, `demo:report`, `demo:clean` — plus `demo:id`, `demo:snapshot`,
+`demo:resolver` and `demo:addresses`, which answer "what is this network's X" from the chain rather
+than from a scratch file.
+
+Two things `task demo` deliberately does not do: **start your chain** (it refuses to run without
+one rather than owning an anvil it would then have to tear down), and **start Postgres or IPFS**
+(same reason — `start-all-local` owns those).
+
+Sanity check — the factory can *append* directory rows but not rewrite them:
 
 ```bash
 REG=$(jq -r .instance_registry .docker/factory_deploy.json)
-FAC=$(jq -r .factory              .docker/factory_deploy.json)
-cast call $REG 'instanceCount()(uint256)'                                    # 3
+FAC=$(jq -r .factory           .docker/factory_deploy.json)
+cast call $REG 'instanceCount()(uint256)'                                                            # 4
 cast call $REG 'hasRole(bytes32,address)(bool)' $(cast call $REG 'REGISTRAR_ROLE()(bytes32)') $FAC   # true
 cast call $REG 'hasRole(bytes32,address)(bool)' $(cast call $REG 'OPERATOR_ROLE()(bytes32)')  $FAC   # false
 ```
 
-## 3. Start the indexer and the app
+## 3. The claim: created live, with nothing restarted
+
+This is the part `task demo` cannot show you, because it runs before you are watching. Do it by
+hand, with the indexer and the app already up (§5):
+
+```bash
+task demo:create NAME='Bakers Guild'
+```
+
+One transaction creates the instance and endows its proving tank; a second sets the community's own
+per-root spend limit on the vault. Or use the wizard at <http://localhost:3000/create> — five
+screens, one signature, the same transaction. `script/examples/CreateInstance.s.sol` is the readable
+version of the call.
+
+Three fields in the params (`schemaUid`, `accumulator`, `chainId`) must be sent as zero: the factory
+**derives** them and rejects anything else. That is what stops a creator pointing a new instance at
+someone else's accumulator.
+
+Watch it arrive, with nothing restarted:
+
+```bash
+curl -s localhost:65421/instances | jq '.instances[] | select(.name=="Bakers Guild") | {id, contracts}'
+```
+
+Then open `http://localhost:3000/network/<that id>` — live, with a working Vouch button. Measured on
+a production build in an earlier run: **transaction at 23:10:41, page rendering at 23:10:52.**
+Nothing was rebuilt, restarted or edited: Ponder discovers each snapshot, resolver and distributor
+through a `factory()` source on `InstanceCreated`, so the chain is the catalog.
+
+## 4. Vouch, prove, pay
+
+```bash
+task demo:seed  NAME='Bakers Guild'    # 21 edges over 14 accounts, rooted at its trusted seed
+task demo:prove NAME='Bakers Guild'    # trigger, prove, submit, collect the bounty
+task demo:settle                       # mine, so Ponder will serve it
+```
+
+Seed **before** the first trigger. A checkpoint frozen over an empty graph proves to a zero root,
+the gov hook rejects it, and its contents are immutable —
+[#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
+
+Reload the network page: scored members. Proving by hand instead of by scheduler is
+`task instances:prove-all`, kept as the documented fallback ([`RUNBOOK.md`](./RUNBOOK.md)); to see
+what the daemon would do without spending anything, `task demo:dry-run`.
+
+**Pay people.** The distributor is bundled at creation (`withDistributor: true`). Fund it, publish a
+distribution against the proven root, and claim. A worked run: `10 ETH` distributed, and a member
+holding 21.5465430930861861723725% of the pool claimed exactly `2.154654309308618617 ETH`.
+
+## 5. The indexer and the app
 
 ```bash
 cd indexer  && pnpm dev      # :65421
@@ -95,72 +166,37 @@ cd frontend && pnpm dev      # :3000
 
 ```bash
 curl -s localhost:65421/instances | jq '.pagination.total, .instances[].name'
-# 3
-# "Safe Demo"  "RegenHub"  "Example Network"
+curl -s localhost:65421/vault/$(task --silent demo:id) | jq '{ethBalance, burn, unpaidRootsSinceLastPayment}'
 ```
 
-Open <http://localhost:3000/network>. All three are listed, and they came from the chain, not from
-a config file.
+Open `http://localhost:3000/network/<id>`. The **proving tank** panel reads that vault endpoint: how
+much is left, how fast it is going, and what happens when it runs out. It deliberately distinguishes
+"nobody has funded this" from "the money ran out" — different situations, different fixes — and
+shows a runway only when there is evidence for one.
 
-## 4. The demo itself
+If a page is empty, `task demo:report` will tell you why without opening a browser: it checks that
+the score blob is retrievable through the gateway the indexer uses, and that the indexer is serving
+`/network/<snapshot>`.
 
-**Create a network while everything is running.** Use the wizard at
-<http://localhost:3000/create> — five screens, then one signature. Or send the same transaction
-directly:
-
-```bash
-SEED=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-P="(850000000000000000,1000000000000,100,0,100000000000000000000,2000000000000000000,\
-150000000000000000,800000000000000000,[$SEED],1000000000000000000000000,1000000000000000000,\
-0x0000000000000000000000000000000000000000000000000000000000000000,1,[],0,\
-0x0000000000000000000000000000000000000000,0)"
-
-cast send $FAC 'createInstance((string,string,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64),address,uint64,bool,address,bytes32))' \
-  "(\"Demo Co-op\",\"\",$P,0x0000000000000000000000000000000000000000,1,true,0x0000000000000000000000000000000000000000,0x00000000000000000000000000000000000000000000000000000000000000aa)" \
-  --private-key $FUNDED_KEY
-```
-
-The three zeroed fields in the params (`schemaUid`, `accumulator`, `chainId`) are **derived** — the
-factory fills them and rejects anything else.
-
-Watch it arrive, with nothing restarted:
-
-```bash
-curl -s localhost:65421/instances | jq '.instances[] | select(.name=="Demo Co-op") | {id, contracts}'
-```
-
-Then open `http://localhost:3000/network/<that id>`. The page is live, with a working Vouch button.
-Measured on a production build in an earlier run: **transaction at 23:10:41, page rendering at
-23:10:52.**
-
-**Vouch, then prove.**
-
-```bash
-SCHEMA=$(curl -s localhost:65421/instances | jq -r '.instances[]|select(.name=="Demo Co-op")|.schema.uid')
-forge script script/E2eAttest.s.sol:E2eAttest --sig 'run(address,bytes32)' \
-  $(jq -r .eas .docker/eas_deploy.json) $SCHEMA --rpc-url http://127.0.0.1:8545 --broadcast
-
-REGISTRY=$REG PK=$FUNDED_KEY IPFS_API=http://127.0.0.1:5001 bash taskfile/instances.sh
-```
-
-The loop enumerates the registry, rebuilds each instance's params **from its `InstanceCreated`
-event**, self-checks `params_hash(event params) == snapshot.paramsHash()`, and refuses to prove
-anything at all if one instance fails that check. Instances with no attestations are skipped, not
-crashed on. Reload the network page: scored members.
-
-**Pay people.** The distributor was bundled at creation (`withDistributor: true`). Fund it, publish
-a distribution against the proven root, and claim. A worked run:
-`10 ETH` distributed, and a member holding 21.5465430930861861723725% of the pool claimed exactly
-`2.154654309308618617 ETH`.
-
-## 5. The two claims worth demonstrating
+## 6. The claims worth demonstrating
 
 These are the security properties, not the happy path.
 
-**Clones cannot cross-feed.** Create two networks, `trigger()` both before either has any
-attestation — their checkpoints are then byte-identical (`acc = 0x0, leafCount = 0`) — prove one,
-and submit its proof to the other. It reverts `JournalMismatch` (`0x65099f97`), and submitting to
-its own instance succeeds. The only thing separating them is `paramsHash`.
+**Params cannot drift from what was registered.** The read-only scan rebuilds every instance's
+params **from its `InstanceCreated` event** and checks `params_hash(event params) ==
+snapshot.paramsHash()`. It refuses to prove anything at all if a single instance fails:
+
+```bash
+task instances:scan
+# 4 registered instance(s)
+# …
+# dry run: params self-check passed for every reconstructed instance
+```
+
+**Clones cannot cross-feed.** Create two networks and `trigger()` both before either has an
+attestation — their checkpoints are then byte-identical (`acc = 0x0, leafCount = 0`). Prove one and
+submit its proof to the other: it reverts `JournalMismatch` (`0x65099f97`), while submitting to its
+own instance succeeds. The only thing separating them is `paramsHash`.
 
 **Squatting cannot brick the factory.** The resolver address is predictable, and EAS lets anyone
 register a schema for an address that has no code yet:
@@ -179,39 +215,73 @@ transaction bricked `createInstance` for every creator, permanently.
 resolver and attest against it: the attestation reverts `ForeignSchema` and the accumulator's
 `leafCount()` does not move.
 
-## Gotchas, all of them hit while writing this
+## Gotchas
 
-- **Restarting anvil silently breaks the indexer.** Ponder caches RPC data keyed by chain id, and a
-  fresh anvil is the same chain id with different contents — so it replays the old chain and indexes
-  **zero events** while looking perfectly healthy (`cache_rate=100%`, `event_count=0`). Drop the
-  cache whenever you restart the chain:
-  ```sql
-  DROP SCHEMA ponder_sync CASCADE;
-  ```
-  Use a fresh `--schema` name too; Ponder refuses to reuse one after any indexing-code edit.
-- **anvil only mines on transactions, and 20 blocks is not enough.** If the chain goes idle,
-  Ponder's finalized head stops advancing and a just-created network sits unindexed — looking
-  healthy the whole time. Chain 31337 is not in Ponder's finality table so it takes the default
-  `finalityBlockCount = 30`, and the head only moves once `latest >= finalized + 2 * 30`. Mine
-  **64**: `cast rpc anvil_mine 0x40`, or `task demo:settle`. Durable fix: `anvil --block-time 1`.
+Everything below cost someone real time.
+
+- **anvil only mines on transactions, and 20 blocks is not enough.** An idle chain stops advancing
+  Ponder's finalized head, and Ponder does not serve unfinalized blocks. It moves that head only
+  when `latest >= finalized + 2 * N`, then sets finalized to `latest - N`; chain 31337 is not in its
+  table so `N` falls through to the default **30**. The moment the demo stops, the last ~60 blocks —
+  the attestations, the checkpoint and the root among them — sit one block short of visible, and the
+  indexer looks perfectly healthy while the page stays empty. `task demo` ends with `demo:settle`,
+  which mines 64. By hand: `cast rpc anvil_mine 0x40`. Better: `anvil --block-time 1`.
+- **IPFS is not optional, and "pinned" is not the same as "readable".** `indexer/src/merkle.ts`
+  fetches the score blob by CID and *throws* if it cannot, which wedges Ponder on that one event and
+  leaves every network page 404ing over a perfectly valid proof. Worse, a successful `add` only
+  proves the API node took the bytes: if `[ipfs] api` and `IPFS_GATEWAY` are different nodes, the
+  daemon reports `pinned` and readers get 504. The operator reads the blob back through
+  `[ipfs] gateway` before calling it published, and `task demo:report` prints whether the scores are
+  actually retrievable.
+- **Restarting anvil silently breaks the indexer.** Ponder caches RPC data by chain id, and a fresh
+  anvil is the same chain id with different contents, so it replays the old chain and indexes zero
+  events while looking healthy (`cache_rate=100%`, `event_count=0`). `DROP SCHEMA ponder_sync
+  CASCADE;` and use a fresh `--schema`, which Ponder requires anyway after any indexing-code edit.
+- **A restarted anvil also wedges the operator's journal.** A `WorkKey` is
+  `(chain_id, instance_id, checkpoint_id)`; on a devnet the chain id is fixed, the instance id is
+  `keccak(creator, name, salt)`, and a fresh chain counts checkpoints from 0 again. So the previous
+  run's `settled: landed` record matches the new chain's first unit of work exactly and the journal
+  refuses it — correctly, given what it knows — while `plan` re-proposes the same doomed `Prove`
+  every tick. `task demo` clears `.demo/` first, and the refusal names which of the four causes it
+  is. Driving the daemon by hand after a restart: `task demo:clean`.
+- **Export the vkeys before deploying.** `SP1JournalVerifier` pins its vkey **immutably** at
+  construction, so a stale `.env` value gives a stack that deploys cleanly and then refuses to prove
+  anything (`{"action":"hold","hold":"verifier_rotated"}`). `task demo:deploy` derives them from the
+  checkout rather than trusting the file; `task demo:vkeys` prints them.
+- **Attest before the first trigger.** §4, and
+  [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
+- **`task demo:govern` writes two files, and they are not interchangeable.** The frontend reads
+  `config/networks.development.json`; Ponder reads `.docker/deployment_summary.json`. Updating only
+  the first gives a UI with a governance tab over a module nobody indexed, which fails as `Query
+  data cannot be undefined` for `merkle_gov_module`. Restart the **indexer** as well as the app.
+- **`registry_from_block` is not optional off-devnet.** Left at 0 against a registry deployed at
+  block 21,000,000 the scan issues ~2,100 empty `eth_getLogs` calls, and most providers reject the
+  range outright as an archive request — so the daemon gets *no catalog at all and every tick
+  fails*. Startup alerts if you forget. Irrelevant on a fresh anvil, fatal on a real chain.
 - **Deploy artifacts are not chain-scoped.** `.docker/*.json` and `config/networks.development.json`
-  have fixed filenames, so deploying to a second chain overwrites the first's. It fails
-  *confidently*: the same deployer and nonce sequence produces the same addresses on both chains, so
-  every address still has code — just belonging to a different contract. Deploy one chain at a time.
-- **`pgrep -f <pattern>` matches the checking command itself** in some shells and will tell you a
-  dead service is alive. Check by port.
+  have fixed filenames, so deploying to a second chain overwrites the first's — and fails
+  *confidently*, because the same deployer and nonce sequence produces the same addresses on both.
+  One chain at a time.
+- **`pnpm deploy:contracts` needs a platform-matched esbuild.** If `node_modules` was installed on a
+  different OS you get `TransformError`; fetch the right `@esbuild/<platform>` tarball and point
+  `ESBUILD_BINARY_PATH` at its binary. `pnpm add` fails outright on a store mismatch.
 - **The indexer's database is disposable.** Everything it serves is derived from chain events, so
-  losing Postgres costs nothing but a rebuild: restart it, point Ponder at a fresh `--schema`, and
-  the full catalog and every network's scored member list come back in seconds. Verified by killing
-  Postgres mid-demo and rebuilding — 4 instances and the demo network's 3 members, all recovered
-  from the chain.
-- **Proving is mocked locally.** `SP1_PROVER=mock` runs the guest for real and commits its real
-  public values, but the SNARK is a stub, and the dev gateway is a stub too. The params self-check,
-  the exporter's re-fold proof, guest-vs-native byte equality, journal binding and the whole write
-  path are production code either way. Real proving needs `SP1_PROVER=network` or a 16-32 GiB box.
+  losing Postgres costs a rebuild and nothing else: restart it, point Ponder at a fresh `--schema`,
+  and the catalog and every network's scored members come back in seconds. Verified by killing
+  Postgres mid-demo — 4 instances and the demo network's members, all recovered from the chain.
+- **`pkill -f anvil` matches the shell running it** and will kill your own session. `pkill -x anvil`.
+  Same trap with `pgrep -f`, which will tell you a dead service is alive. Check by port.
+- **Proving is mocked locally, and here is exactly where that stops.** `SP1_PROVER=mock` runs the
+  guest for real and commits its real public values; the dev gateway is a stub too. The params
+  self-check, the exporter's re-fold proof, guest-vs-native byte equality, journal binding, the
+  vault's payout arithmetic and the entire write path are production code either way. What is *not*
+  demonstrated is that a real Groth16 proof verifies at Succinct's canonical gateway — that needs
+  `SP1_PROVER=network` or a 16–32 GiB box, and it is the first thing a real deployment should do
+  ([`DEVIATIONS`](../DEVIATIONS.md) #20).
 
 ## Related
 
 - [`FACTORY.md`](./FACTORY.md) — what the factory is, what it refuses, and why
+- [`../OPERATOR.md`](../OPERATOR.md) — the daemon: configure, run, alert, recover, self-host
 - [`RUNBOOK.md`](./RUNBOOK.md) — proving a single instance by hand
 - [`LOCAL_TESTING.md`](./LOCAL_TESTING.md) — the mainnet-fork rehearsal, where proofs are real
