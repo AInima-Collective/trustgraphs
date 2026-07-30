@@ -21,6 +21,7 @@ vars:
   # Pay for every root, at most $50 of it.
   MAX_PER_ROOT_USD: '{{.MAX_PER_ROOT_USD | default "5000000000"}}'
   TICKS: '{{.TICKS | default "6"}}'
+  IPFS_API: '{{.IPFS_API | default "http://127.0.0.1:5001"}}'
   WORK: .demo
 
 tasks:
@@ -250,6 +251,11 @@ tasks:
         [prover]
         backend = "mock"
         groth16 = true
+
+        # Where the score blob goes. Without this the daemon lands roots the indexer cannot read,
+        # and every network page renders an empty roster over a perfectly valid proof.
+        [ipfs]
+        api = "{{.IPFS_API}}"
 
         [ops]
         journal_path = "{{.WORK}}/journal.jsonl"

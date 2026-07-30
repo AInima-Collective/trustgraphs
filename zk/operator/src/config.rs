@@ -48,7 +48,22 @@ pub struct Config {
     #[serde(default)]
     pub budget: Budget,
     #[serde(default)]
+    pub ipfs: Ipfs,
+    #[serde(default)]
     pub ops: Ops,
+}
+
+/// Where to publish the score blob.
+///
+/// The chain carries the root and the CID, never the scores. Without this the daemon lands roots
+/// nobody can read: the indexer fetches the blob by CID to build its member list, and a network
+/// page over an unpublished root renders empty. Unset means "we are not publishing", which is
+/// legitimate only if something else does.
+#[derive(Debug, Default, Deserialize)]
+pub struct Ipfs {
+    /// A kubo RPC API, e.g. `http://127.0.0.1:5001`.
+    #[serde(default)]
+    pub api: Option<String>,
 }
 
 /// The free tier, and the whole of it. There is no unconditional one: a permissionless factory

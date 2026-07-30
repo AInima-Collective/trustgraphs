@@ -462,6 +462,29 @@ fn act(
             let proof = handlers::prove(cfg, &built)?;
             journal.append(Record::Requested { key, request_id: proof.request_id, at: now() })?;
 
+            // Publish the scores BEFORE the root lands, so nothing ever observes a root whose
+            // data cannot be fetched. Best-effort: a failed pin must not stop a valid proof from
+            // being submitted, so it alerts and carries on.
+            match handlers::pin(cfg, &built) {
+                Ok(cid) => logger.event(
+                    "pinned",
+                    json!({ "instance": format!("{:#x}", entry.instance_id), "cid": cid }),
+                ),
+                Err(e) => {
+                    let text = format!(
+                        "{}: could not publish the score blob ({e}). The root is still valid, but \
+                         until these bytes are on IPFS the indexer cannot build a member list and \
+                         the network page will render empty.",
+                        entry.name
+                    );
+                    logger.event(
+                        "pin_failed",
+                        json!({ "instance": format!("{:#x}", entry.instance_id), "error": e.to_string() }),
+                    );
+                    alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                }
+            }
+
             handlers::save_held(entry, *checkpoint_id, &built, &proof)?;
             logger.event(
                 "proved",

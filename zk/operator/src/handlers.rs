@@ -46,6 +46,10 @@ pub struct Built {
     pub total_value: U256,
     pub skipped_digest: B256,
     pub recipient: Address,
+    /// The canonical score blob the guest committed to (`ipfs_hash` is its sha256, `cid` its
+    /// CIDv1). The ROOT is the proof; this is the data the root is about, and nothing can read a
+    /// score without it — see [`pin`].
+    pub blob: Vec<u8>,
 }
 
 /// A finished proof plus the fields the submit needs.
@@ -198,20 +202,20 @@ pub fn build_input(
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let text = std::fs::read_to_string(input_path)?;
-    let (j, cid, vk) = match program {
+    let (j, cid, vk, blob) = match program {
         Program::TrustGraph => {
             let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
             let r = pagerank_core::compute::compute(&input);
             let vk =
                 trustgraph_prover::common::vkey(trustgraph_prover::programs::trust_graph::elf())?;
-            (r.journal, r.cid, vk)
+            (r.journal, r.cid, vk, r.blob)
         }
         Program::Contributions => {
             let input: contributions_core::compute::GuestInput = serde_json::from_str(&text)?;
             let r = contributions_core::compute::compute(&input);
             let vk =
                 trustgraph_prover::common::vkey(trustgraph_prover::programs::contributions::elf())?;
-            (r.journal, r.cid, vk)
+            (r.journal, r.cid, vk, r.blob)
         }
         _ => bail!("{} does not produce a root journal here", program.name()),
     };
@@ -232,7 +236,69 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         total_value: j.total_value,
         skipped_digest: j.skipped_digest,
         recipient: j.recipient,
+        blob,
     })
+}
+
+/// Publish the score blob so the root means something to a reader.
+///
+/// The chain carries the root, the sha256 and the CID — not the scores. Everything that renders a
+/// member list (the indexer's `merkleMetadata`/`merkleEntry` ingestion, and therefore every network
+/// page) fetches the blob by CID and gives up if it is not there. So a daemon that proves and
+/// submits without publishing produces roots that are correct, verifiable, and unreadable: the
+/// network page 404s and the community sees an empty roster over a valid proof.
+///
+/// The manual loop always did this by hand (`ipfs add --cid-version=1 --raw-leaves`, both in
+/// `test/e2e/run.sh` and `taskfile/instances.sh`); the daemon replaced the loop and not that step.
+///
+/// Best-effort by design. A failed pin must NOT stop a root from landing: the proof is still valid
+/// and someone else can publish the same bytes later (the CID is content-addressed, so anyone
+/// re-deriving the blob reproduces it exactly). It alerts instead.
+pub fn pin(cfg: &Config, built: &Built) -> Result<String> {
+    let api = cfg.ipfs.api.as_deref().ok_or_else(|| anyhow::anyhow!("no [ipfs] api configured"))?;
+    let url =
+        format!("{}/api/v0/add?cid-version=1&raw-leaves=true&pin=true", api.trim_end_matches('/'));
+
+    // Multipart by hand rather than pulling in a client: one field, known bytes.
+    let boundary = "----trustgraph-operator-blob";
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}
+Content-Disposition: form-data; name=\"file\"; filename=\"blob.json\"
+Content-Type: application/json
+
+"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(&built.blob);
+    body.extend_from_slice(
+        format!(
+            "
+--{boundary}--
+"
+        )
+        .as_bytes(),
+    );
+
+    let resp = reqwest::blocking::Client::new()
+        .post(&url)
+        .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+        .body(body)
+        .send()?;
+    anyhow::ensure!(resp.status().is_success(), "ipfs add returned {}", resp.status());
+    let v: serde_json::Value = resp.json()?;
+    let got = v.get("Hash").and_then(|h| h.as_str()).unwrap_or_default().to_string();
+
+    // The guest computed the CID in-circuit from these exact bytes. A mismatch means we just
+    // published something the root does not commit to, which is worse than publishing nothing.
+    anyhow::ensure!(
+        got == built.cid,
+        "ipfs returned CID {got}, the guest committed {} — refusing to call this published",
+        built.cid
+    );
+    Ok(got)
 }
 
 /// Prove, with the guest-vs-native byte assert as the precondition.

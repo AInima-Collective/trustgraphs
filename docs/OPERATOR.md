@@ -148,6 +148,13 @@ global_usd_per_day       = 250
 cents_per_billion_cycles = 100   # what turns a cycle estimate into the budget's units
 window_seconds           = 86400 # the rolling window the caps are measured over
 
+# ── publishing the scores ───────────────────────────────────────────────────
+# The chain carries the ROOT, the sha256 and the CID. It does not carry the scores. Everything
+# that renders a member list fetches the blob by CID, so a daemon that proves and submits without
+# publishing produces roots that are correct, verifiable, and unreadable.
+[ipfs]
+api = "http://127.0.0.1:5001"   # a kubo RPC API. Unset = we are not publishing.
+
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
 journal_path = "./.trustgraph/operator/journal.jsonl"
@@ -178,6 +185,7 @@ log_format   = "json"
 | `budget.*_usd_per_day` | halt thresholds | 25 / 250 |
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
+| `ipfs.api` | kubo RPC the score blob is published to | unset (nothing published) |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
 ### Keys and balances
@@ -305,6 +313,7 @@ and what each actually means:
 | `<instance>: Unfunded` | a paid instance's tank will not cover the next root | tell the community, or move it to `curated` |
 | `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
 | `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
+| `could not publish the score blob` | the root is valid but its data is not on IPFS | check `ipfs.api`; the page will render an empty roster until the bytes are published, and anyone can publish them (the CID is content-addressed) |
 
 ### Recovering
 

@@ -47,15 +47,19 @@ export SP1_PROVER=mock          # runs the guest for real; only the SNARK is stu
 
 ## 1. Services
 
-Four things, and **§2–§7 need only the first**. The daemon computes each root's IPFS hash and CID
-in-circuit from the blob bytes, so it never contacts an IPFS node, and nothing before §8 touches
-Postgres. That is why the chain-and-daemon half of this demo runs with no Docker at all.
+Four things. **§2–§6 need only the first**; §7 also wants IPFS, and only §8 needs Postgres.
+
+The daemon computes each root's IPFS hash and CID in-circuit, but it must still PUBLISH the blob
+those commit to — the chain carries the root, never the scores, and every member list is built by
+fetching that blob by CID. Without IPFS the proving loop still works and roots still land; they are
+just unreadable, and the network page renders an empty roster over a valid proof. The daemon says
+so rather than failing silently.
 
 | | What | Port | Needed by |
 |---|---|---|---|
 | 1 | anvil | 8545 | everything |
 | 2 | Postgres (`ponder-db`) | 6432 | §8 (the indexer) |
-| 3 | IPFS (kubo) | 5001 / 8080 | §8 (fetching a score blob by its CID) |
+| 3 | IPFS (kubo) | 5001 / 8080 | §7 (publishing the score blob) and §8 (reading it back) |
 | 4 | Ponder + Next.js | 65421 / 3000 | §8 |
 
 anvil first, because the services task below **waits** for it rather than starting it:
