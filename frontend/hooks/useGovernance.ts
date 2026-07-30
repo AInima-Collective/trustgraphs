@@ -16,6 +16,7 @@ import {
   merkleGovModuleVote,
 } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { realAddress } from '@/lib/utils'
 
 // Types matching the MerkleGovModule contract structs
 export interface ProposalAction {
@@ -116,7 +117,9 @@ export function useGovernance() {
   const [isExecutingProposal, setIsExecutingProposal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const merkleGovModuleAddress = (network.contracts.merkleGovModule ||
+  // Zero when the network has no gov module, and a zero-address string is truthy — so the
+  // `enabled` guards below need `realAddress`, not `!!`.
+  const merkleGovModuleAddress = (realAddress(network.contracts.merkleGovModule) ??
     '') as Hex
 
   // Query module state from ponder

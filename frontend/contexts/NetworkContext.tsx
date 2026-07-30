@@ -15,6 +15,8 @@ import {
 } from 'react'
 import { Hex, zeroAddress } from 'viem'
 
+import { realAddress } from '@/lib/utils'
+
 import { registerNetworks } from '@/components/schema-components'
 import { useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
@@ -115,19 +117,24 @@ export const NetworkProvider = ({
     refetchInterval: 10_000,
   })
 
-  // Fetch Gnosis Safe (if available)
+  // Fetch Gnosis Safe (if this network has one at all).
+  //
+  // `!!proxy` is not the right guard: a network created through the factory without a Safe still
+  // carries `safe.proxy` in config, set to the ZERO address, and a zero-address string is truthy.
+  // So the query ran, matched no row, and drizzle's `findFirst` resolved to `undefined` — which
+  // TanStack Query rejects outright ("Query data cannot be undefined"), turning a network that
+  // simply has no Safe into an error and a blank page.
+  const safeProxy = realAddress(network.contracts.safe?.proxy)
   const {
     data: gnosisSafeData,
     isLoading: gnosisSafeLoading,
     refetch: refetchGnosisSafe,
   } = usePonderQuery({
-    queryFn: ponderQueryFns.getGnosisSafe(
-      network.contracts.safe?.proxy || zeroAddress
-    ),
+    queryFn: ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress),
     // Bug when live is enabled where query doesn't refetch stale server data AND doesn't refetch when DB is updated as live is supposed to.
     live: false,
     refetchInterval: 30_000,
-    enabled: !!network.contracts.safe?.proxy,
+    enabled: !!safeProxy,
   })
 
   // Refetch Gnosis Safe when network accounts length changes
@@ -345,11 +352,14 @@ export const NetworkProvider = ({
     totalParticipants,
     averageValue,
     medianValue,
-    gnosisSafe: gnosisSafeData && {
-      address: gnosisSafeData.address,
-      owners: gnosisSafeData.owners,
-      threshold: Number(gnosisSafeData.threshold),
-    },
+    // `&&` would yield `null` here, and the context type says `| undefined`.
+    gnosisSafe: gnosisSafeData
+      ? {
+          address: gnosisSafeData.address,
+          owners: gnosisSafeData.owners,
+          threshold: Number(gnosisSafeData.threshold),
+        }
+      : undefined,
 
     // Additional metadata from ponder
     merkleRoot: merkleTreeData?.tree?.root,

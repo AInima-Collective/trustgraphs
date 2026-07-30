@@ -101,3 +101,16 @@ export const mightBeEnsName = (name: string) => {
  */
 export const isHexEqual = (hex1: string, hex2: string) =>
   hex1.toLowerCase() === hex2.toLowerCase()
+
+/**
+ * An address a query can actually be run against, or `undefined`.
+ *
+ * A network created through the factory without a Safe, distributor or gov module still carries
+ * those fields — set to the ZERO address, which is a truthy string. So `enabled: !!addr` lets the
+ * query run, it matches no row, and the page shows an error where it should show nothing. Use this
+ * for any contract a network is allowed not to have.
+ */
+export const realAddress = (addr?: string | null): `0x${string}` | undefined =>
+  addr && addr !== '0x0000000000000000000000000000000000000000'
+    ? (addr as `0x${string}`)
+    : undefined

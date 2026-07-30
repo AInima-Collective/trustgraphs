@@ -11,7 +11,7 @@ import { Card } from '@/components/Card'
 import { SectionHeading } from '@/components/SectionHeading'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { contributionsRoundsFor } from '@/lib/network-nav'
-import { cn } from '@/lib/utils'
+import { cn, realAddress } from '@/lib/utils'
 import { ponderQueryFns } from '@/queries/ponder'
 
 /**
@@ -67,8 +67,8 @@ export const NetworkFeatures = () => {
   const { network } = useNetwork()
   const base = `/network/${network.id}`
 
-  const govModule = network.contracts.merkleGovModule
-  const distributor = network.contracts.merkleFundDistributor
+  const govModule = realAddress(network.contracts.merkleGovModule)
+  const distributor = realAddress(network.contracts.merkleFundDistributor)
   const rounds = contributionsRoundsFor(network)
 
   const { data: moduleState } = usePonderQuery({
