@@ -153,7 +153,10 @@ window_seconds           = 86400 # the rolling window the caps are measured over
 # that renders a member list fetches the blob by CID, so a daemon that proves and submits without
 # publishing produces roots that are correct, verifiable, and unreadable.
 [ipfs]
-api = "http://127.0.0.1:5001"   # a kubo RPC API. Unset = we are not publishing.
+api = "http://127.0.0.1:5001"          # a kubo RPC API. Unset = we are not publishing.
+gateway = "http://127.0.0.1:8080/ipfs/"  # optional, and worth setting: the pin is verified by
+                                         # fetching it back the way a READER does. Use the same
+                                         # string the indexer has in `IPFS_GATEWAY`.
 
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
@@ -186,6 +189,7 @@ log_format   = "json"
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
 | `ipfs.api` | kubo RPC the score blob is published to | unset (nothing published) |
+| `ipfs.gateway` | read the pin back through a reader's gateway before calling it published | unset (no read-back) |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
 ### Keys and balances
@@ -314,6 +318,21 @@ and what each actually means:
 | `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
 | `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
 | `could not publish the score blob` | the root is valid but its data is not on IPFS | check `ipfs.api`; the page will render an empty roster until the bytes are published, and anyone can publish them (the CID is content-addressed) |
+| `the API accepted the blob but the gateway … answers 504` | `add` and the read are hitting **different nodes** | the pin went somewhere readers do not ask. Compare `curl -X POST <api>/api/v0/id` against whatever serves `ipfs.gateway`; until they agree, every root lands unreadable and the indexer stalls retrying one event |
+| `journal … was written against a DIFFERENT chain` | a devnet restarted (or the config moved) and the old journal's keys collide with the new chain's work | point `ops.journal_path` at a fresh file for this chain. See below |
+
+#### Why a restarted devnet wedges the journal
+
+A `WorkKey` is `(chain_id, instance_id, checkpoint_id)`, and on a devnet **none of the three is
+fresh**: the chain id is fixed at 31337, an instance id is `keccak(creator, name, salt)`, and a
+restarted chain counts checkpoints from 0 again. So the previous run's `settled: landed` record
+matches the new chain's first unit of work exactly, and the journal refuses it — correctly, given
+what it knows. The daemon then re-plans the same doomed `Prove` every tick forever, because a
+settled record reads as "no work in flight" to `plan`.
+
+The daemon detects this rather than guessing: a `Landed`/`Superseded` record is a *claim about the
+chain*, so if that instance's snapshot reports no such root, the two cannot be describing the same
+chain. Mainnet is unaffected — chains there do not restart.
 
 ### Recovering
 

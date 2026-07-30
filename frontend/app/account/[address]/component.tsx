@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowUpRight,
@@ -36,6 +35,7 @@ import { AttestationData } from '@/lib/attestation'
 import { parseErrorMessage } from '@/lib/error'
 import { isTrustedSeed } from '@/lib/network'
 import { Network } from '@/lib/types'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import { cn, formatBigNumber, isHexEqual } from '@/lib/utils'
 import { NetworkProfile, ponderQueries, ponderQueryFns } from '@/queries/ponder'
 

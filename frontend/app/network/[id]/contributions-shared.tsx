@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
@@ -17,6 +16,7 @@ import {
 } from '@/lib/contributions-view'
 import { contributionsTabs } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 
 /**
  * All the data the contributions screens share: the round summary (M3 indexer route), the live

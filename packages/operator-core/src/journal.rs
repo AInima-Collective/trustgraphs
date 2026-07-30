@@ -252,6 +252,75 @@ impl Journal {
         matches!(self.status(key), Status::Untouched)
     }
 
+    /// Why a fresh request was refused, phrased for whoever has to fix it.
+    ///
+    /// [`may_request`](Self::may_request) answers yes or no; this answers "and what do I do about
+    /// it?", which is a different question and the only one anyone asks at 2am. The refusal alone
+    /// ("journal refuses a fresh request for checkpoint 0") is true, unactionable, and identical
+    /// across four unrelated causes.
+    ///
+    /// `last_applied_on_chain` is the instance's `lastAppliedCheckpoint` as the chain reports it
+    /// right now, which is what separates the one cause you cannot guess from the rest — see
+    /// [`Self::contradicts_chain`].
+    pub fn refusal(&self, key: &WorkKey, last_applied_on_chain: Option<u64>) -> String {
+        match self.status(key) {
+            Status::Untouched => {
+                "the journal permits this request; nothing refused it (if you are reading this, \
+                 the caller and the journal disagree about `may_request`)"
+                    .to_string()
+            }
+            Status::InFlight { request_id } => format!(
+                "a proof request for this checkpoint is already out ({request_id:#x}). Requesting \
+                 again is how you pay twice; wait for it to settle."
+            ),
+            Status::OutcomeUnknown { since, .. } => format!(
+                "a request for this checkpoint was journaled at {since} and its outcome is still \
+                 unknown. This is NEVER auto-retried — a human resolves it with a `Resolved` \
+                 record once they have checked whether the request exists."
+            ),
+            Status::Settled(outcome) if self.contradicts_chain(key, last_applied_on_chain) => {
+                format!(
+                    "the journal says checkpoint {} of this instance was already settled \
+                     ({outcome:?}), but the chain reports {}. A settled root cannot be missing \
+                     from the chain that accepted it, so this journal was written against a \
+                     DIFFERENT chain that happens to share id {} — a devnet that was restarted, a \
+                     testnet respawn, or a config now pointing somewhere else. Instance ids and \
+                     checkpoint numbers are reproducible across a chain reset, so the old records \
+                     collide with the new chain's work and block it forever. Point \
+                     `ops.journal_path` at a fresh file for this chain (for the local demo: `task \
+                     demo:clean`).",
+                    key.checkpoint_id,
+                    match last_applied_on_chain {
+                        Some(n) => format!("its newest applied checkpoint is {n}"),
+                        None => "no root has ever been applied".to_string(),
+                    },
+                    key.chain_id,
+                )
+            }
+            Status::Settled(outcome) => format!(
+                "checkpoint {} was already settled ({outcome:?}) and paid work is never repeated.",
+                key.checkpoint_id
+            ),
+        }
+    }
+
+    /// Whether this key's journal record cannot be true of the chain in front of us.
+    ///
+    /// A `Landed` or `Superseded` settlement is a claim about the chain: a root for this
+    /// checkpoint (or a newer one) was accepted. If the chain's newest applied checkpoint is
+    /// behind that — or it has never applied one at all — the two cannot both be describing the
+    /// same chain.
+    ///
+    /// `Failed` and `Cancelled` make no such claim: they are true whatever the chain says.
+    fn contradicts_chain(&self, key: &WorkKey, last_applied_on_chain: Option<u64>) -> bool {
+        match self.status(key) {
+            Status::Settled(Outcome::Landed | Outcome::Superseded) => {
+                last_applied_on_chain.is_none_or(|applied| applied < key.checkpoint_id)
+            }
+            _ => false,
+        }
+    }
+
     /// Rolling spend inside `window_secs` ending at `now`, for the budget check.
     ///
     /// Counts INTENTS, not settlements: an intent is the moment money is committed, and a request

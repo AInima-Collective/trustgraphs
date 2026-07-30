@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { Hex, isAddressEqual } from 'viem'
@@ -12,6 +11,7 @@ import { easAddress } from '@/lib/contracts'
 import { parseErrorMessage, shouldRetryTxError } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import { attestationKeys } from '@/queries/attestation'
 import { ponderQueryFns } from '@/queries/ponder'
 

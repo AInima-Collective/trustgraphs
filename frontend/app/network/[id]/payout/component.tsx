@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
@@ -20,6 +19,7 @@ import { contributionsQueries } from '@/lib/contributions-api'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
 import { ContributionsNetwork } from '@/lib/types'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 

@@ -22,20 +22,30 @@ vars:
   MAX_PER_ROOT_USD: '{{.MAX_PER_ROOT_USD | default "5000000000"}}'
   TICKS: '{{.TICKS | default "6"}}'
   IPFS_API: '{{.IPFS_API | default "http://127.0.0.1:5001"}}'
+  # The reader's view, and the exact string the indexer uses (indexer/.env IPFS_GATEWAY). Keep the
+  # trailing `/ipfs/`: both sides build the URL by plain concatenation.
+  IPFS_GATEWAY: '{{.IPFS_GATEWAY | default "http://127.0.0.1:8080/ipfs/"}}'
   WORK: .demo
 
 tasks:
   default:
     desc: 'The whole demo: deploy, create a funded network with governance, rewards and contributions, seed it, prove it, pay for it'
     cmds:
+      # `clean` FIRST, because this task deploys a fresh stack and the journal from the last one
+      # would block it. An instance id is keccak(creator, name, salt) and a restarted anvil counts
+      # checkpoints from 0 again, so every field of the request journal's key repeats — the journal
+      # then refuses the new chain's work as already-paid-for. Correct of it, and fatal here.
+      - task: clean
       - task: preflight
       - task: deploy
       - task: create
       - task: seed
       - task: govern
       - task: contributions
+      # Report whatever happened, including when `prove` fails. A demo that lands nothing and says
+      # nothing is worse than one that fails.
+      - defer: { task: report }
       - task: prove
-      - task: report
 
   preflight:
     desc: 'Refuse to start rather than fail halfway'
@@ -114,7 +124,7 @@ tasks:
         # The community's own limit. Only it can set this: EPOCH_FLOOR binds at creation, but
         # setEpochLength is constitutional, so the paid cadence has to live in the vault.
         VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
-        ID=$(task --silent demo:id)
+        ID=$(task --silent demo:id NAME='{{.NAME}}')
         cast send "$VAULT" 'setPolicy(bytes32,uint64,uint96)' "$ID" 0 {{.MAX_PER_ROOT_USD}} \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" >/dev/null
         echo "✓ created {{.NAME}}"
@@ -145,7 +155,7 @@ tasks:
         # The factory does not deploy governance — a factory instance has a snapshot, a resolver
         # and (here) a distributor, and nothing else. This bolts the Zodiac stack on afterwards,
         # exactly as a real community would.
-        SNAP=$(task --silent demo:snapshot)
+        SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
         SIGNER_VERIFIER=$(jq -r '.signer_zk_verifier // .zk_verifier' \
           .docker/signer_zk_verifier_deploy.json 2>/dev/null \
           || jq -r .zk_verifier .docker/zk_verifier_deploy.json)
@@ -157,8 +167,8 @@ tasks:
         # config ("seed") entry onto the indexer row keyed by merkleSnapshot, with the seed-only
         # addresses surviving. So governance shows in the UI only if the network has a config
         # entry. Write one, matched on the snapshot the demo just created.
-        SNAP=$(task --silent demo:snapshot)
-        RESOLVER=$(task --silent demo:resolver 2>/dev/null || echo "")
+        SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+        RESOLVER=$(task --silent demo:resolver NAME='{{.NAME}}' 2>/dev/null || echo "")
         node -e '
           const fs = require("fs");
           const f = "config/networks.development.json";
@@ -191,7 +201,33 @@ tasks:
           console.log("  ✓ config entry for " + name + " (" + (existing >= 0 ? "updated" : "added") + ")");
         ' "$SNAP" "$RESOLVER" '{{.NAME}}'
       - |
-        echo "  restart the frontend to pick up config/networks.development.json"
+        # And the INDEXER's copy, which is a different file. `ponder.config.ts` builds its gov and
+        # Safe sources from `.docker/deployment_summary.json`; the frontend config above is not
+        # read by Ponder at all. Writing only the frontend one gives a UI that renders a
+        # governance tab over a module nobody indexed, and the page then dies on
+        # "Query data cannot be undefined" for `merkle_gov_module`.
+        #
+        # The factory-created snapshot/resolver/distributor need no entry — Ponder discovers those
+        # from `InstanceCreated`. Only the bolted-on Zodiac stack does.
+        SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+        node -e '
+          const fs = require("fs");
+          const f = ".docker/deployment_summary.json";
+          const s = JSON.parse(fs.readFileSync(f, "utf8"));
+          const z = JSON.parse(fs.readFileSync(".docker/zodiac_safes_deploy.json", "utf8"));
+          const snap = process.argv[1];
+          const same = (a, b) => (a || "").toLowerCase() === (b || "").toLowerCase();
+          s.networks = s.networks || [];
+          let net = s.networks.find((n) => same(n.contracts?.merkleSnapshot, snap));
+          if (!net) { net = { name: process.argv[2], contracts: { merkleSnapshot: snap } }; s.networks.push(net); }
+          net.contracts = { ...net.contracts,
+            merkleGovModule: z.safe.merkle_gov_module,
+            safe: { ...(net.contracts.safe || {}), proxy: z.safe.address } };
+          fs.writeFileSync(f, JSON.stringify(s, null, 2) + "\n");
+          console.log("  ✓ indexer sources for the gov module + Safe");
+        ' "$SNAP" '{{.NAME}}'
+      - |
+        echo "  restart the indexer AND the frontend to pick up the new sources"
 
   contributions:
     desc: 'A contributions round over the demo network''s own trust graph'
@@ -204,7 +240,7 @@ tasks:
         # From the chain, not from `.trustgraph/create-instance.json`: that file is last-write-wins
         # scratch, so any other `CreateInstance` run since clobbers it and this silently wires the
         # round to a DIFFERENT network's graph. It did exactly that once.
-        RESOLVER=$(task --silent demo:resolver)
+        RESOLVER=$(task --silent demo:resolver NAME='{{.NAME}}')
         : "${RESOLVER:?no instance yet — run: task demo:create}"
         EAS=$(jq -r .eas              .docker/eas_deploy.json)
         REGISTRAR=$(jq -r .schema_registrar .docker/eas_deploy.json)
@@ -226,6 +262,10 @@ tasks:
         REG=$(jq   -r .instance_registry .docker/instance_registry_deploy.json)
         VAULT=$(jq -r .proving_vault     .docker/proving_vault_deploy.json)
         : "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?}"
+        # The heredoc below is UNQUOTED on purpose: chain_id and recipient are command
+        # substitutions that have to run. That means BACKTICKS RUN TOO, including inside the
+        # comments being written into the file — a `word` there is executed and replaced by
+        # nothing. Keep backticks and $( out of the heredoc body; explain things here instead.
         cat > {{.WORK}}/operator.toml <<EOF
         rpc      = "{{.RPC}}"
         registry = "$REG"
@@ -253,9 +293,13 @@ tasks:
         groth16 = true
 
         # Where the score blob goes. Without this the daemon lands roots the indexer cannot read,
-        # and every network page renders an empty roster over a perfectly valid proof.
+        # and every network page renders an empty roster over a perfectly valid proof. The gateway
+        # is the SAME string the indexer reads, from IPFS_GATEWAY: the pin is verified by fetching
+        # it back the way a reader would, because "the API took it" and "a reader can get it" are
+        # only the same claim while both are the same node.
         [ipfs]
-        api = "{{.IPFS_API}}"
+        api     = "{{.IPFS_API}}"
+        gateway = "{{.IPFS_GATEWAY}}"
 
         [ops]
         journal_path = "{{.WORK}}/journal.jsonl"
@@ -280,18 +324,41 @@ tasks:
     cmds:
       - |
         export SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true
-        SNAP=$(task --silent demo:snapshot)
+        SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+
+        # The last thing the daemon did, WITH the reason when it failed. Printing only
+        # `"event":"action_failed"` — as this did — turns every distinct failure into the same
+        # five characters and hides the one sentence that says how to fix it.
+        last() {
+          jq -Rr 'fromjson? | select(.event | IN("triggered","proved","submitted","superseded",
+                                                  "action_failed","tick_failed","pin_failed"))
+                  | .event + (if .error then ": " + .error else "" end)' {{.WORK}}/run.log \
+            | tail -1
+        }
+
+        landed=0
         for i in $(seq 1 {{.TICKS}}); do
           # anvil only mines on transactions, so nudge it or the epoch gate never opens.
           cast rpc anvil_mine 8 --rpc-url {{.RPC}} >/dev/null
           cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
             --config {{.WORK}}/operator.toml --once >> {{.WORK}}/run.log 2>&1 || true
-          grep -Eo '"event":"(triggered|proved|submitted|action_failed)"' {{.WORK}}/run.log \
-            | tail -1 | sed 's/^/  tick '"$i"': /'
+          echo "  tick $i: $(last)"
           if [ "$(cast call "$SNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url {{.RPC}})" = "true" ]; then
-            echo "  ✓ a root landed on tick $i"; break
+            echo "  ✓ a root landed on tick $i"; landed=1; break
           fi
         done
+
+        # Fail loudly. Without this the demo exits 0 having proved nothing, and the first sign of
+        # trouble is an empty network page several steps later — which is where this last went
+        # wrong. The indexer builds its member list from the score blob a landed root points at,
+        # so no root means no rows and a 404 on /network/<id>.
+        if [ "$landed" = "0" ]; then
+          echo
+          echo "  ✗ no root landed in {{.TICKS}} ticks. The daemon's last word:"
+          echo "      $(last)"
+          echo "    full log: {{.WORK}}/run.log"
+          exit 1
+        fi
 
   resolver:
     desc: 'The instance''s EASIndexerResolver (its accumulator), from the registry'
@@ -299,7 +366,7 @@ tasks:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
         cast call "$REG" 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' \
-          "$(task --silent demo:id)" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f4 | tr -d ' '
+          "$(task --silent demo:id NAME='{{.NAME}}')" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f4 | tr -d ' '
 
   snapshot:
     desc: 'The instance''s MerkleSnapshot address, from the registry'
@@ -307,7 +374,7 @@ tasks:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
         cast call "$REG" 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' \
-          "$(task --silent demo:id)" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f2 | tr -d ' '
+          "$(task --silent demo:id NAME='{{.NAME}}')" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f2 | tr -d ' '
 
   report:
     desc: 'What happened: the root, the payment, and every instance''s decision'
@@ -315,12 +382,34 @@ tasks:
       - |
         R={{.RPC}}
         VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
-        ID=$(task --silent demo:id); SNAP=$(task --silent demo:snapshot)
+        ID=$(task --silent demo:id NAME='{{.NAME}}'); SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
         PAYEE=$(cast wallet address --private-key "$FUNDED_KEY")
         echo
         echo "  root landed   $(cast call "$SNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url $R) (checkpoint $(cast call "$SNAP" 'lastAppliedCheckpoint()(uint256)' --rpc-url $R))"
         echo "  tank left     $(cast call "$VAULT" 'accountOf(bytes32)((address,bytes32,uint128,uint128))' "$ID" --rpc-url $R)"
         echo "  prover paid   $(cast call "$VAULT" 'creditOf(address,address)(uint256)' "$PAYEE" 0x0000000000000000000000000000000000000000 --rpc-url $R) wei"
+
+        # The root is only half of it. The chain carries the root, its sha256 and the CID — never
+        # the scores — so the indexer builds every member list by fetching that CID. If it is not
+        # readable through the gateway the INDEXER uses, `merkle.ts` throws, Ponder retries that
+        # one event forever, and the UI shows an empty roster over a perfectly valid proof. Read
+        # it the way the indexer will, not the way we published it.
+        N=$(cast call "$SNAP" 'getStateCount()(uint256)' --rpc-url $R 2>/dev/null | cut -d' ' -f1)
+        CID=$([ "${N:-0}" -gt 0 ] 2>/dev/null && cast call "$SNAP" \
+          'getStateAtIndex(uint256)((uint256,uint256,bytes32,bytes32,string,uint256))' \
+          $((N - 1)) --rpc-url $R 2>/dev/null | sed 's/.*"\(.*\)".*/\1/')
+        if [ -n "$CID" ]; then
+          CODE=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "{{.IPFS_GATEWAY}}$CID" || echo 000)
+          if [ "$CODE" = "200" ]; then
+            echo "  scores        readable at {{.IPFS_GATEWAY}}$CID"
+          else
+            echo "  scores        ✗ HTTP $CODE at {{.IPFS_GATEWAY}}$CID"
+            echo "                the root is valid but its scores are unreadable, so the indexer"
+            echo "                will stall on this event and every network page renders empty."
+            echo "                the add and this read are hitting different nodes: compare"
+            echo "                {{.IPFS_API}}/api/v0/id with whatever serves {{.IPFS_GATEWAY}}"
+          fi
+        fi
         echo
         # The one thing worth reading when a number above is wrong.
         [ -f {{.WORK}}/status.json ] && jq -c '[.instances[] | {name, do: .action.action,

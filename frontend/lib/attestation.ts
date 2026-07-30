@@ -43,6 +43,12 @@ export function intoAttestationData(
 export function intoAttestationData(
   ponderData: typeof easAttestation.$inferSelect | undefined
 ): AttestationData
+// The shape a guarded ponder query hands to `select`: a missing row is `null`, never `undefined`.
+// Without this overload TS resolves the call to the one above and then rejects it, because that
+// one promises an `AttestationData` for an input this function answers `null` to.
+export function intoAttestationData(
+  ponderData: typeof easAttestation.$inferSelect | null
+): AttestationData | null
 export function intoAttestationData(
   ponderData?: typeof easAttestation.$inferSelect | null
 ): AttestationData | null {
@@ -103,4 +109,8 @@ export function intoAttestationData(
 
 export const intoAttestationsData = (
   ponderData: (typeof easAttestation.$inferSelect)[]
-): AttestationData[] => ponderData.map(intoAttestationData)
+): AttestationData[] =>
+  // Called through an arrow rather than passed to `.map` directly: every element here is a real
+  // row, so this must pick the non-null overload, and point-free `.map(intoAttestationData)`
+  // resolves against the whole overload set and drags `| null` into the result type.
+  ponderData.map((row) => intoAttestationData(row))

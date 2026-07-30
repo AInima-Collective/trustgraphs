@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Check, LoaderCircle, X } from 'lucide-react'
@@ -41,6 +40,7 @@ import { useResolveEnsName } from '@/hooks/useEns'
 import { AttestationData } from '@/lib/attestation'
 import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import {
   formatBigNumber,
   formatPercentage,

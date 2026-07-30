@@ -440,8 +440,11 @@ fn act(
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
             if !journal.may_request(&key) {
                 // The journal is the authority on whether this was already paid for. `plan` should
-                // have produced a Hold, so reaching here means the two disagree — refuse.
-                bail!("journal refuses a fresh request for checkpoint {checkpoint_id}");
+                // have produced a Hold, so reaching here means the two disagree — refuse, and say
+                // which of the four possible disagreements this is. `plan` cannot see a settled
+                // record (it maps to "no work in flight"), so on a chain whose history no longer
+                // matches the journal it will re-plan the same doomed Prove every tick.
+                bail!("{}", journal.refusal(&key, state.last_applied_checkpoint));
             }
 
             let built = handlers::build_input(cfg, rpc, entry, state, *checkpoint_id)?;

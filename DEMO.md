@@ -455,6 +455,25 @@ Everything below cost someone real time.
   arise.
 - **`task demo` will not start your chain.** It refuses to run without one rather than starting an
   anvil it would then have to own. Same reason it leaves Postgres and IPFS to `start-all-local`.
+- **A restarted anvil wedges the operator's journal, and the message used to be useless.** A
+  `WorkKey` is `(chain_id, instance_id, checkpoint_id)`; on a devnet the chain id is fixed, the
+  instance id is `keccak(creator, name, salt)`, and a fresh chain counts checkpoints from 0 again.
+  So the previous run's `settled: landed` record matches the new chain's first unit of work exactly
+  and the journal refuses it — correctly, given what it knows — while `plan` re-proposes the same
+  doomed `Prove` every tick. `task demo` now clears `.demo/` first, and the refusal now says which
+  of the four causes it is. If you drive the daemon by hand after restarting anvil: `task
+  demo:clean`.
+- **IPFS is not optional, and "pinned" is not the same as "readable".** The chain carries the root,
+  its sha256 and the CID — never the scores. `indexer/src/merkle.ts` fetches that CID and *throws*
+  if it cannot, which wedges Ponder on that one event and leaves every network page 404ing over a
+  perfectly valid proof. Worse, a successful `add` only proves the API node took the bytes: if
+  `[ipfs] api` and `IPFS_GATEWAY` are different nodes, the daemon reports `pinned` and readers get
+  504. The operator now reads the blob back through `[ipfs] gateway` before calling it published,
+  and `task demo:report` prints whether the scores are actually retrievable.
+- **`task demo:govern` writes two files, and they are not interchangeable.** The frontend reads
+  `config/networks.development.json`; Ponder reads `.docker/deployment_summary.json`. Updating only
+  the first gives a UI with a governance tab over a module nobody indexed, which fails as `Query
+  data cannot be undefined` for `merkle_gov_module`. Restart the **indexer** as well as the app.
 - **`pkill -f anvil` matches the shell running it** and will kill your own session. `pkill -x anvil`.
 - **Proving is mocked locally, and here is exactly where that stops.** `SP1_PROVER=mock` runs the
   guest for real and commits its real public values; the dev gateway is a stub too. The params

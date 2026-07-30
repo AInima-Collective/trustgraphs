@@ -186,8 +186,20 @@ const onMerkleRootUpdated = async ({
   const ipfsUrl = (ipfsGateway + ipfsHashCid).replace('localhost', '127.0.0.1')
   const merkleRequest = await fetch(ipfsUrl)
   if (!merkleRequest.ok) {
+    // Throwing stalls Ponder on this event, which is deliberate: the alternative is a network
+    // whose member list is silently and permanently empty. But it means one unfetchable blob stops
+    // indexing for everything, so the message has to be enough to fix it without reading this file.
     throw new Error(
-      `Failed to fetch merkle tree from IPFS CID ${ipfsHashCid}: ${merkleRequest.status} ${merkleRequest.statusText}`
+      `Failed to fetch merkle tree from IPFS CID ${ipfsHashCid}: ` +
+        `${merkleRequest.status} ${merkleRequest.statusText} (${ipfsUrl}).\n` +
+        `The root is on chain but its scores are not fetchable, so no member list can be built ` +
+        `and /network/${event.log.address} will 404. Indexing is paused here and will resume by ` +
+        `itself once the blob is retrievable.\n` +
+        `Check, in order: (1) is an IPFS node actually serving IPFS_GATEWAY; (2) did whoever ` +
+        `produced this root publish the blob — the operator does it, but only if [ipfs] api is ` +
+        `set; (3) are that api and this gateway the SAME node? A 504 with a successful pin means ` +
+        `they are not. Anyone can republish it: the CID is content-addressed, so re-deriving the ` +
+        `blob reproduces these exact bytes.`
     )
   }
   const scores = (await merkleRequest.json()) as ScoreBlob

@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { ArrowRight, Coins, HandCoins, Vote } from 'lucide-react'
 import Link from 'next/link'
 import { ReactNode } from 'react'
@@ -11,6 +10,7 @@ import { Card } from '@/components/Card'
 import { SectionHeading } from '@/components/SectionHeading'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { contributionsRoundsFor } from '@/lib/network-nav'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import { cn, realAddress } from '@/lib/utils'
 import { ponderQueryFns } from '@/queries/ponder'
 

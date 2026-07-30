@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { Hex } from 'viem'
@@ -10,13 +9,14 @@ import { useNetwork } from '@/contexts/NetworkContext'
 import { merkleGovModuleAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
+import { usePonderQuery } from '@/lib/use-ponder-query'
+import { realAddress } from '@/lib/utils'
 import {
   merkleGovModule,
   merkleGovModuleProposal,
   merkleGovModuleVote,
 } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
-import { realAddress } from '@/lib/utils'
 
 // Types matching the MerkleGovModule contract structs
 export interface ProposalAction {
@@ -119,8 +119,9 @@ export function useGovernance() {
 
   // Zero when the network has no gov module, and a zero-address string is truthy — so the
   // `enabled` guards below need `realAddress`, not `!!`.
-  const merkleGovModuleAddress = (realAddress(network.contracts.merkleGovModule) ??
-    '') as Hex
+  const merkleGovModuleAddress = (realAddress(
+    network.contracts.merkleGovModule
+  ) ?? '') as Hex
 
   // Query module state from ponder
   const { data: moduleState, isLoading: isLoadingModule } = usePonderQuery({

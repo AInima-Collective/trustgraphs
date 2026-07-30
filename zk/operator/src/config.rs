@@ -64,6 +64,15 @@ pub struct Ipfs {
     /// A kubo RPC API, e.g. `http://127.0.0.1:5001`.
     #[serde(default)]
     pub api: Option<String>,
+    /// The gateway a READER will use, e.g. `http://127.0.0.1:8080/ipfs/`. Optional, and worth
+    /// setting: a successful `add` only proves the API node accepted the bytes, which is not the
+    /// same claim as "anyone can fetch them". When the API and the gateway turn out to be
+    /// different nodes — two kubos on one box, a container whose ports are not published where
+    /// they look published, a gateway pointed at a remote pinning service — `add` succeeds, the
+    /// root lands, and the indexer then dies on a 504 for a CID the operator believes it
+    /// published. Setting this makes `pin` verify the claim it is making.
+    #[serde(default)]
+    pub gateway: Option<String>,
 }
 
 /// The free tier, and the whole of it. There is no unconditional one: a permissionless factory

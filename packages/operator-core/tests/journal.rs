@@ -233,3 +233,96 @@ fn a_journal_written_before_costs_existed_still_replays_at_zero() {
         }
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Refusals that name their own cause.
+//
+// The regression these exist for: a devnet was restarted, so the chain's checkpoint counter went
+// back to 0 while the instance id (keccak of creator/name/salt) and the chain id (31337) stayed
+// put. Every component of the `WorkKey` collided with the previous run's, the journal correctly
+// refused to pay twice for what it believed was the same work, and the daemon re-planned the same
+// doomed `Prove` every tick for the rest of its life. It was right to refuse and useless about
+// why: "journal refuses a fresh request for checkpoint 0".
+// ---------------------------------------------------------------------------------------------
+
+/// The chain cannot be missing a root it already accepted, so the journal is describing a
+/// different chain that shares the id.
+#[test]
+fn a_settled_root_the_chain_has_never_seen_is_a_stale_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(intent(key(0), 1_000)).unwrap();
+    j.append(Record::Requested { key: key(0), request_id: B256::from([0x22; 32]), at: 1_001 })
+        .unwrap();
+    j.append(Record::Settled { key: key(0), outcome: Outcome::Landed, at: 1_002 }).unwrap();
+
+    let why = j.refusal(&key(0), None);
+    assert!(why.contains("DIFFERENT chain"), "{why}");
+    assert!(why.contains("no root has ever been applied"), "{why}");
+    assert!(why.contains("task demo:clean"), "the message must carry its own fix: {why}");
+}
+
+/// Same contradiction, one step subtler: the chain HAS applied a root, but an older one than the
+/// journal claims to have landed.
+#[test]
+fn a_chain_behind_the_journal_is_also_a_stale_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(intent(key(7), 1_000)).unwrap();
+    j.append(Record::Settled { key: key(7), outcome: Outcome::Superseded, at: 1_001 }).unwrap();
+
+    let why = j.refusal(&key(7), Some(3));
+    assert!(why.contains("DIFFERENT chain"), "{why}");
+    assert!(why.contains("newest applied checkpoint is 3"), "{why}");
+}
+
+/// The ordinary case, which must NOT be reported as a stale journal: the root really did land and
+/// the chain agrees. Re-running the demo against a live chain hits this, and telling that operator
+/// to wipe its journal would be telling them to arm a double-spend.
+#[test]
+fn a_settled_root_the_chain_confirms_is_just_settled() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    j.append(intent(key(4), 1_000)).unwrap();
+    j.append(Record::Settled { key: key(4), outcome: Outcome::Landed, at: 1_001 }).unwrap();
+
+    for applied in [Some(4), Some(9)] {
+        let why = j.refusal(&key(4), applied);
+        assert!(!why.contains("DIFFERENT chain"), "applied={applied:?}: {why}");
+        assert!(why.contains("already settled"), "{why}");
+    }
+}
+
+/// A settlement that makes no claim about the chain cannot contradict it. `Failed` and `Cancelled`
+/// are true whether or not a root is there, so an absent root proves nothing.
+#[test]
+fn a_failed_request_is_not_evidence_of_a_stale_journal() {
+    for outcome in [Outcome::Failed, Outcome::Cancelled] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+        j.append(intent(key(0), 1_000)).unwrap();
+        j.append(Record::Settled { key: key(0), outcome, at: 1_001 }).unwrap();
+        let why = j.refusal(&key(0), None);
+        assert!(!why.contains("DIFFERENT chain"), "{outcome:?}: {why}");
+    }
+}
+
+/// The other two refusals keep their own explanations, and neither is confused for a chain reset.
+#[test]
+fn in_flight_and_unknown_refusals_say_what_they_are() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+
+    j.append(intent(key(0), 1_000)).unwrap();
+    let unknown = j.refusal(&key(0), None);
+    assert!(unknown.contains("outcome is still unknown"), "{unknown}");
+    assert!(unknown.contains("NEVER auto-retried"), "{unknown}");
+    assert!(!unknown.contains("DIFFERENT chain"), "{unknown}");
+
+    j.append(Record::Requested { key: key(0), request_id: B256::from([0x22; 32]), at: 1_001 })
+        .unwrap();
+    let in_flight = j.refusal(&key(0), None);
+    assert!(in_flight.contains("already out"), "{in_flight}");
+    assert!(in_flight.contains("pay twice"), "{in_flight}");
+    assert!(!in_flight.contains("DIFFERENT chain"), "{in_flight}");
+}

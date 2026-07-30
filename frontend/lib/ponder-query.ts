@@ -22,6 +22,9 @@ import type { QueryKey } from '@tanstack/react-query'
  * Use it on any `findFirst`-backed query, on both the client and the server prefetch — a prefetch
  * that resolves `undefined` poisons the dehydrated cache and throws during hydration, before any
  * component-level guard can help.
+ *
+ * This module stays free of React so a **server component** can import it; the client-side hook
+ * that builds on it lives in `use-ponder-query.ts`, which is `'use client'`.
  */
 export const nullable = <T>(options: {
   queryKey: QueryKey
@@ -30,3 +33,15 @@ export const nullable = <T>(options: {
   queryKey: options.queryKey,
   queryFn: () => Promise.resolve(options.queryFn()).then((row) => row ?? null),
 })
+
+/**
+ * What the guard does to a result type, mirroring exactly what it does at run time: `undefined`
+ * becomes `null`, and nothing else changes.
+ *
+ * Only `findFirst` can produce `undefined`, so only `findFirst` becomes nullable here. A
+ * `findMany` returns `Row[]` and keeps returning `Row[]` — blanket-nulling those would push a
+ * `?? []` into every list in the app to guard against a value that cannot occur.
+ */
+export type Nulled<T> = [undefined] extends [T]
+  ? Exclude<T, undefined> | null
+  : T

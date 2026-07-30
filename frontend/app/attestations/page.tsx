@@ -1,6 +1,5 @@
 'use client'
 
-import { usePonderQuery } from '@ponder/react'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useState } from 'react'
@@ -9,6 +8,7 @@ import { Hex } from 'viem'
 import { AttestationCard } from '@/components/AttestationCard'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
+import { usePonderQuery } from '@/lib/use-ponder-query'
 import { ponderQueryFns } from '@/queries/ponder'
 
 export default function AttestationsPage() {

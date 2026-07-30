@@ -4,6 +4,9 @@
 **/target/
 # Generated outputs (prover proofs/blobs, exporter inputs, witness archives) — one home.
 .trustgraph/
+# `task demo` scratch: operator config, request journal, status and run log. Chain-specific — a
+# journal committed here would refuse to work on anyone else's chain.
+.demo/
 out/
 cache/
 broadcast/

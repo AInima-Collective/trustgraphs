@@ -298,7 +298,41 @@ Content-Type: application/json
         "ipfs returned CID {got}, the guest committed {} — refusing to call this published",
         built.cid
     );
+
+    // "The API accepted it" and "a reader can fetch it" are different claims, and only the second
+    // one is the reason we pin at all. Check the one we actually mean when we can.
+    if let Some(gateway) = cfg.ipfs.gateway.as_deref() {
+        readable(gateway, &got)?;
+    }
     Ok(got)
+}
+
+/// Fetch the CID back through a reader's gateway, so a pin means what it says.
+///
+/// The failure this exists for: `add` returns the right CID and the daemon reports `pinned`, but
+/// the gateway the indexer reads answers 504 for the same CID — because the two are not the same
+/// node. The root then lands pointing at bytes nobody can get, and the first symptom is an indexer
+/// stuck retrying one event forever while every network page renders empty. Reading it back turns
+/// that into a failed pin at the moment it happens, next to the thing that caused it.
+fn readable(gateway: &str, cid: &str) -> Result<()> {
+    // Concatenated and localhost-rewritten exactly as `indexer/src/merkle.ts` does it, from the
+    // same string (`IPFS_GATEWAY`, which ends in `/ipfs/`). If this built the URL its own way the
+    // check could pass against a URL no reader ever requests.
+    let url = format!("{gateway}{cid}").replace("localhost", "127.0.0.1");
+    let resp = reqwest::blocking::Client::new()
+        .get(url)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .with_context(|| format!("reading {cid} back from {gateway}"))?;
+    anyhow::ensure!(
+        resp.status().is_success(),
+        "the API accepted the blob but the gateway {gateway} answers {} for {cid}. The `add` and \
+         the read are hitting DIFFERENT nodes: whatever stored the bytes is not what readers ask. \
+         Check that `[ipfs] api` and `[ipfs] gateway` are the same kubo (compare \
+         `/api/v0/id` against the gateway's host).",
+        resp.status()
+    );
+    Ok(())
 }
 
 /// Prove, with the guest-vs-native byte assert as the precondition.
@@ -429,4 +463,78 @@ fn parse_b256(s: &str) -> Result<B256> {
     let b = hex::decode(s.trim().trim_start_matches("0x"))?;
     anyhow::ensure!(b.len() == 32, "expected 32 bytes, got {}", b.len());
     Ok(B256::from_slice(&b))
+}
+
+#[cfg(test)]
+mod readback_tests {
+    use super::readable;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// A one-shot HTTP server that answers the first request with `status`, then stops.
+    fn serve_once(status: &'static str, body: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        format!("http://127.0.0.1:{port}/ipfs/")
+    }
+
+    #[test]
+    fn a_gateway_that_serves_the_blob_is_readable() {
+        let gw = serve_once("200 OK", "{\"0xabc\":\"1\"}");
+        readable(&gw, "bafkreitest").expect("a 200 is the whole point of pinning");
+    }
+
+    /// The failure this check exists for. `add` succeeded and returned the right CID, so the
+    /// daemon believed it had published; the gateway readers actually use answered 504 because it
+    /// is a different node. Without this the root lands anyway and the first symptom is an indexer
+    /// wedged retrying one event while every network page renders empty.
+    #[test]
+    fn a_gateway_that_times_out_is_not_published() {
+        let gw = serve_once("504 Gateway Timeout", "");
+        let err = readable(&gw, "bafkreitest").unwrap_err().to_string();
+        assert!(err.contains("504"), "{err}");
+        assert!(err.contains("DIFFERENT nodes"), "the message must name the cause: {err}");
+    }
+
+    /// A 404 is the same class of problem and must not be treated as success either.
+    #[test]
+    fn a_gateway_missing_the_block_is_not_published() {
+        let gw = serve_once("404 Not Found", "");
+        assert!(readable(&gw, "bafkreitest").is_err());
+    }
+
+    /// The URL is built by plain concatenation, exactly as `indexer/src/merkle.ts` does it, so the
+    /// check cannot pass against a URL no reader ever requests.
+    #[test]
+    fn the_url_is_the_gateway_string_plus_the_cid() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+            }
+        });
+        // `localhost` is rewritten to 127.0.0.1 the way the indexer does, to dodge kubo's
+        // subdomain-gateway redirect.
+        let _ = readable(&format!("http://localhost:{port}/ipfs/"), "bafkreicid");
+        let request = rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        assert!(request.starts_with("GET /ipfs/bafkreicid "), "{request}");
+    }
 }

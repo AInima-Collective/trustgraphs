@@ -4,6 +4,7 @@ import { Hex } from 'viem'
 import { getEnsNameQueryOptions } from 'wagmi/query'
 
 import { ponderClient } from '@/lib/ponder'
+import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
 import { makeWagmiConfig } from '@/lib/wagmi'
 import { ponderQueryFns } from '@/queries/ponder'
@@ -22,9 +23,14 @@ export default async function AttestationDetailPageServer({
 
   const queryClient = makeQueryClient()
 
+  // `nullable` so an unknown uid is a miss, not a thrown query. The `.catch` below would swallow
+  // it either way, but it would swallow it into the DEHYDRATED cache as an error, so the client
+  // re-fetches on hydration and a plain "not found" costs a round trip and a console stack.
   const attestation = await queryClient
     .fetchQuery(
-      getPonderQueryOptions(ponderClient, ponderQueryFns.getAttestation(uid))
+      nullable(
+        getPonderQueryOptions(ponderClient, ponderQueryFns.getAttestation(uid))
+      )
     )
     .catch(() => null)
 
