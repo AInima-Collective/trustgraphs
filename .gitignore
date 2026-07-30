@@ -37,6 +37,9 @@ deploy/post-deploy.sh
 # Human-seeded, deploy-mutated config (like foundry.toml) — stays at repo root.
 params.json
 params.contributions.json
+# `task demo:contributions` provisions its own copy from the template; the deploy writes the
+# registered schema UIDs back into it, so it is machine-local state.
+params.contributions.demo.json
 
 # Deploy
 config/*_deploy_*.json

@@ -71,7 +71,10 @@ contract CreateInstance is Script {
             params: p,
             admin: msg.sender,
             epochLength: 5,
-            withDistributor: false,
+            // Bundle the rewards distributor. The factory owns it outright and hands it to the
+            // admin, so a demo network can publish a distribution against its proven root without
+            // a second deploy. Catalog-derived, so the UI picks it up with no config entry.
+            withDistributor: true,
             distributorToken: address(0),
             salt: bytes32(0)
         });

@@ -25,12 +25,14 @@ vars:
 
 tasks:
   default:
-    desc: 'The whole demo: deploy, create a funded network, seed it, prove it, pay for it'
+    desc: 'The whole demo: deploy, create a funded network with governance, rewards and contributions, seed it, prove it, pay for it'
     cmds:
       - task: preflight
       - task: deploy
       - task: create
       - task: seed
+      - task: govern
+      - task: contributions
       - task: prove
       - task: report
 
@@ -135,6 +137,86 @@ tasks:
         # zero root, the gov hook rejects it, and its contents are immutable — see issue #15.
         PK="$FUNDED_KEY" RPC={{.RPC}} bash taskfile/seed-graph.sh '{{.NAME}}'
 
+  govern:
+    desc: 'Give the demo network a Safe, a gov module and a UI entry for them'
+    cmds:
+      - |
+        # The factory does not deploy governance — a factory instance has a snapshot, a resolver
+        # and (here) a distributor, and nothing else. This bolts the Zodiac stack on afterwards,
+        # exactly as a real community would.
+        SNAP=$(task --silent demo:snapshot)
+        SIGNER_VERIFIER=$(jq -r '.signer_zk_verifier // .zk_verifier' \
+          .docker/signer_zk_verifier_deploy.json 2>/dev/null \
+          || jq -r .zk_verifier .docker/zk_verifier_deploy.json)
+        forge script script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
+          --sig 'run(string,string)' "$SNAP" "$SIGNER_VERIFIER" \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
+      - |
+        # The catalog cannot carry a Safe: `lib/types.ts` says so, and `mergeInstance` overlays a
+        # config ("seed") entry onto the indexer row keyed by merkleSnapshot, with the seed-only
+        # addresses surviving. So governance shows in the UI only if the network has a config
+        # entry. Write one, matched on the snapshot the demo just created.
+        SNAP=$(task --silent demo:snapshot)
+        RESOLVER=$(task --silent demo:resolver 2>/dev/null || echo "")
+        node -e '
+          const fs = require("fs");
+          const f = "config/networks.development.json";
+          const nets = JSON.parse(fs.readFileSync(f, "utf8"));
+          const z = JSON.parse(fs.readFileSync(".docker/zodiac_safes_deploy.json", "utf8"));
+          const snap = process.argv[1], resolver = process.argv[2], name = process.argv[3];
+          const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          const same = (a, b) => (a || "").toLowerCase() === (b || "").toLowerCase();
+          const contracts = {
+            merkleSnapshot: snap,
+            ...(resolver ? { easIndexerResolver: resolver } : {}),
+            merkleGovModule: z.safe.merkle_gov_module,
+            safe: {
+              factory: z.safe_factory,
+              singleton: z.safe_singleton,
+              proxy: z.safe.address,
+              signerSyncManager: z.safe.signer_sync_module,
+            },
+          };
+          const existing = nets.findIndex((n) => same(n.contracts?.merkleSnapshot, snap));
+          if (existing >= 0) {
+            nets[existing].contracts = { ...nets[existing].contracts, ...contracts };
+          } else {
+            // Presentation only — mergeInstance takes name/about/criteria from the catalog row
+            // when the seed omits them, so this entry exists purely to carry the Safe.
+            nets.push({ id, name, about: "", criteria: "", contracts, schemas: [],
+                        pagerank: { enabled: true } });
+          }
+          fs.writeFileSync(f, JSON.stringify(nets, null, 2) + "\n");
+          console.log("  ✓ config entry for " + name + " (" + (existing >= 0 ? "updated" : "added") + ")");
+        ' "$SNAP" "$RESOLVER" '{{.NAME}}'
+      - |
+        echo "  restart the frontend to pick up config/networks.development.json"
+
+  contributions:
+    desc: 'A contributions round over the demo network''s own trust graph'
+    cmds:
+      - |
+        # A contributions instance is its own snapshot + verifier + distributor, reading rep from a
+        # trust accumulator through a TrustAccumulatorMirror. The main deploy already stands one up
+        # over dev network 0; this points a SECOND one at the demo network's resolver, so the round
+        # is scored by the graph seeded in `demo:seed` rather than by an unrelated network.
+        # From the chain, not from `.trustgraph/create-instance.json`: that file is last-write-wins
+        # scratch, so any other `CreateInstance` run since clobbers it and this silently wires the
+        # round to a DIFFERENT network's graph. It did exactly that once.
+        RESOLVER=$(task --silent demo:resolver)
+        : "${RESOLVER:?no instance yet — run: task demo:create}"
+        EAS=$(jq -r .eas              .docker/eas_deploy.json)
+        REGISTRAR=$(jq -r .schema_registrar .docker/eas_deploy.json)
+        PARAMS=${CONTRIBUTIONS_PARAMS_JSON:-params.contributions.demo.json}
+        [ -f "$PARAMS" ] || cp test/e2e/params.contributions.template.json "$PARAMS"
+        CONTRIBUTIONS_PROGRAM_VKEY=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
+          cargo run -q --release -- contributions vkey) \
+        forge script script/DeployContributionsInstance.s.sol:DeployContributionsInstance \
+          --sig 'run(string,string,string,string,string)' \
+          'demo' "$EAS" "$REGISTRAR" "$RESOLVER" "$PARAMS" \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
+        echo "  ✓ contributions instance over the demo network's graph"
+
   config:
     desc: 'Write the operator config'
     cmds:
@@ -204,6 +286,14 @@ tasks:
             echo "  ✓ a root landed on tick $i"; break
           fi
         done
+
+  resolver:
+    desc: 'The instance''s EASIndexerResolver (its accumulator), from the registry'
+    cmds:
+      - |
+        REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
+        cast call "$REG" 'getInstance(bytes32)((bytes32,address,address,address,bytes32))' \
+          "$(task --silent demo:id)" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f4 | tr -d ' '
 
   snapshot:
     desc: 'The instance''s MerkleSnapshot address, from the registry'
