@@ -1,525 +1,442 @@
-# GOAL — The proof scheduler (nobody runs the runbook, communities pay for their own roots)
+# GOAL — The product surface (a landing page people believe, a directory of live networks, an FAQ that carries the caveats)
 
-Build the missing operator and its economics:
+Build the three public pages, at product quality:
 
-> **A daemon watches the chain and keeps proven scores fresh without a
-> human in the loop: it freezes checkpoints on the contract-fixed
-> cadence, proves them, and lands them. Curated instances are proven on
-> us. Everyone else either self-proves — permissionless, documented,
-> free forever — or tops up an on-chain tank, and the same loop pays
-> whoever produces the root, with the fee provably unstealable from the
-> mempool.**
+> **A stranger who has never heard of trustgraphs lands on `/`, and in one
+> screen knows what it is, why the scoreboard can be trusted, and what they
+> could turn on. `/networks` shows every network that exists right now,
+> including one created thirty seconds ago. `/faq` answers what they ask
+> before they trust a scoreboard, and carries the caveats. All three hold up
+> on a phone, in either theme, with the indexer down.**
 
-This file is the execution spec. The design is normative:
-[`research/PROOF_SCHEDULER.md`](research/PROOF_SCHEDULER.md) (problem
-§0, inventory §1, operator §2, backend + costs §3, economics §4,
-failure semantics §5, decisions §7–§10), sitting on
-[`research/INSTANCE_FACTORY.md`](research/INSTANCE_FACTORY.md) §5 and
-constrained by [`research/UPGRADE_GOVERNANCE.md`](research/UPGRADE_GOVERNANCE.md)
-§5.5/§5.6. The factory GOAL closed leaving one sentence unfinished —
-"proven scores land on the epoch cadence" was true only because a human
-ran `taskfile/instances.sh`. This build makes it true by itself.
+This file is the execution spec. Two documents are normative and are the only
+source of words on these pages:
 
-**Target for this GOAL: on a mainnet-forked anvil, the daemon runs
-unattended across multiple epochs over three programs — trust-graph,
-contributions, and signer-sync — landing real Groth16 proofs verified
-by the canonical SP1 gateway, with one instance subsidized, one drawing
-a funded vault, and the bounty demonstrably unstealable.** Deploying
-the hosted operator to mainnet (custody, PROVE funding, on-call) is a
-later GOAL.
+- [`LANDING_PAGE_COPY.md`](LANDING_PAGE_COPY.md) — hero, how it works, the
+  proof, why, features, start one, ending CTA, footer, live-module microcopy,
+  voice notes.
+- [`FAQ_PAGE_COPY.md`](FAQ_PAGE_COPY.md) — the four question groups, including
+  the Status group that now carries the honesty disclosure on its own.
 
-**Scope fence (Jake 2026-07-27):** no hypercerts / lane-2 handler in
-this program. The corrected lane-2 sequencing is recorded in the
-appendix so the analysis isn't lost, and the domain-separation fix in
-M0 covers hypercerts anyway because it is structural rather than
-per-program.
+The design system is normative too, and it already exists:
+`frontend/app/tokens.css` (ink only, no hue, square, hairlines) with
+`frontend/app/globals.css` re-pointing the shadcn names at it. The mark is
+`chord`. Nothing in this program invents a colour, a radius, or a shadow.
+
+**Target: the current landing page is deleted, not refactored.** Its hero, its
+networks table, its four-item FAQ accordion and its `/interest` card
+(`frontend/app/component.tsx`, 233 lines) all go. The proof loop, the factory
+and the daemon are built; this program is the first time a visitor can see any
+of it without being handed a runbook.
 
 ---
 
 ## Ground rules
 
-1. **The design doc is normative.** Deviations get an entry in
-   `docs/DEVIATIONS.md` (what, why, which § it touches). Two are
-   pre-approved: `PROOF_SCHEDULER.md` §4.3's commit-reveal is
-   **superseded** by recipient-in-journal, and §4.2's free-floor-for-all
-   is **superseded** by curated subsidy (both recorded in that doc's
-   §9/§10).
-2. **Parity discipline, again.** Journal v3 (M0) touches
-   `packages/pagerank-core::{lib,encode}`, all three cores that build a
-   `Journal`, every guest bin, `MerkleSnapshot.submitProof`, all three
-   golden vector files, the Solidity golden tests, the frontend TS port
-   (`frontend/lib/pagerank`), **and every ABI consumer** — the indexer's
-   `submitProof`/`MerkleProofSubmitted` handling and the frontend's
-   generated ABIs land in the same PR. No intermediate state where the
-   contract and its consumers disagree.
-3. **Avoid preventable spend; budget for the rest.** Preventable spend
-   (a params mismatch, a known-pending rotation, an unfinalized
-   checkpoint, an empty vault, an oversized instance) is a hold or skip
-   with an alert, before the request. Unpreventable spend is real —
-   a creator-admin can rotate config one block after any preflight — so
-   the operator carries **per-instance and global loss budgets** and
-   halts the instance when one is exceeded. Two structural changes in
-   M0 shrink the unpreventable set: `paramsHash` is pinned per
-   checkpoint, and checkpoints can only be minted by their snapshot.
-4. **Guest-vs-native byte assert is a submit precondition.** The
-   operator computes the journal natively (`pagerank_core::compute`)
-   and asserts the proof's `publicValues == encode::journal_encoded(native.journal)`
-   before it broadcasts. Free, and it is the same assertion `execute`
-   already makes (`zk/prover/src/common.rs`).
-5. **The decision logic lives where CI can test it.** Everything that
-   can be *wrong* (when to trigger, which checkpoint to prove, when to
-   hold, when to claim) goes in a crate the root workspace tests
-   (`.github/workflows/rust.yml` runs `cargo test --workspace`); only
-   the thin sp1-sdk adapter lives in the detached `zk/` workspace.
-6. **Stateless by default, and honest about the gap.** The contracts
-   are the scheduler's database. Local state is an append-only request
-   journal whose only job is "don't pay twice after a crash". Because a
-   request id cannot be journaled before the request that mints it,
-   the ambiguous window is an explicit state (`RequestOutcomeUnknown`)
-   that is resolved by lookup or left for a human, never auto-retried.
-7. **A stolen bounty must be structurally impossible.** The proving fee
-   follows the *journal's* recipient; only gas reimbursement follows
-   `msg.sender`, and reimbursement is **capped and conservative, never
-   claimed to be exact** — `gasleft()` deltas cannot see intrinsic cost,
-   and `block.basefee` deliberately excludes the priority fee so a
-   self-inflated tip is not reimbursable. The invariant under test is
-   `reimbursement <= demonstrable caller cost`.
-8. **Money moves by pull, never push.** Payouts are credits the
-   recipient withdraws. A recipient that rejects ETH must never be able
-   to revert a successfully verified root.
-9. **Money contracts get the security treatment.** `ProvingVault` is
-   the first contract here that holds user funds behind a
-   permissionless payout path. Full Foundry battery + `solidity-auditor`
-   + `/security-review` before the last milestone exits.
-10. **No new FV surface** — fuzz, unit, golden, e2e per milestone.
-11. **Frontend copy passes the plain-reader test** (and no em-dashes in
-    user-facing strings). "Scores refresh about once a month" and
-    "about 3 weeks of roots left at this rate", never `epochLength`,
-    never `maxPerRoot`, never a § reference in the DOM.
-12. **Sensible defaults over stalls.** Anything not locked in Decisions
-    gets a recorded default and a config key, not a blocker.
+1. **The copy docs are normative.** Every sentence that ships appears verbatim
+   in one of the two files. If a line needs to change, the `.md` changes in the
+   same commit. No page invents copy, and no copy lands only in TSX.
+2. **Voice rules, enforced by review, not memory.** Brand is `trustgraphs`,
+   lowercase in prose; `Trustgraphs` only in the wordmark and `<title>`. The
+   unit is *a trustgraph*. No em-dashes: colon, comma, or two sentences. No
+   internal numbering in the DOM (no ADR-*, INV-*, "disclosure 4"). Never lead
+   with PageRank, merkle roots, SP1, or epochs.
+3. **No claim the code does not do today.** Every feature line traces to
+   shipped code, and lane 5 of the review panel is an adversary whose whole job
+   is to refute the page against the repo. Anything designed-but-unbuilt is cut
+   or labelled, never implied.
+4. **Ink only.** No brand hue: `--accent` is the text colour, so accent means
+   inversion. Hue survives only in the success/warn/error triad. New tokens go
+   in `tokens.css`; no inline hex anywhere in this program.
+5. **Every page renders with the indexer down.** Marketing content is static.
+   Live data is progressive enhancement with an honest degraded state: never a
+   fabricated number, never an infinite skeleton, never a list that implies it
+   is complete when the read failed. The hero graph is live or it says it is
+   not.
+6. **Mobile is the design target, not the adaptation.** 390px is a first-class
+   review viewport, checked before 1280. Nothing scrolls horizontally at 320px.
+   Tap targets clear 44px. The hero must not hand a phone a full screen of
+   unreadable graph.
+7. **Accessibility is a gate.** Keyboard-complete with visible focus, heading
+   order intact, landmarks present, the measured contrast floors held
+   (`--text-subtle` is the 4.5:1 floor: do not lighten it in dark or darken it
+   in light), `prefers-reduced-motion` honoured by anything that moves, and
+   pinch-zoom restored (see Known defects 2).
+8. **Frontend only.** Nothing under `src/`, `packages/`, `zk/`, or the indexer
+   schema changes. The permitted non-frontend edits are `next.config.mjs`
+   redirects, the two copy docs, and doc links that the route move breaks.
+9. **Lint what you touch.** `frontend/lib/pagerank/*` carries ~150 pre-existing
+   prettier/sort-import errors. Lint the files you edited or you will chase
+   ghosts all day.
 
 ---
 
 ## Interface freeze (IF) — merges first, everything hangs off it
 
-One PR freezing four interfaces, in `packages/pagerank-core`,
-`src/contracts/`, and a new `docs/OPERATOR.md`:
+Two sweeping renames. Both touch files that every later milestone edits, so
+they land alone, first, in one commit each.
 
-- **Journal v3 — 12 words.** Append to `pagerank_core::Journal`
-  (`lib.rs:149`, currently 10 fields) and to `encode::journal_encoded`
-  (`encode.rs:54`):
-  - `recipient: Address` — the bounty payee, a pass-through commitment
-    each program's `GuestInput` supplies and the guest commits verbatim.
-  - `instance_domain: B256` — `keccak256(abi.encode(snapshot, chainId))`.
-    **`submitProof` rebuilds this from `address(this)` and
-    `block.chainid`**, so the submitter cannot lie about it and no
-    program's params codec has to remember to include it. This is the
-    universal version of the `INSTANCE_FACTORY.md` §6.1 fix; it closes
-    the hole that hypercerts still has (its `Params` carries no
-    instance-unique field at all, so two identically-configured
-    hypercerts instances accept each other's proofs today). Trust-graph's
-    params-v2 `accumulator`/`chainId` fields become belt-and-braces;
-    leave them, they are golden-locked and harmless.
-- **`submitProof` gains `address recipient`**, folded into the digest
-  rebuild (`MerkleSnapshot.sol:217-230`) alongside the derived
-  `instanceDomain`, and added to `MerkleProofSubmitted`.
-- **Checkpoint-pinned params.** `trigger()` records
-  `checkpointParamsHash[id] = paramsHash`; `submitProof` builds the
-  digest from the **pinned** value and reverts `UnpinnedCheckpoint` if
-  it is unset. Rotations then take effect at the next boundary
-  automatically, which is what `UPGRADE_GOVERNANCE.md` §5.6 asks
-  operators to arrange by hand today, and an in-flight proof survives a
-  params rotation. **The verifier is deliberately NOT pinned:** a
-  verifier rotation is the emergency response to an SP1 soundness bug
-  (§5.5's design load), and pinning it would let proofs under a
-  known-broken verifier keep landing.
-- **`ProvingVault` API, in full** — deposits, `submitAndClaim`, credit
-  withdrawal, per-instance policy, quote/eligibility views, events. It
-  is frozen here rather than at M3 so the indexer and frontend can build
-  against it in parallel.
-- **Operator config schema** (`docs/OPERATOR.md`): `{rpc, registry,
-  curated set, per-program manifests, cadence policy, gas policy,
-  finality policy, prover backend, claim policy, loss budgets, alert
-  webhook}`.
+**IF-1 — Lock the type axis, and retire the lab.** *(Jake, this session)*
+The design has landed, so the scaffolding that was holding both axes open comes
+down with it.
+- Delete Cormorant, EB Garamond, Spectral and Newsreader from
+  `frontend/app/layout.tsx:32-73`, the five `[data-type]` blocks from
+  `tokens.css:199-258`, and the `TYPE_BOOT` script (`layout.tsx:78`).
+  `--display-family` and the three compensation variables stay in `:root` with
+  the Instrument values, so every `calc(... * var(--display-scale))` call site
+  keeps working untouched.
+- Delete `app/lab/` (384 lines) and `lib/labTheme.ts` (145 lines) outright.
+- Prune `components/BrandMark.tsx` (336 lines) to `chord` alone: the 15 losing
+  geometries, the `mark` prop, `MARK_META`, and the `useMarkId` hook all go.
+  Its three real call sites (`Nav.tsx:24`, `Footer.tsx:14`,
+  `NetworkGraph.tsx:322`) pass only `size` and `className`, so the prop can
+  leave without touching them.
+- `scripts/generate-brand-assets.mjs` carries its own copy of the `chord`
+  geometry and does not import either file, so the asset pipeline is unaffected.
+  Its header comment points at `DEFAULT_MARK in lib/labTheme.ts` and must be
+  repointed at `BrandMark.tsx`, or the next person will go looking for a file
+  that is gone.
 
-*Exit:* doc + type changes + regenerated vectors under test. Nothing
-else merges before this.
+*Exit:* two font families ship (PaperMono + Instrument), no `data-type`
+attribute anywhere, `/lab` 404s, `BrandMark` exports one mark, `next build`
+clean, and `pnpm run brand:assets` still regenerates the icon set.
+
+**IF-2 — Move the directory and the detail pages to `/networks/*`.**
+*(Jake, this session)* `app/network/` becomes `app/networks/`, and
+`next.config.mjs` gains permanent 308 redirects for `/network` and
+`/network/:path*`. The 31 in-app references across 17 files move with it. The
+ones that are easy to miss:
+`lib/network-nav.ts:52` and `:92` (the `base` templates every tab hangs off,
+one per program), `hooks/usePushBreadcrumb.ts:33` and `:54` (two
+`startsWith('/network/')` tests),
+`app/api/revalidate/[networkId]/route.ts`,
+`app/create/steps/SuccessStep.tsx` (the post-creation link),
+`components/NetworkFeatures.tsx`, `app/account/[address]/component.tsx`, and
+the six route paths listed in the `CATALOG_REVALIDATE_SECONDS` comment
+(`lib/catalog.server.ts:29-35`), which must be rewritten as it is the only
+index of which pages share that literal. Six references outside the frontend
+(docs, taskfile) move too.
+*Exit:* no `/network/` string remains outside `next.config.mjs`; every tab,
+breadcrumb, and post-create link resolves; the redirects answer 308.
 
 ---
 
 ## Milestones
 
-Each milestone merges with tests green and the zk-parity job passing.
-**Lanes marked ∥ are independent after their stated prerequisite.**
+Lanes marked ∥ are independent after their stated prerequisite.
 
-### M0 — Journal v3, checkpoint pinning, and the accumulator binding *(prereq: IF)*
+### M0 — The review harness *(prereq: IF)*
 
-Three contract-level changes plus the parity dance:
+Agents cannot review a design they cannot see. Build the seeing.
 
-1. **Journal v3** threaded through the three cores' `compute`
-   (`contributions-core/src/compute.rs:286`,
-   `hypercerts-core/src/compute.rs:292`), all guest bins, `submitProof`
-   and its unit tests, `input-exporter` (`--recipient`, default zero),
-   `contributions fetch`, `taskfile/instances.sh`, the frontend TS port
-   + `golden.test.ts`, and the indexer's ABI consumers. All three golden
-   vector files regenerated; every vkey re-derived (`task zk:vkey`) and
-   `docs/PROGRAMS.md` updated. The signer program keeps its own
-   `SignerJournal` shape and stays outside the vault, but its vkey
-   rotates by contagion, as the params-v2 table records.
-2. **Checkpoint-pinned `paramsHash`** in `MerkleSnapshot`, per the IF.
-3. **Bind each accumulator to its snapshot.** `AttestationAccumulator.checkpoint()`
-   is permissionless today (`AttestationAccumulator.sol:42-52`) with no
-   snapshot binding, so anyone can freeze a lane-1 instance's inputs at
-   a block of their choosing, bypassing the `epochLength` gate and
-   contradicting the invariant asserted at `MerkleSnapshot.sol:44-46`.
-   `TrustAccumulatorMirror.sol:99-102` already has the right pattern
-   (`msg.sender != snapshot ⇒ revert`). Add the same one-time binding to
-   `AttestationAccumulator`, set by the factory after the snapshot
-   exists (the resolver must be deployed first, so it is a bind-once
-   setter, not a constructor arg — the same shape as the contributions
-   `bindSnapshot` cycle). This is also what makes `UnpinnedCheckpoint`
-   safe rather than a denial-of-service surface.
+- `frontend/scripts/shots.mjs`: launches the **globally installed** playwright
+  (`NODE_PATH=/usr/lib/node_modules`, chromium already in
+  `~/.cache/ms-playwright` — verified working this session), walks a matrix of
+  route × viewport × theme, writes PNGs to `.trustgraph/shots/<label>/`.
+  Viewports: 390 (phone), 414 (large phone), 768 (tablet), 1280, 1600. Themes:
+  dark and light. Full-page and above-fold shots for each.
+- **It must run against a production build, not `next dev`.** The dev server
+  OOMs in this box partway through a multi-route sweep. `next build && next
+  start` on `NEXT_DIST_DIR=.next-shots`, so a running dev server is not
+  trampled.
+- **The ISR trap, solved rather than documented.** With no indexer on `:65421`,
+  `/` currently 500s once its 10s ISR window expires: the first request serves
+  prerendered HTML, then revalidation fails. A stub indexer returning
+  `{instances: []}` makes it worse, because an empty-but-successful response
+  suppresses the static-seed fallback. The harness sets a long revalidate via
+  env for the shot build; the pages read it from one place so the literal is
+  not edited by hand.
+- **Fixture states.** An env-switched catalog source that renders the directory
+  as: many networks (12+), one network, zero networks, and catalog-read-failed.
+  These are the four states M2 is graded on and no live stack produces them on
+  demand.
+- `task shots` wires it up from the repo root.
 
-Why the rotation is now rather than later, for the DEVIATIONS entry:
-mainnet has nothing deployed, so it costs zero ceremony today and is
-contagious across N live instances tomorrow — the same argument that
-moved domain separation into the factory build.
+*Exit:* one command produces the full matrix for `/`, `/networks`, `/faq` plus
+the four directory states, from a cold checkout with nothing else running.
 
-*Exit:* four-leg parity green (Rust / guest / Solidity / TS);
-**recipient binding** — a proof for recipient A reverts under recipient
-B; **domain separation** — two instances identical in every param
-(including a hypercerts-shaped pair with no instance-unique params at
-all) reject each other's proofs; **rotation survivability** — a
-`setParamsHash` between trigger and submit does not invalidate the
-in-flight checkpoint, and does bind the next one; **boundary integrity**
-— a direct `accumulator.checkpoint()` from a stranger reverts; the
-frozen v1 Optimism instance documented as untouched; DEVIATIONS entries
-for the journal bump and the accumulator binding.
+### M1 — The landing page *(prereq: M0)*
 
-### M1 — `packages/operator-core`: catalog + decision engine *(prereq: M0; ∥ with M3)*
+`app/page.tsx` + `app/component.tsx`, rebuilt against `LANDING_PAGE_COPY.md` in
+page order. Jake's direction: **big hero graph to the right.**
 
-A new root-workspace crate, no sp1-sdk, no keys, no sends:
+- **Hero.** Left column: eyebrow (`tg-marker`, "Vouch · Score · Prove · Use"),
+  headline (`tg-hero`, "Reputation you can't buy."), subhead at
+  `max-w-prose`, one primary button. Right column: the graph, large, already
+  moving before anyone scrolls, captioned "Demo Co-op, live. Each line is a
+  vouch. Size is score."
+- **The button must never be dead.** "Open the Demo Co-op" resolves through the
+  catalog to `/networks/demo-co-op`; with an empty or failed catalog it falls
+  back to `/networks` rather than rendering a link to nothing.
+- **The graph on a phone.** Below `lg` it moves under the hero copy with a
+  bounded height. The current `h-[66vh]` (`component.tsx:165`) gives a phone a
+  full screen of graph nobody can read. Static under `prefers-reduced-motion`.
+- **How it works**: three panels. Panel 2 wants the bot island: a dense cluster
+  sitting dark beside a lit graph.
+- **The proof**: the one diagram on the page. Inputs → proof → chain, with the
+  rejected path drawn, as a `<figure>` with a real text equivalent.
+- **Why**: three items. **Features**: six-up grid, 3/2/1 columns, no icons
+  unless they can be ink-only.
+- **Start one**: the honest pair of paragraphs (one transaction, nobody
+  approves it; proving costs real money, fund the tank) and the
+  `Create a network` button to `/create`.
+- **Ending CTA**: "Open source. Take it apart." → the repo.
+- **Illustrations are inline SVG.** One sigma instance on the page, in the
+  hero. The bot island and the proof diagram are hand-drawn ink SVG, not a
+  second graph engine.
+- **Deleted, not moved:** the networks table (it is M2's page now), the
+  four-item FAQ accordion (M3's page), and the `/interest` card, whose route
+  does not exist (Known defects 1).
+- **Nothing on the landing says "experimental".** *(Jake, this session.)* The
+  Status answers live on the FAQ and the footer links to it.
 
-- **`catalog`** — lift the reconstruction logic out of
-  `packages/input-exporter/src/bin/instance_scan.rs` (registry →
-  `InstanceRegistered` tx → factory `InstanceCreated` → full params →
-  self-check `params_hash(event.params) == snapshot.paramsHash()`) into
-  a reusable `scan()` behind a `ChainReader` trait. **Two changes from
-  the binary's behaviour:** a failure is per-instance
-  (`SkipParamsMismatch`), never a global abort — one garbage registry
-  row must not stop every healthy instance — and instances the chain
-  cannot describe are read from a **program manifest** instead (below).
-- **Manifests for what the chain doesn't carry.** "Zero per-instance
-  config" is true only for factory-minted trust-graph instances.
-  Contributions is not in `InstanceRegistry` at all
-  (`DeployContributionsInstance.s.sol` writes `deployment_summary.json`),
-  hypercerts registers an opaque `paramsHash` with no params-bearing
-  event, and `SignerSyncZkModule` is not discoverable from the registry
-  in any form. So: factory trust-graph instances stay zero-config; every
-  other instance gets a small explicit manifest entry (program, params
-  path, submit target, dependencies). Say so plainly in the docs rather
-  than implying the chain describes everything.
-- **`decide`** — the pure heart: `plan(InstanceState, Policy) -> Action`,
-  with `Action` ∈ `{Idle(reason), Trigger, AwaitFinality, Prove(cp),
-  Submit(cp), HoldRotationPending, HoldBasefee, HoldPaused,
-  HoldLossBudget, SkipUnsupported, SkipParamsMismatch}`. Coalescing
-  lives here (only the newest unproven checkpoint is ever proved,
-  because `submitProof` is monotonic), as does the epoch arithmetic
-  judged against `head + 1`. **Readiness is program-specific**, not a
-  generic leafCount comparison: `EmptyLaneAccumulator.leafCount()` is
-  `pure returns (0)` forever, and a contributions instance can move
-  while its mirrored lane-1 is quiet. Compare the checkpoint
-  commitments the program actually consumes.
-- **`finality`** — track `(blockNumber, blockHash)` for the trigger and
-  anchor transactions a proof depends on; `AwaitFinality` until
-  confirmed, so a reorg cannot erase a checkpoint we already paid to
-  prove.
-- **`guard`** — mandatory re-read of `(paramsHash, zkVerifier)` before
-  spend and before submit, plus a best-effort pending-op probe when an
-  instance's admin is a `TimelockController` (factory instances are
-  creator-admin'd and have none, so the probe is optional, not assumed).
-  With M0's pinning, a params rotation no longer invalidates in-flight
-  work; the guard's remaining job is verifier rotations and pauses.
-- **`journal`** — append-only JSONL keyed `(chainId, instanceId,
-  checkpointId)`. An **intent record with a client-side idempotency
-  nonce is fsynced before the request**; the network request id is
-  appended after. On restart, intent-without-id resolves by querying the
-  backend for that nonce, and if the backend cannot answer, the record
-  becomes `RequestOutcomeUnknown` — surfaced to a human, never
-  auto-retried.
+*Exit:* the page renders from a static build with no indexer, every sentence
+matches the copy doc verbatim, no dead links, and the M0 matrix is clean at
+390 in both themes. One review round (lanes 1, 2, 4) before it is called done.
 
-*Exit:* `cargo test -p operator-core` covers every `Action` branch
-against a fake chain — quiet instance, epoch not elapsed, coalesce over
-three unproven checkpoints, params mismatch skips one instance and
-leaves the rest running, verifier rotation pending, basefee spike,
-unfinalized checkpoint, loss budget exceeded, crash-restart replay in
-all three journal states. **Spike (do this first, it is the one
-unverified external dependency):** confirm what sp1-sdk 6.3.1 offers for
-request idempotency and status lookup by requester; the answer decides
-whether `RequestOutcomeUnknown` is rare or common, and it is written
-into `docs/OPERATOR.md` either way.
+### M2 — The networks directory *(prereq: IF; ∥ M1)*
 
-### M2 — `zk/operator`: the daemon, three handlers *(prereq: M1)*
+`app/networks/page.tsx`, rebuilt. Today it is a two-up grid of cards carrying a
+name, a paragraph, and "VIEW NETWORK →", with hypercerts and contributions
+instances concatenated in as though they were the same kind of thing
+(Known defects 3).
 
-- **Prover library seam.** `zk/prover` gains `src/lib.rs` and
-  value-returning entry points (`execute(input) -> Journal`,
-  `prove(input, groth16) -> (publicValues, seal)`) that the existing CLI
-  wraps. This deletes the stdout-scraping seam `taskfile/instances.sh`
-  relies on (it parses `outputRoot:` with `awk`).
-- **The daemon** (`zk/operator`, detached workspace beside `zk/prover`
-  so the sp1-sdk graph stays unmixed with the root workspace's alloy
-  graph): interval tick, per-instance state machine driving
-  `operator-core`'s `Action`, one in-flight proof per instance, global
-  concurrency cap. Startup checks: vkey vs the deployed
-  `SP1JournalVerifier` per program, chain id, key balances. Two keys per
-  the sp1-blobstream template: `NETWORK_PRIVATE_KEY` (PROVE balance) and
-  a separate submitter key.
-- **Handlers**: trust-graph (zero-config, factory-minted),
-  contributions (manifest), signer (manifest; woken by
-  `MerkleRootUpdated` on its trust instance, submitting to
-  `SignerSyncZkModule.submitSignerProof` — the same trigger topology the
-  old WAVS `safe-signer-sync` had).
-- **Submit path**: `eth_call` simulation first, basefee gate (a root
-  that lands six hours late still files at its input-freeze block),
-  nonce management with replacement, `StaleCheckpoint` revert treated as
-  **success** (someone landed a newer root), pause-shaped revert treated
-  as hold + alert.
-- **Ops**: structured JSON logs, `status.json` heartbeat, alert webhook,
-  `--once` mode (the code path e2e and CI drive), and a fourth service
-  in `docker-compose.prod.yml` beside `ponder`.
+- **Rows, not cards.** A directory is a list: name, one line of what it is for,
+  members, attestations, when the scores were last proven, and where to go.
+  Numbers are tabular and right-aligned; the existing `Table` component and
+  `ponderQueries.network` already provide both.
+- **Programs are distinguished.** A hypercerts instance scores atproto repos
+  and a contributions round scores a funding round: neither is a vouching
+  network. Group or badge them, and never let a reader think one row means the
+  same thing as the row above it.
+- **Freshness is stated, not implied.** `RootFreshness` already speaks in
+  "scores refreshed 3 days ago". A network whose scores have never been proven
+  says so.
+- **The four states, all designed:** many (12+, and the point at which search
+  earns its place), one, none ("No networks yet. Create the first one." from
+  the copy doc), and catalog-read-failed (`CatalogDegradedNotice`, with the
+  list never implying completeness).
+- **Newly created networks appear.** The page keeps the 10s ISR contract and
+  the uncached per-id fallback, so a network minted thirty seconds ago is not
+  reported as non-existent.
+- **The page ends in the create CTA**, because a directory of other people's
+  networks is where someone decides they want their own.
 
-*Exit:* `operator --once` proves and lands every ready instance across
-all three programs on the dev stack, reproducing
-`taskfile/instances.sh`'s result for trust-graph; that script is retired
-to a documented fallback. Kill the daemon mid-proof and restart: it
-re-attaches rather than paying again. A `trigger()` spam run costs the
-spammer gas and the operator nothing (coalescing measured, not
-asserted).
+*Exit:* all four fixture states screenshot clean at 390 and 1280 in both
+themes; a factory-minted network appears without a rebuild; no row lies about
+what program it belongs to.
 
-### M3 — `ProvingVault` *(prereq: M0's ABI; ∥ with M1–M2)*
+### M3 — The FAQ page *(prereq: M0; ∥ M1, M2)*
 
-One contract, instance-keyed, ETH + USDC:
+`app/faq/page.tsx` from `FAQ_PAGE_COPY.md`, plus the footer link.
 
-- **`submitAndClaim` is the payout seam.** The vault forwards to
-  `snapshot.submitProof(...)`, confirms `lastAppliedCheckpoint ==
-  checkpointId`, marks the checkpoint claimed, and credits. A
-  `MerkleSnapshot` hook cannot be the seam:
-  `IMerkleSnapshotHook.onMerkleUpdate` sees only a `MerkleState` — no
-  checkpoint, submitter, or recipient. Recorded so it isn't
-  re-litigated.
-- **Accounts bind to a snapshot at first deposit**, not per call.
-  Resolving through `InstanceRegistry` on every claim would let the
-  registry's `OPERATOR_ROLE` redirect a funded community's balance to a
-  malicious snapshot. Migration is an explicit, community-authorized
-  action.
-- **The split that kills front-running:** `provingFee → args.recipient`
-  (proven in the journal), `gasReimbursement → msg.sender` (whoever
-  paid). Copying a pending tx pays the original prover their fee and
-  refunds the copier only their gas. **Under partial funding the fee is
-  paid first**, or a copier could consume the remaining balance as gas
-  and leave the prover with nothing.
-- **Paid eligibility is on-chain**, because operator policy cannot bind
-  a stranger: a per-instance `minPaidIntervalBlocks` (the cadence the
-  community is actually paying for) plus `maxPerRootUsd`. This replaces
-  the design doc's period/count pair — it expresses the same guard more
-  directly, and it is the only place a paid-cadence limit *can* live,
-  since `EPOCH_FLOOR` binds only at creation (see Decisions).
-- **Cost-indexed bounty**: gas from a conservative capped formula with
-  strict calldata bounds, priced at `block.basefee`; proving fee from
-  `feePerRootUsd[program][band]` where the band function is
-  **per-program** and defaults to *unsupported ⇒ zero fee*, so an
-  unknown or oversized program can never claim the cheapest band. The
-  operator's `cycle_limit` and the vault's top band must name the same
-  boundary; that agreement is a test.
-- **Fail open on correctness, closed on money**: a stale or invalid
-  price feed pays zero proving fee and still lands the root. USDC is
-  valued at $1 in v1 (deliberate; `maxPerRoot` bounds the exposure).
-- **Authority is `CONSTITUTIONAL_ROLE`**, not `OPERATIONAL_ROLE`.
-  Operational is the short-lane params role; extending it to fund
-  custody widens it into something it was not designed to be. For
-  creator-admin'd instances these are the same address today and diverge
-  correctly at graduation.
-- **Withdrawal notice** (7 days, request-then-wait). Instant withdrawal
-  would let a community rug a prover mid-proof, which is exactly the
-  reliability the hosted service sells. Top-ups stay instant. Anyone may
-  top up any instance. FEE_SETTER = us (§8.2).
+- **A server component with no client JS.** Questions are
+  `<details>/<summary>`: keyboard-native, findable by in-page search when open,
+  printable, and working with JS disabled. The current accordion is a
+  `useState` button that is none of those things.
+- One column at a reading measure, ruled rows, group headings via
+  `SectionHeading`, no hero. Page title "Questions" (serif, sentence case),
+  standfirst under it.
+- **Every question gets a stable `id`** so an answer can be linked directly,
+  and the four group names sit at the top as anchors. The Status group is the
+  only place the caveats live now, so it has to be reachable in one click, not
+  found by scrolling.
+- `frontend/components/Footer.tsx` gains the FAQ link ahead of Docs, GitHub, X.
+  It currently carries only the colophon and two icons.
+- Metadata: `title: 'Questions'` (the layout template appends `| Trustgraphs`),
+  description drawn from the standfirst.
 
-*Exit:* Foundry battery green — pay-once per checkpoint, bind-at-deposit
-resists a hostile registry update, **front-run simulation** (copy a
-pending `submitAndClaim` from another sender; the fee still credits the
-original recipient), **rejecting-recipient simulation** (a recipient
-that reverts on receive does not block the root), partial funding pays
-fee before gas, `reimbursement <= demonstrable caller cost` as a fuzz
-property, `minPaidInterval` and `maxPerRoot` enforcement, stale-feed
-path lands and pays no fee, withdrawal notice cannot be short-circuited,
-reentrancy, unknown program gets zero fee. Plus `solidity-auditor` and
-`/security-review` with findings triaged.
+*Exit:* renders and opens with JS disabled; every question deep-links; the copy
+matches the doc verbatim; the footer link works from all three pages.
 
-### M4 — Wiring: prepay, claim policy, and the surfaces people see *(prereq: M2 + M3)*
+### M4 — The review gauntlet *(prereq: M1, M2, M3)*
 
-- **Factory**: `createInstance` becomes payable and forwards
-  `msg.value` into the vault for the new `instanceId` ("deploy your
-  network endowed with a year of roots"). The factory still holds no
-  instance roles.
-- **Operator claim policy**: curated instances are proven on us via
-  plain `submitProof` and never draw a vault; every other instance is
-  proven only when its vault covers the quote, via `submitAndClaim`.
-  Balance, eligibility, and feed freshness are checked *before* proving,
-  so a prover never discovers mid-flight that it will not be paid. Vault
-  empty ⇒ stop and say so honestly rather than silently subsidizing.
-- **Indexer**: deposits / claims / credits / balance / last-root-age
-  tables, and `MerkleProofSubmitted`'s recipient.
-- **Frontend**: "Refresh now" reads `lastTriggerBlock + epochLength` and
-  shows a countdown instead of letting the tx bounce `EpochNotElapsed`;
-  a staleness line ("scores as of 3 days ago"); the vault panel
-  (balance, burn rate, "about 3 weeks left", top-up in ETH or USDC);
-  the wizard gains an optional prepay step.
+The panel below runs against the M0 screenshot matrix, in parallel, one agent
+per lane. Then it runs again. **Loop until two consecutive rounds surface
+nothing new**, which is the only stopping rule that catches the tail.
 
-*Exit:* on the dev stack a community tops up from the UI, sets a faster
-paid cadence, watches the operator produce and claim roots and the
-balance fall; a curated instance is proven with no vault; an unfunded,
-uncurated instance renders honestly as stale with a clear path to fix
-it. All copy reviewed against ground rule 11.
+Each finding must carry: the screenshot path, viewport, theme, `file:line`,
+what is wrong, and what fixed looks like. A finding with no screenshot and no
+line number is not a finding.
 
-### M5 — Fork e2e + hardening *(prereq: M0–M4)*
+**Before a finding becomes work, a second agent tries to refute it.** Confirmed
+defects get fixed. **Taste, however well argued, goes on a short list for Jake
+rather than into a commit** — this is his product's face, and a panel of agents
+re-deciding the aesthetic is exactly the failure mode to avoid.
 
-Fork mainnet; stand up registry, factory, vault; run the daemon
-unattended across multiple epochs with **one real Groth16 leg per
-handler**: a curated trust-graph instance, a vault-funded trust-graph
-instance, a contributions round, and a signer-sync rotation, all
-verified by the canonical SP1 gateway in forked state. Adversarial pass:
-front-run the funded instance's claim from a second sender; rotate
-`paramsHash` between trigger and submit and confirm the in-flight proof
-still lands (M0's pinning) while the next checkpoint binds the new
-value; freeze-shaped revert handling; `kill -9` mid-flight in each
-journal state; trigger-spam; a stranger's direct
-`accumulator.checkpoint()` rejected. Docs: `docs/OPERATOR.md` (run,
-configure, alert, recover, self-host), `docs/trust-graph/RUNBOOK.md`
-updated so the manual loop is the documented fallback,
-`docs/PRODUCTION.md` gains the operator + vault sections, `PROGRAMS.md`
-vkeys refreshed.
+*Exit:* two dry rounds; every surviving finding fixed or on the taste list with
+a reason.
 
-*Exit:* a fresh session reproduces the scenario from the docs alone;
-the multi-epoch run shows zero manual interventions; audit findings
-triaged to issues with fixes or accepted-risk notes.
+### M5 — Ship *(prereq: M4)*
+
+- Per-route metadata and OG titles for `/`, `/networks`, `/faq`. The generated
+  brand assets do not change (the mark is unchanged), so `brand:assets` is not
+  re-run.
+- `sitemap.ts` and `robots.ts`: three public routes, no app routes.
+- Final matrix archived under `.trustgraph/shots/final/`.
+- `npx tsc --noEmit` (filtering the two indexer-copied schema files, which have
+  a pre-existing missing dep), lint on touched files, `pnpm test` in
+  `frontend/` so the golden vectors prove nothing under `lib/` was disturbed.
+- Commits in milestone order, each one green.
+
+*Exit:* every Done-when item below is true.
+
+---
+
+## The review panel — six lanes
+
+| # | Lane | What it is looking for |
+|---|---|---|
+| 1 | **Aesthetics & typography** | Does it read as designed or as assembled? Hierarchy, vertical rhythm, line measure (65-75ch), optical alignment, the serif/mono split held (serif = page titles and hero, mono = labels, data, controls, never all-caps serif), whitespace that is a decision rather than a default. |
+| 2 | **Mobile & responsive** | 320 stress, 390, 414, 768, and landscape. No horizontal scroll, no clipped hero, no 44px-under tap target, no sticky element eating the fold, safe-area insets respected, the graph usable or honestly absent. |
+| 3 | **Accessibility** | Landmarks, heading order, focus order and visible focus, keyboard-complete flows, contrast against the measured floors, `alt`/`aria` on every figure, `prefers-reduced-motion`, 200% zoom, and the viewport lock from Known defects 2. |
+| 4 | **Copy fidelity & voice** | Word-for-word against the two copy docs. Em-dash sweep. Brand casing. Plain-reader test: a normal DeFi user understands each sentence on first read. No spec numbering in the DOM. |
+| 5 | **Claim audit (adversarial)** | Take each sentence and try to refute it against the repo. Does the code do this today, for a stranger, without us running anything by hand? Default to refuted when uncertain. Anything unsupported is cut or qualified. |
+| 6 | **Performance & correctness** | Font payload after IF-1, JS shipped to the marketing route, LCP and CLS, hydration mismatches, SSR safety, ISR behaviour with the indexer down, and a link check that no route 404s. |
+
+Lanes 1-3 read screenshots. Lanes 4-6 read code and copy. All six run per round.
+
+---
+
+## Known defects, found while planning
+
+Live in shipped code, fixed by this program, listed so they cannot quietly
+survive it:
+
+1. **The landing page's only secondary CTA is a 404.** `component.tsx:185`
+   links to `/interest`; there is no `app/interest/` route and no redirect.
+   All four references to the interest form in the repo (`component.tsx:156`,
+   `:180`, `:185`, `:192`) sit inside the file M1 replaces, so killing the
+   concept costs nothing beyond writing the new page. No redirect is added: a
+   form that never existed does not get a tombstone.
+2. **Pinch-zoom is disabled sitewide.** `layout.tsx:113-119` sets
+   `maximumScale: 1, userScalable: false`. That is a WCAG 1.4.4 failure on
+   every page, not just these three.
+3. **The directory conflates three programs.** `app/network/page.tsx:28-32`
+   concatenates trust-graph, hypercerts and contributions instances into one
+   grid with identical cards, and its only heading is an `<h1 class="text-2xl">`
+   with no page-title treatment.
+4. **The hero graph takes a whole phone screen.** `component.tsx:165` is
+   `h-[66vh]` at every breakpoint, so on mobile the fold is a graph too small
+   to read and too big to scroll past.
+5. **The lab outlived both decisions it was built to hold open.** Five serif
+   families and 16 brand marks still ship for a switcher nobody uses now that
+   the mark is `chord` and the face is Instrument. Retired by IF-1.
+
+---
+
+## Decisions (locked)
+
+**Jake, this session:**
+- **Type axis: Instrument Serif, prune the rest.** The other four families and
+  the `[data-type]` machinery are deleted.
+- **Routes: `/networks/*`**, with 308 redirects from `/network/*`.
+- **No disclosure on the landing page.** The FAQ's Status group carries "not
+  production ready" and "not audited by an outside firm", and the footer links
+  to it.
+- **One direction, hero graph big and to the right.** No three-way bake-off at
+  `/lab`; build the best version of this.
+- **The lab is retired.** The design has landed, so `/lab`, `labTheme`, the 15
+  losing marks and the four losing serifs all go in IF-1.
+- **The interest form is killed, not relocated.** Nothing on the public surface
+  collects an email.
+
+**Mine, on Jake's "figure it out" (the three defects he handed back):**
+- **Pinch-zoom comes back by deletion.** `maximumScale` and `userScalable` are
+  removed from the viewport export entirely; `width: device-width`,
+  `initialScale: 1` and `viewportFit: 'cover'` stay. The usual reason for that
+  lock is iOS zooming on input focus, and that is already handled properly by
+  the `font-size: 16px` rule on text inputs (`globals.css:376-381`), so nothing
+  regresses by removing it.
+- **The directory groups by program, it does not badge.** Rows sit under a
+  heading per program with one line saying what that program scores: vouching
+  networks first, then funding rounds, then repo reputation. A badge in a mixed
+  list asks the reader to notice a difference; a heading tells them. Groups
+  with nothing in them are omitted, not rendered empty.
+- **The hero graph never owns a phone's first screen.** Below `lg` it becomes a
+  bounded panel of roughly 40vh, capped near 360px, placed after the headline,
+  subhead and button, keeping its caption. It still renders, because it is the
+  product, but the first thing a phone shows is a sentence rather than an
+  unreadable constellation. Under `prefers-reduced-motion` the layout settles
+  once and then holds still.
+
+**Mine, unless overruled:**
+- **The app frame stays.** These pages live inside the same `max-w-7xl`
+  hairline frame as the rest of the product rather than becoming a full-bleed
+  marketing site. One instrument, one chrome; rules bleed to the frame edge and
+  that is the whole liberty taken.
+- **FAQ is `<details>`, not an accordion component.** Works without JS,
+  keyboard-native, deep-linkable.
+- **One graph engine per page**, in the hero. Everything else that looks like a
+  graph is inline SVG.
+- **`/` keeps its 10s ISR** with a static-safe fallback: no data fetch blocks
+  first paint, and a failed read degrades visibly rather than 500ing.
+- **The old landing sections are deleted, not relocated.** The networks table
+  becomes M2's page and the accordion becomes M3's page, both rewritten.
 
 ---
 
 ## Parallelization map
 
 ```
-IF ── M0 (journal v3 + pinning + binding) ──┬── M1 (operator-core) ── M2 (daemon) ──┬── M4 (wiring) ──┐
-                                            └── M3 (ProvingVault) ∥ ─────────────────┘                 └── M5 (fork e2e)
+IF-1 ─┐
+IF-2 ─┴─> M0 ─┬─> M1 (landing) ────┐
+              ├─> M2 (directory) ──┼─> M4 (gauntlet) ─> M5 (ship)
+              └─> M3 (faq) ────────┘
 ```
 
-M3 needs only M0's ABI, so the vault and the daemon build in parallel.
-M4 is the join. The inter-lane contract is the IF's frozen interfaces.
-
----
-
-## Decisions (locked)
-
-| Decision | Resolution |
-|---|---|
-| Scope | Daemon + vault + journal v3, **no hypercerts / lane-2 handler** (Jake 2026-07-27) |
-| Free tier | **Curated subsidy only** (Jake 2026-07-27). The hosted operator proves a curated set; everyone else self-proves or funds a vault. This closes the unbounded-liability hole a permissionless factory otherwise creates (an attacker pays ~1 attestation of gas per epoch to make us pay a ~600k-gas submit: ~4-5x leverage). The promise is "every **eligible** instance", and the docs must say that, not "every instance" |
-| `EPOCH_FLOOR` | **Bounds creation only, not ongoing cost.** The admin receives `CONSTITUTIONAL_ROLE` in the creating tx (`TrustGraphFactory.sol:317-319`) and `setEpochLength` is constitutional, so any creator can lower their own epoch afterwards. Three intervals are therefore distinct: the factory's creation floor (anti-spam), the operator's subsidy cadence (policy), and the vault's `minPaidIntervalBlocks` (on-chain, the only enforceable one). `INSTANCE_FACTORY.md` §2.2 and `PROOF_SCHEDULER.md` §4.2 both claim the floor bounds hosted cost; both are corrected |
-| Bounty theft | **Recipient-in-journal**; commit-reveal superseded and never built |
-| Fee vs gas | Fee follows the journal recipient, gas follows `msg.sender`, fee paid first under partial funding, reimbursement **capped and conservative rather than exact** |
-| Payout mechanics | **Pull credits**, never push |
-| Domain separation | **Journal-level `instanceDomain`**, derived by `submitProof` from `address(this)` + `block.chainid`. Universal, so no program's params codec can forget it. Fixes the live hypercerts hole |
-| Params rotation | **Pinned per checkpoint** at `trigger()`; unpinned checkpoints revert. **Verifier deliberately not pinned** — a verifier rotation is the SP1-soundness emergency path and must invalidate in-flight proofs |
-| Checkpoint minting | **Bound to the snapshot** (`TrustAccumulatorMirror`'s existing pattern). Today `AttestationAccumulator.checkpoint()` is open to anyone, which breaks the never-prover-chosen-boundary invariant |
-| Per-instance config | Zero for factory trust-graph; **explicit manifest** for contributions, signer, and any non-factory instance. Stated plainly rather than implied away |
-| Vault authority | `CONSTITUTIONAL_ROLE`, and accounts **bind to a snapshot at first deposit** so a registry update cannot redirect funds |
-| Catalog failures | **Per-instance skip**, never a global abort |
-| Finality | Proofs wait for confirmed trigger/checkpoint transactions; block hashes tracked, `AwaitFinality` in the decision model |
-| Crash idempotency | Intent + nonce fsynced before the request, id appended after, `RequestOutcomeUnknown` for the ambiguous window — never auto-retried |
-| Deploy target | **Local anvil + mainnet fork.** Mainnet custody/funding/on-call is a later GOAL |
-| Vault tokens | ETH + USDC, claim draws ETH first, USDC valued at $1 in v1 |
-| Operator role | **Requester, not prover**, on the Succinct auction network |
-| SLA | Best effort + redundancy; no on-chain proving obligation |
-| Home chain | Ethereum mainnet ⇒ submit gas dominates ⇒ basefee gate |
-| Trigger-as-a-service | Not built (§4.4) |
-
-Still open, deliberately not blocking: hosted-operator custody (KMS vs
-local keys) and PROVE float management; how a community *gets* curated
-(app-side flag, not a registry field); a paid-priority
-`requestProof{value}` lane; moving FEE_SETTER behind the operational
-timelock; Lane D freeze; lane-2 / hypercerts proving; multi-chain.
-
----
-
-## Appendix — lane 2, recorded for when it comes back
-
-Out of scope here, but the sequencing was worked out and the version in
-`PROOF_SCHEDULER.md` §2.3/§5 is self-contradictory (it says anchor →
-trigger → fetch, and also that only already-captured heads may be
-anchored). The correct order is **fetch and verify → durably pin →
-anchor the captured heads → await finality → trigger → build from the
-pinned bundle → prove**. Anchoring first and failing the fetch makes the
-epoch unprovable. Two further traps: `EmptyLaneAccumulator.leafCount()`
-is always zero, so lane-2 readiness must compare anchor commitments, not
-leaf counts; and the vault's leafCount-derived size band misprices a
-lane-2-only program for the same reason, which is why the band function
-is per-program with an unsupported default.
+IF-1 and IF-2 are sequential (both edit `layout.tsx` and the route tree). M1,
+M2 and M3 are genuinely independent once M0 exists: separate routes, no shared
+components beyond `Footer` (M3 owns that edit) and `Nav` (M2 owns the Networks
+link).
 
 ---
 
 ## Execution notes — model allocation
 
-**Main session:** journal v3, checkpoint pinning, and the accumulator
-binding (M0 — a wrong encoding poisons four legs, and the two contract
-changes touch the invariant surface); the vault's payout arithmetic,
-authority model, and front-run argument (M3); milestone acceptance;
-DEVIATIONS calls.
+**Main session:** the hero and the proof diagram (the two places where getting
+it wrong is most expensive and most visible), the claim-audit acceptance in
+lane 5, and every taste call the panel escalates.
 
-**Subagent lanes:** M1's test battery against the fake chain and the
-sp1-sdk idempotency spike; M2's handler plumbing and ops surface; M3's
-Foundry battery; M4's indexer tables and frontend panels; docs. Frame
-adversarial prompts as property refutation ("refute: some call sequence
-pays a bounty twice for one checkpoint", "refute: a registry update can
-redirect a funded instance's balance"), not exploit development.
+**Subagent lanes:** the M0 harness; M2's directory states; M3's FAQ page; the
+six review lanes, run in parallel per round; the IF-2 rename sweep, which is
+mechanical and wide.
+
+Frame review prompts as refutation, not opinion: "refute: this page renders
+correctly at 390px", "refute: every sentence in the Features section is
+supported by shipped code". A lane that returns "looks good" has not run.
 
 ---
 
 ## Bug capture
 
-Every counterexample → minimal committed repro → GitHub issue (design §,
-trace, affected surface) → failing test stays expected-fail until the
-fix flips it. Findings that contradict `PROOF_SCHEDULER.md` are
-DEVIATIONS events. **Two issues get filed before this build starts,
-because they are live in shipped code rather than plan defects:** the
-hypercerts params schema carries no instance-unique field (cross-instance
-proof reuse), and `AttestationAccumulator.checkpoint()` is permissionless
-(prover-chosen epoch boundaries). M0 fixes both.
+Anything the panel finds that is not a page defect but a product defect (a
+contract, an indexer, or a copy-doc claim that turns out false) gets a GitHub
+issue rather than a quiet fix in a TSX file. Findings that contradict the copy
+docs are edits to those docs in the same commit, never a silent divergence
+between what the page says and what the doc says.
 
 ---
 
 ## Done when
 
-1. **All milestones exited** with stated criteria; the zk-parity job
-   (Rust / guest / Solidity / TS) green on journal v3.
-2. **Nobody runs the runbook:** across a multi-epoch fork run, every
-   root on all three programs was produced by the daemon with zero
-   manual steps, and the manual loop survives only as documented
-   fallback.
-3. **Quiet is free, spam is bounded:** an instance with no new edges
-   costs nothing; a `trigger()` spam run costs the spammer gas and the
-   operator nothing; a stranger cannot mint a checkpoint at all.
-4. **Preventable spend is prevented, unpreventable spend is budgeted:**
-   every hold and skip branch is exercised, the loss budget halts an
-   instance rather than bleeding, and a params rotation mid-flight no
-   longer wastes a proof at all.
-5. **The bounty cannot be stolen:** the front-run simulation credits the
-   original prover their fee at unit (M3) and fork (M5) level, and the
-   copier receives only capped gas.
-6. **A community can pay for its own scores:** top up from the UI, get a
-   faster paid cadence, watch an honest burn rate, stop paying by
-   letting it run out — with `minPaidInterval` and `maxPerRoot` meaning
-   a stranger can never drain the tank faster than the community chose.
-7. **Self-proving still works:** a single-instance operator run with a
-   community's own keys produces and lands the same root, documented in
-   `docs/OPERATOR.md`. The hosted service sells convenience, not access,
-   and the curated subsidy is described as what it is.
+1. **All three pages ship** and render from a production build with no indexer
+   running, in both themes, at 390 / 414 / 768 / 1280 / 1600, with no
+   horizontal scroll and no fabricated data.
+2. **Every sentence** on the three pages appears verbatim in
+   `LANDING_PAGE_COPY.md` or `FAQ_PAGE_COPY.md`, and lane 5 could not refute a
+   single claim against the repo.
+3. **The three CTAs work:** Open the Demo Co-op, Create a network, Star on
+   GitHub. No route on the public surface 404s, and `/interest` is gone.
+4. **The directory tells the truth in all four states**, distinguishes the
+   three programs, and shows a network created thirty seconds ago.
+5. **The FAQ opens with JS disabled**, deep-links per question, and carries the
+   Status answers that no longer appear anywhere else.
+6. **Accessibility gate passed:** keyboard-complete, visible focus, heading
+   order intact, contrast floors held, reduced motion honoured, pinch-zoom
+   restored.
+7. **The gauntlet ran dry twice**, and every surviving finding is fixed or on
+   the taste list with a reason.
+8. **Two font families ship**, `/lab` and `labTheme` are gone, `BrandMark`
+   carries one mark, `pnpm run brand:assets` still works, `next build` is
+   clean, touched files lint clean, and the frontend golden tests are green.

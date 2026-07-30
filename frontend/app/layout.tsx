@@ -2,13 +2,7 @@ import './globals.css'
 
 import clsx from 'clsx'
 import type { Metadata, Viewport } from 'next'
-import {
-  Cormorant_Garamond,
-  EB_Garamond,
-  Instrument_Serif,
-  Newsreader,
-  Spectral,
-} from 'next/font/google'
+import { Instrument_Serif } from 'next/font/google'
 import localFont from 'next/font/local'
 import { ReactNode } from 'react'
 
@@ -17,18 +11,17 @@ import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
 import { getCatalog } from '@/lib/catalog.server'
 
-// PaperMono is the trustgraphs face and carries every label, control, and
-// number. It does not change across the [data-type] axis — only the display
-// serif does, so a lab comparison isolates exactly one variable.
+// Two families ship, and that is the whole type system. PaperMono carries
+// every label, control, and number; Instrument Serif carries the display voice
+// (page titles, the hero, pull quotes). The four other serifs and the runtime
+// [data-type] switcher they were loaded for came down with /lab once the
+// direction was chosen. See app/tokens.css.
 const paperMono = localFont({
   src: '../public/fonts/PaperMono-Regular.woff2',
   variable: '--font-paper-mono',
   display: 'swap',
 })
 
-// The five display candidates. All five ship until the type axis is settled on
-// /lab; once it is, delete the four that lost and the payload drops with them.
-// See app/tokens.css for what each one is for.
 const instrument = Instrument_Serif({
   subsets: ['latin'],
   weight: '400',
@@ -36,46 +29,8 @@ const instrument = Instrument_Serif({
   variable: '--font-instrument',
   display: 'swap',
 })
-const cormorant = Cormorant_Garamond({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
-  style: ['normal', 'italic'],
-  variable: '--font-cormorant',
-  display: 'swap',
-})
-const ebGaramond = EB_Garamond({
-  subsets: ['latin'],
-  style: ['normal', 'italic'],
-  variable: '--font-garamond',
-  display: 'swap',
-})
-const spectral = Spectral({
-  subsets: ['latin'],
-  weight: ['200', '300', '400', '500'],
-  style: ['normal', 'italic'],
-  variable: '--font-spectral',
-  display: 'swap',
-})
-const newsreader = Newsreader({
-  subsets: ['latin'],
-  style: ['normal', 'italic'],
-  variable: '--font-newsreader',
-  display: 'swap',
-})
 
-const fontVariables = [
-  paperMono.variable,
-  instrument.variable,
-  cormorant.variable,
-  ebGaramond.variable,
-  spectral.variable,
-  newsreader.variable,
-]
-
-// Restores the [data-type] selection before first paint. next-themes already
-// does this job for [data-theme]; the type axis needs its own two lines. Kept
-// inline and dependency-free so it runs ahead of any bundle.
-const TYPE_BOOT = `try{var t=localStorage.getItem('tg-type');if(t)document.documentElement.setAttribute('data-type',t)}catch(e){}`
+const fontVariables = [paperMono.variable, instrument.variable]
 
 const DESCRIPTION =
   'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.'
@@ -110,11 +65,13 @@ export const metadata: Metadata = {
   },
 }
 
+// No `maximumScale` and no `userScalable: false`. Locking zoom is a WCAG 1.4.4
+// failure on every page, and the reason it usually gets added — iOS zooming in
+// when a text input takes focus — is already handled properly by the 16px
+// input rule in globals.css.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover',
 }
 
@@ -131,22 +88,13 @@ export default async function RootLayout({
   const catalog = await getCatalog()
 
   return (
-    // suppressHydrationWarning: next-themes and the type-boot script both stamp
-    // attributes on <html> before React hydrates, which is a deliberate
-    // mismatch rather than a bug.
+    // suppressHydrationWarning: next-themes stamps [data-theme] on <html>
+    // before React hydrates, which is a deliberate mismatch rather than a bug.
     // The font variable classes belong on <html>, not <body>: tokens.css builds
     // --mono-family / --display-family at :root, and a var() that resolves to
     // nothing there makes the whole declaration invalid at computed-value time
     // — which silently drops the page to a system sans.
-    <html
-      lang="en"
-      data-type="instrument"
-      className={clsx(fontVariables)}
-      suppressHydrationWarning
-    >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: TYPE_BOOT }} />
-      </head>
+    <html lang="en" className={clsx(fontVariables)} suppressHydrationWarning>
       <body className="font-mono text-foreground">
         <div className="min-h-screen root flex flex-col p-safe-or-2 sm:p-safe-or-4 md:p-safe-or-6 max-w-7xl mx-auto">
           <Providers catalog={catalog}>

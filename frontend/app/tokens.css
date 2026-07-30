@@ -11,34 +11,32 @@
  * The retired `--brand: #1a709e` is kept as an alias of `--accent` so any
  * straggling `bg-brand` call-site goes monochrome instead of going missing.
  *
- * ── Two axes are live-switchable from /lab ──────────────────────────────────
+ * ── One axis ────────────────────────────────────────────────────────────────
  *   [data-theme]  dark | light          (dark is the default — see globals.css)
- *   [data-type]   instrument | cormorant | garamond | spectral | newsreader
- *                 | mono
- * Both are set on <html>: [data-theme] by next-themes, [data-type] by the boot
- * script in layout.tsx and by lib/labTheme.ts. Defaults live in the base
- * blocks below, so the app renders correctly with no attribute present at all.
+ * Set on <html> by next-themes. `:root` carries the dark values too, so the
+ * app renders correctly with no attribute present at all.
  *
- * The families themselves are loaded by next/font/google in app/layout.tsx and
- * handed here as --font-*-src variables. Once a direction is chosen, prune
- * layout.tsx to the one surviving serif — it is currently ~5 families of
- * payload carried purely so the lab can compare them live.
+ * The type axis is settled: Instrument Serif for display, PaperMono for
+ * everything else. The five-way [data-type] switcher and the four losing
+ * families it compared are gone. --display-weight / --display-tracking /
+ * --display-scale survive because every heading rule in globals.css computes
+ * through them; they are now constants rather than a per-family retune.
  */
 
 :root {
   /* Data, labels, and every control speak mono. PaperMono is the trustgraphs
-   * face and does not change across the [data-type] axis — only the display
-   * serif does, so a lab comparison isolates one variable. */
+   * face and carries everything that is not display copy. */
   --mono-family: var(--font-paper-mono), ui-monospace, 'Cascadia Code', 'JetBrains Mono', monospace;
 
   /* Display = headings, hero copy, pull quotes. Serif = the same family used
-   * inline for italic asides. Defaults here are overridden per [data-type]. */
+   * inline for italic asides. Instrument Serif: single weight, very high
+   * stroke contrast, tight fit. No bold available, so size does the work. */
   --display-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
   --serif-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
 
-  /* Serif faces differ wildly in x-height, stroke weight, and default fit.
-   * Each [data-type] stack retunes these three so a heading lands at the same
-   * optical size and weight regardless of which family is mounted. */
+  /* Optical compensation for Instrument's small-ish x-height and light stems.
+   * Every heading size in globals.css is `calc(step * var(--display-scale))`,
+   * so these three retune the display voice from one place. */
   --display-weight: 400;
   --display-tracking: -0.005em;
   --display-scale: 1.12;
@@ -181,78 +179,4 @@
   --graph-label: #4f5356;
   --graph-label-hi: #0b0c0d;
   --graph-dim: #e7e8ea;
-}
-
-/* ============================================================================
- * TYPE STACKS — [data-type] on <html>.
- *
- * All six keep PaperMono for data, labels, and controls; they differ only in
- * which serif carries the display voice. --display-scale compensates for
- * x-height (Garamond and Cormorant are small on the body, so they get a size
- * bump); --display-weight and --display-tracking compensate for stroke and fit.
- *
- * 'instrument' is the default and is also declared in :root above.
- * ==========================================================================*/
-
-/* INSTRUMENT SERIF — single weight, very high stroke contrast, tight fit.
- * The most "book cover" of the set. No bold available; size does the work. */
-[data-type='instrument'] {
-  --display-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
-  --serif-family: var(--font-instrument), 'Iowan Old Style', Georgia, serif;
-  --display-weight: 400;
-  --display-tracking: -0.005em;
-  --display-scale: 1.12;
-}
-
-/* CORMORANT GARAMOND — extreme contrast, very light stems, very small
- * x-height. The thinnest and most severe; pushes furthest toward the
- * Urbanomic look but is fragile below ~20px, so the scale bump is largest. */
-[data-type='cormorant'] {
-  --display-family: var(--font-cormorant), 'Iowan Old Style', Georgia, serif;
-  --serif-family: var(--font-cormorant), 'Iowan Old Style', Georgia, serif;
-  --display-weight: 500;
-  --display-tracking: 0;
-  --display-scale: 1.24;
-}
-
-/* EB GARAMOND — old-style, small x-height, humanist. The printed-grimoire
- * register: oldest voice in the set, needs the second-most compensation. */
-[data-type='garamond'] {
-  --display-family: var(--font-garamond), 'Iowan Old Style', Georgia, serif;
-  --serif-family: var(--font-garamond), 'Iowan Old Style', Georgia, serif;
-  --display-weight: 500;
-  --display-tracking: -0.005em;
-  --display-scale: 1.16;
-}
-
-/* SPECTRAL — sturdier, lower contrast, engineered for screens. The safest of
- * the five: holds up at paragraph length and at small sizes. */
-[data-type='spectral'] {
-  --display-family: var(--font-spectral), 'Iowan Old Style', Georgia, serif;
-  --serif-family: var(--font-spectral), 'Iowan Old Style', Georgia, serif;
-  --display-weight: 300;
-  --display-tracking: -0.01em;
-  --display-scale: 1;
-}
-
-/* NEWSREADER — variable weight + optical size, generous italic. Reads as a
- * text face rather than a display face. This is what commitments ships, so
- * selecting it maximises sibling-ness between the two products. */
-[data-type='newsreader'] {
-  --display-family: var(--font-newsreader), 'Iowan Old Style', Georgia, serif;
-  --serif-family: var(--font-newsreader), 'Iowan Old Style', Georgia, serif;
-  --display-weight: 400;
-  --display-tracking: -0.015em;
-  --display-scale: 1;
-}
-
-/* MONO — the control group. No serif anywhere; this is what trustgraphs looked
- * like before the overhaul, so a side-by-side is one keystroke away rather
- * than a git stash. */
-[data-type='mono'] {
-  --display-family: var(--mono-family);
-  --serif-family: var(--mono-family);
-  --display-weight: 400;
-  --display-tracking: -0.02em;
-  --display-scale: 0.86;
 }

@@ -8,7 +8,9 @@
  * icon, the install icon, and the share card all show the same thing the nav
  * shows.
  *
- * Run it again whenever `DEFAULT_MARK` in lib/labTheme.ts changes:
+ * Run it again whenever the `chord` geometry in components/BrandMark.tsx
+ * changes — this file keeps its own copy of the path data (below) because it
+ * runs in plain node, outside the bundler:
  *
  *   pnpm run brand:assets
  *

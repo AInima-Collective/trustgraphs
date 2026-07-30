@@ -90,9 +90,9 @@
 }
 
 @theme inline {
-  /* Type. The families resolve through tokens.css so the [data-type] axis can
-   * swap them at runtime; `inline` keeps Tailwind emitting the var reference
-   * instead of baking in the value at build time. */
+  /* Type. The families resolve through tokens.css; `inline` keeps Tailwind
+   * emitting the var reference instead of baking in the value at build time,
+   * so one edit there moves every call-site. */
   --font-mono: var(--mono-family);
   --font-display: var(--display-family);
   --font-serif: var(--serif-family);
@@ -213,8 +213,8 @@
  *
  * The heading rules are wrapped in :where() so they contribute zero
  * specificity — any component class can override the serif without a fight.
- * Sizes multiply by --display-scale so swapping [data-type] does not change
- * the optical size on the page.
+ * Sizes multiply by --display-scale, the one knob that retunes the whole
+ * display voice for Instrument's x-height (see tokens.css).
  * ==========================================================================*/
 
 :where(h1, h2, h3) {
@@ -240,9 +240,9 @@
   letter-spacing: -0.01em;
 }
 
-/* The hero. Sized through --display-scale like the headings are, so switching
- * [data-type] retunes it too — a raw `text-5xl` would leave Cormorant looking
- * two steps smaller than Instrument at the same nominal size. */
+/* The hero. Sized through --display-scale like the headings are, so it retunes
+ * with them rather than drifting: a raw `text-5xl` here would have to be
+ * re-guessed by hand every time the display voice moved. */
 .tg-hero {
   font-family: var(--display-family);
   font-weight: var(--display-weight);
