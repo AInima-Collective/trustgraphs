@@ -10,3 +10,14 @@ tasks:
     desc: 'Build Solidity contracts'
     cmds:
       - forge build {{.CLI_ARGS}}
+
+  shots:
+    desc: 'Screenshot the public pages across viewports and themes (see frontend/scripts/shots.mjs)'
+    dir: frontend
+    cmds:
+      # Runs a production build and serves it on its own dist dir, so a dev server
+      # you have open is not disturbed. Writes to .trustgraph/shots/<label>/.
+      #   task shots -- --states          also shoot the four directory states
+      #   task shots -- --reuse           skip the build
+      #   task shots -- --label=final
+      - pnpm run shots -- {{.CLI_ARGS}}

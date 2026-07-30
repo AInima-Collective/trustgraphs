@@ -71,6 +71,18 @@ export interface NetworkGraphProps {
   className?: string
   /** Initial zoom level. > 1.0 zooms out, < 1.0 zooms in. Defaults to 1.25. */
   initialZoom?: number
+  /**
+   * Render the zoom / fullscreen / layout controls. On by default, because on a
+   * network's own page they are how you read a dense graph.
+   *
+   * The landing hero turns them OFF. Sigma paints to a canvas that is not in the
+   * accessibility tree, and everything the controls reveal (score, edge weight)
+   * arrives through mouse-hover tooltips with no keyboard equivalent, so on the
+   * marketing route they were five tab stops between the primary CTA and the
+   * rest of the page, all operating something a keyboard user cannot read. The
+   * hero is one labelled picture instead.
+   */
+  chrome?: boolean
 }
 
 export function NetworkGraph({
@@ -78,6 +90,7 @@ export function NetworkGraph({
   onlyAddress,
   className,
   initialZoom = 1.25,
+  chrome = true,
 }: NetworkGraphProps) {
   const router = useRouter()
 
@@ -297,14 +310,21 @@ export function NetworkGraph({
     })
   }, [accountData, attestationsData, isTrustedSeed, ensData, graphTokens])
 
+  const settling = isLoading || (isLoadingGraph && !graph)
+
   return (
     <div
       className={cn(
         'relative w-full h-full overflow-hidden isolate',
         className
       )}
+      // The screenshot harness (frontend/scripts/shots.mjs) waits for every
+      // [data-settling] node to clear before it shoots, so a review matrix
+      // never captures a spinner and calls it a design. Keep the attribute
+      // absent rather than "false" when settled: the harness counts nodes.
+      data-settling={settling ? 'true' : undefined}
     >
-      {isLoading || (isLoadingGraph && !graph) ? (
+      {settling ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-4">
           <LoaderCircle size={20} className="animate-spin text-text-subtle" />
           <span className="tg-label">Building graph</span>
@@ -353,6 +373,7 @@ export function NetworkGraph({
               setShowCursor={setShowCursor}
               defaultLayout="forceatlas2"
               initialZoom={initialZoom}
+              chrome={chrome}
             />
           </SigmaContainer>
         )
@@ -367,12 +388,14 @@ const SigmaControls = ({
   setShowCursor,
   defaultLayout,
   initialZoom,
+  chrome = true,
 }: {
   title?: string
   graph: MultiDirectedGraph<NetworkGraphNode, NetworkGraphEdge>
   setShowCursor: (hovering: boolean) => void
   defaultLayout: 'circular' | 'forceatlas2'
   initialZoom?: number
+  chrome?: boolean
 }) => {
   const sigma = useSigma()
   const registerEvents = useRegisterEvents()
@@ -602,32 +625,34 @@ const SigmaControls = ({
 
   return (
     <>
-      <ControlsContainer position="top-left" className="flex flex-col">
-        {title && (
-          <div className="text-sm text-primary text-center pt-2 px-1 pb-1">
-            {title}
-          </div>
-        )}
-
-        <div className="flex flex-row justify-around">
-          <ZoomControl />
-          <FullScreenControl />
-
-          {layout === 'circular' ? (
-            <div className="react-sigma-control">
-              <button title="Spread Out" onClick={setForceAtlas2Layout}>
-                <Waypoints width="1em" height="1em" />
-              </button>
-            </div>
-          ) : (
-            <div className="react-sigma-control">
-              <button title="Round Out" onClick={setCircularLayout}>
-                <CircleDashed width="1em" height="1em" />
-              </button>
+      {chrome && (
+        <ControlsContainer position="top-left" className="flex flex-col">
+          {title && (
+            <div className="text-sm text-primary text-center pt-2 px-1 pb-1">
+              {title}
             </div>
           )}
-        </div>
-      </ControlsContainer>
+
+          <div className="flex flex-row justify-around">
+            <ZoomControl />
+            <FullScreenControl />
+
+            {layout === 'circular' ? (
+              <div className="react-sigma-control">
+                <button title="Spread Out" onClick={setForceAtlas2Layout}>
+                  <Waypoints width="1em" height="1em" />
+                </button>
+              </div>
+            ) : (
+              <div className="react-sigma-control">
+                <button title="Round Out" onClick={setCircularLayout}>
+                  <CircleDashed width="1em" height="1em" />
+                </button>
+              </div>
+            )}
+          </div>
+        </ControlsContainer>
+      )}
 
       {Array.from(graph.nodeEntries()).map(({ node, attributes }) => {
         const visible =

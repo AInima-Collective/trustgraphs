@@ -38,6 +38,12 @@ tasks:
     cmds:
       - task --list-all
 
+  shots:
+    desc: "Screenshot the public pages across viewports and themes (--states for the directory states)"
+    cmds:
+      - task: build:shots
+        vars: { CLI_ARGS: "{{.CLI_ARGS}}" }
+
   setup:
     desc: "Install initial dependencies"
     cmds:

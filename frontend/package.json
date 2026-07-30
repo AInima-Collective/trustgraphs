@@ -20,7 +20,8 @@
     "claude-code": "docker compose -f .claude/docker-compose.claude.yml run --rm --remove-orphans -it claude-code-sandbox bash -c 'claude; exec'",
     "claude-code:unrestricted": "docker compose -f .claude/docker-compose.claude.yml run --rm --remove-orphans -it claude-code-sandbox bash -c 'claude --dangerously-skip-permissions; exec'",
     "wagmi:generate": "wagmi generate",
-    "brand:assets": "node scripts/generate-brand-assets.mjs"
+    "brand:assets": "node scripts/generate-brand-assets.mjs",
+    "shots": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs"
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-beta.4",
