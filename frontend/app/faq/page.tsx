@@ -286,7 +286,7 @@ export default function FaqPage() {
           group has to be one click away rather than a scroll away. */}
       <nav
         aria-label="Question groups"
-        className="mt-6 flex flex-wrap items-center gap-x-5 border-y border-border"
+        className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-1 border-y border-border"
       >
         {GROUPS.map((group) => (
           <a

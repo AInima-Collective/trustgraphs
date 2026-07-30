@@ -53,9 +53,12 @@ export const DirectorySearch = ({
           placeholder="Filter networks"
           autoComplete="off"
           spellCheck={false}
-          // h-11 clears the 44px tap target the 36px control default does not; max-sm:text-base
-          // keeps iOS from zooming the page when the field takes focus.
-          className="h-11 w-full sm:max-w-xs max-sm:text-base"
+          // h-11 clears the 44px tap target that the 36px control default does
+          // not. What stops iOS zooming on focus is the `pointer: coarse` block
+          // in globals.css, NOT a utility here: `text-base` is 14px in this
+          // system, which is under the 16px threshold and would cause the zoom
+          // rather than prevent it.
+          className="h-11 w-full sm:max-w-xs"
         />
       </div>
 
