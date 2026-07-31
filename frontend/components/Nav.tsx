@@ -34,7 +34,13 @@ export const Nav = () => {
     >
       <Link
         href="/"
-        className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2.5 transition-opacity hover:opacity-70 xs:min-w-0 xs:justify-start"
+        prefetch={false}
+        // `justify-start` at every width. `min-w-11` buys the 44px tap target
+        // by extending the box to the RIGHT; centring the mark inside it instead
+        // pushed the 24px mark 10px in from the frame, so below 410px the same
+        // mark sat at x=18 in the nav and x=8 in the footer, on one screen, with
+        // the eyebrow and the h1 on the footer's edge.
+        className="flex h-11 min-w-11 shrink-0 items-center justify-start gap-2.5 transition-opacity hover:opacity-70 xs:min-w-0"
         aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />
@@ -46,11 +52,27 @@ export const Nav = () => {
       {/* `h-11` overrides the button's default `h-9`. Every control on this row
        * is a touch target on a phone, and 36px is under the 44px floor this
        * program is gated on. tailwind-merge resolves the conflict in favour of
-       * the class passed here. */}
+       * the class passed here.
+       *
+       * `prefetch={false}` ON ALL OF THEM, and this is the second time the same
+       * mechanism has been caught. `Footer.tsx` already turns it off on its /faq
+       * link, with a comment naming exactly this; the nav was left at the
+       * default, which quietly undid the payload work: measured on the shipped
+       * build, `/faq` pulled 581 KB it did not need within two seconds of load,
+       * `/networks` about 633 KB. That is not RSC payload, it is the chunks the
+       * three prefetched routes reference — including the 1.1 MB EAS SDK and
+       * ethers bundle and the markdown/animation pair that were deliberately
+       * split off the marketing routes one round earlier.
+       *
+       * The trade is a fetch on click instead of before it. On a static page
+       * whose whole argument is that it is cheap to read, that is the right way
+       * round: nobody arriving at the questions page has asked for the create
+       * wizard. */}
       <div className="flex flex-row items-center gap-1 md:gap-2">
         <ButtonLink
           href="/networks"
           variant="ghost"
+          prefetch={false}
           className="h-11 px-2 md:px-4"
         >
           Networks
@@ -59,6 +81,7 @@ export const Nav = () => {
         <ButtonLink
           href="/create"
           variant="ghost"
+          prefetch={false}
           className="h-11 px-2 md:px-4"
         >
           <span className="sm:hidden">Create</span>

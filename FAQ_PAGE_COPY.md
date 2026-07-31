@@ -12,6 +12,13 @@ it's defined.
 
 `[one column, ruled rows, questions open on click. no hero.]`
 
+**Question groups**, as headings and as the nav links above them: Basics · Trust and gaming ·
+Running a network · Status
+
+`[they were only ever `##` headings in this file, which is document structure rather than
+declared copy. They ship as three strings each: the heading, the nav link, and the section's
+assistive label.]`
+
 **Group nav, above the questions (assistive):** Question groups
 
 **Permalink on each answer (assistive):** Link to this answer: <the question>
@@ -69,8 +76,7 @@ dislike or add ones that never happened.
 ## Running a network
 
 **Who can create one?**
-Anyone. It takes one transaction and nobody approves it. It appears in the app once the
-indexer has caught up with the chain, which takes a minute or two.
+Anyone. It takes one transaction and nobody approves it.
 
 **What does it cost?**
 Proving costs real money, so each network has a tank to pay whoever produces its
@@ -82,11 +88,12 @@ Only if nobody else proves your rounds. Proving is permissionless, so anyone can
 round and land the result, and no operator can lock you out. Today that mostly means you or
 us: a tank cannot pay a bounty until someone sets its per-round limit with a direct
 contract call, and the networks we curate will be proven at our expense. If every machine we
-run vanished, anyone could recompute the scores from public data and prove them.
+run vanished, anyone could recompute the scores of a network created through the app from
+what is on the chain, and prove them.
 
 **Can I use the scores somewhere else?**
-Yes. The scoreboard downloads as CSV or JSON, and any contract can check one account’s
-score against the on-chain root, given the score and its proof.
+Yes. A vouching network’s scoreboard downloads as CSV or JSON, and any contract can check
+one account’s score against the on-chain root, given the score and its proof.
 
 ---
 

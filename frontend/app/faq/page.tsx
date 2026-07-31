@@ -43,8 +43,15 @@ export const metadata: Metadata = {
 }
 
 const REPO = 'https://github.com/JakeHartnell/ZkTrustGraph'
-const ELI5 = `${REPO}/blob/main/docs/ELI5.md`
-const ALGORITHM = `${REPO}/blob/main/docs/ALGORITHM.md`
+// `HEAD`, not `main`. `main` is not a branch on this repository at all: the
+// default is `zk` and `origin/main` is not a valid ref, so both of these 404
+// today and would still 404 the day the repo goes public. GitHub resolves HEAD
+// in a blob or tree URL to whatever the default branch currently is, verified
+// against a public repo. Not a pin: the default has already moved once, and a
+// SHA would freeze "start with the plain-language explainer" on a stale copy of
+// a document that is still being edited.
+const ELI5 = `${REPO}/blob/HEAD/docs/ELI5.md`
+const ALGORITHM = `${REPO}/blob/HEAD/docs/ALGORITHM.md`
 
 /** Ink, underlined, and legible in prose at answer weight. No hue anywhere. */
 const PROSE_LINK =
@@ -139,7 +146,11 @@ const GROUPS: Group[] = [
         id: 'who-can-create-one',
         question: 'Who can create one?',
         answer:
-          'Anyone. It takes one transaction and nobody approves it. It appears in the app once the indexer has caught up with the chain, which takes a minute or two.',
+          // The appearance clause is cut, not softened: the indexer switches
+          // factory discovery off whenever the deploy environment is production,
+          // so on that chain a factory-created network is never indexed and
+          // never listed. "A minute or two" promised a wait that ends.
+          'Anyone. It takes one transaction and nobody approves it.',
       },
       {
         id: 'what-does-it-cost',
@@ -158,7 +169,7 @@ const GROUPS: Group[] = [
         // ineligible, so the operator holds rather than proving, and the only
         // other path is a hand-edited curated allowlist.
         answer:
-          'Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a round and land the result, and no operator can lock you out. Today that mostly means you or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct contract call, and the networks we curate will be proven at our expense. If every machine we run vanished, anyone could recompute the scores from public data and prove them.',
+          'Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a round and land the result, and no operator can lock you out. Today that mostly means you or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct contract call, and the networks we curate will be proven at our expense. If every machine we run vanished, anyone could recompute the scores of a network created through the app from what is on the chain, and prove them.',
       },
       {
         id: 'can-i-use-the-scores-somewhere-else',
@@ -167,7 +178,7 @@ const GROUPS: Group[] = [
         // proof, and the chain holds a root rather than a board, so nothing can
         // be "read directly". A contract checks one pair at a time.
         answer:
-          'Yes. The scoreboard downloads as CSV or JSON, and any contract can check one account’s score against the on-chain root, given the score and its proof.',
+          'Yes. A vouching network’s scoreboard downloads as CSV or JSON, and any contract can check one account’s score against the on-chain root, given the score and its proof.',
       },
     ],
   },
@@ -276,7 +287,12 @@ function QuestionRow({ id, question, answer }: Question) {
         <a
           href={`#${id}`}
           aria-label={`Link to this answer: ${question}`}
-          className="-mb-3 flex h-11 w-11 items-center justify-center text-xs text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          // `justify-start`, not `justify-center`. The 44px box is a tap target
+          // and it stays 44px, but centring a 7px glyph inside it hung the only
+          // ink on the page 18px off the one edge everything else is aligned to:
+          // question, answer and rule all start at the column's left margin and
+          // the # floated in the whitespace under them, fifteen times.
+          className="-mb-3 flex h-11 w-11 items-center justify-start text-xs text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           <span aria-hidden="true">#</span>
         </a>

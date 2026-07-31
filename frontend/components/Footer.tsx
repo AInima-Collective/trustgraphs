@@ -45,7 +45,7 @@ export const Footer = () => {
           FAQ
         </Link>
         <a
-          href="https://github.com/JakeHartnell/ZkTrustGraph/tree/main/docs"
+          href="https://github.com/JakeHartnell/ZkTrustGraph/tree/HEAD/docs"
           target="_blank"
           rel="noopener noreferrer"
           className={`${LINK} px-2 sm:px-3`}
@@ -66,7 +66,7 @@ export const Footer = () => {
           target="_blank"
           rel="noopener noreferrer"
           className={ICON_LINK}
-          aria-label="X (Twitter)"
+          aria-label="X"
         >
           <XIcon className="h-3.5 w-4" />
         </a>

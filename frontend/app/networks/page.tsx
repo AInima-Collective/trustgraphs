@@ -43,13 +43,22 @@ export const revalidate = 10
 const STANDFIRST = 'Networks on this chain, and what each one counts.'
 
 /**
- * Was "Every number in a row is read off the same scoreboard as its date", which is not true of
- * the vouches column: `indexer/src/api/network.ts` counts attestations whose `revocationTime` is
- * zero AT QUERY TIME, among the accounts in the latest root. Members and the date are as-of-root;
- * the vouch count is live and moves when someone revokes. Saying so costs one sentence.
+ * Two corrections in one sentence, both found by reading the query rather than the column.
+ *
+ * "Members" was `numAccounts`, which the indexer writes as every entry in the proven tree,
+ * zero-scored accounts included. "Counted live" was true of the clock and not of the set:
+ * `indexer/src/api/network.ts` does count at query time, so a revocation drops out straight away,
+ * but it restricts both ends of every edge to accounts scoring ABOVE ZERO in the latest root. A
+ * vouch involving anyone who joined since that root, or anyone the round left at zero, is not in
+ * the number.
+ *
+ * The one thing that looks like a defect and is not: the query is `selectDistinctOn(attester,
+ * recipient)`, so a pair counts once however many times they have attested. That is the rule
+ * everywhere else in the product — `reconcile.rs` is last-write-wins per pair, and the copy says
+ * "change it or take it back" — so distinct pairs IS the live vouch count.
  */
 const COLUMN_NOTE =
-  'Members and the date come from the last proven scoreboard. Vouches are counted live.'
+  'Accounts and the date come from the last proven scoreboard. The vouch count is up to date, and covers only accounts that scored above zero on that scoreboard.'
 
 // The share card is set explicitly rather than inherited. Without it, the
 // root layout's openGraph block wins and every route shares one card titled
@@ -108,7 +117,7 @@ const figure = (
 })
 
 /**
- * The row's figures as one line, for the narrow reflow: "48 members · 214 vouches · proven 3 days
+ * The row's figures as one line, for the narrow reflow: "48 accounts · 214 vouches · proven 3 days
  * ago". Every number keeps its label, because below `md` there are no column headers to inherit
  * one from. A row with nothing proven yet says only that, since the counts do not exist until a
  * scoreboard does.
@@ -164,9 +173,19 @@ const toView = (section: DirectorySection): DirectorySectionView => {
   }
 }
 
-/** Where a directory of other people's networks sends someone who wants their own. */
+/**
+ * Where a directory of other people's networks sends someone who wants their own.
+ *
+ * The spacing is `pt-5` + `gap-6 sm:gap-8` because that is what the identical construct uses on the
+ * landing page (`app/page.tsx`, `Section`): same hairline, same serif h2, same words, same button.
+ * It was `pt-8` + `space-y-5` here, which put 12px more air above the heading and 12px less below
+ * it than the same block gets one route away. Two spacing scales for one construct is what
+ * "assembled" looks like.
+ */
 const CreateCta = () => (
-  <section className="space-y-5 border-t border-border pt-8">
+  // `items-start` matters: a flex column stretches its children, and the button is the one child
+  // here that must keep its own width rather than run the frame.
+  <section className="flex flex-col items-start gap-6 border-t border-border pt-5 sm:gap-8">
     <h2>Bring your own community.</h2>
     <ButtonLink href="/create" size="lg">
       Create a network
@@ -179,14 +198,18 @@ const EmptyDirectory = () => (
   // The cap is on the paragraph, not the section: capping the section clamped its `border-t` to
   // half the frame, so the empty state drew a different rule from the identical CTA in every
   // other state.
-  <section className="space-y-5 border-t border-border pt-8">
+  <section className="flex flex-col items-start gap-6 border-t border-border pt-5 sm:gap-8">
     <h2>No networks yet. Create the first one.</h2>
-    <p className="max-w-prose text-text-muted">
-      Creating one takes a single transaction, and nobody has to approve it.
-    </p>
-    <ButtonLink href="/create" size="lg">
-      Create a network
-    </ButtonLink>
+    {/* The sentence belongs to the button, not to the heading, so the two sit together at a
+     * tighter step than the section's own. */}
+    <div className="flex flex-col items-start gap-5">
+      <p className="max-w-prose text-text-muted">
+        Creating one takes a single transaction, and nobody has to approve it.
+      </p>
+      <ButtonLink href="/create" size="lg">
+        Create a network
+      </ButtonLink>
+    </div>
   </section>
 )
 

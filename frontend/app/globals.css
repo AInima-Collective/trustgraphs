@@ -240,85 +240,96 @@
   letter-spacing: -0.01em;
 }
 
-/* The hero. Sized through --display-scale like the headings are, so it retunes
- * with them rather than drifting: a raw `text-5xl` here would have to be
- * re-guessed by hand every time the display voice moved. */
-.tg-hero {
-  font-family: var(--display-family);
-  font-weight: var(--display-weight);
-  letter-spacing: var(--display-tracking);
-  line-height: 1.05;
-  font-size: calc(var(--text-3xl) * var(--display-scale));
-}
-/* The height guard is not decoration. Every phone from the SE up reports 640px
- * or more of WIDTH in landscape (667, 736, 844, 932), so a width-only step took
- * the hero to its tablet size on a screen 375px tall and pushed both calls to
- * action off the bottom. Measured at 844x390: 452px of hero above a 390px fold. */
-@media (min-width: 640px) and (min-height: 480px) {
+/* These are COMPONENT classes, and they are in `@layer components` for a
+ * reason that cost a whole review round to find. Unlayered CSS beats
+ * layered CSS whatever the specificity, and every Tailwind utility lives in
+ * `@layer utilities`. So while `.tg-label` sat outside a layer, its
+ * `color: var(--text-subtle)` silently beat a `text-text-muted` next to it
+ * in the same class list, and beat the `hover:text-text` with it: the FAQ
+ * group nav rendered a tonal step down from what it says it is and had no
+ * hover at all. Layered, a utility wins, which is what "opt-in" meant. */
+@layer components {
+  /* The hero. Sized through --display-scale like the headings are, so it retunes
+   * with them rather than drifting: a raw `text-5xl` here would have to be
+   * re-guessed by hand every time the display voice moved. */
   .tg-hero {
-    font-size: calc(var(--text-4xl) * var(--display-scale));
+    font-family: var(--display-family);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    line-height: 1.05;
+    font-size: calc(var(--text-3xl) * var(--display-scale));
+  }
+  /* The height guard is not decoration. Every phone from the SE up reports 640px
+   * or more of WIDTH in landscape (667, 736, 844, 932), so a width-only step took
+   * the hero to its tablet size on a screen 375px tall and pushed both calls to
+   * action off the bottom. Measured at 844x390: 452px of hero above a 390px fold. */
+  @media (min-width: 640px) and (min-height: 480px) {
+    .tg-hero {
+      font-size: calc(var(--text-4xl) * var(--display-scale));
+    }
+  }
+  /* One more step on a desktop, where the hero shares the screen with the graph
+   * and has a whole column to itself. Two lines of Instrument at 80px is the
+   * loudest thing on the page, which is the correct thing for it to be. */
+  @media (min-width: 1024px) and (min-height: 480px) {
+    .tg-hero {
+      font-size: calc(var(--text-5xl) * var(--display-scale));
+    }
+  }
+
+  /* Opt-in utilities for copy that is not a heading — hero decks, pull quotes,
+   * the italic asides that carry the voice. */
+  .tg-display {
+    font-family: var(--display-family);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    line-height: var(--leading-tight);
+  }
+  .tg-serif {
+    font-family: var(--serif-family);
+  }
+
+  /* Machine labels — uppercase and tracked out. These stay mono: a serif set in
+   * all-caps loses everything that makes it a serif. */
+  .tg-label {
+    font-family: var(--mono-family);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+  }
+  .tg-label-strong {
+    font-family: var(--mono-family);
+    font-size: var(--text-xs);
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+  }
+
+  /* A single hairline used as a section break. Full-bleed inside its container. */
+  /* Modal / drawer backdrop. */
+  .tg-scrim {
+    background: var(--scrim);
+  }
+
+  .tg-rule {
+    height: 1px;
+    background: var(--border);
+    border: 0;
+    margin: 0;
+  }
+
+  /* Numbered section marker, set in the mono at label size and hung in the
+   * left margin where there is room. Reads as apparatus, not decoration. */
+  .tg-marker {
+    font-family: var(--mono-family);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
   }
 }
-/* One more step on a desktop, where the hero shares the screen with the graph
- * and has a whole column to itself. Two lines of Instrument at 80px is the
- * loudest thing on the page, which is the correct thing for it to be. */
-@media (min-width: 1024px) and (min-height: 480px) {
-  .tg-hero {
-    font-size: calc(var(--text-5xl) * var(--display-scale));
-  }
-}
 
-/* Opt-in utilities for copy that is not a heading — hero decks, pull quotes,
- * the italic asides that carry the voice. */
-.tg-display {
-  font-family: var(--display-family);
-  font-weight: var(--display-weight);
-  letter-spacing: var(--display-tracking);
-  line-height: var(--leading-tight);
-}
-.tg-serif {
-  font-family: var(--serif-family);
-}
-
-/* Machine labels — uppercase and tracked out. These stay mono: a serif set in
- * all-caps loses everything that makes it a serif. */
-.tg-label {
-  font-family: var(--mono-family);
-  font-size: var(--text-xs);
-  color: var(--text-subtle);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wider);
-}
-.tg-label-strong {
-  font-family: var(--mono-family);
-  font-size: var(--text-xs);
-  color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wider);
-}
-
-/* A single hairline used as a section break. Full-bleed inside its container. */
-/* Modal / drawer backdrop. */
-.tg-scrim {
-  background: var(--scrim);
-}
-
-.tg-rule {
-  height: 1px;
-  background: var(--border);
-  border: 0;
-  margin: 0;
-}
-
-/* Numbered section marker, set in the mono at label size and hung in the
- * left margin where there is room. Reads as apparatus, not decoration. */
-.tg-marker {
-  font-family: var(--mono-family);
-  font-size: var(--text-xs);
-  color: var(--text-subtle);
-  letter-spacing: var(--tracking-widest);
-  text-transform: uppercase;
-}
 
 html {
   position: relative;

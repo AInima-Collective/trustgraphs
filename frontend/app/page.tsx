@@ -211,7 +211,13 @@ export default async function LandingPage() {
               </p>
             </div>
 
-            <p className="tg-display max-w-[22ch] self-center border-l border-border pl-5 text-xl text-balance sm:text-2xl lg:pl-8">
+            {/* The leading is pinned at the call site, not left to `.tg-display`.
+             * Moving the `.tg-*` classes into `@layer components` was the right
+             * fix for the FAQ nav, and it hands every size utility here the
+             * power to reset line-height along with font-size, which is exactly
+             * what `text-xl` does. Naming the token keeps the value in one
+             * place and keeps the quote at its designed 1.15. */}
+            <p className="tg-display max-w-[22ch] self-center border-l border-border pl-5 text-xl leading-[var(--leading-tight)] text-balance sm:text-2xl lg:pl-8">
               You never trust the person who did the math. You check the
               receipt.
             </p>
@@ -232,13 +238,19 @@ export default async function LandingPage() {
             A founder with most of the tokens can hand governance to the people
             who earned it, and watch the graph do the deciding.
           </Reason>
-          {/* "and off" was not available to any network a stranger can make:
-           * `TrustGraphFactory` reverts `Lane2NotSupported` on lane-2 config and
-           * the wizard hard-codes it off. The Mixed sources feature line already
-           * says off-chain is a second program and not self-serve. */}
+          {/* The list that used to open this line ("contributions, endorsements,
+           * history") named three things a network a stranger can create does
+           * not count. `TrustGraphFactory` hard-codes one vouch schema and binds
+           * it inside the creating transaction, after which a foreign schema
+           * reverts; contributions are a separate program with no factory and no
+           * wizard path; "history" traced to nothing in the repo at all. An
+           * earlier round cut "and off" from the end of the same sentence and
+           * left the nouns standing, which is the tell that it was the list and
+           * not the preposition doing the lying. Mixed sources, below, is where
+           * other programs get named. */}
           <Reason title="Count more than tokens.">
-            Contributions, endorsements, history, all of it on-chain. Weight is
-            computed from the graph, not from a balance.
+            Weight comes from who vouches for whom, not from what an account
+            holds.
           </Reason>
           <Reason title="One reputation, many contexts.">
             Score the same people different ways for different questions.
@@ -275,9 +287,14 @@ export default async function LandingPage() {
            * writes whatever the page is currently showing, and the simulation
            * toggle beside it can change that. The claim here is only about what
            * lands in the file, which is true either way. */}
+          {/* "A network's" was wider than the button. `ExportButton` renders in
+           * exactly one place, the vouching network page, and this page
+           * advertises three programs: a reader who opened a funding round
+           * looking for the download found nothing. */}
           <Feature title="Exportable scoreboards">
-            A network’s scoreboard downloads as CSV or JSON, so you can use the
-            scores off-chain. The file carries the scores, not the proofs.
+            A vouching network’s scoreboard downloads as CSV or JSON, so you can
+            use the scores off-chain. The file carries the scores, not the
+            proofs.
           </Feature>
           <Feature title="Mixed sources">
             Vouches on Ethereum today. Reputation over AT-Protocol accounts is a
@@ -302,10 +319,15 @@ export default async function LandingPage() {
              * `_settle` short-circuits to `PolicyDisabled` and the operator
              * holds `Unfunded`. "Free forever" also skipped the 16-32 GiB and
              * the gas. */}
+            {/* The appearance clause is gone rather than softened. The indexer
+             * switches factory discovery off whenever the deploy environment is
+             * production, so on the chain this app ships against a
+             * factory-created network is never indexed and never listed: not
+             * slowly, not at all. "Once the indexer catches up" promised a wait
+             * that ends. Issue filed against the indexer. */}
             <p className="max-w-prose">
-              Create a network in one transaction. Nobody approves it, and it
-              shows up in the app once the indexer catches up. Proving is
-              permissionless, so anyone can produce your scoreboard and no
+              Create a network in one transaction. Nobody approves it. Proving
+              is permissionless, so anyone can produce your scoreboard and no
               operator can lock you out.
             </p>
             <p className="max-w-prose">

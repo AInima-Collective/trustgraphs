@@ -73,6 +73,16 @@ export interface ButtonLinkProps
   extends React.AnchorHTMLAttributes<HTMLAnchorElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  /**
+   * Passed through to `next/link` for internal hrefs, and dropped for external
+   * ones so React is not handed an unknown attribute on a plain `<a>`.
+   *
+   * It is here because a nav built out of this component had no way to say no.
+   * `<Link>` prefetches by default, and on this app's chunk sizes that meant a
+   * static page pulled the whole wallet and attestation stack for routes the
+   * reader had not asked for. See `components/Nav.tsx`.
+   */
+  prefetch?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -91,7 +101,15 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
 
 const ButtonLink = React.forwardRef<HTMLAnchorElement, ButtonLinkProps>(
   function ButtonLink(
-    { className, variant, size, asChild = false, href = '#', ...props },
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      href = '#',
+      prefetch,
+      ...props
+    },
     ref
   ) {
     const Comp = asChild ? Slot : !href.startsWith('/') ? 'a' : Link
@@ -100,6 +118,9 @@ const ButtonLink = React.forwardRef<HTMLAnchorElement, ButtonLinkProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         href={href}
+        // Only `next/link` understands it. On an external href `Comp` is a plain
+        // `<a>`, and React would warn about an unknown attribute.
+        {...(Comp === Link && prefetch !== undefined ? { prefetch } : {})}
         {...props}
       />
     )

@@ -5,7 +5,8 @@
  * Walks a matrix of route × viewport × theme against a PRODUCTION build and
  * writes PNGs to `.trustgraph/shots/<label>/`. Two shots per cell: the fold
  * (what a visitor actually gets) and the full page (what the layout does all
- * the way down).
+ * the way down). A third, `__open.png`, on any route that hides content behind
+ * a `<details>` — which is /faq, where the answers are two thirds of the page.
  *
  *   pnpm run shots                    # the three public routes, full matrix
  *   pnpm run shots -- --states        # the four directory states as well
@@ -303,6 +304,30 @@ const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
     path: join(dir, `${base}__full.png`),
     fullPage: true,
   })
+
+  // A THIRD SHOT WHEREVER THE PAGE HIDES ITS OWN CONTENT BEHIND A DISCLOSURE.
+  //
+  // Every `<details>` on /faq ships closed, which is correct for a reader and
+  // useless for a review: the answers, their measure, their link colour and the
+  // open-state marker were invisible in all 24 FAQ cells of a sweep, so a lane
+  // reading only the matrix was grading the questions and none of the answers.
+  // A whole third of that page's ink had never been looked at.
+  //
+  // Opened by setting the attribute rather than by clicking: fifteen clicks is
+  // fifteen chances to miss a hit target, and `open` is exactly what a click
+  // sets. No-ops on any route with no disclosures, so it stays in the main loop.
+  const opened = await page.evaluate(() => {
+    const all = Array.from(document.querySelectorAll('details'))
+    all.forEach((d) => d.setAttribute('open', ''))
+    return all.length
+  })
+  if (opened > 0) {
+    await page.waitForTimeout(200)
+    await page.screenshot({
+      path: join(dir, `${base}__open.png`),
+      fullPage: true,
+    })
+  }
 
   const measured = await page.evaluate(() => {
     // A page that scrolls sideways at 320 is a defect the screenshot cannot

@@ -58,7 +58,7 @@ count for.
 
 `[a contract checks, it does not read. MerkleSnapshot stores a root, not scores
 (MerkleState in src/contracts/merkle/MerkleSnapshot.sol), and the only entry point is
-verifyProof(account, value, proof) — the caller has to already hold both.]`
+verifyProof(account, value, proof): the caller has to already hold both.]`
 
 `[three panels, each with its own ink figure pinned to the bottom so all three
 sit on one baseline. 1: one account pointing at another, a weight on the edge,
@@ -112,12 +112,14 @@ watch the graph do the deciding.
 `[one heavy node dissolving into a network]`
 
 **Count more than tokens.**
-Contributions, endorsements, history, all of it on-chain. Weight is computed from the
-graph, not from a balance.
+Weight comes from who vouches for whom, not from what an account holds.
 
-`["and off" was not available to any network a stranger can create: TrustGraphFactory
-reverts Lane2NotSupported and the wizard hard-codes lane 2 off. Mixed sources, below,
-already says off-chain is a second program and not self-serve.]`
+`[the list this replaced ("contributions, endorsements, history") named three things a
+network a stranger can create does not count. TrustGraphFactory hard-codes one vouch schema
+and binds it inside the creating transaction, so a foreign schema reverts; contributions are
+a separate program with no factory and no wizard path; "history" traced to nothing at all.
+An earlier round cut "and off" from the end of the same sentence and left the nouns
+standing. Mixed sources, below, is where other programs get named.]`
 
 **One reputation, many contexts.**
 Score the same people different ways for different questions. Reputation earned in one
@@ -144,8 +146,12 @@ deployment today.
 Say what a vouch means in your network, and where newcomers apply.
 
 **Exportable scoreboards**
-A network’s scoreboard downloads as CSV or JSON, so you can use the scores off-chain. The
-file carries the scores, not the proofs.
+A vouching network’s scoreboard downloads as CSV or JSON, so you can use the scores
+off-chain. The file carries the scores, not the proofs.
+
+`["A network's" was wider than the button. The export control renders on the vouching
+network page and nowhere else, and this page advertises three programs, so a reader who
+opened a funding round looking for it found nothing.]`
 
 `["the published scoreboard" was doing work the export does not: the button writes whatever
 the page is currently showing, which the simulation toggle beside it can change. Issue
@@ -163,9 +169,13 @@ the same way, and not self-serve yet.
 
 **Section heading:** Bring your own community.
 
-Create a network in one transaction. Nobody approves it, and it shows up in the app once
-the indexer catches up. Proving is permissionless, so anyone can produce your scoreboard
-and no operator can lock you out.
+Create a network in one transaction. Nobody approves it. Proving is permissionless, so
+anyone can produce your scoreboard and no operator can lock you out.
+
+`[the appearance clause is gone rather than softened. Factory discovery in the indexer is
+switched off whenever the deploy environment is production, so on the chain this app ships
+against a factory-created network is never indexed and never shows up: not slowly, not at
+all. Saying "once the indexer catches up" promised a wait that ends. Issue filed.]`
 
 Proving costs real money. Your network has a tank to pay whoever produces its scoreboard,
 though it pays nothing until the tank is funded, its per-round limit is set by contract
@@ -314,7 +324,14 @@ someone edits that JSON. Issue filed for the cap.]`
 
 **Section: Vouching networks**
 Members vouch for each other, and the vouches become a score.
-Columns: Network · Members · Vouches · Scores proven
+Columns: Network · Accounts · Vouches · Scores proven
+
+`["Members" in the sentence and "Accounts" in the column three lines below it is deliberate,
+not a leftover. The sentence is about a community of people. The column is a count off the
+proven tree, which includes every address the round scored, most of them at zero. They are
+different populations and the page is more honest for using different words: the whole
+reason the column stopped saying "Members" is that a bot island was being counted as
+membership.]`
 
 **Section: Funding rounds**
 Members claim work and rate each other, and the pot follows the ratings.
@@ -329,19 +346,24 @@ different program. The hypercerts graph runs over AT-Protocol records: evaluatio
 endorsements, attributions and badges. "Repo" there is a PDS data repository, not source
 code, and nobody is scored on repositories they worked on.]`
 
-**Column note:** Members and the date come from the last proven scoreboard. Vouches are
-counted live.
+**Column note:** Accounts and the date come from the last proven scoreboard. The vouch count
+is up to date, and covers only accounts that scored above zero on that scoreboard.
 
-`[the first draft said every number came off the same scoreboard as its date. It doesn't:
-the indexer counts attestations that are un-revoked at query time, among the accounts in the
-latest root. Members and the date are as-of-root, vouches are live.]`
+`[two corrections, one sentence. "Members" was the whole tree, zero-scored accounts and all,
+which is the same number a bot island inflates: the page cannot boast about isolating an
+island in one section and count it as members in another. And "counted live" was true of the
+clock and not of the set. The count is taken at query time, so a revocation drops out
+straight away, but only between accounts that scored above zero in the last root: a vouch
+involving anyone who joined since, or anyone the round left at zero, is not in it. Counting
+one vouch per pair is not a defect, it is the rule everywhere else: re-vouching for the same
+account replaces the earlier one.]`
 
 **Never proven:** Not proven yet
 
 **Unreadable:** Unknown
 
 **Row figures on a phone, where there are no column headers to inherit a label from:**
-48 members · 214 vouches · proven 3 days ago
+48 accounts · 214 vouches · proven 3 days ago
 
 **Row figures, nothing proven yet:** Not proven yet
 

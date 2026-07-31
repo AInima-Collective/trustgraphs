@@ -90,6 +90,13 @@ const NetworkRow = ({
     <div className="min-w-0">
       <Link
         href={row.href}
+        // No prefetch, for the reason the nav and the footer already give: a
+        // directory is a list of things a reader will open ONE of. Left at the
+        // default, every visible row pulled the network page's chunks, and that
+        // page carries the EAS SDK and ethers: measured, `/networks` downloaded
+        // 5,345 KB of JavaScript to show a list that is server-rendered text.
+        // The cost lands on the row that gets clicked instead.
+        prefetch={false}
         className={cn(
           'block break-words text-text underline-offset-4 hover:underline',
           'after:absolute after:inset-0 after:content-[""]',

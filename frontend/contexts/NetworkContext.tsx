@@ -41,6 +41,18 @@ export type NetworkContextType = {
 
   // Loading states
   isLoading: boolean
+  /**
+   * Loading state of the two reads that actually draw the graph: the latest
+   * merkle tree and the network. Deliberately excludes the Gnosis Safe read.
+   *
+   * `isLoading` is the aggregate and stays that way, because a page that
+   * displays the Safe's threshold has to wait for it. The landing page does not
+   * display it, and against an unreachable indexer the Safe query retries four
+   * times on an exponential ladder while the other two resolve immediately: the
+   * hero's data was ready at 7.7s and the figure claimed to be loading until
+   * 18.4s. Anything that only draws nodes and edges wants this one.
+   */
+  graphLoading: boolean
   error: string | null
 
   // Data
@@ -327,6 +339,10 @@ export const NetworkProvider = ({
   // Combined loading state
   const isLoading = merkleLoading || networkLoading || gnosisSafeLoading
 
+  // The graph's own, without the Safe read folded in. See the type declaration
+  // for why this is a second field rather than a change to the first.
+  const graphLoading = merkleLoading || networkLoading
+
   // Combined error state
   const error = merkleError?.message || networkError?.message || null
 
@@ -347,6 +363,7 @@ export const NetworkProvider = ({
 
     // Loading states
     isLoading,
+    graphLoading,
     error,
 
     // Data
