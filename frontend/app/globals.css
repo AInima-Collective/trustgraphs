@@ -211,8 +211,17 @@
  * functionally labels sitting beside other mono labels, and a serif there
  * reads as an accident rather than a decision.
  *
- * The heading rules are wrapped in :where() so they contribute zero
- * specificity — any component class can override the serif without a fight.
+ * The heading rules are PLAIN TYPE SELECTORS, not :where(). They used to be
+ * wrapped, on the reasoning that zero specificity lets any component class win
+ * without a fight, and once everything was layered that reasoning stopped being
+ * needed and started doing harm: Tailwind's preflight lives in `@layer base`
+ * too, and its `h1,h2,h3,h4,h5,h6 { font-size: inherit; font-weight: inherit }`
+ * is (0,0,1) against :where()'s (0,0,0). Same layer, so specificity decides,
+ * and preflight won: every heading that is not carrying a `.tg-*` class
+ * rendered at body size. The page title "Questions" came out smaller than its
+ * own standfirst. Matching preflight's specificity and sitting after it in
+ * source order is what makes these apply at all. The layer, not the selector,
+ * is what keeps `.tg-hero` and any Tailwind size utility winning.
  * Sizes multiply by --display-scale, the one knob that retunes the whole
  * display voice for Instrument's x-height (see tokens.css).
  * ==========================================================================*/
@@ -231,23 +240,27 @@
  * Layered, the ordinary rules apply again: base < components < utilities, so
  * `.tg-hero` beats `:where(h1)` and a Tailwind utility still beats both. */
 @layer base {
-  :where(h1, h2, h3) {
+  h1,
+  h2,
+  h3 {
     font-family: var(--display-family);
     font-weight: var(--display-weight);
     letter-spacing: var(--display-tracking);
     line-height: var(--leading-tight);
   }
 
-  :where(h1) {
+  h1 {
     font-size: calc(var(--text-3xl) * var(--display-scale));
   }
-  :where(h2) {
+  h2 {
     font-size: calc(var(--text-2xl) * var(--display-scale));
   }
-  :where(h3) {
+  h3 {
     font-size: calc(var(--text-xl) * var(--display-scale));
   }
-  :where(h4, h5, h6) {
+  h4,
+  h5,
+  h6 {
     font-family: var(--mono-family);
     font-size: var(--text-base);
     font-weight: 400;

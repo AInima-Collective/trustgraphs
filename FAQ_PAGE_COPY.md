@@ -33,7 +33,15 @@ Service. A vouch is one kind. You can revoke it later.
 
 **Who picks the starting accounts?**
 Your community does, when the network is created. They anchor the whole graph, so choosing
-them well is the real work. Everything downstream is math.
+them well is the real work. Changing them later is a settings change only the network’s
+admin wallet can make.
+
+`["Everything downstream is math" was refuted twice over. The seed set lives inside the
+params commitment, and setParamsHash is held by the admin wallet from birth with no
+timelock, so the seeds can be re-pinned for the next round. And setZkVerifier sits with the
+same wallet, so downstream of the seed pick is a key that can replace the thing checking the
+maths. The wizard already concedes the first half: "Changing this list later means editing
+your network's settings by hand."]`
 
 **How often do scores update?**
 In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new

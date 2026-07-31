@@ -64,9 +64,17 @@ export const CatalogDegradedNotice = ({
 }) => (
   <Card type="accent" size="sm" className="space-y-1">
     <h2 className="tg-label-strong">Showing a partial list</h2>
+    {/* "Networks created recently are missing" named the wrong set, and named
+     * it too kindly. The fallback is `VISIBLE_SEED_NETWORKS`, a BUILD-TIME
+     * import of the shipped config file, so what is missing is every network
+     * ever created through the factory, whatever its age: one made a year ago
+     * is exactly as absent as one made a minute ago. The page has never seen
+     * any of them, so it could not tell you which were recent even if it
+     * wanted to. */}
     <p className="max-w-prose text-sm">
-      The service that lists networks could not be reached, so networks created
-      recently are missing from this page. The ones below are still real.
+      The service that lists networks could not be reached, so this page is
+      showing only the networks the app shipped with. The ones below are still
+      real.
     </p>
   </Card>
 )

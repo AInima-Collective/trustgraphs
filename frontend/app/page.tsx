@@ -234,9 +234,18 @@ export default async function LandingPage() {
          * gets more air than a panel would, so it reads as a lighter beat
          * rather than as the section nobody finished. */}
         <div className="grid gap-10 lg:grid-cols-3 lg:gap-12">
-          <Reason title="Give away control without giving away the keys.">
-            A founder with most of the tokens can hand governance to the people
-            who earned it, and watch the graph do the deciding.
+          {/* "Hand governance to the people who earned it" was the wrong way
+           * round: the code hands out VOTES and keeps the KEYS. The factory
+           * grants the creating wallet `CONSTITUTIONAL_ROLE` at birth, and that
+           * role can call `setZkVerifier`, so the founder can repoint the thing
+           * that checks the maths and post whatever scoreboard they like. The
+           * FAQ's Status answer already says a network created through the app
+           * is governed by one wallet, so the two pages were in flat
+           * contradiction. What IS true is the part worth saying: weight can
+           * follow trust instead of holdings. */}
+          <Reason title="Weight votes by trust, not by holdings.">
+            A founder with most of the tokens can put governance weight where
+            the community’s trust actually is.
           </Reason>
           {/* The list that used to open this line ("contributions, endorsements,
            * history") named three things a network a stranger can create does

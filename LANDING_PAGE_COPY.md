@@ -106,10 +106,17 @@ proof by itself. Change the vouches and there is no proof to check.
 
 **Section heading:** What this is for.
 
-**Give away control without giving away the keys.**
-A founder with most of the tokens can hand governance to the people who earned it, and
-watch the graph do the deciding.
+**Weight votes by trust, not by holdings.**
+A founder with most of the tokens can put governance weight where the community’s trust
+actually is.
 `[one heavy node dissolving into a network]`
+
+`["Give away control without giving away the keys" was the wrong way round: the code hands
+out votes and keeps the keys. TrustGraphFactory grants the creating wallet
+CONSTITUTIONAL_ROLE at birth, and that role can call setZkVerifier, so the founder can
+repoint the thing that checks the maths. The FAQ's Status answer already says a network
+created through the app is governed by one wallet, so the two pages contradicted each
+other. The half that survives is the half worth saying.]`
 
 **Count more than tokens.**
 Weight comes from who vouches for whom, not from what an account holds.
@@ -278,7 +285,11 @@ reader with no JavaScript gets, and it is true in both directions.]`
 **Nav, wordmark below 410px:** hidden, the mark carries the link on its own.
 
 **Wallet picker, one row per wallet:** Browser wallet · Porto · MetaMask · Coinbase Wallet ·
-WalletConnect
+WalletConnect, plus any other wallet the browser announces, under its own name.
+
+`[the configured list is a floor, not the set: wagmi's EIP-6963 discovery is on by default
+and appends whatever the browser advertises, so a reader with Rabby or Frame installed gets
+extra rows under names this app does not choose.]`
 
 `[Porto only appears off the local chain, which is why a local build shows four. "Browser
 wallet" replaces wagmi's connector id, which shipped as the literal string "Injected".]`
@@ -361,8 +372,10 @@ island in one section and count it as members in another. And "counted live" was
 clock and not of the set. The count is taken at query time, so a revocation drops out
 straight away, but only between accounts that scored above zero in the last root: a vouch
 involving anyone who joined since, or anyone the round left at zero, is not in it. Counting
-one vouch per pair is not a defect, it is the rule everywhere else: re-vouching for the same
-account replaces the earlier one.]`
+one vouch per pair is not a defect, but the reason is narrower than it first looks:
+re-vouching OUTRANKS the earlier attestation rather than replacing it. Revocation excludes
+by uid, so revoking the newer one brings the older one back at its original weight. The live
+count is still one per pair; the resurrection is a product defect and has an issue.]`
 
 **Never proven:** Not proven yet
 
@@ -389,8 +402,13 @@ account replaces the earlier one.]`
 
 **Degraded heading:** Showing a partial list
 
-**Degraded body:** The service that lists networks could not be reached, so networks created
-recently are missing from this page. The ones below are still real.
+**Degraded body:** The service that lists networks could not be reached, so this page is
+showing only the networks the app shipped with. The ones below are still real.
+
+`["networks created recently are missing" named the wrong set, and named it too kindly. The
+fallback is the shipped config file, imported at build time, so what is missing is every
+network ever created through the factory, whatever its age. The page has never seen any of
+them, so it could not say which were recent even if it wanted to.]`
 
 `[the underlying error string does not reach the page at all. It rendered in the card
 first, then in a title attribute, which is worse: a browser draws that as a tooltip for

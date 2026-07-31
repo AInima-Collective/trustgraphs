@@ -92,7 +92,13 @@ const GROUPS: Group[] = [
         id: 'who-picks-the-starting-accounts',
         question: 'Who picks the starting accounts?',
         answer:
-          'Your community does, when the network is created. They anchor the whole graph, so choosing them well is the real work. Everything downstream is math.',
+          // "Everything downstream is math" was refuted twice over. The seed set
+          // lives inside the params commitment, and `setParamsHash` is held by the
+          // admin wallet from birth with no timelock, so the seeds can be re-pinned
+          // for the next round. And `setZkVerifier` sits with the same wallet, so
+          // downstream of the seed pick is a key that can replace the thing checking
+          // the maths. The wizard already concedes the first half.
+          'Your community does, when the network is created. They anchor the whole graph, so choosing them well is the real work. Changing them later is a settings change only the network’s admin wallet can make.',
       },
       {
         id: 'how-often-do-scores-update',
