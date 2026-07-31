@@ -38,6 +38,15 @@ const CONNECTOR_LABELS: Record<string, string> = {
 const connectorLabel = (id: string, name: string) =>
   CONNECTOR_LABELS[id] ?? name
 
+/**
+ * The panel's rows are `size="sm"` for their padding and type, with `h-11`
+ * layered on for their height. `sm` is 36px and these are the only actionable
+ * controls in a panel that opens from the nav on every public page: measured at
+ * 390px, all four wallet rows came out 173x32, under the 44px floor this
+ * program is gated on, with 4px between them. tailwind-merge resolves the
+ * conflict in favour of the class passed here, which is the same trick `Nav.tsx`
+ * uses on the row that opens this.
+ */
 export const WalletConnectionButton = ({
   className,
 }: WalletConnectionButtonProps) => {
@@ -176,7 +185,7 @@ export const WalletConnectionButton = ({
 
             <div className="flex flex-col gap-1">
               <Button
-                className="justify-start gap-3"
+                className="justify-start gap-3 h-11"
                 variant="ghost"
                 size="sm"
                 onClick={(e) => {
@@ -192,7 +201,7 @@ export const WalletConnectionButton = ({
 
               <ButtonLink
                 href={accountHref}
-                className="justify-start gap-3"
+                className="justify-start gap-3 h-11"
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -205,7 +214,7 @@ export const WalletConnectionButton = ({
 
               <Button
                 variant="ghostDestructive"
-                className="justify-start gap-3"
+                className="justify-start gap-3 h-11"
                 size="sm"
                 onClick={() => {
                   setOpenRef.current?.(false)
@@ -225,7 +234,7 @@ export const WalletConnectionButton = ({
                 {connectors.map((connector) => (
                   <Button
                     key={connector.id}
-                    className="justify-start"
+                    className="justify-start h-11"
                     variant="ghost"
                     size="sm"
                     onClick={() => {

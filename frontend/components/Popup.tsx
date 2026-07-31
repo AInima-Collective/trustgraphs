@@ -18,6 +18,10 @@ import { cn } from '@/lib/utils'
 
 import { Card } from './Card'
 
+/** What counts as a stop in the panel's tab cycle, and as its trigger. */
+const FOCUSABLE =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
 export interface PopupProps {
   trigger: PopupTrigger
   position: 'left' | 'right' | 'wide' | 'same'
@@ -258,9 +262,7 @@ export const Popup = ({
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null
-      const first = panel?.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      )
+      const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
       // After the exit/enter classes have settled, or the element is still inert.
       const id = requestAnimationFrame(() => first?.focus())
       return () => cancelAnimationFrame(id)
@@ -270,6 +272,62 @@ export const Popup = ({
     if (previous && panel?.contains(document.activeElement)) {
       previous.focus()
     }
+  }, [open])
+
+  /**
+   * Keep Tab inside the open panel.
+   *
+   * Moving focus in on open and back on close fixed WHETHER the panel's controls
+   * are reachable, and not WHERE. The panel is portalled into `document.body`,
+   * so while it was open, Shift+Tab off its first control landed on the LAST
+   * link in the footer, and Tab off its last control fell out to `<body>` and
+   * restarted at the top of the document, past the trigger, with the panel still
+   * open and still announcing `aria-expanded="true"`. Either direction dumped
+   * the reader roughly twenty-four stops from the control they were using.
+   *
+   * Shift+Tab off the first item goes to the TRIGGER rather than wrapping to the
+   * last item: that is the way out, and it is the element the reader came from.
+   * Tab off the last item wraps to the first. Escape and an outside click still
+   * close, both already handled above.
+   */
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') {
+        return
+      }
+      const panel = dropdownRef.current
+      if (!panel) {
+        return
+      }
+      const items = Array.from(
+        panel.querySelectorAll<HTMLElement>(FOCUSABLE)
+      ).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement
+      )
+      if (items.length === 0) {
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault()
+        const trigger =
+          wrapperRef.current?.querySelector<HTMLElement>(FOCUSABLE)
+        ;(trigger ?? last).focus()
+        return
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
   }, [open])
 
   return (

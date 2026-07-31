@@ -16,7 +16,12 @@ import { cn } from '@/lib/utils'
  * almost all named in caps, so they get the register that suits caps.
  *
  * Pass sentence-case children; `text-transform` does the shouting, so the
- * source and the accessibility tree stay readable.
+ * SOURCE stays readable. Not the accessibility tree, which this used to claim:
+ * Chromium computes an accessible name from rendered text, so the tree really
+ * does say `heading(2) "VOUCHING NETWORKS"`. That is not a failure, and is
+ * arguably right — voice control matches what a user can see, so "click
+ * vouching networks" works either way — but the next person should not trust
+ * the old sentence.
  */
 export function SectionHeading({
   children,

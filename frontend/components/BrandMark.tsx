@@ -53,7 +53,18 @@ export function BrandMark({
       width={px}
       height={px}
       fill="none"
-      className={cn('shrink-0', className)}
+      // `forced-color-adjust-auto` is not decoration. Chromium gives SVG a used
+      // value of `preserve-parent-color`, which means a colour declared ON the
+      // svg survives a forced-colors theme instead of being replaced by the
+      // system palette. Every call site passes its colour through `className`,
+      // i.e. onto this element, so in Windows High Contrast the mark kept
+      // painting `--text-subtle` against Canvas: measured 1.16:1 for the nav
+      // mark in a light HC theme, 1.95:1 in the footer, 2.26:1 in the hero
+      // panel. Below 410px the wordmark is hidden, so the home link was
+      // rendering as nothing visible at all. The sibling svgs that do NOT take
+      // a colour class here (the theme toggle, the FAQ disclosure marker)
+      // measured 21:1 and 3.60:1, which is what proves the mechanism.
+      className={cn('shrink-0 forced-color-adjust-auto', className)}
       role={labelled ? 'img' : undefined}
       aria-hidden={labelled ? undefined : true}
       focusable="false"

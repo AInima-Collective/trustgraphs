@@ -59,8 +59,14 @@ export function HeroGraph({
       <HeroGraphLive network={network} />
       {/* With JavaScript off the island never mounts, and a caption describing
        * a graph that is not there is the same lie in smaller type. This panel
-       * is what a reader without JS gets, and it is true. */}
-      <noscript>
+       * is what a reader without JS gets, and it is true.
+       *
+       * `display: contents` because `<noscript>` is inline-level: the panel's
+       * `h-full` resolved against an auto-height inline box and drew 175px of
+       * bordered panel inside a 464px figure, with 289px of empty frame under
+       * it. Dissolving the wrapper makes the panel a flex child of the figure,
+       * where `h-full` means what it says. */}
+      <noscript className="contents">
         <HeroGraphUnavailable />
       </noscript>
     </figure>

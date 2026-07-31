@@ -18,10 +18,15 @@ import { XIcon } from './icons/XIcon'
  * instead of letting the tap targets inflate the rule spacing.
  */
 
+// `min-w-11` is the same trick as `Nav.tsx`: it buys the 44px floor by growing
+// the box to the RIGHT, so the ink stays where it was. Without it, "FAQ" is
+// short enough that `px-2` leaves the target 37px wide below `sm` — a three-
+// letter word was the only thing setting the width. There is 131px of unused
+// room on that row at 320px, so nothing is being squeezed to afford it.
 const LINK =
-  'inline-flex h-11 items-center transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
+  'inline-flex h-11 min-w-11 items-center justify-center transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
 
-const ICON_LINK = `${LINK} w-11 justify-center`
+const ICON_LINK = `${LINK} w-11`
 
 export const Footer = () => {
   return (

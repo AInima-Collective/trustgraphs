@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import { PageTitle, SectionHeading } from '@/components/SectionHeading'
 import { socialCard } from '@/lib/metadata'
 
+import { OpenTargetAnswer } from './OpenTargetAnswer'
+
 /**
  * The questions page.
  *
@@ -19,11 +21,16 @@ import { socialCard } from '@/lib/metadata'
  * whole page is server-rendered HTML with no client bundle, and a browser that
  * navigates to a question's fragment opens it on arrival.
  *
- * That last part is why the stable `id` sits on the `<summary>` rather than on
- * the `<details>`: the HTML spec's ancestor-details-revealing algorithm walks
- * the *ancestors* of the fragment target, so an id on the summary opens the
- * disclosure around it, while an id on the details itself would only scroll to
- * a still-closed row.
+ * That last claim needed correcting, and the correction is `OpenTargetAnswer`.
+ * The spec does define an ancestor-details-revealing algorithm, and this page
+ * was built assuming it fires for an `id` on the `<summary>`. Measured, it does
+ * not: the row is scrolled to and stays CLOSED in Chromium, Firefox and WebKit,
+ * and a minimal hand-written control behaves identically, so it is the platform
+ * rather than anything here. Every permalink is labelled "Link to this answer",
+ * so every one of them was landing a reader on a question with the answer shut.
+ * A five-line client island opens it, and with JavaScript off everything above
+ * is still true: the fragment still scrolls to the right question and the
+ * reader opens it with one click.
  */
 const DESCRIPTION = 'What people ask before they trust a scoreboard.'
 
@@ -304,6 +311,9 @@ function QuestionRow({ id, question, answer }: Question) {
 export default function FaqPage() {
   return (
     <div className="w-full max-w-[72ch]">
+      {/* Renders nothing. The only client code on this page, and the page works
+       * without it: see the module for what the platform does not do. */}
+      <OpenTargetAnswer />
       <PageTitle>Questions</PageTitle>
       <p className="text-lg text-text-muted">
         What people ask before they trust a scoreboard.

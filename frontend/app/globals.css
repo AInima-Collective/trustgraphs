@@ -217,27 +217,42 @@
  * display voice for Instrument's x-height (see tokens.css).
  * ==========================================================================*/
 
-:where(h1, h2, h3) {
-  font-family: var(--display-family);
-  font-weight: var(--display-weight);
-  letter-spacing: var(--display-tracking);
-  line-height: var(--leading-tight);
-}
+/* IN `@layer base`, and that is load-bearing rather than tidy.
+ *
+ * These are zero-specificity on purpose, so a component class can override
+ * the serif without a fight. But specificity is not what decides here: the
+ * `.tg-*` classes below live in `@layer components`, and UNLAYERED CSS BEATS
+ * LAYERED CSS however low its specificity. Left outside a layer, `:where(h1)`
+ * won `font-size` against `.tg-hero` and the hero rendered at its smallest
+ * step on a 1600px screen; `:where(h2)` won against `.tg-label-strong` and
+ * every SectionHeading came out as large all-caps Instrument Serif, which is
+ * the one thing the type system forbids in as many words.
+ *
+ * Layered, the ordinary rules apply again: base < components < utilities, so
+ * `.tg-hero` beats `:where(h1)` and a Tailwind utility still beats both. */
+@layer base {
+  :where(h1, h2, h3) {
+    font-family: var(--display-family);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--display-tracking);
+    line-height: var(--leading-tight);
+  }
 
-:where(h1) {
-  font-size: calc(var(--text-3xl) * var(--display-scale));
-}
-:where(h2) {
-  font-size: calc(var(--text-2xl) * var(--display-scale));
-}
-:where(h3) {
-  font-size: calc(var(--text-xl) * var(--display-scale));
-}
-:where(h4, h5, h6) {
-  font-family: var(--mono-family);
-  font-size: var(--text-base);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  :where(h1) {
+    font-size: calc(var(--text-3xl) * var(--display-scale));
+  }
+  :where(h2) {
+    font-size: calc(var(--text-2xl) * var(--display-scale));
+  }
+  :where(h3) {
+    font-size: calc(var(--text-xl) * var(--display-scale));
+  }
+  :where(h4, h5, h6) {
+    font-family: var(--mono-family);
+    font-size: var(--text-base);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
 }
 
 /* These are COMPONENT classes, and they are in `@layer components` for a

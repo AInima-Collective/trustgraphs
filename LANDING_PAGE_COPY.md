@@ -226,6 +226,12 @@ vouch. Size is score.
 `[the word "live" is a claim about data that has actually arrived. The caption drops it
 until the graph has something in it.]`
 
+**Hero graph, the canvas itself (assistive):** Demo Co-op vouching graph
+
+`[not the caption. They were the same string, so a screen reader announced the sentence as
+the image's name and then read it again as the caption. The name says what the thing is and
+the caption says how to read it.]`
+
 **Graph unavailable, and shown when the network has nothing in it yet:** The Demo Co-op is
 not reachable right now. Every network on the directory is still live on chain.
 

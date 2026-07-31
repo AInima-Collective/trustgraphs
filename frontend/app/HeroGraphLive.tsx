@@ -27,6 +27,17 @@ const NetworkGraph = dynamic(
 const CAPTION_LIVE = 'Demo Co-op, live. Each line is a vouch. Size is score.'
 const CAPTION_PENDING = 'Demo Co-op. Each line is a vouch. Size is score.'
 
+/**
+ * The canvas's own name, deliberately NOT the caption.
+ *
+ * They were the same string, so a screen reader in browse mode announced
+ * "image, Demo Co-op, live. Each line is a vouch. Size is score." and then read
+ * the identical sentence again as the caption. The name says what the thing is;
+ * the caption explains how to read it, which is the division of labour a
+ * `<figcaption>` exists for.
+ */
+const GRAPH_LABEL = 'Demo Co-op vouching graph'
+
 export default function HeroGraphLive({ network }: { network: Network }) {
   return (
     <NetworkProvider network={network}>
@@ -85,7 +96,7 @@ function HeroGraphFigure() {
       <div
         className="min-h-0 flex-1"
         role="img"
-        aria-label={caption}
+        aria-label={GRAPH_LABEL}
         data-settling={graphLoading ? 'true' : undefined}
       >
         <NetworkGraph chrome={false} />
