@@ -1,11 +1,16 @@
-// Schema UIDs for EAS attestations
-// These are the standard schemas used in the application
+// Encoding and decoding EAS attestation data.
+//
+// The known-schema TABLE lives in `lib/schema-registry.ts`, which has no EAS
+// import. Splitting them is not tidiness: this module pulls in `SchemaEncoder`,
+// which pulls in ethers v6, and the root layout's client boundary reaches the
+// registry through `CatalogProvider`. Everything that only needs to know what a
+// schema looks like should import the registry; only encode and decode need
+// this file.
 
 import { SchemaEncoder } from '@ethereum-attestation-service/eas-sdk'
 import { Hex, stringToHex, toHex } from 'viem'
 
-import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_SEED_NETWORKS } from './config'
-import { NetworkSchema } from './types'
+import { maybeSchemaForUid, schemaForUid } from './schema-registry'
 
 // Schema definitions with metadata for UI
 export type SchemaFieldType =
@@ -15,45 +20,15 @@ export type SchemaFieldType =
   | 'uint256'
   | 'address'
 
-// The known-schema table. It used to be a `const` built from the static network list at import
-// time, which meant a network created through `TrustGraphFactory` could not be attested to until
-// somebody rebuilt the app. It is now a registry the runtime catalog writes into:
-//   - `contexts/CatalogContext` registers every catalog network's schema on load and refresh;
-//   - `contexts/NetworkContext` registers the schemas of the network it is rendering, so a page
-//     served for a brand-new instance can encode a vouch on its very first paint;
-//   - the static seed below keeps everything that worked before working before either runs.
-const SCHEMAS = new Map<string, NetworkSchema>()
-
-/** Add schemas to the known set. Idempotent; first registration of a uid wins. */
-export const registerSchemas = (schemas: readonly NetworkSchema[]) => {
-  for (const schema of schemas) {
-    const key = schema.uid.toLowerCase()
-    if (!SCHEMAS.has(key)) {
-      SCHEMAS.set(key, schema)
-    }
-  }
-}
-
-// Seed: the networks shipped in `config/networks.<env>.json`. Contributions instances attest
-// through the same EAS + SchemaManager flow, so their schemas (claim / response / valuation) join
-// the vouching schemas here; they are not factory-minted in v1 and stay static.
-registerSchemas(
-  [...VISIBLE_SEED_NETWORKS, ...VISIBLE_CONTRIBUTIONS_NETWORKS].flatMap(
-    (network) => network.schemas
-  )
-)
+export { registerSchemas } from './schema-registry'
 
 export class SchemaManager {
   static maybeSchemaForUid(uid: string) {
-    return SCHEMAS.get(uid.toLowerCase())
+    return maybeSchemaForUid(uid)
   }
 
   static schemaForUid(uid: string) {
-    const schema = this.maybeSchemaForUid(uid)
-    if (!schema) {
-      throw new Error(`Unknown schema for UID: ${uid}`)
-    }
-    return schema
+    return schemaForUid(uid)
   }
 
   static encode(

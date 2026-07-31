@@ -19,7 +19,7 @@ import { XIcon } from './icons/XIcon'
  */
 
 const LINK =
-  'inline-flex h-11 items-center transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'inline-flex h-11 items-center transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
 
 const ICON_LINK = `${LINK} w-11 justify-center`
 
@@ -38,7 +38,10 @@ export const Footer = () => {
       </div>
 
       <div className="-ml-2 flex flex-row items-center gap-1 sm:-mr-3.5 sm:ml-0">
-        <Link href="/faq" className={`${LINK} px-3`}>
+        {/* No prefetch. The footer is on every page including /faq itself,
+         * where the default prefetch made the page fetch 77.5 KB of its own RSC
+         * payload after load. A one-line footer link does not need to be warm. */}
+        <Link href="/faq" prefetch={false} className={`${LINK} px-3`}>
           FAQ
         </Link>
         <a

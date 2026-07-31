@@ -81,8 +81,14 @@ export default async function LandingPage() {
   // `getCatalog` never throws: an unreachable indexer degrades to the shipped seed with an error
   // set, so this read cannot take the page down. If the demo is missing either way, the hero says
   // so and the button falls back to the directory rather than linking to nothing.
-  const { networks } = await getCatalog()
+  const { networks, error } = await getCatalog()
   const demo = resolveNetwork(networks, DEMO_NETWORK_ID)
+
+  // If the catalog read failed, the indexer is unreachable, and the graph reads
+  // from the same indexer. Rendering the island anyway downloads 156 KB of
+  // sigma and WebGL to draw a spinner that resolves to "not reachable" six
+  // seconds later. The server already knows the answer, so it gives it.
+  const graphReachable = demo !== undefined && !error
 
   return (
     <div className="flex flex-col gap-16 sm:gap-24">
@@ -127,7 +133,7 @@ export default async function LandingPage() {
          * <figcaption> only names its figure as a direct child, and "live" is a
          * claim about data that has arrived, which only the client knows. The
          * page owns the height budget and hands it over. See HeroGraph.tsx. */}
-        {demo ? (
+        {graphReachable ? (
           <HeroGraph network={demo} className={HERO_FIGURE} />
         ) : (
           <figure className={HERO_FIGURE}>

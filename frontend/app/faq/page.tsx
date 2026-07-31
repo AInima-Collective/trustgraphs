@@ -53,7 +53,7 @@ const ALGORITHM = `${REPO}/blob/main/docs/ALGORITHM.md`
 
 /** Ink, underlined, and legible in prose at answer weight. No hue anywhere. */
 const PROSE_LINK =
-  'text-text underline underline-offset-2 transition-colors hover:text-text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  'text-text underline underline-offset-2 transition-colors hover:text-text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
 
 type Question = {
   /** Slug of the question. Stable: answers are linked by it from outside. */
@@ -254,7 +254,7 @@ function QuestionRow({ id, question, answer }: Question) {
     <details className="group border-b border-border">
       <summary
         id={id}
-        className="flex cursor-pointer scroll-mt-6 list-none items-start justify-between gap-4 py-3 text-text focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+        className="flex cursor-pointer scroll-mt-6 list-none items-start justify-between gap-4 py-3 text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden"
       >
         <span className="min-w-0">{question}</span>
         <OpenMarker />
@@ -265,7 +265,7 @@ function QuestionRow({ id, question, answer }: Question) {
         <a
           href={`#${id}`}
           aria-label={`Link to this answer: ${question}`}
-          className="-mb-3 flex h-11 w-11 items-center justify-center text-xs text-text-subtle transition-colors hover:text-text focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+          className="-mb-3 flex h-11 w-11 items-center justify-center text-xs text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           <span aria-hidden="true">#</span>
         </a>
@@ -292,7 +292,7 @@ export default function FaqPage() {
           <a
             key={group.id}
             href={`#${group.id}`}
-            className="inline-flex min-h-11 items-center font-mono text-xs tracking-[var(--tracking-wide)] text-text-muted uppercase transition-colors hover:text-text focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            className="inline-flex min-h-11 items-center font-mono text-xs tracking-[var(--tracking-wide)] text-text-muted uppercase transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           >
             {group.name}
           </a>

@@ -39,7 +39,7 @@ export function ThemeToggle({ className }: { className?: string }) {
         // the same floor.
         'inline-flex h-11 w-11 shrink-0 items-center justify-center border border-border',
         'text-text-muted transition-colors hover:border-hairline-strong hover:text-text',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
         className
       )}
     >

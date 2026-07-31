@@ -105,7 +105,24 @@ export const WalletConnectionButton = ({
               // ...and the same collapse takes the accessible name with it: the
               // label span is `hidden sm:block`, so below `sm` the only child is
               // an unlabelled lucide icon and the button announces as nothing.
-              aria-label={isConnected ? 'Account menu' : 'Connect account'}
+              //
+              // The connected name CONTAINS the visible label rather than
+              // replacing it. A bare "Account menu" over a button reading
+              // "0x123..abc" is a WCAG 2.5.3 failure: voice control repeats what
+              // it can see, and "click 0x123" would not reach this button.
+              aria-label={
+                isConnected
+                  ? address
+                    ? `Account menu, ${formatAddress(address)}`
+                    : 'Account menu'
+                  : 'Connect account'
+              }
+              // The button reveals a panel, and it has to say so: without these
+              // a screen-reader user is told nothing happened, and the controls
+              // that appeared are eighteen tab stops away at the end of the
+              // document, because the panel is portalled into <body>.
+              aria-haspopup="dialog"
+              aria-expanded={open}
             >
               {isConnecting ? (
                 <LoaderCircle

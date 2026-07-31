@@ -250,6 +250,17 @@ export const Popup = ({
           <Card
             type="popover"
             size="md"
+            // A CLOSED POPUP IS NOT A HIDDEN POPUP unless it is told so. Before
+            // the first open the `hidden` class keeps it out of the tree, and
+            // that is the only reason it looked inert in review. After one open
+            // and one Escape, `openedOnce` latches and the closed state is
+            // nothing but `opacity: 0` and `pointer-events: none`: the four
+            // connector buttons stayed in the tab order and stayed non-ignored
+            // in the accessibility tree on every page, forever. `inert` removes
+            // both, and unlike `display: none` it does not fight the exit
+            // animation, because the animation is opacity and transform.
+            inert={!open}
+            aria-hidden={!open || undefined}
             className={cn(
               'fixed z-50 flex flex-col overflow-hidden! border border-hairline-strong transition-all',
               // Prevent initial flash on page load by hiding until first open.

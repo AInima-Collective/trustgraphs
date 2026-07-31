@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ReactNode, createContext, useContext, useMemo } from 'react'
 
-import { registerNetworks } from '@/components/schema-components'
+import { registerNetworks } from '@/components/schema-components/registerNetworks'
 import {
   CATALOG_QUERY_KEY,
   type Catalog,

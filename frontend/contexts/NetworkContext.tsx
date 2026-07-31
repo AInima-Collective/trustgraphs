@@ -15,17 +15,16 @@ import {
 } from 'react'
 import { Hex, zeroAddress } from 'viem'
 
-import { realAddress } from '@/lib/utils'
-
-import { registerNetworks } from '@/components/schema-components'
+import { registerNetworks } from '@/components/schema-components/registerNetworks'
 import { useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
+import { nullable } from '@/lib/ponder-query'
 import { Network, NetworkEntry } from '@/lib/types'
+import { realAddress } from '@/lib/utils'
 import { getCurrentChainConfig } from '@/lib/wagmi'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
-import { nullable } from '@/lib/ponder-query'
 
 export type NetworkSimulationConfig = {
   enabled: boolean
@@ -134,7 +133,9 @@ export const NetworkProvider = ({
     // through `nullable()`. `live` was already false here, which is all `usePonderQuery` adds.
   } = useQuery({
     ...nullable(
-      usePonderQueryOptions(ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress))
+      usePonderQueryOptions(
+        ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress)
+      )
     ),
     refetchInterval: 30_000,
     enabled: !!safeProxy,

@@ -85,8 +85,18 @@ function HeroGraphFigure({ className }: { className?: string }) {
          * operating something a keyboard user cannot read. */}
         <div className="min-h-0 flex-1" role="img" aria-label={caption}>
           <NetworkGraph chrome={false} />
+          {/* With JavaScript off, `ssr: false` leaves this box empty, and the
+           * caption below was still describing the graph that is not in it: a
+           * 464px void captioned "each line is a vouch". The panel says what is
+           * actually true instead, and the style rule withholds the caption,
+           * since a <figcaption> naming a figure that cannot render is the
+           * same lie in smaller type. */}
+          <noscript>
+            <style>{`.tg-hero-graph-caption{display:none}`}</style>
+            <HeroGraphUnavailable />
+          </noscript>
         </div>
-        <figcaption className="shrink-0 text-xs text-text-subtle">
+        <figcaption className="tg-hero-graph-caption shrink-0 text-xs text-text-subtle">
           {caption}
         </figcaption>
       </div>
