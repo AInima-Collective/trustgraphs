@@ -41,14 +41,14 @@ export const Footer = () => {
         {/* No prefetch. The footer is on every page including /faq itself,
          * where the default prefetch made the page fetch 77.5 KB of its own RSC
          * payload after load. A one-line footer link does not need to be warm. */}
-        <Link href="/faq" prefetch={false} className={`${LINK} px-3`}>
+        <Link href="/faq" prefetch={false} className={`${LINK} px-2 sm:px-3`}>
           FAQ
         </Link>
         <a
           href="https://github.com/JakeHartnell/ZkTrustGraph/tree/main/docs"
           target="_blank"
           rel="noopener noreferrer"
-          className={`${LINK} px-3`}
+          className={`${LINK} px-2 sm:px-3`}
         >
           Docs
         </a>

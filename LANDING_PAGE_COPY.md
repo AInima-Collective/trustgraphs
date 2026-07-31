@@ -11,8 +11,13 @@ Every claim below is something the code does today unless the line says otherwis
 
 **Headline:** Reputation you can’t buy.
 
-**Subhead:** A trustgraph maps who vouches for whom. That map becomes a score any app or
-contract can read, so votes and money follow the people your community actually trusts.
+**Subhead:** A trustgraph maps who vouches for whom. That map becomes a score any app can
+read and any contract can check, so votes and money follow the people your community
+actually trusts.
+
+`[a contract checks one pair, it does not read a board. This is the same correction the Use
+panel got: the subhead was carrying the old wording, and it is also the site's meta
+description, so it was the sentence in every search result.]`
 
 **Primary button:** Open the Demo Co-op
 
@@ -38,7 +43,7 @@ it back whenever you want.
 Trust starts at a handful of accounts your community picked and flows outward along the
 vouches. A vouch from a trusted account carries weight. A bot island has no trust flowing
 into it, so vouching for itself earns it nothing. Whether it keeps a share anyway is a dial
-you set when you create the network.
+when you create the network, and its default leaves it one.
 
 `[the last sentence is not decoration. The node set is built from the edges
 (pagerank-core/src/reconcile.rs), so vouching for each other is exactly how an island
@@ -68,7 +73,7 @@ contracts.]`
 **Section heading:** Anyone can run the math.
 
 Most scoring systems ask you to trust whoever owns the server. This one doesn’t have a
-server to trust. The rules are public and exact, so anyone can run them and get the same
+server you have to believe. The rules are public and exact, so anyone can run them and get the same
 answer down to the last digit.
 
 Whoever submits a scoreboard attaches a zero-knowledge proof: a short receipt the chain
@@ -107,8 +112,12 @@ watch the graph do the deciding.
 `[one heavy node dissolving into a network]`
 
 **Count more than tokens.**
-Contributions, endorsements, history, on-chain and off. Weight is computed from the graph,
-not from a balance.
+Contributions, endorsements, history, all of it on-chain. Weight is computed from the
+graph, not from a balance.
+
+`["and off" was not available to any network a stranger can create: TrustGraphFactory
+reverts Lane2NotSupported and the wizard hard-codes lane 2 off. Mixed sources, below,
+already says off-chain is a second program and not self-serve.]`
 
 **One reputation, many contexts.**
 Score the same people different ways for different questions. Reputation earned in one
@@ -159,8 +168,14 @@ the indexer catches up. Proving is permissionless, so anyone can produce your sc
 and no operator can lock you out.
 
 Proving costs real money. Your network has a tank to pay whoever produces its scoreboard,
-though switching that on still takes a direct contract call. You can also prove it
-yourself: the prover is open source, and the only bill is your own machine and gas.
+though it pays nothing until the tank is funded, its per-round limit is set by contract
+call, and we have priced networks of that size. You can also prove it yourself: the prover
+is open source, and the bill is your own machine and gas.
+
+`[four gates, not one. The vault account does not exist until someone deposits, so
+setPolicy reverts UnknownInstance before a first deposit; maxPerRootUsd must be non-zero;
+the fee band must be priced by us; and the ETH/USD feed must be fresh. Saying "one contract
+call" read as sufficient.]`
 
 `[both sentences were stronger than the code. "No server for you to run" implies somebody
 else runs one; permissionless only means nobody can stop you. And the tank cannot pay
@@ -201,12 +216,14 @@ vouch. Size is score.
 `[the word "live" is a claim about data that has actually arrived. The caption drops it
 until the graph has something in it.]`
 
-**Graph unavailable:** The Demo Co-op is not reachable right now. Every network on the
-directory is still live on chain.
+**Graph unavailable, and shown when the network has nothing in it yet:** The Demo Co-op is
+not reachable right now. Every network on the directory is still live on chain.
+
+`[the empty case used to fall through to the graph component's own panel, which says "No
+attestations yet" on the first screen a stranger sees, using a word the landing page never
+defines.]`
 
 **Graph, while it is loading:** Building graph
-
-**Empty state:** No networks yet. Create the first one.
 
 ---
 
@@ -227,7 +244,10 @@ and meant nothing.]`
 
 **Nav, wallet button while connecting:** Connecting…
 
-**Nav, wallet button once connected (assistive):** Account menu
+**Nav, wallet button once connected (assistive):** Account menu, <shortened address>
+
+`[the name has to CONTAIN the visible label. A bare "Account menu" over a button reading
+0x123..abc is a WCAG 2.5.3 failure: voice control repeats what it can see.]`
 
 **Nav, theme toggle (assistive):** Switch to light theme / Switch to dark theme
 
@@ -241,7 +261,11 @@ reader with no JavaScript gets, and it is true in both directions.]`
 
 **Nav, wordmark below 410px:** hidden, the mark carries the link on its own.
 
-**Wallet picker, one row per wallet:** Browser wallet · MetaMask · Coinbase Wallet · WalletConnect
+**Wallet picker, one row per wallet:** Browser wallet · Porto · MetaMask · Coinbase Wallet ·
+WalletConnect
+
+`[Porto only appears off the local chain, which is why a local build shows four. "Browser
+wallet" replaces wagmi's connector id, which shipped as the literal string "Injected".]`
 
 `["Browser wallet" replaces wagmi's connector id, which shipped as the literal
 string "Injected". It is one click from the nav on all three pages and a normal
@@ -249,7 +273,12 @@ reader has no way to know what it means.]`
 
 **Wallet picker, no wallets:** No wallets available in this browser.
 
-**Wallet menu, sign out:** Disconnect
+**Wallet menu:** <chain name> balance · Copy address · View profile · Disconnect
+
+`[the chain name is read from the app's own config. It was hardcoded to "Optimism Balances"
+on every deployment including the local one, where it was simply false.]`
+
+**Wallet panel (assistive):** Choose a wallet / Account
 
 **Page titles**, from a template: Networks | Trustgraphs · Questions | Trustgraphs.
 The landing page is Trustgraphs alone, not Trustgraphs | Trustgraphs.
@@ -276,7 +305,7 @@ with nothing in it is left out rather than shown empty.
 
 **Page title:** Networks
 
-**Standfirst:** The networks on this chain, and what each one counts.
+**Standfirst:** Networks on this chain, and what each one counts.
 
 `["Every" was three things it is not. The vouching section reads one page of the registry,
 capped at 200. The funding-round and repo sections are filtered slices of the shipped
@@ -291,9 +320,14 @@ Columns: Network · Members · Vouches · Scores proven
 Members claim work and rate each other, and the pot follows the ratings.
 Columns: Round · Contributions · Scores proven
 
-**Section: Repo reputation**
-Accounts are scored on the repositories they have actually worked on.
+**Section: Published work**
+Accounts are scored on the impact claims and evaluations they have published.
 Columns: Instance · Accounts · Scores proven
+
+`["Repo reputation" and "the repositories they have actually worked on" described a
+different program. The hypercerts graph runs over AT-Protocol records: evaluations,
+endorsements, attributions and badges. "Repo" there is a PDS data repository, not source
+code, and nobody is scored on repositories they worked on.]`
 
 **Column note:** Members and the date come from the last proven scoreboard. Vouches are
 counted live.
@@ -330,8 +364,10 @@ latest root. Members and the date are as-of-root, vouches are live.]`
 **Degraded body:** The service that lists networks could not be reached, so networks created
 recently are missing from this page. The ones below are still real.
 
-`[the underlying error string is carried in a title attribute, not rendered. "fetch failed"
-is the one line on the public surface that fails the plain-reader test.]`
+`[the underlying error string does not reach the page at all. It rendered in the card
+first, then in a title attribute, which is worse: a browser draws that as a tooltip for
+every sighted reader. "fetch failed" is the one line on the public surface that fails the
+plain-reader test, so it is logged server-side and nowhere else.]`
 
 ---
 

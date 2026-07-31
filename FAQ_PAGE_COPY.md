@@ -12,6 +12,10 @@ it's defined.
 
 `[one column, ruled rows, questions open on click. no hero.]`
 
+**Group nav, above the questions (assistive):** Question groups
+
+**Permalink on each answer (assistive):** Link to this answer: <the question>
+
 ---
 
 ## Basics
@@ -26,8 +30,8 @@ them well is the real work. Everything downstream is math.
 
 **How often do scores update?**
 In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new
-scores, and the result goes on-chain. Every network sets its own pace, and a settled round
-is never recalculated.
+scores, and the result goes on-chain. Every network sets its own pace, and a settled round is never recalculated as long as your
+network keeps a schedule.
 
 ---
 
@@ -41,9 +45,9 @@ already has.
 **Why don’t bot armies work?**
 Score comes from trust flowing out of the starting accounts. A thousand bots vouching for
 each other form an island with lots of arrows and nothing flowing in, so none of those
-vouches earns any trust. They do still land on the scoreboard. Every account a round has
-seen gets an equal slice of whatever head start you did not reserve for your starting
-accounts, and the create form reserves 15% by default, so a big enough island can hold a
+vouches earns any trust. They do still land on the scoreboard. Every account that is not one
+of your starting accounts gets an equal slice of whatever head start you did not reserve
+for them, and the create form reserves 15% by default, so a big enough island can hold a
 real share. Set “Head start for your starting accounts” to 100% and an island nobody
 vouched for from outside holds nothing.
 
@@ -77,7 +81,7 @@ expense. Pricing for everyone else is still being worked out.
 Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a
 round and land the result, and no operator can lock you out. Today that mostly means you or
 us: a tank cannot pay a bounty until someone sets its per-round limit with a direct
-contract call, and the networks we curate are proven at our expense. If every machine we
+contract call, and the networks we curate will be proven at our expense. If every machine we
 run vanished, anyone could recompute the scores from public data and prove them.
 
 **Can I use the scores somewhere else?**
@@ -89,8 +93,9 @@ score against the on-chain root, given the score and its proof.
 ## Status
 
 **Is this ready for production?**
-No. The proof loop is built and runs end to end on a test chain, and the pieces around it
-are not finished. A network created through the app is governed by one wallet: the timelock
+No. The proof loop is built and runs end to end on a test chain, though the on-chain proof
+check is still a stand-in and no real proof has been produced yet. The pieces around it are
+not finished. A network created through the app is governed by one wallet: the timelock
 that should hold those powers exists but is not wired up yet. More attestation sources are
 in progress.
 

@@ -46,6 +46,12 @@ export interface PopupProps {
    * Optionally override the default padding of the popup.
    */
   popupPadding?: number
+  /**
+   * Accessible name for the panel. Required in practice: the panel carries
+   * `role="dialog"`, and a dialog with no name announces as "dialog" and
+   * nothing else.
+   */
+  popupLabel?: string
 }
 
 export type PopupTriggerOptions = {
@@ -84,6 +90,7 @@ export const Popup = ({
   topOffset = 0,
   sideOffset = 0,
   popupPadding,
+  popupLabel,
 }: PopupProps) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
@@ -229,6 +236,42 @@ export const Popup = ({
     openedOnce.current = true
   }
 
+  /**
+   * Move focus into the panel on open, and back to the trigger on close.
+   *
+   * The panel is portalled into `document.body`, so it is the LAST thing in the
+   * document: with the popup open on /faq, its four connector buttons measured
+   * twenty-five tab stops behind the button that revealed them, on the far side
+   * of every question and the whole footer. Making them inert while closed
+   * (which the previous round did) fixed whether they are reachable and not
+   * where they are.
+   *
+   * `restoreRef` rather than an unconditional `.focus()` on the trigger: this
+   * must not steal focus from wherever the user actually is if the popup is
+   * closed by an outside click.
+   */
+  const restoreRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const panel = dropdownRef.current
+    if (open) {
+      restoreRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
+      const first = panel?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      // After the exit/enter classes have settled, or the element is still inert.
+      const id = requestAnimationFrame(() => first?.focus())
+      return () => cancelAnimationFrame(id)
+    }
+    const previous = restoreRef.current
+    restoreRef.current = null
+    if (previous && panel?.contains(document.activeElement)) {
+      previous.focus()
+    }
+  }, [open])
+
   return (
     <>
       <div
@@ -261,6 +304,12 @@ export const Popup = ({
             // animation, because the animation is opacity and transform.
             inert={!open}
             aria-hidden={!open || undefined}
+            // The trigger announces `aria-haspopup="dialog"`, so there has to be
+            // a dialog in the tree for it to be pointing at. Without these the
+            // promise was made and never kept.
+            role="dialog"
+            aria-modal={false}
+            aria-label={popupLabel}
             className={cn(
               'fixed z-50 flex flex-col overflow-hidden! border border-hairline-strong transition-all',
               // Prevent initial flash on page load by hiding until first open.

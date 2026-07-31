@@ -10,6 +10,7 @@ import { useAccount, useBalance, useConnect, useDisconnect } from 'wagmi'
 import { useEns } from '@/hooks/useEns'
 import { parseErrorMessage } from '@/lib/error'
 import { cn, formatBigNumber } from '@/lib/utils'
+import { getCurrentChainConfig } from '@/lib/wagmi'
 
 import { Button, ButtonLink } from './Button'
 import { EthIcon } from './icons/EthIcon'
@@ -90,6 +91,7 @@ export const WalletConnectionButton = ({
           isConnected ? '!p-3' : '!p-2'
         )}
         sideOffset={4}
+        popupLabel={isConnected ? 'Account' : 'Choose a wallet'}
         wrapperClassName={className}
         trigger={{
           type: 'custom',
@@ -150,8 +152,11 @@ export const WalletConnectionButton = ({
         {isConnected && address ? (
           <div className="flex flex-col gap-3 text-sm">
             <div className="flex flex-col gap-2 bg-secondary p-3 rounded-md -m-1">
+              {/* The chain this app is configured for, not a hardcoded name.
+               * It read "Optimism Balances" on every deployment including the
+               * local one, where it was simply false. */}
               <p className="text-xs text-muted-foreground font-medium mb-1">
-                Optimism Balances
+                {getCurrentChainConfig().name} balance
               </p>
 
               <div className="flex flex-row items-center gap-2 pl-2">

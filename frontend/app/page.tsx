@@ -9,6 +9,7 @@ import {
 import { ProofDiagram } from '@/components/marketing/ProofDiagram'
 import { resolveNetwork } from '@/lib/catalog'
 import { getCatalog } from '@/lib/catalog.server'
+import { socialCard } from '@/lib/metadata'
 
 import { HeroGraph, HeroGraphUnavailable } from './HeroGraph'
 
@@ -42,8 +43,16 @@ const REPO_URL = 'https://github.com/JakeHartnell/ZkTrustGraph'
  */
 const DEMO_NETWORK_ID = 'demo-co-op'
 
+/**
+ * The site description, per LANDING_PAGE_COPY.md, which specifies one string
+ * for search results and share cards on every page.
+ *
+ * It is NOT the hero subhead. Setting the subhead here made the doc's site
+ * description copy that renders nowhere, and put a definition of a trustgraph
+ * in the slot that wants the pitch.
+ */
 const DESCRIPTION =
-  'A trustgraph maps who vouches for whom. That map becomes a score any app or contract can read, so votes and money follow the people your community actually trusts.'
+  'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.'
 
 /**
  * The hero figure's height budget, owned by the page and handed to whatever
@@ -61,20 +70,11 @@ const HERO_FIGURE =
 export const metadata: Metadata = {
   // `absolute` so the root page is "Trustgraphs" rather than "Trustgraphs | Trustgraphs".
   title: { absolute: 'Trustgraphs' },
-  description: DESCRIPTION,
-  openGraph: {
+  ...socialCard({
     title: 'Trustgraphs',
     description: DESCRIPTION,
-    url: '/',
-  },
-  // `twitter` is set here too, not left to inherit. The root layout sets both
-  // blocks, so overriding only `openGraph` gave this URL a Slack unfurl reading
-  // one sentence and an X card reading a different one.
-  twitter: {
-    title: 'Trustgraphs',
-    description: DESCRIPTION,
-  },
-  alternates: { canonical: '/' },
+    path: '/',
+  }),
 }
 
 export default async function LandingPage() {
@@ -96,7 +96,7 @@ export default async function LandingPage() {
       <section className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
         {/* Copy first in the DOM, so a phone shows a sentence before it shows a
          * constellation. At `lg` the grid puts the graph back on the right. */}
-        <header className="flex flex-col items-start gap-5">
+        <header className="flex flex-col items-start gap-5 [@media(max-height:480px)]:gap-3">
           <span className="tg-marker">Vouch · Score · Prove · Use</span>
 
           <h1 className="tg-hero max-w-[14ch] text-balance">
@@ -105,8 +105,8 @@ export default async function LandingPage() {
 
           <p className="max-w-prose text-lg text-text-muted">
             A trustgraph maps who vouches for whom. That map becomes a score any
-            app or contract can read, so votes and money follow the people your
-            community actually trusts.
+            app can read and any contract can check, so votes and money follow
+            the people your community actually trusts.
           </p>
 
           {/* Two ways in, because a stranger arrives wanting one of two things:
@@ -168,7 +168,8 @@ export default async function LandingPage() {
             flows outward along the vouches. A vouch from a trusted account
             carries weight. A bot island has no trust flowing into it, so
             vouching for itself earns it nothing. Whether it keeps a share
-            anyway is a dial you set when you create the network.
+            anyway is a dial when you create the network, and its default leaves
+            it one.
           </Move>
 
           {/* "Check", not "read". `MerkleSnapshot` stores a root, not scores,
@@ -198,9 +199,9 @@ export default async function LandingPage() {
             <div className="flex max-w-prose flex-col gap-4 text-text-muted">
               <p>
                 Most scoring systems ask you to trust whoever owns the server.
-                This one doesn’t have a server to trust. The rules are public
-                and exact, so anyone can run them and get the same answer down
-                to the last digit.
+                This one doesn’t have a server you have to believe. The rules
+                are public and exact, so anyone can run them and get the same
+                answer down to the last digit.
               </p>
               <p>
                 Whoever submits a scoreboard attaches a zero-knowledge proof: a
@@ -231,8 +232,12 @@ export default async function LandingPage() {
             A founder with most of the tokens can hand governance to the people
             who earned it, and watch the graph do the deciding.
           </Reason>
+          {/* "and off" was not available to any network a stranger can make:
+           * `TrustGraphFactory` reverts `Lane2NotSupported` on lane-2 config and
+           * the wizard hard-codes it off. The Mixed sources feature line already
+           * says off-chain is a second program and not self-serve. */}
           <Reason title="Count more than tokens.">
-            Contributions, endorsements, history, on-chain and off. Weight is
+            Contributions, endorsements, history, all of it on-chain. Weight is
             computed from the graph, not from a balance.
           </Reason>
           <Reason title="One reputation, many contexts.">
@@ -305,9 +310,10 @@ export default async function LandingPage() {
             </p>
             <p className="max-w-prose">
               Proving costs real money. Your network has a tank to pay whoever
-              produces its scoreboard, though switching that on still takes a
-              direct contract call. You can also prove it yourself: the prover
-              is open source, and the only bill is your own machine and gas.
+              produces its scoreboard, though it pays nothing until the tank is
+              funded, its per-round limit is set by contract call, and we have
+              priced networks of that size. You can also prove it yourself: the
+              prover is open source, and the bill is your own machine and gas.
             </p>
           </div>
 

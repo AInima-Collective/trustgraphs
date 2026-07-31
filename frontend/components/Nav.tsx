@@ -30,11 +30,11 @@ export const Nav = () => {
   return (
     <nav
       aria-label="Main"
-      className="flex flex-row items-center justify-between border-b border-border pb-3 sm:pb-4"
+      className="flex flex-row items-center justify-between border-b border-border pb-3 sm:pb-4 [@media(max-height:480px)]:pb-2"
     >
       <Link
         href="/"
-        className="flex h-11 shrink-0 items-center gap-2.5 transition-opacity hover:opacity-70"
+        className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2.5 transition-opacity hover:opacity-70 xs:min-w-0 xs:justify-start"
         aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />

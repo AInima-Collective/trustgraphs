@@ -86,9 +86,13 @@ export const SECTION_META: Record<
     scoredLabel: 'Contributions',
   },
   hypercerts: {
-    title: 'Repo reputation',
+    // NOT "repo reputation". The hypercerts graph runs over AT-Protocol records:
+    // evaluations, endorsements, attributions, badges. "Repo" there is a PDS data
+    // repository, not source code, and nobody is scored on repositories they
+    // worked on. The old wording described a different product.
+    title: 'Published work',
     standfirst:
-      'Accounts are scored on the repositories they have actually worked on.',
+      'Accounts are scored on the impact claims and evaluations they have published.',
     nameLabel: 'Instance',
     scoredLabel: 'Accounts',
   },

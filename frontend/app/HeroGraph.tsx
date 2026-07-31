@@ -48,7 +48,8 @@ export function HeroGraph({
 
 function HeroGraphFigure({ className }: { className?: string }) {
   const { isLoading, error, accountData } = useNetwork()
-  const live = !isLoading && !error && accountData.length > 0
+  const settled = !isLoading && !error
+  const live = settled && accountData.length > 0
 
   // The landing page owns its own failure state rather than borrowing the
   // graph's. `NetworkGraph`'s error panel is right where it lives, on a
@@ -56,7 +57,14 @@ function HeroGraphFigure({ className }: { className?: string }) {
   // what an operator needs. On the first screen a stranger ever sees, that same
   // panel is a red box reading "Failed to fetch", which reads as broken
   // software rather than as an unreachable read.
-  if (error) {
+  //
+  // Same for the EMPTY state, which is reachable and was not handled: with the
+  // instance list answering but the network read 404ing, `error` is null and
+  // the accounts array is empty, so `NetworkGraph` settled into its own panel
+  // reading "No attestations yet. The first attestation in this network will
+  // draw the first edge." That is undocumented copy on the first screen, and it
+  // says "attestation" twice on a page that never defines the word.
+  if (error || (settled && accountData.length === 0)) {
     return (
       <figure className={className}>
         <HeroGraphUnavailable />

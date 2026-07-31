@@ -108,7 +108,7 @@ export default async function RootLayout({
                * inside an already-padded frame, which inset every rule and word
                * on the page 8px further than the nav rule above them and the
                * footer rule below them. One gutter, owned by the frame. */}
-              <main className="py-2 mt-4 sm:py-4 sm:mt-6 flex-1 grow">
+              <main className="py-2 mt-4 sm:py-4 sm:mt-6 flex-1 grow [@media(max-height:480px)]:mt-2 [@media(max-height:480px)]:py-1">
                 {children}
               </main>
             </div>

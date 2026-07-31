@@ -58,5 +58,6 @@ export const CONTRACT_CONFIG = CONFIG.contracts
  * self-proved by its own community, and neither needs a vault. The UI says which rather than
  * rendering an empty balance.
  */
-export const PROVING_VAULT = (CONFIG.contracts as { ProvingVault?: { address?: string } })
-  .ProvingVault?.address as `0x${string}` | undefined
+export const PROVING_VAULT = (
+  CONFIG.contracts as { ProvingVault?: { address?: string } }
+).ProvingVault?.address as `0x${string}` | undefined

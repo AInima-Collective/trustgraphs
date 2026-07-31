@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 
 import { PageTitle, SectionHeading } from '@/components/SectionHeading'
+import { socialCard } from '@/lib/metadata'
 
 /**
  * The questions page.
@@ -34,17 +35,11 @@ const DESCRIPTION = 'What people ask before they trust a scoreboard.'
 // and whose X card carried two different sentences for the same URL.
 export const metadata: Metadata = {
   title: 'Questions',
-  description: DESCRIPTION,
-  openGraph: {
+  ...socialCard({
     title: 'Questions | Trustgraphs',
     description: DESCRIPTION,
-    url: '/faq',
-  },
-  twitter: {
-    title: 'Questions | Trustgraphs',
-    description: DESCRIPTION,
-  },
-  alternates: { canonical: '/faq' },
+    path: '/faq',
+  }),
 }
 
 const REPO = 'https://github.com/JakeHartnell/ZkTrustGraph'
@@ -89,7 +84,7 @@ const GROUPS: Group[] = [
         id: 'how-often-do-scores-update',
         question: 'How often do scores update?',
         answer:
-          'In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new scores, and the result goes on-chain. Every network sets its own pace, and a settled round is never recalculated.',
+          'In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new scores, and the result goes on-chain. Every network sets its own pace, and a settled round is never recalculated as long as your network keeps a schedule.',
       },
     ],
   },
@@ -114,7 +109,7 @@ const GROUPS: Group[] = [
         // Measured at the wizard's own default: 8 bots take 27% of the board,
         // 1000 take 53%. At 100% they take nothing. See issue #18.
         answer:
-          'Score comes from trust flowing out of the starting accounts. A thousand bots vouching for each other form an island with lots of arrows and nothing flowing in, so none of those vouches earns any trust. They do still land on the scoreboard. Every account a round has seen gets an equal slice of whatever head start you did not reserve for your starting accounts, and the create form reserves 15% by default, so a big enough island can hold a real share. Set “Head start for your starting accounts” to 100% and an island nobody vouched for from outside holds nothing.',
+          'Score comes from trust flowing out of the starting accounts. A thousand bots vouching for each other form an island with lots of arrows and nothing flowing in, so none of those vouches earns any trust. They do still land on the scoreboard. Every account that is not one of your starting accounts gets an equal slice of whatever head start you did not reserve for them, and the create form reserves 15% by default, so a big enough island can hold a real share. Set “Head start for your starting accounts” to 100% and an island nobody vouched for from outside holds nothing.',
       },
       {
         id: 'is-my-data-private',
@@ -163,7 +158,7 @@ const GROUPS: Group[] = [
         // ineligible, so the operator holds rather than proving, and the only
         // other path is a hand-edited curated allowlist.
         answer:
-          'Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a round and land the result, and no operator can lock you out. Today that mostly means you or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct contract call, and the networks we curate are proven at our expense. If every machine we run vanished, anyone could recompute the scores from public data and prove them.',
+          'Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a round and land the result, and no operator can lock you out. Today that mostly means you or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct contract call, and the networks we curate will be proven at our expense. If every machine we run vanished, anyone could recompute the scores from public data and prove them.',
       },
       {
         id: 'can-i-use-the-scores-somewhere-else',
@@ -184,7 +179,7 @@ const GROUPS: Group[] = [
         id: 'is-this-ready-for-production',
         question: 'Is this ready for production?',
         answer:
-          'No. The proof loop is built and runs end to end on a test chain, and the pieces around it are not finished. A network created through the app is governed by one wallet: the timelock that should hold those powers exists but is not wired up yet. More attestation sources are in progress.',
+          'No. The proof loop is built and runs end to end on a test chain, though the on-chain proof check is still a stand-in and no real proof has been produced yet. The pieces around it are not finished. A network created through the app is governed by one wallet: the timelock that should hold those powers exists but is not wired up yet. More attestation sources are in progress.',
       },
       {
         id: 'has-it-been-audited',
@@ -238,14 +233,30 @@ const GROUPS: Group[] = [
  * globally in globals.css.
  */
 function OpenMarker() {
+  // SVG STROKES, NOT `bg-current` BARS. Forced-colors mode remaps `color`,
+  // `border-color` and SVG `stroke`, but flattens `background-color` to Canvas.
+  // Drawn as two background-filled spans, the plus measured 1.00:1 against the
+  // page in Windows High Contrast: a 24x24 crop centred on it was a single
+  // colour. And the UA's own triangle is suppressed by `list-style: none` plus
+  // the webkit marker rule, so all fifteen rows had no disclosure affordance at
+  // all. The glyphs in `ProofDiagram` and `MoveFigures` already survive forced
+  // colors for exactly this reason.
   return (
-    <span
+    <svg
       aria-hidden="true"
-      className="relative mt-[5px] block h-3 w-3 shrink-0"
+      focusable="false"
+      viewBox="0 0 12 12"
+      className="mt-[5px] block h-3 w-3 shrink-0 overflow-visible"
+      fill="none"
     >
-      <span className="absolute top-1/2 left-0 block h-px w-3 -translate-y-1/2 bg-current" />
-      <span className="absolute top-0 left-1/2 block h-3 w-px -translate-x-1/2 bg-current transition-transform group-open:scale-y-0" />
-    </span>
+      <path d="M0 6 H12" stroke="currentColor" strokeWidth="1" />
+      <path
+        d="M6 0 V12"
+        stroke="currentColor"
+        strokeWidth="1"
+        className="origin-center transition-transform group-open:scale-y-0"
+      />
+    </svg>
   )
 }
 
@@ -292,7 +303,7 @@ export default function FaqPage() {
           <a
             key={group.id}
             href={`#${group.id}`}
-            className="inline-flex min-h-11 items-center font-mono text-xs tracking-[var(--tracking-wide)] text-text-muted uppercase transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            className="inline-flex min-h-11 items-center tg-label text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           >
             {group.name}
           </a>
@@ -304,7 +315,7 @@ export default function FaqPage() {
           key={group.id}
           id={group.id}
           aria-label={group.name}
-          className="mt-20 scroll-mt-6"
+          className="mt-20 scroll-mt-6 [@media(max-height:480px)]:mt-10"
         >
           <SectionHeading>{group.name}</SectionHeading>
           {group.questions.map((question) => (

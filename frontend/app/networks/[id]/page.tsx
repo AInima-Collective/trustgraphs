@@ -11,10 +11,10 @@ import {
   VISIBLE_SEED_NETWORKS,
 } from '@/lib/config'
 import { ponderClient } from '@/lib/ponder'
-import { makeQueryClient } from '@/lib/query'
-import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
-import { realAddress } from '@/lib/utils'
 import { nullable } from '@/lib/ponder-query'
+import { makeQueryClient } from '@/lib/query'
+import { realAddress } from '@/lib/utils'
+import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { NetworkPage } from './component'
 import { ContributionsNetworkPage } from './contributions'
@@ -103,7 +103,9 @@ export default async function NetworkPageServer({
         ...nullable(
           getPonderQueryOptions(
             ponderClient,
-            ponderQueryFns.getGnosisSafe(realAddress(network.contracts.safe?.proxy)!)
+            ponderQueryFns.getGnosisSafe(
+              realAddress(network.contracts.safe?.proxy)!
+            )
           )
         ),
         // Refetch right away on page load.

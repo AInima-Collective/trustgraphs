@@ -46,15 +46,23 @@ export const CatalogUnavailable = ({
  * out, in a `title` attribute — which is worse rather than better: a browser draws `title` as a
  * tooltip for every sighted reader who happens to rest a pointer on the notice, so the string the
  * copy doc calls out as the one line that fails the plain-reader test was still on the public
- * surface, just harder to notice in review. The reason is logged server-side by
- * `lib/catalog.server.ts`, which is where whoever is debugging this is already looking.
+ * surface, just harder to notice in review. Nor does it go in a data attribute, which was
+ * the next thing tried: `data-reason="fetch failed"` is still the raw string in the DOM of a
+ * public page. It is logged server-side by `lib/catalog.server.ts`, which is where whoever
+ * is debugging this is already looking. The prop stays so the call-site keeps documenting
+ * that a reason exists.
  *
  * The label is a real heading, not a bold paragraph. It names the notice, so a screen reader
  * needs somewhere to land, and `font-bold` on a single-weight face was synthesising a weight
  * the type system does not have.
  */
-export const CatalogDegradedNotice = ({ reason }: { reason: string }) => (
-  <Card type="accent" size="sm" className="space-y-1" data-reason={reason}>
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const CatalogDegradedNotice = ({
+  reason: _reason,
+}: {
+  reason: string
+}) => (
+  <Card type="accent" size="sm" className="space-y-1">
     <h2 className="tg-label-strong">Showing a partial list</h2>
     <p className="max-w-prose text-sm">
       The service that lists networks could not be reached, so networks created

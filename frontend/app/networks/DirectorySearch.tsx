@@ -40,7 +40,7 @@ export const DirectorySearch = ({
   }, [needle, sections])
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div className="space-y-16 sm:space-y-20">
       <div role="search">
         <label htmlFor="directory-filter" className="sr-only">
           Filter networks

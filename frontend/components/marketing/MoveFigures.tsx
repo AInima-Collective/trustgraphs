@@ -49,13 +49,13 @@ export function VouchFigure({ className }: { className?: string }) {
     <Frame className={className}>
       {/* Attester, statement, the account it names. */}
       <path
-        d="M20 38 H46 M92 38 H118"
+        d="M20 38 H46 M92 38 H125"
         stroke="currentColor"
         strokeWidth="1.1"
         opacity="0.8"
       />
       <path
-        d="M114 34 L120 38 L114 42"
+        d="M121 34 L127 38 L121 42"
         stroke="currentColor"
         strokeWidth="1.1"
         opacity="0.8"
@@ -94,7 +94,7 @@ export function VouchFigure({ className }: { className?: string }) {
       {/* Taken back: the same journey, returned, drawn as a path that is not
        * quite there. */}
       <path
-        d="M126 45 C 126 68, 96 72, 70 72 S 14 68, 14 45"
+        d="M133 45 C 133 68, 96 72, 70 72 S 14 68, 14 45"
         stroke="currentColor"
         strokeWidth="0.9"
         strokeDasharray="3 3"
@@ -108,7 +108,7 @@ export function VouchFigure({ className }: { className?: string }) {
       />
 
       <circle cx="14" cy="38" r="6" fill="currentColor" />
-      <circle cx="126" cy="38" r="5" fill="currentColor" opacity="0.75" />
+      <circle cx="133" cy="38" r="5" fill="currentColor" opacity="0.75" />
     </Frame>
   )
 }
@@ -127,7 +127,7 @@ export function ScoreFigure({ className }: { className?: string }) {
     [30, 14, 5],
     [14, 38, 4],
     [44, 40, 4.2],
-    [8, 62, 3],
+    [11, 62, 3],
     [28, 64, 3.4],
     [50, 66, 3],
   ]
@@ -144,7 +144,7 @@ export function ScoreFigure({ className }: { className?: string }) {
   const island: Array<[number, number]> = [
     [96, 30],
     [116, 24],
-    [130, 38],
+    [135, 38],
     [128, 58],
     [112, 68],
     [94, 62],
@@ -238,7 +238,7 @@ export function UseFigure({ className }: { className?: string }) {
        * because the order is the whole output. */}
       {rows.map(([y, width], index) => (
         <g key={`row-${y}`} opacity={1 - index * 0.16}>
-          <circle cx="10" cy={y} r="2.6" fill="currentColor" />
+          <circle cx="10.6" cy={y} r="2.6" fill="currentColor" />
           <rect
             x="18"
             y={y - 2.5}

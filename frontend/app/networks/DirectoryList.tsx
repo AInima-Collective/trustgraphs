@@ -82,7 +82,7 @@ const NetworkRow = ({
     className={cn(
       // The whole row is the target, but the link is only the name: an anchor whose text is the
       // entire row reads its blurb and every figure out loud before it says where it goes.
-      'relative grid grid-cols-1 items-baseline gap-x-4 gap-y-1 border-b border-border py-3 transition-colors',
+      'relative grid grid-cols-1 items-baseline gap-x-4 gap-y-1 border-b border-border py-3 last:border-b-0 transition-colors',
       'hover:bg-surface-2 has-[a:focus-visible]:bg-surface-2',
       gridClass
     )}
@@ -98,7 +98,7 @@ const NetworkRow = ({
       >
         {row.name}
       </Link>
-      <p className="line-clamp-2 max-w-prose text-sm text-text-muted lg:max-w-none lg:truncate">
+      <p className="line-clamp-2 max-w-prose text-text-muted lg:max-w-none lg:truncate">
         {row.blurb}
       </p>
     </div>
@@ -147,7 +147,7 @@ export const DirectorySectionBlock = ({
 }) => (
   <section className="space-y-3">
     <SectionHeading>{section.title}</SectionHeading>
-    <p className="max-w-prose text-sm text-balance text-text-muted">
+    <p className="max-w-prose text-balance text-text-muted">
       {section.standfirst}
     </p>
 
