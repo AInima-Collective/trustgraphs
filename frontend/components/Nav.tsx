@@ -40,7 +40,15 @@ export const Nav = () => {
         // pushed the 24px mark 10px in from the frame, so below 410px the same
         // mark sat at x=18 in the nav and x=8 in the footer, on one screen, with
         // the eyebrow and the h1 on the footer's edge.
-        className="flex h-11 min-w-11 shrink-0 items-center justify-start gap-2.5 transition-opacity hover:opacity-70 xs:min-w-0"
+        // The focus treatment is spelled out because leaving it off does not
+        // mean "inherit the app's ring", it means Chromium paints its own.
+        // The global fallback resolves to `outline-style: auto`, and `auto`
+        // makes the platform draw a two-tone ring and DISCARD the declared
+        // outline-color, so the design system's own token never reached the
+        // pixels on the first tab stop of every page: 1px at 1px offset,
+        // measured 1.06:1 against the page in light theme, where the other
+        // twenty-seven stops carry 2px at 2px offset and measure 18.40:1.
+        className="flex h-11 min-w-11 shrink-0 items-center justify-start gap-2.5 transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink xs:min-w-0"
         aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />

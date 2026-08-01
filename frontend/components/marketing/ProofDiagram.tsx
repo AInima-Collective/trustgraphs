@@ -28,7 +28,16 @@ const Glyph = ({
 }) => (
   <svg
     viewBox="0 0 32 32"
-    className={cn('h-11 w-11 shrink-0', className)}
+    // `forced-color-adjust-auto` for the same reason `BrandMark` carries it, and
+    // this is the call site that fix missed. Chromium's used value for SVG is
+    // `preserve-parent-color`, so a colour class landing HERE, on the svg,
+    // survives a forced-colors theme instead of being replaced by the system
+    // palette. One caller passes `text-error` (the rejected path's struck
+    // receipt), and it measured 3.15:1 against white Canvas while the sibling
+    // glyph in the same row, whose colour is inherited from its parent, was
+    // correctly remapped to 21:1. Putting it on `Glyph` rather than on that one
+    // caller means the next colour passed through here is safe too.
+    className={cn('h-11 w-11 shrink-0 forced-color-adjust-auto', className)}
     fill="none"
     aria-hidden="true"
     focusable="false"
