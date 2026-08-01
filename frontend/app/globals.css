@@ -171,7 +171,22 @@
   --text-4xl: 56px;
   --text-5xl: 72px;
 
-  --breakpoint-xs: 410px;
+  /* The one breakpoint this app adds, and the only thing it gates is whether
+   * the nav shows the "Trustgraphs" wordmark beside the mark.
+   *
+   * It was 410px, chosen as the width where the wordmark stops colliding with
+   * the controls. That holds until a reader applies the WCAG 1.4.12 text
+   * spacing override, which is a thing the standard says they must be able to
+   * do without losing content: with it on, the nav row needs 416px, so every
+   * width from 410 to 415 overflowed and scrolled sideways with the theme
+   * toggle cut off. 414 is not a hypothetical, it is the iPhone XR, 11, and
+   * every Plus.
+   *
+   * 440 rather than 416, so the band has slack rather than being exact-fit at
+   * one text size. The cost is that a 414px phone gets the mark alone in the
+   * nav, which is not a degradation: it is the same state every narrower phone
+   * already gets, and the mark is still the home link. */
+  --breakpoint-xs: 440px;
 }
 
 @layer base {

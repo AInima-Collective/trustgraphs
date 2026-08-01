@@ -11,7 +11,8 @@ import { resolveNetwork } from '@/lib/catalog'
 import { getCatalog } from '@/lib/catalog.server'
 import { socialCard } from '@/lib/metadata'
 
-import { HeroGraph, HeroGraphUnavailable } from './HeroGraph'
+import { HeroGraph } from './HeroGraph'
+import { HeroGraphUnavailable } from './HeroGraphUnavailable'
 
 /**
  * The landing page.
@@ -114,8 +115,14 @@ export default async function LandingPage() {
            * second is a same-page anchor rather than a route, so it costs
            * nothing and cannot 404. */}
           <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
+            {/* `prefetch={false}`: `/networks/[id]` is the heaviest route in the
+             * app, 3.3 MB raw eager including the 1.1 MB ethers chunk the hero
+             * split exists to keep off this page. Measured, the landing page was
+             * warming 627 KB of it before anyone clicked. The click pays for
+             * itself; the reader who only wanted the sentence does not. */}
             <ButtonLink
               href={demo ? `/networks/${demo.id}` : '/networks'}
+              prefetch={false}
               size="lg"
             >
               Open the Demo Co-op
@@ -348,7 +355,7 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          <ButtonLink href="/create" size="lg">
+          <ButtonLink href="/create" prefetch={false} size="lg">
             Create a network
           </ButtonLink>
         </div>

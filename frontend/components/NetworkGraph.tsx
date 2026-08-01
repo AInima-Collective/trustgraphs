@@ -94,7 +94,15 @@ export function NetworkGraph({
 }: NetworkGraphProps) {
   const router = useRouter()
 
-  const { isLoading, error, accountData, attestationsData, isTrustedSeed } =
+  // `graphLoading`, not `isLoading`. The aggregate folds in the Gnosis Safe read,
+  // which this component never draws and which climbs a four-attempt retry
+  // ladder when the indexer is unreachable. Measured: the graph's own two reads
+  // terminated at 8.0s and this component held its spinner, and its
+  // `data-settling` flag, for the whole of a 48s window. An earlier round moved
+  // the hero's outer wrapper onto `graphLoading` and stopped here, which fixed
+  // nothing a reader could see: the screenshot harness waits for EVERY
+  // `[data-settling]` node, and the spinner is painted by this file.
+  const { graphLoading, error, accountData, attestationsData, isTrustedSeed } =
     useNetwork()
 
   // Sigma paints via WebGL and cannot read CSS variables, so the palette is
@@ -310,7 +318,7 @@ export function NetworkGraph({
     })
   }, [accountData, attestationsData, isTrustedSeed, ensData, graphTokens])
 
-  const settling = isLoading || (isLoadingGraph && !graph)
+  const settling = graphLoading || (isLoadingGraph && !graph)
 
   return (
     <div

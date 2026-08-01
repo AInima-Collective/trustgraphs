@@ -190,7 +190,7 @@ const CreateCta = () => (
   // here that must keep its own width rather than run the frame.
   <section className="flex flex-col items-start gap-6 border-t border-border pt-5 sm:gap-8">
     <h2>Bring your own community.</h2>
-    <ButtonLink href="/create" size="lg">
+    <ButtonLink href="/create" prefetch={false} size="lg">
       Create a network
     </ButtonLink>
   </section>
@@ -209,7 +209,7 @@ const EmptyDirectory = () => (
       <p className="max-w-prose text-text-muted">
         Creating one takes a single transaction, and nobody has to approve it.
       </p>
-      <ButtonLink href="/create" size="lg">
+      <ButtonLink href="/create" prefetch={false} size="lg">
         Create a network
       </ButtonLink>
     </div>

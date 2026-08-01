@@ -89,6 +89,22 @@ export default async function RootLayout({
   // it degrades to the shipped list and flags the error for the UI to show.
   const catalog = await getCatalog()
 
+  // THE REASON DOES NOT CROSS THE CLIENT BOUNDARY. `Providers` is a client
+  // component, so whatever it is handed is serialized into the RSC flight
+  // payload embedded in the HTML — and `components/CatalogUnavailable.tsx`
+  // spends fifteen lines establishing that this exact string must never reach
+  // the DOM, "not in the card, not in a title attribute". It was reaching it
+  // one layer above the component that refuses it, on every request, on all
+  // three routes including a questions page that has nothing to do with the
+  // catalog: `"error":"fetch failed"` in 27 of 27 sampled responses.
+  //
+  // Nothing on the client reads the reason, only whether there was one, and
+  // `live` already carries that. So the flag survives and the diagnostic stays
+  // in the server log, which is where whoever is debugging this is looking.
+  const clientCatalog = catalog.error
+    ? { ...catalog, error: 'unavailable' }
+    : catalog
+
   return (
     // suppressHydrationWarning: next-themes stamps [data-theme] on <html>
     // before React hydrates, which is a deliberate mismatch rather than a bug.
@@ -99,7 +115,7 @@ export default async function RootLayout({
     <html lang="en" className={clsx(fontVariables)} suppressHydrationWarning>
       <body className="font-mono text-foreground">
         <div className="min-h-screen root flex flex-col p-safe-or-2 sm:p-safe-or-4 md:p-safe-or-6 max-w-7xl mx-auto">
-          <Providers catalog={catalog}>
+          <Providers catalog={clientCatalog}>
             {/* Account for the footer, but make sure to push it down below the initial page */}
             <div className="flex flex-col min-h-[calc(100vh-2rem)]">
               <Nav />

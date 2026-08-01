@@ -123,7 +123,10 @@ export const useTrackDropdown = ({
     // window.addEventListener('resize', updateRect, true)
 
     return () => {
-      window.removeEventListener('scroll', updateRect)
+      // The `true` matters: it was registered with capture, and a removal whose
+      // capture flag does not match removes nothing, so the listener outlived
+      // every unmount.
+      window.removeEventListener('scroll', updateRect, true)
       // window.removeEventListener('resize', updateRect)
     }
   }, [updateRectRef])

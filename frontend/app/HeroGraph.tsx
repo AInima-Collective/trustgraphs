@@ -43,8 +43,6 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
  */
 const HeroGraphLive = dynamic(() => import('./HeroGraphLive'), { ssr: false })
 
-export { HeroGraphUnavailable }
-
 export function HeroGraph({
   network,
   className,
