@@ -304,13 +304,16 @@ Everything below cost someone real time.
   whole thing, so every payout differs (EVE, unvouched in the fixture, has reputation here). If a
   number looks "wrong" against that guide, this is why. The structural facts still hold: the root
   verifies, the indexer independently re-derives it, and Σ payouts = pool − the 3% fee.
-- **The round driver reads the frontend's generated config, so `demo:seed-round` regenerates it
-  first.** A schema uid embeds its resolver address, so a `config.json` generated from an earlier
-  deploy reverts every vouch as a foreign schema — against the *correct* EAS address, because EAS
-  sits early in the deterministic nonce sequence and never moves. Driving
-  `contribution-round.ts` by hand after a redeploy needs the same three commands:
-  `pnpm --filter frontend config:generate && pnpm --filter frontend config:link &&
-  pnpm --filter frontend wagmi:generate`.
+- **The round driver reads wagmi-generated contract addresses, so `demo:seed-round` regenerates
+  them first — and then verifies it.** The driver's schema uids flow live from
+  `config/networks.development.json`, but `frontend/lib/contracts.ts` (the EAS, distributor and
+  pool-token addresses) only changes when frontend codegen runs — so left stale it sends a
+  current schema uid to a previous deploy's EAS, which dies as a bare no-data revert.
+  `demo:seed-round` runs the codegen and then asserts the generated EAS address equals the one
+  this deploy wrote, because the failure that motivated the check was codegen that silently
+  no-opped: `pnpm --filter frontend …` matches nothing (the package is named
+  `trust-graph-frontend`) and pnpm treats an empty filter match as success. By hand it's
+  `pnpm frontend config:generate && pnpm frontend config:link && pnpm frontend wagmi:generate`.
 - **`demo:payout` needs the indexer; everything before it does not.** Funding pins `expectedRoot`
   from the round API and each claim fetches its merkle bundle from it — the payout page's exact
   seams, which is the point of driving them. No indexer → the step skips itself and says how to

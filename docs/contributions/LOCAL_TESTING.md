@@ -167,7 +167,7 @@ cd indexer && npm run dev # ponder dev on :65421 — predev runs drizzle migrate
 
 The frontend first: its `predev` regenerates `frontend/lib/contract-abis` and the network config
 from `.docker/deployment_summary.json`, which the indexer then imports. (For a pure CLI/indexer
-run without the UI you can regenerate the ABIs directly with `pnpm --filter frontend wagmi:generate`
+run without the UI you can regenerate the ABIs directly with `pnpm frontend wagmi:generate`
 before starting the indexer — but keep the order.) Contributions networks route to the round view;
 keep `NEXT_PUBLIC_CONTRIBUTIONS_MOCKS` unset so the pages read the live API.
 
@@ -383,7 +383,7 @@ task contributions:prove-round ID=<checkpoint>
 - **Stale `frontend/lib/contracts.ts` / `contract-abis` after a redeploy** — start the frontend
   before the indexer (§3): its `predev` runs `wagmi:generate` / `config:generate` off the fresh
   deploy summary, and the indexer imports those ABIs. Or regenerate directly with
-  `pnpm --filter frontend wagmi:generate`. Contract addresses are deterministic per deployer
+  `pnpm frontend wagmi:generate`. Contract addresses are deterministic per deployer
   nonce, so they only drift when the deploy script's tx sequence changes.
 - **Indexer crashes on a `MerkleRootUpdated` event (`Failed to fetch merkle tree from IPFS CID …`),
   and a fresh deploy / `forge clean` doesn't fix it?** The IPFS daemon is down. Each proven root

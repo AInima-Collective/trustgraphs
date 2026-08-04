@@ -212,16 +212,34 @@ tasks:
     desc: 'Seed the 6-persona contribution round over the demo graph (claims, responses, valuations)'
     cmds:
       - |
-        # The round driver is frontend code (SchemaManager → EAS.attest), and it reads the
-        # FRONTEND's generated config — which nothing else in `task demo` touches; normally the
-        # frontend dev server's predev regenerates it. Left stale it carries the PREVIOUS
-        # deploy's schema uids, and a schema uid embeds its resolver address, so the very first
-        # vouch reverts as a foreign schema — while the EAS address (early in the deterministic
-        # nonce sequence) still looks right. Regenerate from the summary THIS deploy just wrote,
-        # in predev's order: config, then the symlink, then the ABIs the driver imports.
-        pnpm --filter frontend config:generate
-        pnpm --filter frontend config:link
-        pnpm --filter frontend wagmi:generate
+        # The round driver is frontend code (SchemaManager → EAS.attest), and while its SCHEMA
+        # uids flow live from config/networks.development.json (rewritten every deploy), its
+        # contract ADDRESSES are wagmi-generated into frontend/lib/contracts.ts — which nothing
+        # else in `task demo` touches; normally the frontend dev server's predev regenerates it.
+        # Left stale, the driver sends a current schema uid to a previous deploy's EAS and the
+        # first vouch dies as a bare revert. Regenerate in predev's order: config, symlink, ABIs.
+        #
+        # `pnpm frontend …` (the root script) and NOT `pnpm --filter frontend …`: --filter
+        # matches package NAMES, the package is named trust-graph-frontend, and pnpm treats a
+        # filter that matches nothing as success — it prints "No projects matched" and exits 0,
+        # which is how this step once no-opped its way into that bare revert.
+        pnpm frontend config:generate
+        pnpm frontend config:link
+        pnpm frontend wagmi:generate
+      - |
+        # Codegen that silently didn't happen looks identical to codegen that worked, so check
+        # the one value the driver cannot survive being stale: the generated EAS address must be
+        # the EAS this deploy just wrote. Catches the no-op filter above, a half-run predev, and
+        # a redeploy on a reused chain (shifted nonces move every address) alike.
+        WANT=$(jq -r .eas .docker/eas_deploy.json | tr 'A-F' 'a-f')
+        GEN=$(grep -oE "easAddress = '0x[0-9a-fA-F]{40}'" frontend/lib/contracts.ts | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
+        if [ -z "$GEN" ] || [ "$GEN" != "$WANT" ]; then
+          echo "✗ frontend codegen is not tracking this deploy:" >&2
+          echo "    generated easAddress  ${GEN:-<none>}" >&2
+          echo "    deployed EAS          $WANT" >&2
+          echo "  re-run: pnpm frontend config:generate && pnpm frontend config:link && pnpm frontend wagmi:generate" >&2
+          exit 1
+        fi
       - |
         # The whole M5 worked example, driven through the frontend's exact attest seams: the
         # fixture's six vouches, an out-of-window claim, the round window (paramsHash rotation),
