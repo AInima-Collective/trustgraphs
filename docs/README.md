@@ -3,28 +3,26 @@
 How to set up, run, and operate TrustGraph today. Design provenance (the *why*) lives in
 [`../research/`](../research/); superseded designs are in [`../research/archive/`](../research/archive/).
 
-## Start here
+## By what you're trying to do
 
-- [`../README.md`](../README.md) — what TrustGraph is, quickstart
-- [`ELI5.md`](./ELI5.md) — plain-language explanation
-- [`ALGORITHM.md`](./ALGORITHM.md) — the Trust-Aware PageRank specification
-- [`PROGRAMS.md`](./PROGRAMS.md) — **the program index**: every SP1 program, its status, vkey, and instances
-- [`SETUP.md`](./SETUP.md) — system requirements and toolchain install
-- [`PRODUCTION.md`](./PRODUCTION.md) — production deployment notes (no production network is live today)
-- [`DEVIATIONS.md`](./DEVIATIONS.md) — the deviation log: where builds departed from their plans, and why
-
-## Per-program guides
-
-Each program directory has the same shape: `ARCHITECTURE.md` (what it is, pointer to the
-research design), `RUNBOOK.md` (deploy + operate), and where applicable `LOCAL_TESTING.md`
-(end-to-end walkthrough on a local chain).
-
-| Program | Guides |
+| I want to… | Read |
 |---|---|
-| trust-graph | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) · [local testing](./trust-graph/LOCAL_TESTING.md) |
-| signer-sync | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) |
-| hypercerts | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [local testing](./hypercerts/LOCAL_TESTING.md) · [reproduce](./hypercerts/REPRODUCE.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) |
-| contributions | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [local testing](./contributions/LOCAL_TESTING.md) · [interfaces](./contributions/INTERFACES.md) · [audits](./contributions/audits/) |
+| understand what this is, without jargon | [`ELI5.md`](./ELI5.md) |
+| get the toolchains installed and the guests built | [`SETUP.md`](./SETUP.md) |
+| watch the whole thing run on a local chain | [`trust-graph/DEMO.md`](./trust-graph/DEMO.md) |
+| know which programs exist, their vkeys and instances | [`PROGRAMS.md`](./PROGRAMS.md) |
+| know exactly what the scores mean | [`ALGORITHM.md`](./ALGORITHM.md) |
+| run the proving daemon | [`OPERATOR.md`](./OPERATOR.md) |
+| deploy a program, or operate one by hand | that program's `RUNBOOK.md` — indexed in [`PROGRAMS.md`](./PROGRAMS.md) |
+| exercise a program end to end locally | that program's `LOCAL_TESTING.md` — same index |
+| deploy to a real chain | [`PRODUCTION.md`](./PRODUCTION.md) (no production network is live today) |
+| know where a build departed from its plan | [`DEVIATIONS.md`](./DEVIATIONS.md) |
+
+[`PROGRAMS.md`](./PROGRAMS.md) is the authoritative per-program index — status, vkey, deployed
+instances, and every doc each program owns. It is deliberately the only place that list is
+maintained. Each program directory has the same shape: `ARCHITECTURE.md` (what it is, pointer to
+the research design), `RUNBOOK.md` (deploy + operate), and where applicable `LOCAL_TESTING.md`
+(end-to-end walkthrough on a local chain).
 
 ## Related
 

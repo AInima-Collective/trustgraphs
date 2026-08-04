@@ -28,11 +28,14 @@ program index in [`../PROGRAMS.md`](../PROGRAMS.md).
 
 ```bash
 # SP1 (installs cargo-prove + the `succinct` rust toolchain)
-curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up
-# (the SP1 *SDK* is pinned to =6.3.1 in zk/prover/Cargo.toml; the vkey depends on the exact
-#  toolchain build — see ../PROGRAMS.md's reproducibility caveat before deriving deploy values)
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
+
+Pin the version. The SP1 *SDK* is pinned to `=6.3.1` in `zk/prover/Cargo.toml`, and the vkey depends
+on the exact toolchain build — read [`../PROGRAMS.md`](../PROGRAMS.md)'s reproducibility caveat
+before deriving any value you intend to deploy against. Full install walkthrough, including the
+other toolchains: [`../SETUP.md`](../SETUP.md).
 
 ## Build & test
 
@@ -51,12 +54,18 @@ forge test --match-path 'test/unit/golden/TrustGraphGoldenVectors.t.sol'
 # 3. Full Solidity suite (accumulator, submitProof flow, existing consumers)
 forge test
 
-# 4. Guest ELF (riscv zkVM) — build.rs builds every [[bin]] in zk/program
-cd zk/program && cargo prove build && cd ../..
-
-# 5. Host
-cd zk/prover && cargo build --release && cd ../..
+# 4. Guest ELFs + prover host. One `[[bin]]` per program in zk/program, all built together.
+task zk:build
+#   ≡ cd zk/program && cargo prove build && touch ../prover/build.rs
+#     SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release'
 ```
+
+> Step 4 is the one that bites. `sp1_build` does not watch the path dependencies under
+> `packages/`, so after editing a core crate cargo will happily reuse a stale ELF — `task zk:build`
+> touches `build.rs` to force the pickup. And because the demo and the operator harnesses run with
+> `SP1_SKIP_PROGRAM_BUILD=true`, a checkout that has never run this fails with a missing-file error
+> from `include_elf!` rather than anything about guests. See
+> [`../SETUP.md`](../SETUP.md#build-the-zk-guest-programs).
 
 ## Determine the deploy constants
 

@@ -16,8 +16,12 @@ enforced in-guest by rule Φ and the deterministic skip rules. Node identity res
 `app.certified.link.evm` DID↔address bindings; the pilot launches score-only (no gov/distributor) on
 Optimism.
 
-> **Runbook comes at M4/M5.** The build was the plan's sequence M1→M5 (spike → lane-2 infra → atproto
-> envelope → the hypercerts program → the Optimism pilot). The operator runbook (`RUNBOOK.md`), graph
-> semantics reference (`GRAPH_SEMANTICS.md`), and pinned-lexicon reference (`LEXICONS.md`) land with the
-> program itself at **M4**, completed for the pilot at **M5**. This directory holds only this pointer
-> until then.
+To operate the program, see [`RUNBOOK.md`](./RUNBOOK.md); to exercise it end to end locally,
+[`LOCAL_TESTING.md`](./LOCAL_TESTING.md); to re-derive a proven epoch from public data,
+[`REPRODUCE.md`](./REPRODUCE.md). Open asks on the Hypercerts side are in
+[`PARTNER_BRIEF.md`](./PARTNER_BRIEF.md).
+
+> **Still unwritten.** The graph-semantics reference (`GRAPH_SEMANTICS.md`) and the pinned-lexicon
+> reference (`LEXICONS.md`) were planned alongside the runbook and have not been written. Until they
+> are, the semantics of record→edge mapping live in `packages/hypercerts-core` and the research plan
+> above, and the pinned lexicon version is the `=1.1.0` stated here.

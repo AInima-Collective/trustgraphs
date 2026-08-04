@@ -23,15 +23,59 @@ reputation, contribution-funding splits) with the same discipline — one canoni
 per program, compiled into the SP1 guest and cross-checked byte-for-byte against Solidity
 and TypeScript ports.
 
-Want to see it run? `task demo` does the whole thing on a local anvil — deploy the stack, create a
-funded network in one transaction, seed it a real graph, and watch the proof scheduler prove it and
-pay whoever produced the root. [`docs/trust-graph/DEMO.md`](./docs/trust-graph/DEMO.md) is the
-walkthrough: what each step does, the security properties worth demonstrating, and every gotcha
-that has cost someone an afternoon.
-
 New to all of this? Start with the plain-language [`docs/ELI5.md`](./docs/ELI5.md).
 The algorithm itself is specified in [`docs/ALGORITHM.md`](./docs/ALGORITHM.md), and the
 ZK design in [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md).
+
+## Run it
+
+Install the toolchains first — Docker, [go-task](https://taskfile.dev), `jq`, Node 21+ with pnpm,
+[Foundry](https://getfoundry.sh), Rust, and SP1: [`docs/SETUP.md`](./docs/SETUP.md) walks through
+each one. Then, once per checkout:
+
+```bash
+task -y setup      # pnpm install + forge install (Solidity deps resolve from node_modules/)
+task zk:build      # compile the SP1 guest programs — minutes the first time, cached after
+```
+
+Don't skip `task zk:build` — the guests are the one thing a plain checkout doesn't come with, and
+almost nothing else builds them for you. The demo and the operator harnesses all run with
+`SP1_SKIP_PROGRAM_BUILD=true`, so they never pay for a guest rebuild per tick and never produce one
+either; on a checkout where the guests have never been built, that surfaces as a missing-file error
+deep in a Rust build rather than a useful message. Build them once, then pick a path:
+
+**Fastest — the loop end-to-end, no config and no services:**
+
+```bash
+task e2e           # printing E2E PASS
+```
+
+It spins up its own anvil, deploys EAS + the resolver, creates attestations, freezes a checkpoint,
+and reconstructs the prover's input from chain with `input-exporter`. The exporter self-checks by
+rehashing the reconstructed attestation list and requiring it to reproduce the chain's accumulator
+commitment; then the SP1 guest is cross-checked against the native implementation. (This one *will*
+build the guests itself if they're missing — it just takes minutes instead of seconds.)
+
+**The whole product — a funded network, a real graph, the scheduler, the payout:**
+
+```bash
+anvil --block-time 1 &     # task demo refuses to own your chain, or your services
+task start-all-local       # IPFS + the ponder database, from docker-compose.dev.yml
+task demo
+```
+
+One transaction creates a network and endows its proving tank; a daemon watches the chain, freezes
+checkpoints on the contract's cadence, proves them, lands them, and collects the bounty.
+[`docs/trust-graph/DEMO.md`](./docs/trust-graph/DEMO.md) is the walkthrough: what each step does,
+the security properties worth demonstrating, and every gotcha that has cost someone an afternoon.
+
+> **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
+> anywhere, and both paths above do exactly that: `SP1_PROVER=mock` runs the real guest and commits
+> its real public values, with only the SNARK itself stubbed. Generating a real STARK→Groth16
+> *proof* needs ≥16–32 GiB of RAM or the Succinct prover network (`SP1_PROVER=network`). The
+> mainnet-fork rehearsal where the proof is real — deployed contracts, the canonical SP1 gateway,
+> indexer and frontend showing the scores — is
+> [`docs/trust-graph/LOCAL_TESTING.md`](./docs/trust-graph/LOCAL_TESTING.md).
 
 ## Programs
 
@@ -46,66 +90,10 @@ binary), and its deployed instances. Status snapshot:
 | **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/hypercerts/ARCHITECTURE.md) · [runbook](./docs/hypercerts/RUNBOOK.md) · [local testing](./docs/hypercerts/LOCAL_TESTING.md) |
 | **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/contributions/ARCHITECTURE.md) · [runbook](./docs/contributions/RUNBOOK.md) · [local testing](./docs/contributions/LOCAL_TESTING.md) |
 
-## Try it in 30 seconds
-
-See the whole trust-graph loop run end-to-end on a throwaway local chain — no config, no
-running node:
-
-```bash
-task e2e
-```
-
-It spins up its own anvil, deploys EAS + the resolver, creates attestations, freezes a
-checkpoint, and reconstructs the prover's input from chain with `input-exporter`. The
-exporter self-checks by rehashing the reconstructed attestation list and requiring it to
-reproduce the chain's accumulator commitment; then the SP1 guest is cross-checked against
-the native implementation — printing `E2E PASS`.
-
-Needs [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`), `jq`,
-Node 21+ with pnpm, [go-task](https://taskfile.dev), and the SP1 toolchain — install
-walkthrough in [`docs/SETUP.md`](./docs/SETUP.md). Run `task -y setup` first (the Solidity
-dependencies resolve from `node_modules/`). No Docker needed for this one — the full-stack
-flow below uses it for IPFS and Postgres. The first run builds the guest ELF, so give it a
-few minutes; after that it's seconds.
-
-> **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness)
-> works anywhere. Generating a real STARK→Groth16 *proof* needs ≥16–32 GiB of RAM or the
-> Succinct prover network (`SP1_PROVER=network`). For a local dev loop, validate with
-> `execute` and use the network for the final `prove` if you lack the hardware.
-
-## Quickstart: a full local round
-
-The complete walkthrough — mainnet-fork anvil, deployed contracts, real proof, indexer and
-frontend showing the scores — is [`docs/trust-graph/LOCAL_TESTING.md`](./docs/trust-graph/LOCAL_TESTING.md).
-The short version:
-
-```bash
-task -y setup             # pnpm install + forge install
-task build:forge          # build the contracts
-task test                 # Solidity tests incl. cross-language golden vectors
-
-cp .env.example .env
-task -y start-all-local   # anvil + IPFS + the ponder database (keep running)
-pnpm deploy:full          # EAS + resolver/accumulator, MerkleSnapshot + SP1 verifiers,
-                          # timelocks, distributor, Zodiac Safe + modules
-
-pnpm frontend dev         # http://localhost:3000
-pnpm indexer dev          # Ponder, indexing contract events directly
-
-# seed a demo attestation network (40+ vouches):
-TEST_ADDRESS=$(task config:wallet-address) task trustgraph:full-setup
-```
-
-From there, the **permissionless proving loop** — `trigger()` a checkpoint, reconstruct the
-input from chain, prove, pin the score blob, `submitProof` — is step-by-step in the
-[trust-graph runbook](./docs/trust-graph/RUNBOOK.md) (and the local-testing guide's
-"Produce data the UI shows" section).
-The signer-sync rotation loop is in the [signer-sync runbook](./docs/signer-sync/RUNBOOK.md).
-A full contribution-funding round (claims → ratings → proven payout split, wei-exact) is in
-[`docs/contributions/LOCAL_TESTING.md`](./docs/contributions/LOCAL_TESTING.md).
-
-All generated artifacts (reconstructed inputs, proofs, score blobs, witness archives) land
-under the gitignored `.trustgraph/` directory, one subdirectory per program.
+Running one program by hand — `trigger()` a checkpoint, reconstruct the input from chain, prove,
+pin the score blob, `submitProof` — is step by step in each program's runbook, linked above. All
+generated artifacts (reconstructed inputs, proofs, score blobs, witness archives) land under the
+gitignored `.trustgraph/` directory, one subdirectory per program.
 
 ## Repository map
 

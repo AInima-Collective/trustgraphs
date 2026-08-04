@@ -14,9 +14,10 @@ Two ways to exercise it locally:
   repos fetched from the **live production PDS** (`certified.one`), a real Groth16 proof, and
   `submitProof` against Succinct's real SP1 gateway on a mainnet-fork anvil. Zero mocks.
 
-Prereqs are the same as the main guide (Foundry, Rust, `jq`, the SP1 toolchain via `sp1up`).
-The quick check needs nothing else — the seeded fixture is committed. The full pipeline needs
-network access, and (for the real proof) either the Succinct prover network or a 16–32 GiB box.
+Prereqs are the same as the main guide: Foundry, Rust, `jq`, the SP1 toolchain, then
+`task -y setup` and `task zk:build` ([`../SETUP.md`](../SETUP.md)). The quick check needs nothing
+else — the seeded fixture is committed. The full pipeline needs network access, and (for the real
+proof) either the Succinct prover network or a 16–32 GiB box.
 
 ---
 
@@ -53,8 +54,8 @@ task zk:vkey    PROGRAM=hypercerts    # ⚠ vkeys depend on the exact toolchain 
 
 The anti-gaming battery lives in `packages/hypercerts-core/tests/semantics.rs` and
 `tests/two_sided_fixture.rs`. First guest build takes minutes; afterwards seconds. If you edit
-`packages/*`, force a guest rebuild (`sp1_build` doesn't watch path deps): `cd zk/program &&
-cargo prove build`, then `touch zk/prover/build.rs` before the next host build.
+`packages/*`, rebuild the guests — `sp1_build` doesn't watch path deps, so cargo will otherwise
+reuse a stale ELF: `task zk:build` (see [`../SETUP.md`](../SETUP.md#build-the-zk-guest-programs)).
 
 ---
 
@@ -314,7 +315,9 @@ label nodes but never mislabel them.
   never use. Prefix them with `SP1_PROVER=mock` — identical executor + `guest == native`
   byte-assert, nothing else changes. Real proving needs `SP1_PROVER=network` or a 16–32 GiB box.
 - **`succinct` toolchain missing** (fresh container) → `curl -L https://sp1up.succinct.xyz | bash
-  && sp1up --version v6.3.1`.
+  && ~/.sp1/bin/sp1up --version v6.3.1`, then `task zk:build`.
+- **`include_elf!` fails with a missing file under `zk/program/target/`** → the guests were never
+  built, and whatever you ran exports `SP1_SKIP_PROGRAM_BUILD=true`. `task zk:build`.
 - **`prove` gets killed right after the `vkey:` line** → you're on the `cpu` backend and the
   local prover machine's multi-GiB allocation got OOM-killed. `SP1_PROVER=network` didn't reach
   the process: the prover reads real process env only (no `.env`), and an unexported `VAR=value`

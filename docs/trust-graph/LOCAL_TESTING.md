@@ -23,8 +23,9 @@ Ports/services used by the full stack:
 | IPFS (score blobs) | http://localhost:5001 (api) | `docker compose -f docker-compose.dev.yml up` |
 | Postgres (Ponder) | localhost:6432 | `docker compose -f docker-compose.dev.yml up` |
 
-Prereqs (one-time): [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`), `jq`,
-Docker, and the SP1 toolchain (`curl -L https://sp1up.succinct.xyz | bash && sp1up`). Then `task -y setup`.
+Prereqs (one-time): Foundry, Rust, `jq`, Docker, Node 21+/pnpm and the SP1 toolchain —
+[`../SETUP.md`](../SETUP.md) installs each. Then `task -y setup` and `task zk:build`; the guest ELFs
+are a separate one-time step and everything below assumes they exist.
 
 ---
 

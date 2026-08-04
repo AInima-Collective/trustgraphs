@@ -34,12 +34,13 @@ Ports/services used by the full round:
 | Postgres (Ponder) | localhost:6432 | `task services:start-all` / embedded-postgres |
 | frontend (optional) | http://localhost:3000 | `pnpm frontend dev` |
 
-Prereqs (one-time): [Foundry](https://getfoundry.sh) (`anvil`/`forge`/`cast`), Rust (`cargo`),
-`jq`, and the SP1 toolchain (`curl -L https://sp1up.succinct.xyz | bash && sp1up`). Then:
+Prereqs (one-time): Foundry, Rust, `jq`, Node 21+/pnpm and the SP1 toolchain —
+[`../SETUP.md`](../SETUP.md) installs each. Then:
 
 ```bash
 task setup            # pnpm install + forge install (use CI=true pnpm install if a TTY prompt wedges it)
 task build:forge
+task zk:build         # the SP1 guest ELFs — nothing else builds them, and everything below needs them
 ```
 
 The full round also needs the prover built with the `fetch` feature (on-chain reconstruction is

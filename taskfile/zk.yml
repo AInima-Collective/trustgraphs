@@ -12,6 +12,33 @@ silent: true
 # own their own vector file.
 
 tasks:
+  build:
+    desc: "Build the SP1 guest ELFs + the prover host (do this once before task demo / task e2e)"
+    cmds:
+      # Nothing else in this repo builds the guests on purpose. `zk/prover/build.rs` calls
+      # `sp1_build::build_program("../program")`, so a plain host build would — except every demo
+      # task, `test/e2e/operator.sh` and `test/e2e/fork.sh` export SP1_SKIP_PROGRAM_BUILD=true,
+      # which makes build.rs emit the ELF *paths* without producing the ELFs. On a checkout that
+      # has never built them the host then fails at `include_elf!` with a missing-file error naming
+      # a path under zk/program/target — which reads like a broken repo and is really "run this".
+      - |
+        command -v cargo-prove >/dev/null 2>&1 || {
+          echo "✗ cargo-prove not found. The guests build with the SP1 \`succinct\` toolchain:" >&2
+          echo "    curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1" >&2
+          echo "    export PATH=\"\$HOME/.sp1/bin:\$PATH\"" >&2
+          exit 1
+        }
+        echo "→ building the guest ELFs (first run takes a few minutes; after that it's cached)"
+        cd zk/program && cargo prove build
+      # sp1_build does NOT watch the path deps under packages/, so cargo will happily reuse a stale
+      # ELF after you edit a core crate. Touching build.rs forces the directive re-emit, which is
+      # what picks the freshly built ELFs up.
+      - touch zk/prover/build.rs
+      # The guests were just built explicitly, so skip build.rs's copy of that work rather than
+      # doing it twice.
+      - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release'
+      - echo "✓ guests + host built. Vkeys they produce - task demo:vkeys"
+
   vectors:
     desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer | hypercerts | contributions)"
     vars:

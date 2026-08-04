@@ -57,6 +57,15 @@ tasks:
         command -v anvil  >/dev/null || fail "anvil not found (foundryup)"
         command -v jq     >/dev/null || fail "jq not found"
         command -v cargo  >/dev/null || fail "cargo not found"
+
+        # Every step below runs the prover host with SP1_SKIP_PROGRAM_BUILD=true, so the guest
+        # ELFs must already exist — nothing in this taskfile builds them. Without this check the
+        # first failure is a missing-file error from `include_elf!` in the middle of a Rust build,
+        # several minutes in, which reads like a broken checkout instead of a missing step.
+        # Globbed on the target triple on purpose: SP1 moved it from riscv32im to riscv64im.
+        ls zk/program/target/elf-compilation/*/release/trustgraph-program >/dev/null 2>&1 \
+          || fail "the SP1 guest ELFs are not built — run: task zk:build"
+
         cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
           || fail "no chain at {{.RPC}} — start one: anvil --silent &"
         [ -n "${FUNDED_KEY:-}" ] || fail "FUNDED_KEY unset (it comes from .env)"

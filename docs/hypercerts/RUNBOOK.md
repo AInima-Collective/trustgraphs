@@ -47,7 +47,7 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 ## Toolchain + the vkey reproducibility caveat
 
 ```bash
-curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up   # SDK pinned =6.3.1 in zk/prover/Cargo.toml
+curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1   # SDK pinned =6.3.1 in zk/prover/Cargo.toml
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
@@ -71,8 +71,7 @@ cargo test -p hypercerts-core                              # determinism + §3 s
 task zk:vectors PROGRAM=hypercerts                         # regenerate test/golden/hypercerts.json
 forge test --match-path 'test/unit/golden/HypercertsGoldenVectors.t.sol'
 forge test                                                 # accumulator + submitProof + registry suites
-cd zk/program && cargo prove build && cd ../..             # build every [[bin]] ELF
-cd zk/prover  && cargo build --release && cd ../..
+task zk:build                                              # every [[bin]] ELF + the prover host
 
 # Guest == native over the seeded two-repo fixture (no external witness, no proof):
 cd zk/prover && SP1_PROVER=cpu cargo run --release -- hypercerts execute

@@ -20,17 +20,32 @@ Design: [`FACTORY.md`](./FACTORY.md) for creation, [`../OPERATOR.md`](../OPERATO
 > against current code, via `task demo`; the outputs below are from that run. §5 (the indexer and
 > the app) and the three experiments in §6 were verified when written and have **not** been re-run
 > since — the box this was last edited on has no Postgres and no dev server. Budget ~30 minutes the
-> first time, most of it the SP1 guest build.
+> first time, most of it §0's one-time toolchain install and guest build.
 
-## 0. Toolchain, once
+## 0. Toolchain and guests, once
 
-The SP1 `succinct` Rust toolchain is not part of a normal checkout, and proving needs it.
+The SP1 `succinct` Rust toolchain is not part of a normal checkout, and proving needs it. Pin the
+version: the SDK is `=6.3.1` in `zk/prover/Cargo.toml`, and the toolchain build a vkey was derived
+on is part of that vkey ([`../PROGRAMS.md`](../PROGRAMS.md)).
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/succinctlabs/sp1/main/sp1up/sp1up | bash
-sp1up --version v6.3.1
+~/.sp1/bin/sp1up --version v6.3.1
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
+
+Then build the repo and the guest programs. **`task zk:build` is the step people miss**, and
+`task demo` refuses to start without it:
+
+```bash
+task -y setup      # pnpm install + forge install
+task zk:build      # the five SP1 guest ELFs + the prover host — minutes the first time
+```
+
+Nothing in `task demo` builds the guests. Every step of it runs the prover with
+`SP1_SKIP_PROGRAM_BUILD=true` so it isn't paying for a rebuild each tick, which means the ELFs have
+to be there already. Full explanation, plus what to do after editing `packages/`, in
+[`../SETUP.md`](../SETUP.md#build-the-zk-guest-programs).
 
 ## 1. Services
 
@@ -162,8 +177,8 @@ holding 21.5465430930861861723725% of the pool claimed exactly `2.15465430930861
 ## 5. The indexer and the app
 
 ```bash
-cd indexer  && pnpm dev      # :65421
-cd frontend && pnpm dev      # :3000
+pnpm frontend dev      # :3000
+pnpm indexer dev      # :65421
 ```
 
 ```bash
@@ -246,6 +261,14 @@ Everything below cost someone real time.
   refuses it — correctly, given what it knows — while `plan` re-proposes the same doomed `Prove`
   every tick. `task demo` clears `.demo/` first, and the refusal names which of the four causes it
   is. Driving the daemon by hand after a restart: `task demo:clean`.
+- **Nothing here builds the guest ELFs, and everything here needs them.** Each prover invocation
+  in `taskfile/demo.yml` exports `SP1_SKIP_PROGRAM_BUILD=true`, which makes `zk/prover/build.rs`
+  emit the ELF *paths* without producing the ELFs — the right trade when they exist (a rebuild per
+  tick would be unusable) and a confusing one when they don't: the failure is a missing-file error
+  from `include_elf!` naming a path under `zk/program/target/`, minutes into a Rust build.
+  `task zk:build` makes them; `demo:preflight` now checks for them and says so by name. The same
+  applies after editing anything under `packages/` — `sp1_build` does not watch path deps, so cargo
+  reuses the stale ELF and you debug a change that isn't in the binary.
 - **Export the vkeys before deploying.** `SP1JournalVerifier` pins its vkey **immutably** at
   construction, so a stale `.env` value gives a stack that deploys cleanly and then refuses to prove
   anything (`{"action":"hold","hold":"verifier_rotated"}`). `task demo:deploy` derives them from the

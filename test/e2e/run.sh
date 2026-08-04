@@ -36,6 +36,16 @@ hex_file() { echo "0x$(od -An -v -tx1 "$1" | tr -d ' \n')"; }
 for tool in forge cast anvil cargo jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: '$tool' not found in PATH"; exit 1; }
 done
+# Unlike the demo and the operator/fork harnesses, this script does NOT set
+# SP1_SKIP_PROGRAM_BUILD, so zk/prover/build.rs builds the guests for it — but only if the SP1
+# toolchain is installed. Say which command is missing rather than letting cargo fail on a
+# `succinct` toolchain it can't find, minutes in. `task zk:build` up front makes this run fast.
+command -v cargo-prove >/dev/null 2>&1 || {
+  echo "FATAL: 'cargo-prove' not found in PATH — the SP1 guests cannot be built."
+  echo "  curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1"
+  echo "  export PATH=\"\$HOME/.sp1/bin:\$PATH\""
+  exit 1
+}
 
 # Journal v3: the bounty payee the guest commits and submitProof binds. A non-zero default so the
 # e2e actually exercises the binding rather than the all-zero path.

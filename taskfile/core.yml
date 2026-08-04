@@ -65,6 +65,16 @@ tasks:
           echo "❌ cargo not found. Install with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
           exit 1
         fi
+        # Check the SP1 toolchain — the guests can't be built without it, and every proving
+        # path in the repo needs the guests. See docs/SETUP.md.
+        if ! command -v cargo-prove >/dev/null 2>&1; then
+          echo "❌ cargo-prove not found. Install with: curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1"
+          echo "💡 then add it to PATH: export PATH=\"\$HOME/.sp1/bin:\$PATH\""
+          exit 1
+        fi
+        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-program >/dev/null 2>&1; then
+          echo "⚠️  SP1 guest ELFs not built yet. Run: task zk:build"
+        fi
         # Check docker
         if ! command -v docker >/dev/null 2>&1; then
           echo "❌ docker not found. Visit: https://docs.docker.com/get-docker/"
