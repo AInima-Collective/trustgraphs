@@ -43,9 +43,41 @@ pub struct Status {
     /// Unix seconds, supplied by the caller.
     pub tick_at: u64,
     pub instances: Vec<InstanceStatus>,
+    /// Deliberately public, non-secret operating policy. The frontend may publish this verbatim;
+    /// RPC/IPFS URLs, keys, webhook URLs and local paths never enter the shape.
+    pub settings: PublicSettings,
     /// Work sitting in the ambiguous window, waiting on a human. Never auto-retried.
     pub unresolved: Vec<String>,
     pub alerts: Vec<String>,
+}
+
+/// The allowlisted part of the daemon configuration that a community can safely audit.
+///
+/// This is embedded in the heartbeat instead of teaching a web process to parse `operator.toml`.
+/// The latter contains RPC and webhook endpoints and is therefore the wrong security boundary,
+/// even if today's UI promises to ignore them.
+#[derive(Serialize)]
+pub struct PublicSettings {
+    pub paid_enabled: bool,
+    pub paid_vault: Option<String>,
+    pub paid_recipient: Option<String>,
+    pub tick_seconds: u64,
+    pub subsidy_min_blocks: u64,
+    pub max_concurrent: usize,
+    pub max_per_instance: usize,
+    pub max_basefee_gwei: u64,
+    pub replacement_after_s: u64,
+    pub simulate_before_send: bool,
+    pub confirmations: u64,
+    pub track_block_hash: bool,
+    pub prover_backend: String,
+    pub groth16: bool,
+    pub proof_timeout_s: u64,
+    pub per_instance_usd_per_day: u64,
+    pub global_usd_per_day: u64,
+    pub budget_window_seconds: u64,
+    pub publishes_scores: bool,
+    pub verifies_score_readback: bool,
 }
 
 #[derive(Serialize)]

@@ -117,6 +117,8 @@ export type ProvingTankResponse =
       instanceId: string
       vault: string
       snapshot: string
+      /** Added with the settings endpoint extension; optional during rolling indexer deploys. */
+      program?: string
       ethBalance: string
       usdcBalance: string
       totalDepositedEth: string
@@ -125,17 +127,40 @@ export type ProvingTankResponse =
       totalSpentUsdc: string
       lastPaidBlock: string
       withdrawalReadyAt: string
+      updatedAt?: string
       burn: {
         windowSeconds: number
         rootsInWindow: number
         spentEth: string
         spentUsdc: string
-        /** Null when there is not enough history to project a runway honestly. */
-        secondsRemaining: number | null
+        /** Settled fee + gas value, in the vault's 1e8 USD scale. */
+        spentUsd?: string
       }
       lastPaidAt: number | null
       /** Roots that landed but paid nothing since the last payment: the tank-ran-dry signal. */
       unpaidRootsSinceLastPayment: number
+      recentDeposits?: Array<{
+        id: string
+        token: string
+        from: string
+        amount: string
+        blockNumber: string
+        timestamp: string
+      }>
+      recentClaims?: Array<{
+        id: string
+        checkpointId: string
+        recipient: string | null
+        submitter: string | null
+        feeUsd: string
+        gasUsd: string
+        ethSpent: string
+        usdcSpent: string
+        skipped: boolean
+        reason: number
+        blockNumber: string
+        timestamp: string
+      }>
     }
 
 export type MerkleTreeResponse = {
@@ -234,7 +259,9 @@ export const ponderQueries = {
       queryFn: async (): Promise<ProvingTankResponse> => {
         const response = await fetch(`${APIS.ponder}/vault/${instanceId}`)
         if (!response.ok) {
-          throw new Error(`Failed to fetch the proving tank: ${response.status}`)
+          throw new Error(
+            `Failed to fetch the proving tank: ${response.status}`
+          )
         }
         return (await response.json()) as ProvingTankResponse
       },

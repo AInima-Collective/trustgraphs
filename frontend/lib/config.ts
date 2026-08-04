@@ -58,6 +58,16 @@ export const CONTRACT_CONFIG = CONFIG.contracts
  * self-proved by its own community, and neither needs a vault. The UI says which rather than
  * rendering an empty balance.
  */
+const configuredProvingVault = (
+  CONFIG.contracts as {
+    ProvingVault?: string | { address?: string }
+  }
+).ProvingVault
+
+// Generated configs use a bare address. Accept the older deployment-object shape too so a
+// rolling frontend deployment does not temporarily lose the vault while configs catch up.
 export const PROVING_VAULT = (
-  CONFIG.contracts as { ProvingVault?: { address?: string } }
-).ProvingVault?.address as `0x${string}` | undefined
+  typeof configuredProvingVault === 'string'
+    ? configuredProvingVault
+    : configuredProvingVault?.address
+) as `0x${string}` | undefined

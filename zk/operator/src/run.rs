@@ -21,7 +21,9 @@ use crate::chain::{
 };
 use crate::config::Config;
 use crate::handlers;
-use crate::ops::{alert, write_status, InstanceStatus, Logger, Status as OpsStatus};
+use crate::ops::{
+    alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
+};
 use crate::tx::{await_receipt, Sender};
 
 /// What one proof of this instance is expected to cost us, in cents.
@@ -268,6 +270,28 @@ fn tick(
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
             instances: statuses,
+            settings: PublicSettings {
+                paid_enabled: cfg.paid.enabled,
+                paid_vault: cfg.paid.vault.map(|v| format!("{v:#x}")),
+                paid_recipient: cfg.paid.recipient.map(|r| format!("{r:#x}")),
+                tick_seconds: cfg.cadence.tick_seconds,
+                subsidy_min_blocks: cfg.cadence.subsidy_min_blocks,
+                max_concurrent: cfg.cadence.max_concurrent,
+                max_per_instance: cfg.cadence.max_per_instance,
+                max_basefee_gwei: cfg.gas.max_basefee_gwei,
+                replacement_after_s: cfg.gas.replacement_after_s,
+                simulate_before_send: cfg.gas.simulate_before_send,
+                confirmations: cfg.finality.confirmations,
+                track_block_hash: cfg.finality.track_block_hash,
+                prover_backend: cfg.prover.backend.clone(),
+                groth16: cfg.prover.groth16,
+                proof_timeout_s: cfg.prover.timeout_s,
+                per_instance_usd_per_day: cfg.budget.per_instance_usd_per_day,
+                global_usd_per_day: cfg.budget.global_usd_per_day,
+                budget_window_seconds: cfg.budget.window_seconds,
+                publishes_scores: cfg.ipfs.api.is_some(),
+                verifies_score_readback: cfg.ipfs.gateway.is_some(),
+            },
             unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
             alerts: alerts_raised,
         },

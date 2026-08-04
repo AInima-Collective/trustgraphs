@@ -14,7 +14,7 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
-  icon?: 'governance' | 'distribute' | 'contributions'
+  icon?: 'governance' | 'distribute' | 'contributions' | 'settings'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
    * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
@@ -77,6 +77,11 @@ export const trustGraphTabs = (network: Network): NetworkTab[] => {
       label: 'Contributions',
       icon: 'contributions' as const,
     })),
+    {
+      href: `${base}/settings`,
+      label: 'Settings',
+      icon: 'settings' as const,
+    },
   ]
 }
 

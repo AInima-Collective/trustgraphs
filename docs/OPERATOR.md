@@ -289,8 +289,9 @@ when it is 0 on any chain but 31337. Set it to the registry's deployment block.
 Two files, both rewritten in place, both meant to be scraped:
 
 - **`ops.status_path`** — the heartbeat. `head_block`, `tick_at`, one row per instance with its
-  decided action, and the current `unresolved` list. If `tick_at` stops advancing, the daemon is
-  wedged; nothing else in this file matters more than that.
+  decided action, the non-secret `settings` policy projection, and the current `unresolved` list.
+  If `tick_at` stops advancing, the daemon is wedged; nothing else in this file matters more than
+  that.
 - **`ops.journal_path`** — the append-only money record. One `intent` per proof request, one
   `settled` per resolved one. It is the only file whose loss costs money, and the only one worth
   backing up.
@@ -302,6 +303,13 @@ jq -c '{head_block, tick_at, instances: [.instances[] | {name, action: .action}]
 jq -c 'select(.kind=="intent")' journal.jsonl | tail             # what has been paid for
 jq -r 'select(.event=="instance_skipped") | .reason' run.log | sort | uniq -c
 ```
+
+The network settings page can consume this heartbeat through `OPERATOR_STATUS_URL`, or
+`OPERATOR_STATUS_PATH` when the frontend and daemon share a volume. Its same-origin API adapter
+validates and republishes only `head_block`, `tick_at`, per-instance health, and the explicit
+`settings` allowlist. RPC/IPFS endpoints, keys, webhook URLs, filesystem paths, alerts, and
+unresolved journal entries never cross that boundary. Do not serve the raw heartbeat directly to
+the browser; future heartbeat fields are private until they are explicitly added to the adapter.
 
 ### Alerts
 

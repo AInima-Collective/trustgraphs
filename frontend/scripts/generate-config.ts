@@ -70,6 +70,11 @@ try {
     TrustAccumulatorMirror: '',
     TestUSDC: '',
 
+    // One per chain: communities fund this tank to pay whoever proves their next root. The
+    // deployment summary carries it as a bare address rather than under `networks` because every
+    // factory instance shares the same vault.
+    ProvingVault: deployment.provingVault || '',
+
     // One per chain: the create-a-network wizard's only write target.
     TrustGraphFactory: factoryAddress,
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpRight, Coins, HandCoins, Vote } from 'lucide-react'
+import { ArrowUpRight, Coins, HandCoins, Settings, Vote } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -35,6 +35,7 @@ export const NetworkNav = ({
     governance: Vote,
     distribute: Coins,
     contributions: HandCoins,
+    settings: Settings,
   }
 
   const renderTab = (tab: NetworkTab) => {

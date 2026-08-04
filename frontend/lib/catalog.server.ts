@@ -15,6 +15,7 @@
 import { cache } from 'react'
 
 import {
+  CATALOG_TIMEOUT_MS,
   type Catalog,
   type InstanceRow,
   loadCatalog,
@@ -94,4 +95,42 @@ export const getNetwork = async (
   }
 
   return { catalogError: catalog.error }
+}
+
+/**
+ * The complete factory-birth record behind a merged `Network`.
+ *
+ * `instanceToNetwork` intentionally narrows the 17-field params tuple to what the existing graph
+ * screens consume. The settings page is the one place where that loss is unacceptable, so it
+ * asks for the authoritative catalog row separately. Failure is non-fatal: seed-only and legacy
+ * networks still have useful live contract settings to show.
+ */
+export const getInstanceDetails = async (
+  network: Network
+): Promise<InstanceRow | null> => {
+  const query = network.instanceId
+    ? `${APIS.ponder}/instances/${network.instanceId}`
+    : `${APIS.ponder}/instances?limit=1&snapshot=${network.contracts.merkleSnapshot}`
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS)
+  try {
+    const response = await fetch(query, {
+      next: { revalidate: CATALOG_REVALIDATE_SECONDS },
+      signal: controller.signal,
+    })
+    if (!response.ok) return null
+
+    const body = (await response.json()) as
+      | { instance?: InstanceRow }
+      | { instances?: InstanceRow[] }
+    if ('instance' in body) return body.instance ?? null
+    if ('instances' in body) return body.instances?.[0] ?? null
+    return null
+  } catch (error) {
+    console.error('[catalog] instance detail lookup failed:', error)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
 }
