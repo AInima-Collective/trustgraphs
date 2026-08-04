@@ -16,11 +16,14 @@ and what to read when something goes wrong.
 
 Design: [`FACTORY.md`](./FACTORY.md) for creation, [`../OPERATOR.md`](../OPERATOR.md) for the daemon.
 
-> **What has been re-run, and what is inherited.** §0–§4 were run end to end on a clean anvil
-> against current code, via `task demo`; the outputs below are from that run. §5 (the indexer and
-> the app) and the three experiments in §6 were verified when written and have **not** been re-run
-> since — the box this was last edited on has no Postgres and no dev server. Budget ~30 minutes the
-> first time, most of it §0's one-time toolchain install and guest build.
+> **What has been re-run, and what is inherited.** §0–§4 were run end to end on a clean anvil via
+> `task demo` *before* the contribution round joined the default flow; the outputs below are from
+> that run and show the trust half. The round steps (`demo:seed-round`, the second root in
+> `demo:prove`, `demo:payout`) have **not** been re-run end to end on the box this was last edited
+> on — the taskfile, the generated operator config, and the build path were verified in isolation
+> there. §5 (the indexer and the app) and the three experiments in §6 were verified when written
+> and have not been re-run since. Budget ~30 minutes the first time, most of it §0's one-time
+> toolchain install and guest build.
 
 ## 0. Toolchain and guests, once
 
@@ -82,9 +85,13 @@ task demo
 ```
 
 Which is: fund the deployer, derive the guest vkeys, deploy one factory-created and prepaid Demo
-Co-op with governance, distributions and a contribution round, seed a real graph, then let the
-scheduler prove it and collect the bounty. It ends by mining past Ponder's finality window and
-saying whether the app can actually see any of it:
+Co-op with governance, distributions and a contribution round, seed a real graph **and the full
+6-persona contribution round over that same graph**, then let the scheduler land both roots — the
+trust root collects the vault bounty; the round has no registry row, so the daemon reaches it
+through a `[[manifest]]` entry in the generated operator config and proves it on the curated tier.
+With an indexer up it then funds the round and pays the contributors; without one it says so and
+skips exactly that step. It ends by mining past Ponder's finality window and saying whether the app
+can actually see any of it:
 
 ```
   tick 1: triggered
@@ -99,6 +106,11 @@ saying whether the app can actually see any of it:
   scores        readable at http://127.0.0.1:8080/ipfs/bafkreiclfxhopt…
 ```
 
+(That capture predates the round joining the flow. `prove` now tags each tick with
+`[trust … · round …]` and waits for both roots, the report adds `round landed` / `round funded` /
+`ALICE holds` lines, and a `payout` step follows `settle` — re-capture the block on the next
+verified run.)
+
 Every step is also its own task, because the useful thing about a demo is re-running one piece of
 it:
 
@@ -106,10 +118,10 @@ it:
 task --list-all | grep demo:
 ```
 
-`demo:deploy`, `demo:fund`, `demo:create`, `demo:seed`, `demo:govern`, `demo:contributions`, `demo:dry-run`,
-`demo:prove`, `demo:settle`, `demo:report`, `demo:clean` — plus `demo:id`, `demo:snapshot`,
-`demo:resolver` and `demo:addresses`, which answer "what is this network's X" from the chain rather
-than from a scratch file.
+`demo:deploy`, `demo:fund`, `demo:create`, `demo:seed`, `demo:seed-round`, `demo:govern`,
+`demo:contributions`, `demo:dry-run`, `demo:prove`, `demo:settle`, `demo:payout`, `demo:report`,
+`demo:clean` — plus `demo:id`, `demo:snapshot`, `demo:resolver` and `demo:addresses`, which answer
+"what is this network's X" from the chain rather than from a scratch file.
 
 Two things `task demo` deliberately does not do: **start your chain** (it refuses to run without
 one rather than owning an anvil it would then have to tear down), and **start Postgres or IPFS**
@@ -173,6 +185,13 @@ what the daemon would do without spending anything, `task demo:dry-run`.
 **Pay people.** The distributor is bundled at creation (`withDistributor: true`). Fund it, publish a
 distribution against the proven root, and claim. A worked run: `10 ETH` distributed, and a member
 holding 21.5465430930861861723725% of the pool claimed exactly `2.154654309308618617 ETH`.
+
+The contribution round is this same mechanism driven end to end without you: `task demo` seeds the
+round's claims and valuations, the daemon proves the two-lane root (rater reputation over the
+community's real vouch graph, mirrored in at the checkpoint), and `demo:payout` funds the round's
+own distributor against that root and claims for every persona — through the payout page's exact
+API seams, which is why it needs the indexer. The wei-exact worked example over the isolated
+fixture graph is [`../contributions/LOCAL_TESTING.md`](../contributions/LOCAL_TESTING.md).
 
 ## 5. The indexer and the app
 
@@ -274,7 +293,31 @@ Everything below cost someone real time.
   anything (`{"action":"hold","hold":"verifier_rotated"}`). `task demo:deploy` derives them from the
   checkout rather than trusting the file; `task demo:vkeys` prints them.
 - **Attest before the first trigger.** §4, and
-  [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15).
+  [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15). The same rule is why `task demo`
+  seeds the contribution round before `prove` writes the operator config: the daemon's first
+  trigger on the round freezes both of its lanes, and a checkpoint frozen over an empty round is
+  immutable.
+- **The round's payouts are not LOCAL_TESTING's payouts, on purpose.**
+  [`../contributions/LOCAL_TESTING.md`](../contributions/LOCAL_TESTING.md) golden-locks the
+  6-persona fixture over a graph containing only its six vouches. Inside `task demo` those six
+  vouches land on top of the 21-edge community graph and rater reputation is computed over the
+  whole thing, so every payout differs (EVE, unvouched in the fixture, has reputation here). If a
+  number looks "wrong" against that guide, this is why. The structural facts still hold: the root
+  verifies, the indexer independently re-derives it, and Σ payouts = pool − the 3% fee.
+- **The round driver reads the frontend's generated config, so `demo:seed-round` regenerates it
+  first.** A schema uid embeds its resolver address, so a `config.json` generated from an earlier
+  deploy reverts every vouch as a foreign schema — against the *correct* EAS address, because EAS
+  sits early in the deterministic nonce sequence and never moves. Driving
+  `contribution-round.ts` by hand after a redeploy needs the same three commands:
+  `pnpm --filter frontend config:generate && pnpm --filter frontend config:link &&
+  pnpm --filter frontend wagmi:generate`.
+- **`demo:payout` needs the indexer; everything before it does not.** Funding pins `expectedRoot`
+  from the round API and each claim fetches its merkle bundle from it — the payout page's exact
+  seams, which is the point of driving them. No indexer → the step skips itself and says how to
+  run it later (`task demo:payout`). The indexer marks the round `verified` only once its own
+  re-derivation matches the landed root, which also requires the params sidecar
+  (`params.contributions.json` at the repo root — the round tasks maintain it) to hash to the
+  on-chain `paramsHash`.
 - **`task demo:govern` writes two files, and they are not interchangeable.** The frontend reads
   `config/networks.development.json`; Ponder reads `.docker/deployment_summary.json`. Updating only
   the first gives a UI with a governance tab over a module nobody indexed, which fails as `Query

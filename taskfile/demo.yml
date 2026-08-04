@@ -1,8 +1,10 @@
 # The demo, as tasks. Prose walkthrough: docs/trust-graph/DEMO.md
 #
-# `task demo` is the whole thing: deploy one complete funded network, seed its real graph, then
-# let the proof scheduler prove it and pay for it. Every step is also its own task, because the
-# interesting part of a demo is usually re-running one piece of it.
+# `task demo` is the whole thing: deploy one complete funded network, seed its real graph and a
+# contribution round over that same graph, let the proof scheduler land both roots (the trust
+# root paid through the vault, the round on the curated tier), then fund the round and pay the
+# contributors. Every step is also its own task, because the interesting part of a demo is
+# usually re-running one piece of it.
 #
 # What this does NOT do is start anvil, Postgres or IPFS — `task start-all-local` owns those, and
 # owning them from here would mean tearing them down when the demo ends.
@@ -20,7 +22,14 @@ vars:
   PREPAY_WEI: '{{.PREPAY_WEI | default "2000000000000000000"}}'
   # Pay for every root, at most $50 of it.
   MAX_PER_ROOT_USD: '{{.MAX_PER_ROOT_USD | default "5000000000"}}'
-  TICKS: '{{.TICKS | default "6"}}'
+  # Enough ticks for two instances. The trust root typically lands on tick 3; the round's first
+  # trigger also waits out the contributions epoch (10 dev blocks, 8 mined per tick), so it lands
+  # a few ticks behind.
+  TICKS: '{{.TICKS | default "10"}}'
+  # What `payout` funds the round with, in pool-token base units (tUSDC, 6 dp). The round's guest
+  # scores against the params' 5e9 pool, so funding the same 5e9 pays each contributor their
+  # merkle value × 0.97 (the distributor's 3% fee).
+  FUND_AMOUNT: '{{.FUND_AMOUNT | default "5000000000"}}'
   # 2 x Ponder's finality default for an unrecognised chain id (30), plus margin. See `settle`.
   SETTLE_BLOCKS: '{{.SETTLE_BLOCKS | default "64"}}'
   # Where the indexer serves, so `report` can say whether the app will actually see any of this.
@@ -33,7 +42,7 @@ vars:
 
 tasks:
   default:
-    desc: 'The whole demo: deploy one complete funded Demo Co-op, seed it, prove it and pay for it'
+    desc: 'The whole demo: deploy one funded Demo Co-op, seed graph + contribution round, prove both, pay out'
     cmds:
       # `clean` FIRST, because this task deploys a fresh stack and the journal from the last one
       # would block it. An instance id is keccak(creator, name, salt) and a restarted anvil counts
@@ -43,11 +52,20 @@ tasks:
       - task: preflight
       - task: deploy
       - task: seed
+      # BEFORE the daemon exists (`prove` writes its config): the round must have content when the
+      # daemon's first trigger freezes checkpoint 0, for the same reason the graph is seeded before
+      # the first trust trigger — a checkpoint frozen over an empty round is immutable and proves
+      # to a zero-payout root.
+      - task: seed-round
       # Report whatever happened, including when `prove` fails. A demo that lands nothing and says
       # nothing is worse than one that fails.
       - defer: { task: report }
       - task: prove
       - task: settle
+      # After `settle` on purpose: fund and claim both read the round from the indexer, and the
+      # indexer serves the landed root only once it is past Ponder's finality window. Skips itself
+      # when no indexer is running — the roots are still proven and landed either way.
+      - task: payout
 
   preflight:
     desc: 'Refuse to start rather than fail halfway'
@@ -190,6 +208,32 @@ tasks:
         # zero root, the gov hook rejects it, and its contents are immutable — see issue #15.
         PK="$FUNDED_KEY" RPC={{.RPC}} bash taskfile/seed-graph.sh '{{.NAME}}'
 
+  seed-round:
+    desc: 'Seed the 6-persona contribution round over the demo graph (claims, responses, valuations)'
+    cmds:
+      - |
+        # The round driver is frontend code (SchemaManager → EAS.attest), and it reads the
+        # FRONTEND's generated config — which nothing else in `task demo` touches; normally the
+        # frontend dev server's predev regenerates it. Left stale it carries the PREVIOUS
+        # deploy's schema uids, and a schema uid embeds its resolver address, so the very first
+        # vouch reverts as a foreign schema — while the EAS address (early in the deterministic
+        # nonce sequence) still looks right. Regenerate from the summary THIS deploy just wrote,
+        # in predev's order: config, then the symlink, then the ABIs the driver imports.
+        pnpm --filter frontend config:generate
+        pnpm --filter frontend config:link
+        pnpm --filter frontend wagmi:generate
+      - |
+        # The whole M5 worked example, driven through the frontend's exact attest seams: the
+        # fixture's six vouches, an out-of-window claim, the round window (paramsHash rotation),
+        # then the in-window claims, responses and valuations.
+        #
+        # Those six vouches land ON TOP of the 21 edges `seed` just planted — same trust
+        # accumulator, mirrored into the round at its checkpoint. That composition is the point:
+        # rater reputation comes from the community's real graph, not a lab fixture. It is also
+        # why the payout numbers differ from docs/contributions/LOCAL_TESTING.md, whose wei-exact
+        # expectations assume the fixture graph alone.
+        task contributions:create-contribution-round-network
+
   govern:
     desc: 'Give the demo network a Safe, a gov module and a UI entry for them'
     cmds:
@@ -302,19 +346,40 @@ tasks:
         mkdir -p {{.WORK}}
         REG=$(jq   -r .instance_registry .docker/instance_registry_deploy.json)
         VAULT=$(jq -r .proving_vault     .docker/proving_vault_deploy.json)
+        CHAIN=$(cast chain-id --rpc-url {{.RPC}})
         : "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?}"
-        # The heredoc below is UNQUOTED on purpose: chain_id and recipient are command
-        # substitutions that have to run. That means BACKTICKS RUN TOO, including inside the
-        # comments being written into the file — a `word` there is executed and replaced by
-        # nothing. Keep backticks and $( out of the heredoc body; explain things here instead.
+
+        # The contributions instance is invisible to the registry scan — DeployContributionsInstance
+        # writes a summary file and stops, no InstanceRegistered row — so the daemon can only see it
+        # through a manifest entry (operator-core's manifest.rs names this exact case). Its id is
+        # therefore DERIVED, not registered: keccak(snapshot ‖ chain_id as 8 BE bytes ‖ the ASCII
+        # program name), the same derivation ManifestEntry::derived_id uses. Reproduce it here so
+        # [curated] below can name the instance. Curated rather than paid, and not only for
+        # simplicity: the vault prices per REGISTERED program, so it has no quote for an instance
+        # with no registry row — and "networks we curate are proven on us" is the tier this
+        # demonstrates anyway (the trust root demonstrates the paid one).
+        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
+          .docker/deployment_summary.json 2>/dev/null | tr 'A-F' 'a-f')
+        CURATED="[]"
+        if [ -n "$CSNAP" ]; then
+          PROG_HEX=$(printf 'contributions' | od -An -v -tx1 | tr -d ' \n')
+          CONTRIB_ID=$(cast keccak "0x${CSNAP#0x}$(printf '%016x' "$CHAIN")${PROG_HEX}")
+          CURATED="[\"$CONTRIB_ID\"]"
+        fi
+
+        # The heredoc below is UNQUOTED on purpose: recipient is a command substitution that has
+        # to run. That means BACKTICKS RUN TOO, including inside the comments being written into
+        # the file — a `word` there is executed and replaced by nothing. Keep backticks and $( out
+        # of the heredoc body; explain things here instead.
         cat > {{.WORK}}/operator.toml <<EOF
         rpc      = "{{.RPC}}"
         registry = "$REG"
-        chain_id = $(cast chain-id --rpc-url {{.RPC}})
+        chain_id = $CHAIN
 
-        # Proven on us. This list IS the free tier; there is no unconditional one.
+        # Proven on us. This list IS the free tier; there is no unconditional one. The demo's
+        # contribution round lives here: it has no registry row, so the vault cannot quote it.
         [curated]
-        instances = []
+        instances = $CURATED
 
         # Everyone else draws their own tank, and the same loop pays whoever produced the root.
         [paid]
@@ -347,6 +412,22 @@ tasks:
         status_path  = "{{.WORK}}/status.json"
         log_format   = "json"
         EOF
+        # TOML array-of-tables swallow every key that follows them, so [[manifest]] must be the
+        # LAST thing in the file — appended after the block above, never templated into it.
+        if [ -n "$CSNAP" ]; then
+        EAS=$(jq -r .eas .docker/eas_deploy.json)
+        cat >> {{.WORK}}/operator.toml <<EOF
+
+        # The contribution round: deployed by the main deploy, described by nothing on chain, so
+        # this pointer is what the daemon acts on. The params file is the deploy's own sidecar;
+        # the round tasks keep it and the pinned on-chain paramsHash in sync.
+        [[manifest]]
+        program  = "contributions"
+        snapshot = "$CSNAP"
+        params   = "params.contributions.json"
+        eas      = "$EAS"
+        EOF
+        fi
         echo "✓ {{.WORK}}/operator.toml"
 
   dry-run:
@@ -360,12 +441,17 @@ tasks:
           | jq -c 'select(.event=="decision") | {instance, action}'
 
   prove:
-    desc: 'Run the daemon until it has landed a root and been paid for it'
+    desc: 'Run the daemon until the trust root and the round root have both landed'
     deps: [config]
     cmds:
       - |
         export SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true
         SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+        # The round's snapshot too: the same daemon loop lands both roots (the trust instance from
+        # the registry, the round from the config's manifest entry), so the loop is not done until
+        # both are on chain. Absent — a deploy without contributions — it degrades to trust alone.
+        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
+          .docker/deployment_summary.json 2>/dev/null)
 
         # The last thing the daemon did, WITH the reason when it failed. Printing only
         # `"event":"action_failed"` — as this did — turns every distinct failure into the same
@@ -376,28 +462,36 @@ tasks:
                   | .event + (if .error then ": " + .error else "" end)' {{.WORK}}/run.log \
             | tail -1
         }
+        landed() { cast call "$1" 'hasAppliedCheckpoint()(bool)' --rpc-url {{.RPC}} 2>/dev/null; }
 
-        landed=0
+        done_all=0
         for i in $(seq 1 {{.TICKS}}); do
-          # anvil only mines on transactions, so nudge it or the epoch gate never opens.
+          # anvil only mines on transactions, so nudge it or the epoch gates never open.
           cast rpc anvil_mine 8 --rpc-url {{.RPC}} >/dev/null
           cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
             --config {{.WORK}}/operator.toml --once >> {{.WORK}}/run.log 2>&1 || true
-          echo "  tick $i: $(last)"
-          if [ "$(cast call "$SNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url {{.RPC}})" = "true" ]; then
-            echo "  ✓ a root landed on tick $i"; landed=1; break
+          T=$(landed "$SNAP"); R=true
+          if [ -n "$CSNAP" ]; then
+            R=$(landed "$CSNAP")
+            echo "  tick $i: $(last)   [trust $T · round $R]"
+          else
+            echo "  tick $i: $(last)"
+          fi
+          if [ "$T" = "true" ] && [ "$R" = "true" ]; then
+            echo "  ✓ every root landed by tick $i"; done_all=1; break
           fi
         done
 
-        # Fail loudly. Without this the demo exits 0 having proved nothing, and the first sign of
-        # trouble is an empty network page several steps later — which is where this last went
-        # wrong. The indexer builds its member list from the score blob a landed root points at,
-        # so no root means no rows and a 404 on /network/<id>.
-        if [ "$landed" = "0" ]; then
+        # Fail loudly, and say WHICH root is missing. Without this the demo exits 0 having proved
+        # nothing, and the first sign of trouble is an empty network page several steps later —
+        # which is where this last went wrong. The indexer builds its member list from the score
+        # blob a landed root points at, so no root means no rows and a 404 on /network/<id>.
+        if [ "$done_all" = "0" ]; then
           echo
-          echo "  ✗ no root landed in {{.TICKS}} ticks. The daemon's last word:"
+          echo "  ✗ still waiting after {{.TICKS}} ticks (trust landed: $T, round landed: $R)."
+          echo "    The daemon's last word:"
           echo "      $(last)"
-          echo "    full log: {{.WORK}}/run.log"
+          echo "    full log: {{.WORK}}/run.log; per-instance decisions: {{.WORK}}/status.json"
           exit 1
         fi
 
@@ -419,6 +513,53 @@ tasks:
         BEFORE=$(cast block-number --rpc-url {{.RPC}})
         cast rpc anvil_mine {{.SETTLE_BLOCKS}} --rpc-url {{.RPC}} >/dev/null
         echo "  ✓ mined to block $(cast block-number --rpc-url {{.RPC}}) (from $BEFORE) so Ponder can finalize"
+
+  payout:
+    desc: 'Fund the proven round and pay the contributors (skips itself without an indexer)'
+    cmds:
+      - |
+        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
+          .docker/deployment_summary.json 2>/dev/null)
+        [ -n "$CSNAP" ] || { echo "  no contributions instance in this deploy — nothing to pay"; exit 0; }
+
+        # Fund and claim drive the payout page's exact seams, and both of those read the round
+        # API: fund pins expectedRoot from it, claim fetches each persona's merkle bundle from it.
+        # No indexer, no bundles — so skip rather than fail, the same contract `report` has. The
+        # roots are landed either way; this step is the app-facing payoff, not the proof.
+        if ! curl -s -o /dev/null -m 5 "{{.PONDER}}/" 2>/dev/null; then
+          echo "  no indexer at {{.PONDER}} — skipping fund + claim"
+          echo "  when one is up (pnpm indexer dev): task demo:payout"
+          exit 0
+        fi
+
+        # `settle` just mined past Ponder's finality window, but ingesting the root and
+        # re-deriving it from its own tables (that is what `verified` means) still takes the
+        # indexer a moment. Poll briefly rather than failing on the race.
+        V=""
+        for i in $(seq 1 30); do
+          V=$(curl -s -m 5 "{{.PONDER}}/contributions/$CSNAP/round" | jq -r '.verified // empty' 2>/dev/null)
+          [ "$V" = "true" ] && break
+          sleep 2
+        done
+        if [ "$V" != "true" ]; then
+          echo "  ✗ the round never turned verified at {{.PONDER}}/contributions/$CSNAP/round"
+          echo "    Either the indexer is behind (task demo:settle, wait, re-run task demo:payout),"
+          echo "    or it refused the params sidecar: it re-hashes params.contributions.json against"
+          echo "    the on-chain paramsHash and publishes nothing on a mismatch."
+          exit 1
+        fi
+
+        task contributions:fund-round AMOUNT={{.FUND_AMOUNT}}
+        # The index of the distribution the fund JUST created, from the chain rather than a
+        # guessed 0 — re-running against a long-lived chain creates index 1, 2, …
+        DIST=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleFundDistributor' \
+          .docker/deployment_summary.json)
+        IDX=$(( $(cast call "$DIST" 'getDistributionCount()(uint256)' --rpc-url {{.RPC}}) - 1 ))
+        task contributions:claim-payouts INDEX=$IDX
+        # The claims are transactions too — mine them past the finality window so the app shows
+        # the claimed state, the same reason `settle` exists at all.
+        cast rpc anvil_mine {{.SETTLE_BLOCKS}} --rpc-url {{.RPC}} >/dev/null
+        echo "  ✓ round funded ({{.FUND_AMOUNT}} base units) and claimed (distribution $IDX)"
 
   resolver:
     desc: 'The instance''s EASIndexerResolver (its accumulator), from the registry'
@@ -484,6 +625,23 @@ tasks:
             echo "                if the scores line above is fine, the indexer is either behind"
             echo "                (mine more: task demo:settle) or replaying a previous anvil"
             echo "                (DROP SCHEMA ponder_sync CASCADE, then restart with a new --schema)"
+          fi
+        fi
+
+        # The round, in the same three questions: landed, funded, and did anyone get paid. ALICE
+        # is the fixture's top contributor (anvil account 1), so her pool-token balance is the one
+        # number that proves the whole path — claims, valuations, proof, root, fund, merkle claim
+        # — moved real value. Zero here with a landed round just means `payout` was skipped.
+        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
+          .docker/deployment_summary.json 2>/dev/null)
+        if [ -n "$CSNAP" ]; then
+          contrib() { jq -r "(.networks // [])[] | select(.program==\"contributions\") | .contracts.$1" .docker/deployment_summary.json; }
+          echo
+          echo "  round landed  $(cast call "$CSNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url $R) (checkpoint $(cast call "$CSNAP" 'lastAppliedCheckpoint()(uint256)' --rpc-url $R))"
+          echo "  round funded  $(cast call "$(contrib merkleFundDistributor)" 'getDistributionCount()(uint256)' --rpc-url $R) distribution(s)"
+          echo "  ALICE holds   $(cast call "$(contrib poolToken)" 'balanceOf(address)(uint256)' 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --rpc-url $R) tUSDC base units"
+          if curl -s -o /dev/null -m 5 "{{.PONDER}}/" 2>/dev/null; then
+            echo "  round API     $(curl -s -m 10 "{{.PONDER}}/contributions/$CSNAP/round" | jq -c '{verified, numClaims, numRecipients, totalValue}' 2>/dev/null || echo unreachable)"
           fi
         fi
         echo

@@ -14,6 +14,13 @@ The instance has **two input accumulators**, frozen together at one checkpoint:
 - **slot B** — the contribution log (claims / responses / valuations) folded by the
   `ContributionResolver`, which drives stage-2 scoring.
 
+> **`task demo` drives a round too, with different numbers.** The product demo
+> ([`../trust-graph/DEMO.md`](../trust-graph/DEMO.md)) seeds this same 6-persona round on top of its
+> own 21-edge community graph and lets the proof-scheduler daemon land the root (a manifest entry on
+> the curated tier). Rater reputation there is computed over the **composed** graph, so the wei-exact
+> expectations below do not apply to it — they hold for this guide's flow, where the fixture's six
+> vouches are the entire graph.
+
 Two ways to exercise it locally:
 
 - **[Quick check](#quick-check--parity--core)** — no chain, no UI, no proving. The core-crate

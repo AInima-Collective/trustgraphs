@@ -91,7 +91,7 @@ from_block   = 0                # first block to scan for this instance's logs
 # depends_on = ["0x…"]          # instance ids that must have a fresh root first
 
 [[manifest]]
-program      = "signer-sync"
+program      = "signer"         # the config name; the registry's program-id string is "signer-sync"
 snapshot     = "0x…"            # the TRUST instance it follows (woken by its MerkleRootUpdated)
 submit_to    = "0x…"            # SignerSyncZkModule — the one entry where these differ
 params       = "./params.json"  # the trust instance's params; the signer reuses them

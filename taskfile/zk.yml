@@ -35,9 +35,14 @@ tasks:
       # what picks the freshly built ELFs up.
       - touch zk/prover/build.rs
       # The guests were just built explicitly, so skip build.rs's copy of that work rather than
-      # doing it twice.
-      - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release'
-      - echo "✓ guests + host built. Vkeys they produce - task demo:vkeys"
+      # doing it twice. Three host artifacts, because `task demo` needs all three warm and cargo
+      # caches per feature set: the plain prover (vkey derivation, e2e), the prover with `fetch`
+      # (the daemon shells `cargo run --features fetch -- contributions fetch` to reconstruct
+      # round inputs from chain — cold, that's a multi-minute build in the middle of the prove
+      # loop), and the operator daemon itself (otherwise its first tick pays the same bill).
+      - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release && cargo build --release --features fetch'
+      - SP1_SKIP_PROGRAM_BUILD=true cargo build --release --manifest-path zk/operator/Cargo.toml
+      - echo "✓ guests + host + operator built. Vkeys they produce - task demo:vkeys"
 
   vectors:
     desc: "Regenerate golden vectors for PROGRAM (trust-graph | signer | hypercerts | contributions)"
