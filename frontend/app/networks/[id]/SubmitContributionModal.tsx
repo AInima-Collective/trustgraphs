@@ -325,7 +325,7 @@ export const SubmitContributionModal = ({
             <details className="group border border-hairline">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
                 Add collaborators
-                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
               </summary>
               <div className="space-y-5 border-t border-hairline p-4">
                 <p className="text-sm text-text-muted">
@@ -411,7 +411,7 @@ export const SubmitContributionModal = ({
             <details className="group border border-hairline">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink">
                 Add a content fingerprint
-                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
               </summary>
               <div className="border-t border-hairline p-4">
                 <FingerprintField

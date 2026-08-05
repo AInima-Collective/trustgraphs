@@ -557,7 +557,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden">
           <span>Fund this round</span>
           <ChevronDown
-            className="h-4 w-4 transition-transform group-open:rotate-180"
+            className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
             aria-hidden="true"
           />
         </summary>

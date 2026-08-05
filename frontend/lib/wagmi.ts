@@ -1,7 +1,7 @@
 import { porto } from 'porto/wagmi'
 import { Chain } from 'viem'
 import { optimism } from 'viem/chains'
-import { createConfig, fallback, http, webSocket } from 'wagmi'
+import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
 import {
   coinbaseWallet,
@@ -11,6 +11,8 @@ import {
 } from 'wagmi/connectors'
 
 import { CHAIN } from './config'
+import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
+import { getReviewWalletAccount } from './review-wallet-fixture'
 
 export const localChain: Chain = {
   id: 31337, // Anvil default chain ID
@@ -78,8 +80,20 @@ export const makeWagmiConfig = () => {
 }
 export const _makeWagmiConfig = () =>
   createConfig({
+    // Keep the server snapshot through hydration, then restore connector state on mount. Review
+    // personas are chosen from browser storage and would otherwise change the nav and round DOM
+    // before React can hydrate the server's disconnected markup.
+    ssr: true,
     chains: supportedChains,
     connectors: [
+      ...(REVIEW_FIXTURES_ENABLED
+        ? [
+            mock({
+              accounts: [getReviewWalletAccount()],
+              features: { defaultConnected: true, reconnect: true },
+            }),
+          ]
+        : []),
       injected(),
       ...(CHAIN !== 'local' ? [porto()] : []),
       metaMask(),

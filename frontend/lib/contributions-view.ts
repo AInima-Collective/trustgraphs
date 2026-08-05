@@ -23,14 +23,19 @@ import {
   reconcile,
   stage2,
 } from './contributions'
+import {
+  getReviewAttestations,
+  getReviewTrustAttestations,
+} from './contributions-review-fixtures'
 import { type RawEdge } from './pagerank/types'
+import { withReviewFixture } from './review-fixture-query'
 import { SchemaManager } from './schemas'
 import { ContributionsNetwork, NetworkSchema } from './types'
 // Type-only: keeps this module runtime-independent of the ponder package (the indexer and
 // scripts import this file too).
 import { type accumulatorRecord } from '../ponder.schema'
 
-type AccumulatorRow = typeof accumulatorRecord.$inferSelect
+export type AccumulatorRow = typeof accumulatorRecord.$inferSelect
 
 const S = 10n ** 18n
 
@@ -82,14 +87,42 @@ export const contributionsSchema = (
  * re-sorts by `(blockTimestamp, index)` anyway. `schemaUids` is unused here (the row's `kind`
  * already encodes the schema), kept only so callers pin the query key to the instance's schemas.
  */
-export const getContributionAttestations =
-  (resolver: Hex, _schemaUids: Hex[]) =>
-  (db: Client<ResolvedSchema>['db']): Promise<AccumulatorRow[]> =>
-    db.query.accumulatorRecord.findMany({
-      where: (t, { eq }) => eq(t.accumulator, resolver),
-      orderBy: (t, { asc }) => [asc(t.blockNumber), asc(t.logIndex)],
-      limit: 1000,
-    })
+export const getContributionAttestations = (
+  resolver: Hex,
+  _schemaUids: Hex[]
+) =>
+  withReviewFixture(
+    (db: Client<ResolvedSchema>['db']): Promise<AccumulatorRow[]> =>
+      db.query.accumulatorRecord.findMany({
+        where: (t, { eq }) => eq(t.accumulator, resolver),
+        orderBy: (t, { asc }) => [asc(t.blockNumber), asc(t.logIndex)],
+        limit: 1000,
+      }),
+    getReviewAttestations
+  )
+
+/** The sibling trust network's fold log, fetched once for exact optimistic score previews. */
+export const getTrustAttestations = (accumulator: Hex) =>
+  withReviewFixture(
+    (db: Client<ResolvedSchema>['db']): Promise<AccumulatorRow[]> =>
+      db.query.accumulatorRecord.findMany({
+        where: (t, { eq }) => eq(t.accumulator, accumulator),
+        orderBy: (t, { asc }) => [asc(t.blockNumber), asc(t.logIndex)],
+        limit: 10_000,
+      }),
+    getReviewTrustAttestations
+  )
+
+/** Preserve the fold log exactly, including revoke markers, for the canonical recompute. */
+export const accumulatorRowsToRawEdges = (rows: AccumulatorRow[]): RawEdge[] =>
+  rows.map((row) => ({
+    kind: row.kind,
+    attester: row.attester,
+    recipient: row.recipient,
+    uid: row.uid,
+    blockTimestamp: row.blockTimestamp,
+    data: row.data,
+  }))
 
 /** One contributor row of a claim, as displayed. */
 export interface ClaimViewContributor {
@@ -133,30 +166,10 @@ export const buildClaimViews = (
   rows: AccumulatorRow[],
   schemaUids: { claim: Hex; response: Hex; valuation: Hex },
   window?: { start: bigint; end: bigint }
-): { claims: ClaimView[]; state: LiveState } => {
-  // `accumulator_record` folds each attest AND each revoke as its own row: even `kind` = attest
-  // (schemaIndex*2 == KIND_*_ATTEST), odd `kind` = revoke of the SAME uid. Collect the revoked
-  // uids first, then keep the attest rows whose uid was never revoked — exactly the set a folded
-  // revocation record would have excluded.
-  const revokedUids = new Set<string>()
-  for (const row of rows) {
-    if (row.kind % 2 === 1) revokedUids.add(row.uid.toLowerCase())
-  }
-  const records: RawEdge[] = []
-  for (const row of rows) {
-    if (row.kind % 2 === 1) continue // revoke marker — accounted for above
-    if (revokedUids.has(row.uid.toLowerCase())) continue
-    // Even kinds are exactly KIND_CLAIM_ATTEST (0) / KIND_RESPONSE_ATTEST (2) /
-    // KIND_VALUATION_ATTEST (4); unknown schemas never fold, so no null guard is needed.
-    records.push({
-      kind: row.kind,
-      attester: row.attester,
-      recipient: row.recipient,
-      uid: row.uid,
-      blockTimestamp: row.blockTimestamp,
-      data: row.data,
-    })
-  }
+): { claims: ClaimView[]; state: LiveState; records: RawEdge[] } => {
+  // Reconciliation consumes the exact fold log. It applies revoke and last-write-wins semantics
+  // itself, while retaining these same raw records for the optimistic canonical recompute.
+  const records = accumulatorRowsToRawEdges(rows)
 
   // Reconcile with an all-inclusive window so out-of-window claims still render (annotated
   // below); responses/valuations have no window of their own.
@@ -232,7 +245,7 @@ export const buildClaimViews = (
 
   // Newest first for display.
   claims.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
-  return { claims, state }
+  return { claims, state, records }
 }
 
 /** One entry of the rating-power preview. */

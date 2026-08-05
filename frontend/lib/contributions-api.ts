@@ -9,14 +9,22 @@
 //!   GET /contributions/:snapshot/score/:claimUID  → ContributionsScoreDetail
 //!   GET /contributions/:snapshot/payout/:account  → ContributionsPayout
 //!
-//! MOCKS: set NEXT_PUBLIC_CONTRIBUTIONS_MOCKS=1 to serve the clearly-marked fixtures below
-//! instead of hitting the network (for driving the screens before the M3 routes are live).
-//! Everything mock-related lives between the MOCK markers — delete that block and the
-//! `mocksEnabled` branches once M3 is live.
+//! REVIEW FIXTURES: NEXT_PUBLIC_TG_REVIEW_FIXTURES=1 lets the production-build screenshot
+//! harness select deterministic phases and wallet personas without a live indexer. The flag is
+//! off in normal builds, where every request below follows the real HTTP path.
 
 import { queryOptions } from '@tanstack/react-query'
+import { Hex } from 'viem'
 
 import { APIS } from './config'
+import { ContributionsParams } from './contributions'
+import {
+  getReviewClaims,
+  getReviewPayout,
+  getReviewRound,
+  getReviewScore,
+} from './contributions-review-fixtures'
+import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
 
 /** Skip reasons the indexer derives (mirrors `lib/contributions/eligibility.SkipReason`). */
 export type ContributionsSkipReason = 'selfValuation' | 'belowMinRep'
@@ -35,6 +43,8 @@ export type ContributionsRound = {
   cid: string | null
   /** Lifecycle from the round window vs now (the indexer's vocabulary). */
   status: 'upcoming' | 'open' | 'closed' | 'unknown'
+  /** Governance-pinned inputs for an exact optimistic recompute; null when unavailable. */
+  params: ContributionsParams | null
 }
 
 /** One contributor's slice of a claim, from the indexer's derived-score breakdown. */
@@ -91,33 +101,6 @@ export type ContributionsPayout = {
   proof: string[]
 }
 
-// =============================== MOCK FIXTURES (delete with M3) ===============================
-// These fixtures exist ONLY so the screens can be driven before the M3 indexer routes are live.
-// They are served exclusively when NEXT_PUBLIC_CONTRIBUTIONS_MOCKS=1.
-
-const mocksEnabled = () => process.env.NEXT_PUBLIC_CONTRIBUTIONS_MOCKS === '1'
-
-const MOCK_ROUND: ContributionsRound = {
-  window: { start: '1750000000', end: '1782000000' },
-  pool: '1000000000', // 1,000 USDC at 6dp
-  token: '0x0000000000000000000000000000000000000000',
-  root: null,
-  cid: null,
-  status: 'open',
-}
-
-const MOCK_CLAIMS: ContributionsClaimsResponse = {
-  snapshot: 'mock',
-  claims: [],
-}
-
-const MOCK_PAYOUT: ContributionsPayout = {
-  account: '0x0000000000000000000000000000000000000000',
-  value: '0',
-  proof: [],
-}
-// ============================== END MOCK FIXTURES =============================================
-
 const get = async <T>(path: string): Promise<T | null> => {
   const response = await fetch(`${APIS.ponder}${path}`)
   if (response.ok) {
@@ -147,6 +130,57 @@ type RawRound = {
   roundEnd: string | null
   totalPool: string | null
   token?: string | null
+  params?: Record<string, unknown> | null
+}
+
+const normalizeParams = (
+  raw: Record<string, unknown> | null | undefined
+): ContributionsParams | null => {
+  if (!raw) return null
+  try {
+    if (!Array.isArray(raw.trustedSeeds)) return null
+    const bigintValue = (key: string) => {
+      const value = raw[key]
+      if (typeof value !== 'string' && typeof value !== 'number')
+        throw new Error(`Missing ${key}`)
+      return BigInt(value)
+    }
+    const numberValue = (key: string) => {
+      const value = raw[key]
+      if (typeof value !== 'number') throw new Error(`Missing ${key}`)
+      return value
+    }
+    const hexValue = (key: string) => {
+      const value = raw[key]
+      if (typeof value !== 'string') throw new Error(`Missing ${key}`)
+      return value as Hex
+    }
+    return {
+      dampingFp: bigintValue('dampingFp'),
+      toleranceFp: bigintValue('toleranceFp'),
+      maxIterations: numberValue('maxIterations'),
+      minWeightFp: bigintValue('minWeightFp'),
+      maxWeightFp: bigintValue('maxWeightFp'),
+      trustMultiplierFp: bigintValue('trustMultiplierFp'),
+      trustShareFp: bigintValue('trustShareFp'),
+      trustDecayFp: bigintValue('trustDecayFp'),
+      trustedSeeds: raw.trustedSeeds as Hex[],
+      precisionScale: bigintValue('precisionScale'),
+      weightFieldIndex: numberValue('weightFieldIndex'),
+      roundStart: bigintValue('roundStart'),
+      roundEnd: bigintValue('roundEnd'),
+      unacceptedMultFp: bigintValue('unacceptedMultFp'),
+      collaboratorMultFp: bigintValue('collaboratorMultFp'),
+      minRaterRepFp: bigintValue('minRaterRepFp'),
+      evaluatorCarveoutBps: numberValue('evaluatorCarveoutBps'),
+      totalPool: bigintValue('totalPool'),
+      claimSchemaUid: hexValue('claimSchemaUid'),
+      responseSchemaUid: hexValue('responseSchemaUid'),
+      valuationSchemaUid: hexValue('valuationSchemaUid'),
+    }
+  } catch {
+    return null
+  }
 }
 
 const normalizeRound = (raw: RawRound): ContributionsRound => ({
@@ -156,6 +190,7 @@ const normalizeRound = (raw: RawRound): ContributionsRound => ({
   root: raw.root,
   cid: raw.ipfsHashCid,
   status: raw.status,
+  params: normalizeParams(raw.params),
 })
 
 /** A claim row as the indexer's `/claims` route actually serializes it. */
@@ -227,7 +262,7 @@ const normalizeScore = (raw: RawScoreDetail): ContributionsScoreDetail => ({
 export const fetchContributionsRound = async (
   snapshot: string
 ): Promise<ContributionsRound | null> => {
-  if (mocksEnabled()) return MOCK_ROUND
+  if (REVIEW_FIXTURES_ENABLED) return getReviewRound()
   const raw = await get<RawRound>(`/contributions/${snapshot}/round`)
   return raw ? normalizeRound(raw) : null
 }
@@ -235,7 +270,7 @@ export const fetchContributionsRound = async (
 export const fetchContributionsClaims = async (
   snapshot: string
 ): Promise<ContributionsClaimsResponse | null> => {
-  if (mocksEnabled()) return MOCK_CLAIMS
+  if (REVIEW_FIXTURES_ENABLED) return getReviewClaims()
   const raw = await get<RawClaimsResponse>(`/contributions/${snapshot}/claims`)
   if (!raw) return null
   return {
@@ -248,7 +283,7 @@ export const fetchContributionsScore = async (
   snapshot: string,
   claimUid: string
 ): Promise<ContributionsScoreDetail | null> => {
-  if (mocksEnabled()) return null
+  if (REVIEW_FIXTURES_ENABLED) return getReviewScore(claimUid)
   const raw = await get<RawScoreDetail>(
     `/contributions/${snapshot}/score/${claimUid}`
   )
@@ -259,7 +294,7 @@ export const fetchContributionsPayout = async (
   snapshot: string,
   account: string
 ): Promise<ContributionsPayout | null> => {
-  if (mocksEnabled()) return MOCK_PAYOUT
+  if (REVIEW_FIXTURES_ENABLED) return getReviewPayout()
   return await get<ContributionsPayout>(
     `/contributions/${snapshot}/payout/${account}`
   )

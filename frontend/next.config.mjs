@@ -10,6 +10,9 @@ const nextConfig = {
   },
   typescript: {
     ignoreBuildErrors: true,
+    // Screenshot builds use a disposable config because Next writes the
+    // label-scoped dist types into it. Normal builds keep the project config.
+    tsconfigPath: process.env.NEXT_TSCONFIG_PATH || 'tsconfig.json',
   },
   images: {
     unoptimized: true,
@@ -41,6 +44,27 @@ const nextConfig = {
     {
       source: '/network/:path*',
       destination: '/networks/:path*',
+      permanent: true,
+    },
+    // Contribution work now stays on the round feed; money has one dedicated claim route.
+    {
+      source: '/networks/:id/contribute',
+      destination: '/networks/:id',
+      permanent: true,
+    },
+    {
+      source: '/networks/:id/rate',
+      destination: '/networks/:id',
+      permanent: true,
+    },
+    {
+      source: '/networks/:id/respond',
+      destination: '/networks/:id',
+      permanent: true,
+    },
+    {
+      source: '/networks/:id/payout',
+      destination: '/networks/:id/claim',
       permanent: true,
     },
   ],
