@@ -292,6 +292,15 @@ Everything below cost someone real time.
   construction, so a stale `.env` value gives a stack that deploys cleanly and then refuses to prove
   anything (`{"action":"hold","hold":"verifier_rotated"}`). `task demo:deploy` derives them from the
   checkout rather than trusting the file; `task demo:vkeys` prints them.
+- **…and don't let the vkeys change AFTER deploying.** The mirror image of the previous two: any
+  prover invocation *without* `SP1_SKIP_PROGRAM_BUILD=true` lets `build.rs` rebuild all the guest
+  ELFs with the local toolchain — and a rebuild is not a no-op, because the ELF (hence the vkey) is
+  a function of the toolchain that built it. One unguarded `cargo run` between `deploy` and `prove`
+  (it was `contributions … paramshash`, inside `seed-round`) re-made every vkey four minutes after
+  the verifiers pinned the old ones, and the daemon held **both** instances with `verifier_rotated`
+  / `expected: 0x0` (run.rs zeroes the expected verifier when the on-chain vkey isn't the one its
+  own guest produces). Every prover call in the taskfiles and the daemon's own spawned `cargo run`
+  now pin the skip; if you add one, pin it too. Only `task zk:build` builds guests.
 - **Attest before the first trigger.** §4, and
   [#15](https://github.com/JakeHartnell/ZkTrustGraph/issues/15). The same rule is why `task demo`
   seeds the contribution round before `prove` writes the operator config: the daemon's first

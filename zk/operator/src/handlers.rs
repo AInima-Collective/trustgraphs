@@ -451,6 +451,10 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
 fn run_tool(bin: &str, args: Vec<&str>) -> Result<()> {
     let out = Command::new(bin)
         .args(&args)
+        // The spawned prover must use the same guest ELFs this binary's vkey checks were made
+        // against. Without this a bare daemon run (no wrapping task exporting it) lets build.rs
+        // rebuild the guests mid-tick, and the proof comes back under a vkey no verifier pinned.
+        .env("SP1_SKIP_PROGRAM_BUILD", "true")
         .output()
         .with_context(|| format!("running {bin} {}", args.join(" ")))?;
     if !out.status.success() {

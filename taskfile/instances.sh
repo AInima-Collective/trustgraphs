@@ -58,6 +58,10 @@ RECIPIENT="${RECIPIENT:-0x0000000000000000000000000000000000000000}"
 GROTH16="${GROTH16:-1}"
 # The prover backend. Default mock so the loop runs on any box; override for a real proof.
 export SP1_PROVER="${SP1_PROVER:-mock}"
+# Never rebuild the guest ELFs from here: a rebuild mid-loop changes every vkey after the deploy
+# pinned the old ones, and each verifier then rejects (or the daemon holds) forever. Only
+# `task zk:build` builds guests.
+export SP1_SKIP_PROGRAM_BUILD="${SP1_SKIP_PROGRAM_BUILD:-true}"
 
 BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; YELLOW=$'\033[1;33m'; NC=$'\033[0m'
 say()  { echo -e "$*"; }

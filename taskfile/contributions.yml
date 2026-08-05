@@ -65,7 +65,12 @@ tasks:
         jq --arg s "$(printf '0x%x' $ROUND_START)" --arg e "$(printf '0x%x' $ROUND_END)" \
           '.round_start = $s | .round_end = $e' {{.PARAMS_FILE}} > {{.PARAMS_FILE}}.tmp \
           && mv {{.PARAMS_FILE}}.tmp {{.PARAMS_FILE}}
-        PH=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions paramshash ../../{{.PARAMS_FILE}})
+        # SP1_SKIP_PROGRAM_BUILD=true on every prover invocation here, and not as an optimization:
+        # without it, build.rs rebuilds ALL guest ELFs with the local toolchain. Run mid-demo (this
+        # task runs inside `demo:seed-round`), that changes every vkey AFTER the deploy pinned the
+        # old ones into the verifiers, and the daemon then correctly holds both instances with
+        # `verifier_rotated` forever. Only `task zk:build` builds guests.
+        PH=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch -- contributions paramshash ../../{{.PARAMS_FILE}})
         echo "window [$ROUND_START, $ROUND_END] paramsHash $PH"
         cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PH" \
           --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
@@ -103,13 +108,13 @@ tasks:
           ID=$(( $(cast call "$MIRROR" "checkpointCount()(uint256)" --rpc-url {{.RPC_URL}}) - 1 ))
         fi
         echo "== fetch (checkpoint $ID) =="
-        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions fetch \
+        (cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch -- contributions fetch \
           --rpc {{.RPC_URL}} --snapshot "$SNAPSHOT" --eas "$EAS" --checkpoint "$ID" \
           --params ../../{{.PARAMS_FILE}} --trust-schema-uid "$VOUCH_UID" \
           --recipient "{{.RECIPIENT | default "0x0000000000000000000000000000000000000000"}}" \
           --out ../../{{.OUT_DIR}}/contributions_input.json)
         echo "== execute (guest == native byte-assert) =="
-        EXEC=$(cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions execute ../../{{.OUT_DIR}}/contributions_input.json)
+        EXEC=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch -- contributions execute ../../{{.OUT_DIR}}/contributions_input.json)
         echo "$EXEC"
         {
           echo "CHECKPOINT_ID=$ID"
@@ -122,7 +127,7 @@ tasks:
           echo "RECIPIENT=$(echo "$EXEC" | awk '/^recipient:/{print $2}')"
         } > {{.SUBMIT_ENV}}
         echo "== prove (mock groth16) =="
-        (cd zk/prover && SP1_PROVER=mock cargo run -q --release --features fetch -- contributions prove ../../{{.OUT_DIR}}/contributions_input.json --groth16)
+        (cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch -- contributions prove ../../{{.OUT_DIR}}/contributions_input.json --groth16)
         echo "== pin the payout blob =="
         curl -sF file=@{{.OUT_DIR}}/contributions_blob.json "{{.IPFS_API}}/api/v0/add?cid-version=1&raw-leaves=true"
         echo ""
