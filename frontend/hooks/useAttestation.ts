@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
-import { Hex, isAddressEqual } from 'viem'
+import { Hex, WaitForTransactionReceiptReturnType, isAddressEqual } from 'viem'
 import { useAccount, usePublicClient } from 'wagmi'
 
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
@@ -15,11 +15,39 @@ import { usePonderQuery } from '@/lib/use-ponder-query'
 import { attestationKeys } from '@/queries/attestation'
 import { ponderQueryFns } from '@/queries/ponder'
 
-interface NewAttestationData {
+export interface NewAttestationData {
   schema: Hex
   recipient: string
   // Array values cover the contribution claim schema's `address[]`/`uint32[]` fields.
   data: Record<string, string | boolean | string[] | number[]>
+}
+
+const EMPTY_UID =
+  '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex
+
+const intoAttestationRequestData = (attestationData: NewAttestationData) => {
+  if (
+    !attestationData.schema.startsWith('0x') ||
+    attestationData.schema.length !== 66
+  ) {
+    throw new Error(`Invalid schema format: ${attestationData.schema}`)
+  }
+  if (
+    !attestationData.recipient.startsWith('0x') ||
+    attestationData.recipient.length !== 42
+  ) {
+    throw new Error(
+      `Invalid recipient address format: ${attestationData.recipient}`
+    )
+  }
+  return {
+    recipient: attestationData.recipient as Hex,
+    expirationTime: 0n,
+    revocable: true,
+    refUID: EMPTY_UID,
+    data: SchemaManager.encode(attestationData.schema, attestationData.data),
+    value: 0n,
+  }
 }
 
 /**
@@ -48,29 +76,12 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
-      // Validate input formats
-      if (
-        !attestationData.schema.startsWith('0x') ||
-        attestationData.schema.length !== 66
-      ) {
-        throw new Error(`Invalid schema format: ${attestationData.schema}`)
-      }
-      if (
-        !attestationData.recipient.startsWith('0x') ||
-        attestationData.recipient.length !== 42
-      ) {
-        throw new Error(
-          `Invalid recipient address format: ${attestationData.recipient}`
-        )
-      }
-
-      const encodedData = SchemaManager.encode(
-        attestationData.schema,
-        attestationData.data
-      )
+      const requestData = intoAttestationRequestData(attestationData)
 
       // Helper function to execute transaction with fresh nonce
-      const executeTransaction = async (retryCount = 0): Promise<void> => {
+      const executeTransaction = async (
+        retryCount = 0
+      ): Promise<WaitForTransactionReceiptReturnType> => {
         const nonce = await publicClient!.getTransactionCount({
           address: connectedAddress,
           blockTag: retryCount === 0 ? 'pending' : 'latest',
@@ -78,15 +89,7 @@ export function useAttestation(uid?: Hex) {
 
         const attestationRequest = {
           schema: attestationData.schema,
-          data: {
-            recipient: attestationData.recipient as `0x${string}`,
-            expirationTime: 0n,
-            revocable: true,
-            refUID:
-              '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
-            data: encodedData,
-            value: 0n,
-          },
+          data: requestData,
         }
 
         // Estimate gas and simulate
@@ -129,16 +132,18 @@ export function useAttestation(uid?: Hex) {
 
         // Invalidate queries to refresh the attestation data
         queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+
+        return receipt
       }
 
       // Execute transaction with retry logic
       try {
-        await executeTransaction()
+        return await executeTransaction()
       } catch (error) {
         if (shouldRetryTxError(error)) {
           console.warn('Transaction failed, retrying with fresh nonce:', error)
           // Retry once with fresh nonce
-          await executeTransaction(1)
+          return await executeTransaction(1)
         } else {
           throw error
         }

@@ -32,6 +32,11 @@ import {
   formatPoolAmount,
   useContributionsData,
 } from './contributions-shared'
+import {
+  OptimisticContribution,
+  SubmitContributionModal,
+  matchesOptimisticContribution,
+} from './SubmitContributionModal'
 
 type FeedSort = 'unrated' | 'newest' | 'top'
 
@@ -114,6 +119,7 @@ const ClaimCard = ({
   previewEntry,
   isSaving,
   isSubmitted,
+  isPending,
   onRatingChange,
   onSaveRating,
 }: {
@@ -127,6 +133,7 @@ const ClaimCard = ({
   previewEntry?: RatingPowerEntry
   isSaving: boolean
   isSubmitted: boolean
+  isPending?: boolean
   onRatingChange: (value: number) => void
   onSaveRating: () => void
 }) => {
@@ -143,7 +150,7 @@ const ClaimCard = ({
   // The audit view for this claim: every rating incl. the filtered ones, with reasons.
   const { data: audit } = useQuery({
     ...contributionsQueries.score(network.contracts.merkleSnapshot, claim.uid),
-    enabled: expanded,
+    enabled: expanded && !isPending,
   })
 
   // Merge audit info (filter reasons need reputation, so they come from the indexer) into the
@@ -163,6 +170,11 @@ const ClaimCard = ({
         <div className="space-y-1 min-w-0">
           <div className="font-bold truncate">
             {claim.title || 'Untitled contribution'}
+            {isPending && (
+              <span className="ml-2 inline-block border border-hairline-strong px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wider text-text-muted">
+                Pending indexing
+              </span>
+            )}
           </div>
           <div className="text-sm text-muted-foreground flex flex-row items-center gap-2 flex-wrap">
             <span>
@@ -183,9 +195,11 @@ const ClaimCard = ({
           <div className="text-right">
             <div className="text-xs text-muted-foreground">Community score</div>
             <div className="font-mono">
-              {score !== undefined
-                ? formatContributionScore(score)
-                : 'Unavailable'}
+              {isPending
+                ? 'Pending'
+                : score !== undefined
+                  ? formatContributionScore(score)
+                  : 'Unavailable'}
             </div>
           </div>
           {expanded ? (
@@ -383,6 +397,7 @@ export const ContributionsNetworkPage = ({
     tokenSymbol,
     tokenDecimals,
     phase,
+    claimSchema,
     valuationSchema,
   } = useContributionsData(network)
 
@@ -394,6 +409,18 @@ export const ContributionsNetworkPage = ({
   const [submittedDrafts, setSubmittedDrafts] = useState<Set<string>>(new Set())
   const [pendingClaim, setPendingClaim] = useState<string | null>(null)
   const [activeDraftUid, setActiveDraftUid] = useState<string | null>(null)
+  const [submitOpen, setSubmitOpen] = useState(false)
+  const [optimisticContribution, setOptimisticContribution] =
+    useState<OptimisticContribution | null>(null)
+
+  const optimisticIsIndexed =
+    optimisticContribution !== null &&
+    claims.some((claim) =>
+      matchesOptimisticContribution(claim, optimisticContribution)
+    )
+  const pendingContribution = optimisticIsIndexed
+    ? null
+    : optimisticContribution
 
   const chainRatings = useMemo(() => {
     const ratings = new Map<string, number>()
@@ -458,13 +485,14 @@ export const ContributionsNetworkPage = ({
       const bucketDifference = bucket(a) - bucket(b)
       return bucketDifference || scoreOrder(a, b) || newestOrder(a, b)
     })
-    return sorted
+    return pendingContribution ? [pendingContribution.claim, ...sorted] : sorted
   }, [
     chainRatings,
     claims,
     connectedAddress,
     feedSort,
     isConnected,
+    pendingContribution,
     scoreByUid,
   ])
 
@@ -538,6 +566,12 @@ export const ContributionsNetworkPage = ({
     })
   }, [chainRatings, drafts])
 
+  // The optimistic card is keyed by the real EAS uid, so it remains pending until that exact
+  // on-chain record reaches the feed and can safely take over.
+  useEffect(() => {
+    if (optimisticIsIndexed) setOptimisticContribution(null)
+  }, [optimisticIsIndexed])
+
   return (
     <div className="space-y-10">
       <header className="space-y-6">
@@ -596,7 +630,8 @@ export const ContributionsNetworkPage = ({
                 'On-chain contribution totals are loading.'
               ) : (
                 <>
-                  {claims.length} contribution{claims.length === 1 ? '' : 's'}
+                  {sortedClaims.length} contribution
+                  {sortedClaims.length === 1 ? '' : 's'}
                   <span aria-hidden="true"> · </span>
                   {state.valuations.size} rating
                   {state.valuations.size === 1 ? '' : 's'}
@@ -613,14 +648,15 @@ export const ContributionsNetworkPage = ({
               </p>
             </div>
             {phase === 'open' && (
-              <ButtonLink
-                href={`/networks/${network.id}/contribute`}
+              <Button
+                type="button"
                 variant="brand"
                 size="lg"
                 className="w-full sm:w-auto"
+                onClick={() => setSubmitOpen(true)}
               >
                 Submit contribution
-              </ButtonLink>
+              </Button>
             )}
             {phase === 'claimable' && (
               <ButtonLink
@@ -662,11 +698,20 @@ export const ContributionsNetworkPage = ({
         )}
       </header>
 
+      <SubmitContributionModal
+        isOpen={submitOpen}
+        onClose={() => setSubmitOpen(false)}
+        network={network}
+        round={round}
+        claimSchemaUid={claimSchema?.uid}
+        onSubmitted={setOptimisticContribution}
+      />
+
       {/* Claims */}
       <div className="space-y-4">
         <div className="flex min-h-11 items-center justify-between gap-3">
           <SectionHeading>Contributions</SectionHeading>
-          {isConnected && claims.length > 1 && (
+          {isConnected && sortedClaims.length > 1 && (
             <label>
               <span className="sr-only">Sort contributions</span>
               <select
@@ -687,7 +732,7 @@ export const ContributionsNetworkPage = ({
           <p className="text-sm text-muted-foreground">
             Loading contributions...
           </p>
-        ) : claims.length === 0 ? (
+        ) : sortedClaims.length === 0 ? (
           <Card type="outline" size="lg" className="text-center">
             <p className="text-muted-foreground">
               No contributions have been submitted yet. Be the first to share
@@ -709,6 +754,7 @@ export const ContributionsNetworkPage = ({
                 previewEntry={previewByUid.get(claim.uid)}
                 isSaving={pendingClaim === claim.uid}
                 isSubmitted={submittedDrafts.has(claim.uid)}
+                isPending={pendingContribution?.claim.uid === claim.uid}
                 onRatingChange={(rating) => updateDraft(claim.uid, rating)}
                 onSaveRating={() => saveRating(claim.uid)}
               />
