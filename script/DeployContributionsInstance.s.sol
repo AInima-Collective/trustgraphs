@@ -40,8 +40,9 @@ import {ContributionsParamsJson} from "script/lib/ContributionsParamsJson.sol";
 ///
 /// Env: CONTRIBUTIONS_PROGRAM_VKEY (the contributions guest image id; bytes32(0) = dev
 ///      scaffolding, which deploys a MockSP1Gateway so mock-proved journals submit —
-///      set the real vkey AND SP1_VERIFIER_GATEWAY for any deploy that matters),
-///      SP1_VERIFIER_GATEWAY (canonical per-chain gateway; only read when a vkey is set),
+///      set the real vkey AND a real gateway for any deploy that matters),
+///      SP1_VERIFIER_GATEWAY (canonical per-chain gateway; only read when a vkey is set
+///      and no gateway address is passed as the sixth argument),
 ///      CONTRIBUTIONS_EPOCH_LENGTH (blocks between triggers; default 10 for dev),
 ///      CONTRIBUTIONS_POOL_MINT (TestUSDC minted to the deployer; default 1,000,000 tUSDC),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN (default: deployer).
@@ -64,12 +65,18 @@ contract DeployContributionsInstance is Common {
     ///        the mirror wraps for journal slot A.
     /// @param paramsPath Path to the contributions params file (serialized
     ///        `contributions_core::Params`; schema-UID fields are overwritten by this deploy).
+    /// @param gatewayAddr The already-deployed SP1 verifier gateway (the DeployZkVerifier
+    ///        convention). If empty, falls back to the `SP1_VERIFIER_GATEWAY` env var. Dev callers
+    ///        MUST pass the local MockSP1Gateway here: the env var names Succinct's per-chain
+    ///        deployment, which has no code on a plain anvil, and a verifier constructed over it
+    ///        reverts every `submitProof` inside `gateway.verifyProof` — immutably.
     function run(
         string calldata outLabel,
         string calldata easAddr,
         string calldata schemaRegistrarAddr,
         string calldata trustAccumulatorAddr,
-        string calldata paramsPath
+        string calldata paramsPath,
+        string calldata gatewayAddr
     ) public {
         address deployer = vm.addr(_privateKey);
         address eas = vm.parseAddress(easAddr);
@@ -109,7 +116,9 @@ contract DeployContributionsInstance is Common {
             gateway = address(new MockSP1Gateway());
             console.log("CONTRIBUTIONS_PROGRAM_VKEY unset: dev MockSP1Gateway deployed at", gateway);
         } else {
-            gateway = vm.envAddress("SP1_VERIFIER_GATEWAY");
+            gateway = bytes(gatewayAddr).length == 0
+                ? vm.envAddress("SP1_VERIFIER_GATEWAY")
+                : vm.parseAddress(gatewayAddr);
             require(gateway != address(0), "DeployContributionsInstance: gateway is zero");
         }
         SP1JournalVerifier verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);

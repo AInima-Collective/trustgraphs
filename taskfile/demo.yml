@@ -349,11 +349,17 @@ tasks:
         REGISTRAR=$(jq -r .schema_registrar .docker/eas_deploy.json)
         PARAMS=${CONTRIBUTIONS_PARAMS_JSON:-params.contributions.demo.json}
         [ -f "$PARAMS" ] || cp test/e2e/params.contributions.template.json "$PARAMS"
+        # The gateway THIS stack verifies against, read off the deployed trust verifier — the dev
+        # MockSP1Gateway here, the real one on a fork. Never the SP1_VERIFIER_GATEWAY env var: on a
+        # plain anvil that names Succinct's mainnet address, which has no code, and a verifier
+        # constructed over it immutably reverts every submitProof.
+        GATEWAY=$(cast call "$(jq -r .zk_verifier .docker/zk_verifier_deploy.json)" \
+          'gateway()(address)' --rpc-url {{.RPC}})
         CONTRIBUTIONS_PROGRAM_VKEY=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
           cargo run -q --release -- contributions vkey) \
         forge script script/DeployContributionsInstance.s.sol:DeployContributionsInstance \
-          --sig 'run(string,string,string,string,string)' \
-          'demo' "$EAS" "$REGISTRAR" "$RESOLVER" "$PARAMS" \
+          --sig 'run(string,string,string,string,string,string)' \
+          'demo' "$EAS" "$REGISTRAR" "$RESOLVER" "$PARAMS" "$GATEWAY" \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
         echo "  ✓ contributions instance over the demo network's graph"
 

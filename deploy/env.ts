@@ -428,7 +428,7 @@ export class DevEnv extends EnvBase {
           name: 'Contributions',
           script:
             'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
-          sig: 'run(string,string,string,string,string)',
+          sig: 'run(string,string,string,string,string,string)',
           args: () => {
             // Provision the contributions params file from its committed template if absent
             // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
@@ -450,6 +450,11 @@ export class DevEnv extends EnvBase {
                 'contracts.eas_indexer_resolver'
               ),
               paramsFile,
+              // The same gateway the root/signer verifiers were pointed at. Without this the
+              // script falls back to the SP1_VERIFIER_GATEWAY env var — Succinct's real per-chain
+              // address, no code on a plain anvil — and the contributions verifier immutably
+              // reverts every submitProof while the trust instance (built over the mock) works.
+              gatewayAddress(),
             ]
           },
         },
