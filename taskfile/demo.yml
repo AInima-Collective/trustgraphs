@@ -1,10 +1,11 @@
 # The demo, as tasks. Prose walkthrough: docs/trust-graph/DEMO.md
 #
-# `task demo` is the whole thing: deploy one complete funded network, seed its real graph and a
-# contribution round over that same graph, let the proof scheduler land both roots (the trust
-# root paid through the vault, the round on the curated tier), then fund the round and pay the
-# contributors. Every step is also its own task, because the interesting part of a demo is
-# usually re-running one piece of it.
+# `task demo` is the finite walkthrough: deploy one complete funded network, seed its real graph
+# and a contribution round over that same graph, let one-shot proof-scheduler ticks land both roots
+# (the trust root paid through the vault, the round on the curated tier), then fund the round and
+# pay the contributors. It exits after the seeded roots land. `task demo:live` runs that walkthrough
+# and then keeps the scheduler in the foreground so later attestations produce later roots. Every
+# step is also its own task, because the interesting part of a demo is usually re-running one piece.
 #
 # What this does NOT do is start anvil, Postgres or IPFS — `task start-all-local` owns those, and
 # owning them from here would mean tearing them down when the demo ends.
@@ -42,7 +43,7 @@ vars:
 
 tasks:
   default:
-    desc: 'The whole demo: deploy one funded Demo Co-op, seed graph + contribution round, prove both, pay out'
+    desc: 'Finite demo: deploy one funded Demo Co-op, seed graph + contribution round, prove both, pay out'
     cmds:
       # `clean` FIRST, because this task deploys a fresh stack and the journal from the last one
       # would block it. An instance id is keccak(creator, name, salt) and a restarted anvil counts
@@ -66,6 +67,12 @@ tasks:
       # indexer serves the landed root only once it is past Ponder's finality window. Skips itself
       # when no indexer is running — the roots are still proven and landed either way.
       - task: payout
+
+  live:
+    desc: 'Deploy the full demo, then keep the proof scheduler in the foreground for new attestations'
+    cmds:
+      - task: default
+      - task: operator
 
   preflight:
     desc: 'Refuse to start rather than fail halfway'
@@ -463,6 +470,18 @@ tasks:
         cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
           --config {{.WORK}}/operator.toml --once --dry-run 2>/dev/null \
           | jq -c 'select(.event=="decision") | {instance, action}'
+
+  operator:
+    desc: 'Keep the demo proof scheduler running in the foreground (Ctrl-C to stop)'
+    deps: [config]
+    cmds:
+      - |
+        echo "→ proof scheduler watching every eligible instance (Ctrl-C to stop)"
+        echo "  status  {{.WORK}}/status.json"
+        echo "  journal {{.WORK}}/journal.jsonl"
+        exec env SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true \
+          cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
+            --config {{.WORK}}/operator.toml
 
   prove:
     desc: 'Run the daemon until the trust root and the round root have both landed'

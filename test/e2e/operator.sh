@@ -162,10 +162,47 @@ say "   ${GREEN}re-attached, no second request ✓${NC}"
 grep -q '"idle":"quiet"' "$WORK/tick-restart.log" \
   || say "   (note: not idle-quiet yet; state was $(grep -o '"action":"[a-z]*"' "$WORK/tick-restart.log" | head -1))"
 
+# --- later inputs produce a later root ------------------------------------------------
+# This is the live-demo promise: the daemon must not only bootstrap an instance. Inputs folded
+# after checkpoint 0 landed have to wake the same scheduler, mint checkpoint 1, and land a root
+# over the enlarged graph without a config rewrite or a human-driven proof step.
+say ""
+say "== attest after the first root: scheduler must prove the new graph =="
+LEAVES_BEFORE=$(cast call "$RESOLVER" "leafCount()(uint64)" --rpc-url "$RPC")
+# Add a genuinely new edge rather than replaying the original ring. Replaying identical vouches
+# moves the append-only accumulator but reconciles to the same logical graph, for which an
+# identical output root is correct.
+LATER_RECIPIENT=0x90F79bf6EB2c4f870365E785982E1f101E93b906
+LATER_DATA=$(cast abi-encode "f(string,uint256)" "later edge" 88)
+EMPTY_UID=0x0000000000000000000000000000000000000000000000000000000000000000
+LATER_REQ="($SCHEMA,($LATER_RECIPIENT,0,true,$EMPTY_UID,$LATER_DATA,0))"
+cast send "$EAS" 'attest((bytes32,(address,uint64,bool,bytes32,bytes,uint256)))' "$LATER_REQ" \
+  --rpc-url "$RPC" --private-key "$PK" >/dev/null \
+  || die "later attestation failed"
+LEAVES_AFTER=$(cast call "$RESOLVER" "leafCount()(uint64)" --rpc-url "$RPC")
+[ "$LEAVES_AFTER" -gt "$LEAVES_BEFORE" ] \
+  || die "new attestations did not move the accumulator ($LEAVES_BEFORE -> $LEAVES_AFTER)"
+
+for i in 1 2 3; do
+  say "   later-root tick $i"
+  "${OP[@]}" 2>&1 | tee "$WORK/tick-later-$i.log" \
+    | grep -E '"event":"(decision|triggered|proved|submitted|instance_skipped)"' | head -5
+done
+
+APPLIED_ID=$(cast call "$SNAPSHOT" "lastAppliedCheckpoint()(uint256)" --rpc-url "$RPC")
+[ "$APPLIED_ID" -ge 1 ] || die "the daemon did not apply a later checkpoint (last=$APPLIED_ID)"
+ROOT2=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" \
+  --rpc-url "$RPC" | grep -o '0x[0-9a-f]\{64\}' | head -1)
+[ "$ROOT2" != "$ROOT" ] || die "the enlarged graph produced the original root again ($ROOT2)"
+INTENTS3=$(grep -c '"kind":"intent"' "$WORK/journal.jsonl" || echo 0)
+[ "$INTENTS3" = "2" ] \
+  || die "expected one proof request per changed graph (2 total), got $INTENTS3"
+say "   ${GREEN}new inputs landed as checkpoint $APPLIED_ID with root $ROOT2 ✓${NC}"
+
 # --- the heartbeat -------------------------------------------------------------------
 jq -e '.instances | length >= 1' "$WORK/status.json" >/dev/null || die "status.json has no instances"
 say "   status.json: $(jq -c '{head_block, instances: [.instances[] | {name, action: .action.action}]}' "$WORK/status.json")"
 
 say ""
-say "${GREEN}OPERATOR E2E PASS — trigger, prove and submit with no human in the loop,${NC}"
-say "${GREEN}and a restart that re-attaches instead of paying again.${NC}"
+say "${GREEN}OPERATOR E2E PASS — trigger, prove and submit two graph versions unattended,${NC}"
+say "${GREEN}with a restart that re-attaches instead of paying again.${NC}"

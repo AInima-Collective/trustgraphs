@@ -16,11 +16,10 @@ unconditional free tier is an unbounded liability: an attacker pays roughly one 
 per epoch to make somebody else pay for a ~600k-gas submit. So the promise is "every **eligible**
 instance", and this page says which ones those are rather than implying it covers everyone.
 
-> **Status.** The decision engine (`packages/operator-core`) is **built**: every branch below is a
-> test in `packages/operator-core/tests/`. The daemon that drives it (`zk/operator`) is M2, and the
-> vault it draws from is M3. This page is the configuration contract they are built against, frozen
-> at the interface freeze so the indexer and frontend could be built in parallel. Sections marked
-> *(planned)* describe behaviour whose configuration shape is fixed but whose code lands later.
+> **Status.** The decision engine (`packages/operator-core`), the daemon that drives it
+> (`zk/operator`), and the proving vault it draws from are built. The local demo exercises both a
+> vault-funded trust-graph root and a curated contributions root. `task demo` is a finite run;
+> `task demo:live` leaves the daemon watching for later attestations.
 
 ---
 

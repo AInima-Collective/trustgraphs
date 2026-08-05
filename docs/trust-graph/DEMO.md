@@ -11,8 +11,10 @@ One complete demo network, plus the permissionless path:
 > contract's cadence, proves them and lands them. Networks we curate are proven on us; a network
 > that funded its own tank pays whoever produced its root.
 
-`task demo` does the whole thing. The prose here is what it does, why each step is shaped that way,
-and what to read when something goes wrong.
+`task demo` does the whole finite walkthrough. It proves the seeded roots and exits. It does **not**
+leave a proof scheduler running. Use `task demo:live` when you want the same deployment followed by
+a foreground scheduler that notices and proves later attestations. The prose here is what each step
+does, why it is shaped that way, and what to read when something goes wrong.
 
 Design: [`FACTORY.md`](./FACTORY.md) for creation, [`../OPERATOR.md`](../OPERATOR.md) for the daemon.
 
@@ -119,13 +121,44 @@ task --list-all | grep demo:
 ```
 
 `demo:deploy`, `demo:fund`, `demo:create`, `demo:seed`, `demo:seed-round`, `demo:govern`,
-`demo:contributions`, `demo:dry-run`, `demo:prove`, `demo:settle`, `demo:payout`, `demo:report`,
-`demo:clean` — plus `demo:id`, `demo:snapshot`, `demo:resolver` and `demo:addresses`, which answer
-"what is this network's X" from the chain rather than from a scratch file.
+`demo:contributions`, `demo:dry-run`, `demo:prove`, `demo:operator`, `demo:live`, `demo:settle`,
+`demo:payout`, `demo:report`, `demo:clean` — plus `demo:id`, `demo:snapshot`, `demo:resolver` and
+`demo:addresses`, which answer "what is this network's X" from the chain rather than from a scratch
+file.
 
 Two things `task demo` deliberately does not do: **start your chain** (it refuses to run without
 one rather than owning an anvil it would then have to tear down), and **start Postgres or IPFS**
 (same reason — `start-all-local` owns those).
+
+### Keep proving after the seeded demo
+
+The finite command above drives the scheduler with `--once` until the initial trust and
+contributions roots land, then exits. To deploy that same complete demo and leave the real daemon
+watching in the foreground:
+
+```bash
+task demo:live
+```
+
+Keep that terminal open. In another terminal, create a vouch in the app or send one directly:
+
+```bash
+bash taskfile/vouch.sh "Demo Co-op" 0 10 90 "new demo vouch"
+```
+
+Demo Co-op has a one-block epoch, so the daemon's next ticks trigger a new checkpoint, prove it,
+publish its score blob, and submit the new root. `anvil --block-time 1` is still recommended for a
+live local demo; a default anvil stops producing blocks when there are no transactions.
+
+If the stack is already deployed, do not redeploy it just to start the watcher:
+
+```bash
+task demo:operator
+```
+
+The heartbeat is `.demo/status.json` and the crash-safe request journal is
+`.demo/journal.jsonl`. Stop the foreground operator with Ctrl-C; restarting `task demo:operator`
+reattaches to the same journal.
 
 Sanity check — the factory can *append* directory rows but not rewrite them:
 

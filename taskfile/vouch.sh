@@ -21,7 +21,11 @@
 #     bash taskfile/vouch.sh "Demo Co-op" 2 4 75
 #     DRY_RUN=1 bash taskfile/vouch.sh "Demo Co-op" 3 7 40      # simulate, send nothing
 #
-# Then produce the proof that picks it up:
+# A running proof scheduler picks it up automatically. For the local demo:
+#
+#     task demo:operator
+#
+# Without a scheduler, the documented manual fallback is:
 #
 #     REGISTRY=… PK=… ONLY=<instanceId> bash taskfile/instances.sh
 #
@@ -84,4 +88,5 @@ cast send "$EAS" 'attest((bytes32,(address,uint64,bool,bytes32,bytes,uint256)))'
 AFTER=$(cast call "$RESOLVER" 'leafCount()(uint256)' --rpc-url "$RPC")
 echo "  folded:      leafCount $BEFORE -> $AFTER"
 echo
-echo "next: REGISTRY=\$(jq -r .instance_registry .docker/instance_registry_deploy.json) PK=\$FUNDED_KEY ONLY=$FOUND bash taskfile/instances.sh"
+echo "next: leave 'task demo:operator' running, or prove manually with:"
+echo "      REGISTRY=\$(jq -r .instance_registry .docker/instance_registry_deploy.json) PK=\$FUNDED_KEY ONLY=$FOUND bash taskfile/instances.sh"
