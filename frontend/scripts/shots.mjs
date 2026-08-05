@@ -14,7 +14,7 @@
  *   pnpm run shots -- --reuse         # skip the build, reuse .next-shots
  *   pnpm run shots -- --routes=/faq   # one route, whole matrix
  *
- * ── Three things this has to work around ─────────────────────────────────────
+ * ── Five things this has to work around ──────────────────────────────────────
  *
  * 1. IT MUST NOT USE `next dev`. The dev server OOMs in this box partway
  *    through a multi-route sweep, and a dev-mode screenshot is not what ships
@@ -35,7 +35,17 @@
  *    busy, and the server is killed by process group. The `cssRules === 0`
  *    check is the backstop for whatever else can produce a naked page.
  *
- * 4. THE FOUR DIRECTORY STATES ARE BUILD-TIME, NOT REQUEST-TIME. `/networks`
+ * 4. THE BUILD NEEDS THE NETWORK, AND ITS DIST DIRECTORY IS WHERE THAT IS
+ *    CACHED. `next/font/google` fetches Instrument Serif at build time to
+ *    self-host it, so a sweep on a box with no DNS fails with
+ *    `getaddrinfo ENOTFOUND fonts.googleapis.com` and no output at all. The
+ *    fetch is cached under `<DIST>/cache`, which means the intuitive
+ *    housekeeping move — `rm -rf .next-shots-<label>` before a re-run — is
+ *    exactly what turns a transient network blip into a failed sweep. Let the
+ *    build reuse its dist. If you must start clean and the network is uncertain,
+ *    copy `cache/` across from another `.next-shots-*` first.
+ *
+ * 5. THE FOUR DIRECTORY STATES ARE BUILD-TIME, NOT REQUEST-TIME. `/networks`
  *    is a statically prerendered ISR route, so the HTML that `next start`
  *    serves first was rendered during `next build`. Switching the fixture and
  *    restarting the server would screenshot the previous state's cache. So each
@@ -295,15 +305,29 @@ const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
   // Then the force-atlas pass, which runs 250ms and stops.
   await page.waitForTimeout(900)
 
+  // Playwright blocks every screenshot on `document.fonts.ready` and gives that
+  // wait the call's whole timeout. Two woff2 files that are already in the disk
+  // cache normally settle instantly, but under the load of several concurrent
+  // builds one sweep lost its last four cells to a font timeout and exited 1,
+  // taking 116 shots down to 103. A harness that discards a finished matrix
+  // because a font was slow is not doing its job, so the wait is bounded here
+  // and the shot goes ahead either way: a page rendered in a fallback face is
+  // something a reviewer can see and judge, and a missing PNG is not.
+  await page
+    .evaluate(() => document.fonts.ready.then(() => undefined))
+    .catch(() => {})
+
   const base = tag
     ? `${route.name}__${tag}__${viewport.name}__${theme}`
     : `${route.name}__${viewport.name}__${theme}`
 
-  await page.screenshot({ path: join(dir, `${base}__fold.png`) })
-  await page.screenshot({
-    path: join(dir, `${base}__full.png`),
-    fullPage: true,
-  })
+  const capture = (options) =>
+    page.screenshot({ timeout: 20_000, ...options }).catch((error) => {
+      problems.push(`screenshot ${options.path.split('/').pop()}: ${error.message.split('\n')[0]}`)
+    })
+
+  await capture({ path: join(dir, `${base}__fold.png`) })
+  await capture({ path: join(dir, `${base}__full.png`), fullPage: true })
 
   // A THIRD SHOT WHEREVER THE PAGE HIDES ITS OWN CONTENT BEHIND A DISCLOSURE.
   //
@@ -323,10 +347,7 @@ const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
   })
   if (opened > 0) {
     await page.waitForTimeout(200)
-    await page.screenshot({
-      path: join(dir, `${base}__open.png`),
-      fullPage: true,
-    })
+    await capture({ path: join(dir, `${base}__open.png`), fullPage: true })
   }
 
   const measured = await page.evaluate(() => {
