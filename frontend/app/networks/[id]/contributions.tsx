@@ -18,6 +18,7 @@ import {
   ContributionsRound,
   contributionsQueries,
 } from '@/lib/contributions-api'
+import { NOMINEE_RESPONSE_COPY } from '@/lib/contributions-copy'
 import {
   ClaimView,
   RatingPowerEntry,
@@ -39,6 +40,7 @@ import {
 } from './SubmitContributionModal'
 
 type FeedSort = 'unrated' | 'newest' | 'top'
+type ResponseChoice = 'accept' | 'reject'
 
 const formatBasisPoints = (basisPoints: number) => {
   const whole = Math.floor(basisPoints / 100)
@@ -120,8 +122,12 @@ const ClaimCard = ({
   isSaving,
   isSubmitted,
   isPending,
+  responseOverride,
+  respondingChoice,
+  responseBusy,
   onRatingChange,
   onSaveRating,
+  onRespond,
 }: {
   claim: ClaimView
   network: ContributionsNetwork
@@ -134,8 +140,12 @@ const ClaimCard = ({
   isSaving: boolean
   isSubmitted: boolean
   isPending?: boolean
+  responseOverride?: ResponseChoice
+  respondingChoice?: ResponseChoice | null
+  responseBusy: boolean
   onRatingChange: (value: number) => void
   onSaveRating: () => void
+  onRespond: (response: ResponseChoice) => void
 }) => {
   const [expanded, setExpanded] = useState(false)
   const isMine =
@@ -146,6 +156,13 @@ const ClaimCard = ({
           contributor.account.toLowerCase() === connectedAddress.toLowerCase()
       ))
   const auditId = `contribution-audit-${claim.uid}`
+  const myContributor = connectedAddress
+    ? claim.contributors.find(
+        (contributor) =>
+          contributor.account.toLowerCase() === connectedAddress.toLowerCase()
+      )
+    : undefined
+  const myResponse = responseOverride ?? myContributor?.response
 
   // The audit view for this claim: every rating incl. the filtered ones, with reasons.
   const { data: audit } = useQuery({
@@ -160,7 +177,12 @@ const ClaimCard = ({
   )
 
   return (
-    <Card type="outline" size="lg" className="space-y-4">
+    <Card
+      id={`contribution-${claim.uid}`}
+      type="outline"
+      size="lg"
+      className="scroll-mt-6 space-y-4"
+    >
       <button
         className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         onClick={() => setExpanded((e) => !e)}
@@ -271,6 +293,52 @@ const ClaimCard = ({
           </div>
         ))}
 
+      {myContributor && !myContributor.isAttester && (
+        <div className="space-y-3 border-t border-hairline pt-3">
+          <div className="space-y-1">
+            <p className="tg-label">Your contributor share</p>
+            <p className="text-sm text-text-muted">
+              {myContributor.sharePct}% of this contribution
+            </p>
+            {myResponse === 'accept' ? (
+              <p className="text-sm text-success">
+                Accepted: you will receive this share.
+              </p>
+            ) : myResponse === 'reject' ? (
+              <p className="text-sm text-error">
+                Declined: this share is removed.
+              </p>
+            ) : (
+              <p className="text-sm text-text-muted">{NOMINEE_RESPONSE_COPY}</p>
+            )}
+          </div>
+          {myResponse === 'none' && (
+            <div className="flex flex-col gap-2 min-[360px]:flex-row">
+              <Button
+                type="button"
+                variant="brand"
+                size="lg"
+                onClick={() => onRespond('accept')}
+                disabled={responseBusy}
+                className="w-full min-[360px]:w-auto"
+              >
+                {respondingChoice === 'accept' ? 'Accepting' : 'Accept share'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                onClick={() => onRespond('reject')}
+                disabled={responseBusy}
+                className="w-full min-[360px]:w-auto"
+              >
+                {respondingChoice === 'reject' ? 'Declining' : 'Decline share'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {expanded && (
         <div id={auditId} className="space-y-5 border-t border-border pt-4">
           {claim.uri && (
@@ -288,39 +356,48 @@ const ClaimCard = ({
           <div className="space-y-2">
             <h3 className="text-sm font-bold">Who did the work</h3>
             <div className="space-y-1.5">
-              {claim.contributors.map((contributor) => (
-                <div
-                  key={contributor.account}
-                  className="flex flex-row items-center justify-between gap-4 text-sm flex-wrap"
-                >
-                  <span className="flex flex-row items-center gap-2">
-                    <Address
-                      address={contributor.account}
-                      displayMode="truncated"
-                    />
-                    <span className="text-muted-foreground">
-                      {contributor.sharePct}% of this contribution
-                    </span>
-                  </span>
-                  <span
-                    className={
-                      contributor.response === 'accept'
-                        ? 'text-success'
-                        : contributor.response === 'reject'
-                          ? 'text-error'
-                          : 'text-muted-foreground'
-                    }
+              {claim.contributors.map((contributor) => {
+                const isConnectedContributor =
+                  !!connectedAddress &&
+                  contributor.account.toLowerCase() ===
+                    connectedAddress.toLowerCase()
+                const response = isConnectedContributor
+                  ? (responseOverride ?? contributor.response)
+                  : contributor.response
+                return (
+                  <div
+                    key={contributor.account}
+                    className="flex flex-row items-center justify-between gap-4 text-sm flex-wrap"
                   >
-                    {contributor.response === 'accept'
-                      ? 'Accepted their share'
-                      : contributor.response === 'reject'
-                        ? 'Declined: their share is removed'
-                        : contributor.isAttester
-                          ? 'Submitted this contribution, so their share counts in full'
-                          : 'No answer yet: their share counts at half weight until they accept'}
-                  </span>
-                </div>
-              ))}
+                    <span className="flex flex-row items-center gap-2">
+                      <Address
+                        address={contributor.account}
+                        displayMode="truncated"
+                      />
+                      <span className="text-muted-foreground">
+                        {contributor.sharePct}% of this contribution
+                      </span>
+                    </span>
+                    <span
+                      className={
+                        response === 'accept'
+                          ? 'text-success'
+                          : response === 'reject'
+                            ? 'text-error'
+                            : 'text-muted-foreground'
+                      }
+                    >
+                      {response === 'accept'
+                        ? 'Accepted their share'
+                        : response === 'reject'
+                          ? 'Declined: their share is removed'
+                          : contributor.isAttester
+                            ? 'Submitted this contribution, so their share counts in full'
+                            : NOMINEE_RESPONSE_COPY}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -341,7 +418,7 @@ const ClaimCard = ({
                         ? "Didn't count: this rater isn't established enough in the trust graph yet"
                         : "Didn't count"
                       : auditEntry?.collaboratorDiscount
-                        ? 'Counted at half weight: this rater worked with the contributors on another claim this round'
+                        ? 'Counted at half weight: this rater worked with the contributors on another contribution this round'
                         : null
                   return (
                     <div
@@ -398,6 +475,7 @@ export const ContributionsNetworkPage = ({
     tokenDecimals,
     phase,
     claimSchema,
+    responseSchema,
     valuationSchema,
   } = useContributionsData(network)
 
@@ -412,6 +490,13 @@ export const ContributionsNetworkPage = ({
   const [submitOpen, setSubmitOpen] = useState(false)
   const [optimisticContribution, setOptimisticContribution] =
     useState<OptimisticContribution | null>(null)
+  const [pendingResponse, setPendingResponse] = useState<{
+    claimUid: string
+    response: ResponseChoice
+  } | null>(null)
+  const [responseOverrides, setResponseOverrides] = useState<
+    Map<string, ResponseChoice>
+  >(new Map())
 
   const optimisticIsIndexed =
     optimisticContribution !== null &&
@@ -421,6 +506,26 @@ export const ContributionsNetworkPage = ({
   const pendingContribution = optimisticIsIndexed
     ? null
     : optimisticContribution
+
+  const connectedContributorFor = (claim: ClaimView) =>
+    connectedAddress
+      ? claim.contributors.find(
+          (contributor) =>
+            contributor.account.toLowerCase() === connectedAddress.toLowerCase()
+        )
+      : undefined
+  const responseFor = (claim: ClaimView) =>
+    responseOverrides.get(claim.uid) ?? connectedContributorFor(claim)?.response
+  const unansweredClaims = connectedAddress
+    ? claims.filter((claim) => {
+        const contributor = connectedContributorFor(claim)
+        return (
+          contributor !== undefined &&
+          !contributor.isAttester &&
+          responseFor(claim) === 'none'
+        )
+      })
+    : []
 
   const chainRatings = useMemo(() => {
     const ratings = new Map<string, number>()
@@ -536,6 +641,31 @@ export const ContributionsNetworkPage = ({
     }
   }
 
+  const respondToContribution = async (
+    claimUid: string,
+    response: ResponseChoice
+  ) => {
+    if (!responseSchema) return
+    setPendingResponse({ claimUid, response })
+    try {
+      await createAttestation({
+        schema: responseSchema.uid,
+        recipient: zeroAddress,
+        data: {
+          claimUID: claimUid,
+          response: response === 'accept' ? '1' : '2',
+        },
+      })
+      setResponseOverrides((current) =>
+        new Map(current).set(claimUid, response)
+      )
+    } catch {
+      // The transaction hook reports the error. Leave the unanswered state intact.
+    } finally {
+      setPendingResponse(null)
+    }
+  }
+
   // Keep the server and first client render identical, then switch the absolute fallback to the
   // useful relative window line after hydration.
   useEffect(() => {
@@ -571,6 +701,19 @@ export const ContributionsNetworkPage = ({
   useEffect(() => {
     if (optimisticIsIndexed) setOptimisticContribution(null)
   }, [optimisticIsIndexed])
+
+  // Drop optimistic response state once the reconciled chain record says the same thing.
+  useEffect(() => {
+    setResponseOverrides((current) => {
+      const next = new Map(current)
+      for (const [claimUid, response] of current) {
+        const claim = claims.find((candidate) => candidate.uid === claimUid)
+        const contributor = claim ? connectedContributorFor(claim) : undefined
+        if (contributor?.response === response) next.delete(claimUid)
+      }
+      return next.size === current.size ? current : next
+    })
+  }, [claims, connectedAddress])
 
   return (
     <div className="space-y-10">
@@ -698,6 +841,25 @@ export const ContributionsNetworkPage = ({
         )}
       </header>
 
+      {unansweredClaims.length > 0 && (
+        <Card
+          type="accent"
+          size="md"
+          role="status"
+          aria-live="polite"
+          className="border-hairline-strong"
+        >
+          <a
+            href={`#contribution-${unansweredClaims[0].uid}`}
+            className="block min-h-11 py-2 text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            {unansweredClaims.length} contribution
+            {unansweredClaims.length === 1 ? '' : 's'} name you. Accept to
+            receive your share.
+          </a>
+        </Card>
+      )}
+
       <SubmitContributionModal
         isOpen={submitOpen}
         onClose={() => setSubmitOpen(false)}
@@ -755,8 +917,18 @@ export const ContributionsNetworkPage = ({
                 isSaving={pendingClaim === claim.uid}
                 isSubmitted={submittedDrafts.has(claim.uid)}
                 isPending={pendingContribution?.claim.uid === claim.uid}
+                responseOverride={responseOverrides.get(claim.uid)}
+                respondingChoice={
+                  pendingResponse?.claimUid === claim.uid
+                    ? pendingResponse.response
+                    : null
+                }
+                responseBusy={isCreating}
                 onRatingChange={(rating) => updateDraft(claim.uid, rating)}
                 onSaveRating={() => saveRating(claim.uid)}
+                onRespond={(response) =>
+                  respondToContribution(claim.uid, response)
+                }
               />
             ))}
           </div>

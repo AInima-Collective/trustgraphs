@@ -21,6 +21,7 @@ import { Modal } from '@/components/Modal'
 import { useAttestation } from '@/hooks/useAttestation'
 import { easAbi } from '@/lib/contract-abis'
 import { ContributionsRound } from '@/lib/contributions-api'
+import { NOMINEE_RESPONSE_COPY } from '@/lib/contributions-copy'
 import { ClaimView } from '@/lib/contributions-view'
 import { ContributionsNetwork } from '@/lib/types'
 
@@ -377,9 +378,7 @@ export const SubmitContributionModal = ({
                 Give credit to work done by someone else.
               </p>
               <p className="text-sm text-text-muted">
-                Your wallet is excluded from this list. If they accept, they
-                receive their share. If they decline, it is removed. Until they
-                answer, it counts at half weight.
+                Your wallet is excluded from this list. {NOMINEE_RESPONSE_COPY}
               </p>
             </Card>
 
