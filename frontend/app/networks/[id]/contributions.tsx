@@ -9,6 +9,7 @@ import { useAccount } from 'wagmi'
 import { Address } from '@/components/Address'
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
 import { useAttestation } from '@/hooks/useAttestation'
@@ -27,7 +28,7 @@ import {
   RatingPowerEntry,
   ratingPowerPreview,
 } from '@/lib/contributions-view'
-import { trustNetworkFor } from '@/lib/network-nav'
+import { contributionsTabs, trustNetworkFor } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
 
 import {
@@ -600,7 +601,6 @@ export const ContributionsNetworkPage = ({
     valuationSchema,
   } = useContributionsData(network)
 
-  const { name, link } = network
   const trustNetwork = trustNetworkFor(network)
   const [now, setNow] = useState<number | null>(null)
   const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
@@ -903,8 +903,13 @@ export const ContributionsNetworkPage = ({
   return (
     <div className="space-y-10">
       <header className="space-y-6">
-        <div className="space-y-3 max-w-3xl">
-          <h1 className="text-3xl font-bold">{name}</h1>
+        <NetworkHeader
+          network={network}
+          tabs={contributionsTabs(network)}
+          className="w-full"
+        />
+
+        <div className="max-w-3xl">
           {trustNetwork ? (
             <p className="text-sm text-text-muted">
               Rater influence is weighted by the{' '}
@@ -922,20 +927,6 @@ export const ContributionsNetworkPage = ({
             </p>
           )}
         </div>
-
-        {link && (
-          <p className="text-sm text-text">
-            {link.prefix}{' '}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              {link.label}
-            </a>
-          </p>
-        )}
 
         <div className="grid gap-6 border-y border-hairline py-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0 space-y-2">

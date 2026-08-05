@@ -10,12 +10,14 @@ import { Address } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { contributionsQueries } from '@/lib/contributions-api'
+import { contributionsTabs } from '@/lib/network-nav'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
 import { ContributionsNetwork } from '@/lib/types'
@@ -23,7 +25,7 @@ import { usePonderQuery } from '@/lib/use-ponder-query'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
-import { BackToRound, useContributionsData } from '../contributions-shared'
+import { useContributionsData } from '../contributions-shared'
 
 type DistributionRow = typeof merkleFundDistribution.$inferSelect
 
@@ -428,13 +430,19 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
 
   return (
     <div className="space-y-12">
-      <header className="space-y-4 max-w-3xl">
-        <BackToRound network={network} />
-        <h1 className="text-3xl font-bold">Claim your share</h1>
-        <p className="text-muted-foreground">
-          Your share comes from the round&apos;s proven community scores.
-          Funding or claiming later never changes your portion.
-        </p>
+      <header className="space-y-4">
+        <NetworkHeader
+          network={network}
+          tabs={contributionsTabs(network)}
+          className="w-full"
+        />
+        <div className="max-w-3xl space-y-2">
+          <h2 className="text-2xl font-semibold">Claim your share</h2>
+          <p className="text-muted-foreground">
+            Your share comes from the round&apos;s proven community scores.
+            Funding or claiming later never changes your portion.
+          </p>
+        </div>
       </header>
 
       {isPaused && (
