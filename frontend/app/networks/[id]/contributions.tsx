@@ -2,23 +2,25 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Address } from '@/components/Address'
 import { ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
 import { SectionHeading } from '@/components/SectionHeading'
-import { StatisticCard } from '@/components/StatisticCard'
-import { contributionsQueries } from '@/lib/contributions-api'
+import {
+  ContributionsRound,
+  contributionsQueries,
+} from '@/lib/contributions-api'
 import { ClaimView } from '@/lib/contributions-view'
+import { trustNetworkFor } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
 import { formatBigNumber } from '@/lib/utils'
 
 import {
-  ContributionsNav,
+  RoundPhase,
   formatPoolAmount,
-  roundStatusLabel,
   useContributionsData,
 } from './contributions-shared'
 
@@ -28,6 +30,49 @@ const dateLabel = (unixSeconds: string | bigint) =>
     month: 'short',
     day: 'numeric',
   })
+
+const timeDistance = (seconds: number) => {
+  if (seconds < 60) return 'less than a minute'
+  if (seconds < 3_600) {
+    const minutes = Math.ceil(seconds / 60)
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`
+  }
+  if (seconds < 86_400) {
+    const hours = Math.ceil(seconds / 3_600)
+    return `${hours} hour${hours === 1 ? '' : 's'}`
+  }
+  const days = Math.ceil(seconds / 86_400)
+  return `${days} day${days === 1 ? '' : 's'}`
+}
+
+const roundWindowLabel = (
+  round: ContributionsRound | null,
+  phase: RoundPhase,
+  now: number | null
+) => {
+  if (!round || phase === 'unknown') return 'Round timing unavailable'
+  if (phase === 'upcoming') {
+    return now === null
+      ? `Submissions open ${dateLabel(round.window.start)}`
+      : `Submissions open in ${timeDistance(
+          Math.max(Number(round.window.start) - now, 0)
+        )}`
+  }
+  if (phase === 'open') {
+    return now === null
+      ? `Closes ${dateLabel(round.window.end)}`
+      : `Closes in ${timeDistance(Math.max(Number(round.window.end) - now, 0))}`
+  }
+  return `Closed ${dateLabel(round.window.end)}`
+}
+
+const phaseLabel: Record<RoundPhase, string> = {
+  upcoming: 'Upcoming',
+  open: 'Open',
+  settling: 'Scores being proven',
+  claimable: 'Ready to claim',
+  unknown: 'Status unavailable',
+}
 
 /**
  * One claim, expandable to its contributors and ratings, with plain-language notes on why a
@@ -85,7 +130,7 @@ const ClaimCard = ({
           <div className="text-right">
             <div className="text-xs text-muted-foreground">Community score</div>
             <div className="font-mono">
-              {score !== undefined ? formatBigNumber(score, 18) : '—'}
+              {score !== undefined ? formatBigNumber(score, 18) : 'Unavailable'}
             </div>
           </div>
           {expanded ? (
@@ -141,7 +186,7 @@ const ClaimCard = ({
                       : contributor.response === 'reject'
                         ? 'Declined: their share is removed'
                         : contributor.isAttester
-                          ? 'Submitted this claim, so their share counts in full'
+                          ? 'Submitted this contribution, so their share counts in full'
                           : 'No answer yet: their share counts at half weight until they accept'}
                   </span>
                 </div>
@@ -211,23 +256,52 @@ export const ContributionsNetworkPage = ({
 }) => {
   const {
     round,
-    roundLoading,
     roundAvailable,
+    roundLoading,
     scoreByUid,
     claims,
     state,
     claimsLoading,
     tokenSymbol,
     tokenDecimals,
+    phase,
   } = useContributionsData(network)
 
   const { name, link, about, criteria } = network
+  const trustNetwork = trustNetworkFor(network)
+  const [now, setNow] = useState<number | null>(null)
+
+  // Keep the server and first client render identical, then switch the absolute fallback to the
+  // useful relative window line after hydration.
+  useEffect(() => {
+    setNow(Math.floor(Date.now() / 1000))
+  }, [])
 
   return (
     <div className="space-y-10">
-      {/* Header */}
-      <div className="space-y-4">
-        <h1 className="text-3xl font-bold">{name}</h1>
+      <header className="space-y-6">
+        <div className="space-y-3 max-w-3xl">
+          <h1 className="text-3xl font-bold">{name}</h1>
+          {trustNetwork ? (
+            <p className="text-sm text-text-muted">
+              Rater influence is weighted by the{' '}
+              <a
+                href={`/networks/${trustNetwork.id}`}
+                className="text-text underline underline-offset-4"
+              >
+                {trustNetwork.name} trust network
+              </a>
+              .
+            </p>
+          ) : (
+            <p className="text-sm text-text-muted">
+              Rater influence is weighted by this round&apos;s trust network.
+            </p>
+          )}
+          <Markdown>{about}</Markdown>
+          {criteria && <Markdown>{criteria}</Markdown>}
+        </div>
+
         {link && (
           <p className="text-sm text-text">
             {link.prefix}{' '}
@@ -241,75 +315,91 @@ export const ContributionsNetworkPage = ({
             </a>
           </p>
         )}
-        <Markdown>{about}</Markdown>
-        {criteria && <Markdown>{criteria}</Markdown>}
-      </div>
 
-      <ContributionsNav network={network} />
+        <div className="grid gap-6 border-y border-hairline py-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <div className="min-w-0 space-y-2">
+            <p className="tg-label">Funding pool</p>
+            {round ? (
+              <p className="tg-display text-4xl tabular-nums break-words">
+                {formatPoolAmount(round.pool, tokenDecimals, tokenSymbol)}
+              </p>
+            ) : (
+              <p className="text-sm text-warn">
+                {roundLoading
+                  ? 'Pool shown when round data arrives.'
+                  : 'Pool unavailable while the round service is offline.'}
+              </p>
+            )}
+            <p className="text-sm text-text-muted">
+              {claimsLoading ? (
+                'On-chain contribution totals are loading.'
+              ) : (
+                <>
+                  {claims.length} contribution{claims.length === 1 ? '' : 's'}
+                  <span aria-hidden="true"> · </span>
+                  {state.valuations.size} rating
+                  {state.valuations.size === 1 ? '' : 's'}
+                </>
+              )}
+            </p>
+          </div>
 
-      {/* Round status */}
-      <div className="flex flex-row gap-4 flex-wrap">
-        <StatisticCard
-          title="ROUND STATUS"
-          tooltip="Whether the round is accepting contributions and ratings, wrapping up, or already paid out."
-          value={roundLoading ? '...' : roundStatusLabel(round?.status ?? null)}
-        />
-        <StatisticCard
-          title="ROUND WINDOW"
-          tooltip="Contributions submitted inside this window count for this round's funding."
-          value={
-            round
-              ? `${dateLabel(round.window.start)} – ${dateLabel(round.window.end)}`
-              : '—'
-          }
-        />
-        <StatisticCard
-          title="FUNDING POOL"
-          tooltip="The pool that gets split across contributions by their final proven scores."
-          value={
-            round
-              ? formatPoolAmount(round.pool, tokenDecimals, tokenSymbol)
-              : '—'
-          }
-        />
-        <StatisticCard
-          title="CONTRIBUTIONS"
-          tooltip="Claimed contributions currently live on-chain."
-          value={claimsLoading ? '...' : String(claims.length)}
-        />
-        <StatisticCard
-          title="RATINGS"
-          tooltip="Ratings currently live on-chain (one per person per contribution; new ratings replace old ones)."
-          value={claimsLoading ? '...' : String(state.valuations.size)}
-        />
-      </div>
+          <div className="space-y-3 sm:text-right">
+            <div>
+              <p className="tg-label">{phaseLabel[phase]}</p>
+              <p className="text-sm text-text-muted">
+                {roundWindowLabel(round, phase, now)}
+              </p>
+            </div>
+            {phase === 'open' && (
+              <ButtonLink
+                href={`/networks/${network.id}/contribute`}
+                variant="brand"
+                size="lg"
+                className="w-full sm:w-auto"
+              >
+                Submit contribution
+              </ButtonLink>
+            )}
+            {phase === 'claimable' && (
+              <ButtonLink
+                href={`/networks/${network.id}/payout`}
+                variant="brand"
+                size="lg"
+                className="w-full sm:w-auto"
+              >
+                Claim your share
+              </ButtonLink>
+            )}
+            {phase === 'settling' && (
+              <p className="text-sm text-text-muted" aria-live="polite">
+                Scores are being proven. Claiming opens after a distribution is
+                funded against the current score table.
+              </p>
+            )}
+            {phase === 'upcoming' && (
+              <p className="text-sm text-text-muted">
+                Submissions open with the round window.
+              </p>
+            )}
+            {phase === 'unknown' && (
+              <p className="text-sm text-warn">
+                {roundLoading
+                  ? 'Submission status will appear with the round data.'
+                  : 'Submission status is unavailable until the round service returns.'}
+              </p>
+            )}
+          </div>
+        </div>
 
-      {!roundLoading && !roundAvailable && (
-        <p className="text-sm text-warn">
-          The round summary service isn&apos;t reachable yet, so the window,
-          pool, and scores are hidden. Everything below comes straight from the
-          chain.
-        </p>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-row gap-3 flex-wrap">
-        <ButtonLink href={`/networks/${network.id}/contribute`} variant="brand">
-          Claim a contribution
-        </ButtonLink>
-        <ButtonLink href={`/networks/${network.id}/rate`} variant="secondary">
-          Rate contributions
-        </ButtonLink>
-        <ButtonLink
-          href={`/networks/${network.id}/respond`}
-          variant="secondary"
-        >
-          Respond to being named
-        </ButtonLink>
-        <ButtonLink href={`/networks/${network.id}/payout`} variant="secondary">
-          Payouts
-        </ButtonLink>
-      </div>
+        {!roundLoading && !roundAvailable && (
+          <p className="text-sm text-warn">
+            The round service is not reachable, so the window, pool, and scores
+            are hidden. Contributions and ratings below still come straight from
+            the chain.
+          </p>
+        )}
+      </header>
 
       {/* Claims */}
       <div className="space-y-4">
@@ -321,7 +411,7 @@ export const ContributionsNetworkPage = ({
         ) : claims.length === 0 ? (
           <Card type="outline" size="lg" className="text-center">
             <p className="text-muted-foreground">
-              No contributions have been claimed yet. Be the first: claim the
+              No contributions have been submitted yet. Be the first to share
               work you or others did.
             </p>
           </Card>
