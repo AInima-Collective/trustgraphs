@@ -2,7 +2,7 @@
 //! reproduces `abi.encode` / `keccak256` for the frozen tuples (all STATIC ABI types, so `abi.encode`
 //! is simply the concatenation of 32-byte big-endian words).
 
-import { concat, hexToBytes, keccak256, type Hex } from 'viem'
+import { type Hex, concat, hexToBytes, keccak256 } from 'viem'
 
 import { seedSetRoot } from './merkle'
 import {
@@ -13,12 +13,12 @@ import {
   type SignerJournal,
 } from './types'
 import {
+  ZERO_HASH,
   wordAddr,
   wordU256,
   wordU32,
   wordU64,
   wordU8,
-  ZERO_HASH,
 } from './words'
 
 /**
@@ -53,7 +53,9 @@ export const fold = (prev: Hex, leaf: Hex): Hex =>
  * Recompute the running accumulator over the full edge set, returning `{ acc, leafCount }`.
  * `acc_0 = bytes32(0)`.
  */
-export const accumulate = (edges: RawEdge[]): { acc: Hex; leafCount: bigint } => {
+export const accumulate = (
+  edges: RawEdge[]
+): { acc: Hex; leafCount: bigint } => {
   let acc: Hex = ZERO_HASH
   for (const e of edges) {
     const dataHash = keccak256(e.data)
@@ -110,7 +112,11 @@ export const journalDigest = (j: Journal): Hex => keccak256(journalEncoded(j))
  */
 export const paramsHash = (p: Params): Hex => {
   const seeds = [...p.trustedSeeds].sort((a, b) =>
-    a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0
+    a.toLowerCase() < b.toLowerCase()
+      ? -1
+      : a.toLowerCase() > b.toLowerCase()
+        ? 1
+        : 0
   )
   const seedRoot = seedSetRoot(seeds)
   return keccak256(
@@ -138,7 +144,9 @@ export const paramsHash = (p: Params): Hex => {
 
 /** keccak over the concatenated lane-2 domain separators; 0x0 when empty (lane 2 disabled). */
 export const domainSetHash = (separators: Hex[]): Hex =>
-  separators.length === 0 ? (`0x${'00'.repeat(32)}` as Hex) : keccak256(concat(separators))
+  separators.length === 0
+    ? (`0x${'00'.repeat(32)}` as Hex)
+    : keccak256(concat(separators))
 
 /**
  * The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:

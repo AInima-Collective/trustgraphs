@@ -12,13 +12,13 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { concat, keccak256, toBytes, toHex, type Hex } from 'viem'
+import { type Hex, concat, keccak256, toBytes, toHex } from 'viem'
 
 import {
-  journalDigest as recomputeJournalDigest,
-  recompute,
   type HypercertsParams,
   type RecomputeInput,
+  recompute,
+  journalDigest as recomputeJournalDigest,
 } from './recompute'
 
 // ---- pure-viem hashing helpers ----------------------------------------------
@@ -47,7 +47,8 @@ const ozRoot = (leaves: Hex[]): Hex => {
   const size = 2 * n - 1
   const tree: Hex[] = new Array(size).fill(ZERO)
   for (let i = 0; i < n; i++) tree[size - 1 - i] = sorted[i]
-  for (let i = n - 2; i >= 0; i--) tree[i] = hashPair(tree[2 * i + 1], tree[2 * i + 2])
+  for (let i = n - 2; i >= 0; i--)
+    tree[i] = hashPair(tree[2 * i + 1], tree[2 * i + 2])
   return tree[0]
 }
 
@@ -129,14 +130,29 @@ const check = (name: string, actual: unknown, expected: unknown) => {
 
 console.log('golden-vector reproduction (hypercerts TS view — reduced tier)')
 
-check('seedSetRoot', seedSetRoot(p.trustedSeedDids).toLowerCase(), String(p.seedSetRoot).toLowerCase())
-check('paramsHash', paramsHash().toLowerCase(), String(p.paramsHash).toLowerCase())
+check(
+  'seedSetRoot',
+  seedSetRoot(p.trustedSeedDids).toLowerCase(),
+  String(p.seedSetRoot).toLowerCase()
+)
+check(
+  'paramsHash',
+  paramsHash().toLowerCase(),
+  String(p.paramsHash).toLowerCase()
+)
 check(
   'node_output_leaf',
-  nodeOutputLeaf(g.outputLeaf.nodeId as Hex, BigInt(g.outputLeaf.value)).toLowerCase(),
+  nodeOutputLeaf(
+    g.outputLeaf.nodeId as Hex,
+    BigInt(g.outputLeaf.value)
+  ).toLowerCase(),
   String(g.outputLeaf.leaf).toLowerCase()
 )
-check('journalDigest', journalDigest().toLowerCase(), String(j.digest).toLowerCase())
+check(
+  'journalDigest',
+  journalDigest().toLowerCase(),
+  String(j.digest).toLowerCase()
+)
 
 // ---- reduced-tier recompute (the M4 exit criterion at the vector layer) -----
 //
@@ -145,7 +161,9 @@ check('journalDigest', journalDigest().toLowerCase(), String(j.digest).toLowerCa
 // the browser reproducing rank → distribute → output_root → blob/cid → skippedDigest → journal
 // digest from the envelope-verified edges alone (envelope verification itself stays in-guest).
 
-console.log('\nreduced-tier recompute (rank + root + journal from indexed edges)')
+console.log(
+  '\nreduced-tier recompute (rank + root + journal from indexed edges)'
+)
 
 const rc = g.recompute
 const rcParams: HypercertsParams = {
@@ -168,12 +186,16 @@ const rcParams: HypercertsParams = {
   lane2MaxHeadAge: BigInt(p.lane2MaxHeadAge),
 }
 const rcInput: RecomputeInput = {
-  edges: (rc.edges as Array<{ source: Hex; target: Hex; weightFp: string }>).map((e) => ({
+  edges: (
+    rc.edges as Array<{ source: Hex; target: Hex; weightFp: string }>
+  ).map((e) => ({
     source: e.source,
     target: e.target,
     weightFp: e.weightFp,
   })),
-  skips: (rc.skips as Array<{ nodeId: Hex; reason: number; epochObserved: number }>).map((s) => ({
+  skips: (
+    rc.skips as Array<{ nodeId: Hex; reason: number; epochObserved: number }>
+  ).map((s) => ({
     nodeId: s.nodeId,
     reason: Number(s.reason),
     epochObserved: Number(s.epochObserved),
@@ -190,19 +212,46 @@ const rcInput: RecomputeInput = {
   // The v3 bindings the vectors pin. In the browser these come from `MerkleProofSubmitted`'s
   // recipient and the snapshot's `instanceDomain()`; here they come from the same fixture the
   // guest used, which is what makes the digest reproduce at all.
-  binding: { recipient: j.recipient as Hex, instanceDomain: j.instanceDomain as Hex },
+  binding: {
+    recipient: j.recipient as Hex,
+    instanceDomain: j.instanceDomain as Hex,
+  },
 }
 
 const result = recompute(rcInput)
 const rj = result.journal
 
-check('recompute paramsHash', String(rj.paramsHash).toLowerCase(), String(j.paramsHash).toLowerCase())
-check('recompute outputRoot', String(rj.outputRoot).toLowerCase(), String(j.outputRoot).toLowerCase())
-check('recompute ipfsHash', String(rj.ipfsHash).toLowerCase(), String(j.ipfsHash).toLowerCase())
-check('recompute cidDigest', String(rj.cidDigest).toLowerCase(), String(j.cidDigest).toLowerCase())
+check(
+  'recompute paramsHash',
+  String(rj.paramsHash).toLowerCase(),
+  String(j.paramsHash).toLowerCase()
+)
+check(
+  'recompute outputRoot',
+  String(rj.outputRoot).toLowerCase(),
+  String(j.outputRoot).toLowerCase()
+)
+check(
+  'recompute ipfsHash',
+  String(rj.ipfsHash).toLowerCase(),
+  String(j.ipfsHash).toLowerCase()
+)
+check(
+  'recompute cidDigest',
+  String(rj.cidDigest).toLowerCase(),
+  String(j.cidDigest).toLowerCase()
+)
 check('recompute totalValue', rj.totalValue.toString(), String(j.totalValue))
-check('recompute skippedDigest', String(rj.skippedDigest).toLowerCase(), String(j.skippedDigest).toLowerCase())
-check('recompute anchorAcc', String(rj.anchorAcc).toLowerCase(), String(j.anchorAcc).toLowerCase())
+check(
+  'recompute skippedDigest',
+  String(rj.skippedDigest).toLowerCase(),
+  String(j.skippedDigest).toLowerCase()
+)
+check(
+  'recompute anchorAcc',
+  String(rj.anchorAcc).toLowerCase(),
+  String(j.anchorAcc).toLowerCase()
+)
 check('recompute blob', result.blob, String(g.cid.blob))
 check('recompute cid', result.cid, String(g.cid.cid))
 check(

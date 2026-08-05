@@ -1,4 +1,4 @@
-import { pad, toHex, type Hex } from 'viem'
+import { type Hex, pad, toHex } from 'viem'
 
 /** The 32-byte zero word / zero hash. */
 export const ZERO_HASH: Hex = `0x${'00'.repeat(32)}`

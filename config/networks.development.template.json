@@ -58,7 +58,7 @@
     "id": "demo-co-op-contributions",
     "program": "contributions",
     "name": "Demo Co-op Contributions",
-    "about": "This funding round turns Demo Co-op's activity into transparent, community-scored payouts. Members claim work, respond when they are named as contributors, and rate contributions; every rating is weighted by the rater's standing in the Demo Co-op trust graph before the final allocation is proven in zero knowledge.",
+    "about": "This funding round turns Demo Co-op’s activity into transparent, community-scored payouts. Members claim work, respond when they are named as contributors, and rate contributions; every rating is weighted by the rater's standing in the Demo Co-op trust graph before the final allocation is proven in zero knowledge.",
     "criteria": "How the Demo Co-op round works:\n\n1. **Contribute**: record useful work completed for the co-op, link the evidence, and name the people who did it.\n2. **Respond**: named contributors accept or reject their attribution. Rejecting refuses both credit and payment.\n3. **Rate**: members score eligible contributions from 0 to 100. Ratings share a fixed budget, so rating everything highly dilutes each score.\n4. **Payout**: after the round closes, the pool is split by the proven scores and each contributor claims their share.",
     "contracts": {},
     "schemas": []

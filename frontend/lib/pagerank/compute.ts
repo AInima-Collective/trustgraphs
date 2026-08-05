@@ -2,16 +2,15 @@
 //! the browser calls to reproduce, byte-for-byte, what the SP1 guest commits. Mirrors
 //! `pagerank_core::compute`.
 
-import { keccak256, stringToBytes, type Hex } from 'viem'
+import { type Hex, keccak256, stringToBytes } from 'viem'
 
-import {
-  canonicalBlob,
-  cidV1Raw,
-  digestToHex,
-  sha256Utf8,
-} from './cid'
+import { canonicalBlob, cidV1Raw, digestToHex, sha256Utf8 } from './cid'
 import { distributePoints } from './distribute'
-import { accumulate, journalDigest as encodeJournalDigest, paramsHash } from './encode'
+import {
+  accumulate,
+  journalDigest as encodeJournalDigest,
+  paramsHash,
+} from './encode'
 import { merkleRoot, outputLeaf } from './merkle'
 import { calculate } from './pagerank'
 import { buildGraph } from './reconcile'

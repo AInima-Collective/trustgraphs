@@ -85,7 +85,10 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
   } as GuestInput)
 
   const selectionHash = selectionParamsHash(input.selection)
-  const { signers, threshold: targetThreshold } = selectSigners(base.scores, input.selection)
+  const { signers, threshold: targetThreshold } = selectSigners(
+    base.scores,
+    input.selection
+  )
   const setRoot = signerSetRoot(signers)
 
   const journal: SignerJournal = {

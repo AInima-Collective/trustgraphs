@@ -18,7 +18,7 @@
 //! the exact same shape as the 20-byte→32 address hex those modules already key by, so the algorithm
 //! and trust semantics are byte-identical to the trust-graph instance.
 
-import { concat, keccak256, stringToBytes, toBytes, type Hex } from 'viem'
+import { type Hex, concat, keccak256, stringToBytes, toBytes } from 'viem'
 
 import {
   canonicalBlob,
@@ -27,12 +27,19 @@ import {
   sha256Utf8,
 } from '../pagerank/cid'
 import { distributePoints } from '../pagerank/distribute'
-import { fold, journalDigest as encodeJournalDigest } from '../pagerank/encode'
+import { journalDigest as encodeJournalDigest, fold } from '../pagerank/encode'
 import { merkleRoot, outputLeaf } from '../pagerank/merkle'
 import { calculate } from '../pagerank/pagerank'
 import { type Graph } from '../pagerank/reconcile'
 import { type Journal, type Params as PagerankParams } from '../pagerank/types'
-import { cmpHex, wordU256, wordU64, wordU8, ZERO_ADDRESS, ZERO_HASH } from '../pagerank/words'
+import {
+  ZERO_ADDRESS,
+  ZERO_HASH,
+  cmpHex,
+  wordU256,
+  wordU64,
+  wordU8,
+} from '../pagerank/words'
 
 // ---- indexer-served input shape ---------------------------------------------
 //
@@ -182,7 +189,9 @@ export const paramsHash = (p: HypercertsParams): Hex => {
 
 /** The skip-entry leaf: `keccak256(abi.encode(bytes32 nodeId, uint8 reason, uint64 epochObserved))`. */
 export const skipLeaf = (e: SkippedNode): Hex =>
-  keccak256(concat([e.nodeId, wordU8(e.reason), wordU64(BigInt(e.epochObserved))]))
+  keccak256(
+    concat([e.nodeId, wordU8(e.reason), wordU64(BigInt(e.epochObserved))])
+  )
 
 /**
  * The `skippedDigest`: chained fold (acc₀ = 0) over skip leaves sorted ascending by
@@ -219,7 +228,10 @@ export interface RecomputeResult {
  * (`minWeightFp`/`maxWeightFp`/`schemaUid`/`weightFieldIndex`) are unused here and set to inert
  * defaults. `trustedSeeds` carries the seed NODEIDS (same hex shape the port keys by).
  */
-const asRankParams = (p: HypercertsParams, seedNodeIds: Hex[]): PagerankParams => ({
+const asRankParams = (
+  p: HypercertsParams,
+  seedNodeIds: Hex[]
+): PagerankParams => ({
   dampingFp: p.dampingFp,
   toleranceFp: p.toleranceFp,
   maxIterations: p.maxIterations,
@@ -256,7 +268,9 @@ const graphFromEdges = (edges: OffchainEdge[]): Graph => {
     // Edges are pre-summed per (source, target) by the guest; sum defensively if the indexer split them.
     inner.set(target, (inner.get(target) ?? 0n) + w)
   }
-  const nodes = Array.from(nodeSet).sort((a, b) => cmpHex(a as Hex, b as Hex)) as Hex[]
+  const nodes = Array.from(nodeSet).sort((a, b) =>
+    cmpHex(a as Hex, b as Hex)
+  ) as Hex[]
   return { nodes, outgoing }
 }
 
@@ -266,7 +280,9 @@ const graphFromEdges = (edges: OffchainEdge[]): Graph => {
  */
 export const recompute = (input: RecomputeInput): RecomputeResult => {
   const p = input.params
-  const seedNodeIds = Array.from(new Set(p.trustedSeedDids.map(didNodeId))) as Hex[]
+  const seedNodeIds = Array.from(
+    new Set(p.trustedSeedDids.map(didNodeId))
+  ) as Hex[]
   const rankParams = asRankParams(p, seedNodeIds)
 
   // 1. Rank the envelope-verified edge set (the exact pagerank-core algorithm, nodeId-keyed).
@@ -282,7 +298,8 @@ export const recompute = (input: RecomputeInput): RecomputeResult => {
   // 3. Output tree: unified nodeId leaves for every scored node, PLUS v1 address leaves for bound
   //    actors (address-keyed consumers work unchanged). Order is irrelevant — merkleRoot sorts.
   const bindingByNode = new Map<string, Hex>()
-  for (const b of input.bindings) bindingByNode.set(b.nodeId.toLowerCase(), b.address)
+  for (const b of input.bindings)
+    bindingByNode.set(b.nodeId.toLowerCase(), b.address)
   const leaves: Hex[] = assigned.map(([id, v]) => nodeOutputLeaf(id, v))
   for (const [id, v] of assigned) {
     const addr = bindingByNode.get(id.toLowerCase())

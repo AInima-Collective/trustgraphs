@@ -11,7 +11,7 @@
 //! `paramsHash`. To check the on-chain lane-2 accumulator, read `AnchorRegistry.anchorAcc()/
 //! anchorCount()` or the `MerkleSnapshot.AnchorsCheckpointed` event — those are NOT reproduced here.
 
-import { concat, type Hex } from 'viem'
+import { type Hex, concat } from 'viem'
 
 import { compute } from './compute'
 import { type Journal, type Params, type RawEdge } from './types'
@@ -20,7 +20,8 @@ import { wordU256 } from './words'
 const S = 10n ** 18n
 
 /** Convert a JS float to a fixed-point bigint at scale 1e18 (rounded at 1e-9 precision). */
-export const toFp = (x: number): bigint => BigInt(Math.round(x * 1e9)) * 10n ** 9n
+export const toFp = (x: number): bigint =>
+  BigInt(Math.round(x * 1e9)) * 10n ** 9n
 
 export interface SimAttestation {
   attester: Hex

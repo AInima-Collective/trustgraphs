@@ -3,7 +3,7 @@
 //! The blob is a compact JSON object `{"0x<addr>":"<decimal value>",...}` with addresses lowercased
 //! and sorted ascending. Its SHA2-256 digest is `ipfsHash`; the CIDv1-raw string is `ipfsHashCid`.
 
-import { bytesToHex, sha256 as viemSha256, type Hex } from 'viem'
+import { type Hex, bytesToHex, sha256 as viemSha256 } from 'viem'
 
 /**
  * Serialize the scored set to the canonical blob. `scores` MUST be sorted ascending by address and

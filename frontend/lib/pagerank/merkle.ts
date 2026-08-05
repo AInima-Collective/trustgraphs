@@ -2,9 +2,9 @@
 //! the zk guest and the on-chain `MerkleProof.verifyCalldata` (commutative / sorted-pair hashing).
 //! Mirrors `pagerank_core::merkle`.
 
-import { concat, keccak256, type Hex } from 'viem'
+import { type Hex, concat, keccak256 } from 'viem'
 
-import { cmpHex, wordAddr, wordU256, ZERO_HASH } from './words'
+import { ZERO_HASH, cmpHex, wordAddr, wordU256 } from './words'
 
 /**
  * The output-tree leaf:

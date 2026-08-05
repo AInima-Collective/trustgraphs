@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict'
 
-import { concat, keccak256, type Hex } from 'viem'
+import { type Hex, concat, keccak256 } from 'viem'
 
 import { compute, journalDigest } from './compute'
 import {
@@ -22,8 +22,8 @@ import {
   journalEncoded,
   paramsHash,
   selectionParamsHash,
-  signerJournalEncoded,
   signerJournalDigest,
+  signerJournalEncoded,
 } from './encode'
 import { signerSetRoot } from './merkle'
 import { computeSigners, selectSigners } from './signer'
@@ -39,11 +39,14 @@ import { wordU256 } from './words'
 
 const S = 10n ** 18n
 
-const addr = (b: number): Hex => (`0x${b.toString(16).padStart(2, '0').repeat(20)}`) as Hex
-const uid = (b: number): Hex => (`0x${b.toString(16).padStart(2, '0').repeat(32)}`) as Hex
+const addr = (b: number): Hex =>
+  `0x${b.toString(16).padStart(2, '0').repeat(20)}` as Hex
+const uid = (b: number): Hex =>
+  `0x${b.toString(16).padStart(2, '0').repeat(32)}` as Hex
 
 /** ABI-encode `(string comment, uint256 confidence)` head: slot 0 = offset, slot 1 = confidence. */
-const edgeData = (confidence: bigint): Hex => concat([wordU256(0n), wordU256(confidence)])
+const edgeData = (confidence: bigint): Hex =>
+  concat([wordU256(0n), wordU256(confidence)])
 
 const edge = (
   from: number,
@@ -95,27 +98,39 @@ const input: GuestInput = {
   binding,
 }
 
-const selection: SelectionParams = { topN: 3, minThreshold: 1, targetThresholdBps: 5000 }
+const selection: SelectionParams = {
+  topN: 3,
+  minThreshold: 1,
+  targetThresholdBps: 5000,
+}
 
 // Golden expectations (from test/golden/trust-graph.json).
 const GOLDEN = {
   acc: '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d151',
   leafCount: 3n,
-  paramsHash: '0x4c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757', // 17-field (v2: + accumulator, chainId)
-  outputRoot: '0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27',
-  ipfsHash: '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
+  paramsHash:
+    '0x4c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757', // 17-field (v2: + accumulator, chainId)
+  outputRoot:
+    '0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27',
+  ipfsHash:
+    '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
   cid: 'bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4',
-  cidDigest: '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
+  cidDigest:
+    '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
   journalEncoded:
     '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d1510000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d7570eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f41800000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
-  journalDigest: '0x8bc0aa702bd294c61b3487f4f97c48642ec511707f1057fde32f31b62fc8ec64', // journal v3 (two-lane + recipient/instanceDomain)
+  journalDigest:
+    '0x8bc0aa702bd294c61b3487f4f97c48642ec511707f1057fde32f31b62fc8ec64', // journal v3 (two-lane + recipient/instanceDomain)
   recipient: '0xbebebebebebebebebebebebebebebebebebebebe',
-  instanceDomain: '0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
+  instanceDomain:
+    '0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
   instanceDomainSnapshot: '0x5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a',
   instanceDomainChainId: 31337n,
   totalValue: 1_000_000_000_000_000_000_000_000n, // 1e24
-  edge0DataHash: '0x00bcd6ff29ae71d399fb597d99792fa72d0863bd723b9ab11f79d0b8d8ac5bc8',
-  edge0Leaf: '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
+  edge0DataHash:
+    '0x00bcd6ff29ae71d399fb597d99792fa72d0863bd723b9ab11f79d0b8d8ac5bc8',
+  edge0Leaf:
+    '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
   blob:
     '{"0x0101010101010101010101010101010101010101":"220016440032880065760133",' +
     '"0x0202020202020202020202020202020202020202":"300189600379200758401516",' +
@@ -127,17 +142,20 @@ const GOLDEN = {
   } as Record<string, bigint>,
   // Signer-sync section (from test/golden/trust-graph.json `.signer`).
   signer: {
-    selectionParamsHash: '0xae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c5204310',
+    selectionParamsHash:
+      '0xae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c5204310',
     signers: [
       '0x0101010101010101010101010101010101010101',
       '0x0202020202020202020202020202020202020202',
       '0x0303030303030303030303030303030303030303',
     ] as Hex[],
-    signerSetRoot: '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
+    signerSetRoot:
+      '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
     targetThreshold: 2n,
     journalEncoded:
       '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d15100000000000000000000000000000000000000000000000000000000000000034c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac30000000000000000000000000000000000000000000000000000000000000002',
-    journalDigest: '0xfdc70ed2d32f22064bcbe84812a5b0539fbc6cdfc026978dce12cbbeb081631f',
+    journalDigest:
+      '0xfdc70ed2d32f22064bcbe84812a5b0539fbc6cdfc026978dce12cbbeb081631f',
   },
 }
 
@@ -150,11 +168,15 @@ const check = (name: string, actual: unknown, expected: unknown) => {
     console.log(`  ok   ${name}`)
   } catch {
     failures++
-    console.error(`  FAIL ${name}\n         expected: ${String(expected)}\n         actual:   ${String(actual)}`)
+    console.error(
+      `  FAIL ${name}\n         expected: ${String(expected)}\n         actual:   ${String(actual)}`
+    )
   }
 }
 
-console.log('golden-vector reproduction (canonical fixed-point PageRank TS port)')
+console.log(
+  'golden-vector reproduction (canonical fixed-point PageRank TS port)'
+)
 
 // Accumulator + leaf-level encodings.
 const dataHash0 = keccak256(input.edges[0].data)
@@ -179,15 +201,34 @@ check('cid', result.cid, GOLDEN.cid)
 check('cidDigest', result.journal.cidDigest.toLowerCase(), GOLDEN.cidDigest)
 check('totalValue', result.journal.totalValue, GOLDEN.totalValue)
 check('blob', result.blob, GOLDEN.blob)
-check('journal recipient', result.journal.recipient.toLowerCase(), GOLDEN.recipient)
-check('journal instanceDomain', result.journal.instanceDomain.toLowerCase(), GOLDEN.instanceDomain)
 check(
-  'instanceDomain derivation',
-  instanceDomain(GOLDEN.instanceDomainSnapshot as Hex, GOLDEN.instanceDomainChainId).toLowerCase(),
+  'journal recipient',
+  result.journal.recipient.toLowerCase(),
+  GOLDEN.recipient
+)
+check(
+  'journal instanceDomain',
+  result.journal.instanceDomain.toLowerCase(),
   GOLDEN.instanceDomain
 )
-check('journalEncoded', journalEncoded(result.journal).toLowerCase(), GOLDEN.journalEncoded)
-check('journalDigest', journalDigest(result.journal).toLowerCase(), GOLDEN.journalDigest)
+check(
+  'instanceDomain derivation',
+  instanceDomain(
+    GOLDEN.instanceDomainSnapshot as Hex,
+    GOLDEN.instanceDomainChainId
+  ).toLowerCase(),
+  GOLDEN.instanceDomain
+)
+check(
+  'journalEncoded',
+  journalEncoded(result.journal).toLowerCase(),
+  GOLDEN.journalEncoded
+)
+check(
+  'journalDigest',
+  journalDigest(result.journal).toLowerCase(),
+  GOLDEN.journalDigest
+)
 
 // Per-account values.
 const gotValues: Record<string, bigint> = {}
@@ -209,7 +250,11 @@ check(
   selected.signers.map((a) => a.toLowerCase()),
   GOLDEN.signer.signers.map((a) => a.toLowerCase())
 )
-check('selectSigners threshold', selected.threshold, GOLDEN.signer.targetThreshold)
+check(
+  'selectSigners threshold',
+  selected.threshold,
+  GOLDEN.signer.targetThreshold
+)
 
 check(
   'signerSetRoot',
@@ -223,7 +268,11 @@ check(
   signerResult.signers.map((a) => a.toLowerCase()),
   GOLDEN.signer.signers.map((a) => a.toLowerCase())
 )
-check('computeSigners targetThreshold', signerResult.targetThreshold, GOLDEN.signer.targetThreshold)
+check(
+  'computeSigners targetThreshold',
+  signerResult.targetThreshold,
+  GOLDEN.signer.targetThreshold
+)
 check(
   'signer journal signerSetRoot',
   signerResult.journal.signerSetRoot.toLowerCase(),

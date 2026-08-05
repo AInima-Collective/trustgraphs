@@ -5,7 +5,7 @@ import { type Hex } from 'viem'
 
 import { fpDiv, fpMul } from './fixed'
 import { type Graph } from './reconcile'
-import { hasTrustEnabled, type Params } from './types'
+import { type Params, hasTrustEnabled } from './types'
 import { cmpHex } from './words'
 
 const isSeed = (seeds: Set<string>, a: string): boolean => seeds.has(a)
@@ -34,8 +34,10 @@ const initializeScores = (
   const regularCount = Math.max(0, n - trustedCount)
   const trustedTotal = p.trustShareFp
   const regularTotal = s - p.trustShareFp
-  const trustedScore = trustedCount > 0 ? trustedTotal / BigInt(trustedCount) : 0n
-  const regularScore = regularCount > 0 ? regularTotal / BigInt(regularCount) : 0n
+  const trustedScore =
+    trustedCount > 0 ? trustedTotal / BigInt(trustedCount) : 0n
+  const regularScore =
+    regularCount > 0 ? regularTotal / BigInt(regularCount) : 0n
   for (const node of graph.nodes) {
     const key = node.toLowerCase()
     out.set(key, isSeed(seeds, key) ? trustedScore : regularScore)
@@ -47,10 +49,15 @@ const initializeScores = (
  * Multi-source BFS shortest distances from the trusted seeds (deterministic: seeds processed in
  * sorted order, neighbours in address order). Mirrors `calculate_trust_distances`.
  */
-const bfsDistances = (graph: Graph, seeds: Set<string>): Map<string, number> => {
+const bfsDistances = (
+  graph: Graph,
+  seeds: Set<string>
+): Map<string, number> => {
   const distances = new Map<string, number>()
   const queue: string[] = []
-  const sortedSeeds = Array.from(seeds).sort((a, b) => cmpHex(a as Hex, b as Hex))
+  const sortedSeeds = Array.from(seeds).sort((a, b) =>
+    cmpHex(a as Hex, b as Hex)
+  )
   for (const seed of sortedSeeds) {
     distances.set(seed, 0)
     queue.push(seed)
