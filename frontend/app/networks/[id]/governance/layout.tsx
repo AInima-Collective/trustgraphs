@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { ReactNode } from 'react'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 
@@ -42,5 +43,12 @@ export default async function GovernanceLayout({
     notFound()
   }
 
-  return <NetworkProvider network={network}>{children}</NetworkProvider>
+  return (
+    <NetworkProvider network={network}>
+      <div className="space-y-6">
+        <NetworkHeader network={network} />
+        {children}
+      </div>
+    </NetworkProvider>
+  )
 }

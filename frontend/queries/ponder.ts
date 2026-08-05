@@ -619,13 +619,21 @@ export const ponderQueryFns = {
         limit,
       }),
   getGovModuleVotes:
-    (options: { address: Hex; voter?: Hex; limit?: number }) =>
+    (options: {
+      address: Hex
+      voter?: Hex
+      proposalId?: bigint
+      limit?: number
+    }) =>
     (db: Client<ResolvedSchema>['db']) =>
       db.query.merkleGovModuleVote.findMany({
         where: (t, { and, eq }) =>
           and(
             eq(t.module, options.address),
-            options.voter ? eq(t.voter, options.voter) : undefined
+            options.voter ? eq(t.voter, options.voter) : undefined,
+            options.proposalId !== undefined
+              ? eq(t.proposalId, options.proposalId)
+              : undefined
           ),
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,

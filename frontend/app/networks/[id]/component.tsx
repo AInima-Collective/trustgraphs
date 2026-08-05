@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, Link, ListFilter } from 'lucide-react'
+import { Check, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
@@ -13,7 +13,7 @@ import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { Markdown } from '@/components/Markdown'
-import { NetworkNav } from '@/components/NetworkNav'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
@@ -50,7 +50,7 @@ export const NetworkPage = () => {
     refresh,
   } = useNetwork()
 
-  const { name, link, about, callToAction, applicationUrl, criteria } = network
+  const { name, about, callToAction, applicationUrl, criteria } = network
 
   // Define table columns
   const columns: Column<NetworkEntry>[] = [
@@ -135,25 +135,7 @@ export const NetworkPage = () => {
           beside the graph. */}
       <div className="flex flex-col items-start gap-4">
         <BreadcrumbRenderer className="mb-2" />
-
-        <h1 className="text-4xl font-bold">{name}</h1>
-
-        {link && (
-          <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
-            {link.prefix && <span>{link.prefix}</span>}
-            <a
-              className="inline-flex flex-row items-center gap-1.5 text-text underline underline-offset-4 transition-colors hover:text-text-muted"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Link className="w-4 h-4" />
-              <span>{link.label}</span>
-            </a>
-          </p>
-        )}
-
-        <NetworkNav tabs={trustGraphTabs(network)} className="w-full mt-2" />
+        <NetworkHeader network={network} className="w-full" />
       </div>
 
       <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-start gap-12">
