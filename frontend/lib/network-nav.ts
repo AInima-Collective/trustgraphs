@@ -106,7 +106,7 @@ export const trustNetworkFor = (
 /**
  * The two reachable contributions surfaces, plus the trust network that scores the raters.
  * Contributions routes do not render this as a tab row; this model remains for generic callers
- * until the legacy payout URL is renamed to claim.
+ * until M5 retires the legacy payout URL.
  */
 export const contributionsTabs = (
   network: ContributionsNetwork
@@ -116,7 +116,7 @@ export const contributionsTabs = (
 
   return [
     { href: base, label: 'Round', exact: true },
-    { href: `${base}/payout`, label: 'Payout' },
+    { href: `${base}/claim`, label: 'Claim' },
     // Closes the loop: the trust network offers this round as a tab, so the round has to offer
     // the way back or navigating into it is a dead end.
     ...(trustNetwork

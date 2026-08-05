@@ -157,6 +157,88 @@ export function useAttestation(uid?: Hex) {
     }
   }
 
+  /** Create several attestations in one EAS transaction. Nothing is marked created on revert. */
+  const createAttestations = async (attestationsData: NewAttestationData[]) => {
+    if (!isConnected || !connectedAddress) {
+      throw new Error('Please connect your wallet')
+    }
+    if (attestationsData.length === 0) {
+      throw new Error('Add at least one attestation')
+    }
+
+    setIsCreating(true)
+    setIsCreated(false)
+    setError(null)
+    setHash(null)
+
+    try {
+      const bySchema = new Map<
+        Hex,
+        ReturnType<typeof intoAttestationRequestData>[]
+      >()
+      for (const attestationData of attestationsData) {
+        const rows = bySchema.get(attestationData.schema) ?? []
+        rows.push(intoAttestationRequestData(attestationData))
+        bySchema.set(attestationData.schema, rows)
+      }
+      const multiRequests = Array.from(bySchema, ([schema, data]) => ({
+        schema,
+        data,
+      }))
+
+      const executeTransaction = async (retryCount = 0): Promise<void> => {
+        const nonce = await publicClient!.getTransactionCount({
+          address: connectedAddress,
+          blockTag: retryCount === 0 ? 'pending' : 'latest',
+        })
+        const transaction = {
+          address: easAddress,
+          abi: easAbi,
+          functionName: 'multiAttest' as const,
+          args: [multiRequests] as const,
+          account: connectedAddress,
+        }
+        const gasEstimate = await publicClient!.estimateContractGas(transaction)
+        await publicClient!.simulateContract(transaction)
+        const gasPrice = await publicClient!.getGasPrice()
+        const [receipt] = await txToast({
+          tx: {
+            ...transaction,
+            gas: (gasEstimate * 120n) / 100n,
+            gasPrice,
+            nonce,
+            type: 'legacy',
+          },
+          onTransactionSent: setHash,
+          successMessage: `${attestationsData.length} ratings saved!`,
+        })
+        console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
+        setIsCreated(true)
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+      }
+
+      try {
+        await executeTransaction()
+      } catch (transactionError) {
+        if (shouldRetryTxError(transactionError)) {
+          console.warn(
+            'Transaction failed, retrying with fresh nonce:',
+            transactionError
+          )
+          await executeTransaction(1)
+        } else {
+          throw transactionError
+        }
+      }
+    } catch (err) {
+      console.error('Error creating attestations:', err)
+      setError(parseErrorMessage(err))
+      throw err
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   const clearTransactionState = useCallback(() => {
     setIsCreated(false)
     setIsRevoked(false)
@@ -276,6 +358,7 @@ export function useAttestation(uid?: Hex) {
 
   return {
     createAttestation,
+    createAttestations,
     revokeAttestation,
     clearTransactionState,
     isCreating,

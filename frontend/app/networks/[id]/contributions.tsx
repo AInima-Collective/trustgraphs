@@ -119,14 +119,12 @@ const ClaimCard = ({
   chainRating,
   draft,
   previewEntry,
-  isSaving,
   isSubmitted,
   isPending,
   responseOverride,
   respondingChoice,
   responseBusy,
   onRatingChange,
-  onSaveRating,
   onRespond,
 }: {
   claim: ClaimView
@@ -137,14 +135,12 @@ const ClaimCard = ({
   chainRating?: number
   draft?: number
   previewEntry?: RatingPowerEntry
-  isSaving: boolean
   isSubmitted: boolean
   isPending?: boolean
   responseOverride?: ResponseChoice
   respondingChoice?: ResponseChoice | null
   responseBusy: boolean
   onRatingChange: (value: number) => void
-  onSaveRating: () => void
   onRespond: (response: ResponseChoice) => void
 }) => {
   const [expanded, setExpanded] = useState(false)
@@ -277,18 +273,6 @@ const ClaimCard = ({
                 This rating counts at half weight because you worked with these
                 contributors elsewhere in the round.
               </p>
-            )}
-            {draft !== undefined && draft !== chainRating && !isSubmitted && (
-              <div className="flex justify-end">
-                <Button
-                  variant="brand"
-                  size="lg"
-                  onClick={onSaveRating}
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Saving rating' : `Save rating: ${draft}/100`}
-                </Button>
-              </div>
             )}
           </div>
         ))}
@@ -462,7 +446,8 @@ export const ContributionsNetworkPage = ({
   network: ContributionsNetwork
 }) => {
   const { address: connectedAddress, isConnected } = useAccount()
-  const { createAttestation, isCreating } = useAttestation()
+  const { createAttestation, createAttestations, isCreating } =
+    useAttestation()
   const {
     round,
     roundAvailable,
@@ -485,8 +470,6 @@ export const ContributionsNetworkPage = ({
   const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
   const [drafts, setDrafts] = useState<Map<string, number>>(new Map())
   const [submittedDrafts, setSubmittedDrafts] = useState<Set<string>>(new Set())
-  const [pendingClaim, setPendingClaim] = useState<string | null>(null)
-  const [activeDraftUid, setActiveDraftUid] = useState<string | null>(null)
   const [submitOpen, setSubmitOpen] = useState(false)
   const [optimisticContribution, setOptimisticContribution] =
     useState<OptimisticContribution | null>(null)
@@ -604,10 +587,9 @@ export const ContributionsNetworkPage = ({
   const dirtyUids = Array.from(drafts.entries())
     .filter(([uid, rating]) => chainRatings.get(uid) !== rating)
     .map(([uid]) => uid)
-  const stickySaveUid =
-    activeDraftUid && dirtyUids.includes(activeDraftUid)
-      ? activeDraftUid
-      : dirtyUids[0]
+  const unsavedDirtyUids = dirtyUids.filter(
+    (uid) => !submittedDrafts.has(uid)
+  )
   const titleFor = (uid: string) =>
     claims.find((claim) => claim.uid === uid)?.title || 'Untitled contribution'
 
@@ -619,25 +601,29 @@ export const ContributionsNetworkPage = ({
       next.delete(claimUid)
       return next
     })
-    setActiveDraftUid(claimUid)
   }
 
-  const saveRating = async (claimUid: string) => {
-    if (!valuationSchema) return
-    const rating = effectiveRatings.get(claimUid)
-    if (rating === undefined) return
-    setPendingClaim(claimUid)
+  const saveRatings = async () => {
+    if (!valuationSchema || unsavedDirtyUids.length === 0) return
+    const savingUids = [...unsavedDirtyUids]
     try {
-      await createAttestation({
-        schema: valuationSchema.uid,
-        recipient: zeroAddress,
-        data: { claimUID: claimUid, score: String(rating) },
+      await createAttestations(
+        savingUids.map((claimUid) => ({
+          schema: valuationSchema.uid,
+          recipient: zeroAddress,
+          data: {
+            claimUID: claimUid,
+            score: String(effectiveRatings.get(claimUid)),
+          },
+        }))
+      )
+      setSubmittedDrafts((current) => {
+        const next = new Set(current)
+        for (const uid of savingUids) next.add(uid)
+        return next
       })
-      setSubmittedDrafts((current) => new Set(current).add(claimUid))
     } catch {
-      // The attestation hook surfaces the transaction error. The draft deliberately survives.
-    } finally {
-      setPendingClaim(null)
+      // The batch is atomic. A revert leaves every draft intact and none marked submitted.
     }
   }
 
@@ -803,7 +789,7 @@ export const ContributionsNetworkPage = ({
             )}
             {phase === 'claimable' && (
               <ButtonLink
-                href={`/networks/${network.id}/payout`}
+                href={`/networks/${network.id}/claim`}
                 variant="brand"
                 size="lg"
                 className="w-full sm:w-auto"
@@ -914,7 +900,6 @@ export const ContributionsNetworkPage = ({
                 chainRating={chainRatings.get(claim.uid)}
                 draft={drafts.get(claim.uid)}
                 previewEntry={previewByUid.get(claim.uid)}
-                isSaving={pendingClaim === claim.uid}
                 isSubmitted={submittedDrafts.has(claim.uid)}
                 isPending={pendingContribution?.claim.uid === claim.uid}
                 responseOverride={responseOverrides.get(claim.uid)}
@@ -925,7 +910,6 @@ export const ContributionsNetworkPage = ({
                 }
                 responseBusy={isCreating}
                 onRatingChange={(rating) => updateDraft(claim.uid, rating)}
-                onSaveRating={() => saveRating(claim.uid)}
                 onRespond={(response) =>
                   respondToContribution(claim.uid, response)
                 }
@@ -954,17 +938,17 @@ export const ContributionsNetworkPage = ({
                   : 'A zero rating assigns none of your voice.'}
               </p>
             </div>
-            {stickySaveUid && !submittedDrafts.has(stickySaveUid) && (
+            {unsavedDirtyUids.length > 0 && (
               <Button
                 size="lg"
                 variant="brand"
-                onClick={() => saveRating(stickySaveUid)}
+                onClick={saveRatings}
                 disabled={isCreating}
                 className="shrink-0"
               >
-                {pendingClaim === stickySaveUid
-                  ? 'Saving rating'
-                  : 'Save rating'}
+                {isCreating
+                  ? `Saving ${unsavedDirtyUids.length} rating${unsavedDirtyUids.length === 1 ? '' : 's'}`
+                  : `Save ${unsavedDirtyUids.length} rating${unsavedDirtyUids.length === 1 ? '' : 's'}`}
               </Button>
             )}
           </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { Check } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Hex, erc20Abi, formatUnits, parseUnits } from 'viem'
 import { useAccount, usePublicClient, useReadContracts } from 'wagmi'
@@ -23,18 +23,14 @@ import { usePonderQuery } from '@/lib/use-ponder-query'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
-import {
-  BackToRound,
-  ContributionsNav,
-  useContributionsData,
-} from '../contributions-shared'
+import { BackToRound, useContributionsData } from '../contributions-shared'
 
 type DistributionRow = typeof merkleFundDistribution.$inferSelect
 
 /**
- * The payout screen for a contributions round (adapted from the trust network's distribute
- * page): fund the round's payout with the pool token pinned to the proven root, and claim your
- * share with a merkle proof from the indexer's payout bundle.
+ * Claim surface for a contributions round. The current contributor payout is promoted above
+ * distribution history, while permissionless funding keeps the existing approve/deposit path
+ * behind a disclosure at the bottom of the page.
  */
 export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   const { address: connectedAddress, isConnected } = useAccount()
@@ -61,13 +57,14 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
     })
 
   // The user's past claims.
-  const { data: userClaims = [] } = usePonderQuery({
-    queryFn: ponderQueryFns.getFundDistributionClaims({
-      distributor: distributorAddress,
-      account: connectedAddress,
-    }),
-    enabled: !!distributorAddress && !!connectedAddress,
-  })
+  const { data: userClaims = [], isLoading: isLoadingUserClaims } =
+    usePonderQuery({
+      queryFn: ponderQueryFns.getFundDistributionClaims({
+        distributor: distributorAddress,
+        account: connectedAddress,
+      }),
+      enabled: !!distributorAddress && !!connectedAddress,
+    })
   const claimedByDistribution = useMemo(() => {
     const map = new Map<bigint, bigint>()
     for (const claim of userClaims)
@@ -97,9 +94,10 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
 
   // The connected account's payout proof bundle for the current root
   // (M3 route: /contributions/:snapshot/payout/:account; mock-gated in the client module).
-  const { data: payoutBundle } = useQuery(
+  const payoutBundleQuery = useQuery(
     contributionsQueries.payout(snapshotAddress, connectedAddress)
   )
+  const payoutBundle = payoutBundleQuery.data
 
   // Per-distribution fallback: the generic merkle-entry route serves proofs for any indexed
   // root, covering distributions pinned to older roots.
@@ -168,10 +166,11 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   }, [amount, tokenDecimals])
   const needsApproval = parsedAmount > 0n && allowance < parsedAmount
 
-  const formatToken = (value: bigint) =>
-    `${Number(formatUnits(value, tokenDecimals)).toLocaleString(undefined, {
-      maximumFractionDigits: tokenDecimals,
-    })} ${tokenSymbol}`
+  const formatToken = (value: bigint) => {
+    const [whole, fraction] = formatUnits(value, tokenDecimals).split('.')
+    const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return `${groupedWhole}${fraction ? `.${fraction}` : ''} ${tokenSymbol}`
+  }
 
   const handleApprove = async () => {
     if (!connectedAddress || !publicClient) return
@@ -279,11 +278,10 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
     }
   }
 
-  const getClaimableAmount = useCallback(
+  const getShareAmount = useCallback(
     (distribution: DistributionRow) => {
       const entry = entryForRoot(distribution.root)
       if (!entry) return 0n
-      if ((claimedByDistribution.get(distribution.id) ?? 0n) > 0n) return 0n
       const totalDistributable =
         distribution.amountFunded - distribution.feeAmount
       if (distribution.totalMerkleValue === 0n) return 0n
@@ -292,17 +290,64 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
         distribution.totalMerkleValue
       )
     },
-    [entryForRoot, claimedByDistribution]
+    [entryForRoot]
   )
 
-  const distributionColumns: Column<DistributionRow>[] = [
-    {
-      key: 'id',
-      header: 'ID',
-      sortable: true,
-      accessor: (row) => Number(row.id),
-      render: (row) => `#${(row.id + 1n).toString()}`,
+  const getClaimableAmount = useCallback(
+    (distribution: DistributionRow) => {
+      if ((claimedByDistribution.get(distribution.id) ?? 0n) > 0n) return 0n
+      return getShareAmount(distribution)
     },
+    [claimedByDistribution, getShareAmount]
+  )
+
+  // The hero represents the newest distribution against the current proven score table. If the
+  // round service is unavailable, the newest on-chain distribution remains a useful fallback.
+  const currentDistribution = useMemo(() => {
+    const currentRoot = expectedRoot?.toLowerCase()
+    return (
+      (currentRoot
+        ? distributions.find(
+            (distribution) => distribution.root.toLowerCase() === currentRoot
+          )
+        : undefined) ??
+      distributions[0] ??
+      null
+    )
+  }, [distributions, expectedRoot])
+
+  const currentEntry = currentDistribution
+    ? entryForRoot(currentDistribution.root)
+    : null
+  const currentClaimedAmount = currentDistribution
+    ? (claimedByDistribution.get(currentDistribution.id) ?? 0n)
+    : 0n
+  const currentShareAmount = currentDistribution
+    ? currentClaimedAmount > 0n
+      ? currentClaimedAmount
+      : getShareAmount(currentDistribution)
+    : 0n
+  const currentRootQuery = currentDistribution
+    ? rootEntryQueries[uniqueRoots.indexOf(currentDistribution.root as Hex)]
+    : undefined
+  const currentUsesBundle =
+    !!currentDistribution &&
+    !!expectedRoot &&
+    currentDistribution.root.toLowerCase() === expectedRoot.toLowerCase()
+  const isLoadingCurrentEntry =
+    !!connectedAddress &&
+    !!currentDistribution &&
+    currentClaimedAmount === 0n &&
+    !currentEntry &&
+    (!!currentRootQuery?.isLoading ||
+      (currentUsesBundle && payoutBundleQuery.isLoading))
+  const currentEntryFailed =
+    currentClaimedAmount === 0n &&
+    !currentEntry &&
+    (!!currentRootQuery?.isError ||
+      (currentUsesBundle && payoutBundleQuery.isError))
+
+  const distributionColumns: Column<DistributionRow>[] = [
     {
       key: 'funder',
       header: 'FUNDED BY',
@@ -348,7 +393,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
           )
         }
         const claimable = getClaimableAmount(row)
-        return claimable > 0n ? formatToken(claimable) : '—'
+        return claimable > 0n ? formatToken(claimable) : 'No share'
       },
     },
     {
@@ -358,6 +403,10 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
       render: (row) => {
         const alreadyClaimed = claimedByDistribution.get(row.id)
         if (alreadyClaimed && alreadyClaimed > 0n) return ''
+        // The newest current payout owns the page's primary Claim button. Historical payouts
+        // remain claimable from the table without duplicating that action in the usual one-row
+        // case.
+        if (currentDistribution?.id === row.id) return ''
         const claimable = getClaimableAmount(row)
         if (claimable === 0n) return ''
         return (
@@ -368,7 +417,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
               e.stopPropagation()
               handleClaim(row)
             }}
-            disabled={isClaiming}
+            disabled={isClaiming || isPaused}
           >
             {claimingDistributionId === row.id ? 'Claiming...' : 'Claim'}
           </Button>
@@ -378,19 +427,15 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   ]
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-4 max-w-3xl">
+    <div className="space-y-12">
+      <header className="space-y-4 max-w-3xl">
         <BackToRound network={network} />
-        <h1 className="text-3xl font-bold">Payouts</h1>
+        <h1 className="text-3xl font-bold">Claim your share</h1>
         <p className="text-muted-foreground">
-          When the round settles, its proven scores become a payout table.
-          Anyone can fund a payout from that table; contributors then claim
-          their share here. Your share is fixed by the proven scores — funding
-          or claiming late never changes anyone&apos;s slice.
+          Your share comes from the round&apos;s proven community scores.
+          Funding or claiming later never changes your portion.
         </p>
-      </div>
-
-      <ContributionsNav network={network} />
+      </header>
 
       {isPaused && (
         <Card type="outline" size="lg" className="border-warn">
@@ -403,91 +448,93 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
 
       {error && <p className="text-sm text-error">{error}</p>}
 
-      {/* Fund the round payout */}
-      {isConnected && !isPaused && (
-        <Card type="accent" size="lg" className="space-y-4 max-w-xl">
-          <div>
-            <SectionHeading>Fund the round payout</SectionHeading>
-            <p className="text-sm text-muted-foreground mt-1">
-              Deposit {tokenSymbol} against the round&apos;s latest proven
-              scores. The deposit is locked to the exact score table shown
-              below, so later score changes can&apos;t redirect it.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Amount ({tokenSymbol})</Label>
-            <Input
-              type="number"
-              placeholder="0.0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            {balance !== undefined && (
-              <p className="text-xs text-muted-foreground">
-                Your balance: {formatToken(balance)}
-              </p>
-            )}
-            {feePercentage !== undefined && parsedAmount > 0n && (
-              <p className="text-xs text-muted-foreground">
-                A {feePercentage.toFixed(2)}% fee is deducted from the deposit
-                before it is split.
-              </p>
-            )}
-          </div>
-
-          {needsApproval ? (
-            <Button
-              onClick={handleApprove}
-              disabled={isDistributing || !parsedAmount}
-            >
-              {isDistributing
-                ? 'Approving...'
-                : `Approve ${tokenSymbol} spending`}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleDistribute}
-              disabled={isDistributing || !parsedAmount || !expectedRoot}
-            >
-              {isDistributing ? 'Funding...' : 'Fund payout'}
-            </Button>
-          )}
-
-          {expectedRoot ? (
-            <p className="text-xs text-muted-foreground">
-              Locked to proven score table:{' '}
-              <CopyableText
-                text={expectedRoot}
-                className="text-xs text-muted-foreground"
-                truncate
-                truncateEnds={[8, 6]}
-                alwaysShowCopyIcon
-              />
-            </p>
-          ) : (
-            <p className="text-xs text-warn">
-              Funding is disabled until the round&apos;s first proven score
-              table lands on-chain.
-            </p>
-          )}
-        </Card>
-      )}
-
-      {!isConnected && (
-        <Card type="outline" size="lg" className="text-center">
-          <p className="text-muted-foreground">
-            Connect your wallet to see and claim your share of the round
-            payouts.
+      <section
+        aria-labelledby="your-share-heading"
+        className="grid min-h-[18rem] gap-8 border-y border-hairline py-8 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+      >
+        <div className="min-w-0 space-y-3">
+          <p id="your-share-heading" className="tg-label">
+            Your share:
           </p>
-        </Card>
-      )}
+          {!isConnected ? (
+            <p className="max-w-xl text-text-muted">
+              Connect your wallet to see your share and claim it.
+            </p>
+          ) : isLoadingDistributions ||
+            isLoadingUserClaims ||
+            isLoadingCurrentEntry ? (
+            <p className="text-sm text-text-muted" aria-live="polite">
+              Checking your share in the current payout.
+            </p>
+          ) : !currentDistribution ? (
+            <div className="space-y-2">
+              <p className="tg-display text-4xl tabular-nums">
+                Not available yet
+              </p>
+              <p className="text-sm text-text-muted">
+                No payout has been funded for this round yet.
+              </p>
+            </div>
+          ) : currentEntryFailed ? (
+            <div className="space-y-2">
+              <p className="tg-display text-4xl tabular-nums">Unavailable</p>
+              <p className="text-sm text-warn">
+                Your payout entry could not be loaded. Try again when the round
+                service is available.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="tg-display text-4xl tabular-nums break-words sm:text-5xl">
+                {formatToken(currentShareAmount)}
+              </p>
+              {currentClaimedAmount > 0n ? (
+                <p className="flex items-center gap-2 text-sm text-success">
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                  Already claimed from this payout.
+                </p>
+              ) : currentShareAmount === 0n ? (
+                <p className="text-sm text-text-muted">
+                  This wallet has no share in the current payout.
+                </p>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  This amount is fixed by the proven scores for this payout.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
-      {/* Distributions table */}
-      <div className="space-y-4">
-        <SectionHeading>Round payouts</SectionHeading>
+        {isConnected &&
+          currentDistribution &&
+          currentShareAmount > 0n &&
+          currentClaimedAmount === 0n &&
+          !isLoadingUserClaims &&
+          !isLoadingCurrentEntry &&
+          !currentEntryFailed && (
+            <Button
+              variant="brand"
+              size="lg"
+              className="w-full sm:w-auto"
+              onClick={() => handleClaim(currentDistribution)}
+              disabled={isClaiming || isPaused}
+            >
+              {claimingDistributionId === currentDistribution.id
+                ? 'Claiming...'
+                : 'Claim'}
+            </Button>
+          )}
+      </section>
+
+      <section className="space-y-4" aria-labelledby="payout-history-heading">
+        <div id="payout-history-heading">
+          <SectionHeading>Payout history</SectionHeading>
+        </div>
         {isLoadingDistributions ? (
-          <p className="text-sm text-muted-foreground">Loading payouts...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading payout history.
+          </p>
         ) : distributions.length === 0 ? (
           <Card type="outline" size="lg" className="text-center">
             <p className="text-muted-foreground">
@@ -498,13 +545,102 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
           <Table
             columns={distributionColumns}
             data={distributions}
-            defaultSortColumn="id"
+            defaultSortColumn="timestamp"
             defaultSortDirection="desc"
             rowClassName="text-sm"
             getRowKey={(row) => row.id.toString()}
           />
         )}
-      </div>
+      </section>
+
+      <details className="group border-y border-hairline">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden">
+          <span>Fund this round</span>
+          <ChevronDown
+            className="h-4 w-4 transition-transform group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="border-t border-hairline py-6">
+          {!isConnected ? (
+            <p className="text-sm text-text-muted">
+              Connect your wallet to fund this round.
+            </p>
+          ) : isPaused ? (
+            <p className="text-sm text-warn">
+              Funding will resume when the operator unpauses the contract.
+            </p>
+          ) : (
+            <div className="max-w-xl space-y-4">
+              <div>
+                <SectionHeading>Fund the round payout</SectionHeading>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Deposit {tokenSymbol} against the round&apos;s latest proven
+                  scores. The deposit is locked to that exact score table, so
+                  later score changes cannot redirect it.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Amount ({tokenSymbol})</Label>
+                <Input
+                  type="number"
+                  placeholder="0.0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+                {balance !== undefined && (
+                  <p className="text-xs text-muted-foreground">
+                    Your balance: {formatToken(balance)}
+                  </p>
+                )}
+                {feePercentage !== undefined && parsedAmount > 0n && (
+                  <p className="text-xs text-muted-foreground">
+                    A {feePercentage.toFixed(2)}% fee is deducted from the
+                    deposit before it is split.
+                  </p>
+                )}
+              </div>
+
+              {needsApproval ? (
+                <Button
+                  onClick={handleApprove}
+                  disabled={isDistributing || !parsedAmount}
+                >
+                  {isDistributing
+                    ? 'Approving...'
+                    : `Approve ${tokenSymbol} spending`}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleDistribute}
+                  disabled={isDistributing || !parsedAmount || !expectedRoot}
+                >
+                  {isDistributing ? 'Funding...' : 'Fund payout'}
+                </Button>
+              )}
+
+              {expectedRoot ? (
+                <p className="text-xs text-muted-foreground">
+                  Locked to proven score table:{' '}
+                  <CopyableText
+                    text={expectedRoot}
+                    className="text-xs text-muted-foreground"
+                    truncate
+                    truncateEnds={[8, 6]}
+                    alwaysShowCopyIcon
+                  />
+                </p>
+              ) : (
+                <p className="text-xs text-warn">
+                  Funding is disabled until the round&apos;s first proven score
+                  table lands on-chain.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   )
 }
