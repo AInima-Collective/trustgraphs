@@ -2,27 +2,52 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Hex, zeroAddress } from 'viem'
+import { useAccount } from 'wagmi'
 
 import { Address } from '@/components/Address'
-import { ButtonLink } from '@/components/Button'
+import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
 import { SectionHeading } from '@/components/SectionHeading'
+import { Slider } from '@/components/Slider'
+import { useAttestation } from '@/hooks/useAttestation'
+import { actorKey } from '@/lib/contributions'
 import {
   ContributionsRound,
   contributionsQueries,
 } from '@/lib/contributions-api'
-import { ClaimView } from '@/lib/contributions-view'
+import {
+  ClaimView,
+  RatingPowerEntry,
+  ratingPowerPreview,
+} from '@/lib/contributions-view'
 import { trustNetworkFor } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
-import { formatBigNumber } from '@/lib/utils'
 
 import {
   RoundPhase,
+  formatContributionScore,
   formatPoolAmount,
   useContributionsData,
 } from './contributions-shared'
+
+type FeedSort = 'unrated' | 'newest' | 'top'
+
+const formatBasisPoints = (basisPoints: number) => {
+  const whole = Math.floor(basisPoints / 100)
+  const fraction = String(basisPoints % 100)
+    .padStart(2, '0')
+    .replace(/0+$/, '')
+  return fraction ? `${whole}.${fraction}%` : `${whole}%`
+}
+
+const basisPointsWidth = (basisPoints: number) =>
+  `${Math.floor(basisPoints / 100)}.${String(basisPoints % 100).padStart(2, '0')}%`
+
+const previewTone = (index: number) =>
+  ['bg-ink', 'bg-text-muted', 'bg-text-subtle'][index % 3]
 
 const dateLabel = (unixSeconds: string | bigint) =>
   new Date(Number(unixSeconds) * 1000).toLocaleDateString(undefined, {
@@ -82,12 +107,38 @@ const ClaimCard = ({
   claim,
   network,
   score,
+  connectedAddress,
+  rating,
+  chainRating,
+  draft,
+  previewEntry,
+  isSaving,
+  isSubmitted,
+  onRatingChange,
+  onSaveRating,
 }: {
   claim: ClaimView
   network: ContributionsNetwork
   score: string | undefined
+  connectedAddress?: Hex
+  rating?: number
+  chainRating?: number
+  draft?: number
+  previewEntry?: RatingPowerEntry
+  isSaving: boolean
+  isSubmitted: boolean
+  onRatingChange: (value: number) => void
+  onSaveRating: () => void
 }) => {
   const [expanded, setExpanded] = useState(false)
+  const isMine =
+    !!connectedAddress &&
+    (claim.attester.toLowerCase() === connectedAddress.toLowerCase() ||
+      claim.contributors.some(
+        (contributor) =>
+          contributor.account.toLowerCase() === connectedAddress.toLowerCase()
+      ))
+  const auditId = `contribution-audit-${claim.uid}`
 
   // The audit view for this claim: every rating incl. the filtered ones, with reasons.
   const { data: audit } = useQuery({
@@ -104,8 +155,10 @@ const ClaimCard = ({
   return (
     <Card type="outline" size="lg" className="space-y-4">
       <button
-        className="w-full flex flex-row items-start justify-between gap-4 text-left cursor-pointer"
+        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        aria-controls={auditId}
       >
         <div className="space-y-1 min-w-0">
           <div className="font-bold truncate">
@@ -130,7 +183,9 @@ const ClaimCard = ({
           <div className="text-right">
             <div className="text-xs text-muted-foreground">Community score</div>
             <div className="font-mono">
-              {score !== undefined ? formatBigNumber(score, 18) : 'Unavailable'}
+              {score !== undefined
+                ? formatContributionScore(score)
+                : 'Unavailable'}
             </div>
           </div>
           {expanded ? (
@@ -141,8 +196,69 @@ const ClaimCard = ({
         </div>
       </button>
 
+      {connectedAddress &&
+        (isMine ? (
+          <p className="border-t border-hairline pt-3 text-xs text-text-subtle">
+            You can&apos;t rate your own contribution because that rating would
+            not count.
+          </p>
+        ) : (
+          <div className="space-y-2 border-t border-hairline pt-3">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="tg-label">Your rating</p>
+                <p className="text-xs text-text-muted">
+                  {draft !== undefined && draft !== chainRating
+                    ? isSubmitted
+                      ? 'Saved. Waiting for the chain record.'
+                      : 'Not saved yet'
+                    : chainRating !== undefined
+                      ? `Saved at ${chainRating} out of 100`
+                      : 'Not rated yet. Drag or use the arrow keys.'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-lg tabular-nums">
+                  {rating ?? 0}/100
+                </p>
+                {previewEntry && !previewEntry.doesNotCount && (
+                  <p className="text-xs text-text-muted">
+                    {formatBasisPoints(previewEntry.shareBps)} of your voice
+                  </p>
+                )}
+              </div>
+            </div>
+            <Slider
+              value={rating ?? 0}
+              min={0}
+              max={100}
+              ariaLabel={`Your rating for ${claim.title || 'Untitled contribution'}`}
+              ariaValueText={`${rating ?? 0} out of 100`}
+              onValueChange={onRatingChange}
+            />
+            {previewEntry?.reducedWeight && (
+              <p className="text-xs text-text-muted">
+                This rating counts at half weight because you worked with these
+                contributors elsewhere in the round.
+              </p>
+            )}
+            {draft !== undefined && draft !== chainRating && !isSubmitted && (
+              <div className="flex justify-end">
+                <Button
+                  variant="brand"
+                  size="lg"
+                  onClick={onSaveRating}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving rating' : `Save rating: ${draft}/100`}
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+
       {expanded && (
-        <div className="space-y-5 border-t border-border pt-4">
+        <div id={auditId} className="space-y-5 border-t border-border pt-4">
           {claim.uri && (
             <a
               href={claim.uri}
@@ -254,6 +370,8 @@ export const ContributionsNetworkPage = ({
 }: {
   network: ContributionsNetwork
 }) => {
+  const { address: connectedAddress, isConnected } = useAccount()
+  const { createAttestation, isCreating } = useAttestation()
   const {
     round,
     roundAvailable,
@@ -265,17 +383,160 @@ export const ContributionsNetworkPage = ({
     tokenSymbol,
     tokenDecimals,
     phase,
+    valuationSchema,
   } = useContributionsData(network)
 
   const { name, link, about, criteria } = network
   const trustNetwork = trustNetworkFor(network)
   const [now, setNow] = useState<number | null>(null)
+  const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
+  const [drafts, setDrafts] = useState<Map<string, number>>(new Map())
+  const [submittedDrafts, setSubmittedDrafts] = useState<Set<string>>(new Set())
+  const [pendingClaim, setPendingClaim] = useState<string | null>(null)
+  const [activeDraftUid, setActiveDraftUid] = useState<string | null>(null)
+
+  const chainRatings = useMemo(() => {
+    const ratings = new Map<string, number>()
+    if (!connectedAddress) return ratings
+    for (const claim of claims) {
+      const rating = state.valuations.get(
+        actorKey(claim.uid, connectedAddress as Hex)
+      )
+      if (rating !== undefined) ratings.set(claim.uid, rating)
+    }
+    return ratings
+  }, [claims, connectedAddress, state.valuations])
+
+  const effectiveRatings = useMemo(() => {
+    const ratings = new Map(chainRatings)
+    for (const [uid, rating] of drafts) ratings.set(uid, rating)
+    return ratings
+  }, [chainRatings, drafts])
+
+  const ratingPreview = useMemo(
+    () =>
+      connectedAddress
+        ? ratingPowerPreview(connectedAddress as Hex, state, effectiveRatings)
+        : [],
+    [connectedAddress, effectiveRatings, state]
+  )
+  const previewByUid = useMemo(
+    () => new Map(ratingPreview.map((entry) => [entry.claimUid, entry])),
+    [ratingPreview]
+  )
+  const countedPreview = ratingPreview.filter((entry) => !entry.doesNotCount)
+
+  const isMyClaim = (claim: ClaimView) =>
+    !!connectedAddress &&
+    (claim.attester.toLowerCase() === connectedAddress.toLowerCase() ||
+      claim.contributors.some(
+        (contributor) =>
+          contributor.account.toLowerCase() === connectedAddress.toLowerCase()
+      ))
+
+  const sortedClaims = useMemo(() => {
+    const sorted = [...claims]
+    const scoreFor = (claim: ClaimView) => {
+      const score = scoreByUid.get(claim.uid)
+      return score === undefined ? -1n : BigInt(score)
+    }
+    const scoreOrder = (a: ClaimView, b: ClaimView) => {
+      const aScore = scoreFor(a)
+      const bScore = scoreFor(b)
+      return aScore === bScore ? 0 : aScore < bScore ? 1 : -1
+    }
+    const newestOrder = (a: ClaimView, b: ClaimView) =>
+      a.timestamp === b.timestamp ? 0 : a.timestamp < b.timestamp ? 1 : -1
+
+    const activeSort = isConnected ? feedSort : 'top'
+    sorted.sort((a, b) => {
+      if (activeSort === 'newest') return newestOrder(a, b)
+      if (activeSort === 'top') return scoreOrder(a, b) || newestOrder(a, b)
+
+      const bucket = (claim: ClaimView) =>
+        isMyClaim(claim) ? 2 : chainRatings.has(claim.uid) ? 1 : 0
+      const bucketDifference = bucket(a) - bucket(b)
+      return bucketDifference || scoreOrder(a, b) || newestOrder(a, b)
+    })
+    return sorted
+  }, [
+    chainRatings,
+    claims,
+    connectedAddress,
+    feedSort,
+    isConnected,
+    scoreByUid,
+  ])
+
+  const dirtyUids = Array.from(drafts.entries())
+    .filter(([uid, rating]) => chainRatings.get(uid) !== rating)
+    .map(([uid]) => uid)
+  const stickySaveUid =
+    activeDraftUid && dirtyUids.includes(activeDraftUid)
+      ? activeDraftUid
+      : dirtyUids[0]
+  const titleFor = (uid: string) =>
+    claims.find((claim) => claim.uid === uid)?.title || 'Untitled contribution'
+
+  const updateDraft = (claimUid: string, rating: number) => {
+    setDrafts((current) => new Map(current).set(claimUid, rating))
+    setSubmittedDrafts((current) => {
+      if (!current.has(claimUid)) return current
+      const next = new Set(current)
+      next.delete(claimUid)
+      return next
+    })
+    setActiveDraftUid(claimUid)
+  }
+
+  const saveRating = async (claimUid: string) => {
+    if (!valuationSchema) return
+    const rating = effectiveRatings.get(claimUid)
+    if (rating === undefined) return
+    setPendingClaim(claimUid)
+    try {
+      await createAttestation({
+        schema: valuationSchema.uid,
+        recipient: zeroAddress,
+        data: { claimUID: claimUid, score: String(rating) },
+      })
+      setSubmittedDrafts((current) => new Set(current).add(claimUid))
+    } catch {
+      // The attestation hook surfaces the transaction error. The draft deliberately survives.
+    } finally {
+      setPendingClaim(null)
+    }
+  }
 
   // Keep the server and first client render identical, then switch the absolute fallback to the
   // useful relative window line after hydration.
   useEffect(() => {
     setNow(Math.floor(Date.now() / 1000))
   }, [])
+
+  // Once the live chain record agrees, it becomes the source of truth and the local draft can go.
+  useEffect(() => {
+    setDrafts((current) => {
+      let changed = false
+      const next = new Map(current)
+      for (const [uid, rating] of current) {
+        if (chainRatings.get(uid) === rating) {
+          next.delete(uid)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+    setSubmittedDrafts((current) => {
+      const next = new Set(current)
+      for (const uid of current) {
+        if (!drafts.has(uid) || chainRatings.get(uid) === drafts.get(uid)) {
+          next.delete(uid)
+        }
+      }
+      return next.size === current.size ? current : next
+    })
+  }, [chainRatings, drafts])
 
   return (
     <div className="space-y-10">
@@ -403,7 +664,25 @@ export const ContributionsNetworkPage = ({
 
       {/* Claims */}
       <div className="space-y-4">
-        <SectionHeading>Contributions</SectionHeading>
+        <div className="flex min-h-11 items-center justify-between gap-3">
+          <SectionHeading>Contributions</SectionHeading>
+          {isConnected && claims.length > 1 && (
+            <label>
+              <span className="sr-only">Sort contributions</span>
+              <select
+                className="h-11 border border-hairline-strong bg-surface px-3 text-sm text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                value={feedSort}
+                onChange={(event) =>
+                  setFeedSort(event.target.value as FeedSort)
+                }
+              >
+                <option value="unrated">Unrated first</option>
+                <option value="newest">Newest</option>
+                <option value="top">Top scored</option>
+              </select>
+            </label>
+          )}
+        </div>
         {claimsLoading ? (
           <p className="text-sm text-muted-foreground">
             Loading contributions...
@@ -417,17 +696,83 @@ export const ContributionsNetworkPage = ({
           </Card>
         ) : (
           <div className="space-y-3">
-            {claims.map((claim) => (
+            {sortedClaims.map((claim) => (
               <ClaimCard
                 key={claim.uid}
                 claim={claim}
                 network={network}
                 score={scoreByUid.get(claim.uid)}
+                connectedAddress={connectedAddress}
+                rating={effectiveRatings.get(claim.uid)}
+                chainRating={chainRatings.get(claim.uid)}
+                draft={drafts.get(claim.uid)}
+                previewEntry={previewByUid.get(claim.uid)}
+                isSaving={pendingClaim === claim.uid}
+                isSubmitted={submittedDrafts.has(claim.uid)}
+                onRatingChange={(rating) => updateDraft(claim.uid, rating)}
+                onSaveRating={() => saveRating(claim.uid)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {connectedAddress && drafts.size > 0 && (
+        <aside
+          aria-label="Your rating power"
+          className="sticky bottom-3 z-30 space-y-2 border border-hairline-strong bg-surface p-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="tg-label-strong">Your rating power</p>
+              <p className="truncate text-xs text-text-muted">
+                {countedPreview.length > 0
+                  ? countedPreview
+                      .map(
+                        (entry) =>
+                          `${titleFor(entry.claimUid)} ${formatBasisPoints(entry.shareBps)}`
+                      )
+                      .join(', ')
+                  : 'A zero rating assigns none of your voice.'}
+              </p>
+            </div>
+            {stickySaveUid && !submittedDrafts.has(stickySaveUid) && (
+              <Button
+                size="lg"
+                variant="brand"
+                onClick={() => saveRating(stickySaveUid)}
+                disabled={isCreating}
+                className="shrink-0"
+              >
+                {pendingClaim === stickySaveUid
+                  ? 'Saving rating'
+                  : 'Save rating'}
+              </Button>
+            )}
+          </div>
+          <div
+            className="flex h-2 overflow-hidden border border-hairline bg-surface-2"
+            aria-hidden="true"
+          >
+            {countedPreview.map((entry, index) => (
+              <div
+                key={entry.claimUid}
+                className={previewTone(index)}
+                style={{ width: basisPointsWidth(entry.shareBps) }}
+                title={`${titleFor(entry.claimUid)}: ${formatBasisPoints(entry.shareBps)} of your voice`}
+              />
+            ))}
+          </div>
+          <ul className="sr-only">
+            {countedPreview.map((entry) => (
+              <li key={entry.claimUid}>
+                {titleFor(entry.claimUid)}: {formatBasisPoints(entry.shareBps)}
+                of your voice
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
     </div>
   )
 }

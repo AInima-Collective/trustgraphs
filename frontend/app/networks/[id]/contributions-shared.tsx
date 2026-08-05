@@ -204,6 +204,22 @@ export const formatPoolAmount = (
   return `${whole.toLocaleString()}${fractionLabel.replace(/\.$/, '')} ${symbol}`
 }
 
+/** Format a proof-produced 1e18 score without converting it through a floating-point number. */
+export const formatContributionScore = (score: string) => {
+  const displayScale = 1_000n
+  const sourceScale = 10n ** 18n
+  const raw = BigInt(score)
+  const rounded = (raw * displayScale + sourceScale / 2n) / sourceScale
+  const whole = rounded / displayScale
+  const fraction = (rounded % displayScale)
+    .toString()
+    .padStart(3, '0')
+    .replace(/0+$/, '')
+  return fraction
+    ? `${whole.toLocaleString()}.${fraction}`
+    : whole.toLocaleString()
+}
+
 /**
  * Contributions routes intentionally have no local tab row. Kept temporarily while the legacy
  * route components still import it; M5 removes those routes entirely.

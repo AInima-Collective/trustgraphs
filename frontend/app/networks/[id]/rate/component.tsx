@@ -242,6 +242,8 @@ export const RatePage = ({ network }: { network: ContributionsNetwork }) => {
                   <div className="space-y-2">
                     <Slider
                       value={rating ?? 0}
+                      ariaLabel={`Your rating for ${claim.title || 'Untitled contribution'}`}
+                      ariaValueText={`${rating ?? 0} out of 100`}
                       min={0}
                       max={100}
                       onValueChange={(value) =>

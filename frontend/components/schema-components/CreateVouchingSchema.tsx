@@ -123,6 +123,8 @@ export function CreateVouchingSchema({
                 <Slider
                   value={confidenceValue ? parseInt(confidenceValue) : 100}
                   onValueChange={handleSliderChange}
+                  ariaLabel="Confidence"
+                  ariaValueText={`${confidenceValue}% confident`}
                   max={100}
                   min={0}
                   className="grow"
