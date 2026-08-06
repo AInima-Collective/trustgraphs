@@ -20,7 +20,7 @@ import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
-import { NetworkNav } from '@/components/NetworkNav'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import {
   Select,
@@ -34,7 +34,6 @@ import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
-import { trustGraphTabs } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
 import { usePonderQuery } from '@/lib/use-ponder-query'
 import { formatBigNumber } from '@/lib/utils'
@@ -626,13 +625,12 @@ export const DistributePage = () => {
           }}
         />
 
-        <h1 className="text-3xl font-bold">Fund Distribution</h1>
-        <p className="text-muted-foreground">
+        <NetworkHeader network={network} className="w-full" />
+
+        <p className="text-muted-foreground text-sm">
           Distribute funds to network members based on their trust score, or
           claim your share from existing distributions.
         </p>
-
-        <NetworkNav tabs={trustGraphTabs(network)} className="w-full mt-2" />
       </div>
 
       {/* Statistics */}

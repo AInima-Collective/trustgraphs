@@ -5,6 +5,18 @@ import { Hex } from 'viem'
 
 import { AttestationData, intoAttestationsData } from '@/lib/attestation'
 import { APIS } from '@/lib/config'
+import {
+  getReviewDistributionClaims,
+  getReviewDistributions,
+  getReviewFundDistributor,
+  getReviewLatestSnapshot,
+  getReviewMerkleEntry,
+  isReviewRoot,
+} from '@/lib/contributions-review-fixtures'
+import {
+  REVIEW_FIXTURES_ENABLED,
+  withReviewFixture,
+} from '@/lib/review-fixture-query'
 import { easAttestation } from '@/ponder.schema'
 
 // Query keys for consistent caching
@@ -361,6 +373,10 @@ export const ponderQueries = {
           throw new Error('Account is required for merkle tree entry query')
         }
 
+        if (REVIEW_FIXTURES_ENABLED) {
+          return isReviewRoot(options.root) ? getReviewMerkleEntry() : null
+        }
+
         const response = await fetch(
           `${APIS.ponder}/merkle/${options.snapshot}/${options.root}/${options.account}`
         )
@@ -545,37 +561,51 @@ export const ponderQueryFns = {
   // call sites (the distribute + payout screens pass `contracts.merkleFundDistributor`). Filter on
   // the contract column: `merkleFundDistribution.distributor` is the funder account that called
   // `distribute()`, so matching it against a contract address never returns a row.
-  getFundDistributions:
-    (distributor: Hex, limit: number = 100) =>
-    (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleFundDistribution.findMany({
-        where: (t, { eq }) => eq(t.merkleFundDistributor, distributor),
-        orderBy: (t, { desc }) => desc(t.timestamp),
-        limit,
-      }),
-  getFundDistributionClaims:
-    (options: { distributor: Hex; account?: Hex; limit?: number }) =>
-    (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleFundDistributionClaim.findMany({
-        where: (t, { and, eq }) =>
-          and(
-            eq(t.merkleFundDistributor, options.distributor),
-            options.account ? eq(t.account, options.account) : undefined
-          ),
-        orderBy: (t, { desc }) => desc(t.timestamp),
-        limit: options.limit ?? 100,
-      }),
-  getLatestMerkleSnapshot:
-    (snapshot: Hex) => (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleSnapshot.findFirst({
-        where: (t, { eq }) => eq(t.address, snapshot),
-        orderBy: (t, { desc }) => desc(t.timestamp),
-      }),
-  getFundDistributor:
-    (distributor: Hex) => (db: Client<ResolvedSchema>['db']) =>
-      db.query.merkleFundDistributor.findFirst({
-        where: (t, { eq }) => eq(t.address, distributor),
-      }),
+  getFundDistributions: (distributor: Hex, limit: number = 100) =>
+    withReviewFixture(
+      (db: Client<ResolvedSchema>['db']) =>
+        db.query.merkleFundDistribution.findMany({
+          where: (t, { eq }) => eq(t.merkleFundDistributor, distributor),
+          orderBy: (t, { desc }) => desc(t.timestamp),
+          limit,
+        }),
+      getReviewDistributions
+    ),
+  getFundDistributionClaims: (options: {
+    distributor: Hex
+    account?: Hex
+    limit?: number
+  }) =>
+    withReviewFixture(
+      (db: Client<ResolvedSchema>['db']) =>
+        db.query.merkleFundDistributionClaim.findMany({
+          where: (t, { and, eq }) =>
+            and(
+              eq(t.merkleFundDistributor, options.distributor),
+              options.account ? eq(t.account, options.account) : undefined
+            ),
+          orderBy: (t, { desc }) => desc(t.timestamp),
+          limit: options.limit ?? 100,
+        }),
+      getReviewDistributionClaims
+    ),
+  getLatestMerkleSnapshot: (snapshot: Hex) =>
+    withReviewFixture(
+      (db: Client<ResolvedSchema>['db']) =>
+        db.query.merkleSnapshot.findFirst({
+          where: (t, { eq }) => eq(t.address, snapshot),
+          orderBy: (t, { desc }) => desc(t.timestamp),
+        }),
+      getReviewLatestSnapshot
+    ),
+  getFundDistributor: (distributor: Hex) =>
+    withReviewFixture(
+      (db: Client<ResolvedSchema>['db']) =>
+        db.query.merkleFundDistributor.findFirst({
+          where: (t, { eq }) => eq(t.address, distributor),
+        }),
+      getReviewFundDistributor
+    ),
   getGovModule: (address: Hex) => (db: Client<ResolvedSchema>['db']) =>
     db.query.merkleGovModule.findFirst({
       where: (t, { eq }) => eq(t.address, address),
@@ -589,13 +619,21 @@ export const ponderQueryFns = {
         limit,
       }),
   getGovModuleVotes:
-    (options: { address: Hex; voter?: Hex; limit?: number }) =>
+    (options: {
+      address: Hex
+      voter?: Hex
+      proposalId?: bigint
+      limit?: number
+    }) =>
     (db: Client<ResolvedSchema>['db']) =>
       db.query.merkleGovModuleVote.findMany({
         where: (t, { and, eq }) =>
           and(
             eq(t.module, options.address),
-            options.voter ? eq(t.voter, options.voter) : undefined
+            options.voter ? eq(t.voter, options.voter) : undefined,
+            options.proposalId !== undefined
+              ? eq(t.proposalId, options.proposalId)
+              : undefined
           ),
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,

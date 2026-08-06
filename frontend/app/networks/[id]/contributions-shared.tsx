@@ -12,9 +12,11 @@ import {
   contributionsQueries,
 } from '@/lib/contributions-api'
 import {
+  accumulatorRowsToRawEdges,
   buildClaimViews,
   contributionsSchema,
   getContributionAttestations,
+  getTrustAttestations,
 } from '@/lib/contributions-view'
 import { ContributionsNetwork } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
@@ -117,9 +119,18 @@ export const useContributionsData = (network: ContributionsNetwork) => {
     [round]
   )
 
-  const { claims, state } = useMemo(
+  const { claims, state, records } = useMemo(
     () => buildClaimViews(attestationsQuery.data ?? [], schemaUids, window),
     [attestationsQuery.data, schemaUids, window]
+  )
+
+  const trustAttestationsQuery = usePonderQuery({
+    queryFn: getTrustAttestations(network.contracts.trustAccumulator),
+    enabled: !!network.contracts.trustAccumulator,
+  })
+  const trustEdges = useMemo(
+    () => accumulatorRowsToRawEdges(trustAttestationsQuery.data ?? []),
+    [trustAttestationsQuery.data]
   )
 
   // Payout state is part of the shared phase model. These remain on-chain when the round API is
@@ -169,6 +180,11 @@ export const useContributionsData = (network: ContributionsNetwork) => {
     phase,
     claims,
     state,
+    records,
+    trustEdges,
+    trustEdgesLoading: trustAttestationsQuery.isLoading,
+    trustEdgesAvailable:
+      !trustAttestationsQuery.isLoading && trustEdges.length > 0,
     claimsLoading: attestationsQuery.isLoading,
     schemaUids,
     claimSchema,

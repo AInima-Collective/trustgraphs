@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "format": "eslint . --fix",
     "start": "next start",
-    "test": "tsc lib/pagerank/*.ts lib/hypercerts/*.ts lib/contributions/*.ts --outDir node_modules/.cache/pr-test --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/pr-test/pagerank/golden.test.js && node node_modules/.cache/pr-test/hypercerts/golden.test.js && node node_modules/.cache/pr-test/contributions/golden.test.js",
+    "test": "tsc lib/pagerank/*.ts lib/hypercerts/*.ts lib/contributions/*.ts --outDir node_modules/.cache/pr-test --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/pr-test/pagerank/golden.test.js && node node_modules/.cache/pr-test/hypercerts/golden.test.js && node node_modules/.cache/pr-test/contributions/golden.test.js && node node_modules/.cache/pr-test/contributions/projection.test.js",
     "indexer:config": "cp ../indexer/*.schema.ts .",
     "config:generate": "tsx scripts/generate-config.ts",
     "config:link": "rm -f config.json || true && test -f config.${NODE_ENV:-development}.json && ln -s config.${NODE_ENV:-development}.json config.json || echo \"Error: config.${NODE_ENV:-development}.json does not exist\"",
@@ -21,7 +21,8 @@
     "claude-code:unrestricted": "docker compose -f .claude/docker-compose.claude.yml run --rm --remove-orphans -it claude-code-sandbox bash -c 'claude --dangerously-skip-permissions; exec'",
     "wagmi:generate": "wagmi generate",
     "brand:assets": "node scripts/generate-brand-assets.mjs",
-    "shots": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs"
+    "shots": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs",
+    "shots:contributions": "NODE_PATH=${NODE_PATH:-/usr/lib/node_modules} node scripts/shots.mjs --contributions --label=contributions"
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-beta.4",

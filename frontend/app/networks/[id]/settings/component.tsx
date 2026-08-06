@@ -21,7 +21,7 @@ import { useReadContract, useReadContracts } from 'wagmi'
 import { Address } from '@/components/Address'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
-import { NetworkNav } from '@/components/NetworkNav'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { useNetwork } from '@/contexts/NetworkContext'
@@ -35,7 +35,6 @@ import {
   merkleSnapshotAbi,
   trustGraphFactoryAbi,
 } from '@/lib/contract-abis'
-import { trustGraphTabs } from '@/lib/network-nav'
 import {
   type PublicOperatorAction,
   operatorStatusQuery,
@@ -884,16 +883,12 @@ export const SettingsPage = ({
   return (
     <div className="space-y-10">
       <div className="space-y-4">
-        <div>
-          <h1 className="text-4xl font-bold">Network settings</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Read-only contract configuration, scoring parameters, and
-            proof-service billing for {network.name}. Live values come directly
-            from the chain; creation data and history come from the indexed
-            factory catalog.
-          </p>
-        </div>
-        <NetworkNav tabs={trustGraphTabs(network)} />
+        <NetworkHeader network={network} />
+        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          Read-only contract configuration, scoring parameters, and
+          proof-service billing. Live values come directly from the chain;
+          creation data and history come from the indexed factory catalog.
+        </p>
       </div>
 
       <section className="space-y-5">

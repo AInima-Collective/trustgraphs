@@ -2,18 +2,22 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { Hex, zeroAddress } from 'viem'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { Hex, encodeAbiParameters, keccak256, zeroAddress } from 'viem'
 import { useAccount } from 'wagmi'
 
 import { Address } from '@/components/Address'
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
-import { Markdown } from '@/components/Markdown'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Slider } from '@/components/Slider'
 import { useAttestation } from '@/hooks/useAttestation'
-import { actorKey } from '@/lib/contributions'
+import { actorKey, computeContributions } from '@/lib/contributions'
+import {
+  ContributionProjection,
+  projectContributionPool,
+} from '@/lib/contributions/projection'
 import {
   ContributionsRound,
   contributionsQueries,
@@ -24,7 +28,7 @@ import {
   RatingPowerEntry,
   ratingPowerPreview,
 } from '@/lib/contributions-view'
-import { trustNetworkFor } from '@/lib/network-nav'
+import { contributionsTabs, trustNetworkFor } from '@/lib/network-nav'
 import { ContributionsNetwork } from '@/lib/types'
 
 import {
@@ -55,6 +59,9 @@ const basisPointsWidth = (basisPoints: number) =>
 
 const previewTone = (index: number) =>
   ['bg-ink', 'bg-text-muted', 'bg-text-subtle'][index % 3]
+
+const projectionWidth = (basisPoints: bigint) =>
+  `${basisPoints / 100n}.${(basisPoints % 100n).toString().padStart(2, '0')}%`
 
 const dateLabel = (unixSeconds: string | bigint) =>
   new Date(Number(unixSeconds) * 1000).toLocaleDateString(undefined, {
@@ -106,6 +113,104 @@ const phaseLabel: Record<RoundPhase, string> = {
   unknown: 'Status unavailable',
 }
 
+const PoolSplitBar = ({
+  claims,
+  projections,
+  tokenDecimals,
+  tokenSymbol,
+  phase,
+  previewUnavailable,
+}: {
+  claims: ClaimView[]
+  projections: ContributionProjection[]
+  tokenDecimals: number
+  tokenSymbol: string
+  phase: RoundPhase
+  previewUnavailable: boolean
+}) => {
+  const titleByUid = new Map(
+    claims.map((claim) => [
+      claim.uid.toLowerCase(),
+      claim.title || 'Untitled contribution',
+    ])
+  )
+  if (projections.length === 0) {
+    return (
+      <p className="text-sm text-text-muted">
+        The pool split is unavailable until proven scores are present.
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <div
+        className="flex h-5 w-full overflow-hidden border border-hairline-strong bg-surface-2"
+        aria-label="Projected pool split"
+      >
+        {projections.map((projection, index) => (
+          <div
+            key={projection.claimUid}
+            className={`${previewTone(index)} h-full border-r border-surface transition-[width] duration-200 last:border-r-0 motion-reduce:transition-none`}
+            style={{
+              width: projectionWidth(projection.shareBps),
+              backgroundImage:
+                index % 3 === 1
+                  ? 'repeating-linear-gradient(135deg, transparent 0, transparent 4px, var(--surface) 4px, var(--surface) 5px)'
+                  : index % 3 === 2
+                    ? 'repeating-linear-gradient(45deg, transparent 0, transparent 2px, var(--surface) 2px, var(--surface) 3px)'
+                    : undefined,
+            }}
+            title={`${titleByUid.get(projection.claimUid)}: ${formatPoolAmount(projection.payout, tokenDecimals, tokenSymbol)}`}
+          />
+        ))}
+      </div>
+      <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+        {projections.map((projection, index) => (
+          <div
+            key={projection.claimUid}
+            className="flex min-w-0 items-start gap-2 text-xs"
+          >
+            <span
+              aria-hidden="true"
+              className={`${previewTone(index)} mt-0.5 h-3 w-3 shrink-0 border border-hairline-strong`}
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-text">
+                {titleByUid.get(projection.claimUid)}
+              </span>
+              <span className="text-text-muted">
+                ~
+                {formatPoolAmount(
+                  projection.payout,
+                  tokenDecimals,
+                  tokenSymbol
+                )}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-text-muted">
+        {phase === 'claimable'
+          ? 'This is the final score split. '
+          : 'If the round settled now: this is how the pool would split. '}
+        <a
+          href="/faq#then-what-does-the-zero-knowledge-proof-hide"
+          className="underline underline-offset-4"
+        >
+          Final scores are proven, not administered.
+        </a>
+      </p>
+      {previewUnavailable && (
+        <p className="text-xs text-warn">
+          A live re-split needs the round parameters and trust edges. The last
+          proven split stays visible.
+        </p>
+      )}
+    </div>
+  )
+}
+
 /**
  * One claim, expandable to its contributors and ratings, with plain-language notes on why a
  * rating counted less (or not at all). Score comes from the indexer's audited recompute.
@@ -114,6 +219,10 @@ const ClaimCard = ({
   claim,
   network,
   score,
+  projection,
+  projectionIsPreview,
+  tokenDecimals,
+  tokenSymbol,
   connectedAddress,
   rating,
   chainRating,
@@ -130,6 +239,10 @@ const ClaimCard = ({
   claim: ClaimView
   network: ContributionsNetwork
   score: string | undefined
+  projection?: ContributionProjection
+  projectionIsPreview: boolean
+  tokenDecimals: number
+  tokenSymbol: string
   connectedAddress?: Hex
   rating?: number
   chainRating?: number
@@ -177,16 +290,16 @@ const ClaimCard = ({
       id={`contribution-${claim.uid}`}
       type="outline"
       size="lg"
-      className="scroll-mt-6 space-y-4"
+      className="scroll-mt-6 space-y-4 px-4 sm:px-6"
     >
       <button
-        className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        className="grid min-h-11 w-full grid-cols-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink min-[420px]:grid-cols-[minmax(0,1fr)_auto]"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
         aria-controls={auditId}
       >
         <div className="space-y-1 min-w-0">
-          <div className="font-bold truncate">
+          <div className="break-words font-bold">
             {claim.title || 'Untitled contribution'}
             {isPending && (
               <span className="ml-2 inline-block border border-hairline-strong px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wider text-text-muted">
@@ -197,9 +310,14 @@ const ClaimCard = ({
           <div className="text-sm text-muted-foreground flex flex-row items-center gap-2 flex-wrap">
             <span>
               Submitted by{' '}
-              <Address address={claim.attester} displayMode="truncated" />
+              <Address
+                address={claim.attester}
+                displayMode="truncated"
+                link={false}
+                showCopyIcon={false}
+              />
             </span>
-            <span>·</span>
+            <span className="hidden min-[420px]:inline">·</span>
             <span>{dateLabel(claim.timestamp)}</span>
             {claim.inWindow === false && (
               <span className="text-warn">
@@ -209,9 +327,11 @@ const ClaimCard = ({
             )}
           </div>
         </div>
-        <div className="flex flex-row items-center gap-3 shrink-0">
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">Community score</div>
+        <div className="flex w-full flex-row items-start justify-between gap-3 min-[420px]:w-auto min-[420px]:shrink-0 min-[420px]:justify-start">
+          <div className="text-left min-[420px]:max-w-[10rem] min-[420px]:text-right">
+            <div className="text-xs text-muted-foreground">
+              {projectionIsPreview ? 'Preview score' : 'Community score'}
+            </div>
             <div className="font-mono">
               {isPending
                 ? 'Pending'
@@ -219,6 +339,21 @@ const ClaimCard = ({
                   ? formatContributionScore(score)
                   : 'Unavailable'}
             </div>
+            {projection ? (
+              <p className="mt-1 text-xs text-text-muted">
+                ~
+                {formatPoolAmount(
+                  projection.payout,
+                  tokenDecimals,
+                  tokenSymbol
+                )}{' '}
+                if the round settled now
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-text-muted">
+                Projected payout unavailable.
+              </p>
+            )}
           </div>
           {expanded ? (
             <ChevronUp className="w-4 h-4 mt-1" />
@@ -446,15 +581,17 @@ export const ContributionsNetworkPage = ({
   network: ContributionsNetwork
 }) => {
   const { address: connectedAddress, isConnected } = useAccount()
-  const { createAttestation, createAttestations, isCreating } =
-    useAttestation()
+  const { createAttestation, createAttestations, isCreating } = useAttestation()
   const {
     round,
     roundAvailable,
     roundLoading,
     scoreByUid,
+    scoresAvailable,
     claims,
     state,
+    records,
+    trustEdges,
     claimsLoading,
     tokenSymbol,
     tokenDecimals,
@@ -464,7 +601,6 @@ export const ContributionsNetworkPage = ({
     valuationSchema,
   } = useContributionsData(network)
 
-  const { name, link, about, criteria } = network
   const trustNetwork = trustNetworkFor(network)
   const [now, setNow] = useState<number | null>(null)
   const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
@@ -528,6 +664,71 @@ export const ContributionsNetworkPage = ({
     return ratings
   }, [chainRatings, drafts])
 
+  const deferredDrafts = useDeferredValue(drafts)
+  const optimisticScoreByUid = useMemo(() => {
+    if (
+      deferredDrafts.size === 0 ||
+      !connectedAddress ||
+      !round?.params ||
+      !round.root ||
+      trustEdges.length === 0 ||
+      records.length === 0
+    )
+      return null
+    try {
+      let latestTimestamp = 0n
+      for (const record of records) {
+        if (record.blockTimestamp > latestTimestamp)
+          latestTimestamp = record.blockTimestamp
+      }
+      const draftRecords = Array.from(deferredDrafts.entries()).map(
+        ([claimUid, score], index) => ({
+          kind: 4,
+          attester: connectedAddress as Hex,
+          recipient: zeroAddress,
+          uid: keccak256(
+            encodeAbiParameters(
+              [{ type: 'bytes32' }, { type: 'address' }, { type: 'uint8' }],
+              [claimUid as Hex, connectedAddress as Hex, score]
+            )
+          ),
+          blockTimestamp: latestTimestamp + BigInt(index + 1),
+          data: encodeAbiParameters(
+            [{ type: 'bytes32' }, { type: 'uint8' }],
+            [claimUid as Hex, score]
+          ),
+        })
+      )
+      return computeContributions({
+        trustEdges,
+        records: [...records, ...draftRecords],
+        params: { ...round.params, totalPool: BigInt(round.pool) },
+      }).claimScores
+    } catch {
+      return null
+    }
+  }, [connectedAddress, deferredDrafts, records, round, trustEdges])
+
+  const projectionIsPreview =
+    deferredDrafts.size > 0 && optimisticScoreByUid !== null
+  const projectionScores = optimisticScoreByUid ?? scoreByUid
+  const projections = useMemo(
+    () =>
+      round?.root && (projectionIsPreview || scoresAvailable)
+        ? projectContributionPool(projectionScores, round.pool)
+        : [],
+    [projectionIsPreview, projectionScores, round, scoresAvailable]
+  )
+  const projectionByUid = useMemo(
+    () =>
+      new Map(
+        projections.map((projection) => [projection.claimUid, projection])
+      ),
+    [projections]
+  )
+  const previewUnavailable =
+    deferredDrafts.size > 0 && optimisticScoreByUid === null
+
   const ratingPreview = useMemo(
     () =>
       connectedAddress
@@ -587,9 +788,7 @@ export const ContributionsNetworkPage = ({
   const dirtyUids = Array.from(drafts.entries())
     .filter(([uid, rating]) => chainRatings.get(uid) !== rating)
     .map(([uid]) => uid)
-  const unsavedDirtyUids = dirtyUids.filter(
-    (uid) => !submittedDrafts.has(uid)
-  )
+  const unsavedDirtyUids = dirtyUids.filter((uid) => !submittedDrafts.has(uid))
   const titleFor = (uid: string) =>
     claims.find((claim) => claim.uid === uid)?.title || 'Untitled contribution'
 
@@ -704,8 +903,13 @@ export const ContributionsNetworkPage = ({
   return (
     <div className="space-y-10">
       <header className="space-y-6">
-        <div className="space-y-3 max-w-3xl">
-          <h1 className="text-3xl font-bold">{name}</h1>
+        <NetworkHeader
+          network={network}
+          tabs={contributionsTabs(network)}
+          className="w-full"
+        />
+
+        <div className="max-w-3xl">
           {trustNetwork ? (
             <p className="text-sm text-text-muted">
               Rater influence is weighted by the{' '}
@@ -722,23 +926,7 @@ export const ContributionsNetworkPage = ({
               Rater influence is weighted by this round&apos;s trust network.
             </p>
           )}
-          <Markdown>{about}</Markdown>
-          {criteria && <Markdown>{criteria}</Markdown>}
         </div>
-
-        {link && (
-          <p className="text-sm text-text">
-            {link.prefix}{' '}
-            <a
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              {link.label}
-            </a>
-          </p>
-        )}
 
         <div className="grid gap-6 border-y border-hairline py-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0 space-y-2">
@@ -816,6 +1004,20 @@ export const ContributionsNetworkPage = ({
               </p>
             )}
           </div>
+
+          {round && claims.length > 0 && (
+            <div className="space-y-2 border-t border-hairline pt-5 sm:col-span-2">
+              <p className="tg-label">Pool split by community score</p>
+              <PoolSplitBar
+                claims={claims}
+                projections={projections}
+                tokenDecimals={tokenDecimals}
+                tokenSymbol={tokenSymbol}
+                phase={phase}
+                previewUnavailable={previewUnavailable}
+              />
+            </div>
+          )}
         </div>
 
         {!roundLoading && !roundAvailable && (
@@ -894,7 +1096,13 @@ export const ContributionsNetworkPage = ({
                 key={claim.uid}
                 claim={claim}
                 network={network}
-                score={scoreByUid.get(claim.uid)}
+                score={projectionScores
+                  .get(claim.uid.toLowerCase())
+                  ?.toString()}
+                projection={projectionByUid.get(claim.uid.toLowerCase())}
+                projectionIsPreview={projectionIsPreview}
+                tokenDecimals={tokenDecimals}
+                tokenSymbol={tokenSymbol}
                 connectedAddress={connectedAddress}
                 rating={effectiveRatings.get(claim.uid)}
                 chainRating={chainRatings.get(claim.uid)}

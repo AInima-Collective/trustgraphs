@@ -7,6 +7,7 @@ import { normalize } from 'viem/ens'
 import { useEnsAddress, useEnsAvatar, useEnsName } from 'wagmi'
 import { getEnsAvatarQueryOptions, getEnsNameQueryOptions } from 'wagmi/query'
 
+import { REVIEW_FIXTURES_ENABLED } from '@/lib/review-fixture-query'
 import { makeWagmiConfig } from '@/lib/wagmi'
 
 interface EnsData {
@@ -194,7 +195,12 @@ export function useEns(
     address: address as `0x${string}`,
     chainId: opts.chainId,
     query: {
-      enabled: Boolean(opts.enableName && isValidAddress && !cachedData?.name),
+      enabled: Boolean(
+        !REVIEW_FIXTURES_ENABLED &&
+          opts.enableName &&
+          isValidAddress &&
+          !cachedData?.name
+      ),
       staleTime: opts.cacheDuration,
       gcTime: opts.cacheDuration * 2,
       retry: (failureCount) => failureCount < 2,
@@ -212,7 +218,8 @@ export function useEns(
     chainId: opts.chainId,
     query: {
       enabled: Boolean(
-        opts.enableAvatar &&
+        !REVIEW_FIXTURES_ENABLED &&
+          opts.enableAvatar &&
           !!(ensName || cachedData?.name) &&
           !cachedData?.avatar
       ),
@@ -324,7 +331,12 @@ export function useResolveEnsName(
     name: normalizedName,
     chainId: opts.chainId,
     query: {
-      enabled: Boolean(opts.enableName && normalizedName && !cachedData),
+      enabled: Boolean(
+        !REVIEW_FIXTURES_ENABLED &&
+          opts.enableName &&
+          normalizedName &&
+          !cachedData
+      ),
       staleTime: opts.cacheDuration,
       gcTime: opts.cacheDuration * 2,
       retry: (failureCount) => failureCount < 2,
@@ -418,7 +430,7 @@ export function useBatchEnsQuery(
                   isLoading: false,
                 }
               }
-            } catch (error) {
+            } catch {
               results[address] = {
                 address,
                 name: null,
@@ -432,7 +444,7 @@ export function useBatchEnsQuery(
 
       return results
     },
-    enabled: addresses.length > 0,
+    enabled: !REVIEW_FIXTURES_ENABLED && addresses.length > 0,
     staleTime: opts.cacheDuration,
     gcTime: opts.cacheDuration * 2,
   })

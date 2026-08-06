@@ -14,9 +14,13 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { type Nulled, nullable } from './ponder-query'
+import {
+  REVIEW_FIXTURES_ENABLED,
+  getReviewFixture,
+} from './review-fixture-query'
 
 /**
  * `usePonderQuery`, but a missing row is data rather than a crash.
@@ -61,6 +65,16 @@ export function usePonderQuery(params: any): any {
   const live = liveOption ?? true
   const queryClient = useQueryClient()
   const client = usePonderClient()
+  // localStorage selects the review phase/persona, so it cannot participate in
+  // SSR. Keep the first browser render identical to the server, then activate
+  // the local fixture after hydration. Supplying it as a local query function
+  // (instead of initialData) also works when React Query already created the
+  // pending cache entry during SSR.
+  const [reviewFixtureReady, setReviewFixtureReady] = useState(false)
+  useEffect(() => setReviewFixtureReady(true), [])
+  const reviewFixture = reviewFixtureReady
+    ? getReviewFixture(queryFn)
+    : undefined
 
   // Deliberately keyed on the query function alone, as upstream does: `ponderQueryFns.getX(addr)`
   // returns a fresh closure every render, so this recomputes every render and that is fine — it
@@ -72,7 +86,8 @@ export function usePonderQuery(params: any): any {
   )
 
   useEffect(() => {
-    if (live === false || rest.enabled === false) return
+    if (REVIEW_FIXTURES_ENABLED || live === false || rest.enabled === false)
+      return
     // `options.queryFn` is nullary — it closes over the already-compiled query — while `live`
     // types its first argument as `(db) => Promise<T>`. Upstream passes exactly this and relies on
     // the extra argument being ignored; the cast records that rather than hiding it.
@@ -95,7 +110,18 @@ export function usePonderQuery(params: any): any {
     queryClient,
   ])
 
-  return useQuery({ ...rest, ...nullable(options) })
+  return useQuery({
+    ...rest,
+    ...nullable(options),
+    ...(REVIEW_FIXTURES_ENABLED
+      ? {
+          enabled: reviewFixtureReady && reviewFixture !== undefined,
+          queryFn: async () => reviewFixture?.data,
+          staleTime: Infinity,
+          gcTime: Infinity,
+        }
+      : {}),
+  })
 }
 
 /**

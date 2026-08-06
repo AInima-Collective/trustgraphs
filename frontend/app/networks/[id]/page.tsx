@@ -1,5 +1,6 @@
 import { getPonderQueryOptions } from '@ponder/react'
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
@@ -10,6 +11,7 @@ import {
   VISIBLE_HYPERCERTS_NETWORKS,
   VISIBLE_SEED_NETWORKS,
 } from '@/lib/config'
+import { socialCard } from '@/lib/metadata'
 import { ponderClient } from '@/lib/ponder'
 import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
@@ -38,6 +40,29 @@ export async function generateStaticParams() {
   ].map((network) => ({
     id: network.id,
   }))
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const { id } = await params
+  const network = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
+    (candidate) => candidate.id === id
+  )
+  if (!network) return {}
+
+  const title = `${network.name} contribution round`
+  return {
+    title,
+    ...socialCard({
+      title: `${title} | Trustgraphs`,
+      description:
+        'See the work, rate it, submit yours, and follow how the pool would split.',
+      path: `/networks/${id}`,
+    }),
+  }
 }
 
 export default async function NetworkPageServer({

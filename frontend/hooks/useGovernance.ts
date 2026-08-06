@@ -276,16 +276,6 @@ export function useGovernance() {
     return proposalsWithState
   }, [proposalsWithState])
 
-  // Get votes for a specific proposal
-  const getProposalVotes = useCallback(
-    async (_proposalId: number): Promise<ProposalVote[]> => {
-      // This would need a separate ponder query - for now return empty
-      // Could be enhanced to fetch from ponder API
-      return []
-    },
-    []
-  )
-
   // Check if user has voted on a proposal
   const hasUserVoted = useCallback(
     (proposalId: number): boolean => {
@@ -596,14 +586,6 @@ export function useGovernance() {
     [isConnected, address, publicClient, getProposal, userEntriesByRoot]
   )
 
-  // No queuing in MerkleGovModule - proposals go directly from Passed to executable
-  const queueProposal = useCallback(async (_proposalId: number) => {
-    console.log(
-      'Queue not supported in MerkleGovModule - proposals are directly executable when succeeded'
-    )
-    return null
-  }, [])
-
   // Execute proposal
   const executeProposal = useCallback(
     async (proposalId: number): Promise<string | null> => {
@@ -734,6 +716,7 @@ export function useGovernance() {
     avatarAddress: avatarAddress as string | undefined,
     currentMerkleRoot: moduleState?.currentMerkleRoot,
     totalVotingPower: moduleState?.totalVotingPower,
+    currentBlockNumber,
 
     // User data
     userVotingPower: userVotingPower
@@ -754,13 +737,11 @@ export function useGovernance() {
     // Actions
     createProposal,
     castVote,
-    queueProposal,
     executeProposal,
 
     // Query helpers
     getAllProposals,
     getProposal,
-    getProposalVotes,
     hasUserVoted,
     getUserVote,
 

@@ -3,7 +3,6 @@
 import { Check } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useState } from 'react'
-import { parseUnits } from 'viem'
 import { useAccount } from 'wagmi'
 
 import { Button } from '@/components/Button'
@@ -14,30 +13,66 @@ import {
   ProposalState,
   VoteType,
 } from '@/hooks/useGovernance'
+import { formatBlockEta } from '@/lib/blocks'
 import { formatBigNumber } from '@/lib/utils'
 
 import { Address } from './Address'
 import { Card } from './Card'
 
+export interface ProposalVoteRow {
+  voter: string
+  voteType: number
+  votingPower: bigint
+}
+
 interface ProposalCardProps {
   proposal: ProposalCore
   actions: ProposalAction[]
+  votes?: ProposalVoteRow[]
+  /** Quorum as a fraction of total voting power (0.04 = 4%). */
+  quorum?: number
+  currentBlockNumber?: bigint
   userVotingPower?: string
   userVote?: VoteType | null
   onVote?: (proposalId: number, support: VoteType) => Promise<string | null>
-  onQueue?: (proposalId: number) => Promise<string | null>
   onExecute?: (proposalId: number) => Promise<string | null>
   isLoading?: boolean
   getProposalStateText?: (state: number) => string
 }
 
+const voteTypeText = (voteType: VoteType | number | null | undefined) => {
+  switch (voteType) {
+    case VoteType.Yes:
+      return 'For'
+    case VoteType.No:
+      return 'Against'
+    case VoteType.Abstain:
+      return 'Abstain'
+    default:
+      return 'Unknown'
+  }
+}
+
+const voteTypeStyles = (voteType: VoteType | number | null | undefined) => {
+  switch (voteType) {
+    case VoteType.Yes:
+      return 'border-success/50 bg-success-soft text-success'
+    case VoteType.No:
+      return 'border-error/50 bg-error-soft text-error'
+    default:
+      return 'border-border bg-muted text-muted-foreground'
+  }
+}
+
 export function ProposalCard({
   proposal,
   actions,
+  votes = [],
+  quorum = 0,
+  currentBlockNumber,
   userVotingPower,
   userVote,
   onVote,
-  onQueue,
   onExecute,
   isLoading = false,
   getProposalStateText = (state) => `State ${state}`,
@@ -45,7 +80,6 @@ export function ProposalCard({
   const { isConnected } = useAccount()
 
   const [isVoting, setIsVoting] = useState(false)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const proposalId = Number(proposal.id)
   const state = proposal.state
@@ -55,7 +89,6 @@ export function ProposalCard({
   const canVote =
     isActive && userVotingPower && Number(userVotingPower) > 0 && !hasVoted
 
-  // Calculate total votes and percentages
   const totalVotes =
     Number(proposal.yesVotes) +
     Number(proposal.noVotes) +
@@ -67,59 +100,29 @@ export function ProposalCard({
   const abstainPercentage =
     totalVotes > 0 ? (Number(proposal.abstainVotes) / totalVotes) * 100 : 0
 
-  // Block-based timing for MerkleGovModule
-  const startBlock = Number(proposal.startBlock || 0)
-  const endBlock = Number(proposal.endBlock || 0)
+  // Quorum: participation measured against the network's total voting power
+  // at the proposal's snapshot, not against votes cast.
+  const quorumNeeded = quorum * Number(proposal.totalVotingPower)
+  const quorumProgress =
+    quorumNeeded > 0 ? Math.min((totalVotes / quorumNeeded) * 100, 100) : 0
+  const quorumReached = quorumNeeded > 0 && totalVotes >= quorumNeeded
+  const majorityFor = Number(proposal.yesVotes) > Number(proposal.noVotes)
 
-  const getTimeLeft = () => {
-    if (state === ProposalState.Pending) {
-      return `Starts at block ${startBlock}`
-    } else if (isActive) {
-      return `Ends at block ${endBlock}`
-    }
-    return null
-  }
-
-  const getVoteTypeText = (voteType: VoteType) => {
-    switch (voteType) {
-      case VoteType.Yes:
-        return 'FOR'
-      case VoteType.No:
-        return 'AGAINST'
-      case VoteType.Abstain:
-        return 'ABSTAIN'
-      default:
-        return 'UNKNOWN'
-    }
-  }
-
-  const getVoteTypeStyles = (voteType: VoteType) => {
-    switch (voteType) {
-      case VoteType.Yes:
-        return 'border-success/50 bg-success-soft text-success'
-      case VoteType.No:
-        return 'border-error/50 bg-error-soft text-error'
-      case VoteType.Abstain:
-        return 'border-border bg-muted text-muted-foreground'
-      default:
-        return 'border-border bg-muted text-muted-foreground'
-    }
-  }
+  const timing =
+    currentBlockNumber === undefined || currentBlockNumber === 0n
+      ? null
+      : state === ProposalState.Pending
+        ? `Voting opens ${formatBlockEta(proposal.startBlock, currentBlockNumber)}`
+        : isActive
+          ? `Voting ends ${formatBlockEta(proposal.endBlock, currentBlockNumber)}`
+          : `Voting ended ${formatBlockEta(proposal.endBlock, currentBlockNumber)}`
 
   const handleVote = useCallback(
     async (support: VoteType) => {
       if (!onVote || !canVote) return
-
       setIsVoting(true)
-      setSuccessMessage(null)
-
       try {
-        const hash = await onVote(proposalId, support)
-        if (hash) {
-          const voteText = getVoteTypeText(support)
-          setSuccessMessage(`Vote cast ${voteText}! Transaction: ${hash}`)
-          setTimeout(() => setSuccessMessage(null), 5000)
-        }
+        await onVote(proposalId, support)
       } catch (err) {
         console.error('Error voting:', err)
       } finally {
@@ -129,37 +132,20 @@ export function ProposalCard({
     [onVote, canVote, proposalId]
   )
 
-  const _handleQueue = useCallback(async () => {
-    if (!onQueue) return
-
-    const hash = await onQueue(proposalId)
-    if (hash) {
-      setSuccessMessage(`Proposal queued! Transaction: ${hash}`)
-      setTimeout(() => setSuccessMessage(null), 5000)
-    }
-  }, [onQueue, proposalId])
-
   const handleExecute = useCallback(async () => {
     if (!onExecute) return
-
-    const hash = await onExecute(proposalId)
-    if (hash) {
-      setSuccessMessage(`Proposal executed! Transaction: ${hash}`)
-      setTimeout(() => setSuccessMessage(null), 5000)
-    }
+    await onExecute(proposalId)
   }, [onExecute, proposalId])
-
-  const timeLeft = getTimeLeft()
 
   const getStatusStyles = () => {
     if (isActive) {
       return 'border-success/50 bg-success-soft text-success'
     }
-    if (state === ProposalState.Passed) {
+    if (state === ProposalState.Passed || state === ProposalState.Executed) {
       return 'border-hairline-strong bg-surface-2 text-text'
     }
-    if (state === ProposalState.Executed) {
-      return 'border-hairline-strong bg-surface-2 text-text'
+    if (state === ProposalState.Rejected) {
+      return 'border-error/50 bg-error-soft text-error'
     }
     return 'border-border bg-muted text-muted-foreground'
   }
@@ -170,12 +156,13 @@ export function ProposalCard({
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-foreground">
-              {proposal.title}
-            </h3>
-            {timeLeft && (
-              <div className="text-xs text-muted-foreground">{timeLeft}</div>
-            )}
+            <h2 className="text-2xl font-semibold text-foreground">
+              {proposal.title || `Proposal #${proposalId}`}
+            </h2>
+            <div className="text-xs text-muted-foreground">
+              Proposal #{proposalId}
+              {timing && <> · {timing}</>}
+            </div>
             <div className="text-xs text-muted-foreground">
               <span className="font-medium">Proposer:</span>{' '}
               <Address textClassName="text-xs" address={proposal.proposer} />
@@ -190,58 +177,50 @@ export function ProposalCard({
           </div>
         </div>
 
-        <p className="text-sm text-foreground/80">{proposal.description}</p>
+        <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+          {proposal.description}
+        </p>
       </div>
-
-      {/* Success Message */}
-      {successMessage && (
-        <div className="border border-success/50 bg-success-soft p-4 rounded-md">
-          <div className="text-success text-sm">✓ {successMessage}</div>
-        </div>
-      )}
 
       {/* Actions */}
       {actions.length > 0 && (
         <div className="border-t border-border pt-6 space-y-4">
-          <h4 className="text-sm font-bold text-foreground">
-            PROPOSED ACTIONS
-          </h4>
+          <h3 className="text-sm font-bold text-foreground">
+            What passes if this passes
+          </h3>
           <div className="space-y-3">
             {actions.map((action, index) => (
               <Card key={index} type="accent" size="md" className="space-y-3">
                 <div className="flex justify-between items-start">
                   <div className="text-xs font-medium text-muted-foreground">
-                    ACTION #{index + 1}
+                    Action {index + 1}
                   </div>
                   {action.value !== '0' && (
                     <div className="text-xs font-medium text-foreground">
-                      {formatBigNumber(parseUnits(action.value, 18), 18)} ETH
+                      {formatBigNumber(BigInt(action.value), 18)} ETH
                     </div>
                   )}
                 </div>
+                {action.description && (
+                  <div className="text-sm text-foreground">
+                    {action.description}
+                  </div>
+                )}
                 <div className="space-y-1">
-                  <div className="text-xs text-muted-foreground">TARGET</div>
+                  <div className="text-xs text-muted-foreground">Target</div>
                   <div className="text-sm font-mono break-all text-foreground">
                     {action.target}
                   </div>
                 </div>
-                {action.description && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">
-                      DESCRIPTION
-                    </div>
-                    <div className="text-sm text-foreground">
-                      {action.description}
-                    </div>
-                  </div>
-                )}
                 {action.data !== '0x' && (
                   <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">
-                      CALLDATA
+                      Calldata
                     </div>
                     <div className="text-xs font-mono break-all text-muted-foreground">
-                      {action.data.slice(0, 100)}...
+                      {action.data.length > 100
+                        ? `${action.data.slice(0, 100)}...`
+                        : action.data}
                     </div>
                   </div>
                 )}
@@ -251,15 +230,16 @@ export function ProposalCard({
         </div>
       )}
 
-      {/* Vote Results */}
+      {/* Results */}
       <div className="border-t border-border pt-6 space-y-4">
-        <h4 className="text-sm font-bold text-foreground">VOTING RESULTS</h4>
+        <h3 className="text-sm font-bold text-foreground">Results</h3>
+
         <div className="grid grid-cols-3 gap-4 text-xs">
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">FOR</span>
-              <span className="text-foreground font-medium">
-                {proposal.yesVotes.toString()}
+              <span className="text-muted-foreground">For</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {formatBigNumber(proposal.yesVotes, 18)}
               </span>
             </div>
             <div className="h-2 overflow-hidden bg-surface-2">
@@ -268,77 +248,138 @@ export function ProposalCard({
                 style={{ width: `${forPercentage}%` }}
               />
             </div>
-            <div className="text-center text-muted-foreground">
+            <div className="text-center text-muted-foreground tabular-nums">
               {forPercentage.toFixed(1)}%
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">AGAINST</span>
-              <span className="text-foreground font-medium">
-                {proposal.noVotes.toString()}
+              <span className="text-muted-foreground">Against</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {formatBigNumber(proposal.noVotes, 18)}
               </span>
             </div>
-            <div className="bg-muted h-2 rounded-full overflow-hidden">
+            <div className="h-2 overflow-hidden bg-surface-2">
               <div
                 className="bg-error h-2 transition-all"
                 style={{ width: `${againstPercentage}%` }}
               />
             </div>
-            <div className="text-center text-muted-foreground">
+            <div className="text-center text-muted-foreground tabular-nums">
               {againstPercentage.toFixed(1)}%
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">ABSTAIN</span>
-              <span className="text-foreground font-medium">
-                {proposal.abstainVotes.toString()}
+              <span className="text-muted-foreground">Abstain</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {formatBigNumber(proposal.abstainVotes, 18)}
               </span>
             </div>
-            <div className="bg-muted h-2 rounded-full overflow-hidden">
+            <div className="h-2 overflow-hidden bg-surface-2">
               <div
                 className="bg-text-subtle h-2 transition-all"
                 style={{ width: `${abstainPercentage}%` }}
               />
             </div>
-            <div className="text-center text-muted-foreground">
+            <div className="text-center text-muted-foreground tabular-nums">
               {abstainPercentage.toFixed(1)}%
             </div>
           </div>
         </div>
-        <div className="text-xs text-center text-muted-foreground">
-          Total: {totalVotes.toString()} votes
-        </div>
+
+        {/* Quorum: the number that decides whether the result counts. */}
+        {quorumNeeded > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">
+                Quorum: {formatBigNumber(totalVotes / 1e18)} of{' '}
+                {formatBigNumber(quorumNeeded / 1e18)} voting power needed
+              </span>
+              <span
+                className={
+                  quorumReached
+                    ? 'text-success font-medium'
+                    : 'text-muted-foreground'
+                }
+              >
+                {quorumReached ? 'Reached' : 'Not reached yet'}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden bg-surface-2">
+              <div
+                className={`h-2 transition-all ${quorumReached ? 'bg-success' : 'bg-text-subtle'}`}
+                style={{ width: `${quorumProgress}%` }}
+              />
+            </div>
+            {isActive && (
+              <div className="text-xs text-muted-foreground">
+                {quorumReached
+                  ? majorityFor
+                    ? 'Passing: quorum reached and For is ahead.'
+                    : 'Not passing: quorum reached but Against is ahead.'
+                  : 'Needs more participation to reach quorum.'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Already Voted Message */}
+      {/* Voters */}
+      {votes.length > 0 && (
+        <div className="border-t border-border pt-6 space-y-3">
+          <h3 className="text-sm font-bold text-foreground">
+            Votes ({votes.length})
+          </h3>
+          <div className="space-y-2">
+            {votes.map((vote) => (
+              <div
+                key={vote.voter}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <Address textClassName="text-xs" address={vote.voter} />
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground tabular-nums">
+                    {formatBigNumber(vote.votingPower, 18)}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-md border font-medium ${voteTypeStyles(vote.voteType)}`}
+                  >
+                    {voteTypeText(vote.voteType)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Your vote */}
       {hasVoted && (
         <div className="border-t border-border pt-6 space-y-3">
-          <h4 className="text-sm font-bold text-foreground">YOUR VOTE</h4>
+          <h3 className="text-sm font-bold text-foreground">Your vote</h3>
           <div className="flex items-center gap-3">
             <div
-              className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md border font-medium ${getVoteTypeStyles(userVote)}`}
+              className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md border font-medium ${voteTypeStyles(userVote)}`}
             >
               <Check className="w-4 h-4" />
-              <span>Voted {getVoteTypeText(userVote)}</span>
+              <span>Voted {voteTypeText(userVote)}</span>
             </div>
             {userVotingPower && (
               <span className="text-xs text-muted-foreground">
-                with {formatBigNumber(userVotingPower, undefined, true)} voting
-                power
+                with {formatBigNumber(BigInt(userVotingPower), 18)} voting power
               </span>
             )}
           </div>
         </div>
       )}
 
-      {/* Voting Buttons */}
+      {/* Cast a vote */}
       {canVote && (
         <div className="border-t border-border pt-6 space-y-4">
-          <h4 className="text-sm font-bold text-foreground">CAST YOUR VOTE</h4>
+          <h3 className="text-sm font-bold text-foreground">Cast your vote</h3>
           <div className="text-xs text-muted-foreground">
-            Your voting power: {userVotingPower!}
+            Your voting power: {formatBigNumber(BigInt(userVotingPower!), 18)}
           </div>
           <VoteButtons
             disabled={isVoting}
@@ -348,41 +389,37 @@ export function ProposalCard({
         </div>
       )}
 
-      {/* Admin Actions */}
-      {isPassed && (
+      {/* Execution */}
+      {isPassed && onExecute && (
         <div className="border-t border-border pt-6 space-y-4">
-          <h4 className="text-sm font-bold text-foreground">
-            PROPOSAL EXECUTION
-          </h4>
+          <h3 className="text-sm font-bold text-foreground">Execution</h3>
           <div className="text-xs text-muted-foreground">
-            Passed proposals can be executed immediately
+            This proposal passed. Anyone can execute it, which runs its actions
+            from the treasury.
           </div>
-          <div className="flex gap-3">
-            {onExecute && (
-              <Button
-                onClick={handleExecute}
-                disabled={isLoading}
-                variant="brand"
-                size="sm"
-              >
-                EXECUTE PROPOSAL
-              </Button>
-            )}
-          </div>
+          <Button
+            onClick={handleExecute}
+            disabled={isLoading}
+            variant="brand"
+            size="sm"
+          >
+            Execute proposal
+          </Button>
         </div>
       )}
 
-      {/* No Voting Power Message */}
+      {/* No voting power */}
       {isConnected &&
         isActive &&
         !hasVoted &&
         (!userVotingPower || Number(userVotingPower) === 0) && (
-          <div className="border-t border-border pt-6 text-center space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">
-              NO VOTING POWER
+          <div className="border-t border-border pt-6 space-y-1">
+            <div className="text-sm font-medium text-foreground">
+              You can't vote on this proposal
             </div>
             <div className="text-xs text-muted-foreground">
-              ◆ YOU NEED VOTING POWER TO PARTICIPATE IN GOVERNANCE ◆
+              Voting power comes from your trust score when the proposal was
+              created. Earn trust attestations to take part in future votes.
             </div>
           </div>
         )}

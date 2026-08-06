@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, Link, ListFilter } from 'lucide-react'
+import { Check, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
@@ -13,7 +13,7 @@ import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
 import { Markdown } from '@/components/Markdown'
-import { NetworkNav } from '@/components/NetworkNav'
+import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { ScoreUpdateChip } from '@/components/ScoreUpdateChip'
 import { ScoresAsOf } from '@/components/ScoresAsOf'
@@ -24,7 +24,6 @@ import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useScoreDeltas } from '@/hooks/useScoreDeltas'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
-import { trustGraphTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
 import { formatBigNumber } from '@/lib/utils'
 
@@ -54,7 +53,7 @@ export const NetworkPage = () => {
     simulationConfig,
   } = useNetwork()
 
-  const { name, link, about, callToAction, applicationUrl, criteria } = network
+  const { name, about, callToAction, applicationUrl, criteria } = network
 
   // Small "+0.4" badges on the SCORE column for ten seconds after an update lands, so an
   // attestation's effect is felt without anyone reading a changelog. Off while simulating.
@@ -156,28 +155,16 @@ export const NetworkPage = () => {
           beside the graph. */}
       <div className="flex flex-col items-start gap-4">
         <BreadcrumbRenderer className="mb-2" />
-
-        <div className="flex w-full flex-row flex-wrap items-center justify-between gap-x-8 gap-y-3">
-          <h1 className="text-4xl font-bold">{name}</h1>
-          <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
+        {/* The chip rides beside the shared header rather than inside it: NetworkHeader is
+            byte-identical across a network's tabs by contract, and score-update state is page
+            content. */}
+        <div className="flex w-full flex-row flex-wrap items-start justify-between gap-x-8 gap-y-3">
+          <NetworkHeader network={network} className="min-w-0 flex-1" />
+          <ScoreUpdateChip
+            snapshot={network.contracts.merkleSnapshot}
+            className="mt-2"
+          />
         </div>
-
-        {link && (
-          <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
-            {link.prefix && <span>{link.prefix}</span>}
-            <a
-              className="inline-flex flex-row items-center gap-1.5 text-text underline underline-offset-4 transition-colors hover:text-text-muted"
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Link className="w-4 h-4" />
-              <span>{link.label}</span>
-            </a>
-          </p>
-        )}
-
-        <NetworkNav tabs={trustGraphTabs(network)} className="w-full mt-2" />
       </div>
 
       <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-start gap-12">

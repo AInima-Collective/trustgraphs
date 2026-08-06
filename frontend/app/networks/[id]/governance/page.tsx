@@ -1,28 +1,27 @@
 'use client'
 
-import { ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type React from 'react'
-import { useCallback, useState } from 'react'
+import { Suspense } from 'react'
 import { useAccount } from 'wagmi'
 
-import { Address, TableAddress } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { CreateProposalForm } from '@/components/CreateProposalForm'
-import { NetworkNav } from '@/components/NetworkNav'
+import { Modal } from '@/components/Modal'
 import { SectionHeading } from '@/components/SectionHeading'
-import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
+import { TableAddress } from '@/components/Address'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   ProposalAction,
   ProposalCore,
   ProposalState,
-  VoteType,
   useGovernance,
 } from '@/hooks/useGovernance'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
-import { trustGraphTabs } from '@/lib/network-nav'
+import { useRouteModal } from '@/hooks/useRouteModal'
+import { formatBlockEta } from '@/lib/blocks'
 import { formatBigNumber } from '@/lib/utils'
 
 interface ProposalRow {
@@ -30,12 +29,83 @@ interface ProposalRow {
   actions: ProposalAction[]
 }
 
-export default function GovernancePage() {
+/** Active proposals first (they can still be voted on), then newest first. */
+const statePriority = (state: number): number => {
+  switch (state) {
+    case ProposalState.Active:
+      return 0
+    case ProposalState.Pending:
+      return 1
+    case ProposalState.Passed:
+      return 2
+    default:
+      return 3
+  }
+}
+
+const StateBadge = ({ state, label }: { state: number; label: string }) => {
+  const styles =
+    state === ProposalState.Active
+      ? 'border-success/50 bg-success-soft text-success'
+      : state === ProposalState.Passed || state === ProposalState.Executed
+        ? 'border-hairline-strong bg-surface-2 text-text'
+        : state === ProposalState.Rejected
+          ? 'border-error/50 bg-error-soft text-error'
+          : 'border-border bg-muted text-muted-foreground'
+
+  return (
+    <span
+      className={`text-xs px-2 py-1 rounded-md border font-medium whitespace-nowrap ${styles}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+/** One stacked bar: For (success) / Against (error) / Abstain (neutral). */
+const ResultBar = ({ core }: { core: ProposalCore }) => {
+  const total =
+    Number(core.yesVotes) + Number(core.noVotes) + Number(core.abstainVotes)
+
+  if (total === 0) {
+    return <span className="text-xs text-muted-foreground">No votes yet</span>
+  }
+
+  const pct = (v: bigint) => (Number(v) / total) * 100
+
+  return (
+    <div className="min-w-[120px] space-y-1">
+      <div
+        className="flex h-2 w-full overflow-hidden bg-surface-2"
+        role="img"
+        aria-label={`For ${pct(core.yesVotes).toFixed(0)}%, against ${pct(core.noVotes).toFixed(0)}%, abstain ${pct(core.abstainVotes).toFixed(0)}%`}
+      >
+        <div
+          className="bg-success h-2"
+          style={{ width: `${pct(core.yesVotes)}%` }}
+        />
+        <div
+          className="bg-error h-2"
+          style={{ width: `${pct(core.noVotes)}%` }}
+        />
+        <div
+          className="bg-text-subtle h-2"
+          style={{ width: `${pct(core.abstainVotes)}%` }}
+        />
+      </div>
+      <div className="text-xs text-muted-foreground tabular-nums">
+        {pct(core.yesVotes).toFixed(0)}% for
+      </div>
+    </div>
+  )
+}
+
+function GovernancePageContent() {
   const router = useRouter()
   const { isConnected } = useAccount()
   const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const createModal = useRouteModal('new')
 
   const {
     isAnyActionLoading,
@@ -44,69 +114,77 @@ export default function GovernancePage() {
     isLoadingModule,
     isLoadingSafeBalance,
     error,
-    proposalCounter,
-    votingDelay,
-    votingPeriod,
-    quorum,
     userVotingPower,
     totalVotingPower,
+    currentBlockNumber,
     canCreateProposal,
     createProposal,
     getAllProposals,
     getProposalStateText,
-    merkleGovAddress,
     safeBalance,
-    safeAddress,
   } = useGovernance()
 
   const proposals = getAllProposals()
 
-  const handleCreateProposal = useCallback(
-    async (
-      title: string,
-      description: string,
-      actions: ProposalAction[],
-      voteType?: VoteType | null
-    ) => {
-      setSuccessMessage(null)
-      const hash = await createProposal(title, description, actions, voteType)
-      if (hash) {
-        setSuccessMessage(
-          voteType === undefined || voteType === null
-            ? `Proposal created successfully! Transaction: ${hash}`
-            : `Proposal created & vote cast! Transaction: ${hash}`
-        )
-        setTimeout(() => setSuccessMessage(null), 5000)
-      }
-      return hash
-    },
-    [createProposal]
-  )
+  const votingPowerPercent =
+    userVotingPower && totalVotingPower && Number(totalVotingPower) > 0
+      ? (Number(userVotingPower.value) / Number(totalVotingPower)) * 100
+      : 0
 
-  const [showCreateForm, setShowCreateForm] = useState(false)
-
-  const isLoading = isLoadingModule || isLoadingSafeBalance
-
-  // Define table columns for proposals
   const columns: Column<ProposalRow>[] = [
-    {
-      key: 'id',
-      header: 'ID',
-      tooltip: 'The unique identifier for this proposal.',
-      sortable: true,
-      accessor: (row) => Number(row.core.id),
-      render: (row) => (
-        <span className="font-medium">#{row.core.id.toString()}</span>
-      ),
-    },
     {
       key: 'title',
       header: 'TITLE',
-      tooltip: 'The title of the proposal.',
+      tooltip: 'What the proposal is about.',
       sortable: false,
       render: (row) => (
-        <div className="max-w-[300px] truncate">{row.core.title}</div>
+        <div className="max-w-[300px] truncate font-medium">
+          {row.core.title || `Proposal #${row.core.id.toString()}`}
+        </div>
       ),
+    },
+    {
+      key: 'state',
+      header: 'STATUS',
+      tooltip: 'Where the proposal is in its life: voting, passed, executed.',
+      sortable: true,
+      accessor: (row) =>
+        statePriority(row.core.state) * 1e9 - Number(row.core.id),
+      render: (row) => (
+        <StateBadge
+          state={row.core.state}
+          label={getProposalStateText(row.core.state)}
+        />
+      ),
+    },
+    {
+      key: 'result',
+      header: 'RESULT',
+      tooltip: 'Share of votes cast so far: for, against, abstain.',
+      sortable: false,
+      render: (row) => <ResultBar core={row.core} />,
+    },
+    {
+      key: 'timing',
+      header: 'VOTING',
+      tooltip: 'When voting opens or closes, estimated from block times.',
+      sortable: true,
+      accessor: (row) => Number(row.core.endBlock),
+      render: (row) => {
+        const { state, startBlock, endBlock } = row.core
+        if (!currentBlockNumber) return null
+        const text =
+          state === ProposalState.Pending
+            ? `Opens ${formatBlockEta(startBlock, currentBlockNumber)}`
+            : state === ProposalState.Active
+              ? `Ends ${formatBlockEta(endBlock, currentBlockNumber)}`
+              : `Ended ${formatBlockEta(endBlock, currentBlockNumber)}`
+        return (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {text}
+          </span>
+        )
+      },
     },
     {
       key: 'proposer',
@@ -115,265 +193,81 @@ export default function GovernancePage() {
       sortable: false,
       render: (row) => <TableAddress address={row.core.proposer} />,
     },
-    {
-      key: 'state',
-      header: 'STATUS',
-      tooltip: 'The current state of the proposal.',
-      sortable: true,
-      accessor: (row) => row.core.state,
-      render: (row) => {
-        const state = row.core.state
-        const stateText = getProposalStateText(state)
-        const stateStyles =
-          state === ProposalState.Active
-            ? 'border-success/50 bg-success-soft text-success'
-            : state === ProposalState.Passed
-              ? 'border-hairline-strong bg-surface-2 text-text'
-              : state === ProposalState.Executed
-                ? 'border-hairline-strong bg-surface-2 text-text'
-                : state === ProposalState.Rejected
-                  ? 'border-error/50 bg-error-soft text-error'
-                  : 'border-border bg-muted text-muted-foreground'
-
-        return (
-          <span
-            className={`text-xs px-2 py-1 rounded-md border font-medium ${stateStyles}`}
-          >
-            {stateText}
-          </span>
-        )
-      },
-    },
-    {
-      key: 'votes',
-      header: 'VOTES',
-      tooltip: 'The current vote count (Yes / No / Abstain).',
-      sortable: true,
-      accessor: (row) =>
-        Number(row.core.yesVotes) +
-        Number(row.core.noVotes) +
-        Number(row.core.abstainVotes),
-      render: (row) => {
-        const total =
-          Number(row.core.yesVotes) +
-          Number(row.core.noVotes) +
-          Number(row.core.abstainVotes)
-        return (
-          <div className="text-sm">
-            <span className="text-success">
-              {formatBigNumber(row.core.yesVotes, undefined, true)}
-            </span>
-            <span className="text-muted-foreground"> / </span>
-            <span className="text-error">
-              {formatBigNumber(row.core.noVotes, undefined, true)}
-            </span>
-            <span className="text-muted-foreground"> / </span>
-            <span className="text-muted-foreground">
-              {formatBigNumber(row.core.abstainVotes, undefined, true)}
-            </span>
-            <span className="text-muted-foreground text-xs ml-2">
-              ({formatBigNumber(total, undefined, true)} total)
-            </span>
-          </div>
-        )
-      },
-    },
-    {
-      key: 'actions',
-      header: 'ACTIONS',
-      tooltip: 'The number of on-chain actions in this proposal.',
-      sortable: true,
-      accessor: (row) => row.actions.length,
-      render: (row) => (
-        <span className="text-muted-foreground">
-          {row.actions.length} {row.actions.length === 1 ? 'action' : 'actions'}
-        </span>
-      ),
-    },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Header with Statistics */}
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold">Governance</h1>
-          <p className="text-muted-foreground text-sm">
-            Decentralized decision making with merkle proof verification
-          </p>
-        </div>
+      <p className="text-muted-foreground text-sm max-w-2xl">
+        Propose and vote on how {network.name} spends its treasury. Your voting
+        power is your trust score in the network.
+      </p>
 
-        <NetworkNav tabs={trustGraphTabs(network)} />
-
-        {/* Key Statistics - Right under header */}
-        <div className="flex flex-row gap-4 flex-wrap">
-          <StatisticCard
-            title="TREASURY BALANCE"
-            tooltip="The total ETH balance held in the governance treasury (Safe). This can be distributed through governance proposals."
-            value={
-              isLoading
-                ? '...'
-                : safeBalance
-                  ? `${(Number(safeBalance) / 1e18).toFixed(2)} ETH`
-                  : '0.00 ETH'
-            }
-          />
-          <StatisticCard
-            title="TOTAL PROPOSALS"
-            tooltip="The total number of governance proposals that have been created."
-            value={isLoadingModule ? '...' : String(proposalCounter)}
-          />
-          <StatisticCard
-            title="YOUR VOTING POWER"
-            tooltip="Your voting power as a percentage of total voting power. This is based on your Trust Score in the network."
-            value={
-              !isConnected
-                ? '?'
-                : isLoadingUserVotingPower || isLoadingModule
-                  ? '...'
-                  : userVotingPower && totalVotingPower
-                    ? formatBigNumber(
-                        (Number(userVotingPower.value) /
-                          Number(totalVotingPower)) *
-                          100
-                      ) + '%'
-                    : '0%'
-            }
-          />
-        </div>
-      </div>
-
-      {/* Success Message */}
-      {successMessage && (
-        <div className="border border-success bg-success-soft p-3 rounded-md">
-          <div className="text-success text-sm font-medium">
-            ✓ {successMessage}
+      {/* Context strip: the two numbers that motivate action, one slim row. */}
+      <div className="flex flex-wrap items-baseline gap-x-10 gap-y-3 border-y border-border py-4">
+        <div className="space-y-1">
+          <div className="tg-label">Treasury</div>
+          <div className="text-2xl tabular-nums">
+            {isLoadingModule || isLoadingSafeBalance
+              ? '...'
+              : `${formatBigNumber(BigInt(safeBalance || '0'), 18)} ETH`}
           </div>
         </div>
-      )}
-
-      {/* Error Message */}
-      {error && (
-        <div className="border border-destructive/50 bg-destructive/10 p-3 rounded-md">
-          <div className="text-destructive text-sm font-medium">⚠️ {error}</div>
-        </div>
-      )}
-
-      {/* Parameters & Contracts */}
-      <div className="border-y border-border py-6 space-y-4">
-        <SectionHeading>Parameters</SectionHeading>
-        <div className="flex flex-row gap-4 flex-wrap">
-          <StatisticCard
-            title="VOTING DELAY"
-            tooltip="The number of blocks that must pass after a proposal is created before voting can begin."
-            value={
-              isLoadingModule ? '...' : `${formatBigNumber(votingDelay)} blocks`
-            }
-          />
-          <StatisticCard
-            title="VOTING PERIOD"
-            tooltip="The number of blocks during which voting is open."
-            value={
-              isLoadingModule
-                ? '...'
-                : `${formatBigNumber(votingPeriod, undefined, true)} blocks`
-            }
-          />
-          <StatisticCard
-            title="QUORUM"
-            tooltip="The minimum percentage of total voting power that must participate for a proposal to be valid."
-            value={
-              isLoadingModule ? '...' : `${formatBigNumber(quorum * 100)}%`
-            }
-          />
-        </div>
-
-        <SectionHeading className="mt-6">Contracts</SectionHeading>
-
-        {/* Contract Addresses */}
-        <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span className="font-bold">Zodiac Module:</span>
-            {merkleGovAddress ? (
-              <Address
-                address={merkleGovAddress}
-                displayMode="truncated"
-                showCopyIcon
-                link={false}
-                noHighlight
-              />
-            ) : (
-              <span>Not available</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold">Treasury Safe:</span>
-            {isLoadingModule ? (
-              <span>...</span>
-            ) : safeAddress ? (
+        <div className="space-y-1">
+          <div className="tg-label">Your voting power</div>
+          <div className="text-2xl tabular-nums">
+            {!isConnected ? (
+              <span className="text-base text-muted-foreground">
+                Connect a wallet to see it
+              </span>
+            ) : isLoadingUserVotingPower || isLoadingModule ? (
+              '...'
+            ) : userVotingPower ? (
               <>
-                <Address
-                  address={safeAddress}
-                  displayMode="truncated"
-                  showCopyIcon
-                  link={false}
-                  noHighlight
-                />
-                <a
-                  href={`https://app.safe.global/home?safe=eth:${safeAddress}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-text underline underline-offset-4 transition-colors hover:text-text-muted"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
+                {formatBigNumber(BigInt(userVotingPower.value), 18)}{' '}
+                <span className="text-sm text-muted-foreground">
+                  ({votingPowerPercent.toFixed(1)}% of total)
+                </span>
               </>
             ) : (
-              <span>Not available</span>
+              '0'
             )}
           </div>
         </div>
+        <Link
+          href={`/networks/${network.id}/settings`}
+          className="ml-auto self-end text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-text"
+        >
+          Voting rules and contracts
+        </Link>
       </div>
 
-      {/* Proposals Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <SectionHeading>Proposals</SectionHeading>
-          <Button onClick={() => setShowCreateForm(!showCreateForm)} size="sm">
-            {showCreateForm ? 'Cancel' : '+ New Proposal'}
-          </Button>
+      {error && (
+        <div className="border border-destructive/50 bg-destructive/10 p-3 rounded-md">
+          <div className="text-destructive text-sm font-medium">{error}</div>
         </div>
+      )}
 
-        {/* Create Proposal Form - Conditional */}
-        {showCreateForm && (
-          <CreateProposalForm
-            canCreateProposal={canCreateProposal}
-            userVotingPower={userVotingPower?.value}
-            onCreateProposal={async (title, description, actions, voteType) => {
-              const result = await handleCreateProposal(
-                title,
-                description,
-                actions,
-                voteType
-              )
-              if (result) {
-                setShowCreateForm(false)
-              }
-              return result
-            }}
-            isLoading={isAnyActionLoading}
-          />
+      {/* Proposals: the page's actual content, right below the fold line. */}
+      <div className="space-y-4">
+        <SectionHeading
+          actions={
+            canCreateProposal ? (
+              <Button onClick={createModal.open} size="sm">
+                + New proposal
+              </Button>
+            ) : undefined
+          }
+        >
+          Proposals
+        </SectionHeading>
+
+        {isConnected && !canCreateProposal && !isLoadingModule && (
+          <p className="text-muted-foreground text-xs">
+            You need a trust score in this network to propose. Earn one by
+            receiving trust attestations from members.
+          </p>
         )}
 
-        {/* Proposals Count */}
-        {!isLoadingProposals && (
-          <div className="text-muted-foreground text-sm">
-            {formatBigNumber(proposals.length)}{' '}
-            {proposals.length === 1 ? 'proposal' : 'proposals'}
-          </div>
-        )}
-
-        {/* Loading State */}
         {isLoadingProposals && proposals.length === 0 && (
           <div className="text-center py-12">
             <div className="text-muted-foreground text-sm">
@@ -382,7 +276,6 @@ export default function GovernancePage() {
           </div>
         )}
 
-        {/* Empty State */}
         {proposals.length === 0 && !isLoadingProposals && (
           <div className="border border-border bg-muted/30 p-12 rounded-md text-center space-y-3">
             <div className="text-foreground text-sm font-medium">
@@ -391,18 +284,17 @@ export default function GovernancePage() {
             <div className="text-muted-foreground text-xs">
               {canCreateProposal
                 ? 'Be the first to create a governance proposal'
-                : 'Participate in attestations to earn proposal creation rights'}
+                : 'Members with a trust score can create the first proposal'}
             </div>
           </div>
         )}
 
-        {/* Proposals Table */}
         {proposals.length > 0 && (
           <Table
             columns={columns}
             data={proposals}
-            defaultSortColumn="id"
-            defaultSortDirection="desc"
+            defaultSortColumn="state"
+            defaultSortDirection="asc"
             cellClassName="text-sm"
             getRowKey={(row) => row.core.id.toString()}
             onRowClick={(row) => {
@@ -413,6 +305,40 @@ export default function GovernancePage() {
           />
         )}
       </div>
+
+      <Modal
+        isOpen={createModal.isOpen}
+        onClose={createModal.close}
+        title="New proposal"
+      >
+        <CreateProposalForm
+          canCreateProposal={canCreateProposal}
+          userVotingPower={userVotingPower?.value}
+          onCreateProposal={async (title, description, actions, voteType) => {
+            const result = await createProposal(
+              title,
+              description,
+              actions,
+              voteType
+            )
+            if (result) {
+              createModal.close()
+            }
+            return result
+          }}
+          isLoading={isAnyActionLoading}
+        />
+      </Modal>
     </div>
+  )
+}
+
+export default function GovernancePage() {
+  // useSearchParams (inside useRouteModal) requires a Suspense boundary when
+  // the route is statically prerendered.
+  return (
+    <Suspense fallback={null}>
+      <GovernancePageContent />
+    </Suspense>
   )
 }

@@ -13,6 +13,8 @@
  *   pnpm run shots -- --label=final   # write somewhere other than `latest`
  *   pnpm run shots -- --reuse         # skip the build, reuse .next-shots
  *   pnpm run shots -- --routes=/faq   # one route, whole matrix
+ *   pnpm run shots:contributions      # round + claim, wallet + phase matrix
+ *   pnpm run shots:contributions -- --personas=nominee --phases=claimable
  *
  * ── Five things this has to work around ──────────────────────────────────────
  *
@@ -53,7 +55,7 @@
  *    only shoots `/networks`, at the two viewports M2 is graded on.
  */
 import { spawn } from 'node:child_process'
-import { mkdir, rm } from 'node:fs/promises'
+import { copyFile, mkdir, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -95,33 +97,78 @@ const ROUTES = [
   { name: 'faq', path: '/faq' },
 ]
 
+const CONTRIBUTIONS_ROUTES = [
+  {
+    name: 'round',
+    path: '/networks/demo-co-op-contributions',
+  },
+  {
+    name: 'claim',
+    path: '/networks/demo-co-op-contributions/claim',
+  },
+]
+const CONTRIBUTIONS_VIEWPORTS = ['320', '390', '414', '768', '1280']
+const CONTRIBUTIONS_PERSONAS = ['stranger', 'rater', 'nominee']
+const CONTRIBUTIONS_PHASES = [
+  'upcoming',
+  'open-empty',
+  'open-with-claims',
+  'settling',
+  'claimable',
+  'indexer-down',
+]
+
 /** What `lib/directory.fixtures.ts` understands. `live` means "no fixture, read the indexer". */
 const STATES = ['many', 'one', 'none', 'failed']
 const STATE_VIEWPORTS = ['390', '1280']
 
 const argv = process.argv.slice(2)
 const flag = (name, fallback) => {
-  const hit = argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`))
+  // Last one wins, like most CLIs. Package scripts provide a useful default
+  // label, while callers running concurrent lanes can still override it.
+  const hits = argv.filter(
+    (argument) => argument === `--${name}` || argument.startsWith(`--${name}=`)
+  )
+  const hit = hits[hits.length - 1]
   if (!hit) return fallback
   const [, value] = hit.split('=')
   return value === undefined ? true : value
 }
 
+const selected = (name, choices) => {
+  const requested = flag(name, null)
+  if (!requested) return choices
+  const values = String(requested).split(',')
+  const invalid = values.filter((value) => !choices.includes(value))
+  if (invalid.length > 0) {
+    throw new Error(
+      `Unknown --${name} value(s): ${invalid.join(', ')}. Expected: ${choices.join(', ')}`
+    )
+  }
+  return choices.filter((choice) => values.includes(choice))
+}
+
 const LABEL = String(flag('label', 'latest'))
 const REUSE = Boolean(flag('reuse', false))
 const WITH_STATES = Boolean(flag('states', false))
+const CONTRIBUTIONS = Boolean(flag('contributions', false))
 const REDUCED_MOTION = Boolean(flag('reduced-motion', false))
 const ONLY_ROUTES = flag('routes', null)
+const reviewViewports = selected('viewports', CONTRIBUTIONS_VIEWPORTS)
+const reviewPersonas = selected('personas', CONTRIBUTIONS_PERSONAS)
+const reviewPhases = selected('phases', CONTRIBUTIONS_PHASES)
 
+const routeCatalog = CONTRIBUTIONS ? CONTRIBUTIONS_ROUTES : ROUTES
 const routes = ONLY_ROUTES
-  ? ROUTES.filter((r) => String(ONLY_ROUTES).split(',').includes(r.path))
-  : ROUTES
+  ? routeCatalog.filter((r) => String(ONLY_ROUTES).split(',').includes(r.path))
+  : routeCatalog
 
 const OUT = join(REPO, '.trustgraph', 'shots', LABEL)
 
 // Scoped to the label so two sweeps can run at once without building into each
 // other's output. Pair it with SHOTS_PORT when you do.
 const DIST = `.next-shots-${LABEL}`
+const SHOTS_TSCONFIG = `.tsconfig-shots-${LABEL}.json`
 
 const log = (...args) => console.log('[shots]', ...args)
 
@@ -158,14 +205,28 @@ const run = (command, args, { env = {}, quiet = false } = {}) =>
  * checked in and current, and nothing this harness does can invalidate them,
  * so the hook is skipped deliberately rather than by accident.
  */
-const build = (fixture) =>
-  run('npx', ['next', 'build'], {
-    env: {
-      NEXT_DIST_DIR: DIST,
-      ...(fixture ? { TG_FIXTURE: fixture } : {}),
-    },
-    quiet: true,
-  })
+const build = async (fixture, env = {}) => {
+  // Next adds `${distDir}/types/**/*.ts` to whichever tsconfig it uses. Give
+  // each build a disposable copy so a screenshot command never dirties the
+  // checkout, and parallel label-scoped builds cannot rewrite one file.
+  await copyFile(
+    join(FRONTEND, 'tsconfig.json'),
+    join(FRONTEND, SHOTS_TSCONFIG)
+  )
+  try {
+    await run('npx', ['next', 'build'], {
+      env: {
+        NEXT_DIST_DIR: DIST,
+        NEXT_TSCONFIG_PATH: SHOTS_TSCONFIG,
+        ...(fixture ? { TG_FIXTURE: fixture } : {}),
+        ...env,
+      },
+      quiet: true,
+    })
+  } finally {
+    await rm(join(FRONTEND, SHOTS_TSCONFIG), { force: true })
+  }
+}
 
 /**
  * Refuse to run against somebody else's server.
@@ -191,13 +252,14 @@ const requireFreePort = async () => {
   )
 }
 
-const startServer = async (fixture) => {
+const startServer = async (fixture, env = {}) => {
   const child = spawn('npx', ['next', 'start', '--port', String(PORT)], {
     cwd: FRONTEND,
     env: {
       ...process.env,
       NEXT_DIST_DIR: DIST,
       ...(fixture ? { TG_FIXTURE: fixture } : {}),
+      ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     // Its own process group. `npx next start` is three processes deep, and
@@ -246,21 +308,28 @@ const stopServer = (child) => {
  * next-themes reads it in an inline script during first paint — navigating and
  * then toggling would screenshot a flash of the wrong theme.
  */
-const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
+const shoot = async (
+  browser,
+  { route, viewport, theme, dir, tag, persona, phase }
+) => {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: 2,
     ...(REDUCED_MOTION ? { reducedMotion: 'reduce' } : {}),
   })
   await context.addInitScript(
-    ([key, value]) => {
+    ([themeValue, personaValue, phaseValue]) => {
       try {
-        window.localStorage.setItem(key, value)
+        window.localStorage.setItem('theme', themeValue)
+        if (personaValue)
+          window.localStorage.setItem('tg-review-persona', personaValue)
+        if (phaseValue)
+          window.localStorage.setItem('tg-review-phase', phaseValue)
       } catch {
         /* storage blocked, the default theme is fine */
       }
     },
-    ['theme', theme]
+    [theme, persona, phase]
   )
 
   const page = await context.newPage()
@@ -323,7 +392,9 @@ const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
 
   const capture = (options) =>
     page.screenshot({ timeout: 20_000, ...options }).catch((error) => {
-      problems.push(`screenshot ${options.path.split('/').pop()}: ${error.message.split('\n')[0]}`)
+      problems.push(
+        `screenshot ${options.path.split('/').pop()}: ${error.message.split('\n')[0]}`
+      )
     })
 
   await capture({ path: join(dir, `${base}__fold.png`) })
@@ -387,28 +458,56 @@ const shoot = async (browser, { route, viewport, theme, dir, tag }) => {
   }
 }
 
-const sweep = async (browser, { dir, viewports, routeList, fixture, tag }) => {
+const sweep = async (
+  browser,
+  {
+    dir,
+    viewports,
+    routeList,
+    fixture,
+    tag,
+    personas = [null],
+    phases = [null],
+  }
+) => {
   const results = []
   for (const route of routeList) {
     for (const viewport of viewports) {
       for (const theme of THEMES) {
-        const result = await shoot(browser, {
-          route,
-          viewport,
-          theme,
-          dir,
-          tag,
-        })
-        results.push({ route: route.path, fixture: fixture ?? 'live', ...result })
-        const flags = [
-          result.status >= 400 ? `HTTP ${result.status}` : null,
-          result.unstyled ? 'NO STYLESHEET' : null,
-          result.horizontalOverflow ? `OVERFLOW +${result.overflowBy}px` : null,
-          result.consoleErrors.length
-            ? `${result.consoleErrors.length} console error(s)`
-            : null,
-        ].filter(Boolean)
-        log(`${result.shot}${flags.length ? `   ⚠ ${flags.join(' · ')}` : ''}`)
+        for (const persona of personas) {
+          for (const phase of phases) {
+            const cellTag = [tag, persona, phase].filter(Boolean).join('__')
+            const result = await shoot(browser, {
+              route,
+              viewport,
+              theme,
+              dir,
+              tag: cellTag || undefined,
+              persona,
+              phase,
+            })
+            results.push({
+              route: route.path,
+              fixture: fixture ?? 'live',
+              persona,
+              phase,
+              ...result,
+            })
+            const flags = [
+              result.status >= 400 ? `HTTP ${result.status}` : null,
+              result.unstyled ? 'NO STYLESHEET' : null,
+              result.horizontalOverflow
+                ? `OVERFLOW +${result.overflowBy}px`
+                : null,
+              result.consoleErrors.length
+                ? `${result.consoleErrors.length} console error(s)`
+                : null,
+            ].filter(Boolean)
+            log(
+              `${result.shot}${flags.length ? `   ⚠ ${flags.join(' · ')}` : ''}`
+            )
+          }
+        }
       }
     }
   }
@@ -425,26 +524,53 @@ const main = async () => {
   const results = []
 
   try {
-    if (!REUSE) {
-      log('building (live catalog)…')
-      await build(null)
-    }
-    log(`serving ${ORIGIN}`)
-    let server = await startServer(null)
-    try {
-      results.push(
-        ...(await sweep(browser, {
-          dir: OUT,
-          viewports: VIEWPORTS,
-          routeList: routes,
-          fixture: null,
-        }))
-      )
-    } finally {
-      stopServer(server)
+    let server
+    if (CONTRIBUTIONS) {
+      const reviewEnv = { NEXT_PUBLIC_TG_REVIEW_FIXTURES: '1' }
+      if (!REUSE) {
+        log('building (contributions review fixtures)…')
+        await build(null, reviewEnv)
+      }
+      log(`serving ${ORIGIN}`)
+      server = await startServer(null, reviewEnv)
+      try {
+        results.push(
+          ...(await sweep(browser, {
+            dir: OUT,
+            viewports: VIEWPORTS.filter((viewport) =>
+              reviewViewports.includes(viewport.name)
+            ),
+            routeList: routes,
+            fixture: 'contributions-review',
+            personas: reviewPersonas,
+            phases: reviewPhases,
+          }))
+        )
+      } finally {
+        stopServer(server)
+      }
+    } else {
+      if (!REUSE) {
+        log('building (live catalog)…')
+        await build(null)
+      }
+      log(`serving ${ORIGIN}`)
+      server = await startServer(null)
+      try {
+        results.push(
+          ...(await sweep(browser, {
+            dir: OUT,
+            viewports: VIEWPORTS,
+            routeList: routes,
+            fixture: null,
+          }))
+        )
+      } finally {
+        stopServer(server)
+      }
     }
 
-    if (WITH_STATES) {
+    if (WITH_STATES && !CONTRIBUTIONS) {
       const stateViewports = VIEWPORTS.filter((v) =>
         STATE_VIEWPORTS.includes(v.name)
       )
@@ -491,7 +617,9 @@ const main = async () => {
     log(`  ${failure.shot}`)
     if (failure.status >= 400) log(`    HTTP ${failure.status}`)
     if (failure.unstyled)
-      log('    NO STYLESHEET — every rule is missing, this shot is not a design')
+      log(
+        '    NO STYLESHEET — every rule is missing, this shot is not a design'
+      )
     if (failure.horizontalOverflow)
       log(`    scrolls sideways by ${failure.overflowBy}px`)
     for (const error of failure.consoleErrors.slice(0, 6))
