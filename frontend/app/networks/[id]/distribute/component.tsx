@@ -1,8 +1,8 @@
 'use client'
 
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Wallet } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Wallet } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import {
   Hex,
   erc20Abi,
@@ -47,14 +47,8 @@ export const DistributePage = () => {
 
   const { address: connectedAddress, isConnected } = useAccount()
   const publicClient = usePublicClient()
-  const queryClient = useQueryClient()
 
   const [isDistributing, setIsDistributing] = useState(false)
-  const [isClaiming, setIsClaiming] = useState(false)
-  const [isClaimingAll, setIsClaimingAll] = useState(false)
-  const [claimingDistributionId, setClaimingDistributionId] = useState<
-    bigint | null
-  >(null)
   const [error, setError] = useState<string | null>(null)
 
   // Form state for creating a distribution
@@ -74,25 +68,6 @@ export const DistributePage = () => {
       enabled: !!merkleFundDistributorAddress,
     })
 
-  // Query user's claims from ponder
-  const { data: userClaims = [], isLoading: isLoadingUserClaims } =
-    usePonderQuery({
-      queryFn: ponderQueryFns.getFundDistributionClaims({
-        distributor: merkleFundDistributorAddress as Hex,
-        account: connectedAddress,
-      }),
-      enabled: !!merkleFundDistributorAddress && !!connectedAddress,
-    })
-
-  // Create a map of distributionIndex -> claimed amount for quick lookup
-  const claimedByDistribution = useMemo(() => {
-    const map = new Map<bigint, bigint>()
-    for (const claim of userClaims) {
-      map.set(claim.distributionIndex, claim.amount)
-    }
-    return map
-  }, [userClaims])
-
   // Query the latest merkle snapshot to get the root
   const { data: latestMerkleSnapshot } = usePonderQuery({
     queryFn: ponderQueryFns.getLatestMerkleSnapshot(
@@ -108,36 +83,6 @@ export const DistributePage = () => {
     }),
     enabled: !!latestMerkleSnapshot?.root,
   })
-
-  // Get unique roots from distributions to fetch user's entries
-  const uniqueDistributionRoots = useMemo(() => {
-    const roots = new Set(distributions.map((d) => d.root))
-    return Array.from(roots)
-  }, [distributions])
-
-  // Fetch user's merkle entry for each distribution's root
-  const userEntriesQueries = useQueries({
-    queries: uniqueDistributionRoots.map((root) => ({
-      ...ponderQueries.merkleTreeEntry({
-        snapshot: network.contracts.merkleSnapshot,
-        root,
-        account: connectedAddress,
-      }),
-      enabled: !!connectedAddress && !!root,
-    })),
-  })
-
-  // Create a map of root -> userEntry for quick lookup
-  const userEntriesByRoot = useMemo(() => {
-    const map = new Map<string, { value: string; proof: string[] }>()
-    uniqueDistributionRoots.forEach((root, index) => {
-      const query = userEntriesQueries[index]
-      if (query?.data) {
-        map.set(root, query.data)
-      }
-    })
-    return map
-  }, [uniqueDistributionRoots, userEntriesQueries, connectedAddress])
 
   // Query distributor state from ponder
   const { data: distributorState } = usePonderQuery({
@@ -308,188 +253,6 @@ export const DistributePage = () => {
     }
   }
 
-  // Claim funds from a distribution
-  const handleClaim = async (distribution: DistributionRow) => {
-    if (!connectedAddress || !publicClient || !merkleFundDistributorAddress)
-      return
-
-    setError(null)
-    setIsClaiming(true)
-    setClaimingDistributionId(distribution.id)
-
-    try {
-      // First, we need to get the merkle proof for this specific distribution's root
-      // We'll fetch the merkle tree for this root
-      const { entries } = (await queryClient.fetchQuery({
-        ...ponderQueries.merkleTree({
-          snapshot: network.contracts.merkleSnapshot,
-          root: distribution.root,
-        }),
-      })) ?? { entries: [] }
-
-      const userEntry = entries.find((entry) =>
-        isAddressEqual(entry.account as Hex, connectedAddress)
-      )
-
-      if (!userEntry) {
-        throw new Error('You are not eligible for this distribution')
-      }
-
-      const gasEstimate = await publicClient.estimateContractGas({
-        abi: merkleFundDistributorAbi,
-        address: merkleFundDistributorAddress,
-        functionName: 'claim',
-        args: [
-          distribution.id,
-          connectedAddress,
-          BigInt(userEntry.value),
-          userEntry.proof as Hex[],
-        ],
-        account: connectedAddress,
-      })
-
-      await txToast({
-        tx: {
-          abi: merkleFundDistributorAbi,
-          address: merkleFundDistributorAddress,
-          functionName: 'claim',
-          args: [
-            distribution.id,
-            connectedAddress,
-            BigInt(userEntry.value),
-            userEntry.proof as Hex[],
-          ],
-          gas: (gasEstimate * 120n) / 100n,
-        },
-        successMessage: 'Funds claimed successfully!',
-      })
-    } catch (err) {
-      console.error('Claim error:', err)
-      setError(parseErrorMessage(err))
-    } finally {
-      setIsClaiming(false)
-      setClaimingDistributionId(null)
-    }
-  }
-
-  // Claim all available distributions
-  const handleClaimAll = async () => {
-    if (!connectedAddress || !publicClient || !merkleFundDistributorAddress)
-      return
-
-    // Get distributions with claimable amounts at the time of click
-    const toClaim = distributions.filter((d) => getClaimableAmount(d) > 0n)
-    if (toClaim.length === 0) return
-
-    setError(null)
-    setIsClaimingAll(true)
-
-    try {
-      // Prepare all transactions upfront
-      const txs: Parameters<typeof txToast> = []
-
-      for (const distribution of toClaim) {
-        const { entries } = (await queryClient.fetchQuery({
-          ...ponderQueries.merkleTree({
-            snapshot: network.contracts.merkleSnapshot,
-            root: distribution.root,
-          }),
-        })) ?? { entries: [] }
-
-        const userEntry = entries.find((entry) =>
-          isAddressEqual(entry.account as Hex, connectedAddress)
-        )
-
-        if (!userEntry) {
-          console.warn(`Skipping distribution ${distribution.id}: not eligible`)
-          continue
-        }
-
-        const gasEstimate = await publicClient.estimateContractGas({
-          abi: merkleFundDistributorAbi,
-          address: merkleFundDistributorAddress,
-          functionName: 'claim',
-          args: [
-            distribution.id,
-            connectedAddress,
-            BigInt(userEntry.value),
-            userEntry.proof as Hex[],
-          ],
-          account: connectedAddress,
-        })
-
-        txs.push({
-          tx: {
-            abi: merkleFundDistributorAbi,
-            address: merkleFundDistributorAddress,
-            functionName: 'claim',
-            args: [
-              distribution.id,
-              connectedAddress,
-              BigInt(userEntry.value),
-              userEntry.proof as Hex[],
-            ],
-            gas: (gasEstimate * 120n) / 100n,
-          },
-          successMessage: `Claimed from distribution #${distribution.id + 1n}`,
-        })
-      }
-
-      if (txs.length > 0) {
-        await txToast(...txs)
-      }
-    } catch (err) {
-      console.error('Claim all error:', err)
-      setError(parseErrorMessage(err))
-    } finally {
-      setIsClaimingAll(false)
-      setClaimingDistributionId(null)
-    }
-  }
-
-  // Calculate claimable amount for a distribution
-  const getClaimableAmount = useCallback(
-    (distribution: DistributionRow) => {
-      // Get the user's entry for this distribution's specific merkle root
-      const userEntry = userEntriesByRoot.get(distribution.root)
-      if (!userEntry) return 0n
-
-      const alreadyClaimed = claimedByDistribution.get(distribution.id) ?? 0n
-      if (alreadyClaimed > 0n) return 0n // Already claimed
-
-      // Calculate proportional share based on distribution's merkle state
-      const totalDistributable =
-        distribution.amountFunded - distribution.feeAmount
-      const userValue = BigInt(userEntry.value)
-      const totalMerkleValue = distribution.totalMerkleValue
-
-      if (totalMerkleValue === 0n) return 0n
-
-      return (totalDistributable * userValue) / totalMerkleValue
-    },
-    [userEntriesByRoot, claimedByDistribution]
-  )
-
-  // Calculate claimable amounts grouped by token
-  const claimableSummary = useMemo(() => {
-    const byToken = new Map<Hex, { amount: bigint; count: number }>()
-    let totalCount = 0
-
-    for (const d of distributions) {
-      const claimable = getClaimableAmount(d)
-      if (claimable > 0n) {
-        totalCount++
-        const existing = byToken.get(d.token) ?? { amount: 0n, count: 0 }
-        byToken.set(d.token, {
-          amount: existing.amount + claimable,
-          count: existing.count + 1,
-        })
-      }
-    }
-
-    return { byToken, totalCount }
-  }, [distributions, getClaimableAmount])
-
   // Format token amount
   const formatTokenAmount = (
     tokenAmount: bigint,
@@ -552,65 +315,8 @@ export const DistributePage = () => {
       render: (row) =>
         new Date(Number(row.timestamp) * 1000).toLocaleDateString(),
     },
-    {
-      key: 'claimable',
-      header: 'YOUR SHARE',
-      sortable: false,
-      render: (row) => {
-        const claimable = getClaimableAmount(row)
-        const alreadyClaimed = claimedByDistribution.get(row.id)
-
-        if (alreadyClaimed && alreadyClaimed > 0n) {
-          return (
-            <span className="flex items-center gap-1 text-success">
-              <Check className="w-4 h-4" />
-              Claimed
-            </span>
-          )
-        }
-
-        if (claimable > 0n) {
-          return formatTokenAmount(claimable, row.token)
-        }
-
-        return '-'
-      },
-    },
-    {
-      key: 'action',
-      header: 'ACTION',
-      sortable: false,
-      render: (row) => {
-        const claimable = getClaimableAmount(row)
-        const alreadyClaimed = claimedByDistribution.get(row.id)
-        const isClaimingThis = claimingDistributionId === row.id
-
-        if (alreadyClaimed && alreadyClaimed > 0n) {
-          return '-'
-        }
-
-        if (claimable > 0n) {
-          return (
-            <Button
-              size="xs"
-              variant="brand"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClaim(row)
-              }}
-              disabled={isClaiming}
-            >
-              {isClaimingThis ? 'Claiming...' : 'Claim'}
-            </Button>
-          )
-        }
-
-        return '-'
-      },
-    },
   ]
 
-  const isLoadingUserEntries = userEntriesQueries.some((q) => q.isLoading)
   const isLoading = isLoadingDistributions || isLoadingMerkleTree
 
   return (
@@ -628,8 +334,8 @@ export const DistributePage = () => {
         <NetworkHeader network={network} className="w-full" />
 
         <p className="text-muted-foreground text-sm">
-          Distribute funds to network members based on their trust score, or
-          claim your share from existing distributions.
+          Create and review funds shared according to a proven trust-score
+          snapshot. Members collect their rewards from the Claims tab.
         </p>
       </div>
 
@@ -642,89 +348,8 @@ export const DistributePage = () => {
             tooltip="The total number of fund distributions created for this network."
             value={isLoading ? '...' : distributions.length.toString()}
           />
-          <StatisticCard
-            title="YOUR PENDING CLAIMS"
-            tooltip="The number of distributions you can claim from."
-            value={
-              !isConnected
-                ? '?'
-                : isLoading || isLoadingUserEntries
-                  ? '...'
-                  : claimableSummary.totalCount > 0
-                    ? claimableSummary.totalCount.toLocaleString()
-                    : '0'
-            }
-          />
-          <StatisticCard
-            title="YOUR PAST CLAIMS"
-            tooltip="The number of distributions you have claimed from."
-            value={
-              !isConnected
-                ? '?'
-                : isLoadingUserClaims
-                  ? '...'
-                  : userClaims.length > 0
-                    ? userClaims.length.toLocaleString()
-                    : '0'
-            }
-          />
         </div>
       </div>
-
-      {/* Claim All Section */}
-      {isConnected && claimableSummary.totalCount > 0 && (
-        <Card type="accent" size="lg" className="space-y-4 self-start">
-          <div>
-            <SectionHeading>Claim your funds</SectionHeading>
-            <p className="text-sm text-muted-foreground mt-1">
-              You have unclaimed funds from {claimableSummary.totalCount}{' '}
-              distribution{claimableSummary.totalCount > 1 ? 's' : ''}.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {Array.from(claimableSummary.byToken.entries()).map(
-              ([token, { amount, count }]) => {
-                const isNative =
-                  token === '0x0000000000000000000000000000000000000000'
-                return (
-                  <div
-                    key={token}
-                    className="flex items-center justify-between py-2 px-3 bg-background/50 rounded-md"
-                  >
-                    <span className="font-mono font-medium">
-                      {formatBigNumber(amount, 18)}{' '}
-                      {isNative ? (
-                        'ETH'
-                      ) : (
-                        <Address
-                          address={token}
-                          displayMode="truncated"
-                          className="inline"
-                        />
-                      )}
-                    </span>
-
-                    <span className="text-sm text-muted-foreground">
-                      {count.toLocaleString()} distribution
-                      {count > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                )
-              }
-            )}
-          </div>
-
-          <Button
-            onClick={handleClaimAll}
-            variant="brand"
-            disabled={isClaimingAll || isClaiming}
-            className="w-full"
-          >
-            {isClaimingAll ? 'Claiming...' : 'Claim All'}
-          </Button>
-        </Card>
-      )}
 
       {/* Create Distribution Section */}
       {isConnected && canDistribute && !isPaused && (
@@ -858,8 +483,8 @@ export const DistributePage = () => {
           <Wallet className="w-12 h-12 mx-auto text-muted-foreground" />
           <h2 className="font-bold">Connect Your Wallet</h2>
           <p className="text-muted-foreground">
-            Connect your wallet to view your claimable funds and create
-            distributions.
+            Connect your wallet to create a distribution. You can review past
+            distributions without connecting.
           </p>
         </Card>
       )}
@@ -873,8 +498,8 @@ export const DistributePage = () => {
         >
           <h2 className="font-bold text-warn">Contract Paused</h2>
           <p className="text-muted-foreground">
-            The fund distributor contract is currently paused. Distributions and
-            claims are temporarily disabled.
+            The fund distributor contract is currently paused. New distributions
+            are temporarily disabled.
           </p>
         </Card>
       )}

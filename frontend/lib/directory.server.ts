@@ -15,11 +15,7 @@
 //! covers the whole row.
 
 import { getCatalog } from './catalog.server'
-import {
-  APIS,
-  VISIBLE_CONTRIBUTIONS_NETWORKS,
-  VISIBLE_HYPERCERTS_NETWORKS,
-} from './config'
+import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from './config'
 import {
   type Directory,
   type DirectoryProgram,
@@ -166,13 +162,6 @@ export const loadDirectory = async (): Promise<Directory> => {
   }> = [
     ...catalog.networks.map((network) => ({
       program: 'trust-graph' as const,
-      id: network.id,
-      name: network.name,
-      about: network.about,
-      snapshot: network.contracts.merkleSnapshot,
-    })),
-    ...VISIBLE_CONTRIBUTIONS_NETWORKS.map((network) => ({
-      program: 'contributions' as const,
       id: network.id,
       name: network.name,
       about: network.about,

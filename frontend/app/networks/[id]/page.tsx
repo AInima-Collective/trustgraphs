@@ -1,7 +1,7 @@
 import { getPonderQueryOptions } from '@ponder/react'
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query'
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
@@ -12,6 +12,7 @@ import {
   VISIBLE_SEED_NETWORKS,
 } from '@/lib/config'
 import { socialCard } from '@/lib/metadata'
+import { trustNetworkFor } from '@/lib/network-nav'
 import { ponderClient } from '@/lib/ponder'
 import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
@@ -89,6 +90,10 @@ export default async function NetworkPageServer({
     (network) => network.id === id
   )
   if (contributionsNetwork) {
+    const trustNetwork = trustNetworkFor(contributionsNetwork)
+    if (trustNetwork) {
+      redirect(`/networks/${trustNetwork.id}/contributions`)
+    }
     return <ContributionsNetworkPage network={contributionsNetwork} />
   }
 

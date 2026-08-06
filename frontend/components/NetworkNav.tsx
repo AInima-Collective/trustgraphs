@@ -1,8 +1,16 @@
 'use client'
 
-import { ArrowUpRight, Coins, HandCoins, Settings, Vote } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Coins,
+  HandCoins,
+  Settings,
+  Vote,
+  WalletCards,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useRef } from 'react'
 
 import { NetworkTab } from '@/lib/network-nav'
 import { cn } from '@/lib/utils'
@@ -23,6 +31,16 @@ export const NetworkNav = ({
   className?: string
 }) => {
   const pathname = usePathname()
+  const navRef = useRef<HTMLElement>(null)
+
+  // A phone can only show part of a feature-rich network's tab row. Keep the
+  // current destination in view after direct navigation instead of making the
+  // active state exist just beyond the right edge of the screen.
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' })
+  }, [pathname])
 
   // Nothing to navigate to: an instance with no gov module, no distributor and no sibling round
   // has only its overview, and a lone "Overview" tab is noise.
@@ -35,6 +53,7 @@ export const NetworkNav = ({
     governance: Vote,
     distribute: Coins,
     contributions: HandCoins,
+    claims: WalletCards,
     settings: Settings,
   }
 
@@ -65,6 +84,7 @@ export const NetworkNav = ({
 
   return (
     <nav
+      ref={navRef}
       aria-label="Network sections"
       className={cn(
         'flex flex-row items-center gap-1 border-b border-border pb-2 overflow-x-auto',
