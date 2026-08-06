@@ -230,7 +230,7 @@ fixture graph is [`../contributions/LOCAL_TESTING.md`](../contributions/LOCAL_TE
 
 ```bash
 pnpm frontend dev      # :3000
-pnpm indexer dev      # :65421
+pnpm indexer start    # :65421; production-mode Ponder, so a crash resumes its checkpoint
 ```
 
 ```bash
@@ -302,10 +302,14 @@ Everything below cost someone real time.
   daemon reports `pinned` and readers get 504. The operator reads the blob back through
   `[ipfs] gateway` before calling it published, and `task demo:report` prints whether the scores are
   actually retrievable.
-- **Restarting anvil silently breaks the indexer.** Ponder caches RPC data by chain id, and a fresh
-  anvil is the same chain id with different contents, so it replays the old chain and indexes zero
-  events while looking healthy (`cache_rate=100%`, `event_count=0`). `DROP SCHEMA ponder_sync
-  CASCADE;` and use a fresh `--schema`, which Ponder requires anyway after any indexing-code edit.
+- **Restarting anvil changes the chain even though its chain id stays 31337.** The indexer startup
+  guard records a block hash independently of Ponder. An ordinary indexer restart reuses its
+  checkpoint; a different local chain automatically gets a fresh index schema and clears the
+  chain-id-keyed RPC cache plus derived off-chain tables. It also verifies historical state before
+  starting, so an Anvil restored from a state-only snapshot fails with an actionable message
+  instead of a `BlockOutOfRangeError` restart loop. Use `pnpm indexer start` for the demo: Ponder's
+  `dev` mode intentionally rebuilds derived tables for hot reload. Do not bypass the package script
+  with a raw `ponder` command or those guards do not run.
 - **A restarted anvil also wedges the operator's journal.** A `WorkKey` is
   `(chain_id, instance_id, checkpoint_id)`; on a devnet the chain id is fixed, the instance id is
   `keccak(creator, name, salt)`, and a fresh chain counts checkpoints from 0 again. So the previous

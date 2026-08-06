@@ -19,8 +19,8 @@ export function HeroGraphUnavailable() {
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-6 text-center">
       <BrandMark size="lg" className="text-text-subtle/40" />
       <p className="max-w-[40ch] text-text-muted">
-        The Demo Co-op is not reachable right now. Every network on the
-        directory is still live on chain.
+        The demo graph is temporarily unavailable. You can still browse
+        published networks.
       </p>
     </div>
   )

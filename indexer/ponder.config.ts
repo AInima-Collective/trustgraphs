@@ -6,6 +6,7 @@ import { Hex, getAbiItem } from 'viem'
 
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
+import { provingVaultAbi } from './abis/provingVault'
 import { trustGraphFactoryAbi } from './abis/trustGraphFactory'
 import {
   contributionResolverAbi,
@@ -15,7 +16,6 @@ import {
   merkleGovModuleAbi,
   merkleSnapshotAbi,
 } from '../frontend/lib/contract-abis'
-import { provingVaultAbi } from './abis/provingVault'
 
 /**
  * The deployment summary is a generated, machine-local file whose entries vary by which instances
@@ -43,17 +43,44 @@ const deploymentSummary = deploymentSummaryJson as {
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
-const { parsed: { DEPLOY_ENV } = {} } = dotenv.config({
+dotenv.config({
   path: dotenvFile,
   quiet: true,
 })
 
+const { DEPLOY_ENV } = process.env
 if (!DEPLOY_ENV) {
   throw new Error(`Failed to load DEPLOY_ENV from ${dotenvFile}`)
 }
 
 export const IS_PRODUCTION = DEPLOY_ENV.toUpperCase().trim() === 'PROD'
 const CORE_CHAIN = IS_PRODUCTION ? 'optimism' : 'local'
+
+const requiredEnv = (name: string): string => {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
+const blockNumberEnv = (name: string, fallback: number): number => {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer, got "${raw}"`)
+  }
+  return value
+}
+
+const LOCAL_RPC_URL =
+  process.env.PONDER_RPC_URL_31337 ??
+  process.env.PONDER_RPC_URL ??
+  process.env.RPC_URL ??
+  'http://127.0.0.1:8545'
+const LOCAL_WS_URL =
+  process.env.PONDER_WS_URL_31337 ??
+  process.env.PONDER_WS_URL ??
+  LOCAL_RPC_URL.replace(/^http/, 'ws')
 
 // Dev start block for the ROOT sources — the ones whose addresses are known before any event is
 // read (the factory itself, and the non-factory program instances). On a plain local anvil this is
@@ -63,9 +90,13 @@ const CORE_CHAIN = IS_PRODUCTION ? 'optimism' : 'local'
 // distributor) do NOT use this: Ponder starts each child at the block its `InstanceCreated` was
 // emitted, which is both exact and self-maintaining. Contracts whose events only occur after the
 // indexer starts (gov/safe) use 'latest' and need no start block.
-const DEV_START_BLOCK = process.env.PONDER_START_BLOCK
-  ? Number(process.env.PONDER_START_BLOCK)
-  : 1
+const DEV_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK', 1)
+
+// Earliest production deployment in the current Optimism catalog. Every source without a more
+// precise known block starts here, never at genesis. Operators can move the common floor forward
+// when deploying a fresh catalog, but it must remain at or before every configured contract.
+const PROD_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK_10', 142_786_328)
+const CORE_START_BLOCK = IS_PRODUCTION ? PROD_START_BLOCK : DEV_START_BLOCK
 
 /**
  * The permissionless instance factory (research/INSTANCE_FACTORY.md §3). When it is deployed, the
@@ -79,9 +110,8 @@ const DEV_START_BLOCK = process.env.PONDER_START_BLOCK
  * inside it. Absent from the summary on a box that has not deployed one, in which case the source
  * is disabled rather than pointed at a zero address.
  */
-const PROVING_VAULT = (deploymentSummary as { provingVault?: string }).provingVault as
-  | Hex
-  | undefined
+const PROVING_VAULT = (deploymentSummary as { provingVault?: string })
+  .provingVault as Hex | undefined
 
 const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
   | Hex
@@ -154,15 +184,17 @@ export default createConfig({
       ? {
           local: {
             id: 31337,
-            rpc: 'http://localhost:8545',
-            ws: 'ws://localhost:8545',
+            rpc: LOCAL_RPC_URL,
+            ws: LOCAL_WS_URL,
           },
         }
       : {
           optimism: {
             id: 10,
-            rpc: process.env.PONDER_RPC_URL_10,
-            ws: process.env.PONDER_WS_URL_10,
+            rpc: requiredEnv('PONDER_RPC_URL_10'),
+            ...(process.env.PONDER_WS_URL_10
+              ? { ws: process.env.PONDER_WS_URL_10 }
+              : {}),
           },
         }),
   },
@@ -203,12 +235,12 @@ export default createConfig({
     // left, and who is being paid — neither of which is derivable from the snapshot alone.
     provingVault: {
       abi: provingVaultAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: PROVING_VAULT ? { [CORE_CHAIN]: { address: PROVING_VAULT } } : {},
     },
     merkleFundDistributor: {
       abi: merkleFundDistributorAbi,
-      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: instanceChildren('distributor') } }
         : deploymentSummary.networks.some(
@@ -250,7 +282,7 @@ export default createConfig({
     // merkleSnapshot (it emits HeadAnchored/NodeRegistered that may predate the indexer start).
     anchorRegistry: {
       abi: anchorRegistryAbi,
-      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.anchorRegistry
       )
@@ -270,7 +302,7 @@ export default createConfig({
     // scoring recompute).
     contributionResolver: {
       abi: contributionResolverAbi,
-      startBlock: IS_PRODUCTION ? 0 : DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.contributionResolver
       )
@@ -286,7 +318,7 @@ export default createConfig({
     },
     merkleGovModule: {
       abi: merkleGovModuleAbi,
-      startBlock: IS_PRODUCTION ? 0 : 'latest',
+      startBlock: IS_PRODUCTION ? PROD_START_BLOCK : 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.merkleGovModule
       )

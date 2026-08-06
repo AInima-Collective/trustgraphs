@@ -56,5 +56,5 @@ tasks:
         echo "Stopping all services..."
         FILES="-f docker-compose.dev.yml"
         docker compose ${FILES} down --remove-orphans || true
-        pkill -f anvil || true
+        pkill -x anvil || true
         echo "All services stopped"

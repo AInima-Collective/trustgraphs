@@ -34,6 +34,55 @@ import { type SharedArgs, revalidateNetwork, staticAddresses } from './utils'
  */
 type ScoreBlob = Record<string, string>
 
+const positiveIntegerEnv = (name: string, fallback: number) => {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, got "${raw}"`)
+  }
+  return value
+}
+
+const IPFS_FETCH_ATTEMPTS = positiveIntegerEnv('IPFS_FETCH_ATTEMPTS', 5)
+const IPFS_FETCH_TIMEOUT_MS = positiveIntegerEnv(
+  'IPFS_FETCH_TIMEOUT_MS',
+  10_000
+)
+
+/**
+ * Gateways commonly return 404/504 briefly after a pin. Retry inside the indexing function so a
+ * transient propagation race does not kill the writer and rely on the process supervisor for the
+ * exact same retry. A permanently unavailable blob still throws: serving a root with a silently
+ * empty member list would be worse than marking the writer unhealthy while the stable production
+ * read server continues to serve the last completed schema.
+ */
+const fetchIpfs = async (url: string): Promise<Response> => {
+  let lastFailure = 'unknown error'
+  for (let attempt = 1; attempt <= IPFS_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(IPFS_FETCH_TIMEOUT_MS),
+      })
+      if (response.ok) return response
+      lastFailure = `${response.status} ${response.statusText}`
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error)
+    }
+
+    if (attempt < IPFS_FETCH_ATTEMPTS) {
+      const delayMs = Math.min(1_000 * 2 ** (attempt - 1), 8_000)
+      console.warn(
+        `merkle: IPFS fetch attempt ${attempt}/${IPFS_FETCH_ATTEMPTS} failed (${lastFailure}); retrying in ${delayMs}ms`
+      )
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+  throw new Error(
+    `IPFS gateway failed after ${IPFS_FETCH_ATTEMPTS} attempts: ${lastFailure}`
+  )
+}
+
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not set')
 }
@@ -52,6 +101,11 @@ const backfillSnapshotStates = async (
 ) => {
   for (const merkleSnapshotAddress of addresses) {
     try {
+      const code = await context.client.getCode({
+        address: merkleSnapshotAddress,
+      })
+      if (!code || code === '0x') continue
+
       const stateCount = await context.client.readContract({
         address: merkleSnapshotAddress,
         abi: merkleSnapshotAbi,
@@ -185,14 +239,16 @@ const onMerkleRootUpdated = async ({
   }
   // Use 127.0.0.1 instead of localhost to avoid subdomain redirects
   const ipfsUrl = (ipfsGateway + ipfsHashCid).replace('localhost', '127.0.0.1')
-  const merkleRequest = await fetch(ipfsUrl)
-  if (!merkleRequest.ok) {
+  let merkleRequest: Response
+  try {
+    merkleRequest = await fetchIpfs(ipfsUrl)
+  } catch (error) {
     // Throwing stalls Ponder on this event, which is deliberate: the alternative is a network
     // whose member list is silently and permanently empty. But it means one unfetchable blob stops
     // indexing for everything, so the message has to be enough to fix it without reading this file.
     throw new Error(
       `Failed to fetch merkle tree from IPFS CID ${ipfsHashCid}: ` +
-        `${merkleRequest.status} ${merkleRequest.statusText} (${ipfsUrl}).\n` +
+        `${error instanceof Error ? error.message : String(error)} (${ipfsUrl}).\n` +
         `The root is on chain but its scores are not fetchable, so no member list can be built ` +
         `and /network/${event.log.address} will 404. Indexing is paused here and will resume by ` +
         `itself once the blob is retrievable.\n` +
@@ -430,6 +486,14 @@ async function insertDistributorConfig(
   merkleFundDistributorAddress: Hex
 ): Promise<boolean> {
   try {
+    // Static sources commonly begin before their contract was deployed. Checking code first avoids
+    // nine expected `eth_call` failures (including getAllowlist, selector 0xc5eff3d0) and leaves the
+    // lazy first-event path below to create the row at a block where the contract exists.
+    const code = await context.client.getCode({
+      address: merkleFundDistributorAddress,
+    })
+    if (!code || code === '0x') return false
+
     const [
       merkleSnapshotAddress,
       owner,

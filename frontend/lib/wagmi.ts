@@ -106,7 +106,7 @@ export const _makeWagmiConfig = () =>
               metadata: {
                 name: 'Trustgraphs',
                 description:
-                  'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify.',
+                  'Turn community vouches into reputation scores that apps can use and contracts can verify.',
                 url: 'https://trustgraph.network',
                 icons: ['https://trustgraph.network/images/icon-512.png'],
               },

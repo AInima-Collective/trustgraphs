@@ -35,7 +35,7 @@ const instrument = Instrument_Serif({
 const fontVariables = [paperMono.variable, instrument.variable]
 
 const DESCRIPTION =
-  'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.'
+  'Turn community vouches into reputation scores that apps can use and contracts can verify.'
 
 // No `icons` key on purpose. Next picks up app/icon.svg, app/apple-icon.png and
 // app/favicon.ico from the file conventions, and a manual `icons` array

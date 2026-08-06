@@ -1,10 +1,12 @@
 {
   "ignorePatterns": ["node_modules", "dist"],
   "parserOptions": {
-    "ecmaVersion": "latest"
+    "ecmaVersion": "latest",
+    "sourceType": "module"
   },
   "env": {
-    "es6": true
+    "es6": true,
+    "node": true
   },
   "overrides": [
     {

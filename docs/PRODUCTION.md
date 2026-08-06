@@ -56,6 +56,30 @@ Three things to get right before the first tick:
    #20). Every proof in CI wraps at a mock gateway. Prove one checkpoint for real, submit it, watch
    it land, and only then start the daemon.
 
+### Run the indexer
+
+The indexer has two production processes: a versioned writer and a stable read server. Set:
+
+```bash
+PONDER_RPC_URL_10=https://your-archive-capable-optimism-rpc
+PONDER_START_BLOCK_10=<earliest configured contract deployment block>
+PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
+PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
+DATABASE_URL=postgresql://...
+IPFS_GATEWAY=https://.../ipfs/
+```
+
+Then run `docker compose -f docker-compose.prod.yml up -d`. The writer backfills into the versioned
+schema and only publishes the stable views after it is ready. `ponder-server` waits for that
+readiness signal and serves port 65421; a writer crash or restart does not take the last completed
+read schema away.
+
+Startup refuses three unsafe states before Ponder runs: the wrong chain id, deployment-summary
+addresses with no code, or an RPC that cannot answer historical state at the start block. It also
+records a finalized block hash in Postgres. A later production identity mismatch is never reset
+automatically—verify the RPC/database and deploy to a new versioned schema. Use
+`pnpm --dir indexer preflight` for the same checks without starting Ponder.
+
 ### Run the proving vault
 
 Optional, and only if you intend to pay for roots or let communities pay for their own.

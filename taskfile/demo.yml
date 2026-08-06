@@ -667,7 +667,7 @@ tasks:
             echo "  indexer       ✗ HTTP $CODE at {{.PONDER}}/network/$SNAP — the app will be empty"
             echo "                if the scores line above is fine, the indexer is either behind"
             echo "                (mine more: task demo:settle) or replaying a previous anvil"
-            echo "                (DROP SCHEMA ponder_sync CASCADE, then restart with a new --schema)"
+            echo "                (restart through 'pnpm indexer dev'; its chain guard resets local state)"
           fi
         fi
 

@@ -38,60 +38,65 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # The writer/indexer. Its HTTP port is internal and used for readiness only; public traffic goes
+  # to ponder-server below, which keeps serving the last completed views schema during a writer
+  # restart or a new-version backfill.
   ponder:
     image: node:22-alpine
     container_name: ponder
     working_dir: /app/indexer
-    network_mode: host
+    init: true
     volumes:
       - .:/app
-    command: sh -c "npm install -g pnpm && CI=true pnpm install --ignore-scripts && pnpm run db:migrate && pnpm run start --schema v0.9.10 --views-schema trust-graph"
+    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run start"
     depends_on:
-      - ponder-db
-    ports:
-      - '65421:65421'
+      ponder-db:
+        condition: service_healthy
+    expose:
+      - '65422'
     healthcheck:
       test:
-        [
-          'CMD-SHELL',
-          'wget -q --spider http://localhost:65421/health || exit 1',
-        ]
+        ['CMD-SHELL', 'wget -q --spider http://localhost:65422/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://ponder:ponder@localhost:6432/ponder
+      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
+      PONDER_PORT: 65422
+      PONDER_DATABASE_SCHEMA: ${PONDER_DATABASE_SCHEMA:-trustgraph_v1}
+      PONDER_VIEWS_SCHEMA: ${PONDER_VIEWS_SCHEMA:-trust-graph}
     restart: unless-stopped
+    stop_grace_period: 30s
 
   ponder-server:
     image: node:22-alpine
     container_name: ponder-server
     working_dir: /app/indexer
-    network_mode: host
+    init: true
     volumes:
       - .:/app
-    command: sh -c "npm install -g pnpm && CI=true pnpm install --ignore-scripts && pnpm run serve --schema trust-graph"
-    # depends_on:
-    #   ponder:
-    #     condition: service_healthy
+    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run serve"
+    depends_on:
+      ponder:
+        condition: service_healthy
     ports:
-      - '65422:65422'
+      - '65421:65421'
     healthcheck:
       test:
-        [
-          'CMD-SHELL',
-          'wget -q --spider http://localhost:65422/health || exit 1',
-        ]
+        ['CMD-SHELL', 'wget -q --spider http://localhost:65421/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://ponder:ponder@localhost:6432/ponder
+      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
+      PONDER_HTTP_PORT: 65421
+      PONDER_VIEWS_SCHEMA: ${PONDER_VIEWS_SCHEMA:-trust-graph}
     restart: unless-stopped
+    stop_grace_period: 30s
 
 volumes:
   ponder-db-data:

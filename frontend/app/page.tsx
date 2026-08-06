@@ -37,7 +37,7 @@ const REPO_URL = 'https://github.com/JakeHartnell/ZkTrustGraph'
 /**
  * The slug of the demo network in `config/networks.<env>.json`.
  *
- * The hero button says "Open the Demo Co-op" by name, so it resolves this id
+ * The hero button names the Demo Co-op when it is reachable, so it resolves this id
  * specifically rather than grabbing whatever the catalog happens to list first:
  * a button whose label names one network and whose href points at another is a
  * worse failure than a button that falls back to the directory.
@@ -53,7 +53,7 @@ const DEMO_NETWORK_ID = 'demo-co-op'
  * in the slot that wants the pitch.
  */
 const DESCRIPTION =
-  'Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.'
+  'Turn community vouches into reputation scores that apps can use and contracts can verify.'
 
 /**
  * The hero figure's height budget, owned by the page and handed to whatever
@@ -105,9 +105,8 @@ export default async function LandingPage() {
           </h1>
 
           <p className="max-w-prose text-lg text-text-muted">
-            A trustgraph maps who vouches for whom. That map becomes a score any
-            app can read and any contract can check, so votes and money follow
-            the people your community actually trusts.
+            Turn the vouches your community already makes into scores that apps
+            can use and contracts can verify.
           </p>
 
           {/* Two ways in, because a stranger arrives wanting one of two things:
@@ -121,11 +120,11 @@ export default async function LandingPage() {
              * warming 627 KB of it before anyone clicked. The click pays for
              * itself; the reader who only wanted the sentence does not. */}
             <ButtonLink
-              href={demo ? `/networks/${demo.id}` : '/networks'}
+              href={graphReachable ? `/networks/${demo.id}` : '/networks'}
               prefetch={false}
               size="lg"
             >
-              Open the Demo Co-op
+              {graphReachable ? 'Explore Demo Co-op' : 'Browse networks'}
             </ButtonLink>
             <ButtonLink href="#how-it-works" size="lg" variant="outline">
               How it works
@@ -160,143 +159,57 @@ export default async function LandingPage() {
            * alone next to a drawing, which read as one finished panel and two
            * that had not been got to yet. */}
           <Move n="1" title="Vouch" figure={<VouchFigure />}>
-            Sign a public statement that you trust an account, with a weight on
-            it. Change it or take it back whenever you want.
+            Sign a public, weighted vouch. Update or revoke it at any time.
           </Move>
 
-          {/* The last sentence is not a hedge. `reconcile.rs` builds the node
-           * set from the EDGES, so a clique vouching for each other is exactly
-           * how it becomes a set of scored accounts, and `calculate_generic`
-           * still credits every one of them their slice of the head start you
-           * did not reserve. The wizard reserves 15% by default. "A bot island
-           * gains nothing" is backwards, not merely incomplete. See issue #18. */}
           <Move n="2" title="Score" figure={<ScoreFigure />}>
-            Trust starts at a handful of accounts your community picked and
-            flows outward along the vouches. A vouch from a trusted account
-            carries weight. A bot island has no trust flowing into it, so
-            vouching for itself earns it nothing. Whether it keeps a share
-            anyway is a dial when you create the network, and its default leaves
-            it one.
+            Trust flows from accounts your community chooses, giving more weight
+            to vouches from trusted people.
           </Move>
 
           {/* "Check", not "read". `MerkleSnapshot` stores a root, not scores,
            * and `verifyProof(account, value, proof)` needs the caller to hold
            * both already. There is no enumeration on chain. */}
           <Move n="3" title="Use" figure={<UseFigure />}>
-            When a round is proven, its scoreboard is committed on-chain. Any
-            contract can check a score against it: voting weight, funding
-            splits, access, whatever you need a real member count for.
+            Commit each round on-chain, where apps and contracts can verify
+            scores for voting, payouts, or access.
           </Move>
         </div>
       </Section>
 
       {/* ── The proof ─────────────────────────────────────────────────────── */}
-      <Section heading="Anyone can run the math.">
+      <Section heading="Don’t trust the scorer. Check the proof.">
         {/* Prose above, diagram full width below. Setting the diagram in a
          * half-width column squeezes three labelled panels and two connectors
          * into about 600px, which is where the labels start setting two words
          * to a line. */}
         <div className="flex flex-col gap-10">
-          {/* The argument on the left, the line it lands on set as a pull quote
-           * on the right. It is the sentence the whole section exists to earn,
-           * and buried as the third paragraph of a narrow column it read as a
-           * footnote. `.tg-display` is the serif's opt-in for copy that is not
-           * a heading. */}
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:gap-12">
-            <div className="flex max-w-prose flex-col gap-4 text-text-muted">
-              <p>
-                Most scoring systems ask you to trust whoever owns the server.
-                This one doesn’t have a server you have to believe. The rules
-                are public and exact, so anyone can run them and get the same
-                answer down to the last digit.
-              </p>
-              <p>
-                Whoever submits a scoreboard attaches a zero-knowledge proof: a
-                short receipt the chain checks by itself. Drop a vouch you
-                dislike, invent one that never happened, or round a number your
-                way, and no valid receipt exists.
-              </p>
-            </div>
-
-            {/* The leading is pinned at the call site, not left to `.tg-display`.
-             * Moving the `.tg-*` classes into `@layer components` was the right
-             * fix for the FAQ nav, and it hands every size utility here the
-             * power to reset line-height along with font-size, which is exactly
-             * what `text-xl` does. Naming the token keeps the value in one
-             * place and keeps the quote at its designed 1.15. */}
-            <p className="tg-display max-w-[22ch] self-center border-l border-border pl-5 text-xl leading-[var(--leading-tight)] text-balance sm:text-2xl lg:pl-8">
-              You never trust the person who did the math. You check the
-              receipt.
-            </p>
-          </div>
+          <p className="max-w-[72ch] text-lg text-text-muted">
+            The rules are public, so anyone can recompute a round. A
+            zero-knowledge proof shows that every vouch was included and every
+            score followed those rules.
+          </p>
 
           <ProofDiagram />
         </div>
       </Section>
 
-      {/* ── Why ───────────────────────────────────────────────────────────── */}
-      <Section heading="What this is for.">
-        {/* The one open section between two bordered grids, and it stays open
-         * on purpose: this is the human argument, not a spec board. It just
-         * gets more air than a panel would, so it reads as a lighter beat
-         * rather than as the section nobody finished. */}
-        <div className="grid gap-10 lg:grid-cols-3 lg:gap-12">
-          {/* "Hand governance to the people who earned it" was the wrong way
-           * round: the code hands out VOTES and keeps the KEYS. The factory
-           * grants the creating wallet `CONSTITUTIONAL_ROLE` at birth, and that
-           * role can call `setZkVerifier`, so the founder can repoint the thing
-           * that checks the maths and post whatever scoreboard they like. The
-           * FAQ's Status answer already says a network created through the app
-           * is governed by one wallet, so the two pages were in flat
-           * contradiction. What IS true is the part worth saying: weight can
-           * follow trust instead of holdings. */}
-          <Reason title="Weight votes by trust, not by holdings.">
-            A founder with most of the tokens can put governance weight where
-            the community’s trust actually is.
-          </Reason>
-          {/* The list that used to open this line ("contributions, endorsements,
-           * history") named three things a network a stranger can create does
-           * not count. `TrustGraphFactory` hard-codes one vouch schema and binds
-           * it inside the creating transaction, after which a foreign schema
-           * reverts; contributions are a separate program with no factory and no
-           * wizard path; "history" traced to nothing in the repo at all. An
-           * earlier round cut "and off" from the end of the same sentence and
-           * left the nouns standing, which is the tell that it was the list and
-           * not the preposition doing the lying. Mixed sources, below, is where
-           * other programs get named. */}
-          <Reason title="Count more than tokens.">
-            Weight comes from who vouches for whom, not from what an account
-            holds.
-          </Reason>
-          <Reason title="One reputation, many contexts.">
-            Score the same people different ways for different questions.
-            Reputation earned in one place can be read in another.
-          </Reason>
-        </div>
-      </Section>
-
       {/* ── Features ──────────────────────────────────────────────────────── */}
-      <Section heading="What you can turn on.">
-        {/* The same hairline grid as "Three moves.", on purpose: this page has
-         * one way of drawing a set of panels, and six switches laid out as a
-         * loose list of underlined rows read as leftovers rather than as a
-         * board. Six items divide evenly at one, two and three columns, so no
-         * breakpoint leaves a ragged cell. */}
-        <ul className="grid list-none grid-cols-1 gap-px border border-border bg-border p-0 sm:grid-cols-2 lg:grid-cols-3">
+      <Section heading="Put trust to work.">
+        {/* The same hairline grid as "Three moves.": this page has one visual
+         * language for product capabilities, and four items make a balanced
+         * two-by-two board at wider breakpoints. */}
+        <ul className="grid list-none grid-cols-1 gap-px border border-border bg-border p-0 sm:grid-cols-2">
           <Feature title="Trust-weighted voting">
-            A Safe module weighs votes by score instead of tokens. Connecting it
-            is a manual deployment today.
+            Weight votes by reputation instead of token balance. Safe setup is
+            manual today.
           </Feature>
           <Feature title="Score-weighted payouts">
-            Split a pot by score, and let anyone claim their share against the
-            published scoreboard.
+            Split a pool by score and let each account claim its share.
           </Feature>
           <Feature title="Self-updating multisig">
-            A module can rotate a Safe’s owners to the top accounts by score.
-            Wiring it is a manual deployment today.
-          </Feature>
-          <Feature title="Published criteria">
-            Say what a vouch means in your network, and where newcomers apply.
+            Rotate a Safe’s owners to the highest-scoring accounts. Setup is
+            manual today.
           </Feature>
           {/* Twice corrected. It never carried proofs (issue #17), and it is
            * not necessarily "the published scoreboard" either: the button
@@ -307,62 +220,44 @@ export default async function LandingPage() {
            * exactly one place, the vouching network page, and this page
            * advertises three programs: a reader who opened a funding round
            * looking for the download found nothing. */}
-          <Feature title="Exportable scoreboards">
-            A vouching network’s scoreboard downloads as CSV or JSON, so you can
-            use the scores off-chain. The file carries the scores, not the
-            proofs.
-          </Feature>
-          <Feature title="Mixed sources">
-            Vouches on Ethereum today. Reputation over AT-Protocol accounts is a
-            second program, proven the same way, and not self-serve yet.
+          <Feature title="Portable scoreboards">
+            Export scores as CSV or JSON for use off-chain.
           </Feature>
         </ul>
       </Section>
 
       {/* ── Start one ─────────────────────────────────────────────────────── */}
       <Section heading="Bring your own community.">
-        <div className="flex flex-col items-start gap-8">
-          {/* Two paragraphs, two columns. One measure-capped column under a
-           * full-width heading left two thirds of the section empty and made
-           * the last thing before the call to action look like an afterthought. */}
-          <div className="grid gap-4 text-text-muted lg:grid-cols-2 lg:gap-12">
-            {/* Both sentences were stronger than the code, twice over. "No
-             * server for you to run" implies somebody else runs one, and
-             * permissionless only means nobody can stop you: for a network made
-             * through the app, the only working tier is self-prove. And the
-             * tank cannot pay anything until `maxPerRootUsd` is set, which
-             * `TrustGraphFactory` never does and this app has no screen for, so
-             * `_settle` short-circuits to `PolicyDisabled` and the operator
-             * holds `Unfunded`. "Free forever" also skipped the 16-32 GiB and
-             * the gas. */}
-            {/* The appearance clause is gone rather than softened. The indexer
-             * switches factory discovery off whenever the deploy environment is
-             * production, so on the chain this app ships against a
-             * factory-created network is never indexed and never listed: not
-             * slowly, not at all. "Once the indexer catches up" promised a wait
-             * that ends. Issue filed against the indexer. */}
-            <p className="max-w-prose">
-              Create a network in one transaction. Nobody approves it. Proving
-              is permissionless, so anyone can produce your scoreboard and no
-              operator can lock you out.
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-12">
+          <div className="flex max-w-[72ch] flex-col gap-4 text-text-muted">
+            <p className="text-lg text-text">
+              Create a network in one transaction. Choose its starting accounts,
+              define what a vouch means, and tune how trust flows.
             </p>
             <p className="max-w-prose">
-              Proving costs real money. Your network has a tank to pay whoever
-              produces its scoreboard, though it pays nothing until the tank is
-              funded, its per-round limit is set by contract call, and we have
-              priced networks of that size. You can also prove it yourself: the
-              prover is open source, and the bill is your own machine and gas.
+              Proving is permissionless. Run the open-source prover yourself, or
+              fund the network’s proving tank as managed support rolls out.
             </p>
           </div>
 
-          <ButtonLink href="/create" prefetch={false} size="lg">
-            Create a network
-          </ButtonLink>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col">
+            <ButtonLink href="/create" prefetch={false} size="lg">
+              Create a network
+            </ButtonLink>
+            <ButtonLink
+              href="/faq#status"
+              prefetch={false}
+              size="lg"
+              variant="outline"
+            >
+              Read current status
+            </ButtonLink>
+          </div>
         </div>
       </Section>
 
       {/* ── Ending CTA ────────────────────────────────────────────────────── */}
-      <section className="flex flex-col items-start gap-5 border border-border bg-surface p-6 sm:flex-row sm:items-center sm:justify-between sm:p-10">
+      <section className="flex flex-col items-start gap-5 border border-ink bg-ink p-6 text-ink-fg sm:flex-row sm:items-center sm:justify-between sm:p-10">
         <h2 className="max-w-[20ch] text-balance">
           Open source. Take it apart.
         </h2>
@@ -371,8 +266,8 @@ export default async function LandingPage() {
           target="_blank"
           rel="noopener noreferrer"
           size="lg"
-          variant="outline"
-          className="shrink-0"
+          variant="custom"
+          className="shrink-0 border-ink-fg text-ink-fg hover:bg-ink-fg hover:text-ink"
         >
           Star on GitHub
         </ButtonLink>
@@ -449,23 +344,6 @@ function Move({
           {figure}
         </div>
       </div>
-    </div>
-  )
-}
-
-function Reason({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-3 border-t border-border pt-5">
-      <h3 className="text-balance">{title}</h3>
-      {/* Capped, because this grid is one column below `lg` and 14px mono run
-       * the full 720px of a tablet is about ninety characters to a line. */}
-      <p className="max-w-prose text-text-muted">{children}</p>
     </div>
   )
 }

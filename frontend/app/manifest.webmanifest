@@ -1,7 +1,7 @@
 {
   "name": "Trustgraphs",
   "short_name": "Trustgraphs",
-  "description": "Reputation you can’t buy. A trustgraph turns the vouches your community already makes into a score anyone can verify, published on-chain each round.",
+  "description": "Turn community vouches into reputation scores that apps can use and contracts can verify.",
   "icons": [
     {
       "src": "/images/icon-192.png",

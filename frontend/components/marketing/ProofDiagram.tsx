@@ -282,8 +282,8 @@ export function ProofDiagram({ className }: { className?: string }) {
       </div>
 
       <figcaption className="max-w-prose text-text-muted">
-        The vouches go in, one short proof comes out, and the chain checks the
-        proof by itself. Change the vouches and there is no proof to check.
+        The chain accepts the scoreboard only when the proof matches every vouch
+        in the round.
       </figcaption>
     </figure>
   )

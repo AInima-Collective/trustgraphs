@@ -11,15 +11,12 @@ Every claim below is something the code does today unless the line says otherwis
 
 **Headline:** Reputation you can’t buy.
 
-**Subhead:** A trustgraph maps who vouches for whom. That map becomes a score any app can
-read and any contract can check, so votes and money follow the people your community
-actually trusts.
+**Subhead:** Turn the vouches your community already makes into scores that apps can use
+and contracts can verify.
 
-`[a contract checks one pair, it does not read a board. This is the same correction the Use
-panel got: the subhead was carrying the old wording, and it is also the site's meta
-description, so it was the sentence in every search result.]`
+**Primary button:** Explore Demo Co-op
 
-**Primary button:** Open the Demo Co-op
+**Primary button, when the demo is unavailable:** Browse networks
 
 **Secondary button:** How it works
 
@@ -36,29 +33,15 @@ moves.", not a route.]`
 **Section heading:** Three moves.
 
 **1. Vouch**
-Sign a public statement that you trust an account, with a weight on it. Change it or take
-it back whenever you want.
+Sign a public, weighted vouch. Update or revoke it at any time.
 
 **2. Score**
-Trust starts at a handful of accounts your community picked and flows outward along the
-vouches. A vouch from a trusted account carries weight. A bot island has no trust flowing
-into it, so vouching for itself earns it nothing. Whether it keeps a share anyway is a dial
-when you create the network, and its default leaves it one.
-
-`[the last sentence is not decoration. The node set is built from the edges
-(pagerank-core/src/reconcile.rs), so vouching for each other is exactly how an island
-becomes a set of scored accounts, and calculate_generic still credits every one of them
-their slice of the head start you did not reserve. The wizard reserves 15% by default.
-Saying "a bot island gains nothing" without this is backwards, not merely incomplete.]`
+Trust flows from accounts your community chooses, giving more weight to vouches from
+trusted people.
 
 **3. Use**
-When a round is proven, its scoreboard is committed on-chain. Any contract can check a
-score against it: voting weight, funding splits, access, whatever you need a real member
-count for.
-
-`[a contract checks, it does not read. MerkleSnapshot stores a root, not scores
-(MerkleState in src/contracts/merkle/MerkleSnapshot.sol), and the only entry point is
-verifyProof(account, value, proof): the caller has to already hold both.]`
+Commit each round on-chain, where apps and contracts can verify scores for voting, payouts,
+or access.
 
 `[three panels, each with its own ink figure pinned to the bottom so all three
 sit on one baseline. 1: one account pointing at another, a weight on the edge,
@@ -70,20 +53,10 @@ contracts.]`
 
 ## The proof
 
-**Section heading:** Anyone can run the math.
+**Section heading:** Don’t trust the scorer. Check the proof.
 
-Most scoring systems ask you to trust whoever owns the server. This one doesn’t have a
-server you have to believe. The rules are public and exact, so anyone can run them and get the same
-answer down to the last digit.
-
-Whoever submits a scoreboard attaches a zero-knowledge proof: a short receipt the chain
-checks by itself. Drop a vouch you dislike, invent one that never happened, or round a
-number your way, and no valid receipt exists.
-
-You never trust the person who did the math. You check the receipt.
-
-`[that last line is the sentence the section exists to earn, so it is set as a
-pull quote beside the argument rather than as its third paragraph.]`
+The rules are public, so anyone can recompute a round. A zero-knowledge proof shows that
+every vouch was included and every score followed those rules.
 
 `[if one thing on this page gets a diagram, it's this. inputs → proof → chain, with the
 rejected path drawn.]`
@@ -97,78 +70,29 @@ the proof
 something changed. The rejected row gets a figure too: the same receipt, drawn
 as an empty dashed outline and struck through.]`
 
-**Diagram caption:** The vouches go in, one short proof comes out, and the chain checks the
-proof by itself. Change the vouches and there is no proof to check.
-
----
-
-## Why
-
-**Section heading:** What this is for.
-
-**Weight votes by trust, not by holdings.**
-A founder with most of the tokens can put governance weight where the community’s trust
-actually is.
-`[one heavy node dissolving into a network]`
-
-`["Give away control without giving away the keys" was the wrong way round: the code hands
-out votes and keeps the keys. TrustGraphFactory grants the creating wallet
-CONSTITUTIONAL_ROLE at birth, and that role can call setZkVerifier, so the founder can
-repoint the thing that checks the maths. The FAQ's Status answer already says a network
-created through the app is governed by one wallet, so the two pages contradicted each
-other. The half that survives is the half worth saying.]`
-
-**Count more than tokens.**
-Weight comes from who vouches for whom, not from what an account holds.
-
-`[the list this replaced ("contributions, endorsements, history") named three things a
-network a stranger can create does not count. TrustGraphFactory hard-codes one vouch schema
-and binds it inside the creating transaction, so a foreign schema reverts; contributions are
-a separate program with no factory and no wizard path; "history" traced to nothing at all.
-An earlier round cut "and off" from the end of the same sentence and left the nouns
-standing. Mixed sources, below, is where other programs get named.]`
-
-**One reputation, many contexts.**
-Score the same people different ways for different questions. Reputation earned in one
-place can be read in another.
+**Diagram caption:** The chain accepts the scoreboard only when the proof matches every
+vouch in the round.
 
 ---
 
 ## Features
 
-**Section heading:** What you can turn on.
+**Section heading:** Put trust to work.
 
 **Trust-weighted voting**
-A Safe module weighs votes by score instead of tokens. Connecting it is a manual deployment
-today.
+Weight votes by reputation instead of token balance. Safe setup is manual today.
 
 **Score-weighted payouts**
-Split a pot by score, and let anyone claim their share against the published scoreboard.
+Split a pool by score and let each account claim its share.
 
 **Self-updating multisig**
-A module can rotate a Safe’s owners to the top accounts by score. Wiring it is a manual
-deployment today.
+Rotate a Safe’s owners to the highest-scoring accounts. Setup is manual today.
 
-**Published criteria**
-Say what a vouch means in your network, and where newcomers apply.
+**Portable scoreboards**
+Export scores as CSV or JSON for use off-chain.
 
-**Exportable scoreboards**
-A vouching network’s scoreboard downloads as CSV or JSON, so you can use the scores
-off-chain. The file carries the scores, not the proofs.
-
-`["A network's" was wider than the button. The export control renders on the vouching
-network page and nowhere else, and this page advertises three programs, so a reader who
-opened a funding round looking for it found nothing.]`
-
-`["the published scoreboard" was doing work the export does not: the button writes whatever
-the page is currently showing, which the simulation toggle beside it can change. Issue
-filed. The claim here is only about the file's contents, which is true either way.]`
-
-**Mixed sources**
-Vouches on Ethereum today. Reputation over AT-Protocol accounts is a second program, proven
-the same way, and not self-serve yet.
-
-`[six-up grid, two rows. no icons unless they can be ink-only.]`
+`[four-up grid, two rows. The grid pairs actions a visitor can take with the current setup
+state where it matters.]`
 
 ---
 
@@ -176,32 +100,15 @@ the same way, and not self-serve yet.
 
 **Section heading:** Bring your own community.
 
-Create a network in one transaction. Nobody approves it. Proving is permissionless, so
-anyone can produce your scoreboard and no operator can lock you out.
+Create a network in one transaction. Choose its starting accounts, define what a vouch
+means, and tune how trust flows.
 
-`[the appearance clause is gone rather than softened. Factory discovery in the indexer is
-switched off whenever the deploy environment is production, so on the chain this app ships
-against a factory-created network is never indexed and never shows up: not slowly, not at
-all. Saying "once the indexer catches up" promised a wait that ends. Issue filed.]`
-
-Proving costs real money. Your network has a tank to pay whoever produces its scoreboard,
-though it pays nothing until the tank is funded, its per-round limit is set by contract
-call, and we have priced networks of that size. You can also prove it yourself: the prover
-is open source, and the bill is your own machine and gas.
-
-`[four gates, not one. The vault account does not exist until someone deposits, so
-setPolicy reverts UnknownInstance before a first deposit; maxPerRootUsd must be non-zero;
-the fee band must be priced by us; and the ETH/USD feed must be fresh. Saying "one contract
-call" read as sufficient.]`
-
-`[both sentences were stronger than the code. "No server for you to run" implies somebody
-else runs one; permissionless only means nobody can stop you. And the tank cannot pay
-anything until maxPerRootUsd is set: TrustGraphFactory forwards the deposit and never calls
-ProvingVault.setPolicy, so _settle short-circuits to PolicyDisabled and the operator holds
-Unfunded. "Free forever" also skipped the 16-32 GiB and the gas. Issue filed for the
-policy gap.]`
+Proving is permissionless. Run the open-source prover yourself, or fund the network’s
+proving tank as managed support rolls out.
 
 **Button:** Create a network
+
+**Secondary button:** Read current status
 
 ---
 
@@ -239,8 +146,8 @@ until the graph has something in it.]`
 the image's name and then read it again as the caption. The name says what the thing is and
 the caption says how to read it.]`
 
-**Graph unavailable, and shown when the network has nothing in it yet:** The Demo Co-op is
-not reachable right now. Every network on the directory is still live on chain.
+**Graph unavailable, and shown when the network has nothing in it yet:** The demo graph is
+temporarily unavailable. You can still browse published networks.
 
 `[the empty case used to fall through to the graph component's own panel, which says "No
 attestations yet" on the first screen a stranger sees, using a word the landing page never
@@ -319,8 +226,7 @@ twitter block, so overriding only one gave a page whose Slack unfurl and whose X
 card carried two different sentences for the same URL.]`
 
 **Site description**, used for search results and share cards on every page:
-Reputation you can’t buy. A trustgraph turns the vouches your community already makes into
-a score anyone can verify, published on-chain each round.
+Turn community vouches into reputation scores that apps can use and contracts can verify.
 
 ---
 
