@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
+import { useSetAtom } from 'jotai'
 import { Check, LoaderCircle, X } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
@@ -41,6 +42,7 @@ import { AttestationData } from '@/lib/attestation'
 import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { usePonderQuery } from '@/lib/use-ponder-query'
+import { bumpPendingEchoAtom } from '@/state/score-updates'
 import {
   formatBigNumber,
   formatPercentage,
@@ -214,6 +216,10 @@ export const CreateAttestationModal = ({
     setIsRevokingUid(attestation.uid)
     try {
       await revokeAttestation(attestation.uid, attestation.schema)
+      // A revocation changes the next update exactly like a new attestation does.
+      if (currentSnapshot) {
+        bumpPendingEcho(currentSnapshot)
+      }
       setRevoked((r) => ({ ...r, [attestation.uid]: true }))
     } catch (err) {
       console.error('Failed to revoke attestation:', err)
@@ -223,15 +229,24 @@ export const CreateAttestationModal = ({
     }
   }
 
+  const bumpPendingEcho = useSetAtom(bumpPendingEchoAtom)
+  const currentSnapshot = currentNetwork?.contracts.merkleSnapshot
+
   // Monitor transaction state
   useEffect(() => {
     if (hash && isCreated) {
       console.log(`✅ Transaction successful: ${hash}`)
+      // The indexer will not serve this attestation until it is past Ponder's finality window, so
+      // echo it locally: the network header's pending count moves the instant the modal closes,
+      // instead of the page sitting unchanged for a minute.
+      if (currentSnapshot) {
+        bumpPendingEcho(currentSnapshot)
+      }
       onSuccess?.()
       setIsOpen(false)
       form.reset()
     }
-  }, [hash, isCreated, onSuccess, form])
+  }, [hash, isCreated, onSuccess, form, currentSnapshot, bumpPendingEcho])
 
   // Clear transaction state when modal reopens
   useEffect(() => {

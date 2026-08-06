@@ -123,7 +123,11 @@ export function useAttestation(uid?: Hex) {
             type: 'legacy',
           },
           onTransactionSent: setHash,
-          successMessage: 'Attestation created!',
+          // Saved-not-yet-counted, in one line: the attestation is durable now, the score effect
+          // arrives with the next verified update. Keeps a two-minute pipeline from reading as
+          // "nothing happened".
+          successMessage:
+            'Attestation saved. It counts toward the next score update.',
         })
 
         console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
@@ -210,7 +214,7 @@ export function useAttestation(uid?: Hex) {
             type: 'legacy',
           },
           onTransactionSent: setHash,
-          successMessage: `${attestationsData.length} ratings saved!`,
+          successMessage: `${attestationsData.length} ratings saved. They count toward the next score update.`,
         })
         console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)
         setIsCreated(true)
@@ -311,7 +315,8 @@ export function useAttestation(uid?: Hex) {
             type: 'legacy',
           },
           onTransactionSent: setHash,
-          successMessage: 'Attestation revoked!',
+          successMessage:
+            'Attestation revoked. The change counts toward the next score update.',
         })
 
         console.log(`✅ Transaction confirmed: ${receipt.transactionHash}`)

@@ -15,11 +15,14 @@ import { ExportButton } from '@/components/ExportButton'
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
+import { ScoreUpdateChip } from '@/components/ScoreUpdateChip'
+import { ScoresAsOf } from '@/components/ScoresAsOf'
 import { SectionHeading } from '@/components/SectionHeading'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
+import { useScoreDeltas } from '@/hooks/useScoreDeltas'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { trustGraphTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
@@ -48,9 +51,14 @@ export const NetworkPage = () => {
     medianValue,
     gnosisSafe,
     refresh,
+    simulationConfig,
   } = useNetwork()
 
   const { name, link, about, callToAction, applicationUrl, criteria } = network
+
+  // Small "+0.4" badges on the SCORE column for ten seconds after an update lands, so an
+  // attestation's effect is felt without anyone reading a changelog. Off while simulating.
+  const scoreDeltas = useScoreDeltas(networkData, !simulationConfig.enabled)
 
   // Define table columns
   const columns: Column<NetworkEntry>[] = [
@@ -117,7 +125,20 @@ export const NetworkPage = () => {
       sortable: true,
       accessor: (row) => Number(BigInt(row.value || '0')),
       // Merkle values are pool allocations in wei (scaled by precisionScale = 1e18); divide for display.
-      render: (row) => formatBigNumber(row.value, 18),
+      render: (row) => {
+        const delta = scoreDeltas?.get(row.account.toLowerCase())
+        return (
+          <span>
+            {formatBigNumber(row.value, 18)}
+            {delta !== undefined && delta !== 0n && (
+              <span className="ml-1.5 text-xs text-text-muted">
+                {delta > 0n ? '+' : '−'}
+                {formatBigNumber((delta < 0n ? -delta : delta).toString(), 18)}
+              </span>
+            )}
+          </span>
+        )
+      },
     },
   ]
 
@@ -136,7 +157,10 @@ export const NetworkPage = () => {
       <div className="flex flex-col items-start gap-4">
         <BreadcrumbRenderer className="mb-2" />
 
-        <h1 className="text-4xl font-bold">{name}</h1>
+        <div className="flex w-full flex-row flex-wrap items-center justify-between gap-x-8 gap-y-3">
+          <h1 className="text-4xl font-bold">{name}</h1>
+          <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
+        </div>
 
         {link && (
           <p className="text-sm flex flex-row items-center gap-2 flex-wrap">
@@ -243,7 +267,10 @@ export const NetworkPage = () => {
 
       <div className="space-y-6">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">
-          <SectionHeading>Network members</SectionHeading>
+          <div className="flex flex-col gap-1">
+            <SectionHeading>Network members</SectionHeading>
+            <ScoresAsOf snapshot={network.contracts.merkleSnapshot} />
+          </div>
 
           {!isLoading && (
             <div className="flex flex-row items-stretch gap-2 flex-wrap">
