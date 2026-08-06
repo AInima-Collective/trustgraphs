@@ -35,12 +35,9 @@ export const revalidate = 10
 const REPO_URL = 'https://github.com/JakeHartnell/ZkTrustGraph'
 
 /**
- * The slug of the demo network in `config/networks.<env>.json`.
- *
- * The hero button names the Demo Co-op when it is reachable, so it resolves this id
- * specifically rather than grabbing whatever the catalog happens to list first:
- * a button whose label names one network and whose href points at another is a
- * worse failure than a button that falls back to the directory.
+ * The slug of the demo network in `config/networks.<env>.json`. The landing
+ * graph resolves this id specifically rather than grabbing whichever network
+ * the catalog happens to list first.
  */
 const DEMO_NETWORK_ID = 'demo-co-op'
 
@@ -56,17 +53,13 @@ const DESCRIPTION =
   'Turn community vouches into reputation scores that apps can use and contracts can verify.'
 
 /**
- * The hero figure's height budget, owned by the page and handed to whatever
- * fills it — the live graph or the panel that says it is unreachable. One
- * constant because the two must be the same size: a hero that changes height
- * depending on whether the indexer answered is a page that jumps.
- *
- * The desktop step is deliberately short of a full screen. At `min(70vh,38rem)`
- * the hero owned every pixel above the fold on a laptop and nothing suggested
- * there was a page under it.
+ * The hero is the graph. It takes the first screen after the nav, with a cap on
+ * very tall displays and a shorter guard for landscape phones. The page owns
+ * this budget so the live graph and honest failure state occupy exactly the
+ * same box and hydration never shifts the sections below it.
  */
 const HERO_FIGURE =
-  'h-[42vh] max-h-[360px] min-h-[min(16rem,42vh)] w-full lg:h-[min(56vh,29rem)] lg:max-h-none'
+  'h-[calc(100svh-7.5rem)] min-h-[32rem] max-h-[52rem] w-full [@media(max-height:520px)]:h-[calc(100svh-5.5rem)] [@media(max-height:520px)]:min-h-[20rem]'
 
 export const metadata: Metadata = {
   // `absolute` so the root page is "Trustgraphs" rather than "Trustgraphs | Trustgraphs".
@@ -79,9 +72,9 @@ export const metadata: Metadata = {
 }
 
 export default async function LandingPage() {
-  // `getCatalog` never throws: an unreachable indexer degrades to the shipped seed with an error
-  // set, so this read cannot take the page down. If the demo is missing either way, the hero says
-  // so and the button falls back to the directory rather than linking to nothing.
+  // `getCatalog` never throws: an unreachable indexer degrades to the shipped
+  // seed with an error set, so this read cannot take the page down. If the demo
+  // is missing either way, the hero renders its honest unavailable state.
   const { networks, error } = await getCatalog()
   const demo = resolveNetwork(networks, DEMO_NETWORK_ID)
 
@@ -94,51 +87,17 @@ export default async function LandingPage() {
   return (
     <div className="flex flex-col gap-16 sm:gap-24">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12">
-        {/* Copy first in the DOM, so a phone shows a sentence before it shows a
-         * constellation. At `lg` the grid puts the graph back on the right. */}
-        <header className="flex flex-col items-start gap-5 [@media(max-height:480px)]:gap-3">
-          <span className="tg-marker">Vouch · Score · Prove · Use</span>
-
-          <h1 className="tg-hero max-w-[14ch] text-balance">
-            Reputation you can’t buy.
-          </h1>
-
-          <p className="max-w-prose text-lg text-text-muted">
-            Turn the vouches your community already makes into scores that apps
-            can use and contracts can verify.
+      <section aria-label="Live trust graph" className="relative">
+        <div className="pointer-events-none absolute left-3 top-3 z-20 border-l-2 border-ink bg-surface/90 px-3 py-2 backdrop-blur-md">
+          <p className="text-[9px] uppercase tracking-wider text-text-subtle">
+            {graphReachable ? 'Live trustgraph' : 'Example trustgraph'}
           </p>
-
-          {/* Two ways in, because a stranger arrives wanting one of two things:
-           * to poke at a real network, or to be told what this is first. The
-           * second is a same-page anchor rather than a route, so it costs
-           * nothing and cannot 404. */}
-          <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
-            {/* `prefetch={false}`: `/networks/[id]` is the heaviest route in the
-             * app, 3.3 MB raw eager including the 1.1 MB ethers chunk the hero
-             * split exists to keep off this page. Measured, the landing page was
-             * warming 627 KB of it before anyone clicked. The click pays for
-             * itself; the reader who only wanted the sentence does not. */}
-            <ButtonLink
-              href={graphReachable ? `/networks/${demo.id}` : '/networks'}
-              prefetch={false}
-              size="lg"
-            >
-              {graphReachable ? 'Explore Demo Co-op' : 'Browse networks'}
-            </ButtonLink>
-            <ButtonLink href="#how-it-works" size="lg" variant="outline">
-              How it works
-            </ButtonLink>
-          </div>
-        </header>
-
-        {/* The graph is the product, so it renders on every screen. It just does
-         * not get to own a phone's first one: bounded to roughly 40vh below
-         * `lg`, and given the room it deserves above it. */}
-        {/* The <figure> is rendered BY the island, not around it: a
-         * <figcaption> only names its figure as a direct child, and "live" is a
-         * claim about data that has arrived, which only the client knows. The
-         * page owns the height budget and hands it over. See HeroGraph.tsx. */}
+          <h1 className="mt-0.5 text-lg leading-none text-text">Demo Co-op</h1>
+        </div>
+        {/* The graph is the product, so it gets the whole first screen. The
+         * figure is rendered BY the island, not around it: a figcaption only
+         * names its figure as a direct child, and "live" is a claim about data
+         * that has arrived, which only the client knows. */}
         {graphReachable ? (
           <HeroGraph network={demo} className={HERO_FIGURE} />
         ) : (

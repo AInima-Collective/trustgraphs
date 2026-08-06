@@ -12,6 +12,7 @@
  */
 
 export type GraphTokens = {
+  fontFamily: string
   canvas: string
   nodeLo: string
   nodeMid: string
@@ -30,6 +31,7 @@ export type GraphTokens = {
 // Matches the dark block in tokens.css. Used during SSR and in the window
 // before styles resolve; both paths re-read on the client immediately after.
 const FALLBACK: GraphTokens = {
+  fontFamily: "ui-monospace, 'Cascadia Code', monospace",
   canvas: '#0a0b0c',
   nodeLo: '#3f4245',
   nodeMid: '#7b7f83',
@@ -46,6 +48,7 @@ const FALLBACK: GraphTokens = {
 }
 
 const VAR_NAMES: Record<keyof GraphTokens, string> = {
+  fontFamily: '--mono-family',
   canvas: '--graph-canvas',
   nodeLo: '--graph-node-lo',
   nodeMid: '--graph-node-mid',

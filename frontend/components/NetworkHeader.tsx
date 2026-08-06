@@ -2,6 +2,7 @@
 
 import { Link as LinkIcon } from 'lucide-react'
 
+import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
 import { NetworkTab, trustGraphTabs } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
@@ -9,13 +10,13 @@ import { cn } from '@/lib/utils'
 
 /**
  * The one header every network screen shares: network name, its outbound
- * link, the tab bar. Byte-identical across a network's tabs so switching
- * tabs reads as switching tabs, not as landing on a different page.
- * Page-specific copy belongs below this, in the content.
+ * link, and the tab bar. Overview screens may add the network description;
+ * sub-pages keep the same identity and navigation in a more compact form.
  */
 export function NetworkHeader({
   network,
   tabs,
+  description,
   className,
 }: {
   network: Network | ContributionsNetwork
@@ -25,6 +26,11 @@ export function NetworkHeader({
    * is a caller bug.
    */
   tabs?: NetworkTab[]
+  /**
+   * Overview copy belongs with the network identity when it is the context for
+   * the whole page. Sub-pages omit it so their shared header stays compact.
+   */
+  description?: string
   className?: string
 }) {
   const { name, link } = network
@@ -46,6 +52,12 @@ export function NetworkHeader({
             <span>{link.label}</span>
           </a>
         </p>
+      )}
+
+      {description && (
+        <Markdown className="max-w-[80ch] gap-2 text-sm leading-relaxed text-text-muted">
+          {description}
+        </Markdown>
       )}
 
       <NetworkNav

@@ -7,24 +7,18 @@ Every claim below is something the code does today unless the line says otherwis
 
 ## Hero
 
-**Eyebrow:** Vouch · Score · Prove · Use
+**Graph title:** Demo Co-op
 
-**Headline:** Reputation you can’t buy.
+**Graph introduction:** A trustgraph is a verifiable computation of reputation from a community’s
+vouches.
 
-**Subhead:** Turn the vouches your community already makes into scores that apps can use
-and contracts can verify.
+**Graph legend:** node = member · area = score · edge = vouch · weight = confidence
 
-**Primary button:** Explore Demo Co-op
+**Graph links:** Open Demo Co-op · How it works
 
-**Primary button, when the demo is unavailable:** Browse networks
-
-**Secondary button:** How it works
-
-`[the live graph is the hero image. It should be moving before anyone scrolls.]`
-
-`[two buttons, because a stranger wants one of two things: to poke at a real
-network, or to be told what this is first. The second is an anchor to "Three
-moves.", not a route.]`
+`[The live graph is still the entire hero. Its title sits quietly in the upper-left;
+the default lower-left inspector explains the graph and holds the two ways forward.
+On interaction, that same inspector becomes node or edge detail.]`
 
 ---
 

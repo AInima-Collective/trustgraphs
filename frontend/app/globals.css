@@ -373,7 +373,6 @@
   }
 }
 
-
 html {
   position: relative;
   background: var(--bg);
@@ -542,4 +541,41 @@ div.react-sigma .react-sigma-control > button {
 div.react-sigma .react-sigma-control > button:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* The graph controls read as one instrument cluster, not a stack of unrelated
+ * floating buttons. Sigma owns the markup, so this small scoped override is
+ * more robust than reconstructing its zoom/fullscreen behavior ourselves. */
+div.react-sigma .tg-graph-toolbar.react-sigma-controls {
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  box-shadow: var(--shadow-elevated);
+}
+
+div.react-sigma .tg-graph-toolbar .react-sigma-control {
+  display: flex;
+  flex-direction: row;
+}
+
+div.react-sigma .tg-graph-toolbar .react-sigma-control > button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-left: 1px solid var(--border);
+}
+
+div.react-sigma
+  .tg-graph-toolbar
+  .react-sigma-control:first-child
+  > button:first-child {
+  border-left: 0;
+}
+
+div.react-sigma .tg-graph-toolbar .react-sigma-control > button:focus-visible {
+  position: relative;
+  z-index: 1;
+  box-shadow: inset var(--focus-ring);
+  outline: none;
 }
