@@ -161,6 +161,35 @@ export const proofSubmission = onchainTable(
 )
 
 /*///////////////////////////////////////////////////////////////
+        WHEN INPUTS FROZE (trigger() → SnapshotTriggered)
+//////////////////////////////////////////////////////////////*/
+
+// MerkleSnapshot.SnapshotTriggered — one row per frozen checkpoint. The row's (blockNumber,
+// logIndex) is the freeze boundary: an accumulator fold ordered before it is inside the
+// checkpoint, one ordered after it belongs to the next. Joined with `proofSubmission` on
+// (snapshot, checkpointId) this answers the two questions the app shows between an attestation
+// landing and its scores arriving: "is a recount running right now" (a trigger newer than the
+// last applied proof) and "how many attestations await the next update" (folds past the applied
+// checkpoint's boundary).
+export const snapshotTrigger = onchainTable(
+  'snapshot_trigger',
+  (t) => ({
+    id: t.text().primaryKey(),
+    snapshot: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    checkpointId: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    snapshotIdx: index().on(t.snapshot),
+    checkpointIdx: index().on(t.snapshot, t.checkpointId),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
             THE PROVING TANK (ProvingVault)
 //////////////////////////////////////////////////////////////*/
 

@@ -7,6 +7,7 @@ import {
   merkleFundDistributor,
   merkleSnapshot,
   proofSubmission,
+  snapshotTrigger,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -279,6 +280,31 @@ const onMerkleProofSubmitted = async ({
 
 ponder.on('merkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 ponder.on('programSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
+
+/**
+ * `SnapshotTriggered` — the moment a checkpoint froze. Between this event and the matching
+ * `MerkleProofSubmitted` the network is provably recounting, and the row's (blockNumber, logIndex)
+ * is the fold-order boundary that splits "counted in this update" from "waits for the next one".
+ * The `/network/:snapshot/status` route reads both to drive the app's pending-score states.
+ */
+const onSnapshotTriggered = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:SnapshotTriggered'>) => {
+  await context.db.insert(snapshotTrigger).values({
+    id: event.id,
+    snapshot: event.log.address,
+    chainId: `${context.chain.id}`,
+    checkpointId: event.args.checkpointId,
+    blockNumber: event.block.number,
+    logIndex: event.log.logIndex,
+    timestamp: event.block.timestamp,
+    txHash: event.transaction.hash,
+  })
+}
+
+ponder.on('merkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
+ponder.on('programSnapshot:SnapshotTriggered', onSnapshotTriggered)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
