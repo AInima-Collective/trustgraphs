@@ -106,17 +106,17 @@ function HeroGraphFigure() {
           inspector
           cameraControls={false}
           guide={{
-            heading: 'Trustgraph, briefly',
+            heading: 'One trustgraph',
             description:
-              'A trustgraph is a verifiable computation of reputation from a community’s vouches.',
+              'This live example turns community vouches into reputation. It is one trustgraph among many.',
             actions: [
               {
                 href: `/networks/${network.id}`,
                 label: 'Open Demo Co-op',
               },
               {
-                href: '#how-it-works',
-                label: 'How it works',
+                href: '#what-is-a-trustgraph',
+                label: 'Explore the idea',
               },
             ],
           }}

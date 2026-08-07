@@ -104,8 +104,9 @@ export interface NetworkGraphProps {
   /** Render the contextual node/edge inspector. Defaults to the chrome value. */
   inspector?: boolean
   /**
-   * Let pointer gestures pan and zoom the camera. The nearly full-screen landing
-   * graph turns this off so it never captures a visitor's attempt to scroll.
+   * Let pointer gestures pan the camera and deliberate inputs (pinch, buttons,
+   * keyboard) zoom it. Ordinary wheel events always remain page scroll. The
+   * nearly full-screen landing graph turns camera control off entirely.
    */
   cameraControls?: boolean
   /** Optional editorial introduction shown before the graph is inspected. */
@@ -471,11 +472,12 @@ export function NetworkGraph({
           <SigmaContainer
             className={cn(
               'border border-border',
+              cameraControls &&
+                'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink',
               showCursor && 'cursor-pointer'
             )}
             settings={sigmaSettings}
             graph={MultiDirectedGraph}
-            aria-label="Interactive trust graph. Hover or tap a node or edge to inspect it."
           >
             <SigmaControls
               title={title}
@@ -524,6 +526,105 @@ const SigmaControls = ({
   const loadGraph = useLoadGraph()
   const setSettings = useSetSettings()
   const { reset: recenter } = useCamera()
+  const { zoomIn, zoomOut } = useCamera({
+    duration: 200,
+    factor: 1.5,
+  })
+
+  useEffect(() => {
+    const graphRoot = sigma.getContainer().parentElement
+    if (!graphRoot) return
+
+    const previousRole = graphRoot.getAttribute('role')
+    const previousLabel = graphRoot.getAttribute('aria-label')
+    const previousTabIndex = graphRoot.getAttribute('tabindex')
+
+    // Keep the non-camera hero a group rather than an image: its guide can
+    // contain real links, and role="img" would flatten those descendants out
+    // of the accessibility tree.
+    graphRoot.setAttribute('role', cameraControls ? 'region' : 'group')
+    graphRoot.setAttribute(
+      'aria-label',
+      cameraControls
+        ? 'Interactive trust graph. Hover or tap a node or edge to inspect it. Drag to pan, pinch or use plus and minus to zoom.'
+        : 'Trust graph showing members as nodes and vouches as connecting edges.'
+    )
+
+    if (!cameraControls) {
+      return () => {
+        restoreAttribute(graphRoot, 'role', previousRole)
+        restoreAttribute(graphRoot, 'aria-label', previousLabel)
+      }
+    }
+
+    graphRoot.tabIndex = 0
+
+    // Sigma handles wheel and touch zoom behind one shared camera setting. Keep
+    // that setting enabled for real pinch gestures, but stop ordinary wheel
+    // events before they reach Sigma's mouse captor. We intentionally do not
+    // prevent the browser default: the page should continue scrolling. Modern
+    // trackpads report pinch as a ctrl-modified wheel event, which remains a
+    // deliberate graph zoom alongside native two-finger touch pinch.
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) event.stopPropagation()
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest('a, button, input, select, textarea, [contenteditable]')
+      ) {
+        return
+      }
+
+      graphRoot.focus({ preventScroll: true })
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable ||
+            Boolean(target.closest('input, select, textarea'))))
+      ) {
+        return
+      }
+
+      const zoomingIn =
+        event.key === '+' || event.key === '=' || event.code === 'NumpadAdd'
+      const zoomingOut =
+        event.key === '-' ||
+        event.key === '_' ||
+        event.code === 'NumpadSubtract'
+
+      if (!zoomingIn && !zoomingOut) return
+
+      event.preventDefault()
+      if (zoomingIn) void zoomIn()
+      else void zoomOut()
+    }
+
+    graphRoot.addEventListener('wheel', handleWheel, { capture: true })
+    graphRoot.addEventListener('pointerdown', handlePointerDown, {
+      capture: true,
+    })
+    graphRoot.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      graphRoot.removeEventListener('wheel', handleWheel, { capture: true })
+      graphRoot.removeEventListener('pointerdown', handlePointerDown, {
+        capture: true,
+      })
+      graphRoot.removeEventListener('keydown', handleKeyDown)
+      restoreAttribute(graphRoot, 'role', previousRole)
+      restoreAttribute(graphRoot, 'aria-label', previousLabel)
+      restoreAttribute(graphRoot, 'tabindex', previousTabIndex)
+    }
+  }, [cameraControls, sigma, zoomIn, zoomOut])
 
   useEffect(() => {
     if (initialZoom) {
@@ -648,7 +749,13 @@ const SigmaControls = ({
           position="top-right"
           className="tg-graph-toolbar flex flex-row"
         >
-          <ZoomControl />
+          <ZoomControl
+            labels={{
+              zoomIn: 'Zoom in (+)',
+              zoomOut: 'Zoom out (−)',
+              reset: 'See whole graph',
+            }}
+          />
           <FullScreenControl />
 
           {layout === 'circular' ? (
@@ -792,10 +899,19 @@ function GraphGuide({
 
       <p className="text-[10px] leading-relaxed text-text-subtle">
         Hover or tap a node or edge to inspect it.
-        {cameraControls && ' Drag to explore; scroll to zoom.'}
+        {cameraControls && ' Drag to explore; pinch or press + / − to zoom.'}
       </p>
     </div>
   )
+}
+
+function restoreAttribute(
+  element: HTMLElement,
+  name: string,
+  value: string | null
+) {
+  if (value === null) element.removeAttribute(name)
+  else element.setAttribute(name, value)
 }
 
 function EdgeInspector({

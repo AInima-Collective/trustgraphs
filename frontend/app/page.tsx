@@ -50,7 +50,7 @@ const DEMO_NETWORK_ID = 'demo-co-op'
  * in the slot that wants the pitch.
  */
 const DESCRIPTION =
-  'Turn community vouches into reputation scores that apps can use and contracts can verify.'
+  'trustgraphs turn graph data into results anyone can verify, compose, and use.'
 
 /**
  * The hero is the graph. It takes the first screen after the nav, with a cap on
@@ -85,14 +85,16 @@ export default async function LandingPage() {
   const graphReachable = demo !== undefined && !error
 
   return (
-    <div className="flex flex-col gap-16 sm:gap-24">
+    <div className="flex flex-col gap-20 sm:gap-28 lg:gap-36">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section aria-label="Live trust graph" className="relative">
-        <div className="pointer-events-none absolute left-3 top-3 z-20 border-l-2 border-ink bg-surface/90 px-3 py-2 backdrop-blur-md">
+        <div className="pointer-events-none absolute left-3 top-3 z-20 max-w-[calc(100%-1.5rem)] border-l-2 border-ink bg-surface/90 px-3 py-2.5 backdrop-blur-md sm:max-w-[34rem] sm:px-4 sm:py-3">
           <p className="text-[9px] uppercase tracking-wider text-text-subtle">
-            {graphReachable ? 'Live trustgraph' : 'Example trustgraph'}
+            {graphReachable ? 'Live example' : 'Example'} · Demo Co-op
           </p>
-          <h1 className="mt-0.5 text-lg leading-none text-text">Demo Co-op</h1>
+          <h1 className="mt-1 max-w-[22ch] text-xl leading-[1.05] text-text text-balance sm:text-3xl">
+            Verifiable computations over graphs of data.
+          </h1>
         </div>
         {/* The graph is the product, so it gets the whole first screen. The
          * figure is rendered BY the island, not around it: a figcaption only
@@ -107,9 +109,55 @@ export default async function LandingPage() {
         )}
       </section>
 
-      {/* ── How it works ──────────────────────────────────────────────────── */}
-      <Section id="how-it-works" heading="Three moves.">
-        <div className="grid gap-px border border-border bg-border lg:grid-cols-3">
+      {/* ── Platform idea and composition ───────────────────────── */}
+      <section
+        id="what-is-a-trustgraph"
+        className="scroll-mt-8 border-y border-border"
+      >
+        <div className="grid lg:grid-cols-[minmax(15rem,0.82fr)_minmax(0,1.18fr)]">
+          <div className="py-8 lg:pr-16 lg:py-12">
+            <p className="tg-label">The primitive</p>
+            <h2 className="mt-4 max-w-[12ch] text-4xl leading-[0.98] text-balance sm:text-5xl">
+              There is no one trustgraph.
+            </h2>
+          </div>
+
+          <div className="border-t border-border py-8 lg:border-l lg:border-t-0 lg:py-12 lg:pl-16">
+            <p className="max-w-[32ch] text-xl leading-snug text-text sm:text-2xl">
+              Each community, application, or protocol can define its own graph,
+              its own rules, and the result it needs.
+            </p>
+
+            <div className="mt-8 grid gap-6 border-t border-border pt-7 text-text-muted sm:grid-cols-2 sm:gap-8">
+              <p>
+                Anyone can run the computation. A proof lets everyone else check
+                the result without trusting the machine that produced it.
+              </p>
+              <p>
+                trustgraphs compose. Scores from one graph can weight
+                relationships in another, turning several kinds of data into a
+                new, verifiable result.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Composition />
+      </section>
+
+      {/* ── One concrete example ────────────────────────────── */}
+      <Section
+        id="how-it-works"
+        eyebrow="Working example"
+        heading="One example: a web of trust."
+        standfirst={
+          <p className="max-w-[72ch] text-lg text-text-muted">
+            Demo Co-op asks who its community trusts, then turns the answer into
+            something other applications can use.
+          </p>
+        }
+      >
+        <div className="grid gap-px border border-border bg-border shadow-[var(--shadow-elevated)] lg:grid-cols-3">
           {/* One hairline grid rather than three floating boxes: the gap IS the
            * rule, so the three panels read as one figure in three parts.
            *
@@ -136,72 +184,131 @@ export default async function LandingPage() {
         </div>
       </Section>
 
-      {/* ── The proof ─────────────────────────────────────────────────────── */}
-      <Section heading="Don’t trust the scorer. Check the proof.">
-        {/* Prose above, diagram full width below. Setting the diagram in a
-         * half-width column squeezes three labelled panels and two connectors
-         * into about 600px, which is where the labels start setting two words
-         * to a line. */}
-        <div className="flex flex-col gap-10">
-          <p className="max-w-[72ch] text-lg text-text-muted">
-            The rules are public, so anyone can recompute a round. A
-            zero-knowledge proof shows that every vouch was included and every
-            score followed those rules.
-          </p>
-
-          <ProofDiagram />
-        </div>
-      </Section>
-
-      {/* ── Features ──────────────────────────────────────────────────────── */}
-      <Section heading="Put trust to work.">
-        {/* The same hairline grid as "Three moves.": this page has one visual
-         * language for product capabilities, and four items make a balanced
-         * two-by-two board at wider breakpoints. */}
-        <ul className="grid list-none grid-cols-1 gap-px border border-border bg-border p-0 sm:grid-cols-2">
-          <Feature title="Trust-weighted voting">
-            Weight votes by reputation instead of token balance. Safe setup is
-            manual today.
-          </Feature>
-          <Feature title="Score-weighted payouts">
-            Split a pool by score and let each account claim its share.
-          </Feature>
-          <Feature title="Self-updating multisig">
-            Rotate a Safe’s owners to the highest-scoring accounts. Setup is
-            manual today.
-          </Feature>
-          {/* Twice corrected. It never carried proofs (issue #17), and it is
-           * not necessarily "the published scoreboard" either: the button
-           * writes whatever the page is currently showing, and the simulation
-           * toggle beside it can change that. The claim here is only about what
-           * lands in the file, which is true either way. */}
-          {/* "A network's" was wider than the button. `ExportButton` renders in
-           * exactly one place, the vouching network page, and this page
-           * advertises three programs: a reader who opened a funding round
-           * looking for the download found nothing. */}
-          <Feature title="Portable scoreboards">
-            Export scores as CSV or JSON for use off-chain.
-          </Feature>
+      {/* ── Use cases ─────────────────────────────────────────────────────── */}
+      <Section
+        eyebrow="Use cases"
+        heading="Different graphs. Different questions."
+      >
+        <ul className="list-none border-y border-border p-0">
+          <UseCase
+            n="01"
+            title="Community reputation"
+            input="Vouches between people"
+            output="A score for earned trust"
+          >
+            Find standing that comes from relationships, not token balance or a
+            platform-owned rating.
+          </UseCase>
+          <UseCase
+            n="02"
+            title="Contribution funding"
+            input="Claims, peer evaluations, and rater reputation"
+            output="A funding allocation"
+          >
+            Let trusted peer judgment direct a shared pool toward valuable work.
+          </UseCase>
+          <UseCase
+            n="03"
+            title="Impact discovery"
+            input="AT Protocol follows, claims, evaluations, and acknowledgements"
+            output="Scores for people and work"
+          >
+            Surface credible work from public records without trusting a private
+            ranking service.
+          </UseCase>
+          <UseCase
+            n="04"
+            title="Adaptive coordination"
+            input="A proven score graph and a policy"
+            output="Voting power, access, or a signer set"
+          >
+            Let authority change with the graph instead of freezing it in a
+            token or an admin list.
+          </UseCase>
         </ul>
       </Section>
 
-      {/* ── Start one ─────────────────────────────────────────────────────── */}
-      <Section heading="Bring your own community.">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-12">
-          <div className="flex max-w-[72ch] flex-col gap-4 text-text-muted">
+      {/* ── Verification ──────────────────────────────────────── */}
+      <section className="bg-ink px-6 py-10 text-ink-fg shadow-[var(--shadow-elevated)] sm:px-10 sm:py-12 lg:px-14 lg:py-16">
+        <div className="grid gap-8 lg:grid-cols-[minmax(15rem,0.72fr)_minmax(0,1.28fr)] lg:gap-16">
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-55">
+              Verification
+            </p>
+            <h2 className="mt-4 max-w-[16ch] text-3xl leading-[1.02] text-ink-fg text-balance sm:text-4xl">
+              Don’t trust the computer. Check the proof.
+            </h2>
+          </div>
+          <p className="max-w-[62ch] self-end text-lg text-ink-fg opacity-70">
+            The rules are public, so anyone can recompute the result. A short
+            zero-knowledge proof shows that every committed input was included
+            and the published result followed those rules.
+          </p>
+        </div>
+
+        <ProofDiagram tone="inverse" className="mt-12 sm:mt-16" />
+      </section>
+
+      {/* ── Roadmap ───────────────────────────────────────────────────────── */}
+      <Section
+        eyebrow="Roadmap"
+        heading="More inputs. Less exposure."
+        standfirst={
+          <>
             <p className="text-lg text-text">
-              Create a network in one transaction. Choose its starting accounts,
-              define what a vouch means, and tune how trust flows.
+              trustgraphs should work wherever useful graph data lives, then
+              reveal only what the result needs.
+            </p>
+            <p>
+              The path runs from public on-chain attestations toward flexible
+              off-chain sources and, ultimately, fully private graphs that
+              remain verifiable.
+            </p>
+          </>
+        }
+      >
+        <ol className="mx-auto max-w-4xl list-none border-t border-border p-0">
+          <RoadmapItem n="01" status="Current" title="On-chain EAS">
+            Public attestations, with every update committed before the graph is
+            computed.
+          </RoadmapItem>
+          <RoadmapItem n="02" status="Integrating" title="Off-chain EAS">
+            Signed attestations without a transaction per edge, anchored so the
+            prover cannot choose the input set.
+          </RoadmapItem>
+          <RoadmapItem n="03" status="Pilot" title="AT Protocol">
+            Verify repo history and records before computing over social and
+            impact data.
+          </RoadmapItem>
+          <RoadmapItem n="04" status="Research" title="Private graphs">
+            Keep relationships and scores hidden while proving the result was
+            computed correctly.
+          </RoadmapItem>
+        </ol>
+      </Section>
+
+      {/* ── Start one ─────────────────────────────────────────────────────── */}
+      <section className="grid overflow-hidden border border-ink shadow-[var(--shadow-elevated)] lg:min-h-[30rem] lg:grid-cols-[minmax(0,1.55fr)_minmax(19rem,0.65fr)]">
+        <div className="flex flex-col p-6 sm:p-10 lg:p-14">
+          <p className="tg-label">Start here</p>
+          <h2 className="mt-4 max-w-[13ch] text-4xl leading-[0.98] text-balance sm:text-5xl">
+            Build the next trustgraph.
+          </h2>
+
+          <div className="mt-8 flex max-w-[62ch] flex-col gap-4 text-text-muted sm:mt-10">
+            <p className="text-lg text-text">
+              Start with a community vouching network today. Choose its starting
+              accounts, define what a vouch means, and tune how trust flows.
             </p>
             <p className="max-w-prose">
-              Proving is permissionless. Run the open-source prover yourself, or
-              fund the network’s proving tank as managed support rolls out.
+              The proof system is permissionless, and the platform is open for
+              new graph programs as the input layer expands.
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col">
+          <div className="mt-auto flex w-full flex-col gap-3 pt-10 sm:w-auto sm:flex-row">
             <ButtonLink href="/create" prefetch={false} size="lg">
-              Create a network
+              Create a vouching network
             </ButtonLink>
             <ButtonLink
               href="/faq#status"
@@ -213,23 +320,25 @@ export default async function LandingPage() {
             </ButtonLink>
           </div>
         </div>
-      </Section>
 
-      {/* ── Ending CTA ────────────────────────────────────────────────────── */}
-      <section className="flex flex-col items-start gap-5 border border-ink bg-ink p-6 text-ink-fg sm:flex-row sm:items-center sm:justify-between sm:p-10">
-        <h2 className="max-w-[20ch] text-balance">
-          Open source. Take it apart.
-        </h2>
-        <ButtonLink
-          href={REPO_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          size="lg"
-          variant="custom"
-          className="shrink-0 border-ink-fg text-ink-fg hover:bg-ink-fg hover:text-ink"
-        >
-          Star on GitHub
-        </ButtonLink>
+        <div className="flex flex-col bg-ink p-6 text-ink-fg sm:p-10 lg:p-12">
+          <p className="text-[10px] uppercase tracking-widest text-ink-fg opacity-55">
+            Open source
+          </p>
+          <h2 className="mt-4 max-w-[10ch] text-3xl leading-none text-ink-fg text-balance sm:text-4xl">
+            Open source. Take it apart.
+          </h2>
+          <ButtonLink
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="lg"
+            variant="custom"
+            className="mt-12 w-full shrink-0 border-ink-fg text-ink-fg hover:bg-ink-fg hover:text-ink lg:mt-auto"
+          >
+            Star on GitHub
+          </ButtonLink>
+        </div>
       </section>
     </div>
   )
@@ -245,11 +354,15 @@ export default async function LandingPage() {
  */
 function Section({
   id,
+  eyebrow,
   heading,
+  standfirst,
   children,
 }: {
   id?: string
+  eyebrow: string
   heading: string
+  standfirst?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -257,9 +370,21 @@ function Section({
       id={id}
       // Anchored sections keep clear of the rule above them when jumped to, so
       // the section reads as a section rather than as a heading with no top.
-      className="flex scroll-mt-8 flex-col gap-6 border-t border-border pt-5 sm:gap-8"
+      className="flex scroll-mt-8 flex-col gap-10 border-t border-border pt-6 sm:gap-12 sm:pt-8"
     >
-      <h2 className="max-w-[24ch] text-balance">{heading}</h2>
+      <div className="grid gap-6 lg:grid-cols-[minmax(15rem,0.72fr)_minmax(0,1.28fr)] lg:gap-16">
+        <div>
+          <p className="tg-label">{eyebrow}</p>
+          <h2 className="mt-4 max-w-[18ch] text-3xl leading-[1.02] text-balance sm:text-4xl">
+            {heading}
+          </h2>
+        </div>
+        {standfirst && (
+          <div className="flex max-w-[72ch] flex-col gap-5 self-end text-text-muted">
+            {standfirst}
+          </div>
+        )}
+      </div>
       {children}
     </section>
   )
@@ -293,13 +418,19 @@ function Move({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col bg-background p-5 sm:p-6">
-      <span className="tg-marker">{n}</span>
-      <h3 className="mt-2">{title}</h3>
+    <div className="relative flex min-h-80 flex-col overflow-hidden bg-surface p-6 sm:p-8 lg:min-h-[26rem]">
+      <span
+        className="tg-display pointer-events-none absolute -right-1 -top-5 text-7xl leading-none text-text opacity-[0.045]"
+        aria-hidden="true"
+      >
+        {n}
+      </span>
+      <span className="tg-marker">Step {n}</span>
+      <h3 className="mt-3 text-2xl">{title}</h3>
 
-      <div className="mt-3 flex flex-1 flex-col gap-8 sm:flex-row sm:items-start sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
+      <div className="mt-4 flex flex-1 flex-col gap-8 sm:flex-row sm:items-start sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
         <p className="max-w-prose text-text-muted">{children}</p>
-        <div className="shrink-0 text-text sm:self-end lg:mt-auto lg:self-auto lg:pt-8 [&>svg]:h-auto [&>svg]:w-60 [&>svg]:max-w-full">
+        <div className="shrink-0 text-text sm:self-end lg:mt-auto lg:self-auto lg:pt-10 [&>svg]:h-auto [&>svg]:w-64 [&>svg]:max-w-full">
           {figure}
         </div>
       </div>
@@ -307,17 +438,159 @@ function Move({
   )
 }
 
-function Feature({
+function Composition() {
+  return (
+    <figure className="border-x border-b border-border bg-surface">
+      <div className="grid md:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
+        <CompositionTerm n="01" marker="Source graph" title="Community vouches">
+          become reputation scores.
+        </CompositionTerm>
+        <CompositionOperator>×</CompositionOperator>
+        <CompositionTerm n="02" marker="Compose with" title="Peer evaluations">
+          give trusted reviewers more weight.
+        </CompositionTerm>
+        <CompositionOperator>=</CompositionOperator>
+        <CompositionTerm
+          n="03"
+          marker="New trustgraph"
+          title="Contribution funding"
+          result
+        >
+          produces a proven split of a shared pool.
+        </CompositionTerm>
+      </div>
+      <figcaption className="sr-only">
+        A community vouch graph produces reputation scores. Those scores weight
+        peer evaluations in a contribution graph, which produces a proven
+        funding split.
+      </figcaption>
+    </figure>
+  )
+}
+
+function CompositionTerm({
+  n,
+  marker,
   title,
+  result = false,
   children,
 }: {
+  n: string
+  marker: string
   title: string
+  result?: boolean
   children: React.ReactNode
 }) {
   return (
-    <li className="flex flex-col gap-2 bg-background p-5 sm:p-6">
-      <h3 className="tg-label-strong">{title}</h3>
-      <p className="max-w-prose text-text-muted">{children}</p>
+    <div
+      className={
+        result
+          ? 'flex min-h-44 flex-col justify-between gap-10 bg-surface-2 p-6 sm:min-h-52 sm:p-8'
+          : 'flex min-h-44 flex-col justify-between gap-10 p-6 sm:min-h-52 sm:p-8'
+      }
+    >
+      <p className="text-[10px] uppercase tracking-widest text-text-subtle">
+        {n} · {marker}
+      </p>
+      <div>
+        <h3 className="max-w-[16ch] text-2xl leading-tight">{title}</h3>
+        <p className="mt-3 max-w-prose text-sm text-text-muted">{children}</p>
+      </div>
+    </div>
+  )
+}
+
+function CompositionOperator({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex items-center justify-center border-y border-border bg-background py-3 text-text-subtle md:border-x md:border-y-0 md:py-0"
+      aria-hidden="true"
+    >
+      <span className="tg-display text-3xl leading-none">{children}</span>
+    </div>
+  )
+}
+
+function UseCase({
+  n,
+  title,
+  input,
+  output,
+  children,
+}: {
+  n: string
+  title: string
+  input: string
+  output: string
+  children: React.ReactNode
+}) {
+  return (
+    <li className="grid gap-5 border-b border-border py-7 first:border-t-0 sm:px-5 sm:py-9 lg:grid-cols-[4rem_minmax(13rem,0.7fr)_minmax(0,1.3fr)] lg:gap-8">
+      <span className="tg-display text-3xl leading-none text-text-subtle">
+        {n}
+      </span>
+      <div>
+        <h3 className="max-w-[16ch] text-2xl">{title}</h3>
+        <p className="mt-3 max-w-[42ch] text-text-muted">{children}</p>
+      </div>
+
+      <dl className="grid gap-5 self-center sm:grid-cols-2 lg:gap-8">
+        <div className="border-l border-hairline-strong pl-4">
+          <dt className="tg-label">Graph data</dt>
+          <dd className="mt-2 max-w-[32ch] text-xs leading-relaxed text-text">
+            {input}
+          </dd>
+        </div>
+        <div className="border-l border-hairline-strong pl-4">
+          <dt className="tg-label">Proven result</dt>
+          <dd className="mt-2 max-w-[28ch] text-xs leading-relaxed text-text">
+            {output}
+          </dd>
+        </div>
+      </dl>
+    </li>
+  )
+}
+
+function RoadmapItem({
+  n,
+  status,
+  title,
+  children,
+}: {
+  n: string
+  status: string
+  title: string
+  children: React.ReactNode
+}) {
+  const current = status === 'Current'
+
+  return (
+    <li className="grid grid-cols-[3rem_minmax(0,1fr)] gap-5 border-b border-border py-7 sm:grid-cols-[4rem_minmax(0,1fr)] sm:gap-7 sm:py-9">
+      <div
+        className={
+          current
+            ? 'flex h-10 w-10 items-center justify-center border border-ink bg-ink text-[10px] tracking-wider text-ink-fg sm:h-12 sm:w-12'
+            : 'flex h-10 w-10 items-center justify-center border border-hairline-strong text-[10px] tracking-wider text-text-muted sm:h-12 sm:w-12'
+        }
+      >
+        {n}
+      </div>
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-2xl">{title}</h3>
+          <span
+            className={
+              current
+                ? 'bg-ink px-2.5 py-1 text-[9px] uppercase tracking-widest text-ink-fg'
+                : 'border border-hairline-strong px-2.5 py-1 text-[9px] uppercase tracking-widest text-text-muted'
+            }
+          >
+            {status}
+          </span>
+        </div>
+        <p className="mt-3 max-w-[62ch] text-sm text-text-muted">{children}</p>
+      </div>
     </li>
   )
 }
