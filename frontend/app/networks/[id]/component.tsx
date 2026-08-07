@@ -1,31 +1,29 @@
 'use client'
 
-import { Check, ListFilter } from 'lucide-react'
+import { ArrowUpRight, Check, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 import { TableAddress } from '@/components/Address'
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
-import { Button, ButtonLink } from '@/components/Button'
+import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
-import { Markdown } from '@/components/Markdown'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
-import { ScoreUpdateChip } from '@/components/ScoreUpdateChip'
 import { ScoresAsOf } from '@/components/ScoresAsOf'
+import { ScoreUpdateChip } from '@/components/ScoreUpdateChip'
 import { SectionHeading } from '@/components/SectionHeading'
-import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useScoreDeltas } from '@/hooks/useScoreDeltas'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { NetworkEntry } from '@/lib/types'
-import { formatBigNumber } from '@/lib/utils'
+import { cn, formatBigNumber } from '@/lib/utils'
 
 // Uses web2gl, which is not supported on the server
 const NetworkGraph = dynamic(
@@ -53,7 +51,7 @@ export const NetworkPage = () => {
     simulationConfig,
   } = useNetwork()
 
-  const { name, about, callToAction, applicationUrl, criteria } = network
+  const { name, about } = network
 
   // Small "+0.4" badges on the SCORE column for ten seconds after an update lands, so an
   // attestation's effect is felt without anyone reading a changelog. Off while simulating.
@@ -149,110 +147,52 @@ export const NetworkPage = () => {
       : networkData
 
   return (
-    <div className="space-y-12">
-      {/* Identity + where you can go from here. Full width, above the two-column body, so the
-          tab bar sits directly under the network's name instead of being buried in a column
-          beside the graph. */}
-      <div className="flex flex-col items-start gap-4">
+    <div className="space-y-10 sm:space-y-12">
+      {/* The description is network identity, not a competing content column.
+          Keep it with the name and tabs; reserve the right edge for the one
+          action that changes this graph. */}
+      <header className="flex flex-col items-start gap-4">
         <BreadcrumbRenderer className="mb-2" />
-        {/* The chip rides beside the shared header rather than inside it: NetworkHeader is
-            byte-identical across a network's tabs by contract, and score-update state is page
-            content. */}
-        <div className="flex w-full flex-row flex-wrap items-start justify-between gap-x-8 gap-y-3">
-          <NetworkHeader network={network} className="min-w-0 flex-1" />
-          <ScoreUpdateChip
-            snapshot={network.contracts.merkleSnapshot}
-            className="mt-2"
+        <div className="flex w-full flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
+          <NetworkHeader
+            network={network}
+            description={about}
+            className="min-w-0 flex-1"
           />
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 justify-start items-stretch lg:grid-cols-2 lg:items-start gap-12">
-        <div className="flex flex-col items-start gap-4">
-          <SectionHeading>About network</SectionHeading>
-          <Markdown>{about}</Markdown>
-
-          {callToAction && (
-            <ButtonLink
-              href={callToAction.href}
-              target="_blank"
-              variant="brand"
-              rel="noopener noreferrer"
-              className="mb-2"
-            >
-              {callToAction.label}
-            </ButtonLink>
-          )}
-
-          {applicationUrl && (
-            <ButtonLink
-              href={applicationUrl}
-              target="_blank"
-              variant="brand"
-              rel="noopener noreferrer"
-              className="mb-2"
-            >
-              Apply to join
-            </ButtonLink>
-          )}
-
-          <SectionHeading className="mt-2">Criteria</SectionHeading>
-          <Markdown>{criteria}</Markdown>
-
-          <div className="flex flex-row gap-3 mt-3 flex-wrap">
-            <CreateAttestationModal />
+          <div className="flex shrink-0 flex-row flex-wrap items-center gap-3 lg:pt-1">
+            <ScoreUpdateChip snapshot={network.contracts.merkleSnapshot} />
+            <CreateAttestationModal
+              title="Make attestation"
+              className="h-11 px-5"
+            />
           </div>
         </div>
+      </header>
 
-        <div className="h-[66vh] lg:h-4/5">
+      {/* The graph is the overview. Stats are docked to its canvas as a quiet
+          instrument rail instead of repeated as a row of cards below it. */}
+      <section
+        aria-label={`${name} trust graph`}
+        className="relative h-[max(38rem,calc(100svh-10rem))] max-h-[58rem]"
+      >
+        <div className="absolute inset-0">
           <Suspense fallback={null}>
-            <NetworkGraph />
+            <NetworkGraph title={name} initialZoom={1.1} />
           </Suspense>
         </div>
-      </div>
 
-      <div className="border-y border-border py-12 space-y-6">
-        <SectionHeading>Network statistics</SectionHeading>
-        <div className="flex flex-row gap-4 flex-wrap">
-          <StatisticCard
-            title="TOTAL MEMBERS"
-            tooltip="The total number of participants in this trustgraph who have a trust score above this network's threshold."
-            value={
-              isLoading
-                ? '...'
-                : formatBigNumber(totalParticipants, undefined, true)
-            }
-          />
-          <StatisticCard
-            title="TOTAL NETWORK SCORE"
-            tooltip="The sum of all Trust Scores across all network members, indicating overall network capacity and collective credibility."
-            value={isLoading ? '...' : formatBigNumber(totalValue, 18)}
-          />
-          <StatisticCard
-            title="AVERAGE + MEDIAN TRUST SCORE"
-            tooltip="These metrics show typical member Trust Scores in this network."
-            value={`${formatBigNumber(
-              Math.round(averageValue),
-              18
-            )} / ${formatBigNumber(Math.round(medianValue), 18)}`}
-          />
-          {gnosisSafe && (
-            <StatisticCard
-              title="GNOSIS SAFE"
-              tooltip="The Gnosis Safe multisig for this network."
-              value={`${gnosisSafe.threshold}-of-${gnosisSafe.owners.length}`}
-              href={`https://app.safe.global/home?safe=oeth:${gnosisSafe.address}`}
-            />
-          )}
-          {/* <StatisticCard
-            title="MEMBERS OVER THRESHOLD"
-            tooltip="The percentage of network members who have achieved a minimum Trust Score threshold. You can use this threshold to inform governance eligibility decisions."
-            value="43%"
-          /> */}
-        </div>
-      </div>
+        <NetworkGraphStats
+          isLoading={isLoading}
+          totalParticipants={totalParticipants}
+          totalValue={totalValue}
+          averageValue={averageValue}
+          medianValue={medianValue}
+          gnosisSafe={gnosisSafe}
+        />
+      </section>
 
-      <div className="space-y-6">
+      <div className="space-y-6 border-t border-border pt-10 sm:pt-12">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">
           <div className="flex flex-col gap-1">
             <SectionHeading>Network members</SectionHeading>
@@ -360,5 +300,110 @@ export const NetworkPage = () => {
         )}
       </div>
     </div>
+  )
+}
+
+function NetworkGraphStats({
+  isLoading,
+  totalParticipants,
+  totalValue,
+  averageValue,
+  medianValue,
+  gnosisSafe,
+}: {
+  isLoading: boolean
+  totalParticipants: number
+  totalValue: number
+  averageValue: number
+  medianValue: number
+  gnosisSafe?: {
+    address: `0x${string}`
+    owners: `0x${string}`[]
+    threshold: number
+  }
+}) {
+  const loadingValue = isLoading ? '—' : null
+
+  return (
+    <aside
+      aria-label="Network statistics"
+      className="pointer-events-none absolute inset-x-3 top-14 z-10 grid grid-cols-2 border border-hairline-strong bg-surface/95 shadow-[var(--shadow-elevated)] backdrop-blur-md sm:inset-x-auto sm:right-3 sm:w-52 sm:grid-cols-1"
+    >
+      <GraphStat
+        label="Members"
+        value={
+          loadingValue ?? formatBigNumber(totalParticipants, undefined, true)
+        }
+      />
+      <GraphStat
+        label="Network score"
+        value={loadingValue ?? formatBigNumber(totalValue, 18)}
+      />
+      <GraphStat
+        label="Average / median"
+        wide={!gnosisSafe}
+        value={
+          loadingValue ??
+          `${formatBigNumber(Math.round(averageValue), 18)} / ${formatBigNumber(
+            Math.round(medianValue),
+            18
+          )}`
+        }
+      />
+      {gnosisSafe && (
+        <GraphStat
+          label="Safe"
+          value={`${gnosisSafe.threshold}-of-${gnosisSafe.owners.length}`}
+          href={`https://app.safe.global/home?safe=oeth:${gnosisSafe.address}`}
+        />
+      )}
+    </aside>
+  )
+}
+
+function GraphStat({
+  label,
+  value,
+  href,
+  wide = false,
+}: {
+  label: string
+  value: string
+  href?: string
+  wide?: boolean
+}) {
+  const content = (
+    <>
+      <dt className="text-[9px] uppercase tracking-wider text-text-subtle">
+        {label}
+      </dt>
+      <dd className="mt-1 flex items-center gap-1.5 text-sm tabular-nums text-text">
+        {value}
+        {href && <ArrowUpRight aria-hidden="true" className="h-3 w-3" />}
+      </dd>
+    </>
+  )
+
+  return href ? (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        'pointer-events-auto border-b border-r border-hairline px-3 py-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ink even:border-r-0 sm:border-r-0 sm:last:border-b-0',
+        wide && 'col-span-2 sm:col-span-1'
+      )}
+    >
+      <dl>{content}</dl>
+    </a>
+  ) : (
+    <dl
+      className={cn(
+        'border-b border-r border-hairline px-3 py-2.5 even:border-r-0 sm:border-r-0 sm:last:border-b-0',
+        wide && 'col-span-2 border-r-0 sm:col-span-1'
+      )}
+    >
+      {content}
+    </dl>
   )
 }

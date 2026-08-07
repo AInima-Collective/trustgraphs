@@ -56,7 +56,7 @@ function HeroGraphFigure() {
   // screenshot harness waits on — so the review matrix was shooting a hero that
   // had been ready for eleven seconds. The polling itself is a shared-code
   // problem and has its own issue.
-  const { graphLoading, error, accountData } = useNetwork()
+  const { network, graphLoading, error, accountData } = useNetwork()
   const settled = !graphLoading && !error
 
   // "live" is a claim about data that has actually arrived, so it is asked of
@@ -84,28 +84,47 @@ function HeroGraphFigure() {
 
   return (
     <>
-      {/* `role="img"` with the caption as its label: Sigma paints to a canvas
-       * that is not in the accessibility tree, so without this the largest
-       * element on the page announces as nothing. `chrome={false}` drops the
-       * zoom/fullscreen/layout controls, which were five keyboard tab stops
-       * between the primary CTA and the rest of the page, every one of them
-       * operating something a keyboard user cannot read.
+      {/* The labelled group makes the WebGL graph understandable without
+       * flattening the inspector's real links into an inaccessible image. The
+       * direct figcaption below supplies the reading key. `chrome={false}`
+       * avoids exposing controls for a canvas a keyboard user cannot traverse.
+       * Camera gestures are off as well: a nearly full-screen graph must never
+       * capture an attempt to scroll to the next section.
        *
        * `data-settling` marks the figure as not-yet-ready for the screenshot
        * harness, which waits for every such node to clear before it shoots. */}
       <div
         className="min-h-0 flex-1"
-        role="img"
+        role="group"
         aria-label={GRAPH_LABEL}
         data-settling={graphLoading ? 'true' : undefined}
       >
-        <NetworkGraph chrome={false} />
+        <NetworkGraph
+          title={network.name}
+          initialZoom={1.08}
+          chrome={false}
+          inspector
+          cameraControls={false}
+          guide={{
+            heading: 'One trustgraph',
+            description:
+              'This live example turns community vouches into reputation. It is one trustgraph among many.',
+            actions: [
+              {
+                href: `/networks/${network.id}`,
+                label: 'Open Demo Co-op',
+              },
+              {
+                href: '#what-is-a-trustgraph',
+                label: 'Explore the idea',
+              },
+            ],
+          }}
+        />
       </div>
       {/* A DIRECT CHILD of the server-rendered `<figure>`, which is the only
        * position from which a `<figcaption>` names anything. */}
-      <figcaption className="shrink-0 text-xs text-text-subtle">
-        {caption}
-      </figcaption>
+      <figcaption className="sr-only">{caption}</figcaption>
     </>
   )
 }

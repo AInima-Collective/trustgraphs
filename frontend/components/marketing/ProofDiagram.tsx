@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
 /**
- * The one diagram on the landing page: vouches in, one proof out, the chain
+ * The proof diagram on the landing page: graph data in, one proof out, the chain
  * checks the proof by itself — and the path that gets rejected drawn underneath,
  * because the rejection is the part that makes the rest worth anything.
  *
@@ -88,8 +88,8 @@ const ProofGlyph = () => (
  * box with a line of text in it next to two boxes with drawings in them reads
  * as an unfinished panel rather than as the punchline.
  */
-const NoProofGlyph = () => (
-  <Glyph className="text-error">
+const NoProofGlyph = ({ inverse = false }: { inverse?: boolean }) => (
+  <Glyph className={inverse ? 'text-ink-fg' : 'text-error'}>
     <path
       d="M7 4 H25 V25 L22 27.5 L19 25 L16 27.5 L13 25 L10 27.5 L7 25 Z"
       stroke="currentColor"
@@ -147,15 +147,23 @@ const ChainGlyph = () => (
 const Connector = ({
   broken = false,
   hidden = false,
+  inverse = false,
 }: {
   broken?: boolean
   hidden?: boolean
+  inverse?: boolean
 }) => (
   <div
     className={cn(
       'flex items-center justify-center self-center py-1 md:px-1 md:py-0',
       hidden && 'invisible hidden md:flex',
-      broken ? 'text-error' : 'text-text-subtle'
+      inverse
+        ? broken
+          ? 'text-ink-fg/70'
+          : 'text-ink-fg/40'
+        : broken
+          ? 'text-error'
+          : 'text-text-subtle'
     )}
     aria-hidden="true"
   >
@@ -220,17 +228,23 @@ const Stage = ({
   glyph,
   label,
   tone = 'default',
+  inverse = false,
 }: {
   glyph: React.ReactNode
   label: string
   tone?: 'default' | 'muted'
+  inverse?: boolean
 }) => (
   <div
     className={cn(
       'flex flex-col items-center gap-3 border p-4 text-center md:min-h-[8.5rem] md:justify-center',
-      tone === 'muted'
-        ? 'border-hairline text-text-subtle'
-        : 'border-hairline-strong text-text'
+      inverse
+        ? tone === 'muted'
+          ? 'border-ink-fg/20 text-ink-fg/60'
+          : 'border-ink-fg/35 text-ink-fg'
+        : tone === 'muted'
+          ? 'border-hairline text-text-subtle'
+          : 'border-hairline-strong text-text'
     )}
   >
     {glyph}
@@ -251,39 +265,75 @@ const Stage = ({
 const ROW =
   'flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch'
 
-export function ProofDiagram({ className }: { className?: string }) {
+export function ProofDiagram({
+  className,
+  tone = 'default',
+}: {
+  className?: string
+  tone?: 'default' | 'inverse'
+}) {
+  const inverse = tone === 'inverse'
+
   return (
     <figure className={cn('flex flex-col gap-10 md:gap-4', className)}>
       <div className={ROW}>
-        <Stage glyph={<VouchesGlyph />} label="Every vouch in the round" />
-        <Connector />
-        <Stage glyph={<ProofGlyph />} label="One short proof" />
-        <Connector />
-        <Stage glyph={<ChainGlyph />} label="The chain checks the proof" />
+        <Stage
+          inverse={inverse}
+          glyph={<VouchesGlyph />}
+          label="Every record in the graph"
+        />
+        <Connector inverse={inverse} />
+        <Stage
+          inverse={inverse}
+          glyph={<ProofGlyph />}
+          label="One short proof"
+        />
+        <Connector inverse={inverse} />
+        <Stage
+          inverse={inverse}
+          glyph={<ChainGlyph />}
+          label="The verifier checks the result"
+        />
       </div>
 
       <div className={ROW}>
         <Stage
+          inverse={inverse}
           tone="muted"
           glyph={<VouchesGlyph struck />}
-          label="A vouch dropped, or one invented"
+          label="An input dropped, or one invented"
         />
-        <Connector broken />
-        <div className="flex flex-col items-center justify-center gap-3 border border-error/40 p-4 text-center md:min-h-[8.5rem]">
-          <NoProofGlyph />
-          <span className="leading-snug text-error text-balance">
-            No proof exists to check
+        <Connector inverse={inverse} broken />
+        <div
+          className={cn(
+            'flex flex-col items-center justify-center gap-3 border p-4 text-center md:min-h-[8.5rem]',
+            inverse ? 'border-ink-fg/30' : 'border-error/40'
+          )}
+        >
+          <NoProofGlyph inverse={inverse} />
+          <span
+            className={cn(
+              'leading-snug text-balance',
+              inverse ? 'text-ink-fg' : 'text-error'
+            )}
+          >
+            No valid proof exists
           </span>
         </div>
         {/* The rejected path stops at two boxes, but the row still has three
          * columns to fill, so the third is held open and left empty. */}
-        <Connector hidden />
+        <Connector inverse={inverse} hidden />
         <div className="hidden md:block" aria-hidden="true" />
       </div>
 
-      <figcaption className="max-w-prose text-text-muted">
-        The chain accepts the scoreboard only when the proof matches every vouch
-        in the round.
+      <figcaption
+        className={cn(
+          'max-w-prose',
+          inverse ? 'text-ink-fg/65' : 'text-text-muted'
+        )}
+      >
+        A result is accepted only when the proof matches the graph and its
+        rules.
       </figcaption>
     </figure>
   )

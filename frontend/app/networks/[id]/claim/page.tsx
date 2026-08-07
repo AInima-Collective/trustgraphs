@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 import { VISIBLE_CONTRIBUTIONS_NETWORKS } from '@/lib/config'
 import { socialCard } from '@/lib/metadata'
+import { trustNetworkFor } from '@/lib/network-nav'
 
 import { PayoutPage } from '../payout/component'
 
@@ -48,6 +49,11 @@ export default async function ClaimPageServer({
   )
   if (!network) {
     notFound()
+  }
+
+  const trustNetwork = trustNetworkFor(network)
+  if (trustNetwork) {
+    redirect(`/networks/${trustNetwork.id}/claims`)
   }
 
   return <PayoutPage network={network} />

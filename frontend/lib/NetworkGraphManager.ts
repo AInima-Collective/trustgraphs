@@ -15,6 +15,8 @@ export type NetworkGraphHoverState = {
 
 export type NetworkGraphDragState = 'IDLE' | 'DRAG_START' | 'DRAGGING'
 
+export type NetworkGraphInputType = 'mouse' | 'touch'
+
 export type NetworkGraphHoverConfig = {
   alwaysHoverNode?: string
   hoverDelay: number
@@ -41,6 +43,7 @@ export class NetworkGraphManager {
   private timeout: NodeJS.Timeout | null = null
 
   private dragState: NetworkGraphDragState = 'IDLE'
+  private inputType: NetworkGraphInputType = 'mouse'
 
   constructor({
     graph,
@@ -75,17 +78,16 @@ export class NetworkGraphManager {
 
       clickNode: ({ node }) => this.click('node', node),
       clickEdge: ({ edge }) => this.click('edge', edge),
-      mousedown: () => this.dragStart(),
-      touchdown: () => this.dragStart(),
-      mouseup: () => this.dragEnd(),
-      touchup: () => {
-        // Mark first touch interaction if not already marked for the current hover state (this is called right before clickNode/clickEdge).
-        if (this.hoverState && !this.hoverState.touch) {
-          this.hoverState.touch = 'first'
-        }
-
-        this.dragEnd()
+      mousedown: () => {
+        this.inputType = 'mouse'
+        this.dragStart()
       },
+      touchdown: () => {
+        this.inputType = 'touch'
+        this.dragStart()
+      },
+      mouseup: () => this.dragEnd(),
+      touchup: () => this.dragEnd(),
       mousemovebody: () => this.maybeDragMove(),
       touchmovebody: () => this.maybeDragMove(),
       afterRender: () => this.onLayoutUpdate(),
@@ -136,10 +138,14 @@ export class NetworkGraphManager {
         ? this.hoverState?.nodes.includes(target)
         : this.hoverState?.edges.includes(target))
     ) {
-      // On touch, require second tap before opening link
-      if (this.hoverState.touch === 'first') {
+      // The first touch selects and explains an item; the second follows it.
+      // This also covers browsers that synthesize an enter event before click.
+      if (this.inputType === 'touch') {
+        if (this.hoverState.touch !== 'first') {
+          this.notifyChange({ ...this.hoverState, touch: 'first' })
+          return
+        }
         this.hoverState.touch = 'second'
-        return
       }
 
       const href =
@@ -153,7 +159,12 @@ export class NetworkGraphManager {
       }
     } else {
       // Not hovering yet, begin hovering immediately
-      this.setHover(type, target, true)
+      this.setHover(
+        type,
+        target,
+        true,
+        this.inputType === 'touch' ? 'first' : undefined
+      )
     }
   }
 
@@ -182,13 +193,15 @@ export class NetworkGraphManager {
   private setHover(
     type: NetworkGraphTargetType,
     target: string,
-    forceImmediate?: boolean
+    forceImmediate?: boolean,
+    touch?: 'first' | 'second'
   ): void {
     this.clearPendingTransition()
 
     const newState: NetworkGraphHoverState = {
       type,
       target,
+      ...(touch ? { touch } : {}),
       nodes:
         type === 'node'
           ? [...new Set([target, ...this.graph.neighbors(target)])]

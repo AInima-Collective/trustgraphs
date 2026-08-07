@@ -46,7 +46,9 @@ const nextConfig = {
       destination: '/networks/:path*',
       permanent: true,
     },
-    // Contribution work now stays on the round feed; money has one dedicated claim route.
+    // Contribution work stays on its network tab. These legacy round-action URLs still land on
+    // the round id first; its server route resolves the owning trust network and redirects into
+    // the unified Contributions or Claims tab.
     {
       source: '/networks/:id/contribute',
       destination: '/networks/:id',

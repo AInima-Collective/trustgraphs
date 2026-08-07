@@ -11,8 +11,8 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
  * The live graph in the hero, and the only client island on the landing page.
  *
  * Everything else on `/` is server-rendered marketing copy, so keeping the
- * graph behind its own boundary is what stops a static page from shipping the
- * whole sigma/graphology/WebGL stack to a visitor who came for a sentence.
+ * graph behind its own boundary prevents the WebGL stack from becoming part of
+ * the route's eager script set.
  *
  * THIS FILE IS DELIBERATELY THIN. It imports a type and one component that
  * touches nothing; everything with a dependency graph lives in `HeroGraphLive`,
@@ -33,8 +33,8 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
  * server-rendered and the island fills it.
  *
  * `<figcaption>` only names its figure when it is a DIRECT child, so
- * `HeroGraphLive` returns the caption as a sibling of the canvas rather than
- * wrapping them: the fragment lands directly inside this `<figure>`.
+ * `HeroGraphLive` returns the assistive caption as a sibling of the canvas
+ * rather than wrapping them: the fragment lands directly inside this figure.
  *
  * Sigma paints through WebGL, which does not exist on the server, hence
  * `ssr: false`. The graph runs one short force-atlas pass on mount and then
@@ -52,20 +52,21 @@ export function HeroGraph({
 }) {
   return (
     // The flex column lives on the figure rather than inside the island, so the
-    // canvas and its caption are both direct children of it.
-    <figure className={cn('flex flex-col gap-2.5', className)}>
+    // canvas and its assistive caption are both direct children of it.
+    <figure className={cn('relative flex flex-col', className)}>
       <HeroGraphLive network={network} />
       {/* With JavaScript off the island never mounts, and a caption describing
        * a graph that is not there is the same lie in smaller type. This panel
        * is what a reader without JS gets, and it is true.
        *
-       * `display: contents` because `<noscript>` is inline-level: the panel's
-       * `h-full` resolved against an auto-height inline box and drew 175px of
-       * bordered panel inside a 464px figure, with 289px of empty frame under
-       * it. Dissolving the wrapper makes the panel a flex child of the figure,
-       * where `h-full` means what it says. */}
-      <noscript className="contents">
-        <HeroGraphUnavailable />
+       * The absolute wrapper fills the server-rendered figure without changing
+       * `<noscript>` itself to `display: contents`. That override defeated the
+       * browser's built-in hiding behavior when JavaScript WAS enabled and
+       * exposed the fallback markup as literal text below the live canvas. */}
+      <noscript>
+        <div className="absolute inset-0">
+          <HeroGraphUnavailable />
+        </div>
       </noscript>
     </figure>
   )

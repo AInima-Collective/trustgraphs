@@ -7,30 +7,70 @@ Every claim below is something the code does today unless the line says otherwis
 
 ## Hero
 
-**Eyebrow:** Vouch · Score · Prove · Use
+**Graph eyebrow:** Live example · Demo Co-op / Example · Demo Co-op
 
-**Headline:** Reputation you can’t buy.
+**Headline:** Verifiable computations over graphs of data.
 
-**Subhead:** Turn the vouches your community already makes into scores that apps can use
-and contracts can verify.
+**Graph inspector heading:** One trustgraph
 
-**Primary button:** Explore Demo Co-op
+**Graph introduction:** This live example turns community vouches into reputation. It is one
+trustgraph among many.
 
-**Primary button, when the demo is unavailable:** Browse networks
+**Graph legend:** node = member · area = score · edge = vouch · weight = confidence
 
-**Secondary button:** How it works
+**Graph links:** Open Demo Co-op · Explore the idea
 
-`[the live graph is the hero image. It should be moving before anyone scrolls.]`
-
-`[two buttons, because a stranger wants one of two things: to poke at a real
-network, or to be told what this is first. The second is an anchor to "Three
-moves.", not a route.]`
+`[The live graph remains the entire hero. The upper-left overlay carries the platform claim;
+the lower-left inspector identifies this graph as one concrete example and holds the two ways
+forward. On interaction, that same inspector becomes node or edge detail.]`
 
 ---
 
-## How it works
+## Platform idea
 
-**Section heading:** Three moves.
+**Eyebrow:** The primitive
+
+**Section heading:** There is no one trustgraph.
+
+Each community, application, or protocol can define its own graph, its own rules, and the result it
+needs.
+
+Anyone can run the computation. A proof lets everyone else check the result without trusting the
+machine that produced it.
+
+trustgraphs compose. Scores from one graph can weight relationships in another, turning several
+kinds of data into a new, verifiable result.
+
+`[the definition is one ruled editorial field: the claim has its own column, while the lead and
+the two supporting ideas form a measured reading column. It should feel like a primitive being
+specified, not another marketing card.]`
+
+**Composition:**
+
+- 01 · Source graph: Community vouches become reputation scores.
+- ×
+- 02 · Compose with: Peer evaluations give trusted reviewers more weight.
+- =
+- 03 · New trustgraph: Contribution funding produces a proven split of a shared pool.
+
+**Composition caption (assistive):** A community vouch graph produces reputation scores. Those
+scores weight peer evaluations in a contribution graph, which produces a proven funding split.
+
+`[one restrained composition formula on paper, using × and = instead of workflow arrows. On wide
+screens it reads left to right; on small screens it reads top to bottom. The result gets one quiet
+surface step. This is a concrete composition that exists in the contributions program, not a
+generic promise about proof recursion.]`
+
+---
+
+## One concrete example
+
+**Eyebrow:** Working example
+
+**Section heading:** One example: a web of trust.
+
+Demo Co-op asks who its community trusts, then turns the answer into something other applications
+can use.
 
 **1. Vouch**
 Sign a public, weighted vouch. Update or revoke it at any time.
@@ -51,62 +91,106 @@ contracts.]`
 
 ---
 
+## Use cases
+
+**Eyebrow:** Use cases
+
+**Section heading:** Different graphs. Different questions.
+
+**01. Community reputation**
+Find standing that comes from relationships, not token balance or a platform-owned rating.
+Graph data: Vouches between people
+Proven result: A score for earned trust
+
+**02. Contribution funding**
+Let trusted peer judgment direct a shared pool toward valuable work.
+Graph data: Claims, peer evaluations, and rater reputation
+Proven result: A funding allocation
+
+**03. Impact discovery**
+Surface credible work from public records without trusting a private ranking service.
+Graph data: AT Protocol follows, claims, evaluations, and acknowledgements
+Proven result: Scores for people and work
+
+**04. Adaptive coordination**
+Let authority change with the graph instead of freezing it in a token or an admin list.
+Graph data: A proven score graph and a policy
+Proven result: Voting power, access, or a signer set
+
+`[four substantial editorial rows rather than cards. Each use case names both the graph data and
+the proven result so the section expands the visitor's model of a trustgraph rather than listing
+four abstract market verticals.]`
+
+---
+
 ## The proof
 
-**Section heading:** Don’t trust the scorer. Check the proof.
+**Eyebrow:** Verification
 
-The rules are public, so anyone can recompute a round. A zero-knowledge proof shows that
-every vouch was included and every score followed those rules.
+**Section heading:** Don’t trust the computer. Check the proof.
 
-`[if one thing on this page gets a diagram, it's this. inputs → proof → chain, with the
-rejected path drawn.]`
+The rules are public, so anyone can recompute the result. A short zero-knowledge proof shows that
+every committed input was included and the published result followed those rules.
 
-**Diagram, accepted path:** Every vouch in the round → One short proof → The chain checks
-the proof
+`[an inverted section gives the proof its own visual register. inputs → proof → chain, with
+the rejected path drawn.]`
 
-**Diagram, rejected path:** A vouch dropped, or one invented → No proof exists to check
+**Diagram, accepted path:** Every record in the graph → One short proof → The verifier checks
+the result
+
+**Diagram, rejected path:** An input dropped, or one invented → No valid proof exists
 
 `[both rows sit on the same three columns so the second reads as the first with
 something changed. The rejected row gets a figure too: the same receipt, drawn
 as an empty dashed outline and struck through.]`
 
-**Diagram caption:** The chain accepts the scoreboard only when the proof matches every
-vouch in the round.
+**Diagram caption:** A result is accepted only when the proof matches the graph and its rules.
 
 ---
 
-## Features
+## Roadmap
 
-**Section heading:** Put trust to work.
+**Eyebrow:** Roadmap
 
-**Trust-weighted voting**
-Weight votes by reputation instead of token balance. Safe setup is manual today.
+**Section heading:** More inputs. Less exposure.
 
-**Score-weighted payouts**
-Split a pool by score and let each account claim its share.
+trustgraphs should work wherever useful graph data lives, then reveal only what the result needs.
 
-**Self-updating multisig**
-Rotate a Safe’s owners to the highest-scoring accounts. Setup is manual today.
+The path runs from public on-chain attestations toward flexible off-chain sources and, ultimately,
+fully private graphs that remain verifiable.
 
-**Portable scoreboards**
-Export scores as CSV or JSON for use off-chain.
+**01. Current · On-chain EAS**
+Public attestations, with every update committed before the graph is computed.
 
-`[four-up grid, two rows. The grid pairs actions a visitor can take with the current setup
-state where it matters.]`
+**02. Integrating · Off-chain EAS**
+Signed attestations without a transaction per edge, anchored so the prover cannot choose the input
+set.
+
+**03. Pilot · AT Protocol**
+Verify repo history and records before computing over social and impact data.
+
+**04. Research · Private graphs**
+Keep relationships and scores hidden while proving the result was computed correctly.
+
+`[a vertical progress timeline, not another card grid and not a dated promise. The status tags
+distinguish the current public path, integration work, the AT Protocol pilot, and privacy research
+without inventing ship dates.]`
 
 ---
 
 ## Start one
 
-**Section heading:** Bring your own community.
+**Eyebrow:** Start here
 
-Create a network in one transaction. Choose its starting accounts, define what a vouch
+**Section heading:** Build the next trustgraph.
+
+Start with a community vouching network today. Choose its starting accounts, define what a vouch
 means, and tune how trust flows.
 
-Proving is permissionless. Run the open-source prover yourself, or fund the network’s
-proving tank as managed support rolls out.
+The proof system is permissionless, and the platform is open for new graph programs as the input
+layer expands.
 
-**Button:** Create a network
+**Button:** Create a vouching network
 
 **Secondary button:** Read current status
 
@@ -114,9 +198,14 @@ proving tank as managed support rolls out.
 
 ## Ending CTA
 
+**Eyebrow:** Open source
+
 **Heading:** Open source. Take it apart.
 
 **Button:** Star on GitHub
+
+`[start and open source share one framed final block: action on paper, invitation to inspect the
+code in the inverted rail.]`
 
 ---
 
@@ -226,7 +315,7 @@ twitter block, so overriding only one gave a page whose Slack unfurl and whose X
 card carried two different sentences for the same URL.]`
 
 **Site description**, used for search results and share cards on every page:
-Turn community vouches into reputation scores that apps can use and contracts can verify.
+trustgraphs turn graph data into results anyone can verify, compose, and use.
 
 ---
 

@@ -7,6 +7,7 @@ import { Hex, encodeAbiParameters, keccak256, zeroAddress } from 'viem'
 import { useAccount } from 'wagmi'
 
 import { Address } from '@/components/Address'
+import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { NetworkHeader } from '@/components/NetworkHeader'
@@ -28,8 +29,12 @@ import {
   RatingPowerEntry,
   ratingPowerPreview,
 } from '@/lib/contributions-view'
-import { contributionsTabs, trustNetworkFor } from '@/lib/network-nav'
-import { ContributionsNetwork } from '@/lib/types'
+import {
+  contributionsTabs,
+  trustGraphTabs,
+  trustNetworkFor,
+} from '@/lib/network-nav'
+import { ContributionsNetwork, Network } from '@/lib/types'
 
 import {
   RoundPhase,
@@ -577,8 +582,10 @@ const ClaimCard = ({
  */
 export const ContributionsNetworkPage = ({
   network,
+  hostNetwork,
 }: {
   network: ContributionsNetwork
+  hostNetwork?: Network
 }) => {
   const { address: connectedAddress, isConnected } = useAccount()
   const { createAttestation, createAttestations, isCreating } = useAttestation()
@@ -601,7 +608,7 @@ export const ContributionsNetworkPage = ({
     valuationSchema,
   } = useContributionsData(network)
 
-  const trustNetwork = trustNetworkFor(network)
+  const trustNetwork = hostNetwork ?? trustNetworkFor(network)
   const [now, setNow] = useState<number | null>(null)
   const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
   const [drafts, setDrafts] = useState<Map<string, number>>(new Map())
@@ -903,21 +910,35 @@ export const ContributionsNetworkPage = ({
   return (
     <div className="space-y-10">
       <header className="space-y-6">
+        <BreadcrumbRenderer
+          fallback={{
+            title: 'Network',
+            route: trustNetwork ? `/networks/${trustNetwork.id}` : '/networks',
+          }}
+        />
         <NetworkHeader
-          network={network}
-          tabs={contributionsTabs(network)}
+          network={trustNetwork ?? network}
+          tabs={
+            trustNetwork
+              ? trustGraphTabs(trustNetwork)
+              : contributionsTabs(network)
+          }
           className="w-full"
         />
 
-        <div className="max-w-3xl">
+        <div className="max-w-3xl space-y-2">
+          <h2 className="text-2xl font-semibold">Contributions</h2>
+          <p className="text-sm leading-relaxed text-text-muted">
+            {network.about}
+          </p>
           {trustNetwork ? (
             <p className="text-sm text-text-muted">
-              Rater influence is weighted by the{' '}
+              Rater influence is weighted by this network&apos;s{' '}
               <a
                 href={`/networks/${trustNetwork.id}`}
                 className="text-text underline underline-offset-4"
               >
-                {trustNetwork.name} trust network
+                trust graph
               </a>
               .
             </p>
@@ -977,7 +998,11 @@ export const ContributionsNetworkPage = ({
             )}
             {phase === 'claimable' && (
               <ButtonLink
-                href={`/networks/${network.id}/claim`}
+                href={
+                  trustNetwork
+                    ? `/networks/${trustNetwork.id}/claims`
+                    : `/networks/${network.id}/claim`
+                }
                 variant="brand"
                 size="lg"
                 className="w-full sm:w-auto"

@@ -35,7 +35,7 @@ const instrument = Instrument_Serif({
 const fontVariables = [paperMono.variable, instrument.variable]
 
 const DESCRIPTION =
-  'Turn community vouches into reputation scores that apps can use and contracts can verify.'
+  'trustgraphs turn graph data into results anyone can verify, compose, and use.'
 
 // No `icons` key on purpose. Next picks up app/icon.svg, app/apple-icon.png and
 // app/favicon.ico from the file conventions, and a manual `icons` array

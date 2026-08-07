@@ -14,7 +14,7 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
-  icon?: 'governance' | 'distribute' | 'contributions' | 'settings'
+  icon?: 'governance' | 'distribute' | 'contributions' | 'claims' | 'settings'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
    * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
@@ -51,9 +51,29 @@ export const contributionsRoundsFor = (
 /** Sub-pages of an address-keyed trust-graph network, including its contributions experience. */
 export const trustGraphTabs = (network: Network): NetworkTab[] => {
   const base = `/networks/${network.id}`
+  const contributionRounds = contributionsRoundsFor(network)
 
   return [
     { href: base, label: 'Overview', exact: true },
+    ...(contributionRounds.length > 0
+      ? [
+          {
+            href: `${base}/contributions`,
+            label: 'Contributions',
+            icon: 'contributions' as const,
+          },
+        ]
+      : []),
+    ...(network.contracts.merkleFundDistributor ||
+    contributionRounds.some((round) => round.contracts.merkleFundDistributor)
+      ? [
+          {
+            href: `${base}/claims`,
+            label: 'Claims',
+            icon: 'claims' as const,
+          },
+        ]
+      : []),
     ...(network.contracts.merkleGovModule
       ? [
           {
@@ -72,11 +92,6 @@ export const trustGraphTabs = (network: Network): NetworkTab[] => {
           },
         ]
       : []),
-    ...contributionsRoundsFor(network).map((round) => ({
-      href: `/networks/${round.id}`,
-      label: 'Contributions',
-      icon: 'contributions' as const,
-    })),
     {
       href: `${base}/settings`,
       label: 'Settings',

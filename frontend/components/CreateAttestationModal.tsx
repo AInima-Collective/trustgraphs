@@ -27,6 +27,7 @@ import {
   GenericSchemaComponent,
   schemaComponentRegistry,
 } from '@/components/schema-components'
+import { CreateVouchingSchema } from '@/components/schema-components/CreateVouchingSchema'
 import {
   Select,
   SelectContent,
@@ -42,7 +43,6 @@ import { AttestationData } from '@/lib/attestation'
 import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { usePonderQuery } from '@/lib/use-ponder-query'
-import { bumpPendingEchoAtom } from '@/state/score-updates'
 import {
   formatBigNumber,
   formatPercentage,
@@ -50,6 +50,7 @@ import {
   mightBeEnsName,
 } from '@/lib/utils'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
+import { bumpPendingEchoAtom } from '@/state/score-updates'
 
 import { Card } from './Card'
 import { CopyableText } from './CopyableText'
@@ -589,9 +590,19 @@ export const CreateAttestationModal = ({
               {selectedSchemaInfo ? (
                 (() => {
                   // Check if there's a custom component for this schema
-                  const CustomComponent = schemaComponentRegistry.getComponent(
-                    selectedSchemaInfo.uid
-                  )
+                  // The registry's vouching component is lazy so the root catalog provider does
+                  // not put the form (and its heavier dependencies) on every route. This modal is
+                  // already only loaded on pages that can open the form, however. Rendering the
+                  // lazy registry entry here left its default `null` fallback between opening the
+                  // modal and loading the chunk — users saw their attestation-count note followed
+                  // by only the Cancel button. Keep future custom schemas registry-driven, but
+                  // make the core vouch form available on the modal's first render.
+                  const CustomComponent =
+                    selectedSchemaInfo.key === 'vouching'
+                      ? CreateVouchingSchema
+                      : schemaComponentRegistry.getComponent(
+                          selectedSchemaInfo.uid
+                        )
 
                   if (CustomComponent) {
                     // Use custom component

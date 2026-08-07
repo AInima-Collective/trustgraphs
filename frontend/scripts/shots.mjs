@@ -13,7 +13,7 @@
  *   pnpm run shots -- --label=final   # write somewhere other than `latest`
  *   pnpm run shots -- --reuse         # skip the build, reuse .next-shots
  *   pnpm run shots -- --routes=/faq   # one route, whole matrix
- *   pnpm run shots:contributions      # round + claim, wallet + phase matrix
+ *   pnpm run shots:contributions      # contributions + claims, wallet + phase matrix
  *   pnpm run shots:contributions -- --personas=nominee --phases=claimable
  *
  * ── Five things this has to work around ──────────────────────────────────────
@@ -99,12 +99,12 @@ const ROUTES = [
 
 const CONTRIBUTIONS_ROUTES = [
   {
-    name: 'round',
-    path: '/networks/demo-co-op-contributions',
+    name: 'contributions',
+    path: '/networks/demo-co-op/contributions',
   },
   {
-    name: 'claim',
-    path: '/networks/demo-co-op-contributions/claim',
+    name: 'claims',
+    path: '/networks/demo-co-op/claims',
   },
 ]
 const CONTRIBUTIONS_VIEWPORTS = ['320', '390', '414', '768', '1280']

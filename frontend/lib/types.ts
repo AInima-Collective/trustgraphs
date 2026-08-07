@@ -185,6 +185,7 @@ export interface NetworkGraphNode {
   size: number
   sent: number
   received: number
+  isSeed: boolean
   color?: string
 }
 
@@ -192,6 +193,12 @@ export type NetworkGraphEdge = {
   href: string
   label: string
   size: number
+  color?: string
+  confidence: number | null
+  comment?: string
+  status: 'verified' | 'expired' | 'revoked'
+  formattedTime: string
+  formattedTimeAgo: string
   type?: 'straight' | 'curved'
   curvature?: number
 } & (

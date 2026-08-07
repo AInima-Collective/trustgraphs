@@ -1,8 +1,9 @@
 //! The directory of the networks on this chain.
 //!
-//! Three programs share this page and they do not count the same thing, so each gets a heading and
-//! one line saying what it scores. That is the whole reason this is not one grid of identical
-//! cards: a badge in a mixed list asks the reader to notice a difference, a heading tells them.
+//! The programs listed here do not count the same thing, so each gets a heading and one line
+//! saying what it scores. Contribution rounds are intentionally absent: they are a capability of
+//! their trust network and live in that network's tab bar rather than masquerading as another
+//! network in the directory.
 //! Sections with nothing in them are dropped upstream, in `toSections`.
 //!
 //! WHAT IS SERVER-RENDERED AND WHY: every row, in all four states, plus every string in it. The
@@ -36,10 +37,10 @@ import { DirectorySearch } from './DirectorySearch'
 // stops appearing here.
 export const revalidate = 10
 
-// "Every" was three things this page is not. The vouching section reads one page of the registry,
-// capped at 200 by the indexer with the returned total discarded. The funding-round and repo
-// sections are filtered slices of the shipped config file rather than a chain read, so a stranger's
-// instance in either program appears only once someone edits that JSON. Issue filed for the cap.
+// "Every" was more than this page can promise. The vouching section reads one page of the registry,
+// capped at 200 by the indexer with the returned total discarded. The repo section is a filtered
+// slice of the shipped config file rather than a chain read, so a stranger's instance appears only
+// once someone edits that JSON. Issue filed for the cap.
 const STANDFIRST = 'Networks on this chain, and what each one counts.'
 
 /**
