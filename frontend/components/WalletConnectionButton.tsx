@@ -69,6 +69,8 @@ export const WalletConnectionButton = ({
     return () => clearTimeout(timeout)
   }, [copied])
   const CopyIcon = copied ? Check : Copy
+  const { name: ensName } = useEns(address, { enableAvatar: false })
+  const accountLabel = ensName || (address ? formatAddress(address) : '')
 
   const setOpenRef = useRef<Dispatch<SetStateAction<boolean>> | null>(null)
 
@@ -86,8 +88,7 @@ export const WalletConnectionButton = ({
     }
   }, [_openId])
 
-  const { name: ensName } = useEns(address, { enableAvatar: false })
-  const accountHref = `/account/${ensName || address}`
+  const accountHref = `/account/${address}`
 
   return (
     <>
@@ -124,7 +125,7 @@ export const WalletConnectionButton = ({
               aria-label={
                 isConnected
                   ? address
-                    ? `Account menu, ${formatAddress(address)}`
+                    ? `Account menu, ${accountLabel}`
                     : 'Account menu'
                   : 'Connect account'
               }
@@ -149,7 +150,7 @@ export const WalletConnectionButton = ({
               )}
               <span className="hidden sm:block">
                 {isConnected && address
-                  ? formatAddress(address)
+                  ? accountLabel
                   : isConnecting
                     ? 'Connecting…'
                     : 'Connect account'}

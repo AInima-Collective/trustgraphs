@@ -197,11 +197,7 @@ export const Address = ({
             e.stopPropagation()
             pushBreadcrumb()
           }}
-          href={
-            link === 'account'
-              ? `/account/${(showEns && ensName) || address}`
-              : '#'
-          }
+          href={link === 'account' ? `/account/${address}` : '#'}
         >
           {content}
         </Link>

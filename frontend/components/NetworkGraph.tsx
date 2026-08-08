@@ -36,7 +36,6 @@ import { Hex } from 'viem'
 
 import { BrandMark } from '@/components/BrandMark'
 import { useNetwork } from '@/contexts/NetworkContext'
-import { useBatchEnsQuery } from '@/hooks/useEns'
 import {
   GraphTokens,
   nodeColorForValue,
@@ -186,11 +185,6 @@ export function NetworkGraph({
     [cameraControls, graphTokens]
   )
 
-  // Load ENS data
-  const { data: ensData } = useBatchEnsQuery(
-    accountData.map((account) => account.account) || []
-  )
-
   const [showCursor, setShowCursor] = useState(false)
 
   const [isLoadingGraph, setIsLoadingGraph] = useState(false)
@@ -236,7 +230,7 @@ export function NetworkGraph({
         isHexEqual(attestation.recipient, onlyAddress)
     )
 
-    for (const { account, value, sent, received } of accountData) {
+    for (const { account, value, sent, received, ensName } of accountData) {
       // Skip accounts not included in the graph.
       if (
         !attestations.some(
@@ -255,8 +249,7 @@ export function NetworkGraph({
           : ((Number(value) - minValue) / (maxValue - minValue)) * 100
       const normalizedRatio = normalizedValue / 100
 
-      const ensName = ensData?.[account]?.name
-      const href = `/account/${ensName || account}`
+      const href = `/account/${account}`
       const seed = isTrustedSeed(account)
       router.prefetch(href)
 
@@ -410,7 +403,6 @@ export function NetworkGraph({
     accountData,
     attestationsData,
     isTrustedSeed,
-    ensData,
     graphTokens,
     network.pagerank.minWeight,
     network.pagerank.maxWeight,

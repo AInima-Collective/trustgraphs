@@ -3,14 +3,18 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { Hex, isAddress, keccak256, stringToBytes, zeroAddress } from 'viem'
+import { type Address, keccak256, stringToBytes, zeroAddress } from 'viem'
 import { useAccount } from 'wagmi'
 
+import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { useAttestation } from '@/hooks/useAttestation'
+import { useEnsResolver } from '@/hooks/useEns'
+import { parseAccountIdentifier } from '@/lib/ens'
+import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import { ContributionsNetwork } from '@/lib/types'
 
 import {
@@ -19,7 +23,11 @@ import {
   useContributionsData,
 } from '../contributions-shared'
 
-type ContributorRow = { address: string; share: string }
+type ContributorRow = {
+  address: string
+  share: string
+  previewAddress?: Address | null
+}
 
 /**
  * Submit a contribution claim: what was done, a link to it, and who did it (with relative
@@ -34,6 +42,7 @@ export const ContributePage = ({
   const { address: connectedAddress, isConnected } = useAccount()
   const { round, claimSchema } = useContributionsData(network)
   const { createAttestation, isCreating } = useAttestation()
+  const resolveAccountIdentifier = useEnsResolver()
 
   const [title, setTitle] = useState('')
   const [uri, setUri] = useState('')
@@ -42,6 +51,7 @@ export const ContributePage = ({
     { address: '', share: '100' },
   ])
   const [formError, setFormError] = useState<string | null>(null)
+  const [isResolvingAccounts, setIsResolvingAccounts] = useState(false)
 
   // Prefill the first contributor row with the connected wallet (a self-claim by default).
   useEffect(() => {
@@ -62,10 +72,16 @@ export const ContributePage = ({
   const includesSelf =
     !!connectedAddress &&
     contributors.some(
-      (row) => row.address.toLowerCase() === connectedAddress.toLowerCase()
+      (row) =>
+        (row.previewAddress || row.address).toLowerCase() ===
+        connectedAddress.toLowerCase()
     )
   const isNomination =
-    !includesSelf && contributors.some((row) => isAddress(row.address))
+    !includesSelf &&
+    contributors.some((row) => {
+      const parsed = parseAccountIdentifier(row.address)
+      return parsed.kind === 'address' || !!row.previewAddress
+    })
 
   const windowClosed = useMemo(() => {
     if (!round) return false
@@ -93,6 +109,7 @@ export const ContributePage = ({
       .map((row) => ({
         address: row.address.trim(),
         share: parseInt(row.share, 10),
+        previewAddress: row.previewAddress,
       }))
       .filter((row) => row.address !== '')
     if (cleaned.length === 0) {
@@ -100,8 +117,15 @@ export const ContributePage = ({
       return
     }
     for (const row of cleaned) {
-      if (!isAddress(row.address)) {
-        setFormError(`"${row.address}" is not a valid wallet address.`)
+      const parsed = parseAccountIdentifier(row.address)
+      if (parsed.kind !== 'address' && parsed.kind !== 'ens') {
+        setFormError(
+          `"${row.address}" is not a valid wallet address or ENS name.`
+        )
+        return
+      }
+      if (parsed.kind === 'ens' && !row.previewAddress) {
+        setFormError(`Wait for ${parsed.name} to resolve before submitting.`)
         return
       }
       if (!Number.isInteger(row.share) || row.share < 0) {
@@ -111,6 +135,22 @@ export const ContributePage = ({
     }
     if (!cleaned.some((row) => row.share > 0)) {
       setFormError('At least one contributor needs a share above zero.')
+      return
+    }
+
+    const resolved: Array<{ address: Address; share: number }> = []
+    setIsResolvingAccounts(true)
+    try {
+      for (const row of cleaned) {
+        const account = await resolveAccountIdentifier(
+          row.address,
+          row.previewAddress
+        )
+        resolved.push({ address: account.address, share: row.share })
+      }
+    } catch (error) {
+      setFormError(getAccountIdentifierErrorMessage(error))
+      setIsResolvingAccounts(false)
       return
     }
 
@@ -131,13 +171,15 @@ export const ContributePage = ({
           title: title.trim(),
           contentHash,
           uri: uri.trim(),
-          contributors: cleaned.map((row) => row.address as Hex),
-          shares: cleaned.map((row) => row.share),
+          contributors: resolved.map((row) => row.address),
+          shares: resolved.map((row) => row.share),
         },
       })
       router.push(`/networks/${network.id}`)
     } catch {
       // The attestation hook already surfaced the error via toast.
+    } finally {
+      setIsResolvingAccounts(false)
     }
   }
 
@@ -210,12 +252,19 @@ export const ContributePage = ({
           <div className="space-y-2">
             {contributors.map((row, index) => (
               <div key={index} className="flex flex-row gap-2 items-center">
-                <Input
-                  className="flex-1 font-mono"
-                  placeholder="0x... wallet address"
+                <AccountIdentifierInput
+                  className="font-mono"
+                  wrapperClassName="flex-1"
+                  placeholder="0x… or name.eth"
                   value={row.address}
+                  onResolvedAddressChange={(previewAddress) =>
+                    updateRow(index, { previewAddress })
+                  }
                   onChange={(e) =>
-                    updateRow(index, { address: e.target.value })
+                    updateRow(index, {
+                      address: e.target.value,
+                      previewAddress: null,
+                    })
                   }
                 />
                 <Input
@@ -292,12 +341,12 @@ export const ContributePage = ({
         <Button
           variant="brand"
           onClick={handleSubmit}
-          disabled={!isConnected || isCreating}
+          disabled={!isConnected || isCreating || isResolvingAccounts}
           className="w-full"
         >
           {!isConnected
             ? 'Connect your wallet to submit'
-            : isCreating
+            : isCreating || isResolvingAccounts
               ? 'Submitting...'
               : 'Submit contribution'}
         </Button>

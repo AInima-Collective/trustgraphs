@@ -246,6 +246,7 @@ export const CreateNetworkWizard = () => {
           epochFloor={epochFloor}
           metadataUri={metadataUri}
           onCreated={setCreated}
+          onSeedsChanged={(seeds, seedNames) => onChange({ seeds, seedNames })}
           onJumpTo={(index) => {
             setShowErrors(false)
             setStep(index)

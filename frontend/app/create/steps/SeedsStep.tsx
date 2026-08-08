@@ -7,6 +7,8 @@ import { useAccount } from 'wagmi'
 
 import { Button } from '@/components/Button'
 import { Textarea } from '@/components/Textarea'
+import { useEnsResolver } from '@/hooks/useEns'
+import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 
 import { MAX_SEEDS, WizardData, parseAddressList, seedProblem } from '../model'
 import { Field, Note, StepHeader } from '../ui'
@@ -23,45 +25,100 @@ export const SeedsStep = ({
   const { address } = useAccount()
   const [draft, setDraft] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const resolveAccountIdentifier = useEnsResolver()
 
-  const add = (input: string) => {
-    const { addresses, rejected } = parseAddressList(input)
+  const add = async (input: string) => {
+    if (adding) return
+    const { addresses, names, rejected } = parseAddressList(input)
 
-    if (!addresses.length) {
+    if (!addresses.length && !names.length) {
       setProblem(
         rejected.length
-          ? `That doesn't look like an Ethereum address: ${rejected[0]}`
-          : 'Paste an Ethereum address to add it.'
+          ? `That doesn't look like an Ethereum address or ENS name: ${rejected[0]}`
+          : 'Paste an Ethereum address or ENS name to add it.'
       )
       return
     }
 
+    setAdding(true)
     const accepted: Hex[] = []
+    const acceptedNames: Record<string, string> = {}
     let firstProblem: string | null = null
-    for (const candidate of addresses) {
-      const issue = seedProblem(candidate, [...data.seeds, ...accepted])
-      if (issue) {
-        firstProblem ||= issue
-        continue
+
+    try {
+      const capacity = Math.max(0, MAX_SEEDS - data.seeds.length)
+      const addressCandidates = addresses.slice(0, capacity)
+      const nameCandidates = names.slice(0, capacity)
+      if (
+        addresses.length > addressCandidates.length ||
+        names.length > nameCandidates.length
+      ) {
+        firstProblem = `You can pick up to ${MAX_SEEDS} starting accounts.`
       }
-      accepted.push(candidate)
-    }
+      const candidates: Array<{ address: Hex; name?: string }> =
+        addressCandidates.map((candidate) => ({ address: candidate }))
 
-    if (accepted.length) {
-      onChange({ seeds: [...data.seeds, ...accepted] })
-      setDraft('')
-    }
+      // Bound forward-resolution fan-out to the same limit as presentation lookups.
+      let nextName = 0
+      const workers = Array.from(
+        { length: Math.min(8, nameCandidates.length) },
+        async () => {
+          while (nextName < nameCandidates.length) {
+            const name = nameCandidates[nextName++]
+            try {
+              const resolved = await resolveAccountIdentifier(name)
+              candidates.push({ address: resolved.address, name })
+            } catch (error) {
+              firstProblem ||= getAccountIdentifierErrorMessage(error)
+            }
+          }
+        }
+      )
+      await Promise.all(workers)
 
-    setProblem(
-      firstProblem ||
-        (rejected.length
-          ? `We skipped something that isn't an address: ${rejected[0]}`
-          : null)
-    )
+      for (const candidate of candidates) {
+        const issue = seedProblem(candidate.address, [
+          ...data.seeds,
+          ...accepted,
+        ])
+        if (issue) {
+          firstProblem ||= issue
+          continue
+        }
+        accepted.push(candidate.address)
+        if (candidate.name) {
+          acceptedNames[candidate.address.toLowerCase()] = candidate.name
+        }
+      }
+
+      if (accepted.length) {
+        onChange({
+          seeds: [...data.seeds, ...accepted],
+          seedNames: { ...data.seedNames, ...acceptedNames },
+        })
+        setDraft('')
+      }
+
+      setProblem(
+        firstProblem ||
+          (rejected.length
+            ? `We skipped something that isn't an address or ENS name: ${rejected[0]}`
+            : null)
+      )
+    } finally {
+      setAdding(false)
+    }
   }
 
-  const remove = (seed: Hex) =>
-    onChange({ seeds: data.seeds.filter((existing) => existing !== seed) })
+  const remove = (seed: Hex) => {
+    const seedNames = { ...data.seedNames }
+    delete seedNames[seed.toLowerCase()]
+    onChange({
+      seeds: data.seeds.filter((existing) => existing !== seed),
+      seedNames,
+    })
+  }
 
   const alreadyAdded =
     !!address &&
@@ -83,13 +140,13 @@ export const SeedsStep = ({
         label="Starting accounts"
         htmlFor="network-seeds"
         error={problem || listError}
-        hint={`Paste one address per line, or several at once. Three to seven is a good start, and you can add up to ${MAX_SEEDS}.`}
+        hint={`Paste one address or ENS name per line, or several at once. Three to seven is a good start, and you can add up to ${MAX_SEEDS}.`}
       >
         <Textarea
           id="network-seeds"
           value={draft}
           rows={3}
-          placeholder="0x1234...  (one address per line)"
+          placeholder="0x1234… or name.eth (one per line)"
           onChange={(e) => {
             setDraft(e.target.value)
             setProblem(null)
@@ -97,7 +154,7 @@ export const SeedsStep = ({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              add(draft)
+              void add(draft)
             }
           }}
         />
@@ -108,18 +165,18 @@ export const SeedsStep = ({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => add(draft)}
-          disabled={!draft.trim()}
+          onClick={() => void add(draft)}
+          disabled={!draft.trim() || adding}
         >
-          Add to list
+          {adding ? 'Resolving…' : 'Add to list'}
         </Button>
         {address && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => add(address)}
-            disabled={alreadyAdded}
+            onClick={() => void add(address)}
+            disabled={alreadyAdded || adding}
           >
             {alreadyAdded ? 'Your account is on the list' : 'Add my account'}
           </Button>
@@ -138,8 +195,14 @@ export const SeedsStep = ({
                 className="inline-flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
               >
                 <span className="font-mono">
-                  {seed.slice(0, 8)}...{seed.slice(-6)}
+                  {data.seedNames[seed.toLowerCase()] ||
+                    `${seed.slice(0, 8)}...${seed.slice(-6)}`}
                 </span>
+                {data.seedNames[seed.toLowerCase()] && (
+                  <span className="font-mono text-muted-foreground">
+                    {seed.slice(0, 8)}...{seed.slice(-6)}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => remove(seed)}

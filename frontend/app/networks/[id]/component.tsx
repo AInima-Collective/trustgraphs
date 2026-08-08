@@ -273,7 +273,7 @@ export const NetworkPage = () => {
                 // Will be prefetched in the TableAddress component
                 (row) => {
                   pushBreadcrumb()
-                  router.push(`/account/${row.ensName || row.account}`)
+                  router.push(`/account/${row.account}`)
                 }
               }
               getRowKey={(row) => row.account}

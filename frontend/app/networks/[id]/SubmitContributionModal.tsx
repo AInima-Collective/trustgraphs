@@ -3,8 +3,8 @@
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import {
+  type Address,
   Hex,
-  isAddress,
   keccak256,
   parseEventLogs,
   stringToBytes,
@@ -13,20 +13,28 @@ import {
 } from 'viem'
 import { useAccount } from 'wagmi'
 
+import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { Modal } from '@/components/Modal'
 import { useAttestation } from '@/hooks/useAttestation'
+import { useEnsResolver } from '@/hooks/useEns'
 import { easAbi } from '@/lib/contract-abis'
 import { ContributionsRound } from '@/lib/contributions-api'
 import { NOMINEE_RESPONSE_COPY } from '@/lib/contributions-copy'
 import { ClaimView } from '@/lib/contributions-view'
+import { parseAccountIdentifier } from '@/lib/ens'
+import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import { ContributionsNetwork } from '@/lib/types'
 
 type SubmitTab = 'your-work' | 'nominate'
-type ContributorRow = { address: string; share: string }
+type ContributorRow = {
+  address: string
+  share: string
+  previewAddress?: Address | null
+}
 
 export interface OptimisticContribution {
   claim: ClaimView
@@ -62,6 +70,7 @@ export const SubmitContributionModal = ({
 }: SubmitContributionModalProps) => {
   const { address: connectedAddress, isConnected } = useAccount()
   const { createAttestation, isCreating } = useAttestation()
+  const resolveAccountIdentifier = useEnsResolver()
 
   const [tab, setTab] = useState<SubmitTab>('your-work')
   const [title, setTitle] = useState('')
@@ -69,6 +78,7 @@ export const SubmitContributionModal = ({
   const [fingerprint, setFingerprint] = useState('')
   const [contributors, setContributors] = useState<ContributorRow[]>([])
   const [formError, setFormError] = useState<string | null>(null)
+  const [isResolvingAccounts, setIsResolvingAccounts] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -130,6 +140,7 @@ export const SubmitContributionModal = ({
       .map((row) => ({
         address: row.address.trim(),
         share: parseInt(row.share, 10),
+        previewAddress: row.previewAddress,
       }))
       .filter((row) => row.address !== '')
     if (cleaned.length === 0) {
@@ -137,8 +148,15 @@ export const SubmitContributionModal = ({
       return
     }
     for (const row of cleaned) {
-      if (!isAddress(row.address)) {
-        setFormError(`"${row.address}" is not a valid wallet address.`)
+      const parsed = parseAccountIdentifier(row.address)
+      if (parsed.kind !== 'address' && parsed.kind !== 'ens') {
+        setFormError(
+          `"${row.address}" is not a valid wallet address or ENS name.`
+        )
+        return
+      }
+      if (parsed.kind === 'ens' && !row.previewAddress) {
+        setFormError(`Wait for ${parsed.name} to resolve before submitting.`)
         return
       }
       if (!Number.isInteger(row.share) || row.share < 0) {
@@ -150,16 +168,36 @@ export const SubmitContributionModal = ({
       setFormError('At least one contributor needs a share above zero.')
       return
     }
+    const resolved: Array<{
+      address: Address
+      share: number
+      previewAddress?: Address | null
+    }> = []
+    setIsResolvingAccounts(true)
+    try {
+      for (const row of cleaned) {
+        const account = await resolveAccountIdentifier(
+          row.address,
+          row.previewAddress
+        )
+        resolved.push({ ...row, address: account.address })
+      }
+    } catch (error) {
+      setFormError(getAccountIdentifierErrorMessage(error))
+      setIsResolvingAccounts(false)
+      return
+    }
     if (
       tab === 'nominate' &&
       connectedAddress &&
-      cleaned.some(
+      resolved.some(
         (row) => row.address.toLowerCase() === connectedAddress.toLowerCase()
       )
     ) {
       setFormError(
         'Your connected wallet cannot be included when you nominate someone.'
       )
+      setIsResolvingAccounts(false)
       return
     }
 
@@ -180,8 +218,8 @@ export const SubmitContributionModal = ({
           title: title.trim(),
           contentHash,
           uri: uri.trim(),
-          contributors: cleaned.map((row) => row.address as Hex),
-          shares: cleaned.map((row) => row.share),
+          contributors: resolved.map((row) => row.address),
+          shares: resolved.map((row) => row.share),
         },
       })
       const attested = parseEventLogs({
@@ -196,7 +234,7 @@ export const SubmitContributionModal = ({
       }
 
       const timestamp = BigInt(Math.floor(Date.now() / 1000))
-      const total = cleaned.reduce((sum, row) => sum + BigInt(row.share), 0n)
+      const total = resolved.reduce((sum, row) => sum + BigInt(row.share), 0n)
       const claim: ClaimView = {
         uid: attested.args.uid,
         attester: connectedAddress as Hex,
@@ -204,7 +242,7 @@ export const SubmitContributionModal = ({
         title: title.trim(),
         uri: uri.trim(),
         contentHash,
-        contributors: cleaned.map((row) => ({
+        contributors: resolved.map((row) => ({
           account: row.address.toLowerCase() as Hex,
           share: BigInt(row.share),
           sharePct: Number((BigInt(row.share) * 1000n) / total) / 10,
@@ -222,6 +260,8 @@ export const SubmitContributionModal = ({
       onClose()
     } catch {
       // The attestation hook already surfaced transaction errors via toast. Keep the form open.
+    } finally {
+      setIsResolvingAccounts(false)
     }
   }
 
@@ -230,7 +270,7 @@ export const SubmitContributionModal = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={isCreating ? undefined : onClose}
+      onClose={isCreating || isResolvingAccounts ? undefined : onClose}
       title="Submit contribution"
       className="!max-w-2xl"
       footer={
@@ -239,12 +279,12 @@ export const SubmitContributionModal = ({
           type="submit"
           variant="brand"
           size="lg"
-          disabled={!isConnected || isCreating}
+          disabled={!isConnected || isCreating || isResolvingAccounts}
           className="w-full"
         >
           {!isConnected
             ? 'Connect your wallet to submit'
-            : isCreating
+            : isCreating || isResolvingAccounts
               ? 'Submitting...'
               : 'Submit contribution'}
         </Button>
@@ -457,14 +497,22 @@ const ContributorInput = ({
   onChange: (index: number, patch: Partial<ContributorRow>) => void
   onRemove: (index: number) => void
 }) => (
-  <div className="grid grid-cols-[minmax(0,1fr)_5rem_2.25rem] items-center gap-2">
-    <Input
+  <div className="grid grid-cols-[minmax(0,1fr)_5rem_2.25rem] items-start gap-2">
+    <AccountIdentifierInput
       aria-label={isConnectedWallet ? 'Your wallet' : 'Contributor wallet'}
       className="min-w-0 font-mono"
-      placeholder="0x... wallet address"
+      placeholder="0x… or name.eth"
       value={row.address}
       disabled={isConnectedWallet}
-      onChange={(event) => onChange(index, { address: event.target.value })}
+      onResolvedAddressChange={(previewAddress) =>
+        onChange(index, { previewAddress })
+      }
+      onChange={(event) =>
+        onChange(index, {
+          address: event.target.value,
+          previewAddress: null,
+        })
+      }
     />
     <div className="min-w-0">
       <Input

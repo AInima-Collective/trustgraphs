@@ -62,10 +62,32 @@ export const getCurrentChainConfig = (): Chain => {
 // Get the current network configuration
 export const currentNetworkConfig = getCurrentChainConfig()
 
+const getEnsMainnetConfig = (): Chain => {
+  const proxyUrl =
+    (typeof window !== 'undefined' ? window.location.origin : '') + '/api/rpc/1'
+  const serverRpcUrl =
+    typeof window === 'undefined' ? process.env.RPC_URL_1 : undefined
+  const publicUrls = mainnet.rpcUrls.default.http
+  const httpUrls =
+    typeof window === 'undefined'
+      ? serverRpcUrl
+        ? [serverRpcUrl]
+        : publicUrls
+      : [proxyUrl]
+
+  return {
+    ...mainnet,
+    rpcUrls: {
+      ...mainnet.rpcUrls,
+      default: { ...mainnet.rpcUrls.default, http: httpUrls },
+    },
+  }
+}
+
 const supportedChains = [
   currentNetworkConfig,
-  // Add ETH mainnet for ENS resolution
-  mainnet,
+  // ENS registry and Universal Resolver calls always run on Ethereum mainnet.
+  getEnsMainnetConfig(),
 ] as readonly [Chain, ...Chain[]]
 
 let wagmiConfig: ReturnType<typeof _makeWagmiConfig> | undefined

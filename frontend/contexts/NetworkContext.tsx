@@ -14,9 +14,10 @@ import {
   useState,
 } from 'react'
 import { Hex, zeroAddress } from 'viem'
+import { useAccount } from 'wagmi'
 
 import { registerNetworks } from '@/components/schema-components/registerNetworks'
-import { useBatchEnsQuery } from '@/hooks/useEns'
+import { ENS_EAGER_ADDRESS_LIMIT, useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
@@ -101,6 +102,7 @@ export const NetworkProvider = ({
   network: Network
   children: ReactNode
 }) => {
+  const { address: connectedAddress } = useAccount()
   // Make this network's vouch schema encodable and give it the vouching form, right now. The
   // server can resolve a factory instance (`lib/catalog.server.getNetwork`) faster than the
   // browser-side catalog query returns, and a page that renders a network must be able to attest
@@ -298,10 +300,30 @@ export const NetworkProvider = ({
     _networkData,
   ])
 
-  // Load ENS data
-  const { data: ensData } = useBatchEnsQuery(
-    networkData?.accounts.map(({ account }) => account) || []
-  )
+  // Resolve only the highest-ranked accounts eagerly. Address-first graph data
+  // is never held up by ENS, and the graph consumes these names from this one owner.
+  const ensAddresses = useMemo(() => {
+    const ranked = [...(networkData?.accounts ?? [])].sort((a, b) =>
+      BigInt(a.value) === BigInt(b.value)
+        ? 0
+        : BigInt(a.value) > BigInt(b.value)
+          ? -1
+          : 1
+    )
+    const connected = connectedAddress
+      ? ranked.find(
+          ({ account }) =>
+            account.toLowerCase() === connectedAddress.toLowerCase()
+        )
+      : undefined
+    return [
+      ...(connected ? [connected] : []),
+      ...ranked.filter((entry) => entry !== connected),
+    ]
+      .slice(0, ENS_EAGER_ADDRESS_LIMIT)
+      .map(({ account }) => account)
+  }, [connectedAddress, networkData])
+  const { data: ensData } = useBatchEnsQuery(ensAddresses)
 
   // Transform network data to match the expected format
   const accountData = useMemo(() => {
@@ -309,10 +331,17 @@ export const NetworkProvider = ({
       return []
     }
 
-    const accountData = networkData.accounts
-      .sort((a, b) => Number(BigInt(b.value) - BigInt(a.value)))
+    const accountData = [...networkData.accounts]
+      .sort((a, b) =>
+        BigInt(a.value) === BigInt(b.value)
+          ? 0
+          : BigInt(a.value) > BigInt(b.value)
+            ? -1
+            : 1
+      )
       .map((account, index: number): NetworkEntry => {
-        const ensName = ensData?.[account.account]?.name || undefined
+        const ensName =
+          ensData?.[account.account.toLowerCase()]?.name || undefined
 
         return {
           ...account,

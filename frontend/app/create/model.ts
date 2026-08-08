@@ -1,6 +1,7 @@
 import { Hex, isAddress, zeroAddress } from 'viem'
 
 import { CHAIN, CONTRACT_CONFIG } from '@/lib/config'
+import { parseAccountIdentifier } from '@/lib/ens'
 
 /**
  * The data model behind the create-a-network wizard, plus the translation from the plain-language
@@ -102,6 +103,8 @@ export type WizardData = {
   image: string
   applicationUrl: string
   seeds: Hex[]
+  /** Normalized ENS names keyed by their resolved, canonical seed address. */
+  seedNames: Record<string, string>
   tuning: Tuning
   withFund: boolean
   fundToken: FundToken
@@ -121,6 +124,7 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   image: '',
   applicationUrl: '',
   seeds: [],
+  seedNames: {},
   tuning: DEFAULT_TUNING,
   withFund: false,
   fundToken: 'eth',
@@ -258,22 +262,22 @@ export const urlProblem = (value: string): string | null => {
  */
 export const parseAddressList = (
   input: string
-): { addresses: Hex[]; rejected: string[] } => {
+): { addresses: Hex[]; names: string[]; rejected: string[] } => {
   const tokens = input
     .split(/[\s,;]+/)
     .map((token) => token.trim())
     .filter(Boolean)
 
   const addresses: Hex[] = []
+  const names: string[] = []
   const rejected: string[] = []
   for (const token of tokens) {
-    if (isAddress(token, { strict: false })) {
-      addresses.push(token.toLowerCase() as Hex)
-    } else {
-      rejected.push(token)
-    }
+    const parsed = parseAccountIdentifier(token)
+    if (parsed.kind === 'address') addresses.push(token.toLowerCase() as Hex)
+    else if (parsed.kind === 'ens') names.push(parsed.name)
+    else rejected.push(token)
   }
-  return { addresses, rejected }
+  return { addresses, names, rejected }
 }
 
 export const seedProblem = (candidate: Hex, existing: Hex[]): string | null => {

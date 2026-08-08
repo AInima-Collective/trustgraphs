@@ -76,7 +76,7 @@ export const AccountProfilePage = ({
 
   const { address: connectedAddress } = useAccount()
   const pushBreadcrumb = usePushBreadcrumb({
-    route: `/account/${ensName || address}`,
+    route: `/account/${address}`,
     title: ensName || undefined,
   })
 

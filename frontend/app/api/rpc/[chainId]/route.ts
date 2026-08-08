@@ -1,4 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { mainnet } from 'viem/chains'
+
+const MAX_RPC_BODY_BYTES = 256 * 1024
+const MAX_RPC_BATCH_SIZE = 50
+const DEVELOPMENT_MAINNET_RPC_URLS = [
+  'https://ethereum-rpc.publicnode.com',
+  'https://public.1rpc.io/eth',
+] as const
 
 export async function POST(
   request: NextRequest,
@@ -25,14 +33,31 @@ export async function POST(
     }
 
     // Get the private RPC URL from environment variables based on chain ID
-    const rpcUrl =
+    const configuredRpcUrl =
       (!id && process.env[`RPC_URL_${chainId}`]) ||
       process.env[`RPC_URL_${chainId}_${id}`]
+    // Keep browser clients on one same-origin transport. Developers should not
+    // need a paid mainnet RPC just to exercise ENS locally, while production
+    // remains explicitly configured and never depends on public capacity.
+    const rpcUrls = configuredRpcUrl
+      ? [configuredRpcUrl]
+      : process.env.NODE_ENV !== 'production' &&
+          chainId === String(mainnet.id)
+        ? DEVELOPMENT_MAINNET_RPC_URLS
+        : []
 
-    if (!rpcUrl) {
+    if (!rpcUrls.length) {
       return NextResponse.json(
         { error: `RPC URL not configured for chain ${chainId}` },
-        { status: 500 }
+        { status: 503 }
+      )
+    }
+
+    const contentLength = Number(request.headers.get('content-length') || 0)
+    if (contentLength > MAX_RPC_BODY_BYTES) {
+      return NextResponse.json(
+        { error: 'RPC request body is too large' },
+        { status: 413 }
       )
     }
 
@@ -47,11 +72,31 @@ export async function POST(
       )
     }
 
+    if (JSON.stringify(body).length > MAX_RPC_BODY_BYTES) {
+      return NextResponse.json(
+        { error: 'RPC request body is too large' },
+        { status: 413 }
+      )
+    }
+
     // For batch requests, validate each item
     const requests = Array.isArray(body) ? body : [body]
 
+    if (!requests.length || requests.length > MAX_RPC_BATCH_SIZE) {
+      return NextResponse.json(
+        { error: 'Invalid JSON-RPC batch size' },
+        { status: 400 }
+      )
+    }
+
     for (const req of requests) {
-      if (!req.method || !req.id || req.jsonrpc !== '2.0') {
+      if (
+        !req ||
+        typeof req !== 'object' ||
+        typeof req.method !== 'string' ||
+        req.id === undefined ||
+        req.jsonrpc !== '2.0'
+      ) {
         return NextResponse.json(
           { error: 'Invalid JSON-RPC request format' },
           { status: 400 }
@@ -59,36 +104,44 @@ export async function POST(
       }
     }
 
-    // Forward the request to the private RPC endpoint
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
+    const requestBody = JSON.stringify(body)
+    let lastFailure = 'No RPC endpoint responded'
+    for (const rpcUrl of rpcUrls) {
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: requestBody,
+          signal: AbortSignal.timeout(10_000),
+        })
 
-    if (!response.ok) {
-      console.error(
-        `RPC request failed for chain ${chainId}: ${response.status} ${response.statusText}`
-      )
-      return NextResponse.json(
-        {
-          error: `RPC request failed for chain ${chainId}: ${response.status}`,
-        },
-        { status: response.status }
-      )
+        if (!response.ok) {
+          lastFailure = `upstream returned ${response.status}`
+          continue
+        }
+
+        const data = await response.json()
+        return NextResponse.json(data)
+      } catch (error) {
+        lastFailure =
+          error instanceof Error ? error.message : 'Unknown upstream error'
+      }
     }
 
-    const data = await response.json()
-
-    // Return the RPC response
-    return NextResponse.json(data)
-  } catch (error: any) {
+    console.error(`RPC request failed for chain ${chainId}: ${lastFailure}`)
+    return NextResponse.json(
+      { error: `RPC request failed for chain ${chainId}` },
+      { status: 502 }
+    )
+  } catch (error: unknown) {
     console.error('RPC proxy error:', error)
     return NextResponse.json(
-      { error: `RPC request failed: ${error.message}` },
+      {
+        error: `RPC request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      },
       { status: 500 }
     )
   }

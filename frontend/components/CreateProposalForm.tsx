@@ -2,11 +2,15 @@
 
 import type React from 'react'
 import { useCallback, useState } from 'react'
-import { formatEther, isAddress, parseEther } from 'viem'
+import { type Address, formatEther, isAddress, parseEther } from 'viem'
 
+import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
 import { VoteButtons } from '@/components/VoteButtons'
+import { useEnsResolver } from '@/hooks/useEns'
 import { ProposalAction, VoteType } from '@/hooks/useGovernance'
+import { parseAccountIdentifier } from '@/lib/ens'
+import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import { formatBigNumber } from '@/lib/utils'
 
 import { Card } from './Card'
@@ -19,7 +23,12 @@ import { Switch } from './Switch'
  * the unit a user types is the unit the chain gets.
  */
 type DraftAction =
-  | { kind: 'sendEth'; recipient: string; amountEth: string }
+  | {
+      kind: 'sendEth'
+      recipient: string
+      amountEth: string
+      previewAddress?: Address | null
+    }
   | {
       kind: 'custom'
       target: string
@@ -73,6 +82,7 @@ export function CreateProposalForm({
   const [castVoteOnCreate, setCastVoteOnCreate] = useState(false)
   const [voteType, setVoteType] = useState<VoteType>(VoteType.Yes)
   const [drafts, setDrafts] = useState<DraftAction[]>([])
+  const resolveAccountIdentifier = useEnsResolver()
 
   const addDraft = useCallback((draft: DraftAction) => {
     setDrafts((prev) => [...prev, draft])
@@ -94,7 +104,10 @@ export function CreateProposalForm({
   )
 
   /** Validate drafts and convert them to on-chain actions (values in wei). */
-  const buildActions = (): { actions?: ProposalAction[]; error?: string } => {
+  const buildActions = async (): Promise<{
+    actions?: ProposalAction[]
+    error?: string
+  }> => {
     if (!title.trim()) return { error: 'Title is required' }
     if (!description.trim()) return { error: 'Description is required' }
 
@@ -105,8 +118,14 @@ export function CreateProposalForm({
       const label = `Action ${i + 1}`
 
       if (draft.kind === 'sendEth') {
-        if (!isAddress(draft.recipient)) {
-          return { error: `${label}: enter a valid recipient address` }
+        const parsed = parseAccountIdentifier(draft.recipient)
+        if (parsed.kind !== 'address' && parsed.kind !== 'ens') {
+          return {
+            error: `${label}: enter a valid recipient address or ENS name`,
+          }
+        }
+        if (parsed.kind === 'ens' && !draft.previewAddress) {
+          return { error: `${label}: wait for ${parsed.name} to resolve` }
         }
         let wei: bigint
         try {
@@ -117,12 +136,27 @@ export function CreateProposalForm({
         if (wei <= 0n) {
           return { error: `${label}: the ETH amount must be more than zero` }
         }
+        let resolved
+        try {
+          resolved = await resolveAccountIdentifier(
+            draft.recipient,
+            draft.previewAddress
+          )
+        } catch (error) {
+          return {
+            error: `${label}: ${getAccountIdentifierErrorMessage(error)}`,
+          }
+        }
         actions.push({
-          target: draft.recipient,
+          target: resolved.address,
           value: wei.toString(),
           data: '0x',
           operation: 0,
-          description: `Send ${formatEther(wei)} ETH to ${draft.recipient}`,
+          description: `Send ${formatEther(wei)} ETH to ${
+            resolved.ensName
+              ? `${resolved.ensName} (${resolved.address})`
+              : resolved.address
+          }`,
         })
       } else {
         if (!isAddress(draft.target)) {
@@ -159,14 +193,22 @@ export function CreateProposalForm({
         return
       }
 
-      const built = buildActions()
-      if (built.error || !built.actions) {
-        setError(built.error ?? 'Invalid proposal')
-        return
-      }
-
       setIsSubmitting(true)
       setError(null)
+
+      let built: Awaited<ReturnType<typeof buildActions>>
+      try {
+        built = await buildActions()
+      } catch (buildError) {
+        setError(getAccountIdentifierErrorMessage(buildError))
+        setIsSubmitting(false)
+        return
+      }
+      if (built.error || !built.actions) {
+        setError(built.error ?? 'Invalid proposal')
+        setIsSubmitting(false)
+        return
+      }
 
       try {
         const hash = await onCreateProposal(
@@ -185,9 +227,11 @@ export function CreateProposalForm({
         } else {
           setError('The transaction was not confirmed')
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error in handleSubmit:', err)
-        setError(`Failed to create proposal: ${err.message || 'Unknown error'}`)
+        setError(
+          `Failed to create proposal: ${err instanceof Error ? err.message : 'Unknown error'}`
+        )
       } finally {
         setIsSubmitting(false)
       }
@@ -279,13 +323,18 @@ export function CreateProposalForm({
                     <div className="text-muted-foreground text-xs font-medium">
                       Recipient
                     </div>
-                    <input
-                      type="text"
+                    <AccountIdentifierInput
                       value={draft.recipient}
-                      onChange={(e) =>
-                        updateDraft(index, { recipient: e.target.value })
+                      onResolvedAddressChange={(previewAddress) =>
+                        updateDraft(index, { previewAddress })
                       }
-                      placeholder="0x..."
+                      onChange={(e) =>
+                        updateDraft(index, {
+                          recipient: e.target.value,
+                          previewAddress: null,
+                        })
+                      }
+                      placeholder="0x… or name.eth"
                       className={`${inputClassName} font-mono`}
                       required
                     />

@@ -3,10 +3,11 @@ import { HydrationBoundary, dehydrate } from '@tanstack/react-query'
 import { Hex } from 'viem'
 import { getEnsNameQueryOptions } from 'wagmi/query'
 
+import { ENS_REGISTRY_CHAIN_ID, getEnsCoinType } from '@/lib/ens-query'
 import { ponderClient } from '@/lib/ponder'
 import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
-import { makeWagmiConfig } from '@/lib/wagmi'
+import { getTargetChainId, makeWagmiConfig } from '@/lib/wagmi'
 import { ponderQueryFns } from '@/queries/ponder'
 
 import { AttestationDetailPage } from './component'
@@ -41,13 +42,15 @@ export default async function AttestationDetailPageServer({
       queryClient.prefetchQuery(
         getEnsNameQueryOptions(wagmiConfig, {
           address: attestation.attester,
-          chainId: 1,
+          chainId: ENS_REGISTRY_CHAIN_ID,
+          coinType: getEnsCoinType(getTargetChainId()),
         })
       ),
       queryClient.prefetchQuery(
         getEnsNameQueryOptions(wagmiConfig, {
           address: attestation.recipient,
-          chainId: 1,
+          chainId: ENS_REGISTRY_CHAIN_ID,
+          coinType: getEnsCoinType(getTargetChainId()),
         })
       ),
     ])

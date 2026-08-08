@@ -41,6 +41,7 @@ export function CopyableText({
 
   return (
     <button
+      type="button"
       onClick={handleCopy}
       className={cn(
         'group inline-flex items-center gap-2 font-mono text-xs hover:text-foreground transition-colors text-left',

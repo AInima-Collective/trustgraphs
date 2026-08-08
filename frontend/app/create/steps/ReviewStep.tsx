@@ -2,12 +2,23 @@
 
 import { CheckCircle2, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
-import { Hex, decodeEventLog, parseEther, zeroAddress } from 'viem'
+import {
+  type Address,
+  Hex,
+  decodeEventLog,
+  parseEther,
+  zeroAddress,
+} from 'viem'
 import { usePublicClient, useSimulateContract } from 'wagmi'
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { useEnsResolver } from '@/hooks/useEns'
 import { trustGraphFactoryAbi } from '@/lib/contract-abis'
+import {
+  EnsResolutionChangedError,
+  getAccountIdentifierErrorMessage,
+} from '@/lib/ens-query'
 import { txToast } from '@/lib/tx'
 
 import {
@@ -39,6 +50,7 @@ export const ReviewStep = ({
   metadataUri,
   onCreated,
   onJumpTo,
+  onSeedsChanged,
 }: {
   data: WizardData
   args: CreateArgs
@@ -46,10 +58,12 @@ export const ReviewStep = ({
   metadataUri: string
   onCreated: (created: CreatedNetwork) => void
   onJumpTo: (step: number) => void
+  onSeedsChanged: (seeds: Hex[], seedNames: Record<string, string>) => void
 }) => {
   const publicClient = usePublicClient()
   const [creating, setCreating] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const resolveAccountIdentifier = useEnsResolver()
 
   // The factory runs the same checks as a view, so a bad setting shows up here rather than as a
   // The optional prepay rides along as `msg.value`; the factory forwards it into the new
@@ -76,6 +90,43 @@ export const ReviewStep = ({
     setFailure(null)
     setCreating(true)
     try {
+      for (const [preview, name] of Object.entries(data.seedNames)) {
+        if (!data.seeds.some((seed) => seed.toLowerCase() === preview)) continue
+
+        try {
+          await resolveAccountIdentifier(name, preview as Address)
+        } catch (error) {
+          if (error instanceof EnsResolutionChangedError) {
+            const nextAddress = error.currentAddress
+            const nextSeeds = data.seeds.map((seed) =>
+              seed.toLowerCase() === preview ? nextAddress : seed
+            )
+            if (
+              nextSeeds.some(
+                (seed, index) =>
+                  nextSeeds.findIndex(
+                    (candidate) =>
+                      candidate.toLowerCase() === seed.toLowerCase()
+                  ) !== index
+              )
+            ) {
+              setFailure(
+                `${name} changed to an account already on the list. Edit the starting accounts before continuing.`
+              )
+              return
+            }
+            const nextNames = { ...data.seedNames }
+            delete nextNames[preview]
+            nextNames[nextAddress.toLowerCase()] = name
+            onSeedsChanged(nextSeeds, nextNames)
+            setFailure(error.message)
+            return
+          }
+          setFailure(getAccountIdentifierErrorMessage(error))
+          return
+        }
+      }
+
       let gas: bigint | undefined
       try {
         const estimate = await publicClient?.estimateContractGas({
@@ -173,7 +224,9 @@ export const ReviewStep = ({
           <div className="space-y-1">
             {data.seeds.map((seed) => (
               <div key={seed} className="font-mono text-xs">
-                {seed}
+                {data.seedNames[seed.toLowerCase()]
+                  ? `${data.seedNames[seed.toLowerCase()]} (${seed})`
+                  : seed}
               </div>
             ))}
           </div>

@@ -1,12 +1,20 @@
 import { getPonderQueryOptions } from '@ponder/react'
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query'
-import { Hex } from 'viem'
-import { getEnsAddressQueryOptions, getEnsNameQueryOptions } from 'wagmi/query'
+import { notFound, redirect } from 'next/navigation'
+import { type Hex, isAddress } from 'viem'
+import { getEnsNameQueryOptions } from 'wagmi/query'
 
+import { normalizeEnsName } from '@/lib/ens'
+import {
+  ENS_REGISTRY_CHAIN_ID,
+  EnsNameNotFoundError,
+  getEnsCoinType,
+  resolveEnsNameNow,
+} from '@/lib/ens-query'
 import { ponderClient } from '@/lib/ponder'
 import { makeQueryClient } from '@/lib/query'
-import { mightBeEnsName } from '@/lib/utils'
-import { makeWagmiConfig } from '@/lib/wagmi'
+import { REVIEW_FIXTURES_ENABLED } from '@/lib/review-fixture-query'
+import { getTargetChainId, makeWagmiConfig } from '@/lib/wagmi'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { AccountProfilePage } from './component'
@@ -25,63 +33,61 @@ export default async function AccountProfilePageServer({
   const queryClient = makeQueryClient()
   const wagmiConfig = makeWagmiConfig()
 
-  const [[address, ensName]] = await Promise.all([
-    Promise.resolve(
-      mightBeEnsName(_address)
-        ? queryClient
-            .fetchQuery(
-              getEnsAddressQueryOptions(wagmiConfig, {
-                name: _address,
-                chainId: 1,
-              })
-            )
-            .then((address) => address as Hex)
-            .catch(() => _address as Hex)
-        : (_address as Hex)
-    ).then((address) =>
-      Promise.all([
-        address,
+  let address: Hex
+  if (isAddress(_address, { strict: false })) {
+    address = _address.toLowerCase() as Hex
+    if (_address !== address) redirect(`/account/${address}`)
+  } else {
+    const name = normalizeEnsName(_address)
+    if (!name || REVIEW_FIXTURES_ENABLED) notFound()
 
-        // ENS name
-        queryClient
-          .fetchQuery(
-            getEnsNameQueryOptions(wagmiConfig, {
-              address,
-              chainId: 1,
-            })
-          )
-          .catch(() => null),
+    const resolved = await resolveEnsNameNow(
+      wagmiConfig,
+      name,
+      getTargetChainId()
+    ).catch((error: unknown) => {
+      if (error instanceof EnsNameNotFoundError) notFound()
+      throw error
+    })
+    redirect(`/account/${resolved.address.toLowerCase()}`)
+  }
 
-        // Account stats
-        queryClient.prefetchQuery(
-          getPonderQueryOptions(
-            ponderClient,
-            ponderQueryFns.getAttestationsGiven({ address })
-          )
-        ),
-        queryClient.prefetchQuery(
-          getPonderQueryOptions(
-            ponderClient,
-            ponderQueryFns.getAttestationsReceived({ address })
-          )
-        ),
+  const [ensName] = await Promise.all([
+    // ENS name
+    queryClient
+      .fetchQuery(
+        getEnsNameQueryOptions(wagmiConfig, {
+          address,
+          chainId: ENS_REGISTRY_CHAIN_ID,
+          coinType: getEnsCoinType(getTargetChainId()),
+        })
+      )
+      .catch(() => null),
 
-        // Attestations
-        queryClient.prefetchQuery(
-          getPonderQueryOptions(
-            ponderClient,
-            ponderQueryFns.getAttestations({
-              account: address,
-            })
-          )
-        ),
-
-        // Networks
-        queryClient.prefetchQuery(
-          ponderQueries.accountNetworkProfiles(address)
-        ),
-      ])
+    // Account stats
+    queryClient.prefetchQuery(
+      getPonderQueryOptions(
+        ponderClient,
+        ponderQueryFns.getAttestationsGiven({ address })
+      )
     ),
+    queryClient.prefetchQuery(
+      getPonderQueryOptions(
+        ponderClient,
+        ponderQueryFns.getAttestationsReceived({ address })
+      )
+    ),
+
+    // Attestations
+    queryClient.prefetchQuery(
+      getPonderQueryOptions(
+        ponderClient,
+        ponderQueryFns.getAttestations({ account: address })
+      )
+    ),
+
+    // Networks
+    queryClient.prefetchQuery(ponderQueries.accountNetworkProfiles(address)),
   ])
 
   const dehydratedState = dehydrate(queryClient)

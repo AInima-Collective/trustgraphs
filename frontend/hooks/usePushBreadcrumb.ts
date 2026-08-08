@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 
 import { useNetworks } from '@/contexts/CatalogContext'
-import { mightBeEnsName } from '@/lib/utils'
+import { isPotentialEnsName } from '@/lib/ens'
 import { Breadcrumb, breadcrumbsAtom } from '@/state/nav'
 
 /**
@@ -40,7 +40,7 @@ export const usePushBreadcrumb = (defaultBreadcrumb?: Partial<Breadcrumb>) => {
         } else if (
           lastSegment &&
           pathname.startsWith('/account/') &&
-          mightBeEnsName(lastSegment)
+          isPotentialEnsName(lastSegment)
         ) {
           // ENS name
           finalBreadcrumb.title = lastSegment

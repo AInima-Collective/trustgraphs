@@ -3,14 +3,14 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { useSetAtom } from 'jotai'
-import { Check, LoaderCircle, X } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
-import { Hex, zeroAddress } from 'viem'
+import { type Address, Hex, zeroAddress } from 'viem'
 import { useAccount } from 'wagmi'
 
+import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button, ButtonProps } from '@/components/Button'
 import {
   Form,
@@ -20,7 +20,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/Form'
-import { Input } from '@/components/Input'
 import { Modal } from '@/components/Modal'
 import {
   AttestationFormData,
@@ -38,23 +37,18 @@ import {
 import { useNetworks } from '@/contexts/CatalogContext'
 import { useNetworkIfAvailable } from '@/contexts/NetworkContext'
 import { useAttestation, useIntoAttestationsData } from '@/hooks/useAttestation'
-import { useResolveEnsName } from '@/hooks/useEns'
+import { useEnsResolver } from '@/hooks/useEns'
 import { AttestationData } from '@/lib/attestation'
+import { parseAccountIdentifier } from '@/lib/ens'
+import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
 import { parseErrorMessage } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { usePonderQuery } from '@/lib/use-ponder-query'
-import {
-  formatBigNumber,
-  formatPercentage,
-  isHexEqual,
-  mightBeEnsName,
-} from '@/lib/utils'
+import { formatBigNumber, formatPercentage, isHexEqual } from '@/lib/utils'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 import { bumpPendingEchoAtom } from '@/state/score-updates'
 
 import { Card } from './Card'
-import { CopyableText } from './CopyableText'
-import { EnsIcon } from './icons/EnsIcon'
 import { Markdown } from './Markdown'
 import { Column, Table } from './Table'
 import { Tooltip } from './Tooltip'
@@ -128,21 +122,10 @@ export const CreateAttestationModal = ({
     : undefined
 
   const recipient = form.watch('recipient', '')
-  const shouldResolveEnsName = mightBeEnsName(recipient)
-  const resolvedEnsName = useResolveEnsName(
-    shouldResolveEnsName ? recipient : ''
-  )
-  const isResolvingEnsName = shouldResolveEnsName && resolvedEnsName.isLoading
-  const validResolvedEnsAddress =
-    shouldResolveEnsName &&
-    !resolvedEnsName.isLoading &&
-    !!resolvedEnsName.address
-  const invalidResolvedEnsName =
-    shouldResolveEnsName &&
-    !resolvedEnsName.isLoading &&
-    !resolvedEnsName.address
-  const resolvedRecipient =
-    (validResolvedEnsAddress && resolvedEnsName.address) || recipient
+  const [recipientPreview, setRecipientPreview] = useState<Address | null>(null)
+  const [isResolvingRecipient, setIsResolvingRecipient] = useState(false)
+  const resolveAccountIdentifier = useEnsResolver()
+  const resolvedRecipient = recipientPreview || recipient
 
   const { address: connectedAddress = '0x', isConnected } = useAccount()
 
@@ -267,15 +250,33 @@ export const CreateAttestationModal = ({
   }, [isOpen, clearTransactionState])
 
   const onSubmit = async (data: AttestationFormData) => {
+    let recipient: Address
+    setIsResolvingRecipient(true)
+    try {
+      form.clearErrors('recipient')
+      const resolved = await resolveAccountIdentifier(
+        data.recipient,
+        recipientPreview
+      )
+      recipient = resolved.address
+    } catch (err) {
+      form.setError('recipient', {
+        type: 'validate',
+        message: getAccountIdentifierErrorMessage(err),
+      })
+      setIsResolvingRecipient(false)
+      return
+    }
+
     try {
       await createAttestation({
         ...data,
-        recipient:
-          (validResolvedEnsAddress && resolvedEnsName.address) ||
-          data.recipient,
+        recipient,
       })
     } catch (err) {
       console.error('Failed to create attestation:', err)
+    } finally {
+      setIsResolvingRecipient(false)
     }
   }
 
@@ -442,17 +443,16 @@ export const CreateAttestationModal = ({
                     name="recipient"
                     rules={{
                       required: 'Recipient is required',
-                      pattern: shouldResolveEnsName
-                        ? resolvedEnsName.isLoading || validResolvedEnsAddress
-                          ? undefined
-                          : {
-                              value: /^$/,
-                              message: 'Invalid ENS name',
-                            }
-                        : {
-                            value: /^0x[a-fA-F0-9]{40}$/,
-                            message: 'Invalid Ethereum address or ENS name',
-                          },
+                      validate: (value) => {
+                        const parsed = parseAccountIdentifier(value)
+                        if (parsed.kind === 'address') return true
+                        if (parsed.kind === 'ens' && recipientPreview)
+                          return true
+                        if (parsed.kind === 'ens') {
+                          return 'ENS name has not resolved to an address'
+                        }
+                        return 'Invalid Ethereum address or ENS name'
+                      },
                     }}
                     render={({ field }) => (
                       <FormItem>
@@ -460,55 +460,17 @@ export const CreateAttestationModal = ({
                           RECIPIENT
                         </FormLabel>
                         <FormControl>
-                          <div className="h-10 w-full relative mt-1">
-                            <Input
-                              {...field}
-                              placeholder="0x..."
-                              className={clsx(
-                                'text-sm h-full w-full',
-                                shouldResolveEnsName && 'pr-9'
-                              )}
-                            />
-
-                            {shouldResolveEnsName && (
-                              <div className="absolute right-3 top-0 bottom-0 z-100 flex items-center">
-                                <Tooltip
-                                  title={
-                                    invalidResolvedEnsName
-                                      ? 'ENS name not found'
-                                      : validResolvedEnsAddress
-                                        ? 'ENS name resolved'
-                                        : 'Resolving ENS name...'
-                                  }
-                                >
-                                  {isResolvingEnsName ? (
-                                    <LoaderCircle className="h-4 w-4 animate-spin text-text-muted" />
-                                  ) : invalidResolvedEnsName ? (
-                                    <X className="w-4 h-4 text-destructive" />
-                                  ) : validResolvedEnsAddress ? (
-                                    <Check className="h-4 w-4 text-success" />
-                                  ) : null}
-                                </Tooltip>
-                              </div>
-                            )}
-                          </div>
+                          <AccountIdentifierInput
+                            {...field}
+                            placeholder="0x… or name.eth"
+                            className="h-10 text-sm"
+                            onResolvedAddressChange={setRecipientPreview}
+                          />
                         </FormControl>
                         <FormMessage className="text-xs" />
                       </FormItem>
                     )}
                   />
-
-                  {validResolvedEnsAddress && (
-                    <div className="flex items-center gap-1.5 ml-2 md:hidden">
-                      <EnsIcon className="w-5 h-5" />
-                      <CopyableText
-                        truncate
-                        truncateEnds={[10, 8]}
-                        text={resolvedEnsName.address}
-                        className="text-sm text-text-muted"
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Only show schema selection if there are multiple schemas or the selected schema is invalid */}
@@ -551,18 +513,6 @@ export const CreateAttestationModal = ({
                     />
                   )}
               </div>
-
-              {validResolvedEnsAddress && (
-                <div className="hidden md:flex items-center gap-2 -mt-2 ml-2">
-                  <EnsIcon className="w-4 h-4" />
-                  <CopyableText
-                    truncate
-                    truncateEnds={[7, 5]}
-                    text={resolvedEnsName.address}
-                    className="text-sm text-text-muted"
-                  />
-                </div>
-              )}
 
               {attestationsGivenToRecipient.length > 0 && (
                 <Card type="outline" size="sm" className="border-warn">
@@ -611,7 +561,7 @@ export const CreateAttestationModal = ({
                         form={form}
                         schemaInfo={selectedSchemaInfo}
                         onSubmit={onSubmit}
-                        isLoading={isCreating}
+                        isLoading={isCreating || isResolvingRecipient}
                         error={error}
                         isSuccess={isCreated}
                         hash={hash}
@@ -625,7 +575,7 @@ export const CreateAttestationModal = ({
                         form={form}
                         schemaInfo={selectedSchemaInfo}
                         onSubmit={onSubmit}
-                        isLoading={isCreating}
+                        isLoading={isCreating || isResolvingRecipient}
                         error={error}
                         isSuccess={isCreated}
                         network={currentNetwork}
