@@ -9,6 +9,7 @@ import {
   Radio,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { type ReactNode, useMemo, useState } from 'react'
 import {
   type Hex,
@@ -31,6 +32,7 @@ import { Address } from '@/components/Address'
 import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
+import { InfoTooltip } from '@/components/InfoTooltip'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { NetworkHeader } from '@/components/NetworkHeader'
@@ -42,7 +44,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
-import { StatisticCard } from '@/components/StatisticCard'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import type { InstanceParamsJson, InstanceRow } from '@/lib/catalog'
@@ -279,7 +280,7 @@ const ContractAddress = ({ value }: { value: string | undefined }) => {
     <span className="inline-flex max-w-full items-center gap-2">
       <Address
         address={address}
-        displayMode="truncated"
+        displayMode="auto"
         showEns={false}
         link={false}
         showCopyIcon
@@ -299,37 +300,91 @@ const ContractAddress = ({ value }: { value: string | undefined }) => {
   )
 }
 
-const SettingsTabs = ({
+const settingsHref = (networkId: string, tab: SettingsTab) =>
+  tab === 'overview'
+    ? `/networks/${networkId}/settings`
+    : `/networks/${networkId}/settings?tab=${tab}`
+
+const SettingsNavigation = ({
   networkId,
   activeTab,
 }: {
   networkId: string
   activeTab: SettingsTab
+}) => {
+  const router = useRouter()
+
+  return (
+    <>
+      <div className="space-y-2 lg:hidden">
+        <Label htmlFor="settings-section">Settings section</Label>
+        <Select
+          value={activeTab}
+          onValueChange={(value) =>
+            router.push(settingsHref(networkId, value as SettingsTab))
+          }
+        >
+          <SelectTrigger id="settings-section" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SETTINGS_TABS.map((tab) => (
+              <SelectItem key={tab.id} value={tab.id}>
+                {tab.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <aside className="hidden lg:block">
+        <nav aria-label="Settings sections" className="sticky top-6 space-y-1">
+          <p className="tg-label px-3 pb-2">Settings</p>
+          {SETTINGS_TABS.map((tab) => (
+            <Link
+              key={tab.id}
+              href={settingsHref(networkId, tab.id)}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              className={cn(
+                'block border-l-2 px-3 py-2.5 transition-colors',
+                activeTab === tab.id
+                  ? 'border-primary bg-surface-2 text-foreground'
+                  : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <span className="block text-sm font-medium">{tab.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+                {tab.description}
+              </span>
+            </Link>
+          ))}
+        </nav>
+      </aside>
+    </>
+  )
+}
+
+const SettingsMetric = ({
+  title,
+  tooltip,
+  value,
+}: {
+  title: string
+  tooltip: string
+  value: string
 }) => (
-  <nav
-    aria-label="Settings sections"
-    className="flex w-full gap-1 overflow-x-auto border-b border-border pb-2"
-  >
-    {SETTINGS_TABS.map((tab) => (
-      <Link
-        key={tab.id}
-        href={
-          tab.id === 'overview'
-            ? `/networks/${networkId}/settings`
-            : `/networks/${networkId}/settings?tab=${tab.id}`
-        }
-        aria-current={activeTab === tab.id ? 'page' : undefined}
-        className={cn(
-          'shrink-0 px-3 py-1.5 text-sm transition-colors',
-          activeTab === tab.id
-            ? 'bg-primary font-medium text-primary-foreground'
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        )}
-      >
-        {tab.label}
-      </Link>
-    ))}
-  </nav>
+  <Card type="primary" size="sm" className="min-w-0 border-0">
+    <div className="flex items-center gap-2">
+      <p className="tg-label truncate">{title}</p>
+      <InfoTooltip title={tooltip} />
+    </div>
+    <p
+      className="mt-1.5 truncate text-sm font-medium tabular-nums"
+      title={value}
+    >
+      {value}
+    </p>
+  </Card>
 )
 
 const TopUpProofBalance = ({
@@ -1220,1232 +1275,1255 @@ export const SettingsPage = ({
   ].filter((item): item is string => !!item)
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <div className="space-y-4">
         <NetworkHeader network={network} />
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
           Monitor this network, fund its proof service, and inspect the
           configuration enforced on-chain.
         </p>
-        <SettingsTabs networkId={network.id} activeTab={activeTab} />
       </div>
 
-      {activeTab === 'overview' && (
-        <section className="space-y-6" aria-labelledby="settings-overview">
-          <div>
-            <SectionHeading n="01">
-              <span id="settings-overview">Network status</span>
-            </SectionHeading>
-            <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              The operational state that matters day to day. Detailed policy,
-              contracts, and audit values live in the other tabs.
-            </p>
-          </div>
+      <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12">
+        <SettingsNavigation networkId={network.id} activeTab={activeTab} />
 
-          <div className="flex flex-wrap gap-4">
-            <StatisticCard
-              title="LATEST SCORES"
-              tooltip="When the latest proven score table was applied on-chain."
-              value={
-                rootTimestamp ? timestamp(rootTimestamp) : 'Not proven yet'
-              }
-            />
-            <StatisticCard
-              title="PROOF SERVICE"
-              tooltip="The hosted scheduler mode and its latest public heartbeat."
-              value={
-                operatorLoading
-                  ? '...'
-                  : heartbeatFresh
-                    ? `${serviceMode} · healthy`
-                    : serviceMode
-              }
-            />
-            <StatisticCard
-              title="PROOF BALANCE"
-              tooltip="Funds reserved for producing score proofs, separate from member reward pools."
-              value={vaultLoading ? '...' : usd(balanceUsd)}
-            />
-            <StatisticCard
-              title="REWARDS"
-              tooltip="Whether this network has a reward distributor and whether it is active."
-              value={
-                !distributorAddress
-                  ? 'Not configured'
-                  : distributorPaused
-                    ? 'Paused'
-                    : 'Active'
-              }
-            />
-          </div>
+        <div className="min-w-0 space-y-10">
+          {activeTab === 'overview' && (
+            <section className="space-y-6" aria-labelledby="settings-overview">
+              <div>
+                <SectionHeading n="01">
+                  <span id="settings-overview">Network status</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  The operational state that matters day to day. Detailed
+                  policy, contracts, and audit values live in the other tabs.
+                </p>
+              </div>
 
-          {attentionItems.length > 0 ? (
-            <Card type="outline" size="md" className="border-warn">
-              <h3 className="text-sm font-medium">Needs attention</h3>
-              <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                {attentionItems.map((item) => (
-                  <li key={item} className="flex gap-2">
-                    <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+              <div className="grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4">
+                <SettingsMetric
+                  title="LATEST SCORES"
+                  tooltip="When the latest proven score table was applied on-chain."
+                  value={
+                    rootTimestamp ? timestamp(rootTimestamp) : 'Not proven yet'
+                  }
+                />
+                <SettingsMetric
+                  title="PROOF SERVICE"
+                  tooltip="The hosted scheduler mode and its latest public heartbeat."
+                  value={
+                    operatorLoading
+                      ? '...'
+                      : heartbeatFresh
+                        ? `${serviceMode} · healthy`
+                        : serviceMode
+                  }
+                />
+                <SettingsMetric
+                  title="PROOF BALANCE"
+                  tooltip="Funds reserved for producing score proofs, separate from member reward pools."
+                  value={vaultLoading ? '...' : usd(balanceUsd)}
+                />
+                <SettingsMetric
+                  title="REWARDS"
+                  tooltip="Whether this network has a reward distributor and whether it is active."
+                  value={
+                    !distributorAddress
+                      ? 'Not configured'
+                      : distributorPaused
+                        ? 'Paused'
+                        : 'Active'
+                  }
+                />
+              </div>
+
+              {attentionItems.length > 0 ? (
+                <Card type="outline" size="md" className="border-warn">
+                  <h3 className="text-sm font-medium">Needs attention</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                    {attentionItems.map((item) => (
+                      <li key={item} className="flex gap-2">
+                        <AlertTriangle
+                          className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                          aria-hidden="true"
+                        />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : (
+                <Card type="outline" size="md">
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle2
+                      className="h-4 w-4 text-success"
                       aria-hidden="true"
                     />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : (
-            <Card type="outline" size="md">
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2
-                  className="h-4 w-4 text-success"
-                  aria-hidden="true"
-                />
-                No operational issues are visible right now.
-              </p>
-            </Card>
-          )}
-
-          <div className="space-y-3">
-            <SectionHeading>Quick actions</SectionHeading>
-            <div className="flex flex-wrap gap-3">
-              <ButtonLink
-                href={`/networks/${network.id}/settings?tab=proofs#top-up`}
-              >
-                Top up proof balance
-              </ButtonLink>
-              {distributorAddress && (
-                <ButtonLink
-                  href={`/networks/${network.id}/rewards?fund=true`}
-                  variant="outline"
-                >
-                  Fund member rewards
-                </ButtonLink>
+                    No operational issues are visible right now.
+                  </p>
+                </Card>
               )}
-              {contributionRound && (
-                <ButtonLink
-                  href={`/networks/${network.id}/contributions`}
-                  variant="outline"
-                >
-                  View contribution cycle
-                </ButtonLink>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Launching a new contribution cycle will appear here once the
-              parameter bundle can be published to the prover and indexer as one
-              coordinated operation.
-            </p>
-          </div>
-        </section>
-      )}
 
-      {activeTab === 'proofs' && (
-        <section className="space-y-5">
-          <SectionHeading n="01">Proof service</SectionHeading>
-          <div className="flex flex-wrap gap-4">
-            <StatisticCard
-              title="SERVICE MODE"
-              tooltip="Curated networks are subsidized by the hosted operator. Community-funded networks draw from their own proving tank."
-              value={operatorLoading || tankLoading ? '...' : serviceMode}
-            />
-            <StatisticCard
-              title="OPERATOR HEARTBEAT"
-              tooltip="Time since the proof scheduler last completed a decision pass. Unavailable means no safe heartbeat source was configured; it does not prove the operator is down."
-              value={
-                operatorLoading
-                  ? '...'
-                  : !operatorStatus?.available
-                    ? 'Unavailable'
-                    : heartbeatAge === null
-                      ? 'Unknown'
-                      : heartbeatFresh
-                        ? `${duration(heartbeatAge)} ago`
-                        : `Stale · ${duration(heartbeatAge)}`
-              }
-            />
-            <StatisticCard
-              title="CURRENT DECISION"
-              tooltip="The action selected for this network during the latest operator tick."
-              value={
-                operatorLoading
-                  ? '...'
-                  : operatorStatus?.available && !watched
-                    ? 'Not watched'
-                    : actionLabel(watched?.action)
-              }
-            />
-            <StatisticCard
-              title="ESTIMATED RUNWAY"
-              tooltip="Current tank value divided by settled USD spend over the last 30 days. Hidden when there is no spend history or the ETH/USD feed cannot safely value an ETH balance."
-              value={
-                runwaySeconds === undefined
-                  ? 'Not enough data'
-                  : duration(runwaySeconds)
-              }
-            />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard
-              title="Scheduler health"
-              description="A heartbeat is operational telemetry, not a trust assumption: every submitted proof is still verified on-chain."
-            >
-              <SettingRow label="Status">
-                {!operatorStatus?.available ? (
-                  <StatusPill tone="muted">
-                    <Radio className="h-3.5 w-3.5" /> Telemetry unavailable
-                  </StatusPill>
-                ) : !watched ? (
-                  <StatusPill tone="muted">
-                    Not watched by this operator
-                  </StatusPill>
-                ) : heartbeatFresh ? (
-                  <StatusPill tone="good">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Alive
-                  </StatusPill>
-                ) : (
-                  <StatusPill tone="warn">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Heartbeat stale
-                  </StatusPill>
-                )}
-              </SettingRow>
-              <SettingRow label="Latest action">
-                {actionLabel(watched?.action)}
-              </SettingRow>
-              <SettingRow label="Operator chain head">
-                {operatorStatus?.available
-                  ? comma(operatorStatus.headBlock ?? undefined)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Blocks since applied root">
-                {watched?.blocksSinceRoot === null ||
-                watched?.blocksSinceRoot === undefined
-                  ? '—'
-                  : comma(watched.blocksSinceRoot)}
-              </SettingRow>
-              <SettingRow label="Last tick">
-                {operatorStatus?.available
-                  ? timestamp(operatorStatus.tickAt)
-                  : '—'}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard
-              title="Public scheduler policy"
-              description="Only non-sensitive policy is published. RPC and IPFS endpoints, keys, webhooks, local paths, alerts, and journal details remain private."
-            >
-              <SettingRow label="Tick interval">
-                {duration(
-                  operatorStatus?.available
-                    ? (operatorStatus.settings?.tickSeconds ?? undefined)
-                    : undefined
-                )}
-              </SettingRow>
-              <SettingRow label="Minimum subsidy cadence">
-                {operatorStatus?.available
-                  ? `${comma(operatorStatus.settings?.subsidyMinBlocks ?? undefined)} blocks`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Finality confirmations">
-                {operatorStatus?.available
-                  ? comma(operatorStatus.settings?.confirmations ?? undefined)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Pins checkpoint block hash">
-                {operatorStatus?.available
-                  ? yesNo(operatorStatus.settings?.tracksBlockHash)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Basefee ceiling">
-                {operatorStatus?.available &&
-                operatorStatus.settings?.maxBasefeeGwei !== null
-                  ? `${operatorStatus.settings?.maxBasefeeGwei ?? '—'} gwei`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Replacement timeout">
-                {operatorStatus?.available
-                  ? duration(
-                      operatorStatus.settings?.replacementAfterSeconds ??
-                        undefined
-                    )
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Simulates before send">
-                {operatorStatus?.available
-                  ? yesNo(operatorStatus.settings?.simulateBeforeSend)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Proof concurrency">
-                {operatorStatus?.available
-                  ? `${operatorStatus.settings?.maxConcurrent ?? '—'} global / ${operatorStatus.settings?.maxPerInstance ?? '—'} per network`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Proof system">
-                {operatorStatus?.available && operatorStatus.settings
-                  ? `${operatorStatus.settings.proverBackend ?? 'unknown'}${operatorStatus.settings.groth16 ? ' · Groth16' : ''}`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Proof timeout">
-                {operatorStatus?.available
-                  ? duration(
-                      operatorStatus.settings?.proofTimeoutSeconds ?? undefined
-                    )
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Paid scheduling enabled">
-                {operatorStatus?.available
-                  ? yesNo(operatorStatus.settings?.paidEnabled)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Configured paid vault">
-                <ContractAddress
-                  value={
-                    operatorStatus?.available
-                      ? (operatorStatus.settings?.paidVault ?? undefined)
-                      : undefined
-                  }
-                />
-              </SettingRow>
-              <SettingRow label="Fee recipient">
-                <ContractAddress
-                  value={
-                    operatorStatus?.available
-                      ? (operatorStatus.settings?.paidRecipient ?? undefined)
-                      : undefined
-                  }
-                />
-              </SettingRow>
-              <SettingRow label="Per-network loss budget">
-                {operatorStatus?.available &&
-                operatorStatus.settings?.perInstanceUsdPerDay !== null
-                  ? `$${operatorStatus.settings?.perInstanceUsdPerDay ?? '—'} / day`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Global loss budget">
-                {operatorStatus?.available &&
-                operatorStatus.settings?.globalUsdPerDay !== null
-                  ? `$${operatorStatus.settings?.globalUsdPerDay ?? '—'} / day`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Budget window">
-                {operatorStatus?.available
-                  ? duration(
-                      operatorStatus.settings?.budgetWindowSeconds ?? undefined
-                    )
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Publishes score blobs">
-                {operatorStatus?.available
-                  ? yesNo(operatorStatus.settings?.publishesScores)
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Verifies score readback">
-                {operatorStatus?.available
-                  ? yesNo(operatorStatus.settings?.verifiesScoreReadback)
-                  : '—'}
-              </SettingRow>
-            </SettingsCard>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'proofs' && (
-        <section className="space-y-5">
-          <SectionHeading n="02">Proof billing</SectionHeading>
-          {instanceId && vaultAddress && (
-            <TopUpProofBalance
-              vaultAddress={vaultAddress}
-              instanceId={instanceId as Hex}
-              usdcAddress={usdcAddress}
-              tokenSymbol={tokenSymbol}
-              tokenDecimals={tokenDecimals}
-              bindingMismatch={
-                !!accountSnapshot &&
-                accountSnapshot !== zeroAddress &&
-                !sameHex(accountSnapshot, snapshotAddress)
-              }
-              onSuccess={() => {
-                void refetchVaultReads()
-              }}
-            />
-          )}
-          {!instanceId ? (
-            <Card
-              type="accent"
-              size="md"
-              className="text-sm text-muted-foreground"
-            >
-              This legacy network has no factory instance ID, so it cannot have
-              an instance-keyed proving tank. Contract settings remain visible
-              below.
-            </Card>
-          ) : !vaultAddress ? (
-            <Card
-              type="accent"
-              size="md"
-              className="text-sm text-muted-foreground"
-            >
-              This deployment has no ProvingVault configured. The network may be
-              curated or self-proved, but there is no on-chain billing account
-              to inspect.
-            </Card>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <SettingsCard
-                title="Tank balance"
-                description="Live balances are read from the vault. ETH is valued only while the configured 8-decimal price feed is fresh and inside its safety band."
-              >
-                <SettingRow label="ETH balance">
-                  {units(ethBalance, 18, 5)} ETH
-                </SettingRow>
-                <SettingRow label={`${tokenSymbol} balance`}>
-                  {units(usdcBalance, tokenDecimals, 2)} {tokenSymbol}
-                </SettingRow>
-                <SettingRow label="Current tank value">
-                  {usd(balanceUsd)}
-                </SettingRow>
-                <SettingRow label="Lifetime deposited">
-                  {tank
-                    ? `${units(BigInt(tank.totalDepositedEth), 18, 5)} ETH · ${units(BigInt(tank.totalDepositedUsdc), tokenDecimals, 2)} ${tokenSymbol}`
-                    : 'No indexed deposits'}
-                </SettingRow>
-                <SettingRow label="Lifetime spent">
-                  {tank
-                    ? `${units(BigInt(tank.totalSpentEth), 18, 5)} ETH · ${units(BigInt(tank.totalSpentUsdc), tokenDecimals, 2)} ${tokenSymbol}`
-                    : 'No indexed claims'}
-                </SettingRow>
-                <SettingRow label="30-day paid roots">
-                  {tank ? comma(tank.burn.rootsInWindow) : '0'}
-                </SettingRow>
-                <SettingRow label="30-day settled spend">
-                  {burnSpentUsd === undefined ? '—' : usd(burnSpentUsd)}
-                </SettingRow>
-                <SettingRow label="Unpaid roots since last payment">
-                  {tank ? tank.unpaidRootsSinceLastPayment : '0'}
-                </SettingRow>
-              </SettingsCard>
-
-              <SettingsCard
-                title="Current quote and policy"
-                description="The same preflight quote the operator checks before spending time on a proof. USD values use 8 decimal places on-chain."
-              >
-                <SettingRow label="Quote status">
-                  {vaultLoading ? (
-                    <StatusPill tone="muted">Checking…</StatusPill>
-                  ) : quoteEligible ? (
-                    <StatusPill tone="good">Eligible</StatusPill>
-                  ) : (
-                    <StatusPill tone="warn">
-                      {quoteReasons[quoteReason ?? -1] ??
-                        `Reason ${quoteReason ?? 'unknown'}`}
-                    </StatusPill>
-                  )}
-                </SettingRow>
-                <SettingRow label="Proving fee">{usd(quoteFee)}</SettingRow>
-                <SettingRow label="Gas reimbursement quote">
-                  {usd(quoteGas)}
-                </SettingRow>
-                <SettingRow label="Currently payable">
-                  {usd(quotePayable)}
-                </SettingRow>
-                <SettingRow label="Size band">
-                  {sizeBand === undefined
-                    ? '—'
-                    : sizeBand === 0
-                      ? 'Unpriced'
-                      : `Band ${sizeBand}`}
-                </SettingRow>
-                <SettingRow label="Published fee for this band">
-                  {usd(feePerRoot)}
-                </SettingRow>
-                <SettingRow label="Per-root cap">
-                  {usd(policyMaxPerRoot)}
-                </SettingRow>
-                <SettingRow label="Minimum paid interval">
-                  {policyMinInterval === undefined
-                    ? '—'
-                    : `${comma(policyMinInterval)} blocks`}
-                </SettingRow>
-                <SettingRow label="Next payable block">
-                  {policyLastPaidBlock === 0n
-                    ? 'Any eligible block'
-                    : comma(nextPaidBlock)}
-                </SettingRow>
-                <SettingRow label="Last payment">
-                  {tank?.lastPaidAt ? timestamp(tank.lastPaidAt) : 'Never'}
-                </SettingRow>
-              </SettingsCard>
-
-              <SettingsCard
-                title="Price and reimbursement safeguards"
-                description="Global vault controls limit what a malicious hook, stale price, or oversized instance can draw."
-              >
-                <SettingRow label="ETH/USD feed">
-                  <ContractAddress value={feedAddress} />
-                </SettingRow>
-                <SettingRow label="Feed status">
-                  {feedFresh ? (
-                    <StatusPill tone="good">Fresh and in range</StatusPill>
-                  ) : (
-                    <StatusPill tone="warn">
-                      Unavailable, stale, or out of range
-                    </StatusPill>
-                  )}
-                </SettingRow>
-                <SettingRow label="ETH/USD answer">
-                  {feedAnswer === undefined ? '—' : usd(feedAnswer)}
-                </SettingRow>
-                <SettingRow label="Feed updated">
-                  {timestamp(feedUpdatedAt)}
-                </SettingRow>
-                <SettingRow label="Maximum feed age">
-                  {duration(feedMaxStaleness)}
-                </SettingRow>
-                <SettingRow label="Accepted ETH/USD range">
-                  {minEthUsd === undefined || maxEthUsd === undefined
-                    ? '—'
-                    : `${usd(minEthUsd)} – ${usd(maxEthUsd)}`}
-                </SettingRow>
-                <SettingRow label="Nominal quoted gas">
-                  {comma(nominalGasUnits)}
-                </SettingRow>
-                <SettingRow label="Maximum reimbursable gas">
-                  {comma(maxGasUnits)}
-                </SettingRow>
-                <SettingRow label="Maximum priced inputs">
-                  {comma(maxPricedInputs)}
-                </SettingRow>
-              </SettingsCard>
-
-              <SettingsCard
-                title="Account binding and withdrawal"
-                description="The tank binds to one snapshot at first deposit. Withdrawals have notice, while the funds remain available for proofs until execution."
-              >
-                <SettingRow label="Bound snapshot">
-                  <ContractAddress value={accountSnapshot} />
-                </SettingRow>
-                <SettingRow label="Snapshot binding matches">
-                  {accountSnapshot && accountSnapshot !== zeroAddress
-                    ? yesNo(sameHex(accountSnapshot, snapshotAddress))
-                    : 'Not funded'}
-                </SettingRow>
-                <SettingRow label="Bound program">
-                  <Hash value={accountProgram} />
-                </SettingRow>
-                <SettingRow label="Withdrawal notice">
-                  {duration(withdrawalNotice)}
-                </SettingRow>
-                <SettingRow label="Pending ETH withdrawal">
-                  {units(pendingEth, 18, 5)} ETH
-                </SettingRow>
-                <SettingRow label={`Pending ${tokenSymbol} withdrawal`}>
-                  {units(pendingUsdc, tokenDecimals, 2)} {tokenSymbol}
-                </SettingRow>
-                <SettingRow label="Withdrawal ready">
-                  {pendingReadyAt && pendingReadyAt > 0n
-                    ? timestamp(pendingReadyAt)
-                    : 'None'}
-                </SettingRow>
-                <SettingRow label="Vault contract">
-                  <ContractAddress value={vaultAddress} />
-                </SettingRow>
-                <SettingRow label="Instance registry">
-                  <ContractAddress value={registryAddress} />
-                </SettingRow>
-                <SettingRow label={`${tokenSymbol} contract`}>
-                  <ContractAddress value={usdcAddress} />
-                </SettingRow>
-              </SettingsCard>
-            </div>
-          )}
-        </section>
-      )}
-
-      {activeTab === 'scoring' && (
-        <section className="space-y-5">
-          <SectionHeading n="03">Scoring parameters</SectionHeading>
-          <div className="flex flex-wrap items-center gap-3">
-            {snapshotLoading ? (
-              <StatusPill tone="muted">Checking parameter hash…</StatusPill>
-            ) : paramsMatch === true ? (
-              <StatusPill tone="good">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Creation tuple matches
-                live hash
-              </StatusPill>
-            ) : paramsMatch === false ? (
-              <StatusPill tone="warn">
-                <AlertTriangle className="h-3.5 w-3.5" /> Live parameter hash
-                has changed
-              </StatusPill>
-            ) : (
-              <StatusPill tone="muted">
-                Full creation tuple unavailable
-              </StatusPill>
-            )}
-            <span className="text-xs text-muted-foreground">
-              A hash mismatch means the complete live tuple was not published by
-              the factory event; the values below are labeled creation-time
-              rather than presented as current.
-            </span>
-          </div>
-
-          <ParameterCards params={instance?.params} fallback={network} />
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard title="Trusted seeds">
-              {(
-                instance?.params.trustedSeeds ?? network.pagerank.trustedSeeds
-              ).map((seed, index) => (
-                <SettingRow key={seed} label={`Seed ${index + 1}`}>
-                  <Address address={seed} displayMode="truncated" />
-                </SettingRow>
-              ))}
-            </SettingsCard>
-            <SettingsCard title="Lane-2 domains">
-              {instance?.params.envelope0DomainSeparators.length ? (
-                instance.params.envelope0DomainSeparators.map(
-                  (domain, index) => (
-                    <SettingRow key={domain} label={`Domain ${index + 1}`}>
-                      <Hash value={domain} />
-                    </SettingRow>
-                  )
-                )
-              ) : (
-                <SettingRow label="Status">Disabled</SettingRow>
-              )}
-            </SettingsCard>
-          </div>
-
-          <details className="border border-border bg-surface px-5 py-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              Show exact parameter tuple
-            </summary>
-            <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-muted-foreground">
-              {instance?.params
-                ? JSON.stringify(instance.params, null, 2)
-                : 'The complete factory parameter tuple is unavailable for this network.'}
-            </pre>
-          </details>
-        </section>
-      )}
-
-      {activeTab === 'advanced' && (
-        <section className="space-y-5">
-          <SectionHeading n="04">Proof and input contracts</SectionHeading>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard title="Snapshot lifecycle">
-              <SettingRow label="Live parameter hash">
-                <Hash value={liveParamsHash} />
-              </SettingRow>
-              <SettingRow label="Creation parameter hash">
-                <Hash value={creationHash} />
-              </SettingRow>
-              <SettingRow label="Epoch length">
-                {epochLength === undefined
-                  ? '—'
-                  : `${comma(epochLength)} blocks`}
-              </SettingRow>
-              <SettingRow label="Last trigger block">
-                {comma(lastTriggerBlock)}
-              </SettingRow>
-              <SettingRow label="Next trigger boundary">
-                {comma(nextTriggerBlock)}
-              </SettingRow>
-              <SettingRow label="Last applied checkpoint">
-                {hasAppliedCheckpoint ? comma(lastAppliedCheckpoint) : 'None'}
-              </SettingRow>
-              <SettingRow label="Merkle state count">
-                {comma(stateCount)}
-              </SettingRow>
-              <SettingRow label="Latest root">
-                <Hash
-                  value={
-                    asString(tupleValue(latestState, 'root', 2)) ?? merkleRoot
-                  }
-                />
-              </SettingRow>
-              <SettingRow label="Latest root timestamp">
-                {timestamp(
-                  asBigInt(tupleValue(latestState, 'timestamp', 1)) ??
-                    rootTimestamp
-                )}
-              </SettingRow>
-              <SettingRow label="Latest score CID">
-                {asString(tupleValue(latestState, 'ipfsHashCid', 4)) ||
-                  ipfsHashCid ||
-                  '—'}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Attestation accumulator">
-              <SettingRow label="Live leaf count">
-                {comma(leafCount)}
-              </SettingRow>
-              <SettingRow label="Checkpoint count">
-                {comma(checkpointCount)}
-              </SettingRow>
-              <SettingRow label="Live accumulator">
-                <Hash value={liveAcc} />
-              </SettingRow>
-              <SettingRow label="Bound schema">
-                <Hash value={boundSchema} />
-              </SettingRow>
-              <SettingRow label="Snapshot binding">
-                <ContractAddress value={resolverSnapshot} />
-              </SettingRow>
-              <SettingRow label="Binding matches">
-                {resolverSnapshot
-                  ? yesNo(sameHex(resolverSnapshot, snapshotAddress))
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Resolver version">
-                {resolverVersion ?? '—'}
-              </SettingRow>
-              <SettingRow label="Original binder">
-                <ContractAddress value={resolverBinder} />
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Lane-2 anchor input">
-              <SettingRow label="Anchor registry">
-                <ContractAddress value={anchorRegistry} />
-              </SettingRow>
-              <SettingRow label="Anchor count">{comma(anchorCount)}</SettingRow>
-              <SettingRow label="Anchor accumulator">
-                <Hash value={anchorAcc} />
-              </SettingRow>
-              <SettingRow label="Combined proof inputs">
-                {comma(inputCount)}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Verifier and hooks">
-              <SettingRow label="ZK verifier">
-                <ContractAddress value={zkVerifier} />
-              </SettingRow>
-              <SettingRow label="Snapshot accumulator">
-                <ContractAddress value={liveAccumulator} />
-              </SettingRow>
-              <SettingRow label="Configured resolver">
-                <ContractAddress value={resolverAddress} />
-              </SettingRow>
-              <SettingRow label="Hook count">{hooks.length}</SettingRow>
-              {hooks.map((hook, index) => (
-                <SettingRow key={hook} label={`Hook ${index + 1}`}>
-                  <ContractAddress value={hook} />
-                </SettingRow>
-              ))}
-            </SettingsCard>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'advanced' && (
-        <section className="space-y-5">
-          <SectionHeading n="05">Contracts and authority</SectionHeading>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard title="Core contracts">
-              <SettingRow label="Merkle snapshot">
-                <ContractAddress value={snapshotAddress} />
-              </SettingRow>
-              <SettingRow label="EAS resolver / accumulator">
-                <ContractAddress value={resolverAddress} />
-              </SettingRow>
-              <SettingRow label="EAS">
-                <ContractAddress value={CONTRACT_CONFIG.EAS as string} />
-              </SettingRow>
-              <SettingRow label="Schema registry">
-                <ContractAddress
-                  value={CONTRACT_CONFIG.SchemaRegistry as string}
-                />
-              </SettingRow>
-              <SettingRow label="Schema registrar">
-                <ContractAddress
-                  value={CONTRACT_CONFIG.SchemaRegistrar as string}
-                />
-              </SettingRow>
-              <SettingRow label="Factory">
-                <ContractAddress value={factoryAddress} />
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Instance provenance">
-              <SettingRow label="Instance ID">
-                <Hash value={instanceId || undefined} />
-              </SettingRow>
-              <SettingRow label="Chain ID">
-                {instance?.chainId ?? '—'}
-              </SettingRow>
-              <SettingRow label="Creator">
-                {instance?.creator || network.admin ? (
-                  <Address
-                    address={(instance?.creator ?? network.admin)!}
-                    displayMode="truncated"
-                  />
-                ) : (
-                  '—'
-                )}
-              </SettingRow>
-              <SettingRow label="Initial admin">
-                {network.admin ? (
-                  <Address address={network.admin} displayMode="truncated" />
-                ) : (
-                  '—'
-                )}
-              </SettingRow>
-              <SettingRow label="Created block">
-                {comma(instance?.createdBlock)}
-              </SettingRow>
-              <SettingRow label="Created at">
-                {timestamp(
-                  instance?.createdTimestamp ?? network.createdTimestamp
-                )}
-              </SettingRow>
-              <SettingRow label="Creation transaction">
-                <Hash value={instance?.createdTxHash} />
-              </SettingRow>
-              <SettingRow label="Metadata URI">
-                {instance?.metadataURI || 'Not published'}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Vouch schema">
-              {network.schemas.map((schema) => (
-                <div key={schema.uid}>
-                  <SettingRow label="Schema UID">
-                    <Hash value={schema.uid} />
-                  </SettingRow>
-                  <SettingRow label="Schema">{schema.schema}</SettingRow>
-                  <SettingRow label="Resolver">
-                    <ContractAddress value={schema.resolver} />
-                  </SettingRow>
-                  <SettingRow label="Revocable">
-                    {yesNo(schema.revocable)}
-                  </SettingRow>
-                  {schema.fields.map((field) => (
-                    <SettingRow
-                      key={`${field.type}-${field.name}`}
-                      label={field.name}
+              <div className="space-y-3">
+                <SectionHeading>Quick actions</SectionHeading>
+                <div className="flex flex-wrap gap-3">
+                  <ButtonLink
+                    href={`/networks/${network.id}/settings?tab=proofs#top-up`}
+                  >
+                    Top up proof balance
+                  </ButtonLink>
+                  {distributorAddress && (
+                    <ButtonLink
+                      href={`/networks/${network.id}/rewards?fund=true`}
+                      variant="outline"
                     >
-                      <code className="text-xs">{field.type}</code>
+                      Fund member rewards
+                    </ButtonLink>
+                  )}
+                  {contributionRound && (
+                    <ButtonLink
+                      href={`/networks/${network.id}/contributions`}
+                      variant="outline"
+                    >
+                      View contribution cycle
+                    </ButtonLink>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Launching a new contribution cycle will appear here once the
+                  parameter bundle can be published to the prover and indexer as
+                  one coordinated operation.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'proofs' && (
+            <section className="space-y-5">
+              <SectionHeading n="01">Proof service</SectionHeading>
+              <div className="grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4">
+                <SettingsMetric
+                  title="SERVICE MODE"
+                  tooltip="Curated networks are subsidized by the hosted operator. Community-funded networks draw from their own proving tank."
+                  value={operatorLoading || tankLoading ? '...' : serviceMode}
+                />
+                <SettingsMetric
+                  title="OPERATOR HEARTBEAT"
+                  tooltip="Time since the proof scheduler last completed a decision pass. Unavailable means no safe heartbeat source was configured; it does not prove the operator is down."
+                  value={
+                    operatorLoading
+                      ? '...'
+                      : !operatorStatus?.available
+                        ? 'Unavailable'
+                        : heartbeatAge === null
+                          ? 'Unknown'
+                          : heartbeatFresh
+                            ? `${duration(heartbeatAge)} ago`
+                            : `Stale · ${duration(heartbeatAge)}`
+                  }
+                />
+                <SettingsMetric
+                  title="CURRENT DECISION"
+                  tooltip="The action selected for this network during the latest operator tick."
+                  value={
+                    operatorLoading
+                      ? '...'
+                      : operatorStatus?.available && !watched
+                        ? 'Not watched'
+                        : actionLabel(watched?.action)
+                  }
+                />
+                <SettingsMetric
+                  title="ESTIMATED RUNWAY"
+                  tooltip="Current tank value divided by settled USD spend over the last 30 days. Hidden when there is no spend history or the ETH/USD feed cannot safely value an ETH balance."
+                  value={
+                    runwaySeconds === undefined
+                      ? 'Not enough data'
+                      : duration(runwaySeconds)
+                  }
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard
+                  title="Scheduler health"
+                  description="A heartbeat is operational telemetry, not a trust assumption: every submitted proof is still verified on-chain."
+                >
+                  <SettingRow label="Status">
+                    {!operatorStatus?.available ? (
+                      <StatusPill tone="muted">
+                        <Radio className="h-3.5 w-3.5" /> Telemetry unavailable
+                      </StatusPill>
+                    ) : !watched ? (
+                      <StatusPill tone="muted">
+                        Not watched by this operator
+                      </StatusPill>
+                    ) : heartbeatFresh ? (
+                      <StatusPill tone="good">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Alive
+                      </StatusPill>
+                    ) : (
+                      <StatusPill tone="warn">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Heartbeat
+                        stale
+                      </StatusPill>
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Latest action">
+                    {actionLabel(watched?.action)}
+                  </SettingRow>
+                  <SettingRow label="Operator chain head">
+                    {operatorStatus?.available
+                      ? comma(operatorStatus.headBlock ?? undefined)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Blocks since applied root">
+                    {watched?.blocksSinceRoot === null ||
+                    watched?.blocksSinceRoot === undefined
+                      ? '—'
+                      : comma(watched.blocksSinceRoot)}
+                  </SettingRow>
+                  <SettingRow label="Last tick">
+                    {operatorStatus?.available
+                      ? timestamp(operatorStatus.tickAt)
+                      : '—'}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Public scheduler policy"
+                  description="Only non-sensitive policy is published. RPC and IPFS endpoints, keys, webhooks, local paths, alerts, and journal details remain private."
+                >
+                  <SettingRow label="Tick interval">
+                    {duration(
+                      operatorStatus?.available
+                        ? (operatorStatus.settings?.tickSeconds ?? undefined)
+                        : undefined
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Minimum subsidy cadence">
+                    {operatorStatus?.available
+                      ? `${comma(operatorStatus.settings?.subsidyMinBlocks ?? undefined)} blocks`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Finality confirmations">
+                    {operatorStatus?.available
+                      ? comma(
+                          operatorStatus.settings?.confirmations ?? undefined
+                        )
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Pins checkpoint block hash">
+                    {operatorStatus?.available
+                      ? yesNo(operatorStatus.settings?.tracksBlockHash)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Basefee ceiling">
+                    {operatorStatus?.available &&
+                    operatorStatus.settings?.maxBasefeeGwei !== null
+                      ? `${operatorStatus.settings?.maxBasefeeGwei ?? '—'} gwei`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Replacement timeout">
+                    {operatorStatus?.available
+                      ? duration(
+                          operatorStatus.settings?.replacementAfterSeconds ??
+                            undefined
+                        )
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Simulates before send">
+                    {operatorStatus?.available
+                      ? yesNo(operatorStatus.settings?.simulateBeforeSend)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Proof concurrency">
+                    {operatorStatus?.available
+                      ? `${operatorStatus.settings?.maxConcurrent ?? '—'} global / ${operatorStatus.settings?.maxPerInstance ?? '—'} per network`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Proof system">
+                    {operatorStatus?.available && operatorStatus.settings
+                      ? `${operatorStatus.settings.proverBackend ?? 'unknown'}${operatorStatus.settings.groth16 ? ' · Groth16' : ''}`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Proof timeout">
+                    {operatorStatus?.available
+                      ? duration(
+                          operatorStatus.settings?.proofTimeoutSeconds ??
+                            undefined
+                        )
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Paid scheduling enabled">
+                    {operatorStatus?.available
+                      ? yesNo(operatorStatus.settings?.paidEnabled)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Configured paid vault">
+                    <ContractAddress
+                      value={
+                        operatorStatus?.available
+                          ? (operatorStatus.settings?.paidVault ?? undefined)
+                          : undefined
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow label="Fee recipient">
+                    <ContractAddress
+                      value={
+                        operatorStatus?.available
+                          ? (operatorStatus.settings?.paidRecipient ??
+                            undefined)
+                          : undefined
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow label="Per-network loss budget">
+                    {operatorStatus?.available &&
+                    operatorStatus.settings?.perInstanceUsdPerDay !== null
+                      ? `$${operatorStatus.settings?.perInstanceUsdPerDay ?? '—'} / day`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Global loss budget">
+                    {operatorStatus?.available &&
+                    operatorStatus.settings?.globalUsdPerDay !== null
+                      ? `$${operatorStatus.settings?.globalUsdPerDay ?? '—'} / day`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Budget window">
+                    {operatorStatus?.available
+                      ? duration(
+                          operatorStatus.settings?.budgetWindowSeconds ??
+                            undefined
+                        )
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Publishes score blobs">
+                    {operatorStatus?.available
+                      ? yesNo(operatorStatus.settings?.publishesScores)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Verifies score readback">
+                    {operatorStatus?.available
+                      ? yesNo(operatorStatus.settings?.verifiesScoreReadback)
+                      : '—'}
+                  </SettingRow>
+                </SettingsCard>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'proofs' && (
+            <section className="space-y-5">
+              <SectionHeading n="02">Proof billing</SectionHeading>
+              {instanceId && vaultAddress && (
+                <TopUpProofBalance
+                  vaultAddress={vaultAddress}
+                  instanceId={instanceId as Hex}
+                  usdcAddress={usdcAddress}
+                  tokenSymbol={tokenSymbol}
+                  tokenDecimals={tokenDecimals}
+                  bindingMismatch={
+                    !!accountSnapshot &&
+                    accountSnapshot !== zeroAddress &&
+                    !sameHex(accountSnapshot, snapshotAddress)
+                  }
+                  onSuccess={() => {
+                    void refetchVaultReads()
+                  }}
+                />
+              )}
+              {!instanceId ? (
+                <Card
+                  type="accent"
+                  size="md"
+                  className="text-sm text-muted-foreground"
+                >
+                  This legacy network has no factory instance ID, so it cannot
+                  have an instance-keyed proving tank. Contract settings remain
+                  visible below.
+                </Card>
+              ) : !vaultAddress ? (
+                <Card
+                  type="accent"
+                  size="md"
+                  className="text-sm text-muted-foreground"
+                >
+                  This deployment has no ProvingVault configured. The network
+                  may be curated or self-proved, but there is no on-chain
+                  billing account to inspect.
+                </Card>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SettingsCard
+                    title="Tank balance"
+                    description="Live balances are read from the vault. ETH is valued only while the configured 8-decimal price feed is fresh and inside its safety band."
+                  >
+                    <SettingRow label="ETH balance">
+                      {units(ethBalance, 18, 5)} ETH
+                    </SettingRow>
+                    <SettingRow label={`${tokenSymbol} balance`}>
+                      {units(usdcBalance, tokenDecimals, 2)} {tokenSymbol}
+                    </SettingRow>
+                    <SettingRow label="Current tank value">
+                      {usd(balanceUsd)}
+                    </SettingRow>
+                    <SettingRow label="Lifetime deposited">
+                      {tank
+                        ? `${units(BigInt(tank.totalDepositedEth), 18, 5)} ETH · ${units(BigInt(tank.totalDepositedUsdc), tokenDecimals, 2)} ${tokenSymbol}`
+                        : 'No indexed deposits'}
+                    </SettingRow>
+                    <SettingRow label="Lifetime spent">
+                      {tank
+                        ? `${units(BigInt(tank.totalSpentEth), 18, 5)} ETH · ${units(BigInt(tank.totalSpentUsdc), tokenDecimals, 2)} ${tokenSymbol}`
+                        : 'No indexed claims'}
+                    </SettingRow>
+                    <SettingRow label="30-day paid roots">
+                      {tank ? comma(tank.burn.rootsInWindow) : '0'}
+                    </SettingRow>
+                    <SettingRow label="30-day settled spend">
+                      {burnSpentUsd === undefined ? '—' : usd(burnSpentUsd)}
+                    </SettingRow>
+                    <SettingRow label="Unpaid roots since last payment">
+                      {tank ? tank.unpaidRootsSinceLastPayment : '0'}
+                    </SettingRow>
+                  </SettingsCard>
+
+                  <SettingsCard
+                    title="Current quote and policy"
+                    description="The same preflight quote the operator checks before spending time on a proof. USD values use 8 decimal places on-chain."
+                  >
+                    <SettingRow label="Quote status">
+                      {vaultLoading ? (
+                        <StatusPill tone="muted">Checking…</StatusPill>
+                      ) : quoteEligible ? (
+                        <StatusPill tone="good">Eligible</StatusPill>
+                      ) : (
+                        <StatusPill tone="warn">
+                          {quoteReasons[quoteReason ?? -1] ??
+                            `Reason ${quoteReason ?? 'unknown'}`}
+                        </StatusPill>
+                      )}
+                    </SettingRow>
+                    <SettingRow label="Proving fee">{usd(quoteFee)}</SettingRow>
+                    <SettingRow label="Gas reimbursement quote">
+                      {usd(quoteGas)}
+                    </SettingRow>
+                    <SettingRow label="Currently payable">
+                      {usd(quotePayable)}
+                    </SettingRow>
+                    <SettingRow label="Size band">
+                      {sizeBand === undefined
+                        ? '—'
+                        : sizeBand === 0
+                          ? 'Unpriced'
+                          : `Band ${sizeBand}`}
+                    </SettingRow>
+                    <SettingRow label="Published fee for this band">
+                      {usd(feePerRoot)}
+                    </SettingRow>
+                    <SettingRow label="Per-root cap">
+                      {usd(policyMaxPerRoot)}
+                    </SettingRow>
+                    <SettingRow label="Minimum paid interval">
+                      {policyMinInterval === undefined
+                        ? '—'
+                        : `${comma(policyMinInterval)} blocks`}
+                    </SettingRow>
+                    <SettingRow label="Next payable block">
+                      {policyLastPaidBlock === 0n
+                        ? 'Any eligible block'
+                        : comma(nextPaidBlock)}
+                    </SettingRow>
+                    <SettingRow label="Last payment">
+                      {tank?.lastPaidAt ? timestamp(tank.lastPaidAt) : 'Never'}
+                    </SettingRow>
+                  </SettingsCard>
+
+                  <SettingsCard
+                    title="Price and reimbursement safeguards"
+                    description="Global vault controls limit what a malicious hook, stale price, or oversized instance can draw."
+                  >
+                    <SettingRow label="ETH/USD feed">
+                      <ContractAddress value={feedAddress} />
+                    </SettingRow>
+                    <SettingRow label="Feed status">
+                      {feedFresh ? (
+                        <StatusPill tone="good">Fresh and in range</StatusPill>
+                      ) : (
+                        <StatusPill tone="warn">
+                          Unavailable, stale, or out of range
+                        </StatusPill>
+                      )}
+                    </SettingRow>
+                    <SettingRow label="ETH/USD answer">
+                      {feedAnswer === undefined ? '—' : usd(feedAnswer)}
+                    </SettingRow>
+                    <SettingRow label="Feed updated">
+                      {timestamp(feedUpdatedAt)}
+                    </SettingRow>
+                    <SettingRow label="Maximum feed age">
+                      {duration(feedMaxStaleness)}
+                    </SettingRow>
+                    <SettingRow label="Accepted ETH/USD range">
+                      {minEthUsd === undefined || maxEthUsd === undefined
+                        ? '—'
+                        : `${usd(minEthUsd)} – ${usd(maxEthUsd)}`}
+                    </SettingRow>
+                    <SettingRow label="Nominal quoted gas">
+                      {comma(nominalGasUnits)}
+                    </SettingRow>
+                    <SettingRow label="Maximum reimbursable gas">
+                      {comma(maxGasUnits)}
+                    </SettingRow>
+                    <SettingRow label="Maximum priced inputs">
+                      {comma(maxPricedInputs)}
+                    </SettingRow>
+                  </SettingsCard>
+
+                  <SettingsCard
+                    title="Account binding and withdrawal"
+                    description="The tank binds to one snapshot at first deposit. Withdrawals have notice, while the funds remain available for proofs until execution."
+                  >
+                    <SettingRow label="Bound snapshot">
+                      <ContractAddress value={accountSnapshot} />
+                    </SettingRow>
+                    <SettingRow label="Snapshot binding matches">
+                      {accountSnapshot && accountSnapshot !== zeroAddress
+                        ? yesNo(sameHex(accountSnapshot, snapshotAddress))
+                        : 'Not funded'}
+                    </SettingRow>
+                    <SettingRow label="Bound program">
+                      <Hash value={accountProgram} />
+                    </SettingRow>
+                    <SettingRow label="Withdrawal notice">
+                      {duration(withdrawalNotice)}
+                    </SettingRow>
+                    <SettingRow label="Pending ETH withdrawal">
+                      {units(pendingEth, 18, 5)} ETH
+                    </SettingRow>
+                    <SettingRow label={`Pending ${tokenSymbol} withdrawal`}>
+                      {units(pendingUsdc, tokenDecimals, 2)} {tokenSymbol}
+                    </SettingRow>
+                    <SettingRow label="Withdrawal ready">
+                      {pendingReadyAt && pendingReadyAt > 0n
+                        ? timestamp(pendingReadyAt)
+                        : 'None'}
+                    </SettingRow>
+                    <SettingRow label="Vault contract">
+                      <ContractAddress value={vaultAddress} />
+                    </SettingRow>
+                    <SettingRow label="Instance registry">
+                      <ContractAddress value={registryAddress} />
+                    </SettingRow>
+                    <SettingRow label={`${tokenSymbol} contract`}>
+                      <ContractAddress value={usdcAddress} />
+                    </SettingRow>
+                  </SettingsCard>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'scoring' && (
+            <section className="space-y-5">
+              <SectionHeading n="03">Scoring parameters</SectionHeading>
+              <div className="flex flex-wrap items-center gap-3">
+                {snapshotLoading ? (
+                  <StatusPill tone="muted">Checking parameter hash…</StatusPill>
+                ) : paramsMatch === true ? (
+                  <StatusPill tone="good">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Creation tuple
+                    matches live hash
+                  </StatusPill>
+                ) : paramsMatch === false ? (
+                  <StatusPill tone="warn">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Live parameter
+                    hash has changed
+                  </StatusPill>
+                ) : (
+                  <StatusPill tone="muted">
+                    Full creation tuple unavailable
+                  </StatusPill>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  A hash mismatch means the complete live tuple was not
+                  published by the factory event; the values below are labeled
+                  creation-time rather than presented as current.
+                </span>
+              </div>
+
+              <ParameterCards params={instance?.params} fallback={network} />
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard title="Trusted seeds">
+                  {(
+                    instance?.params.trustedSeeds ??
+                    network.pagerank.trustedSeeds
+                  ).map((seed, index) => (
+                    <SettingRow key={seed} label={`Seed ${index + 1}`}>
+                      <Address address={seed} displayMode="auto" />
                     </SettingRow>
                   ))}
-                </div>
-              ))}
-            </SettingsCard>
+                </SettingsCard>
+                <SettingsCard title="Lane-2 domains">
+                  {instance?.params.envelope0DomainSeparators.length ? (
+                    instance.params.envelope0DomainSeparators.map(
+                      (domain, index) => (
+                        <SettingRow key={domain} label={`Domain ${index + 1}`}>
+                          <Hash value={domain} />
+                        </SettingRow>
+                      )
+                    )
+                  ) : (
+                    <SettingRow label="Status">Disabled</SettingRow>
+                  )}
+                </SettingsCard>
+              </div>
 
-            <SettingsCard title="Safe and signer synchronization">
-              <SettingRow label="Safe proxy">
-                <ContractAddress value={network.contracts.safe?.proxy} />
-              </SettingRow>
-              <SettingRow label="Safe singleton">
-                <ContractAddress value={network.contracts.safe?.singleton} />
-              </SettingRow>
-              <SettingRow label="Safe factory">
-                <ContractAddress value={network.contracts.safe?.factory} />
-              </SettingRow>
-              <SettingRow label="Signer-sync manager">
-                <ContractAddress
-                  value={network.contracts.safe?.signerSyncManager}
-                />
-              </SettingRow>
-              <SettingRow label="Signer sync enabled">
-                {yesNo(network.safeZodiacSignerSync.enabled)}
-              </SettingRow>
-              <SettingRow label="Top signers">
-                {network.safeZodiacSignerSync.topNSigners}
-              </SettingRow>
-              <SettingRow label="Safe threshold">
-                {gnosisSafe
-                  ? `${gnosisSafe.threshold} of ${gnosisSafe.owners.length}`
-                  : '—'}
-              </SettingRow>
-            </SettingsCard>
+              <details className="border border-border bg-surface px-5 py-4">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Show exact parameter tuple
+                </summary>
+                <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-muted-foreground">
+                  {instance?.params
+                    ? JSON.stringify(instance.params, null, 2)
+                    : 'The complete factory parameter tuple is unavailable for this network.'}
+                </pre>
+              </details>
+            </section>
+          )}
 
-            {distributorAddress && (
-              <SettingsCard title="Fund distributor">
-                <SettingRow label="Contract">
-                  <ContractAddress value={distributorAddress} />
-                </SettingRow>
-                <SettingRow label="Owner">
-                  <ContractAddress
-                    value={asString(readResult(distributorReads, 0))}
-                  />
-                </SettingRow>
-                <SettingRow label="Pending owner">
-                  <ContractAddress
-                    value={asString(readResult(distributorReads, 1))}
-                  />
-                </SettingRow>
-                <SettingRow label="Fee recipient">
-                  <ContractAddress
-                    value={asString(readResult(distributorReads, 2))}
-                  />
-                </SettingRow>
-                <SettingRow label="Fee percentage">
-                  {(() => {
-                    const value = asBigInt(readResult(distributorReads, 3))
-                    return value === undefined
-                      ? '—'
-                      : `${units(value * 100n, 18, 4)}%`
-                  })()}
-                </SettingRow>
-                <SettingRow label="Allowlist enabled">
-                  {yesNo(asBoolean(readResult(distributorReads, 4)))}
-                </SettingRow>
-                <SettingRow label="Paused">
-                  {yesNo(asBoolean(readResult(distributorReads, 5)))}
-                </SettingRow>
-                <SettingRow label="Snapshot binding">
-                  <ContractAddress
-                    value={asString(readResult(distributorReads, 6))}
-                  />
-                </SettingRow>
-                <SettingRow label="Allowlisted distributors">
-                  {comma(asBigInt(readResult(distributorReads, 7)))}
-                </SettingRow>
-                <SettingRow label="Default token">
-                  <ContractAddress
-                    value={instance?.distributorToken ?? undefined}
-                  />
-                </SettingRow>
-              </SettingsCard>
-            )}
-
-            {governanceAddress && (
-              <SettingsCard title="Governance module">
-                <SettingRow label="Contract">
-                  <ContractAddress value={governanceAddress} />
-                </SettingRow>
-                <SettingRow label="Owner">
-                  <ContractAddress
-                    value={asString(readResult(governanceReads, 0))}
-                  />
-                </SettingRow>
-                <SettingRow label="Avatar (Safe)">
-                  <ContractAddress
-                    value={asString(readResult(governanceReads, 1))}
-                  />
-                </SettingRow>
-                <SettingRow label="Execution target">
-                  <ContractAddress
-                    value={asString(readResult(governanceReads, 2))}
-                  />
-                </SettingRow>
-                <SettingRow label="Snapshot binding">
-                  <ContractAddress
-                    value={asString(readResult(governanceReads, 3))}
-                  />
-                </SettingRow>
-                <SettingRow label="Voting delay">
-                  {comma(asBigInt(readResult(governanceReads, 4)))} blocks
-                </SettingRow>
-                <SettingRow label="Voting period">
-                  {comma(asBigInt(readResult(governanceReads, 5)))} blocks
-                </SettingRow>
-                <SettingRow label="Quorum">
-                  {(() => {
-                    const value = asBigInt(readResult(governanceReads, 6))
-                    return value === undefined
-                      ? '—'
-                      : `${units(value * 100n, 18, 2)}%`
-                  })()}
-                </SettingRow>
-              </SettingsCard>
-            )}
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'features' && (
-        <section className="space-y-5" aria-labelledby="network-features">
-          <div>
-            <SectionHeading n="01">
-              <span id="network-features">Network features</span>
-            </SectionHeading>
-            <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Optional programs connected to this trust graph. Member-facing
-              activity stays on each feature&apos;s main page; configuration and
-              lifecycle state live here.
-            </p>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard
-              title="Contribution cycles"
-              description="Community-scored work whose ratings are weighted by this network."
-            >
-              <SettingRow label="Status">
-                {contributionRound ? 'Configured' : 'Not configured'}
-              </SettingRow>
-              <SettingRow label="Active round">
-                {contributionRound?.name ?? 'None'}
-              </SettingRow>
-              <SettingRow label="Round snapshot">
-                <ContractAddress
-                  value={contributionRound?.contracts.merkleSnapshot}
-                />
-              </SettingRow>
-              <SettingRow label="Management">
-                {connectedAddress
-                  ? connectedIsOperational
-                    ? 'Operational access connected'
-                    : 'Requires operational role'
-                  : 'Connect to check access'}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard
-              title="Member rewards"
-              description="Pools allocated to members using a fixed proven trust-score snapshot."
-            >
-              <SettingRow label="Status">
-                {!distributorAddress
-                  ? 'Not configured'
-                  : distributorPaused
-                    ? 'Paused'
-                    : 'Active'}
-              </SettingRow>
-              <SettingRow label="Who can fund">
-                {distributorAddress
-                  ? fundingRestricted
-                    ? 'Allowlisted accounts'
-                    : 'Anyone'
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Distribution fee">
-                {distributorFee === undefined
-                  ? '—'
-                  : `${units(distributorFee * 100n, 18, 4)}%`}
-              </SettingRow>
-              <SettingRow label="Distributor">
-                <ContractAddress value={distributorAddress} />
-              </SettingRow>
-              {distributorAddress && (
-                <div className="pt-4">
-                  <ButtonLink
-                    href={`/networks/${network.id}/rewards?fund=true`}
-                    size="sm"
-                  >
-                    Fund rewards
-                  </ButtonLink>
-                </div>
-              )}
-            </SettingsCard>
-
-            <SettingsCard
-              title="Governance"
-              description="Trust-weighted proposals executed through the configured Safe module."
-            >
-              <SettingRow label="Status">
-                {governanceAddress ? 'Configured' : 'Not configured'}
-              </SettingRow>
-              <SettingRow label="Voting delay">
-                {governanceAddress
-                  ? `${comma(asBigInt(readResult(governanceReads, 4)))} blocks`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Voting period">
-                {governanceAddress
-                  ? `${comma(asBigInt(readResult(governanceReads, 5)))} blocks`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Quorum">
-                {(() => {
-                  const value = asBigInt(readResult(governanceReads, 6))
-                  return value === undefined
-                    ? '—'
-                    : `${units(value * 100n, 18, 2)}%`
-                })()}
-              </SettingRow>
-              {governanceAddress && (
-                <div className="pt-4">
-                  <ButtonLink
-                    href={`/networks/${network.id}/governance`}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Open governance
-                  </ButtonLink>
-                </div>
-              )}
-            </SettingsCard>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'access' && (
-        <section className="space-y-5" aria-labelledby="network-access">
-          <div>
-            <SectionHeading n="01">
-              <span id="network-access">Access and authority</span>
-            </SectionHeading>
-            <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Who can operate, reconfigure, or execute actions for this network.
-              Contract addresses and raw deployment data are in Advanced.
-            </p>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SettingsCard
-              title="Your access"
-              description="Roles held directly by the connected wallet on the network snapshot."
-            >
-              <SettingRow label="Connected wallet">
-                {connectedAddress ? (
-                  <Address address={connectedAddress} displayMode="truncated" />
-                ) : (
-                  'Not connected'
-                )}
-              </SettingRow>
-              <SettingRow label="Operational role">
-                {connectedAddress
-                  ? yesNo(connectedIsOperational)
-                  : 'Connect to check'}
-              </SettingRow>
-              <SettingRow label="Constitutional role">
-                {connectedAddress
-                  ? yesNo(connectedIsConstitutional)
-                  : 'Connect to check'}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard
-              title="Safe and signer synchronization"
-              description="The collective execution account and the score-based signer policy attached to it."
-            >
-              <SettingRow label="Safe proxy">
-                <ContractAddress value={network.contracts.safe?.proxy} />
-              </SettingRow>
-              <SettingRow label="Safe threshold">
-                {gnosisSafe
-                  ? `${gnosisSafe.threshold} of ${gnosisSafe.owners.length}`
-                  : '—'}
-              </SettingRow>
-              <SettingRow label="Signer sync enabled">
-                {yesNo(network.safeZodiacSignerSync.enabled)}
-              </SettingRow>
-              <SettingRow label="Top signers">
-                {network.safeZodiacSignerSync.topNSigners}
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Feature ownership">
-              <SettingRow label="Reward distributor owner">
-                <ContractAddress
-                  value={asString(readResult(distributorReads, 0))}
-                />
-              </SettingRow>
-              <SettingRow label="Pending distributor owner">
-                <ContractAddress
-                  value={asString(readResult(distributorReads, 1))}
-                />
-              </SettingRow>
-              <SettingRow label="Governance module owner">
-                <ContractAddress
-                  value={asString(readResult(governanceReads, 0))}
-                />
-              </SettingRow>
-              <SettingRow label="Governance execution target">
-                <ContractAddress
-                  value={asString(readResult(governanceReads, 2))}
-                />
-              </SettingRow>
-            </SettingsCard>
-
-            <SettingsCard title="Instance authority">
-              <SettingRow label="Creator">
-                {instance?.creator || network.admin ? (
-                  <Address
-                    address={(instance?.creator ?? network.admin)!}
-                    displayMode="truncated"
-                  />
-                ) : (
-                  '—'
-                )}
-              </SettingRow>
-              <SettingRow label="Initial administrator">
-                {network.admin ? (
-                  <Address address={network.admin} displayMode="truncated" />
-                ) : (
-                  '—'
-                )}
-              </SettingRow>
-              <SettingRow label="Snapshot">
-                <ContractAddress value={snapshotAddress} />
-              </SettingRow>
-            </SettingsCard>
-          </div>
-        </section>
-      )}
-
-      {activeTab === 'proofs' &&
-        tank &&
-        ((tank.recentDeposits?.length ?? 0) > 0 ||
-          (tank.recentClaims?.length ?? 0) > 0) && (
-          <section className="space-y-5">
-            <SectionHeading n="06">Recent billing activity</SectionHeading>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <SettingsCard title="Deposits">
-                {(tank.recentDeposits ?? []).map((deposit) => (
-                  <SettingRow
-                    key={deposit.id}
-                    label={`${timestamp(deposit.timestamp)} · block ${deposit.blockNumber}`}
-                  >
-                    <div className="space-y-1">
-                      <div>
-                        {deposit.token.toLowerCase() === zeroAddress
-                          ? `${units(BigInt(deposit.amount), 18, 5)} ETH`
-                          : `${units(BigInt(deposit.amount), tokenDecimals, 2)} ${tokenSymbol}`}
-                      </div>
-                      <Address address={deposit.from} displayMode="truncated" />
-                    </div>
+          {activeTab === 'advanced' && (
+            <section className="space-y-5">
+              <SectionHeading n="04">Proof and input contracts</SectionHeading>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard title="Snapshot lifecycle">
+                  <SettingRow label="Live parameter hash">
+                    <Hash value={liveParamsHash} />
                   </SettingRow>
-                ))}
-              </SettingsCard>
+                  <SettingRow label="Creation parameter hash">
+                    <Hash value={creationHash} />
+                  </SettingRow>
+                  <SettingRow label="Epoch length">
+                    {epochLength === undefined
+                      ? '—'
+                      : `${comma(epochLength)} blocks`}
+                  </SettingRow>
+                  <SettingRow label="Last trigger block">
+                    {comma(lastTriggerBlock)}
+                  </SettingRow>
+                  <SettingRow label="Next trigger boundary">
+                    {comma(nextTriggerBlock)}
+                  </SettingRow>
+                  <SettingRow label="Last applied checkpoint">
+                    {hasAppliedCheckpoint
+                      ? comma(lastAppliedCheckpoint)
+                      : 'None'}
+                  </SettingRow>
+                  <SettingRow label="Merkle state count">
+                    {comma(stateCount)}
+                  </SettingRow>
+                  <SettingRow label="Latest root">
+                    <Hash
+                      value={
+                        asString(tupleValue(latestState, 'root', 2)) ??
+                        merkleRoot
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow label="Latest root timestamp">
+                    {timestamp(
+                      asBigInt(tupleValue(latestState, 'timestamp', 1)) ??
+                        rootTimestamp
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Latest score CID">
+                    {asString(tupleValue(latestState, 'ipfsHashCid', 4)) ||
+                      ipfsHashCid ||
+                      '—'}
+                  </SettingRow>
+                </SettingsCard>
 
-              <SettingsCard title="Proof payments">
-                {(tank.recentClaims ?? []).map((claim) => (
-                  <SettingRow
-                    key={claim.id}
-                    label={`${timestamp(claim.timestamp)} · checkpoint ${claim.checkpointId}`}
-                  >
-                    <div className="space-y-1">
-                      {claim.skipped ? (
-                        <StatusPill tone="warn">
-                          {claimReasons[claim.reason] ??
-                            `Skipped reason ${claim.reason}`}
-                        </StatusPill>
-                      ) : (
-                        <>
+                <SettingsCard title="Attestation accumulator">
+                  <SettingRow label="Live leaf count">
+                    {comma(leafCount)}
+                  </SettingRow>
+                  <SettingRow label="Checkpoint count">
+                    {comma(checkpointCount)}
+                  </SettingRow>
+                  <SettingRow label="Live accumulator">
+                    <Hash value={liveAcc} />
+                  </SettingRow>
+                  <SettingRow label="Bound schema">
+                    <Hash value={boundSchema} />
+                  </SettingRow>
+                  <SettingRow label="Snapshot binding">
+                    <ContractAddress value={resolverSnapshot} />
+                  </SettingRow>
+                  <SettingRow label="Binding matches">
+                    {resolverSnapshot
+                      ? yesNo(sameHex(resolverSnapshot, snapshotAddress))
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Resolver version">
+                    {resolverVersion ?? '—'}
+                  </SettingRow>
+                  <SettingRow label="Original binder">
+                    <ContractAddress value={resolverBinder} />
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Lane-2 anchor input">
+                  <SettingRow label="Anchor registry">
+                    <ContractAddress value={anchorRegistry} />
+                  </SettingRow>
+                  <SettingRow label="Anchor count">
+                    {comma(anchorCount)}
+                  </SettingRow>
+                  <SettingRow label="Anchor accumulator">
+                    <Hash value={anchorAcc} />
+                  </SettingRow>
+                  <SettingRow label="Combined proof inputs">
+                    {comma(inputCount)}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Verifier and hooks">
+                  <SettingRow label="ZK verifier">
+                    <ContractAddress value={zkVerifier} />
+                  </SettingRow>
+                  <SettingRow label="Snapshot accumulator">
+                    <ContractAddress value={liveAccumulator} />
+                  </SettingRow>
+                  <SettingRow label="Configured resolver">
+                    <ContractAddress value={resolverAddress} />
+                  </SettingRow>
+                  <SettingRow label="Hook count">{hooks.length}</SettingRow>
+                  {hooks.map((hook, index) => (
+                    <SettingRow key={hook} label={`Hook ${index + 1}`}>
+                      <ContractAddress value={hook} />
+                    </SettingRow>
+                  ))}
+                </SettingsCard>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'advanced' && (
+            <section className="space-y-5">
+              <SectionHeading n="05">Contracts and authority</SectionHeading>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard title="Core contracts">
+                  <SettingRow label="Merkle snapshot">
+                    <ContractAddress value={snapshotAddress} />
+                  </SettingRow>
+                  <SettingRow label="EAS resolver / accumulator">
+                    <ContractAddress value={resolverAddress} />
+                  </SettingRow>
+                  <SettingRow label="EAS">
+                    <ContractAddress value={CONTRACT_CONFIG.EAS as string} />
+                  </SettingRow>
+                  <SettingRow label="Schema registry">
+                    <ContractAddress
+                      value={CONTRACT_CONFIG.SchemaRegistry as string}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Schema registrar">
+                    <ContractAddress
+                      value={CONTRACT_CONFIG.SchemaRegistrar as string}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Factory">
+                    <ContractAddress value={factoryAddress} />
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Instance provenance">
+                  <SettingRow label="Instance ID">
+                    <Hash value={instanceId || undefined} />
+                  </SettingRow>
+                  <SettingRow label="Chain ID">
+                    {instance?.chainId ?? '—'}
+                  </SettingRow>
+                  <SettingRow label="Creator">
+                    {instance?.creator || network.admin ? (
+                      <Address
+                        address={(instance?.creator ?? network.admin)!}
+                        displayMode="auto"
+                      />
+                    ) : (
+                      '—'
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Initial admin">
+                    {network.admin ? (
+                      <Address address={network.admin} displayMode="auto" />
+                    ) : (
+                      '—'
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Created block">
+                    {comma(instance?.createdBlock)}
+                  </SettingRow>
+                  <SettingRow label="Created at">
+                    {timestamp(
+                      instance?.createdTimestamp ?? network.createdTimestamp
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Creation transaction">
+                    <Hash value={instance?.createdTxHash} />
+                  </SettingRow>
+                  <SettingRow label="Metadata URI">
+                    {instance?.metadataURI || 'Not published'}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Vouch schema">
+                  {network.schemas.map((schema) => (
+                    <div key={schema.uid}>
+                      <SettingRow label="Schema UID">
+                        <Hash value={schema.uid} />
+                      </SettingRow>
+                      <SettingRow label="Schema">{schema.schema}</SettingRow>
+                      <SettingRow label="Resolver">
+                        <ContractAddress value={schema.resolver} />
+                      </SettingRow>
+                      <SettingRow label="Revocable">
+                        {yesNo(schema.revocable)}
+                      </SettingRow>
+                      {schema.fields.map((field) => (
+                        <SettingRow
+                          key={`${field.type}-${field.name}`}
+                          label={field.name}
+                        >
+                          <code className="text-xs">{field.type}</code>
+                        </SettingRow>
+                      ))}
+                    </div>
+                  ))}
+                </SettingsCard>
+
+                <SettingsCard title="Safe and signer synchronization">
+                  <SettingRow label="Safe proxy">
+                    <ContractAddress value={network.contracts.safe?.proxy} />
+                  </SettingRow>
+                  <SettingRow label="Safe singleton">
+                    <ContractAddress
+                      value={network.contracts.safe?.singleton}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Safe factory">
+                    <ContractAddress value={network.contracts.safe?.factory} />
+                  </SettingRow>
+                  <SettingRow label="Signer-sync manager">
+                    <ContractAddress
+                      value={network.contracts.safe?.signerSyncManager}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Signer sync enabled">
+                    {yesNo(network.safeZodiacSignerSync.enabled)}
+                  </SettingRow>
+                  <SettingRow label="Top signers">
+                    {network.safeZodiacSignerSync.topNSigners}
+                  </SettingRow>
+                  <SettingRow label="Safe threshold">
+                    {gnosisSafe
+                      ? `${gnosisSafe.threshold} of ${gnosisSafe.owners.length}`
+                      : '—'}
+                  </SettingRow>
+                </SettingsCard>
+
+                {distributorAddress && (
+                  <SettingsCard title="Fund distributor">
+                    <SettingRow label="Contract">
+                      <ContractAddress value={distributorAddress} />
+                    </SettingRow>
+                    <SettingRow label="Owner">
+                      <ContractAddress
+                        value={asString(readResult(distributorReads, 0))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Pending owner">
+                      <ContractAddress
+                        value={asString(readResult(distributorReads, 1))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Fee recipient">
+                      <ContractAddress
+                        value={asString(readResult(distributorReads, 2))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Fee percentage">
+                      {(() => {
+                        const value = asBigInt(readResult(distributorReads, 3))
+                        return value === undefined
+                          ? '—'
+                          : `${units(value * 100n, 18, 4)}%`
+                      })()}
+                    </SettingRow>
+                    <SettingRow label="Allowlist enabled">
+                      {yesNo(asBoolean(readResult(distributorReads, 4)))}
+                    </SettingRow>
+                    <SettingRow label="Paused">
+                      {yesNo(asBoolean(readResult(distributorReads, 5)))}
+                    </SettingRow>
+                    <SettingRow label="Snapshot binding">
+                      <ContractAddress
+                        value={asString(readResult(distributorReads, 6))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Allowlisted distributors">
+                      {comma(asBigInt(readResult(distributorReads, 7)))}
+                    </SettingRow>
+                    <SettingRow label="Default token">
+                      <ContractAddress
+                        value={instance?.distributorToken ?? undefined}
+                      />
+                    </SettingRow>
+                  </SettingsCard>
+                )}
+
+                {governanceAddress && (
+                  <SettingsCard title="Governance module">
+                    <SettingRow label="Contract">
+                      <ContractAddress value={governanceAddress} />
+                    </SettingRow>
+                    <SettingRow label="Owner">
+                      <ContractAddress
+                        value={asString(readResult(governanceReads, 0))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Avatar (Safe)">
+                      <ContractAddress
+                        value={asString(readResult(governanceReads, 1))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Execution target">
+                      <ContractAddress
+                        value={asString(readResult(governanceReads, 2))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Snapshot binding">
+                      <ContractAddress
+                        value={asString(readResult(governanceReads, 3))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Voting delay">
+                      {comma(asBigInt(readResult(governanceReads, 4)))} blocks
+                    </SettingRow>
+                    <SettingRow label="Voting period">
+                      {comma(asBigInt(readResult(governanceReads, 5)))} blocks
+                    </SettingRow>
+                    <SettingRow label="Quorum">
+                      {(() => {
+                        const value = asBigInt(readResult(governanceReads, 6))
+                        return value === undefined
+                          ? '—'
+                          : `${units(value * 100n, 18, 2)}%`
+                      })()}
+                    </SettingRow>
+                  </SettingsCard>
+                )}
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'features' && (
+            <section className="space-y-5" aria-labelledby="network-features">
+              <div>
+                <SectionHeading n="01">
+                  <span id="network-features">Network features</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Optional programs connected to this trust graph. Member-facing
+                  activity stays on each feature&apos;s main page; configuration
+                  and lifecycle state live here.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard
+                  title="Contribution cycles"
+                  description="Community-scored work whose ratings are weighted by this network."
+                >
+                  <SettingRow label="Status">
+                    {contributionRound ? 'Configured' : 'Not configured'}
+                  </SettingRow>
+                  <SettingRow label="Active round">
+                    {contributionRound?.name ?? 'None'}
+                  </SettingRow>
+                  <SettingRow label="Round snapshot">
+                    <ContractAddress
+                      value={contributionRound?.contracts.merkleSnapshot}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Management">
+                    {connectedAddress
+                      ? connectedIsOperational
+                        ? 'Operational access connected'
+                        : 'Requires operational role'
+                      : 'Connect to check access'}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Member rewards"
+                  description="Pools allocated to members using a fixed proven trust-score snapshot."
+                >
+                  <SettingRow label="Status">
+                    {!distributorAddress
+                      ? 'Not configured'
+                      : distributorPaused
+                        ? 'Paused'
+                        : 'Active'}
+                  </SettingRow>
+                  <SettingRow label="Who can fund">
+                    {distributorAddress
+                      ? fundingRestricted
+                        ? 'Allowlisted accounts'
+                        : 'Anyone'
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Distribution fee">
+                    {distributorFee === undefined
+                      ? '—'
+                      : `${units(distributorFee * 100n, 18, 4)}%`}
+                  </SettingRow>
+                  <SettingRow label="Distributor">
+                    <ContractAddress value={distributorAddress} />
+                  </SettingRow>
+                  {distributorAddress && (
+                    <div className="pt-4">
+                      <ButtonLink
+                        href={`/networks/${network.id}/rewards?fund=true`}
+                        size="sm"
+                      >
+                        Fund rewards
+                      </ButtonLink>
+                    </div>
+                  )}
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Governance"
+                  description="Trust-weighted proposals executed through the configured Safe module."
+                >
+                  <SettingRow label="Status">
+                    {governanceAddress ? 'Configured' : 'Not configured'}
+                  </SettingRow>
+                  <SettingRow label="Voting delay">
+                    {governanceAddress
+                      ? `${comma(asBigInt(readResult(governanceReads, 4)))} blocks`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Voting period">
+                    {governanceAddress
+                      ? `${comma(asBigInt(readResult(governanceReads, 5)))} blocks`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Quorum">
+                    {(() => {
+                      const value = asBigInt(readResult(governanceReads, 6))
+                      return value === undefined
+                        ? '—'
+                        : `${units(value * 100n, 18, 2)}%`
+                    })()}
+                  </SettingRow>
+                  {governanceAddress && (
+                    <div className="pt-4">
+                      <ButtonLink
+                        href={`/networks/${network.id}/governance`}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Open governance
+                      </ButtonLink>
+                    </div>
+                  )}
+                </SettingsCard>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'access' && (
+            <section className="space-y-5" aria-labelledby="network-access">
+              <div>
+                <SectionHeading n="01">
+                  <span id="network-access">Access and authority</span>
+                </SectionHeading>
+                <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                  Who can operate, reconfigure, or execute actions for this
+                  network. Contract addresses and raw deployment data are in
+                  Advanced.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard
+                  title="Your access"
+                  description="Roles held directly by the connected wallet on the network snapshot."
+                >
+                  <SettingRow label="Connected wallet">
+                    {connectedAddress ? (
+                      <Address address={connectedAddress} displayMode="auto" />
+                    ) : (
+                      'Not connected'
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Operational role">
+                    {connectedAddress
+                      ? yesNo(connectedIsOperational)
+                      : 'Connect to check'}
+                  </SettingRow>
+                  <SettingRow label="Constitutional role">
+                    {connectedAddress
+                      ? yesNo(connectedIsConstitutional)
+                      : 'Connect to check'}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Safe and signer synchronization"
+                  description="The collective execution account and the score-based signer policy attached to it."
+                >
+                  <SettingRow label="Safe proxy">
+                    <ContractAddress value={network.contracts.safe?.proxy} />
+                  </SettingRow>
+                  <SettingRow label="Safe threshold">
+                    {gnosisSafe
+                      ? `${gnosisSafe.threshold} of ${gnosisSafe.owners.length}`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Signer sync enabled">
+                    {yesNo(network.safeZodiacSignerSync.enabled)}
+                  </SettingRow>
+                  <SettingRow label="Top signers">
+                    {network.safeZodiacSignerSync.topNSigners}
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Feature ownership">
+                  <SettingRow label="Reward distributor owner">
+                    <ContractAddress
+                      value={asString(readResult(distributorReads, 0))}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Pending distributor owner">
+                    <ContractAddress
+                      value={asString(readResult(distributorReads, 1))}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Governance module owner">
+                    <ContractAddress
+                      value={asString(readResult(governanceReads, 0))}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Governance execution target">
+                    <ContractAddress
+                      value={asString(readResult(governanceReads, 2))}
+                    />
+                  </SettingRow>
+                </SettingsCard>
+
+                <SettingsCard title="Instance authority">
+                  <SettingRow label="Creator">
+                    {instance?.creator || network.admin ? (
+                      <Address
+                        address={(instance?.creator ?? network.admin)!}
+                        displayMode="auto"
+                      />
+                    ) : (
+                      '—'
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Initial administrator">
+                    {network.admin ? (
+                      <Address address={network.admin} displayMode="auto" />
+                    ) : (
+                      '—'
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Snapshot">
+                    <ContractAddress value={snapshotAddress} />
+                  </SettingRow>
+                </SettingsCard>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'proofs' &&
+            tank &&
+            ((tank.recentDeposits?.length ?? 0) > 0 ||
+              (tank.recentClaims?.length ?? 0) > 0) && (
+              <section className="space-y-5">
+                <SectionHeading n="06">Recent billing activity</SectionHeading>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SettingsCard title="Deposits">
+                    {(tank.recentDeposits ?? []).map((deposit) => (
+                      <SettingRow
+                        key={deposit.id}
+                        label={`${timestamp(deposit.timestamp)} · block ${deposit.blockNumber}`}
+                      >
+                        <div className="space-y-1">
                           <div>
-                            {usd(BigInt(claim.feeUsd) + BigInt(claim.gasUsd))}
+                            {deposit.token.toLowerCase() === zeroAddress
+                              ? `${units(BigInt(deposit.amount), 18, 5)} ETH`
+                              : `${units(BigInt(deposit.amount), tokenDecimals, 2)} ${tokenSymbol}`}
                           </div>
-                          {claim.recipient && (
-                            <div className="text-xs text-muted-foreground">
-                              Paid to{' '}
-                              <Address
-                                address={claim.recipient}
-                                displayMode="truncated"
-                                textClassName="text-xs"
-                              />
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </SettingRow>
-                ))}
-              </SettingsCard>
-            </div>
-          </section>
-        )}
+                          <Address address={deposit.from} displayMode="auto" />
+                        </div>
+                      </SettingRow>
+                    ))}
+                  </SettingsCard>
 
-      <p className="flex items-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground">
-        <Clock3 className="h-3.5 w-3.5" /> Live values come directly from the
-        chain; creation data and history come from the indexed factory catalog.
-      </p>
+                  <SettingsCard title="Proof payments">
+                    {(tank.recentClaims ?? []).map((claim) => (
+                      <SettingRow
+                        key={claim.id}
+                        label={`${timestamp(claim.timestamp)} · checkpoint ${claim.checkpointId}`}
+                      >
+                        <div className="space-y-1">
+                          {claim.skipped ? (
+                            <StatusPill tone="warn">
+                              {claimReasons[claim.reason] ??
+                                `Skipped reason ${claim.reason}`}
+                            </StatusPill>
+                          ) : (
+                            <>
+                              <div>
+                                {usd(
+                                  BigInt(claim.feeUsd) + BigInt(claim.gasUsd)
+                                )}
+                              </div>
+                              {claim.recipient && (
+                                <div className="text-xs text-muted-foreground">
+                                  Paid to{' '}
+                                  <Address
+                                    address={claim.recipient}
+                                    displayMode="auto"
+                                    textClassName="text-xs"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </SettingRow>
+                    ))}
+                  </SettingsCard>
+                </div>
+              </section>
+            )}
+
+          <p className="flex items-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground">
+            <Clock3 className="h-3.5 w-3.5" /> Live values come directly from
+            the chain; creation data and history come from the indexed factory
+            catalog.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
