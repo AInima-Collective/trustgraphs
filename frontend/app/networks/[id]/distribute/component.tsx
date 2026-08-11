@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { Wallet } from 'lucide-react'
+import { ChevronDown, Wallet } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
   Hex,
@@ -42,7 +42,13 @@ import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 type DistributionRow = typeof merkleFundDistribution.$inferSelect
 
-export const DistributePage = () => {
+export const DistributePage = ({
+  embedded = false,
+  defaultOpen = false,
+}: {
+  embedded?: boolean
+  defaultOpen?: boolean
+}) => {
   const { network } = useNetwork()
 
   const { address: connectedAddress, isConnected } = useAccount()
@@ -50,6 +56,7 @@ export const DistributePage = () => {
 
   const [isDistributing, setIsDistributing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fundOpen, setFundOpen] = useState(defaultOpen)
 
   // Form state for creating a distribution
   const [tokenType, setTokenType] = useState<'native' | 'erc20'>('native')
@@ -237,7 +244,7 @@ export const DistributePage = () => {
           gas: (gasEstimate * 120n) / 100n,
           ...(tokenType === 'native' ? { value: parsedAmount } : {}),
         } as any,
-        successMessage: 'Distribution created successfully!',
+        successMessage: 'Network rewards funded.',
       })
         .then(() => {
           // Reset form
@@ -276,7 +283,7 @@ export const DistributePage = () => {
     },
     {
       key: 'distributor',
-      header: 'DISTRIBUTOR',
+      header: 'FUNDED BY',
       sortable: false,
       render: (row) => (
         <Address address={row.distributor} displayMode="truncated" />
@@ -319,32 +326,33 @@ export const DistributePage = () => {
 
   const isLoading = isLoadingDistributions || isLoadingMerkleTree
 
-  return (
-    <div className="flex flex-col gap-8">
+  const content = (
+    <>
       {/* Header */}
-      <div className="flex flex-col items-start gap-4">
-        <BreadcrumbRenderer
-          className="mb-2"
-          fallback={{
-            title: 'Network',
-            route: `/networks/${network.id}`,
-          }}
-        />
+      {!embedded && (
+        <div className="flex flex-col items-start gap-4">
+          <BreadcrumbRenderer
+            className="mb-2"
+            fallback={{
+              title: 'Network',
+              route: `/networks/${network.id}`,
+            }}
+          />
 
-        <NetworkHeader network={network} className="w-full" />
+          <NetworkHeader network={network} className="w-full" />
 
-        <p className="text-muted-foreground text-sm">
-          Create and review funds shared according to a proven trust-score
-          snapshot. Members collect their rewards from the Claims tab.
-        </p>
-      </div>
+          <p className="text-muted-foreground text-sm">
+            Fund rewards allocated according to a proven trust-score snapshot.
+          </p>
+        </div>
+      )}
 
       {/* Statistics */}
       <div className="border-y border-border py-8 space-y-6">
-        <SectionHeading>Distribution statistics</SectionHeading>
+        <SectionHeading>Funding statistics</SectionHeading>
         <div className="flex flex-row gap-4 flex-wrap">
           <StatisticCard
-            title="TOTAL DISTRIBUTIONS"
+            title="TOTAL REWARD POOLS"
             tooltip="The total number of fund distributions created for this network."
             value={isLoading ? '...' : distributions.length.toString()}
           />
@@ -355,12 +363,11 @@ export const DistributePage = () => {
       {isConnected && canDistribute && !isPaused && (
         <Card type="accent" size="lg" className="space-y-6">
           <div>
-            <SectionHeading>Create distribution</SectionHeading>
+            <SectionHeading>Fund network rewards</SectionHeading>
             <p className="text-sm text-muted-foreground mt-1">
-              Fund a new distribution for network members. Funds will be
-              instantly claimable by all current members at their current trust
-              score weights. Future network graph updates will not retroactively
-              apply to this distribution.
+              Allocate a new reward pool to current network members. The current
+              proven trust scores fix each member&apos;s share; later graph
+              updates will not change this pool.
             </p>
           </div>
 
@@ -440,9 +447,7 @@ export const DistributePage = () => {
                   isDistributing || !parsedAmount || !latestMerkleTree?.tree
                 }
               >
-                {isDistributing
-                  ? 'Creating Distribution...'
-                  : 'Create Distribution'}
+                {isDistributing ? 'Funding Rewards...' : 'Fund Rewards'}
               </Button>
             )}
           </div>
@@ -483,8 +488,8 @@ export const DistributePage = () => {
           <Wallet className="w-12 h-12 mx-auto text-muted-foreground" />
           <h2 className="font-bold">Connect Your Wallet</h2>
           <p className="text-muted-foreground">
-            Connect your wallet to create a distribution. You can review past
-            distributions without connecting.
+            Connect your wallet to fund rewards. You can review funding history
+            without connecting.
           </p>
         </Card>
       )}
@@ -498,20 +503,20 @@ export const DistributePage = () => {
         >
           <h2 className="font-bold text-warn">Contract Paused</h2>
           <p className="text-muted-foreground">
-            The fund distributor contract is currently paused. New distributions
-            are temporarily disabled.
+            Reward funding is currently paused. Existing allocations remain
+            recorded.
           </p>
         </Card>
       )}
 
       {/* Distributions Table */}
       <div className="space-y-6">
-        <SectionHeading>Distributions</SectionHeading>
+        <SectionHeading>Funding history</SectionHeading>
 
         {isLoading && (
           <div className="text-center py-8">
             <div className="text-sm text-muted-foreground">
-              Loading distributions...
+              Loading funding history...
             </div>
           </div>
         )}
@@ -519,7 +524,7 @@ export const DistributePage = () => {
         {!isLoading && distributions.length === 0 && (
           <Card type="outline" size="lg" className="text-center">
             <p className="text-muted-foreground">
-              No distributions have been created for this network yet.
+              No reward pools have been funded for this network yet.
             </p>
           </Card>
         )}
@@ -535,6 +540,38 @@ export const DistributePage = () => {
           />
         )}
       </div>
-    </div>
+    </>
   )
+
+  if (embedded) {
+    return (
+      <details
+        id="fund-rewards"
+        open={fundOpen}
+        onToggle={(event) => setFundOpen(event.currentTarget.open)}
+        className="group scroll-mt-6 border-y border-hairline"
+      >
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink [&::-webkit-details-marker]:hidden">
+          <span>Fund network rewards</span>
+          <ChevronDown
+            className="h-4 w-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="flex flex-col gap-8 border-t border-hairline py-8">
+          <div className="max-w-3xl space-y-2">
+            <h3 className="text-xl font-semibold">Fund network rewards</h3>
+            <p className="text-sm leading-relaxed text-text-muted">
+              Add a reward pool using the latest proven trust scores. Funding
+              creates a fixed allocation immediately; it is not a general
+              network donation.
+            </p>
+          </div>
+          {content}
+        </div>
+      </details>
+    )
+  }
+
+  return <div className="flex flex-col gap-8">{content}</div>
 }

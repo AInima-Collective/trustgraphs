@@ -1000,7 +1000,7 @@ export const ContributionsNetworkPage = ({
               <ButtonLink
                 href={
                   trustNetwork
-                    ? `/networks/${trustNetwork.id}/claims`
+                    ? `/networks/${trustNetwork.id}/rewards`
                     : `/networks/${network.id}/claim`
                 }
                 variant="brand"

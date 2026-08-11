@@ -23,6 +23,8 @@ import { isHexEqual } from '@/lib/utils'
 import { merkleFundDistribution } from '@/ponder.schema'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
+import { DistributePage } from '../distribute/component'
+
 type Distribution = typeof merkleFundDistribution.$inferSelect
 type MerkleEntry = { value: string; proof: string[] }
 
@@ -255,12 +257,14 @@ const useDistributionRewards = ({
 
 type RewardState = ReturnType<typeof useDistributionRewards>
 
-export const ClaimsPage = ({
+export const RewardsPage = ({
   network,
   contributionRound,
+  defaultFundOpen = false,
 }: {
   network: Network
   contributionRound?: ContributionsNetwork
+  defaultFundOpen?: boolean
 }) => {
   const { address, isConnected } = useAccount()
   const publicClient = usePublicClient()
@@ -274,10 +278,10 @@ export const ClaimsPage = ({
   const networkSource = network.contracts.merkleFundDistributor
     ? {
         id: 'network' as const,
-        title: 'Network distributions',
-        description: `Funds shared according to a proven snapshot of the ${network.name} trust graph.`,
-        href: `/networks/${network.id}/distribute`,
-        linkLabel: 'View distributions',
+        title: 'Network rewards',
+        description: `Funds allocated using the ${network.name} trust scores captured when each reward pool was created.`,
+        href: '#fund-rewards',
+        linkLabel: 'Funding and history',
         distributor: network.contracts.merkleFundDistributor,
         snapshot: network.contracts.merkleSnapshot,
       }
@@ -387,10 +391,10 @@ export const ClaimsPage = ({
         />
         <NetworkHeader network={network} className="w-full" />
         <div className="max-w-3xl space-y-2">
-          <h2 className="text-2xl font-semibold">Claims</h2>
+          <h2 className="text-2xl font-semibold">Rewards</h2>
           <p className="text-text-muted">
-            Everything this network owes your connected wallet, whether it came
-            from trust-weighted distributions or contribution rewards.
+            See rewards allocated to your wallet from network funding and
+            contribution rounds.
           </p>
         </div>
       </header>
@@ -405,10 +409,10 @@ export const ClaimsPage = ({
           </p>
           {!isConnected ? (
             <div className="max-w-xl space-y-4">
-              <p className="tg-display text-4xl">Connect to check</p>
+              <p className="tg-display text-4xl">Connect to see rewards</p>
               <p className="text-sm text-text-muted">
-                Claims are calculated for the connected wallet. Nothing is
-                signed until you choose to claim.
+                Rewards are calculated for the connected wallet. Connecting does
+                not submit a transaction.
               </p>
               <WalletConnectionButton />
             </div>
@@ -434,7 +438,7 @@ export const ClaimsPage = ({
           ) : (
             <div className="space-y-3">
               <p className="tg-display text-5xl tabular-nums">
-                {available.length} claim{available.length === 1 ? '' : 's'}
+                {available.length} reward{available.length === 1 ? '' : 's'}
               </p>
               <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-text-muted">
                 {sources.map((source) => {
@@ -492,6 +496,10 @@ export const ClaimsPage = ({
           Rewards appear here as soon as a distribution is funded against a
           proven score table.
         </p>
+      )}
+
+      {network.contracts.merkleFundDistributor && (
+        <DistributePage embedded defaultOpen={defaultFundOpen} />
       )}
     </div>
   )
@@ -658,7 +666,7 @@ const RewardStatus = ({
   return (
     <span className="inline-flex items-center gap-1 text-xs text-text-muted">
       <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-      {status === 'expired' ? 'Claim window closed' : 'Swept'}
+      {status === 'expired' ? 'Claim window closed' : 'Returned to funder'}
     </span>
   )
 }

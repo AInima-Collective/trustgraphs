@@ -31,7 +31,7 @@ import { Network } from './types'
  * The catalog-driven routes set the SAME number as their `export const revalidate`, written out as
  * a literal because Next statically analyses that export and rejects an imported identifier:
  * `app/page.tsx`, `app/networks/page.tsx`, `app/networks/[id]/page.tsx`,
- * `app/networks/[id]/distribute/page.tsx`, `app/networks/[id]/governance/layout.tsx`.
+ * `app/networks/[id]/rewards/page.tsx`, `app/networks/[id]/governance/layout.tsx`.
  * Change one, change all six: this constant plus those five files.
  */
 export const CATALOG_REVALIDATE_SECONDS = 10

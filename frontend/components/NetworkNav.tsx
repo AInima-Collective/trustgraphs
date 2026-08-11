@@ -2,7 +2,6 @@
 
 import {
   ArrowUpRight,
-  Coins,
   HandCoins,
   Settings,
   Vote,
@@ -51,9 +50,8 @@ export const NetworkNav = ({
 
   const icons = {
     governance: Vote,
-    distribute: Coins,
     contributions: HandCoins,
-    claims: WalletCards,
+    rewards: WalletCards,
     settings: Settings,
   }
 

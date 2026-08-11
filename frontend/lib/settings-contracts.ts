@@ -4,6 +4,8 @@ import { parseAbi } from 'viem'
  * generated address map; the shared vault can also be discovered from `TrustGraphFactory.VAULT`.
  */
 export const provingVaultReadAbi = parseAbi([
+  'function depositETH(bytes32 instanceId) payable',
+  'function depositUSDC(bytes32 instanceId, uint256 amount)',
   'function accountOf(bytes32 instanceId) view returns (address snapshot, bytes32 program, uint128 ethBalance, uint128 usdcBalance)',
   'function policyOf(bytes32 instanceId) view returns (uint64 minPaidIntervalBlocks, uint96 maxPerRootUsd, uint64 lastPaidBlock)',
   'function pendingWithdrawalOf(bytes32 instanceId) view returns (uint128 ethAmount, uint128 usdcAmount, uint64 readyAt)',

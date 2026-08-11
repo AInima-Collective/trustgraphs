@@ -53,7 +53,7 @@ export default async function ClaimPageServer({
 
   const trustNetwork = trustNetworkFor(network)
   if (trustNetwork) {
-    redirect(`/networks/${trustNetwork.id}/claims`)
+    redirect(`/networks/${trustNetwork.id}/rewards`)
   }
 
   return <PayoutPage network={network} />

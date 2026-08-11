@@ -48,7 +48,7 @@ const nextConfig = {
     },
     // Contribution work stays on its network tab. These legacy round-action URLs still land on
     // the round id first; its server route resolves the owning trust network and redirects into
-    // the unified Contributions or Claims tab.
+    // the unified Contributions or Rewards tab.
     {
       source: '/networks/:id/contribute',
       destination: '/networks/:id',

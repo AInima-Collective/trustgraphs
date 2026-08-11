@@ -14,7 +14,7 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
-  icon?: 'governance' | 'distribute' | 'contributions' | 'claims' | 'settings'
+  icon?: 'governance' | 'contributions' | 'rewards' | 'settings'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
    * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
@@ -64,16 +64,6 @@ export const trustGraphTabs = (network: Network): NetworkTab[] => {
           },
         ]
       : []),
-    ...(network.contracts.merkleFundDistributor ||
-    contributionRounds.some((round) => round.contracts.merkleFundDistributor)
-      ? [
-          {
-            href: `${base}/claims`,
-            label: 'Claims',
-            icon: 'claims' as const,
-          },
-        ]
-      : []),
     ...(network.contracts.merkleGovModule
       ? [
           {
@@ -83,12 +73,13 @@ export const trustGraphTabs = (network: Network): NetworkTab[] => {
           },
         ]
       : []),
-    ...(network.contracts.merkleFundDistributor
+    ...(network.contracts.merkleFundDistributor ||
+    contributionRounds.some((round) => round.contracts.merkleFundDistributor)
       ? [
           {
-            href: `${base}/distribute`,
-            label: 'Distribute',
-            icon: 'distribute' as const,
+            href: `${base}/rewards`,
+            label: 'Rewards',
+            icon: 'rewards' as const,
           },
         ]
       : []),
