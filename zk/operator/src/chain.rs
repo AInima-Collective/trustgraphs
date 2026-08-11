@@ -5,7 +5,7 @@
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
-use operator_core::catalog::{ChainReader, CreatedParams, RegistryRecord};
+use operator_core::catalog::{ChainReader, ControllerParams, CreatedParams, RegistryRecord};
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::Params;
 use serde_json::{json, Value};
@@ -38,6 +38,14 @@ sol! {
     );
     function getInstanceIds() external view returns (bytes32[]);
     function getInstance(bytes32 instanceId) external view returns (Instance);
+    function paramsAuthority(bytes32 instanceId) external view returns (address);
+
+    /// `TrustGraphParamsController`.
+    function instanceId() external view returns (bytes32);
+    function snapshot() external view returns (address);
+    function version() external view returns (uint64);
+    function currentParamsHash() external view returns (bytes32);
+    function getCurrentParams() external view returns (SolParams);
 
     /// `MerkleSnapshot` — journal v3.
     function paramsHash() external view returns (bytes32);
@@ -400,6 +408,13 @@ impl ChainReader for RpcCatalog<'_> {
         })
     }
 
+    fn params_authority(&self, id: B256) -> Result<Address> {
+        let ret = self
+            .rpc
+            .eth_call(self.registry, paramsAuthorityCall { instanceId: id }.abi_encode())?;
+        Ok(paramsAuthorityCall::abi_decode_returns(&ret)?)
+    }
+
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>> {
         let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
             return Ok(None);
@@ -420,6 +435,26 @@ impl ChainReader for RpcCatalog<'_> {
             created_block,
             params: to_core_params(&ev.params),
         }))
+    }
+
+    fn controller_params(&self, controller: Address) -> Result<ControllerParams> {
+        let call = |data: Vec<u8>| self.rpc.eth_call(controller, data);
+        let instance_id =
+            instanceIdCall::abi_decode_returns(&call(instanceIdCall {}.abi_encode())?)?;
+        let snapshot = snapshotCall::abi_decode_returns(&call(snapshotCall {}.abi_encode())?)?;
+        let version = versionCall::abi_decode_returns(&call(versionCall {}.abi_encode())?)?;
+        let current_params_hash = currentParamsHashCall::abi_decode_returns(&call(
+            currentParamsHashCall {}.abi_encode(),
+        )?)?;
+        let params =
+            getCurrentParamsCall::abi_decode_returns(&call(getCurrentParamsCall {}.abi_encode())?)?;
+        Ok(ControllerParams {
+            instance_id,
+            snapshot,
+            version,
+            current_params_hash,
+            params: to_core_params(&params),
+        })
     }
 
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256> {

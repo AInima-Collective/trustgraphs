@@ -40,6 +40,13 @@ contract SignerSyncZkModule is Module {
     ///         `MerkleSnapshot.paramsHash` for a consistent score/signer view).
     bytes32 public paramsHash;
 
+    /// @notice Narrow authority over only the shared PageRank commitment.
+    /// @dev Begins as the module owner for backwards-compatible deployments, but can be handed to
+    ///      the same operational Safe/timelock that owns a trust-graph params controller without
+    ///      transferring the module's verifier, accumulator, or selection-policy authority.
+    address public paramsAuthority;
+    address public pendingParamsAuthority;
+
     /// @notice keccak256 of the selection parameters: `abi.encode(uint32 topN, uint32 minThreshold,
     ///         uint32 targetThresholdBps)`.
     bytes32 public selectionParamsHash;
@@ -65,10 +72,14 @@ contract SignerSyncZkModule is Module {
     error InvalidThreshold(uint256 threshold, uint256 ownerCount);
     error SafeCallFailed(bytes data);
     error OwnerNotFound(address owner);
+    error NotParamsAuthority(address caller);
+    error InvalidParamsAuthority(address authority);
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
     event ParamsHashUpdated(bytes32 paramsHash);
+    event ParamsAuthorityTransferStarted(address indexed currentAuthority, address indexed pendingAuthority);
+    event ParamsAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event SelectionParamsHashUpdated(bytes32 selectionParamsHash);
     event SignersSynced(
         uint256 indexed checkpointId, bytes32 signerSetRoot, uint256 threshold, address indexed submitter
@@ -137,6 +148,7 @@ contract SignerSyncZkModule is Module {
         zkVerifier = _zkVerifier;
         accumulator = _accumulator;
         paramsHash = _paramsHash;
+        paramsAuthority = _owner;
         selectionParamsHash = _selectionParamsHash;
     }
 
@@ -156,7 +168,26 @@ contract SignerSyncZkModule is Module {
         emit AccumulatorUpdated(address(_accumulator));
     }
 
-    function setParamsHash(bytes32 _paramsHash) external onlyOwner {
+    modifier onlyParamsAuthority() {
+        if (msg.sender != paramsAuthority) revert NotParamsAuthority(msg.sender);
+        _;
+    }
+
+    function transferParamsAuthority(address nextAuthority) external onlyOwner {
+        if (nextAuthority == address(0)) revert InvalidParamsAuthority(nextAuthority);
+        pendingParamsAuthority = nextAuthority;
+        emit ParamsAuthorityTransferStarted(paramsAuthority, nextAuthority);
+    }
+
+    function acceptParamsAuthority() external {
+        if (msg.sender != pendingParamsAuthority) revert NotParamsAuthority(msg.sender);
+        address previous = paramsAuthority;
+        paramsAuthority = msg.sender;
+        pendingParamsAuthority = address(0);
+        emit ParamsAuthorityTransferred(previous, msg.sender);
+    }
+
+    function setParamsHash(bytes32 _paramsHash) external onlyParamsAuthority {
         paramsHash = _paramsHash;
         emit ParamsHashUpdated(_paramsHash);
     }

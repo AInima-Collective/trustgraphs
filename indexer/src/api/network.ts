@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, ne, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, inArray, lt, ne, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
@@ -9,7 +9,7 @@ import {
   proofSubmission,
   snapshotTrigger,
 } from 'ponder:schema'
-import { Hex } from 'viem'
+import { Hex, isAddress } from 'viem'
 
 import { offchainDb } from './db'
 import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
@@ -48,6 +48,24 @@ const schemaUidsForSnapshot = async (
     .where(eq(instance.snapshot, merkleSnapshotContract.toLowerCase() as Hex))
     .limit(1)
   return row.length > 0 ? [row[0]!.schemaUid as Hex] : null
+}
+
+/** Resolve the lane-1 fold log for config-backed and factory-created networks alike. */
+const resolverForSnapshot = async (snapshot: string): Promise<Hex | null> => {
+  const configured = NETWORKS.find((network) =>
+    isHexEqual(network.contracts.merkleSnapshot, snapshot)
+  )
+  const configuredResolver = (
+    configured?.contracts as { easIndexerResolver?: string } | undefined
+  )?.easIndexerResolver
+  if (configuredResolver) return configuredResolver.toLowerCase() as Hex
+
+  const [row] = await db
+    .select({ resolver: instance.resolver })
+    .from(instance)
+    .where(eq(instance.snapshot, snapshot.toLowerCase() as Hex))
+    .limit(1)
+  return (row?.resolver as Hex | undefined) ?? null
 }
 
 app.get('/:snapshot', async (c) => {
@@ -157,6 +175,93 @@ app.get('/:snapshot', async (c) => {
 })
 
 /**
+ * Exact fold-ordered lane-1 inputs frozen by a named checkpoint.
+ *
+ * This is deliberately checkpoint-addressed instead of returning a convenient "current graph":
+ * the Settings preview must be able to name and reproduce the input cutoff it compares. The
+ * browser recomputes the accumulator and compares it with `resolver.getCheckpoint(id)` from RPC;
+ * a missing row therefore becomes an unavailable preview, never a guessed one.
+ */
+app.get('/:snapshot/checkpoints/:checkpointId/inputs', async (c) => {
+  const snapshot = c.req.param('snapshot')
+  const checkpointRaw = c.req.param('checkpointId')
+  if (!isAddress(snapshot)) {
+    return c.json({ error: 'snapshot must be an address' }, 400)
+  }
+  if (!/^\d+$/.test(checkpointRaw)) {
+    return c.json({ error: 'checkpointId must be a non-negative integer' }, 400)
+  }
+
+  try {
+    const checkpointId = BigInt(checkpointRaw)
+    const resolver = await resolverForSnapshot(snapshot)
+    if (!resolver) return c.json({ error: 'Network not found' }, 404)
+
+    const [trigger] = await db
+      .select()
+      .from(snapshotTrigger)
+      .where(
+        and(
+          eq(snapshotTrigger.snapshot, snapshot.toLowerCase() as Hex),
+          eq(snapshotTrigger.checkpointId, checkpointId)
+        )
+      )
+      .limit(1)
+    if (!trigger) return c.json({ error: 'Checkpoint not found' }, 404)
+
+    const rows = await db
+      .select({
+        kind: accumulatorRecord.kind,
+        attester: accumulatorRecord.attester,
+        recipient: accumulatorRecord.recipient,
+        uid: accumulatorRecord.uid,
+        data: accumulatorRecord.data,
+        blockTimestamp: accumulatorRecord.blockTimestamp,
+        blockNumber: accumulatorRecord.blockNumber,
+        logIndex: accumulatorRecord.logIndex,
+        txHash: accumulatorRecord.txHash,
+      })
+      .from(accumulatorRecord)
+      .where(
+        and(
+          eq(accumulatorRecord.accumulator, resolver),
+          or(
+            lt(accumulatorRecord.blockNumber, trigger.blockNumber),
+            and(
+              eq(accumulatorRecord.blockNumber, trigger.blockNumber),
+              lt(accumulatorRecord.logIndex, trigger.logIndex)
+            )
+          )
+        )
+      )
+      .orderBy(
+        asc(accumulatorRecord.blockNumber),
+        asc(accumulatorRecord.logIndex)
+      )
+
+    return c.json({
+      snapshot: snapshot.toLowerCase(),
+      accumulator: resolver,
+      checkpointId: checkpointId.toString(),
+      cutoff: {
+        blockNumber: trigger.blockNumber.toString(),
+        logIndex: trigger.logIndex,
+        timestamp: trigger.timestamp.toString(),
+        transactionHash: trigger.txHash,
+      },
+      inputs: rows.map((row) => ({
+        ...row,
+        blockTimestamp: row.blockTimestamp.toString(),
+        blockNumber: row.blockNumber.toString(),
+      })),
+    })
+  } catch (error) {
+    console.error('Error fetching checkpoint inputs:', error)
+    return c.json({ error: 'Failed to fetch checkpoint inputs' }, 500)
+  }
+})
+
+/**
  * The pending-score state the app shows between "attestation saved" and "scores updated": the
  * last landed update, whether a recount is running right now, and how many attestations await the
  * next one. Read from chain events alone (SnapshotTriggered / MerkleProofSubmitted / the
@@ -205,19 +310,7 @@ app.get('/:snapshot/status', async (c) => {
     // networks carry `easIndexerResolver`), then the factory catalog — the same two sources as
     // `schemaUidsForSnapshot`, in the same order.
     let pendingAttestations: number | null = null
-    const configured = NETWORKS.find((network) =>
-      isHexEqual(network.contracts.merkleSnapshot, snapshot)
-    )
-    const resolver =
-      (configured?.contracts as { easIndexerResolver?: string } | undefined)
-        ?.easIndexerResolver ??
-      (
-        await db
-          .select({ resolver: instance.resolver })
-          .from(instance)
-          .where(eq(instance.snapshot, snapshot))
-          .limit(1)
-      )[0]?.resolver
+    const resolver = await resolverForSnapshot(snapshot)
 
     if (resolver) {
       // The boundary is the applied checkpoint's own trigger row. A proof whose trigger predates

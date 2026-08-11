@@ -35,10 +35,16 @@ pub trait ChainReader {
     /// `InstanceRegistry.getInstance(id)`.
     fn instance_record(&self, id: B256) -> Result<RegistryRecord, Self::Error>;
 
+    /// `InstanceRegistry.paramsAuthority(id)`. Zero identifies an unmigrated legacy row.
+    fn params_authority(&self, id: B256) -> Result<Address, Self::Error>;
+
     /// The full params the factory emitted for this id, reconstructed from the `InstanceCreated`
     /// log in the registering transaction's receipt. `None` when there is no such log — which is
     /// the normal case for anything the factory did not mint.
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>, Self::Error>;
+
+    /// Complete current tuple read directly from a registered typed controller.
+    fn controller_params(&self, controller: Address) -> Result<ControllerParams, Self::Error>;
 
     /// `MerkleSnapshot.paramsHash()`.
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error>;
@@ -68,6 +74,15 @@ pub struct CreatedParams {
     pub params: Params,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControllerParams {
+    pub instance_id: B256,
+    pub snapshot: Address,
+    pub version: u64,
+    pub current_params_hash: B256,
+    pub params: Params,
+}
+
 /// A fully reconstructed, self-checked instance the operator can act on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -80,6 +95,9 @@ pub struct CatalogEntry {
     pub params: Option<Params>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,
+    /// Typed control metadata. Both are absent for legacy and manifest instances.
+    pub params_controller: Option<Address>,
+    pub params_version: Option<u64>,
     pub eas: Option<Address>,
     pub created_block: u64,
     pub name: String,
@@ -106,6 +124,8 @@ pub enum SkipCause {
     ParamsMismatch { reconstructed: B256, on_chain: B256 },
     /// The event and the directory disagree about which contracts this id names.
     RecordDisagreement { event_snapshot: Address, record_snapshot: Address },
+    /// A registered controller, its full tuple, the snapshot, or the registry disagree.
+    ControllerInconsistent(String),
     /// A chain read failed for this instance. Per-instance, so one flaky read does not stop the
     /// rest of the run.
     ReadFailed(String),
@@ -131,6 +151,10 @@ impl std::fmt::Display for SkipCause {
                 f,
                 "InstanceCreated names snapshot {event_snapshot:#x} but the directory names \
                  {record_snapshot:#x}; one of them is lying about this id"
+            ),
+            SkipCause::ControllerInconsistent(detail) => write!(
+                f,
+                "registered parameter controller is inconsistent: {detail}; refusing this instance"
             ),
             SkipCause::ReadFailed(e) => write!(f, "chain read failed: {e}"),
         }
@@ -180,7 +204,9 @@ pub fn scan<R: ChainReader>(
             continue;
         }
         let id = entry.derived_id(chain_id);
-        if catalog.entries.iter().any(|e| e.snapshot == entry.snapshot) {
+        if catalog.entries.iter().any(|e| e.snapshot == entry.snapshot)
+            || catalog.skipped.iter().any(|e| e.snapshot == entry.snapshot)
+        {
             continue; // the chain already described it; the chain wins
         }
         let on_chain = match reader.snapshot_params_hash(entry.snapshot) {
@@ -202,6 +228,8 @@ pub fn scan<R: ChainReader>(
             verifier: Address::ZERO,
             params: None,
             reconstructed_params_hash: on_chain,
+            params_controller: None,
+            params_version: None,
             eas: entry.eas,
             created_block: entry.from_block,
             name: format!("{} @ {:#x}", entry.program.name(), entry.snapshot),
@@ -257,7 +285,83 @@ fn scan_one<R: ChainReader>(
         });
     }
 
-    // THE self-check.
+    let controller = reader.params_authority(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+
+    if controller != Address::ZERO {
+        let current = reader.controller_params(controller).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ControllerInconsistent(format!("controller read failed: {e}")),
+        })?;
+        let reconstructed = encode::params_hash(&current.params);
+        let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+
+        let mut disagreements = Vec::new();
+        if current.instance_id != id {
+            disagreements.push(format!(
+                "controller instance {:#x} != registry id {id:#x}",
+                current.instance_id
+            ));
+        }
+        if current.snapshot != record.snapshot {
+            disagreements.push(format!(
+                "controller snapshot {:#x} != registry snapshot {:#x}",
+                current.snapshot, record.snapshot
+            ));
+        }
+        if reconstructed != current.current_params_hash {
+            disagreements.push(format!(
+                "params_hash(full tuple) {reconstructed:#x} != controller hash {:#x}",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != snapshot_hash {
+            disagreements.push(format!(
+                "controller hash {:#x} != snapshot live hash {snapshot_hash:#x} (raw hash bypass or partial rotation)",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != record.params_hash {
+            disagreements.push(format!(
+                "controller hash {:#x} != registry hash {:#x}",
+                current.current_params_hash, record.params_hash
+            ));
+        }
+        if !disagreements.is_empty() {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::ControllerInconsistent(disagreements.join("; ")),
+            });
+        }
+
+        let eas = reader.factory_eas(created.factory).ok();
+        return Ok(Some(CatalogEntry {
+            instance_id: id,
+            program,
+            snapshot: record.snapshot,
+            accumulator: record.registry_or_accumulator,
+            verifier: record.verifier,
+            params: Some(current.params),
+            reconstructed_params_hash: reconstructed,
+            params_controller: Some(controller),
+            params_version: Some(current.version),
+            eas,
+            created_block: created.created_block,
+            name: created.name,
+            manifest: None,
+        }));
+    }
+
+    // Legacy fallback: the immutable creation event is the only full tuple available.
     let reconstructed = encode::params_hash(&created.params);
     let on_chain = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
         instance_id: id,
@@ -284,6 +388,8 @@ fn scan_one<R: ChainReader>(
         verifier: record.verifier,
         params: Some(created.params),
         reconstructed_params_hash: reconstructed,
+        params_controller: None,
+        params_version: None,
         eas,
         created_block: created.created_block,
         name: created.name,

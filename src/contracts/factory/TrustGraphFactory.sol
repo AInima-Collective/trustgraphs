@@ -9,7 +9,13 @@ import {EASIndexerResolver} from "contracts/eas/resolvers/EASIndexerResolver.sol
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
-import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {TrustGraphParamsValidator} from "contracts/params/TrustGraphParamsValidator.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {
+    MerkleSnapshotDeployer,
+    MerkleFundDistributorDeployer,
+    TrustGraphParamsControllerDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -95,6 +101,9 @@ contract TrustGraphFactory {
     /// @notice A creator endowed the new instance's proving tank in the creating transaction.
     event InstancePrepaid(bytes32 indexed instanceId, address indexed from, uint256 amount);
 
+    /// @notice Discovery link for the typed parameter control plane. `InstanceCreated` stays frozen.
+    event ParamsControllerCreated(bytes32 indexed instanceId, address indexed controller);
+
     /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
     ///         creator-customizable schema would fork `weightFieldIndex` and multiply the surface
     ///         every consumer (guest, indexer, frontend) has to handle.
@@ -158,6 +167,8 @@ contract TrustGraphFactory {
     /// @notice Creation-code holders for the two large children (see `InstanceDeployers.sol`).
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
     MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
+    /// @notice Creation-code holder for the trust-graph-specific typed params controller.
+    TrustGraphParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
 
     /// @notice The minimum epoch length, in blocks. Chain-appropriate: roughly monthly on mainnet
     ///         (what hosted proving commits to), tiny on a devnet. A shorter request is raised to
@@ -219,13 +230,14 @@ contract TrustGraphFactory {
         IInstanceRegistry instanceRegistry,
         MerkleSnapshotDeployer snapshotDeployer,
         MerkleFundDistributorDeployer distributorDeployer,
+        TrustGraphParamsControllerDeployer paramsControllerDeployer,
         uint64 epochFloor,
         IProvingVault vault
     ) {
         if (
             address(eas) == address(0) || address(schemaRegistrar) == address(0) || address(verifier) == address(0)
                 || address(instanceRegistry) == address(0) || address(snapshotDeployer) == address(0)
-                || address(distributorDeployer) == address(0)
+                || address(distributorDeployer) == address(0) || address(paramsControllerDeployer) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -242,6 +254,7 @@ contract TrustGraphFactory {
         INSTANCE_REGISTRY = instanceRegistry;
         SNAPSHOT_DEPLOYER = snapshotDeployer;
         DISTRIBUTOR_DEPLOYER = distributorDeployer;
+        PARAMS_CONTROLLER_DEPLOYER = paramsControllerDeployer;
         EPOCH_FLOOR = epochFloor;
     }
 
@@ -329,10 +342,11 @@ contract TrustGraphFactory {
         params.chainId = uint64(block.chainid);
         bytes32 paramsHash = ParamsCodec.hash(params);
 
-        // --- 4. The snapshot. This factory takes CONSTITUTIONAL_ROLE transiently (step 5); the --
-        //        admin holds OPERATIONAL_ROLE from birth.
-        MerkleSnapshot merkleSnapshot =
-            SNAPSHOT_DEPLOYER.deploy(VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), admin);
+        // --- 4. The snapshot. The factory takes both roles transiently so it can install the ----
+        //        controller whose constructor needs this newly-created snapshot's address.
+        MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
+            VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
+        );
         snapshot = address(merkleSnapshot);
 
         //        Bind the accumulator to that snapshot, in the same transaction. `trigger()` is
@@ -342,13 +356,18 @@ contract TrustGraphFactory {
         //        accumulator is unbound never leaves this call.
         indexerResolver.bindSnapshot(snapshot);
 
-        // --- 5. The epoch schedule, then hand the constitutional key over. --------------------
+        // --- 5. Publish version 1, install its typed controller, and hand both roles over. -----
         //        `setEpochLength` is constitutional-only and not a constructor argument, which is
         //        the sole reason this factory ever holds a role. GRANT BEFORE RENOUNCE: the
         //        opposite order would leave the instance with no constitutional holder at all,
         //        permanently — the role administers itself.
         uint64 epochLength = args.epochLength < EPOCH_FLOOR ? EPOCH_FLOOR : args.epochLength;
         merkleSnapshot.setEpochLength(epochLength);
+
+        TrustGraphParamsController controller =
+            PARAMS_CONTROLLER_DEPLOYER.deploy(instanceId, snapshot, INSTANCE_REGISTRY, params, admin);
+        merkleSnapshot.grantRole(merkleSnapshot.OPERATIONAL_ROLE(), address(controller));
+        merkleSnapshot.renounceRole(merkleSnapshot.OPERATIONAL_ROLE(), address(this));
         merkleSnapshot.grantRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), admin);
         merkleSnapshot.renounceRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), address(this));
 
@@ -361,7 +380,7 @@ contract TrustGraphFactory {
 
         // --- 7. The directory entry. Presentation-free by design: name/metadata live in the -----
         //        event and the indexer, never on the registry record.
-        INSTANCE_REGISTRY.register(
+        INSTANCE_REGISTRY.registerWithParamsAuthority(
             instanceId,
             IInstanceRegistry.Instance({
                 program: PROGRAM,
@@ -369,7 +388,8 @@ contract TrustGraphFactory {
                 verifier: address(VERIFIER),
                 registryOrAccumulator: resolver,
                 paramsHash: paramsHash
-            })
+            }),
+            address(controller)
         );
 
         // --- 8. The optional prepay. AFTER the registry row, because the vault resolves the ---
@@ -394,6 +414,10 @@ contract TrustGraphFactory {
             epochLength,
             params
         );
+        // Emitted after the frozen creation event so ordered indexers have already materialized
+        // the instance row when they attach its separately-discovered controller.
+        emit ParamsControllerCreated(instanceId, address(controller));
+        controller.publishInitialVersion();
     }
 
     /// @notice The directory key for a would-be instance. Mixing the creator in makes label
@@ -416,88 +440,6 @@ contract TrustGraphFactory {
     /// @dev The §2.2 bounds. These are not opinions about what makes a good community — they are
     ///      the envelope the fixed-point guest is proven over, plus the two identity rules.
     function _validateParams(ParamsCodec.Params memory p) internal pure {
-        // Identity fields are derived, never supplied (see `CreateArgs`).
-        if (p.schemaUid != bytes32(0) || p.accumulator != address(0) || p.chainId != 0) {
-            revert DerivedFieldNotZero();
-        }
-
-        // Damping is a probability: 0 makes PageRank a constant, S makes it never teleport.
-        if (p.dampingFp == 0 || p.dampingFp >= PRECISION_SCALE) revert InvalidDamping(p.dampingFp);
-        if (p.toleranceFp == 0 || p.toleranceFp > MAX_TOLERANCE_FP) {
-            revert InvalidTolerance(p.toleranceFp);
-        }
-        if (p.maxIterations == 0 || p.maxIterations > MAX_ITERATIONS) {
-            revert InvalidIterations(p.maxIterations);
-        }
-        if (p.maxWeightFp == 0 || p.minWeightFp > p.maxWeightFp || p.maxWeightFp > MAX_WEIGHT_FP) {
-            revert InvalidWeightBounds(p.minWeightFp, p.maxWeightFp);
-        }
-        // Trust share is the fraction of rank mass reserved for the seeded component.
-        if (p.trustShareFp > PRECISION_SCALE) revert InvalidTrustShare(p.trustShareFp);
-        if (p.trustDecayFp > PRECISION_SCALE) revert InvalidTrustDecay(p.trustDecayFp);
-        if (p.trustMultiplierFp > MAX_TRUST_MULTIPLIER_FP) {
-            revert InvalidTrustMultiplier(p.trustMultiplierFp);
-        }
-        // The scale is the guest's own constant, not a per-instance choice.
-        if (p.precisionScale != PRECISION_SCALE) revert InvalidPrecisionScale(p.precisionScale);
-        // A zero pool scores every member zero — a network that renders as all-zeros forever.
-        if (p.totalPool == 0) revert InvalidTotalPool();
-        if (p.weightFieldIndex != WEIGHT_FIELD_INDEX) {
-            revert InvalidWeightFieldIndex(p.weightFieldIndex);
-        }
-
-        // Seeds: trust has to start somewhere, so an empty set is rejected rather than silently
-        // producing an untrusted graph. Duplicates are rejected too — `seedSetRoot` sorts and would
-        // absorb them, so a duplicate is always a mistake in the caller's list.
-        uint256 seedCount = p.trustedSeeds.length;
-        if (seedCount == 0) revert NoTrustedSeeds();
-        if (seedCount > MAX_TRUSTED_SEEDS) revert TooManyTrustedSeeds(seedCount);
-        for (uint256 i = 0; i < seedCount; i++) {
-            address seed = p.trustedSeeds[i];
-            if (seed == address(0)) revert InvalidSeed(seed);
-            for (uint256 j = 0; j < i; j++) {
-                if (p.trustedSeeds[j] == seed) revert InvalidSeed(seed);
-            }
-        }
-
-        // Lane 2 needs an `AnchorRegistry` per instance and an envelope-signing story; the v1
-        // bundle is lane-1-only, and the snapshot is created with no anchor registry to match.
-        if (p.envelope0DomainSeparators.length != 0 || p.lane2MaxHeadAge != 0) {
-            revert Lane2NotSupported();
-        }
-
-        _validateGrowth(p);
-    }
-
-    /// @dev The one bound that is not a single-field range check, and the one that matters most.
-    ///
-    ///      The guest normalizes ranks ONCE, after the iteration loop
-    ///      (`pagerank::calculate_generic`). So a seed whose entire out-weight points at another
-    ///      seed multiplies its own rank by `damping x multiplier` on every iteration, with nothing
-    ///      pulling it back. Past `type(uint256).max` the fixed-point core aborts, which means the
-    ///      instance can never be proven — and before that abort existed, it silently wrapped and
-    ///      produced scores that were wrong but perfectly provable, and that the browser's
-    ///      arbitrary-precision port disagreed with.
-    ///
-    ///      No single-field bound can express this: safety is a joint property of damping, the
-    ///      multiplier and the iteration count. (The blessed live params grow 1.7x per iteration,
-    ///      which is fine for 100 iterations and overflows by 500.) So walk the worst case forward
-    ///      and refuse configurations that reach the ceiling. Bounded by `maxIterations`, which is
-    ///      itself capped, and it exits early on rejection.
-    function _validateGrowth(ParamsCodec.Params memory p) private pure {
-        uint256 factor = (p.dampingFp * p.trustMultiplierFp) / PRECISION_SCALE;
-        // factor <= 1 ⇒ ranks never grow, so no iteration count is unsafe.
-        if (factor <= PRECISION_SCALE) return;
-
-        uint256 growth = PRECISION_SCALE;
-        for (uint256 i = 0; i < p.maxIterations; i++) {
-            // Check before multiplying: this loop must not overflow while proving that the guest's
-            // would.
-            if (growth > type(uint256).max / factor) {
-                revert RankGrowthUnbounded(factor, p.maxIterations);
-            }
-            growth = (growth * factor) / PRECISION_SCALE;
-            if (growth > MAX_RANK_FP) revert RankGrowthUnbounded(factor, p.maxIterations);
-        }
+        TrustGraphParamsValidator.validateCreation(p);
     }
 }

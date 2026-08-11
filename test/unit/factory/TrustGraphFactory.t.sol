@@ -7,10 +7,17 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
 import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {
+    MerkleSnapshotDeployer,
+    MerkleFundDistributorDeployer,
+    TrustGraphParamsControllerDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
+import {TrustGraphParamsValidator} from "contracts/params/TrustGraphParamsValidator.sol";
+import {ITrustGraphParamsController} from "interfaces/factory/ITrustGraphParamsController.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -53,7 +60,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     /// GROUND RULE 3, no-distributor path: after `createInstance` returns, the factory holds no role
     /// on the new snapshot — enumerated over every role the transaction touched, not spot-checked —
-    /// and the admin holds both real roles.
+    /// and the controller owned by the admin holds the operational role.
     function test_FactoryIsInertAfterCreate() public {
         Created memory c = _create(_args("inert"));
         _assertFactoryInert(c);
@@ -102,19 +109,26 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         _assertFactoryInert(c);
     }
 
-    /// The handover is functional, not nominal: the admin can actually exercise both roles
-    /// afterwards, and the factory's own attempt to reach back in reverts. (A renounce that left
-    /// the role unheld would pass a `hasRole` check and still brick the instance.)
+    /// The handover is functional, not nominal: the admin governs constitutional fields directly
+    /// and scoring fields through the complete typed tuple, while raw hash mutation is unavailable.
     function test_AdminCanGovernAndFactoryCannot() public {
         Created memory c = _create(_args("handover"));
         MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        ParamsCodec.Params memory next = controller.getCurrentParams();
+        next.dampingFp -= 1;
 
-        vm.startPrank(c.admin);
+        vm.prank(c.admin);
         snapshot.setEpochLength(EPOCH_FLOOR * 3); // constitutional
-        snapshot.setParamsHash(keccak256("rotated")); // operational
-        vm.stopPrank();
+        vm.prank(c.admin);
+        controller.updateParams(next, "ipfs://evidence"); // operational, typed and complete
         assertEq(snapshot.epochLength(), EPOCH_FLOOR * 3);
-        assertEq(snapshot.paramsHash(), keccak256("rotated"));
+        assertEq(snapshot.paramsHash(), ParamsCodec.hash(next));
+        assertEq(registry.getInstance(c.instanceId).paramsHash, ParamsCodec.hash(next));
+
+        vm.prank(c.admin);
+        vm.expectRevert();
+        snapshot.setParamsHash(keccak256("raw-bypass"));
 
         bytes32 constitutional = snapshot.CONSTITUTIONAL_ROLE();
         vm.prank(address(factory));
@@ -124,6 +138,152 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
             )
         );
         snapshot.setEpochLength(1);
+    }
+
+    function test_ControllerPublishesCompleteVersionOne() public {
+        Created memory c = _create(_args("version-one"));
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        ParamsCodec.Params memory current = controller.getCurrentParams();
+        bytes32 liveHash = MerkleSnapshot(c.snapshot).paramsHash();
+
+        assertEq(controller.version(), 1);
+        assertEq(controller.currentParamsHash(), liveHash);
+        assertEq(ParamsCodec.hash(current), liveHash);
+        assertEq(current.schemaUid, c.schemaUid);
+        assertEq(current.accumulator, c.resolver);
+        assertEq(current.chainId, uint64(block.chainid));
+        assertEq(current.trustedSeeds.length, c.evt.params.trustedSeeds.length);
+        assertEq(registry.getInstance(c.instanceId).paramsHash, liveHash);
+        assertEq(registry.paramsAuthority(c.instanceId), c.controller);
+    }
+
+    /// Streaming indexers learn the child address from the factory event. Version 1 must be
+    /// published after that discovery log, not from the controller constructor where it would be
+    /// permanently invisible to a dynamic source.
+    function test_ControllerDiscoveryPrecedesVersionOnePublication() public {
+        Created memory c = _create(_args("event-order"));
+        uint256 discovery = type(uint256).max;
+        uint256 publication = type(uint256).max;
+
+        for (uint256 i = 0; i < c.logs.length; i++) {
+            if (
+                c.logs[i].emitter == address(factory) && c.logs[i].topics.length > 0
+                    && c.logs[i].topics[0] == TrustGraphFactory.ParamsControllerCreated.selector
+            ) {
+                discovery = i;
+            }
+            if (
+                c.logs[i].emitter == c.controller && c.logs[i].topics.length > 0
+                    && c.logs[i].topics[0] == ITrustGraphParamsController.ParamsUpdated.selector
+            ) {
+                publication = i;
+            }
+        }
+
+        assertTrue(discovery != type(uint256).max, "controller discovery missing");
+        assertTrue(publication != type(uint256).max, "version one publication missing");
+        assertLt(discovery, publication, "dynamic source must exist before version one log");
+    }
+
+    function test_RollbackPublishesANewVersionInsteadOfRewritingHistory() public {
+        Created memory c = _create(_args("rollback"));
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        ParamsCodec.Params memory versionOne = controller.getCurrentParams();
+        bytes32 versionOneHash = controller.currentParamsHash();
+
+        ParamsCodec.Params memory versionTwo = controller.getCurrentParams();
+        versionTwo.dampingFp -= 1;
+        vm.prank(c.admin);
+        controller.updateParams(versionTwo, "ipfs://version-two");
+        assertEq(controller.version(), 2);
+
+        vm.prank(c.admin);
+        controller.updateParams(versionOne, "ipfs://rollback-rationale");
+        assertEq(controller.version(), 3, "rollback is an append-only version");
+        assertEq(controller.currentParamsHash(), versionOneHash);
+        assertEq(MerkleSnapshot(c.snapshot).paramsHash(), versionOneHash);
+        assertEq(registry.getInstance(c.instanceId).paramsHash, versionOneHash);
+    }
+
+    function test_ControllerRejectsNoopInvalidGrowthAndIdentityChanges() public {
+        Created memory c = _create(_args("validation"));
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        ParamsCodec.Params memory next = controller.getCurrentParams();
+        bytes32 beforeHash = controller.currentParamsHash();
+
+        vm.prank(c.admin);
+        vm.expectRevert(abi.encodeWithSelector(TrustGraphParamsController.NoopUpdate.selector, beforeHash));
+        controller.updateParams(next, "");
+
+        next.dampingFp -= 1;
+        vm.prank(alice);
+        vm.expectRevert();
+        controller.updateParams(next, "ipfs://unauthorized");
+
+        next = controller.getCurrentParams();
+        next.dampingFp = 9e17;
+        next.trustMultiplierFp = 100e18;
+        next.maxIterations = 500;
+        vm.prank(c.admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(TrustGraphParamsValidator.RankGrowthUnbounded.selector, uint256(90e18), uint32(500))
+        );
+        controller.updateParams(next, "");
+
+        next = controller.getCurrentParams();
+        next.chainId += 1;
+        vm.prank(c.admin);
+        vm.expectRevert(TrustGraphParamsValidator.IdentityFieldChanged.selector);
+        controller.updateParams(next, "");
+
+        assertEq(controller.version(), 1);
+        assertEq(controller.currentParamsHash(), beforeHash);
+        assertEq(MerkleSnapshot(c.snapshot).paramsHash(), beforeHash);
+        assertEq(registry.getInstance(c.instanceId).paramsHash, beforeHash);
+    }
+
+    function test_ControllerUpdateIsAtomicWhenRegistryLegReverts() public {
+        Created memory c = _create(_args("atomic"));
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        ParamsCodec.Params memory next = controller.getCurrentParams();
+        next.dampingFp -= 1;
+        bytes32 nextHash = ParamsCodec.hash(next);
+        bytes32 beforeHash = controller.currentParamsHash();
+
+        vm.mockCallRevert(
+            address(registry),
+            abi.encodeWithSelector(IInstanceRegistry.updateParamsHash.selector, c.instanceId, nextHash),
+            abi.encodeWithSignature("Error(string)", "forced registry failure")
+        );
+        vm.prank(c.admin);
+        vm.expectRevert(bytes("forced registry failure"));
+        controller.updateParams(next, "ipfs://atomic");
+        vm.clearMockedCalls();
+
+        assertEq(controller.version(), 1);
+        assertEq(controller.currentParamsHash(), beforeHash);
+        assertEq(MerkleSnapshot(c.snapshot).paramsHash(), beforeHash, "snapshot write must roll back");
+        assertEq(registry.getInstance(c.instanceId).paramsHash, beforeHash);
+    }
+
+    function test_ControllerOwnershipUsesTwoStepTransfer() public {
+        Created memory c = _create(_args("two-step"));
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        address nextOwner = address(0xA770);
+
+        vm.prank(c.admin);
+        controller.transferOwnership(nextOwner);
+        assertEq(controller.owner(), c.admin);
+        assertEq(controller.pendingOwner(), nextOwner);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        controller.acceptOwnership();
+
+        vm.prank(nextOwner);
+        controller.acceptOwnership();
+        assertEq(controller.owner(), nextOwner);
+        assertEq(controller.pendingOwner(), address(0));
     }
 
     /// REFUTED counterexample, now a guard: naming the factory as admin used to leave it holding
@@ -421,15 +581,16 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// Every shared singleton is required; a factory wired to a hole would fail at create time on
     /// somebody else's transaction.
     function test_ConstructorRejectsZeroSingletons() public {
-        address[6] memory holes;
-        for (uint256 i = 0; i < 6; i++) {
+        address[7] memory holes;
+        for (uint256 i = 0; i < 7; i++) {
             holes = [
                 address(eas),
                 address(registrar),
                 address(verifier),
                 address(registry),
                 address(snapshotDeployer),
-                address(distributorDeployer)
+                address(distributorDeployer),
+                address(paramsControllerDeployer)
             ];
             holes[i] = address(0);
 
@@ -441,6 +602,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
                 IInstanceRegistry(holes[3]),
                 MerkleSnapshotDeployer(holes[4]),
                 MerkleFundDistributorDeployer(holes[5]),
+                TrustGraphParamsControllerDeployer(holes[6]),
                 EPOCH_FLOOR,
                 vault
             );
@@ -458,6 +620,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
             IInstanceRegistry(address(registry)),
             snapshotDeployer,
             distributorDeployer,
+            paramsControllerDeployer,
             0,
             vault
         );
@@ -533,6 +696,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
             IInstanceRegistry(address(registry)),
             snapshotDeployer,
             distributorDeployer,
+            paramsControllerDeployer,
             EPOCH_FLOOR,
             IProvingVault(address(0))
         );

@@ -134,6 +134,7 @@ contract SignerSyncZkModuleTest is Test {
         assertEq(module.avatar(), address(safe));
         assertEq(module.target(), address(safe));
         assertEq(module.owner(), owner);
+        assertEq(module.paramsAuthority(), owner);
         assertEq(module.paramsHash(), PARAMS_HASH);
         assertEq(module.selectionParamsHash(), SEL_HASH);
         assertTrue(safe.isModuleEnabled(address(module)));
@@ -172,6 +173,27 @@ contract SignerSyncZkModuleTest is Test {
         vm.stopPrank();
         assertEq(module.paramsHash(), bytes32(uint256(7)));
         assertEq(module.selectionParamsHash(), bytes32(uint256(8)));
+    }
+
+    function test_Governance_ParamsAuthorityTransfersWithoutModuleOwnership() public {
+        vm.prank(owner);
+        module.transferParamsAuthority(D);
+        assertEq(module.paramsAuthority(), owner, "authority remains live until acceptance");
+        assertEq(module.pendingParamsAuthority(), D);
+
+        vm.prank(D);
+        module.acceptParamsAuthority();
+        assertEq(module.paramsAuthority(), D);
+        assertEq(module.pendingParamsAuthority(), address(0));
+        assertEq(module.owner(), owner, "verifier/accumulator governance stays with the owner");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.NotParamsAuthority.selector, owner));
+        module.setParamsHash(bytes32(uint256(9)));
+
+        vm.prank(D);
+        module.setParamsHash(bytes32(uint256(9)));
+        assertEq(module.paramsHash(), bytes32(uint256(9)));
     }
 
     /*//////////////////////// rotation scenarios ////////////////////////*/

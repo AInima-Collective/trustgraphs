@@ -1,11 +1,13 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { ponder } from 'ponder:registry'
 import {
+  instance,
   merkleFundDistribution,
   merkleFundDistributionClaim,
   merkleFundDistributor,
   merkleSnapshot,
+  parameterVersion,
   proofSubmission,
   snapshotTrigger,
 } from 'ponder:schema'
@@ -336,6 +338,50 @@ const onMerkleProofSubmitted = async ({
 
 ponder.on('merkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 ponder.on('programSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
+
+/** Attach a parameter version to the first checkpoint that actually pins it. */
+const onCheckpointParamsPinned = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:CheckpointParamsPinned'>) => {
+  const [network] = await context.db.sql
+    .select()
+    .from(instance)
+    .where(eq(instance.snapshot, event.log.address))
+    .limit(1)
+  if (!network?.paramsController) return
+
+  // A rollback may publish the same tuple/hash as an older version. The newest matching
+  // unpinned version is therefore the one this checkpoint activates.
+  const [version] = await context.db.sql
+    .select()
+    .from(parameterVersion)
+    .where(
+      and(
+        eq(parameterVersion.instanceId, network.id),
+        eq(parameterVersion.paramsHash, event.args.paramsHash),
+        eq(parameterVersion.valid, true)
+      )
+    )
+    .orderBy(desc(parameterVersion.version))
+    .limit(1)
+  if (!version || version.firstCheckpoint !== null) return
+
+  await context.db.update(parameterVersion, { id: version.id }).set({
+    firstCheckpoint: event.args.checkpointId,
+    firstCheckpointBlock: event.block.number,
+    firstCheckpointTimestamp: event.block.timestamp,
+    firstCheckpointTxHash: event.transaction.hash,
+  })
+  if (network.paramsVersion === version.version) {
+    await context.db.update(instance, { id: network.id }).set({
+      paramsFirstCheckpoint: event.args.checkpointId,
+    })
+  }
+}
+
+ponder.on('merkleSnapshot:CheckpointParamsPinned', onCheckpointParamsPinned)
+ponder.on('programSnapshot:CheckpointParamsPinned', onCheckpointParamsPinned)
 
 /**
  * `SnapshotTriggered` — the moment a checkpoint froze. Between this event and the matching

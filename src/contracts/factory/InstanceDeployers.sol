@@ -5,6 +5,9 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 /// @title MerkleSnapshotDeployer
 /// @notice A one-per-chain singleton whose only job is to hold `MerkleSnapshot`'s creation code so
@@ -56,5 +59,19 @@ contract MerkleFundDistributorDeployer {
         bool allowlistEnabled
     ) external returns (MerkleFundDistributor) {
         return new MerkleFundDistributor(owner, merkleSnapshot, feeRecipient, feePercentage, allowlistEnabled);
+    }
+}
+
+/// @title TrustGraphParamsControllerDeployer
+/// @notice Holds the typed controller's creation code outside `TrustGraphFactory` for EIP-170.
+contract TrustGraphParamsControllerDeployer {
+    function deploy(
+        bytes32 instanceId,
+        address snapshot,
+        IInstanceRegistry registry,
+        ParamsCodec.Params calldata initialParams,
+        address owner
+    ) external returns (TrustGraphParamsController) {
+        return new TrustGraphParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
     }
 }

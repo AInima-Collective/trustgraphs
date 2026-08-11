@@ -32,6 +32,10 @@ contract InstanceRegistryTest is Test {
         address registryOrAccumulator,
         bytes32 paramsHash
     );
+    event ParamsAuthorityUpdated(
+        bytes32 indexed instanceId, address indexed oldAuthority, address indexed newAuthority
+    );
+    event InstanceParamsHashUpdated(bytes32 indexed instanceId, bytes32 oldParamsHash, bytes32 newParamsHash);
 
     function setUp() public {
         reg = new InstanceRegistry(admin);
@@ -171,6 +175,53 @@ contract InstanceRegistryTest is Test {
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(IInstanceRegistry.InstanceNotFound.selector, HC));
         reg.update(HC, _rec(HC, 0x100));
+    }
+
+    function test_PerInstanceParamsAuthorityCanOnlyChangeItsOwnHash() public {
+        address authority = address(0xA11CE);
+        IInstanceRegistry.Instance memory r = _rec(TG, 0x100);
+        vm.prank(admin);
+        reg.registerWithParamsAuthority(TG, r, authority);
+
+        bytes32 nextHash = keccak256("next");
+        vm.expectEmit(true, false, false, true, address(reg));
+        emit InstanceParamsHashUpdated(TG, r.paramsHash, nextHash);
+        vm.prank(authority);
+        reg.updateParamsHash(TG, nextHash);
+
+        IInstanceRegistry.Instance memory got = reg.getInstance(TG);
+        assertEq(got.paramsHash, nextHash);
+        assertEq(got.snapshot, r.snapshot);
+        assertEq(got.verifier, r.verifier);
+        assertEq(got.registryOrAccumulator, r.registryOrAccumulator);
+    }
+
+    function test_ParamsAuthorityIsScopedPerInstance() public {
+        address tgAuthority = address(0xA11CE);
+        address hcAuthority = address(0xB0B);
+        vm.startPrank(admin);
+        reg.registerWithParamsAuthority(TG, _rec(TG, 0x100), tgAuthority);
+        reg.registerWithParamsAuthority(HC, _rec(HC, 0x200), hcAuthority);
+        vm.stopPrank();
+
+        vm.prank(tgAuthority);
+        vm.expectRevert(
+            abi.encodeWithSelector(IInstanceRegistry.NotParamsAuthority.selector, HC, tgAuthority, hcAuthority)
+        );
+        reg.updateParamsHash(HC, keccak256("hijack"));
+    }
+
+    function test_OperatorCanAssociateLegacyRowWithController() public {
+        address controller = address(0xC011);
+        vm.startPrank(admin);
+        reg.register(TG, _rec(TG, 0x100));
+        assertEq(reg.paramsAuthority(TG), address(0));
+
+        vm.expectEmit(true, true, true, true, address(reg));
+        emit ParamsAuthorityUpdated(TG, address(0), controller);
+        reg.setParamsAuthority(TG, controller);
+        vm.stopPrank();
+        assertEq(reg.paramsAuthority(TG), controller);
     }
 
     function test_GetInstanceRevertsUnknown() public {

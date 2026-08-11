@@ -10,6 +10,7 @@ import {
 import {NO_EXPIRATION_TIME, EMPTY_UID} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 
 import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
@@ -121,6 +122,49 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
         assertEq(snapshot.getLatestState().root, ROOT);
         assertEq(snapshot.getLatestState().blockNumber, block.number, "filed at the freeze block");
         assertTrue(snapshot.hasAppliedCheckpoint());
+    }
+
+    /// A frozen checkpoint keeps its old meaning across a complete tuple rotation; the next
+    /// checkpoint pins the new version and proves without any retroactive mutation.
+    function test_ParameterRotationPreservesOldCheckpointAndPinsTheNext() public {
+        Created memory c = _create(_args("rotating"));
+        MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+
+        _vouch(c.schemaUid, member, peer, "version one", 90);
+        vm.roll(uint256(EPOCH_FLOOR) + 1);
+        snapshot.trigger();
+        bytes32 versionOneHash = snapshot.checkpointParamsHash(0);
+
+        ParamsCodec.Params memory next = controller.getCurrentParams();
+        next.dampingFp -= 1;
+        next.trustedSeeds = new address[](2);
+        next.trustedSeeds[0] = address(0xCAFE);
+        next.trustedSeeds[1] = address(0xBEEF);
+        bytes32 versionTwoHash = ParamsCodec.hash(next);
+
+        vm.prank(c.admin);
+        controller.updateParams(next, "ipfs://rotation-evidence");
+        assertEq(controller.version(), 2);
+        assertEq(controller.currentParamsHash(), versionTwoHash);
+        assertEq(snapshot.paramsHash(), versionTwoHash);
+        assertEq(registry.getInstance(c.instanceId).paramsHash, versionTwoHash);
+        assertEq(snapshot.checkpointParamsHash(0), versionOneHash, "frozen checkpoint must not change");
+
+        IAttestationAccumulator.Checkpoint memory oldCheckpoint = IAttestationAccumulator(c.resolver).getCheckpoint(0);
+        verifier.setExpectedDigest(_digest(c.snapshot, oldCheckpoint.acc, oldCheckpoint.leafCount, versionOneHash));
+        snapshot.submitProof(0, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
+
+        _vouch(c.schemaUid, peer, member, "version two", 70);
+        vm.roll(block.number + EPOCH_FLOOR);
+        uint256 nextCheckpointId = snapshot.trigger();
+        assertEq(nextCheckpointId, 1);
+        assertEq(snapshot.checkpointParamsHash(1), versionTwoHash);
+
+        IAttestationAccumulator.Checkpoint memory newCheckpoint = IAttestationAccumulator(c.resolver).getCheckpoint(1);
+        verifier.setExpectedDigest(_digest(c.snapshot, newCheckpoint.acc, newCheckpoint.leafCount, versionTwoHash));
+        snapshot.submitProof(1, ROOT, IPFS, CID, TOTAL, bytes32(0), RECIPIENT, hex"");
+        assertEq(snapshot.lastAppliedCheckpoint(), 1);
     }
 
     /// The optional distributor is a working consumer of the instance's root, not a loose contract:

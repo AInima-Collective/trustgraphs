@@ -94,6 +94,13 @@ jq '{edges: [], params: .}' params.json | cargo run --release -- trust-graph par
 
 `params.json` is a serialized `pagerank_core::Params` (the governance-pinned PageRank parameters).
 
+For a factory-created or migrated network, `params.json` is no longer an
+operational source of truth. `TrustGraphParamsController.getCurrentParams()`
+stores the complete current tuple on-chain, and the operator reconstructs its
+transient file from that call on every catalog refresh. A local file remains a
+deployment input for the legacy `DeployNetwork` path and a useful independent
+hash check; it must never shadow a controller-backed registry entry.
+
 > **params schema v2.** `Params` carries two domain separators at the end — `accumulator` (the
 > instance's `EASIndexerResolver`) and `chain_id` — so two identically-configured instances cannot
 > accept each other's proofs (`FACTORY.md` §1.1). They are properties of an *instance*, not of the
@@ -120,12 +127,18 @@ Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its
 1. **SP1 verifier** — `script/DeployZkVerifier.s.sol` with the SP1 verifier-gateway address for the
    target chain and the `programVKey` from `trust-graph vkey`. (`DeployZkVerifier` deploys the shared
    `SP1JournalVerifier` bytecode; each program is a separate labeled instance with its own vkey.)
-2. **Network** — `script/DeployNetwork.s.sol` deploys `EASIndexerResolver` (accumulator), then
-   `MerkleSnapshot(zkVerifier, paramsHash, accumulator, deployer, deployer)`, the schema, and the
-   distributor. Pass the `paramsHash` from `trust-graph paramshash`.
+2. **Network** — prefer `TrustGraphFactory.createInstance` (the app creation
+   wizard uses it). It deploys the resolver, snapshot, distributor, and one
+   `TrustGraphParamsController`; publishes version 1; registers that controller
+   as the instance's narrow `paramsAuthority`; grants it the snapshot's sole
+   `OPERATIONAL_ROLE`; and makes the community admin its two-step owner. The
+   older `script/DeployNetwork.s.sol` path remains for non-factory/legacy
+   deployments and does not gain versioned parameter control automatically.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
-   operational (short-delay) `TimelockController`s and transfers `CONSTITUTIONAL_ROLE` /
-   `OPERATIONAL_ROLE` off the deployer to them.
+   operational (short-delay) `TimelockController`s. On a controller-backed trust graph, transfer
+   the snapshot's `CONSTITUTIONAL_ROLE` to the constitutional timelock and transfer ownership of
+   `TrustGraphParamsController` to the operational timelock through its two-step ownership flow.
+   The controller—not the timelock directly—remains the snapshot's sole `OPERATIONAL_ROLE` holder.
 
 ## Produce a root (the permissionless loop)
 
@@ -196,6 +209,90 @@ Three consequences worth knowing before you debug a revert:
   bound to its snapshot that should be unreachable; if you see it, something minted a checkpoint
   out of band.
 
+## Change scoring parameters
+
+The recorded two-version local guest execution and direct→timelock ownership exercise are in
+[`SCORING_ROTATION_LOCAL.md`](./SCORING_ROTATION_LOCAL.md). It includes the exact checkpoint hashes,
+guest journal digests, and the safe two-step timelock handoff command.
+
+Scoring changes are operational, but they are typed and versioned. Do not call
+`MerkleSnapshot.setParamsHash` directly on a controller-backed trust graph.
+That raw method exists for other programs and legacy recovery; bypassing the
+registered controller creates an inconsistency that the operator refuses and
+alerts on.
+
+1. Open **Settings → Scoring**. Confirm that the controller, snapshot, and
+   registry hashes agree. The current tuple is read from RPC even when the
+   indexer is unavailable; version history may be unavailable in that state.
+2. Choose **Propose changes**. The draft starts from the exact live tuple and
+   records its parent hash. Only damping, tolerance, iteration cap, weight
+   bounds, trust multiplier/share/decay, seeds, and points pool are editable.
+   Instance identity fields remain locked.
+3. Resolve every seed, pass the shared-envelope client check and controller
+   simulation, and review the checkpoint-named PageRank comparison. A changed
+   parent hash makes the draft stale and non-submittable.
+4. Submit through the authority the controller actually exposes:
+   - an EOA owner applies directly;
+   - an authorized Safe action is handed to the existing Merkle governance
+     proposal screen;
+   - an operational `TimelockController` action is scheduled for at least
+     `getMinDelay()` and executed only by its configured executor;
+   - a Safe without app-native routing receives a Safe Transaction Builder
+     bundle.
+5. If signer sync is enabled, the canonical bundle updates
+   `SignerSyncZkModule.paramsHash` first and the controller last. Safe and
+   timelock batches are atomic. A direct sequence that stops after the signer
+   leg is explicitly **resume required**; reuse the same draft so the
+   controller is not advanced under a different hash.
+6. After execution, the new version is **current, awaiting checkpoint**. The
+   next successful `trigger()` pins it and makes it active. A checkpoint frozen
+   before execution remains provable under its old hash.
+
+Rollback is not a storage rewrite. Open a new draft whose editable values match
+an older tuple and publish it as the next version. The version number remains
+monotonic, evidence and executor provenance remain append-only, and settled
+roots keep their original meaning.
+
+### Legacy migration ceremony
+
+Migration transfers a real capability and is constitutional. Never run it
+silently against a community network. Announce the exact instance, tuple,
+controller owner, and every legacy operational holder; use the community's Safe
+or timelock batch when that is the current administrator.
+
+From a cold checkout, build and test first:
+
+```bash
+pnpm install --frozen-lockfile
+forge build
+forge test
+```
+
+Then invoke `script/MigrateTrustGraphParamsController.s.sol` with the existing
+`instanceId`, snapshot, registry, deployed
+`TrustGraphParamsControllerDeployer`, exact `params.json`, schema UID,
+accumulator, chain ID, intended EOA/Safe/timelock owner, and a complete array of
+legacy `OPERATIONAL_ROLE` holders. For an EOA-administered development instance:
+
+```bash
+export RPC_URL=http://127.0.0.1:8545
+export FUNDED_KEY=0x... # current registry + snapshot administrator
+
+forge script script/MigrateTrustGraphParamsController.s.sol:MigrateTrustGraphParamsController \
+  --rpc-url "$RPC_URL" --broadcast \
+  --sig 'run(bytes32,address,address,address,string,bytes32,address,uint64,address,address[])' \
+  "$INSTANCE_ID" "$SNAPSHOT" "$INSTANCE_REGISTRY" "$PARAMS_CONTROLLER_DEPLOYER" \
+  "$PARAMS_JSON" "$SCHEMA_UID" "$ACCUMULATOR" "$CHAIN_ID" "$CONTROLLER_OWNER" \
+  "[$LEGACY_OPERATIONAL_HOLDER]"
+```
+
+The script refuses a tuple that does not reproduce both the snapshot and
+registry hash. Its order is association → grant controller → verify grant →
+publish version 1 → revoke every enumerated legacy holder. It repeats all
+postconditions after broadcast. For a Safe/timelock, encode those same ordered
+calls as one reviewed batch; do not export an EOA key or bypass the existing
+authority.
+
 ## Real end-to-end on a mainnet fork (with the UI)
 
 To exercise the **real** on-chain path — a genuine Groth16 proof verified by Succinct's real SP1
@@ -264,12 +361,17 @@ the indexer + frontend read.
 
 ## Governance (two-tier)
 
-MerkleSnapshot:
+MerkleSnapshot and the typed trust-graph controller:
 
 - **Constitutional** (long timelock): `setZkVerifier`, `setAccumulator`. Changing the guest = deploy a
   new `SP1JournalVerifier(gateway, newVkey)` and `setZkVerifier` through this timelock.
-- **Operational** (short timelock): `setParamsHash`. Rotating seeds / tuning damping goes here. An
-  operational-key compromise CANNOT swap the guest.
+- **Operational** (direct owner, Safe, or short timelock):
+  `TrustGraphParamsController.updateParams(fullTuple, evidenceURI)`. The
+  controller validates the shared safety envelope, writes snapshot + registry
+  atomically, publishes the complete version, and holds the snapshot's raw-hash
+  role. An operational compromise can change a computationally valid scoring
+  policy but cannot swap the guest, accumulator, schema, or other locked
+  identity fields.
 
 The signer module's governance surface is documented in
 [`../signer-sync/RUNBOOK.md`](../signer-sync/RUNBOOK.md).

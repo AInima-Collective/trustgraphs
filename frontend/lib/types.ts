@@ -50,6 +50,8 @@ export type Network = {
      * the catalog merge.
      */
     merkleGovModule?: Hex
+    /** Typed, self-describing scoring control plane for migrated/factory networks. */
+    trustGraphParamsController?: Hex
     safe?: {
       factory: Hex
       singleton: Hex

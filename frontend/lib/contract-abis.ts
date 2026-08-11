@@ -5845,6 +5845,11 @@ export const trustGraphFactoryAbi = [
         internalType: 'contract MerkleFundDistributorDeployer',
         type: 'address',
       },
+      {
+        name: 'paramsControllerDeployer',
+        internalType: 'contract TrustGraphParamsControllerDeployer',
+        type: 'address',
+      },
       { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
       {
         name: 'vault',
@@ -5937,6 +5942,19 @@ export const trustGraphFactoryAbi = [
     inputs: [],
     name: 'MAX_WEIGHT_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'PARAMS_CONTROLLER_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract TrustGraphParamsControllerDeployer',
+        type: 'address',
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -6286,6 +6304,25 @@ export const trustGraphFactoryAbi = [
         indexed: true,
       },
       {
+        name: 'controller',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ParamsControllerCreated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
         name: 'schemaUid',
         internalType: 'bytes32',
         type: 'bytes32',
@@ -6295,12 +6332,23 @@ export const trustGraphFactoryAbi = [
     name: 'SchemaAdopted',
   },
   { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
+  { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
   { type: 'error', inputs: [], name: 'EmptyName' },
   { type: 'error', inputs: [], name: 'InvalidAdmin' },
   {
     type: 'error',
     inputs: [{ name: 'dampingFp', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidDamping',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'dampingFp', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidDamping',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'maxIterations', internalType: 'uint32', type: 'uint32' }],
+    name: 'InvalidIterations',
   },
   {
     type: 'error',
@@ -6316,6 +6364,18 @@ export const trustGraphFactoryAbi = [
   },
   {
     type: 'error',
+    inputs: [
+      { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidPrecisionScale',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'seed', internalType: 'address', type: 'address' }],
+    name: 'InvalidSeed',
+  },
+  {
+    type: 'error',
     inputs: [{ name: 'seed', internalType: 'address', type: 'address' }],
     name: 'InvalidSeed',
   },
@@ -6324,7 +6384,20 @@ export const trustGraphFactoryAbi = [
     inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidTolerance',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'toleranceFp', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidTolerance',
+  },
   { type: 'error', inputs: [], name: 'InvalidTotalPool' },
+  { type: 'error', inputs: [], name: 'InvalidTotalPool' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustDecay',
+  },
   {
     type: 'error',
     inputs: [
@@ -6338,6 +6411,20 @@ export const trustGraphFactoryAbi = [
       { name: 'trustMultiplierFp', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidTrustMultiplier',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustMultiplierFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustMultiplier',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidTrustShare',
   },
   {
     type: 'error',
@@ -6357,10 +6444,26 @@ export const trustGraphFactoryAbi = [
   {
     type: 'error',
     inputs: [
+      { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidWeightBounds',
+  },
+  {
+    type: 'error',
+    inputs: [
       { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
     ],
     name: 'InvalidWeightFieldIndex',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'weightFieldIndex', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'InvalidWeightFieldIndex',
+  },
+  { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   { type: 'error', inputs: [], name: 'Lane2NotSupported' },
   {
     type: 'error',
@@ -6368,7 +6471,16 @@ export const trustGraphFactoryAbi = [
     name: 'NameTooLong',
   },
   { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
+  { type: 'error', inputs: [], name: 'NoTrustedSeeds' },
   { type: 'error', inputs: [], name: 'NoVaultConfigured' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'factorFp', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'RankGrowthUnbounded',
+  },
   {
     type: 'error',
     inputs: [
@@ -6384,6 +6496,11 @@ export const trustGraphFactoryAbi = [
       { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
     ],
     name: 'SchemaUidMismatch',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
+    name: 'TooManyTrustedSeeds',
   },
   {
     type: 'error',

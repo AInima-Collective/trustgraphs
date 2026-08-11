@@ -9,6 +9,10 @@ import { anchorRegistryAbi } from './abis/anchorRegistry'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustGraphFactoryAbi } from './abis/trustGraphFactory'
 import {
+  instanceRegistryParamsAbi,
+  trustGraphParamsControllerAbi,
+} from './abis/trustGraphParamsController'
+import {
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
@@ -116,6 +120,9 @@ const PROVING_VAULT = (deploymentSummary as { provingVault?: string })
 const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
   | Hex
   | undefined
+const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
+  | Hex
+  | undefined
 
 /**
  * Whether to discover trust-graph children from the factory. Production (Optimism) predates the
@@ -130,6 +137,14 @@ const INSTANCE_CREATED = getAbiItem({
   abi: trustGraphFactoryAbi,
   name: 'InstanceCreated',
 })
+const PARAMS_CONTROLLER_CREATED = getAbiItem({
+  abi: trustGraphFactoryAbi,
+  name: 'ParamsControllerCreated',
+})
+const PARAMS_AUTHORITY_UPDATED = getAbiItem({
+  abi: instanceRegistryParamsAbi,
+  name: 'ParamsAuthorityUpdated',
+})
 
 /**
  * A `factory()` address source for one of `InstanceCreated`'s child-contract arguments. Children
@@ -143,6 +158,22 @@ const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
     address: TRUST_GRAPH_FACTORY!,
     event: INSTANCE_CREATED,
     parameter,
+    startBlock: DEV_START_BLOCK,
+  })
+
+const paramsControllers = () =>
+  factory({
+    address: TRUST_GRAPH_FACTORY!,
+    event: PARAMS_CONTROLLER_CREATED,
+    parameter: 'controller',
+    startBlock: DEV_START_BLOCK,
+  })
+
+const migratedParamsControllers = () =>
+  factory({
+    address: INSTANCE_REGISTRY!,
+    event: PARAMS_AUTHORITY_UPDATED,
+    parameter: 'newAuthority',
     startBlock: DEV_START_BLOCK,
   })
 
@@ -207,6 +238,20 @@ export default createConfig({
       startBlock: DEV_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: TRUST_GRAPH_FACTORY! } }
+        : {},
+    },
+    trustGraphParamsController: {
+      abi: trustGraphParamsControllerAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: paramsControllers() } }
+        : {},
+    },
+    migratedTrustGraphParamsController: {
+      abi: trustGraphParamsControllerAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: INSTANCE_REGISTRY
+        ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
         : {},
     },
     easIndexerResolver: {

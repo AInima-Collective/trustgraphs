@@ -34,6 +34,9 @@ contract InstanceRegistry is IInstanceRegistry, AccessControl {
     /// @notice Whether an instance id has been registered (distinguishes an empty record from absence).
     mapping(bytes32 instanceId => bool) public isRegistered;
 
+    /// @notice Per-instance authority that can update only the parameter commitment.
+    mapping(bytes32 instanceId => address authority) public paramsAuthority;
+
     /// @notice Every registered instance id, in registration order (enumeration source).
     bytes32[] internal _instanceIds;
 
@@ -46,12 +49,30 @@ contract InstanceRegistry is IInstanceRegistry, AccessControl {
     /// @notice Register a new instance. Reverts if the id already exists.
     /// @dev Open to `REGISTRAR_ROLE` and to `OPERATOR_ROLE` (a rewriter can obviously also append).
     function register(bytes32 instanceId, Instance calldata record) external {
+        _checkRegistrar();
+        _register(instanceId, record, address(0));
+    }
+
+    /// @inheritdoc IInstanceRegistry
+    function registerWithParamsAuthority(bytes32 instanceId, Instance calldata record, address paramsAuthority_)
+        external
+    {
+        _checkRegistrar();
+        if (paramsAuthority_ == address(0)) revert InvalidParamsAuthority(paramsAuthority_);
+        _register(instanceId, record, paramsAuthority_);
+    }
+
+    function _checkRegistrar() internal view {
         if (!hasRole(REGISTRAR_ROLE, msg.sender) && !hasRole(OPERATOR_ROLE, msg.sender)) {
             revert NotRegistrar(msg.sender);
         }
+    }
+
+    function _register(bytes32 instanceId, Instance calldata record, address paramsAuthority_) internal {
         if (isRegistered[instanceId]) revert InstanceAlreadyExists(instanceId);
         isRegistered[instanceId] = true;
         _instances[instanceId] = record;
+        paramsAuthority[instanceId] = paramsAuthority_;
         _instanceIds.push(instanceId);
         emit InstanceRegistered(
             instanceId,
@@ -61,6 +82,9 @@ contract InstanceRegistry is IInstanceRegistry, AccessControl {
             record.registryOrAccumulator,
             record.paramsHash
         );
+        if (paramsAuthority_ != address(0)) {
+            emit ParamsAuthorityUpdated(instanceId, address(0), paramsAuthority_);
+        }
     }
 
     /// @notice Replace an existing instance's record (e.g. a redeploy or params rotation). Reverts if
@@ -76,6 +100,26 @@ contract InstanceRegistry is IInstanceRegistry, AccessControl {
             record.registryOrAccumulator,
             record.paramsHash
         );
+    }
+
+    /// @inheritdoc IInstanceRegistry
+    function setParamsAuthority(bytes32 instanceId, address paramsAuthority_) external onlyRole(OPERATOR_ROLE) {
+        if (!isRegistered[instanceId]) revert InstanceNotFound(instanceId);
+        if (paramsAuthority_ == address(0)) revert InvalidParamsAuthority(paramsAuthority_);
+        address oldAuthority = paramsAuthority[instanceId];
+        paramsAuthority[instanceId] = paramsAuthority_;
+        emit ParamsAuthorityUpdated(instanceId, oldAuthority, paramsAuthority_);
+    }
+
+    /// @inheritdoc IInstanceRegistry
+    function updateParamsHash(bytes32 instanceId, bytes32 paramsHash) external {
+        if (!isRegistered[instanceId]) revert InstanceNotFound(instanceId);
+        address authority = paramsAuthority[instanceId];
+        if (msg.sender != authority) revert NotParamsAuthority(instanceId, msg.sender, authority);
+        bytes32 oldParamsHash = _instances[instanceId].paramsHash;
+        if (paramsHash == bytes32(0) || paramsHash == oldParamsHash) revert InvalidParamsHash(paramsHash);
+        _instances[instanceId].paramsHash = paramsHash;
+        emit InstanceParamsHashUpdated(instanceId, oldParamsHash, paramsHash);
     }
 
     /// @inheritdoc IInstanceRegistry

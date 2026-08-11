@@ -45,6 +45,57 @@ export type InstanceParamsJson = {
   chainId: string
 }
 
+type OnchainInstanceParams = {
+  dampingFp: bigint
+  toleranceFp: bigint
+  maxIterations: number
+  minWeightFp: bigint
+  maxWeightFp: bigint
+  trustMultiplierFp: bigint
+  trustShareFp: bigint
+  trustDecayFp: bigint
+  trustedSeeds: readonly Hex[]
+  totalPool: bigint
+  precisionScale: bigint
+  schemaUid: Hex
+  weightFieldIndex: number
+  envelope0DomainSeparators: readonly Hex[]
+  lane2MaxHeadAge: bigint
+  accumulator: Hex
+  chainId: bigint
+}
+
+/** Serialize and hash one exact-width tuple without rescaling or losing integer precision. */
+export const normalizeInstanceParams = (params: OnchainInstanceParams) => {
+  const trustedSeeds = [...params.trustedSeeds]
+  const envelope0DomainSeparators = [...params.envelope0DomainSeparators]
+  const paramsJson: InstanceParamsJson = {
+    dampingFp: params.dampingFp.toString(),
+    toleranceFp: params.toleranceFp.toString(),
+    maxIterations: params.maxIterations,
+    minWeightFp: params.minWeightFp.toString(),
+    maxWeightFp: params.maxWeightFp.toString(),
+    trustMultiplierFp: params.trustMultiplierFp.toString(),
+    trustShareFp: params.trustShareFp.toString(),
+    trustDecayFp: params.trustDecayFp.toString(),
+    trustedSeeds,
+    totalPool: params.totalPool.toString(),
+    precisionScale: params.precisionScale.toString(),
+    schemaUid: params.schemaUid,
+    weightFieldIndex: params.weightFieldIndex,
+    envelope0DomainSeparators,
+    lane2MaxHeadAge: params.lane2MaxHeadAge.toString(),
+    accumulator: params.accumulator,
+    chainId: params.chainId.toString(),
+  }
+  const hash = paramsHash({
+    ...params,
+    trustedSeeds,
+    envelope0DomainSeparators,
+  })
+  return { paramsJson, trustedSeeds, hash }
+}
+
 /** The canonical vouch schema, used if the on-chain constant can't be read (it is a constant). */
 const CANONICAL_VOUCH_SCHEMA = 'string comment,uint256 confidence'
 
@@ -105,51 +156,7 @@ ponder.on('trustGraphFactory:InstanceCreated', async ({ event, context }) => {
     params,
   } = event.args
 
-  const trustedSeeds = [...params.trustedSeeds]
-  const envelope0DomainSeparators = [...params.envelope0DomainSeparators]
-
-  const paramsJson: InstanceParamsJson = {
-    dampingFp: params.dampingFp.toString(),
-    toleranceFp: params.toleranceFp.toString(),
-    maxIterations: params.maxIterations,
-    minWeightFp: params.minWeightFp.toString(),
-    maxWeightFp: params.maxWeightFp.toString(),
-    trustMultiplierFp: params.trustMultiplierFp.toString(),
-    trustShareFp: params.trustShareFp.toString(),
-    trustDecayFp: params.trustDecayFp.toString(),
-    trustedSeeds,
-    totalPool: params.totalPool.toString(),
-    precisionScale: params.precisionScale.toString(),
-    schemaUid: params.schemaUid,
-    weightFieldIndex: params.weightFieldIndex,
-    envelope0DomainSeparators,
-    lane2MaxHeadAge: params.lane2MaxHeadAge.toString(),
-    accumulator: params.accumulator,
-    chainId: params.chainId.toString(),
-  }
-
-  // The governance-pinned hash, recomputed from the emitted fields with the same TS port the
-  // browser recompute uses. It always equals `MerkleSnapshot(snapshot).paramsHash()` — storing it
-  // is what lets a consumer check that this row and that contract describe the same instance.
-  const hash = paramsHash({
-    dampingFp: params.dampingFp,
-    toleranceFp: params.toleranceFp,
-    maxIterations: params.maxIterations,
-    minWeightFp: params.minWeightFp,
-    maxWeightFp: params.maxWeightFp,
-    trustMultiplierFp: params.trustMultiplierFp,
-    trustShareFp: params.trustShareFp,
-    trustDecayFp: params.trustDecayFp,
-    trustedSeeds,
-    totalPool: params.totalPool,
-    precisionScale: params.precisionScale,
-    schemaUid: params.schemaUid,
-    weightFieldIndex: params.weightFieldIndex,
-    envelope0DomainSeparators,
-    lane2MaxHeadAge: params.lane2MaxHeadAge,
-    accumulator: params.accumulator,
-    chainId: params.chainId,
-  })
+  const { paramsJson, trustedSeeds, hash } = normalizeInstanceParams(params)
 
   let schemaString = CANONICAL_VOUCH_SCHEMA
   try {

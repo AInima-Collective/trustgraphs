@@ -4,6 +4,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { Hex } from 'viem'
 
 import { AttestationData, intoAttestationsData } from '@/lib/attestation'
+import type { InstanceParamsJson } from '@/lib/catalog'
 import { APIS } from '@/lib/config'
 import {
   getReviewDistributionClaims,
@@ -50,6 +51,8 @@ export const ponderKeys = {
   }) => [...ponderKeys.all, 'attestationCount', options] as const,
   network: (snapshot: string) =>
     [...ponderKeys.all, 'network', snapshot] as const,
+  checkpointInputs: (snapshot: string, checkpointId: string) =>
+    [...ponderKeys.all, 'checkpointInputs', snapshot, checkpointId] as const,
   accountNetworkProfiles: (address: Hex) =>
     [...ponderKeys.all, 'accountNetworkProfiles', address] as const,
   accountNetworkProfile: (options: { address: Hex; snapshot: string }) =>
@@ -203,6 +206,62 @@ export type NetworkData = {
   attestations: AttestationData[]
 }
 
+export type CheckpointInputsResponse = {
+  snapshot: Hex
+  accumulator: Hex
+  checkpointId: string
+  cutoff: {
+    blockNumber: string
+    logIndex: number
+    timestamp: string
+    transactionHash: Hex
+  }
+  inputs: Array<{
+    kind: number
+    attester: Hex
+    recipient: Hex
+    uid: Hex
+    data: Hex
+    blockTimestamp: string
+    blockNumber: string
+    logIndex: number
+    txHash: Hex
+  }>
+}
+
+export type ParameterVersionState =
+  | 'current-unpinned'
+  | 'active'
+  | 'superseded'
+  | 'inconsistent'
+
+export type ParameterHistoryResponse = {
+  instanceId: Hex
+  controller: Hex | null
+  currentVersion: string | null
+  currentParamsHash: Hex
+  control: 'typed' | 'legacy'
+  versions: Array<{
+    version: string
+    paramsHash: Hex
+    previousParamsHash: Hex
+    params: InstanceParamsJson
+    trustedSeeds: Hex[]
+    evidenceURI: string
+    executor: Hex
+    executedAtBlock: string
+    executedTimestamp: string
+    executedTxHash: Hex
+    firstCheckpoint: string | null
+    firstCheckpointBlock: string | null
+    firstCheckpointTimestamp: string | null
+    firstCheckpointTxHash: Hex | null
+    state: ParameterVersionState
+    valid: boolean
+    invalidReason: string | null
+  }>
+}
+
 export type NetworkProfile = {
   /** The chain ID of the merkle snapshot contract. */
   chainId: string
@@ -235,6 +294,40 @@ export type NetworkProfile = {
 }
 
 export const ponderQueries = {
+  parameterHistory: (instanceId: string) =>
+    queryOptions({
+      queryKey: [...ponderKeys.all, 'parameterHistory', instanceId] as const,
+      queryFn: async (): Promise<ParameterHistoryResponse> => {
+        const response = await fetch(
+          `${APIS.ponder}/instances/${instanceId}/params`
+        )
+        if (!response.ok) {
+          throw new Error(
+            `Parameter history unavailable: ${response.status} ${response.statusText}`
+          )
+        }
+        return (await response.json()) as ParameterHistoryResponse
+      },
+      enabled: !!APIS.ponder && !!instanceId,
+      refetchInterval: 10_000,
+    }),
+  checkpointInputs: (snapshot: string, checkpointId: string) =>
+    queryOptions({
+      queryKey: ponderKeys.checkpointInputs(snapshot, checkpointId),
+      queryFn: async (): Promise<CheckpointInputsResponse> => {
+        const response = await fetch(
+          `${APIS.ponder}/network/${snapshot}/checkpoints/${checkpointId}/inputs`
+        )
+        if (!response.ok) {
+          throw new Error(
+            `Checkpoint inputs unavailable: ${response.status} ${response.statusText}`
+          )
+        }
+        return (await response.json()) as CheckpointInputsResponse
+      },
+      enabled: !!APIS.ponder && !!snapshot && !!checkpointId,
+      staleTime: Infinity,
+    }),
   hypercertsScores: (snapshot: string) =>
     queryOptions({
       queryKey: ponderKeys.hypercertsScores(snapshot),

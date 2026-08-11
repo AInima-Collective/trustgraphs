@@ -1,8 +1,7 @@
 // AUTO-DERIVED from the forge artifact out/TrustGraphFactory.sol/TrustGraphFactory.json.
 // Source of truth: src/contracts/factory/TrustGraphFactory.sol. Kept in the indexer (not in
-// frontend/lib/contract-abis.ts) because the factory is not yet wired into the frontend wagmi
-// pipeline (frontend/scripts/generate-config.ts CONTRACT_CONFIG); when the create wizard lands,
-// add TrustGraphFactory there and import the generated abi instead of this file.
+// frontend/lib/contract-abis.ts) so the indexer can keep a narrow event-oriented surface without
+// importing frontend build output.
 //
 // `InstanceCreated` is the frozen discovery interface (research/INSTANCE_FACTORY.md §3): the
 // indexer catalogs instances from it AND derives every child-contract address from it via Ponder
@@ -42,9 +41,19 @@ export const trustGraphFactoryAbi = [
         internalType: 'contract MerkleFundDistributorDeployer',
       },
       {
+        name: 'paramsControllerDeployer',
+        type: 'address',
+        internalType: 'contract TrustGraphParamsControllerDeployer',
+      },
+      {
         name: 'epochFloor',
         type: 'uint64',
         internalType: 'uint64',
+      },
+      {
+        name: 'vault',
+        type: 'address',
+        internalType: 'contract IProvingVault',
       },
     ],
     stateMutability: 'nonpayable',
@@ -716,6 +725,25 @@ export const trustGraphFactoryAbi = [
             internalType: 'uint64',
           },
         ],
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'ParamsControllerCreated',
+    inputs: [
+      {
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'controller',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
     ],
     anonymous: false,

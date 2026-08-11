@@ -13,7 +13,12 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
 import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {
+    MerkleSnapshotDeployer,
+    MerkleFundDistributorDeployer,
+    TrustGraphParamsControllerDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
@@ -49,6 +54,7 @@ abstract contract TrustGraphFactoryBase is Test {
     InstanceRegistry internal registry;
     MerkleSnapshotDeployer internal snapshotDeployer;
     MerkleFundDistributorDeployer internal distributorDeployer;
+    TrustGraphParamsControllerDeployer internal paramsControllerDeployer;
     TrustGraphFactory internal factory;
 
     /// @notice The registry's own admin (the operational timelock in production).
@@ -88,6 +94,7 @@ abstract contract TrustGraphFactoryBase is Test {
         address distributor;
         bytes32 schemaUid;
         address admin;
+        address controller;
         CreatedEvent evt;
         Vm.Log[] logs;
     }
@@ -104,6 +111,7 @@ abstract contract TrustGraphFactoryBase is Test {
         registry = new InstanceRegistry(registryAdmin);
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
+        paramsControllerDeployer = new TrustGraphParamsControllerDeployer();
         // A real vault, so the prepay path in `createInstance` is exercised rather than stubbed.
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -118,6 +126,7 @@ abstract contract TrustGraphFactoryBase is Test {
             IInstanceRegistry(address(registry)),
             snapshotDeployer,
             distributorDeployer,
+            paramsControllerDeployer,
             EPOCH_FLOOR,
             vault
         );
@@ -198,6 +207,17 @@ abstract contract TrustGraphFactoryBase is Test {
         c.logs = vm.getRecordedLogs();
         c.evt = _decodeCreated(c.logs);
         c.admin = c.evt.admin;
+        c.controller = _decodeController(c.logs, c.instanceId);
+    }
+
+    function _decodeController(Vm.Log[] memory logs, bytes32 instanceId) internal view returns (address) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter != address(factory) || logs[i].topics.length != 3) continue;
+            if (logs[i].topics[0] != TrustGraphFactory.ParamsControllerCreated.selector) continue;
+            if (logs[i].topics[1] != instanceId) continue;
+            return address(uint160(uint256(logs[i].topics[2])));
+        }
+        revert("ParamsControllerCreated was not emitted");
     }
 
     /// @dev Pull `InstanceCreated` back out of the logs by topic0, exactly as an indexer would.
@@ -263,9 +283,8 @@ abstract contract TrustGraphFactoryBase is Test {
 
     /// @dev GROUND RULE 3, as an enumerated assertion: after the transaction the factory (and the
     ///      two creation-code deployers, which are the literal `msg.sender` of each CREATE) hold
-    ///      nothing on the new instance, the admin holds both real roles, the distributor is owned
-    ///      outright by the admin, and the factory's only privilege anywhere is `REGISTRAR_ROLE` on
-    ///      the directory.
+    ///      nothing on the new instance, the admin holds the constitutional role and owns the typed
+    ///      controller, and that controller alone holds the operational role.
     function _assertFactoryInert(Created memory c) internal view {
         MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
 
@@ -287,10 +306,17 @@ abstract contract TrustGraphFactoryBase is Test {
             _assertHoldsNothing(snapshot, touched[i]);
         }
 
-        // The admin, conversely, holds BOTH real roles — the handover is what makes the renounce
-        // safe rather than a brick.
+        // Constitutional authority stays with the community admin. Operational authority belongs
+        // only to the typed controller, which the same admin owns through a two-step handoff.
         assertTrue(snapshot.hasRole(constitutional, c.admin), "admin must hold CONSTITUTIONAL_ROLE");
-        assertTrue(snapshot.hasRole(operational, c.admin), "admin must hold OPERATIONAL_ROLE");
+        assertFalse(snapshot.hasRole(operational, c.admin), "admin must not retain the raw-hash path");
+        assertTrue(snapshot.hasRole(operational, c.controller), "controller must hold OPERATIONAL_ROLE");
+        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        assertEq(controller.owner(), c.admin, "admin must own the typed controller");
+        assertEq(controller.pendingOwner(), address(0), "no controller ownership handoff may dangle");
+        assertEq(controller.snapshot(), c.snapshot, "controller must govern this snapshot");
+        assertEq(controller.instanceId(), c.instanceId, "controller must govern this registry row");
+        assertEq(registry.paramsAuthority(c.instanceId), c.controller, "registry authority must be the controller");
         // Nobody holds the OZ default admin: both roles are administered by CONSTITUTIONAL_ROLE.
         assertFalse(snapshot.hasRole(defaultAdmin, c.admin), "nobody may hold DEFAULT_ADMIN_ROLE");
 
@@ -323,5 +349,6 @@ abstract contract TrustGraphFactoryBase is Test {
         assertFalse(snapshot.hasRole(role, address(factory)), "factory holds a role on the instance");
         assertFalse(snapshot.hasRole(role, address(snapshotDeployer)), "snapshot deployer holds a role");
         assertFalse(snapshot.hasRole(role, address(distributorDeployer)), "distributor deployer holds a role");
+        assertFalse(snapshot.hasRole(role, address(paramsControllerDeployer)), "params deployer holds a role");
     }
 }

@@ -230,10 +230,12 @@ SNAP_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:MerkleS
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
 DIST_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:MerkleFundDistributorDeployer \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
+PARAMS_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:TrustGraphParamsControllerDeployer \
+  --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
 FACTORY=$(forge create src/contracts/factory/TrustGraphFactory.sol:TrustGraphFactory \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
   --constructor-args "$EAS" "$SCHEMA_REGISTRAR" "$VERIFIER" "$REGISTRY" \
-    "$SNAP_DEPLOYER" "$DIST_DEPLOYER" "$EPOCH" "$VAULT" | jq -r .deployedTo)
+    "$SNAP_DEPLOYER" "$DIST_DEPLOYER" "$PARAMS_DEPLOYER" "$EPOCH" "$VAULT" | jq -r .deployedTo)
 REGISTRAR_ROLE=$(cast call "$REGISTRY" "REGISTRAR_ROLE()(bytes32)" --rpc-url "$RPC")
 cast send "$REGISTRY" "grantRole(bytes32,address)" "$REGISTRAR_ROLE" "$FACTORY" \
   --rpc-url "$RPC" --private-key "$PK" >/dev/null
@@ -257,9 +259,11 @@ INSTANCE=$(jq -r .instanceId .trustgraph/create-instance.json)
 SNAPSHOT=$(jq -r .snapshot .trustgraph/create-instance.json)
 RESOLVER=$(jq -r .resolver .trustgraph/create-instance.json)
 SCHEMA=$(jq -r .schemaUid .trustgraph/create-instance.json)
+CONTROLLER=$(cast call "$REGISTRY" "paramsAuthority(bytes32)(address)" "$INSTANCE" --rpc-url "$RPC")
 [ -n "$INSTANCE" ] && [ "$INSTANCE" != "null" ] || die "no instance id"
 say "   instance=$INSTANCE"
 say "   snapshot=$SNAPSHOT  accumulator=$RESOLVER"
+say "   params controller=$CONTROLLER"
 
 ETH_BAL=$(cast call "$VAULT" "accountOf(bytes32)((address,bytes32,uint128,uint128))" "$INSTANCE" \
   --rpc-url "$RPC" | grep -oE "[0-9]{15,}" | head -1)
@@ -450,28 +454,45 @@ attest "$PK"; mine $((EPOCH + 2))
 "${OP[@]}" >>"$WORK/rotate.log" 2>&1     # trigger, so a checkpoint exists with params pinned
 CP=$(( $(cps) - 1 ))
 PINNED=$(cast call "$SNAPSHOT" "checkpointParamsHash(uint256)(bytes32)" "$CP" --rpc-url "$RPC")
-cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$(cast keccak "rotated")" \
-  --rpc-url "$RPC" --private-key "$PK" >/dev/null 2>&1 || die "setParamsHash failed"
+# Publish the complete version 2 through the registered typed controller. The factory example's
+# tuple is fixed except for schema/resolver/chain identity, all of which were just read from chain.
+V2_PARAMS="(800000000000000000,1000000000000,100,0,100000000000000000000,2000000000000000000,150000000000000000,800000000000000000,[$DEPLOYER],1000000000000000000000000,1000000000000000000,$SCHEMA,1,[],0,$RESOLVER,1)"
+cast send "$CONTROLLER" \
+  "updateParams((uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64),string)" \
+  "$V2_PARAMS" "ipfs://fork-version-2" --rpc-url "$RPC" --private-key "$PK" >/dev/null \
+  || die "typed updateParams failed"
 STILL=$(cast call "$SNAPSHOT" "checkpointParamsHash(uint256)(bytes32)" "$CP" --rpc-url "$RPC")
 LIVE=$(cast call "$SNAPSHOT" "paramsHash()(bytes32)" --rpc-url "$RPC")
 check "checkpoint $CP keeps its pinned params through the rotation" \
       "$([ "$PINNED" = "$STILL" ] && echo 0 || echo 1)"
 check "the live params moved" "$([ "$LIVE" != "$PINNED" ] && echo 0 || echo 1)"
 
-step "the operator refuses to spend on an instance it can no longer reproduce"
-# Its reconstruction comes from the immutable creation event, so after that rotation the live hash
-# is one it cannot reproduce. Minting against it would be paying gas to make work for nobody.
+step "the operator lands old pinned work, then proves version 2 without a restart or config edit"
+# The request journal retains the old checkpoint's exact input. Catalog discovery now reads the
+# controller's version 2 tuple, so later work advances without a manifest or params-file change.
+for _ in 1 2 3 4; do "${OP[@]}" >>"$WORK/after-rotation.log" 2>&1; done
+check "the already-pinned version-1 checkpoint still landed" \
+      "$([ "$(applied)" -ge "$CP" ] && echo 0 || echo 1)"
+
 attest "$PK"; mine $((EPOCH + 2))
-"${OP[@]}" >"$WORK/after-rotation.log" 2>&1
-grep -q 'params_hash(reconstruction)' "$WORK/after-rotation.log"
-check "skipped with a params mismatch instead of spending" "$?"
+BEFORE_V2=$(cps)
+for _ in 1 2 3 4; do "${OP[@]}" >>"$WORK/after-rotation.log" 2>&1; done
+V2_CP=$(( $(cps) - 1 ))
+V2_PINNED=$(cast call "$SNAPSHOT" "checkpointParamsHash(uint256)(bytes32)" "$V2_CP" --rpc-url "$RPC")
+check "the next checkpoint pinned controller version 2" \
+      "$([ "$V2_CP" -ge "$BEFORE_V2" ] && [ "$V2_PINNED" = "$LIVE" ] && echo 0 || echo 1)"
+check "the version-2 checkpoint landed with the same operator config" \
+      "$([ "$(applied)" -ge "$V2_CP" ] && echo 0 || echo 1)"
+if grep -q 'params_hash(reconstruction)' "$WORK/after-rotation.log"; then
+  MISMATCH=1
+else
+  MISMATCH=0
+fi
+check "no reconstruction mismatch after the typed rotation" "$MISMATCH"
 
 step "trigger spam buys the spammer nothing"
 # `trigger()` is permissionless by design. What must NOT happen is one paid proof per spam
-# checkpoint. Restore the params first, or the operator would skip for the reason above and this
-# would measure nothing.
-cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PINNED" \
-  --rpc-url "$RPC" --private-key "$PK" >/dev/null 2>&1
+# checkpoint. Version 2 remains live and reconstructible throughout this adversarial pass.
 SPAM_BEFORE=$(cps); INTENTS_BEFORE=$(intents)
 for _ in 1 2 3 4 5; do
   attest "$PK2"; mine $((EPOCH + 1))

@@ -6,7 +6,7 @@
 
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{bail, Context, Result};
-use operator_core::catalog::{scan as catalog_scan, CatalogEntry};
+use operator_core::catalog::{scan as catalog_scan, CatalogEntry, SkipCause};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, WorkKey};
@@ -175,14 +175,25 @@ fn tick(
 
         // Say what was skipped. A silently shorter list is indistinguishable from a healthy one.
         for s in &catalog.skipped {
+            let reason = s.reason.to_string();
             logger.event(
                 "instance_skipped",
                 json!({
                     "instance": format!("{:#x}", s.instance_id),
                     "program": program.name(),
-                    "reason": s.reason.to_string(),
+                    "reason": reason.clone(),
                 }),
             );
+            if matches!(&s.reason, SkipCause::ControllerInconsistent(_)) {
+                let text = format!(
+                    "parameter-control bypass/inconsistency for {:#x} ({}): {}",
+                    s.instance_id,
+                    program.name(),
+                    reason
+                );
+                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                alerts_raised.push(text);
+            }
         }
 
         for entry in &catalog.entries {

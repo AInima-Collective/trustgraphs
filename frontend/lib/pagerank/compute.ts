@@ -12,7 +12,7 @@ import {
   paramsHash,
 } from './encode'
 import { merkleRoot, outputLeaf } from './merkle'
-import { calculate } from './pagerank'
+import { calculateDetailed } from './pagerank'
 import { buildGraph } from './reconcile'
 import { type ComputeResult, type GuestInput, type Journal } from './types'
 import { cmpHex } from './words'
@@ -27,7 +27,8 @@ export const compute = (input: GuestInput): ComputeResult => {
 
   // 3. Reconcile → graph → scores.
   const graph = buildGraph(input.edges, input.params)
-  const scoresFp = calculate(graph, input.params)
+  const rank = calculateDetailed(graph, input.params)
+  const scoresFp = rank.scores
   const filtered: Array<[Hex, bigint]> = []
   for (const [k, v] of scoresFp) {
     if (v !== 0n) filtered.push([k as Hex, v])
@@ -68,7 +69,16 @@ export const compute = (input: GuestInput): ComputeResult => {
     instanceDomain: input.binding?.instanceDomain ?? ZERO,
   }
 
-  return { journal, scores: assigned, blob, cid }
+  return {
+    journal,
+    scores: assigned,
+    blob,
+    cid,
+    rankDiagnostics: {
+      iterations: rank.iterations,
+      converged: rank.converged,
+    },
+  }
 }
 
 /** The journal digest the on-chain verifier binds. */

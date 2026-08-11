@@ -6,9 +6,21 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from '@wagmi/core'
-import { Abi, ContractFunctionArgs, ContractFunctionName } from 'viem'
+import {
+  Abi,
+  ContractFunctionArgs,
+  ContractFunctionName,
+  type ReplacementReason,
+} from 'viem'
 
 import { makeWagmiConfig } from './wagmi'
+
+export class TransactionReplacementError extends Error {
+  constructor(public readonly reason: Exclude<ReplacementReason, 'repriced'>) {
+    super(`Transaction was ${reason} before the requested call was confirmed.`)
+    this.name = 'TransactionReplacementError'
+  }
+}
 
 /**
  * Write a contract and wait for it to be confirmed.
@@ -55,10 +67,20 @@ export const writeEthContractAndWait = async <
   const checkConfirmations = async (
     targetConfirmations: number
   ): Promise<WaitForTransactionReceiptReturnType<cfg, chainId>> => {
+    let terminalReplacement: Exclude<ReplacementReason, 'repriced'> | null =
+      null
     const receipt = await waitForTransactionReceipt(makeWagmiConfig(), {
       confirmations: targetConfirmations,
       hash,
+      onReplaced: ({ reason }) => {
+        // A fee-only repricing still executes the requested call. A cancellation or unrelated
+        // same-nonce replacement does not, and must never inherit this transaction's success copy.
+        if (reason !== 'repriced') terminalReplacement = reason
+      },
     })
+    if (terminalReplacement) {
+      throw new TransactionReplacementError(terminalReplacement)
+    }
     onConfirmation?.(targetConfirmations, hash)
 
     return targetConfirmations >= confirmations

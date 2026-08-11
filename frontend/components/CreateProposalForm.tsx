@@ -1,7 +1,7 @@
 'use client'
 
 import type React from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { type Address, formatEther, isAddress, parseEther } from 'viem'
 
 import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
@@ -66,6 +66,11 @@ interface CreateProposalFormProps {
     voteType?: VoteType | null
   ) => Promise<string | null>
   isLoading?: boolean
+  prefill?: {
+    title: string
+    description: string
+    actions: ProposalAction[]
+  } | null
 }
 
 export function CreateProposalForm({
@@ -73,16 +78,23 @@ export function CreateProposalForm({
   userVotingPower,
   onCreateProposal,
   isLoading = false,
+  prefill,
 }: CreateProposalFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
+  const [title, setTitle] = useState(prefill?.title ?? '')
+  const [description, setDescription] = useState(prefill?.description ?? '')
   const [castVoteOnCreate, setCastVoteOnCreate] = useState(false)
   const [voteType, setVoteType] = useState<VoteType>(VoteType.Yes)
   const [drafts, setDrafts] = useState<DraftAction[]>([])
   const resolveAccountIdentifier = useEnsResolver()
+
+  useEffect(() => {
+    if (!prefill) return
+    setTitle(prefill.title)
+    setDescription(prefill.description)
+  }, [prefill])
 
   const addDraft = useCallback((draft: DraftAction) => {
     setDrafts((prev) => [...prev, draft])
@@ -110,6 +122,8 @@ export function CreateProposalForm({
   }> => {
     if (!title.trim()) return { error: 'Title is required' }
     if (!description.trim()) return { error: 'Description is required' }
+
+    if (prefill) return { actions: prefill.actions }
 
     const actions: ProposalAction[] = []
 
@@ -299,175 +313,209 @@ export function CreateProposalForm({
             </p>
           </div>
 
-          {drafts.map((draft, index) => (
-            <Card key={index} type="detail" size="md" className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">
-                  {draft.kind === 'sendEth'
-                    ? 'Send ETH from the treasury'
-                    : 'Custom contract call'}
-                </p>
-                <Button
-                  type="button"
-                  onClick={() => removeDraft(index)}
-                  variant="destructive"
-                  size="xs"
+          {prefill ? (
+            <div className="space-y-3">
+              {prefill.actions.map((action, index) => (
+                <Card
+                  key={`${action.target}:${index}`}
+                  type="detail"
+                  size="md"
+                  className="min-w-0 space-y-2"
                 >
-                  Remove
-                </Button>
-              </div>
-
-              {draft.kind === 'sendEth' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="text-muted-foreground text-xs font-medium">
-                      Recipient
-                    </div>
-                    <AccountIdentifierInput
-                      value={draft.recipient}
-                      onResolvedAddressChange={(previewAddress) =>
-                        updateDraft(index, { previewAddress })
-                      }
-                      onChange={(e) =>
-                        updateDraft(index, {
-                          recipient: e.target.value,
-                          previewAddress: null,
-                        })
-                      }
-                      placeholder="0x… or name.eth"
-                      className={`${inputClassName} font-mono`}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-muted-foreground text-xs font-medium">
-                      Amount (ETH)
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={draft.amountEth}
-                      onChange={(e) =>
-                        updateDraft(index, { amountEth: e.target.value })
-                      }
-                      placeholder="0.0"
-                      className={inputClassName}
-                      required
-                    />
-                  </div>
+                  <p className="text-sm font-medium">
+                    {action.description || `Action ${index + 1}`}
+                  </p>
+                  <p className="break-all font-mono text-xs text-muted-foreground">
+                    {action.target}
+                  </p>
+                  <details>
+                    <summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">
+                      Inspect calldata
+                    </summary>
+                    <p className="break-all font-mono text-xs text-muted-foreground">
+                      {action.data}
+                    </p>
+                  </details>
+                </Card>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                These typed actions came from Settings. Return there to edit the
+                scoring configuration.
+              </p>
+            </div>
+          ) : (
+            drafts.map((draft, index) => (
+              <Card key={index} type="detail" size="md" className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">
+                    {draft.kind === 'sendEth'
+                      ? 'Send ETH from the treasury'
+                      : 'Custom contract call'}
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => removeDraft(index)}
+                    variant="destructive"
+                    size="xs"
+                  >
+                    Remove
+                  </Button>
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                {draft.kind === 'sendEth' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <div className="text-muted-foreground text-xs font-medium">
-                        Target contract
+                        Recipient
                       </div>
-                      <input
-                        type="text"
-                        value={draft.target}
-                        onChange={(e) =>
-                          updateDraft(index, { target: e.target.value })
+                      <AccountIdentifierInput
+                        value={draft.recipient}
+                        onResolvedAddressChange={(previewAddress) =>
+                          updateDraft(index, { previewAddress })
                         }
-                        placeholder="0x..."
+                        onChange={(e) =>
+                          updateDraft(index, {
+                            recipient: e.target.value,
+                            previewAddress: null,
+                          })
+                        }
+                        placeholder="0x… or name.eth"
                         className={`${inputClassName} font-mono`}
                         required
                       />
                     </div>
                     <div className="space-y-2">
                       <div className="text-muted-foreground text-xs font-medium">
-                        Value (ETH)
+                        Amount (ETH)
                       </div>
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={draft.valueEth}
+                        value={draft.amountEth}
                         onChange={(e) =>
-                          updateDraft(index, { valueEth: e.target.value })
+                          updateDraft(index, { amountEth: e.target.value })
                         }
-                        placeholder="0"
+                        placeholder="0.0"
                         className={inputClassName}
+                        required
                       />
                     </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <div className="text-muted-foreground text-xs font-medium">
+                          Target contract
+                        </div>
+                        <input
+                          type="text"
+                          value={draft.target}
+                          onChange={(e) =>
+                            updateDraft(index, { target: e.target.value })
+                          }
+                          placeholder="0x..."
+                          className={`${inputClassName} font-mono`}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-muted-foreground text-xs font-medium">
+                          Value (ETH)
+                        </div>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={draft.valueEth}
+                          onChange={(e) =>
+                            updateDraft(index, { valueEth: e.target.value })
+                          }
+                          placeholder="0"
+                          className={inputClassName}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-muted-foreground text-xs font-medium">
+                          Operation
+                        </div>
+                        <select
+                          value={draft.operation}
+                          onChange={(e) =>
+                            updateDraft(index, {
+                              operation: Number(e.target.value),
+                            })
+                          }
+                          className={inputClassName}
+                        >
+                          <option value={0}>Call</option>
+                          <option value={1}>DelegateCall (advanced)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {draft.operation === 1 && (
+                      <p className="text-xs text-warn">
+                        DelegateCall runs the target's code as the treasury
+                        itself. Only use it if you know exactly why you need it.
+                      </p>
+                    )}
+
                     <div className="space-y-2">
                       <div className="text-muted-foreground text-xs font-medium">
-                        Operation
+                        What this call does
                       </div>
-                      <select
-                        value={draft.operation}
+                      <input
+                        type="text"
+                        value={draft.description}
                         onChange={(e) =>
-                          updateDraft(index, {
-                            operation: Number(e.target.value),
-                          })
+                          updateDraft(index, { description: e.target.value })
                         }
+                        placeholder="Plain-language description voters will read"
                         className={inputClassName}
-                      >
-                        <option value={0}>Call</option>
-                        <option value={1}>DelegateCall (advanced)</option>
-                      </select>
+                        required
+                      />
                     </div>
-                  </div>
 
-                  {draft.operation === 1 && (
-                    <p className="text-xs text-warn">
-                      DelegateCall runs the target's code as the treasury
-                      itself. Only use it if you know exactly why you need it.
-                    </p>
-                  )}
-
-                  <div className="space-y-2">
-                    <div className="text-muted-foreground text-xs font-medium">
-                      What this call does
+                    <div className="space-y-2">
+                      <div className="text-muted-foreground text-xs font-medium">
+                        Calldata
+                      </div>
+                      <textarea
+                        value={draft.data}
+                        onChange={(e) =>
+                          updateDraft(index, { data: e.target.value })
+                        }
+                        placeholder="0x"
+                        className={`${inputClassName} font-mono`}
+                        rows={2}
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={draft.description}
-                      onChange={(e) =>
-                        updateDraft(index, { description: e.target.value })
-                      }
-                      placeholder="Plain-language description voters will read"
-                      className={inputClassName}
-                      required
-                    />
-                  </div>
+                  </>
+                )}
+              </Card>
+            ))
+          )}
 
-                  <div className="space-y-2">
-                    <div className="text-muted-foreground text-xs font-medium">
-                      Calldata
-                    </div>
-                    <textarea
-                      value={draft.data}
-                      onChange={(e) =>
-                        updateDraft(index, { data: e.target.value })
-                      }
-                      placeholder="0x"
-                      className={`${inputClassName} font-mono`}
-                      rows={2}
-                    />
-                  </div>
-                </>
-              )}
-            </Card>
-          ))}
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              onClick={() => addDraft(newSendEth())}
-              variant="brand"
-              size="xs"
-            >
-              + Send ETH
-            </Button>
-            <Button
-              type="button"
-              onClick={() => addDraft(newCustom())}
-              variant="secondary"
-              size="xs"
-            >
-              + Custom contract call
-            </Button>
-          </div>
+          {!prefill && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={() => addDraft(newSendEth())}
+                variant="brand"
+                size="xs"
+              >
+                + Send ETH
+              </Button>
+              <Button
+                type="button"
+                onClick={() => addDraft(newCustom())}
+                variant="secondary"
+                size="xs"
+              >
+                + Custom contract call
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Optional initial vote (saves a transaction) */}

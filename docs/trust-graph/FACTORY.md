@@ -156,13 +156,18 @@ new EASIndexerResolver(EAS)                                  ← the instance's 
   → SchemaRegistrar.register(VOUCH_SCHEMA, resolver, true)   ← UID binds the resolver, so it precedes the hash
   → params.{schemaUid, accumulator, chainId} = derived
   → paramsHash = ParamsCodec.hash(params)                    ← same encoder the golden vectors lock
-  → new MerkleSnapshot(VERIFIER, paramsHash, resolver, factory, admin)
+  → new MerkleSnapshot(VERIFIER, paramsHash, resolver, factory, factory)
   → snapshot.setEpochLength(max(requested, EPOCH_FLOOR))
+  → new TrustGraphParamsController(instanceId, snapshot, registry, params, admin)
+  → snapshot.grantRole(OPERATIONAL_ROLE, controller)          ← typed path only
+  → snapshot.renounceRole(OPERATIONAL_ROLE, factory)
   → snapshot.grantRole(CONSTITUTIONAL_ROLE, admin)           ← GRANT
   → snapshot.renounceRole(CONSTITUTIONAL_ROLE, factory)      ← then RENOUNCE
   → [optional] new MerkleFundDistributor(admin, snapshot, admin, fee=0, allowlist=false)
-  → InstanceRegistry.register(instanceId, record)
+  → InstanceRegistry.registerWithParamsAuthority(instanceId, record, controller)
   → emit InstanceCreated(…)
+  → emit ParamsControllerCreated(…)
+  → controller.publishInitialVersion()                       ← complete version 1
 ```
 
 Two details are worth stating out loud:
@@ -172,7 +177,7 @@ constitutional-only and is *not* a constructor argument, which is the sole reaso
 takes `CONSTITUTIONAL_ROLE`. The grant to the admin happens **before** the renounce — the role
 administers itself, so the reverse order would leave the instance with no constitutional holder,
 permanently. Post-condition: the factory holds zero roles on the snapshot, zero ownership of the
-distributor, and only `OPERATOR_ROLE` on `InstanceRegistry`. This is enforced as a test invariant,
+distributor, and only append-only `REGISTRAR_ROLE` on `InstanceRegistry`. This is enforced as a test invariant,
 not a convention. A compromised factory can write directory garbage; it cannot touch one existing
 instance.
 
@@ -184,9 +189,11 @@ deployment is unchanged — still 2-step. (`docs/DEVIATIONS.md`.)
 
 ## 3. What the factory refuses
 
-Permissionless is not unvalidated: `setParamsHash` takes a raw `bytes32` with no bounds, so creation
-is the one moment where the envelope can be enforced. These are not opinions about what makes a good
-community — they are the envelope the fixed-point guest is proven over, plus the identity rules.
+Permissionless is not unvalidated. Creation and every typed controller update share the same
+validator; a controller update also locks the version-1 identity fields. These are not opinions
+about what makes a good community — they are the envelope the fixed-point guest is proven over,
+plus the identity rules. Generic `setParamsHash(bytes32)` remains for legacy and other programs,
+but the controller is the sole operational holder on new trust graphs.
 
 | Bound | Value |
 |---|---|
@@ -247,10 +254,10 @@ forge script script/DeployFactory.s.sol:DeployFactory \
   <eas> <schemaRegistrar> <zkVerifier> <instanceRegistry> <epochFloorBlocks> …
 ```
 
-`DeployFactory` also grants the factory `OPERATOR_ROLE` on the registry (skip with
-`GRANT_OPERATOR=false` once the registry admin is the operational timelock — the grant then becomes a
-governance action). `update()` on the registry stays with the timelock, so a factory bug can add rows
-but never rewrite one.
+`DeployFactory` also grants the factory `REGISTRAR_ROLE` on the registry (skip with
+`GRANT_REGISTRAR=false` once the registry admin is controlled by governance — the grant then becomes
+a governance action). `update()` stays with the global registry operator, while each controller may
+change only its own row's `paramsHash`; a factory bug can add rows but never rewrite one.
 
 Locally, `pnpm deploy:contracts` does all of it, and `script/CreateDevInstances.s.sol` then creates
 the dev-seed networks **through the factory** — one catalog, and the local stack exercises the same

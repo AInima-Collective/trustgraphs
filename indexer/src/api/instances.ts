@@ -28,10 +28,11 @@
 import { and, count, desc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
-import { instance } from 'ponder:schema'
+import { instance, parameterVersion } from 'ponder:schema'
 import { type Hex, isAddress, isHex } from 'viem'
 
 import type { InstanceParamsJson } from '../factory'
+import { deriveParameterVersionStates } from '../params-shared'
 
 const app = new Hono()
 
@@ -75,6 +76,7 @@ const serialize = (row: InstanceRow) => ({
     merkleSnapshot: row.snapshot,
     easIndexerResolver: row.resolver,
     merkleFundDistributor: row.distributor,
+    trustGraphParamsController: row.paramsController,
   },
   // Ready to drop into `Network['schemas']`.
   schema: {
@@ -95,6 +97,17 @@ const serialize = (row: InstanceRow) => ({
   epochLength: row.epochLength.toString(),
   paramsHash: row.paramsHash,
   params: row.params as InstanceParamsJson,
+  paramsControl: row.paramsController ? 'typed' : 'legacy',
+  paramsVersion: row.paramsVersion?.toString() ?? null,
+  paramsState: row.paramsController
+    ? row.paramsFirstCheckpoint === null
+      ? 'current-unpinned'
+      : 'active'
+    : null,
+  paramsExecutedAtBlock: row.paramsExecutedAtBlock?.toString() ?? null,
+  paramsExecutedTimestamp: row.paramsExecutedTimestamp?.toString() ?? null,
+  paramsExecutedTxHash: row.paramsExecutedTxHash,
+  paramsFirstCheckpoint: row.paramsFirstCheckpoint?.toString() ?? null,
   trustedSeeds: row.trustedSeeds,
   createdBlock: row.createdBlock.toString(),
   createdTimestamp: row.createdTimestamp.toString(),
@@ -169,6 +182,65 @@ app.get('/', async (c) => {
   } catch (error) {
     console.error('Error fetching instances:', error)
     return c.json({ error: 'Failed to fetch instances' }, 500)
+  }
+})
+
+app.get('/:id/params', async (c) => {
+  const id = c.req.param('id')
+  if (!isHex(id) || id.length !== 66) {
+    return c.json({ error: 'id must be a 32-byte instanceId hex string' }, 400)
+  }
+
+  try {
+    const [row] = await db
+      .select()
+      .from(instance)
+      .where(eq(instance.id, id))
+      .limit(1)
+    if (!row) {
+      return c.json({ error: 'Instance not found' }, 404)
+    }
+    const versions = await db
+      .select()
+      .from(parameterVersion)
+      .where(eq(parameterVersion.instanceId, id))
+      .orderBy(desc(parameterVersion.version))
+
+    const states = deriveParameterVersionStates(
+      versions,
+      row.paramsVersion ?? null
+    )
+
+    return c.json({
+      instanceId: id,
+      controller: row.paramsController,
+      currentVersion: row.paramsVersion?.toString() ?? null,
+      currentParamsHash: row.paramsHash,
+      control: row.paramsController ? 'typed' : 'legacy',
+      versions: versions.map((version) => ({
+        version: version.version.toString(),
+        paramsHash: version.paramsHash,
+        previousParamsHash: version.previousParamsHash,
+        params: version.params as InstanceParamsJson,
+        trustedSeeds: version.trustedSeeds,
+        evidenceURI: version.evidenceURI,
+        executor: version.executor,
+        executedAtBlock: version.executedAtBlock.toString(),
+        executedTimestamp: version.executedTimestamp.toString(),
+        executedTxHash: version.executedTxHash,
+        firstCheckpoint: version.firstCheckpoint?.toString() ?? null,
+        firstCheckpointBlock: version.firstCheckpointBlock?.toString() ?? null,
+        firstCheckpointTimestamp:
+          version.firstCheckpointTimestamp?.toString() ?? null,
+        firstCheckpointTxHash: version.firstCheckpointTxHash,
+        state: states.get(version.version),
+        valid: version.valid,
+        invalidReason: version.invalidReason,
+      })),
+    })
+  } catch (error) {
+    console.error('Error fetching parameter versions:', error)
+    return c.json({ error: 'Failed to fetch parameter versions' }, 500)
   }
 })
 

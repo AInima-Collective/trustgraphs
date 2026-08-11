@@ -26,28 +26,11 @@
 import { type Hex, isAddressEqual } from 'viem'
 
 import { APIS, VISIBLE_SEED_NETWORKS } from './config'
+import type { ExactParamsJson } from './scoring-params'
 import { Network, NetworkSchema } from './types'
 
 /** The 17-field params struct as `/instances` serves it: fixed-point, uint256/uint64 as strings. */
-export type InstanceParamsJson = {
-  dampingFp: string
-  toleranceFp: string
-  maxIterations: number
-  minWeightFp: string
-  maxWeightFp: string
-  trustMultiplierFp: string
-  trustShareFp: string
-  trustDecayFp: string
-  trustedSeeds: Hex[]
-  totalPool: string
-  precisionScale: string
-  schemaUid: Hex
-  weightFieldIndex: number
-  envelope0DomainSeparators: Hex[]
-  lane2MaxHeadAge: string
-  accumulator: Hex
-  chainId: string
-}
+export type InstanceParamsJson = ExactParamsJson
 
 /** One row of `GET /instances` (see `indexer/src/api/instances.ts` for the authoritative shape). */
 export type InstanceRow = {
@@ -70,12 +53,20 @@ export type InstanceRow = {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
     merkleFundDistributor: Hex | null
+    trustGraphParamsController: Hex | null
   }
   schema: NetworkSchema
   distributorToken: Hex | null
   epochLength: string
   paramsHash: Hex
   params: InstanceParamsJson
+  paramsControl: 'typed' | 'legacy'
+  paramsVersion: string | null
+  paramsState: 'current-unpinned' | 'active' | null
+  paramsExecutedAtBlock: string | null
+  paramsExecutedTimestamp: string | null
+  paramsExecutedTxHash: Hex | null
+  paramsFirstCheckpoint: string | null
   trustedSeeds: Hex[]
   createdBlock: string
   createdTimestamp: string
@@ -168,6 +159,12 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
       easIndexerResolver: row.contracts.easIndexerResolver,
       ...(row.contracts.merkleFundDistributor
         ? { merkleFundDistributor: row.contracts.merkleFundDistributor }
+        : {}),
+      ...(row.contracts.trustGraphParamsController
+        ? {
+            trustGraphParamsController:
+              row.contracts.trustGraphParamsController,
+          }
         : {}),
     },
     schemas: [row.schema],

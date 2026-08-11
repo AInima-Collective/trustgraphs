@@ -1,17 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type React from 'react'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useAccount } from 'wagmi'
 
+import { TableAddress } from '@/components/Address'
 import { Button } from '@/components/Button'
 import { CreateProposalForm } from '@/components/CreateProposalForm'
 import { Modal } from '@/components/Modal'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
-import { TableAddress } from '@/components/Address'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   ProposalAction,
@@ -22,6 +22,10 @@ import {
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useRouteModal } from '@/hooks/useRouteModal'
 import { formatBlockEta } from '@/lib/blocks'
+import {
+  clearGovernancePrefill,
+  loadGovernancePrefill,
+} from '@/lib/governance-prefill'
 import { formatBigNumber } from '@/lib/utils'
 
 interface ProposalRow {
@@ -106,6 +110,13 @@ function GovernancePageContent() {
   const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
   const createModal = useRouteModal('new')
+  const searchParams = useSearchParams()
+  const scoringFingerprint = searchParams.get('scoringDraft')
+  const [scoringPrefill, setScoringPrefill] =
+    useState<ReturnType<typeof loadGovernancePrefill>>(null)
+  useEffect(() => {
+    setScoringPrefill(loadGovernancePrefill(network.id, scoringFingerprint))
+  }, [network.id, scoringFingerprint])
 
   const {
     isAnyActionLoading,
@@ -322,11 +333,15 @@ function GovernancePageContent() {
               voteType
             )
             if (result) {
+              if (scoringFingerprint) {
+                clearGovernancePrefill(network.id, scoringFingerprint)
+              }
               createModal.close()
             }
             return result
           }}
           isLoading={isAnyActionLoading}
+          prefill={scoringPrefill}
         />
       </Modal>
     </div>

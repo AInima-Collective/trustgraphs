@@ -14,6 +14,7 @@ import {
   VoteType,
 } from '@/hooks/useGovernance'
 import { formatBlockEta } from '@/lib/blocks'
+import { decodeParameterUpdateAction, formatFixed } from '@/lib/scoring-params'
 import { formatBigNumber } from '@/lib/utils'
 
 import { Address } from './Address'
@@ -191,6 +192,53 @@ export function ProposalCard({
           <div className="space-y-3">
             {actions.map((action, index) => (
               <Card key={index} type="accent" size="md" className="space-y-3">
+                {(() => {
+                  const update = decodeParameterUpdateAction(action.data)
+                  if (!update) return null
+                  const diffLines = proposal.description
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line.includes(' → '))
+                  return (
+                    <div className="border border-border bg-surface p-3 text-xs">
+                      <p className="font-semibold text-foreground">
+                        Recognized scoring-parameter update
+                      </p>
+                      {diffLines.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-foreground/80">
+                          {diffLines.map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="mt-2 grid gap-1 text-foreground/80 sm:grid-cols-2">
+                          <span>
+                            Damping: {formatFixed(update.proposed.dampingFp)}
+                          </span>
+                          <span>
+                            Trusted boost:{' '}
+                            {formatFixed(update.proposed.trustMultiplierFp)}
+                          </span>
+                          <span>
+                            Trusted accounts:{' '}
+                            {update.proposed.trustedSeeds.length}
+                          </span>
+                          <span>
+                            Maximum iterations: {update.proposed.maxIterations}
+                          </span>
+                        </div>
+                      )}
+                      <p className="mt-2 break-all font-mono text-muted-foreground">
+                        Proposed hash {update.proposedHash}
+                      </p>
+                      {update.evidenceURI && (
+                        <p className="mt-1 break-all text-muted-foreground">
+                          Evidence {update.evidenceURI}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
                 <div className="flex justify-between items-start">
                   <div className="text-xs font-medium text-muted-foreground">
                     Action {index + 1}

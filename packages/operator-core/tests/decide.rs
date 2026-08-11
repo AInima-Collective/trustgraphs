@@ -288,22 +288,27 @@ fn a_params_mismatch_skips_one_instance_and_leaves_the_rest_running() {
 
 #[test]
 fn a_rotation_between_trigger_and_prove_does_not_strand_the_pinned_checkpoint() {
-    // The whole point of M0's pinning, at the decision layer. Governance rotated `paramsHash`
-    // one block after the checkpoint froze. The checkpoint is still proven under the OLD value,
-    // and our reconstruction (built from the immutable `InstanceCreated` event) reproduces it.
-    // Proving must proceed.
-    //
-    // The failure this guards against is subtle and permanent: if the engine compared the LIVE
-    // hash to the reconstruction up front, this instance would be skipped forever — the event
-    // never changes, so the reconstruction can never match a rotated live hash again, and the
-    // one checkpoint that IS still provable would never be proven.
+    // Governance rotated after this request started. Catalog discovery now sees version 2, but
+    // the request journal and held input remain bound to the version-1 checkpoint. It must neither
+    // be cancelled nor duplicated, and a ready proof must still be submitted.
     let mut s = healthy();
     let rotated = B256::from([0x99; 32]);
-    s.params_hash = rotated; // live: rotated
-    s.reconstructed_params_hash = PARAMS; // ours: what the creation event says
+    s.params_hash = rotated;
+    s.reconstructed_params_hash = rotated;
     s.checkpoints[0].pinned_params_hash = Some(PARAMS); // pinned: the old value
+    s.in_flight = Some(InFlight {
+        checkpoint_id: 0,
+        request_id: Some(B256::from([0xA1; 32])),
+        state: InFlightState::Proving,
+    });
 
-    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Prove { checkpoint_id: 0 });
+    assert_eq!(
+        plan(&s, &curated(), Spend::default()),
+        Action::Idle(IdleReason::Proving { checkpoint_id: 0 })
+    );
+
+    s.in_flight.as_mut().unwrap().state = InFlightState::Ready;
+    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Submit { checkpoint_id: 0 });
 }
 
 #[test]

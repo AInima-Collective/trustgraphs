@@ -51,7 +51,10 @@ platform doc (`research/MULTI_PROGRAM_PLATFORM.md` §4):
    resolver address (`getUID(schema, resolver, revocable)`)
 3. `MerkleSnapshot` — ctor takes `(verifier, paramsHash, accumulator,
    constitutionalAdmin, operationalAdmin)` (`MerkleSnapshot.sol:91-110`)
-4. Optional: `MerkleFundDistributor`, Safe + `MerkleGovModule` +
+4. `TrustGraphParamsController` — stores and publishes every complete parameter
+   version, owns the snapshot's operational role, and is itself owned by the
+   community's EOA, Safe, or operational timelock
+5. Optional: `MerkleFundDistributor`, Safe + `MerkleGovModule` +
    `SignerSyncZkModule`, two `TimelockController`s
 
 **The ZK layer is already factory-shaped.** The guest ELF/vkey carry
@@ -90,12 +93,20 @@ on-chain — the scripts already prove each step is EVM-expressible):
    the codec is already a Solidity twin of `pagerank-core::params_hash`,
    already invoked on-chain by the deploy script; the factory just moves the
    params source from a JSON file (`vm.readFile`) to calldata
-4. `snapshot = new MerkleSnapshot(SHARED_VERIFIER, paramsHash, resolver, admin, admin)`
-5. Optional `new MerkleFundDistributor(admin, snapshot, admin, fee, false)`
-6. `INSTANCE_REGISTRY.register(instanceId, Instance({program: "trust-graph",
-   snapshot, verifier: SHARED_VERIFIER, registryOrAccumulator: resolver, paramsHash}))`
-7. `emit InstanceCreated(instanceId, creator, name, metadataURI,
+4. Deploy the snapshot with factory-held roles only for the duration of this
+   transaction, then deploy `TrustGraphParamsController` with the complete
+   version-1 tuple and community admin as owner
+5. Grant the controller the snapshot's sole operational role; grant the admin
+   the constitutional role; verify and renounce both transient factory roles
+6. Optional `new MerkleFundDistributor(admin, snapshot, admin, fee, false)`
+7. `INSTANCE_REGISTRY.registerWithParamsAuthority(instanceId, Instance({program:
+   "trust-graph", snapshot, verifier: SHARED_VERIFIER,
+   registryOrAccumulator: resolver, paramsHash}), controller)`
+8. `emit InstanceCreated(instanceId, creator, name, metadataURI,
    resolver, schemaUid, snapshot, distributor, params /* FULL struct */)`
+9. Emit `ParamsControllerCreated`, then publish the complete version-1
+   `ParamsUpdated` event. This ordering lets a streaming indexer discover the
+   dynamic child before its first version log.
 
 Gas shape: 3–4 CREATEs + one external schema registration + one registry
 write. Entirely reasonable for a single UI-driven tx on an L2. No
@@ -145,13 +156,13 @@ and the app doesn't feature them.
 
 ### 2.3 Roles: simple mode first
 
-Default: `admin` (the creator, or a Safe they name) holds both
-`CONSTITUTIONAL_ROLE` and `OPERATIONAL_ROLE` on their snapshot, and
-ownership of their distributor. That is honest for a young community
-instance — the creator can already rug socially; pretending otherwise
-with auto-deployed timelocks adds 2 CREATEs, UX weight, and a lockout
-footgun (`DeployTimelocks.s.sol:106-136` exists precisely because the
-grant→verify→renounce dance is delicate).
+Default: `admin` (the creator, or a Safe they name) holds
+`CONSTITUTIONAL_ROLE` on the snapshot, owns the typed parameter controller,
+and owns the distributor. The controller is the snapshot's sole
+`OPERATIONAL_ROLE` holder. That separation removes any parallel raw-hash
+capability while preserving a simple creator-admin mode. The controller uses
+two-step ownership, so graduating it to a Safe or operational timelock is an
+explicit, reviewable handoff.
 
 "Graduation" (timelocks, Safe governance, gov module + `addHook`) is a
 later, separate flow. Note the ordering constraint the scripts encode:
@@ -159,19 +170,18 @@ later, separate flow. Note the ordering constraint the scripts encode:
 so graduation must run before any role renounce — a `graduate()` helper
 on the factory (or a playbook doc) should own that sequence. The
 factory itself must **never retain any role** on the instances it
-creates; it holds only `OPERATOR_ROLE` on `InstanceRegistry`.
+creates; it holds only the registry's append-only `REGISTRAR_ROLE`.
 
 ### 2.4 Registry fit
 
 `InstanceRegistry` is almost exactly the directory the factory needs;
 two deltas:
 
-1. **Grant the factory `OPERATOR_ROLE`.** The registry's docstring says
-   the role is held by the operational timelock; adding the factory makes
-   registration permissionless-through-the-factory while `update` stays
-   timelock-gated. Alternative considered and rejected: factory emits its
-   own directory events and the registry stays curated — that forks
-   discovery into two sources of truth.
+1. **Grant the factory only `REGISTRAR_ROLE`.** The append-only registrar may
+   add rows but cannot use the global `update` path to repoint an existing
+   network. Each row also names a least-privilege `paramsAuthority`; only that
+   controller may update that row's `paramsHash`, and it cannot change the
+   program, snapshot, verifier, or accumulator.
 2. **`instanceId` derivation** must be collision-free under permissionless
    creation: `keccak256(abi.encode(creator, name, salt))`, not a bare
    label hash (first-come label squatting would let a stranger block
@@ -335,12 +345,14 @@ Sustainable posture given "hosted by us initially":
    (c) **two snapshots sharing one accumulator** (the contributions
    `TrustAccumulatorMirror` shape). The change stands — but the reason is
    (a)-(c), not the same-chain clone story this section told.
-2. **`setParamsHash` is a raw bytes32** with no bounds or rate limit
-   (`UPGRADE_GOVERNANCE.md` §7). The factory bounds *creation-time*
-   params (§2.2); post-creation rotation inherits the known gap and its
-   already-designed fix (`setParams(struct)` + bounds). For
-   creator-admin'd community instances the blast radius is that
-   community only.
+2. **Post-creation scoring rotation is typed and versioned.** New factory
+   instances give the raw snapshot operational role only to
+   `TrustGraphParamsController`. Its `updateParams(fullTuple, evidenceURI)`
+   reuses the creation validator, locks instance identity, updates controller,
+   snapshot, and directory atomically, and publishes append-only history.
+   The generic raw `setParamsHash(bytes32)` remains only as a legacy/other-
+   program escape hatch; bypass changes are diagnosed and are not a product
+   workflow.
 3. **No pause on `submitProof`** anywhere (only the distributor
    pauses). An SP1 soundness bug hits every instance at once, and a
    factory multiplies "every instance." This strengthens the case for
@@ -359,8 +371,8 @@ Sustainable posture given "hosted by us initially":
 ## 7. Phasing
 
 - **Phase A — contracts.** `TrustGraphFactory` + `ParamsCodec` calldata
-  path + registry wiring (`DeployInstanceRegistry` into `deploy/env.ts`,
-  factory granted `OPERATOR_ROLE`). No live-network backfill needed —
+  path + registry/controller wiring (`DeployInstanceRegistry` into `deploy/env.ts`,
+  factory granted `REGISTRAR_ROLE`). No live-network backfill needed —
   there is no production deployment; dev-seed networks are recreated
   through the factory. Foundry suite: creation invariants (factory role-free
   post-create, paramsHash parity vs `pagerank-core` golden vectors,

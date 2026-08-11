@@ -3,7 +3,7 @@
 
 use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
-    scan, Catalog, ChainReader, CreatedParams, RegistryRecord, SkipCause,
+    scan, Catalog, ChainReader, ControllerParams, CreatedParams, RegistryRecord, SkipCause,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
@@ -40,6 +40,8 @@ struct FakeChain {
     created: BTreeMap<B256, CreatedParams>,
     snapshot_hashes: BTreeMap<Address, B256>,
     factory_eas: BTreeMap<Address, Address>,
+    authorities: BTreeMap<B256, Address>,
+    controllers: BTreeMap<Address, ControllerParams>,
     /// Instance ids whose reads blow up, to prove one flaky read does not stop the rest.
     poisoned: Vec<B256>,
 }
@@ -67,8 +69,14 @@ impl ChainReader for FakeChain {
         }
         self.records.get(&id).copied().ok_or_else(|| FakeError("no such instance".into()))
     }
+    fn params_authority(&self, id: B256) -> Result<Address, Self::Error> {
+        Ok(self.authorities.get(&id).copied().unwrap_or(Address::ZERO))
+    }
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>, Self::Error> {
         Ok(self.created.get(&id).cloned())
+    }
+    fn controller_params(&self, controller: Address) -> Result<ControllerParams, Self::Error> {
+        self.controllers.get(&controller).cloned().ok_or_else(|| FakeError("no controller".into()))
     }
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error> {
         self.snapshot_hashes.get(&snapshot).copied().ok_or_else(|| FakeError("no snapshot".into()))
@@ -116,6 +124,26 @@ fn add_healthy(chain: &mut FakeChain, seed: u8) -> B256 {
     id
 }
 
+fn add_controller(chain: &mut FakeChain, id: B256, version: u64, current: Params) -> Address {
+    let controller = Address::from([id[0].wrapping_add(0x40); 20]);
+    let record = chain.records.get_mut(&id).unwrap();
+    let hash = encode::params_hash(&current);
+    record.params_hash = hash;
+    chain.snapshot_hashes.insert(record.snapshot, hash);
+    chain.authorities.insert(id, controller);
+    chain.controllers.insert(
+        controller,
+        ControllerParams {
+            instance_id: id,
+            snapshot: record.snapshot,
+            version,
+            current_params_hash: hash,
+            params: current,
+        },
+    );
+    controller
+}
+
 fn scan_all(chain: &FakeChain) -> Catalog {
     scan(chain, Program::TrustGraph, &Manifest::default()).unwrap()
 }
@@ -134,6 +162,42 @@ fn a_healthy_instance_is_reconstructed_with_zero_per_instance_config() {
     assert!(entry.manifest.is_none(), "the chain described it; no manifest needed");
     // The self-check: our Rust encoder reproduced the hash the Solidity codec wrote at creation.
     assert_eq!(entry.reconstructed_params_hash, chain.snapshot_hashes[&entry.snapshot]);
+}
+
+#[test]
+fn a_controller_rotation_uses_the_live_tuple_not_the_creation_tuple() {
+    let mut chain = FakeChain::default();
+    let id = add_healthy(&mut chain, 1);
+    let creation_hash = encode::params_hash(&chain.created[&id].params);
+    let mut current = chain.created[&id].params.clone();
+    current.damping_fp -= U256::from(1u64);
+    current.trusted_seeds = vec![Address::from([0xAA; 20]), Address::from([0xBB; 20])];
+    let controller = add_controller(&mut chain, id, 2, current.clone());
+
+    let catalog = scan_all(&chain);
+    let entry = catalog.get(id).expect("controller-backed instance is healthy");
+    assert_eq!(entry.params_controller, Some(controller));
+    assert_eq!(entry.params_version, Some(2));
+    assert_eq!(entry.params, Some(current));
+    assert_ne!(entry.reconstructed_params_hash, creation_hash);
+    assert!(entry.manifest.is_none());
+}
+
+#[test]
+fn a_raw_snapshot_hash_bypass_fails_closed_without_blocking_healthy_instances() {
+    let mut chain = FakeChain::default();
+    let bad = add_healthy(&mut chain, 1);
+    let good = add_healthy(&mut chain, 2);
+    let current = chain.created[&bad].params.clone();
+    add_controller(&mut chain, bad, 1, current);
+    let bad_snapshot = chain.records[&bad].snapshot;
+    chain.snapshot_hashes.insert(bad_snapshot, B256::from([0xFF; 32]));
+
+    let catalog = scan_all(&chain);
+    assert!(catalog.get(good).is_some());
+    assert!(catalog.get(bad).is_none());
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::ControllerInconsistent(_)));
+    assert!(catalog.skipped[0].reason.to_string().contains("raw hash bypass"));
 }
 
 #[test]

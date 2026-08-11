@@ -9,7 +9,11 @@ import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.so
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
 import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {
+    MerkleSnapshotDeployer,
+    MerkleFundDistributorDeployer,
+    TrustGraphParamsControllerDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -94,6 +98,7 @@ contract DeployFactory is Common {
         // The two children whose creation code will not fit inside the factory (EIP-170).
         MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();
         MerkleFundDistributorDeployer distributorDeployer = new MerkleFundDistributorDeployer();
+        TrustGraphParamsControllerDeployer paramsControllerDeployer = new TrustGraphParamsControllerDeployer();
 
         TrustGraphFactory trustGraphFactory = new TrustGraphFactory(
             IEAS(eas),
@@ -102,6 +107,7 @@ contract DeployFactory is Common {
             IInstanceRegistry(instanceRegistry),
             snapshotDeployer,
             distributorDeployer,
+            paramsControllerDeployer,
             epochFloor,
             vault
         );
@@ -129,6 +135,7 @@ contract DeployFactory is Common {
         console.log("ProvingVault:", address(vault), address(vault) == address(0) ? "(no prepay path)" : "");
         console.log("MerkleSnapshotDeployer:", address(snapshotDeployer));
         console.log("MerkleFundDistributorDeployer:", address(distributorDeployer));
+        console.log("TrustGraphParamsControllerDeployer:", address(paramsControllerDeployer));
         console.log("TrustGraphFactory:", factory);
         console.log("epochFloor (blocks):", epochFloor);
 
@@ -136,6 +143,7 @@ contract DeployFactory is Common {
         _json.serialize("instance_registry", Strings.toChecksumHexString(instanceRegistry));
         _json.serialize("snapshot_deployer", Strings.toChecksumHexString(address(snapshotDeployer)));
         _json.serialize("distributor_deployer", Strings.toChecksumHexString(address(distributorDeployer)));
+        _json.serialize("params_controller_deployer", Strings.toChecksumHexString(address(paramsControllerDeployer)));
         _json.serialize("epoch_floor", uint256(epochFloor));
         string memory finalJson = _json.serialize("factory", Strings.toChecksumHexString(factory));
         vm.writeFile(string.concat(root, "/.docker/factory_deploy.json"), finalJson);

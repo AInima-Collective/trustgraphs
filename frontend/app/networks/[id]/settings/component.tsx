@@ -46,7 +46,7 @@ import {
 } from '@/components/Select'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
-import type { InstanceParamsJson, InstanceRow } from '@/lib/catalog'
+import type { InstanceRow } from '@/lib/catalog'
 import { CONTRACT_CONFIG, PROVING_VAULT } from '@/lib/config'
 import {
   anchorRegistryAbi,
@@ -72,6 +72,7 @@ import { cn, realAddress } from '@/lib/utils'
 import { getTargetChainConfig } from '@/lib/wagmi'
 import { ponderQueries } from '@/queries/ponder'
 
+import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
 
 const TRUST_GRAPH_PROGRAM = keccak256(stringToBytes('trust-graph'))
@@ -148,17 +149,6 @@ const timestamp = (seconds: string | number | bigint | null | undefined) => {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value * 1_000))
-}
-
-const ratio = (raw: string | undefined, scale: string | undefined) => {
-  if (!raw || !scale) return '—'
-  const numerator = BigInt(raw)
-  const denominator = BigInt(scale)
-  if (denominator === 0n) return raw
-  const whole = numerator / denominator
-  const fraction = ((numerator % denominator) * 1_000_000n) / denominator
-  const suffix = fraction.toString().padStart(6, '0').replace(/0+$/, '')
-  return `${whole}${suffix ? `.${suffix}` : ''}`
 }
 
 const yesNo = (value: boolean | null | undefined) =>
@@ -616,83 +606,6 @@ const TopUpProofBalance = ({
   )
 }
 
-const ParameterCards = ({
-  params,
-  fallback,
-}: {
-  params: InstanceParamsJson | undefined
-  fallback: ReturnType<typeof useNetwork>['network']
-}) => {
-  const scale = params?.precisionScale
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <SettingsCard
-        title="PageRank computation"
-        description="The exact creation-time tuple committed by the factory. Fixed-point values are shown as decimals; expand the raw tuple below for audit use."
-      >
-        <SettingRow label="Damping factor">
-          {params ? ratio(params.dampingFp, scale) : 'Unavailable'}
-        </SettingRow>
-        <SettingRow label="Convergence tolerance">
-          {params ? ratio(params.toleranceFp, scale) : 'Unavailable'}
-        </SettingRow>
-        <SettingRow label="Maximum iterations">
-          {params?.maxIterations ?? 'Unavailable'}
-        </SettingRow>
-        <SettingRow label="Minimum edge weight">
-          {params
-            ? ratio(params.minWeightFp, scale)
-            : fallback.pagerank.minWeight}
-        </SettingRow>
-        <SettingRow label="Maximum edge weight">
-          {params
-            ? ratio(params.maxWeightFp, scale)
-            : fallback.pagerank.maxWeight}
-        </SettingRow>
-        <SettingRow label="Total points pool">
-          {params?.totalPool ?? String(fallback.pagerank.pointsPool)}
-        </SettingRow>
-        <SettingRow label="Precision scale">
-          {params?.precisionScale ?? 'Unavailable'}
-        </SettingRow>
-      </SettingsCard>
-
-      <SettingsCard
-        title="Trust weighting"
-        description="Controls how direct endorsements and inherited trust contribute to each score."
-      >
-        <SettingRow label="Trust multiplier">
-          {params
-            ? ratio(params.trustMultiplierFp, scale)
-            : fallback.pagerank.trustMultiplier}
-        </SettingRow>
-        <SettingRow label="Trust share">
-          {params
-            ? ratio(params.trustShareFp, scale)
-            : fallback.pagerank.trustShare}
-        </SettingRow>
-        <SettingRow label="Trust decay">
-          {params
-            ? ratio(params.trustDecayFp, scale)
-            : fallback.pagerank.trustDecay}
-        </SettingRow>
-        <SettingRow label="Weight field index">
-          {params?.weightFieldIndex ?? 'Unavailable'}
-        </SettingRow>
-        <SettingRow label="Lane-2 maximum head age">
-          {params ? duration(BigInt(params.lane2MaxHeadAge)) : 'Disabled'}
-        </SettingRow>
-        <SettingRow label="Parameter chain ID">
-          {params?.chainId ?? 'Unavailable'}
-        </SettingRow>
-        <SettingRow label="Parameter accumulator">
-          <ContractAddress value={params?.accumulator} />
-        </SettingRow>
-      </SettingsCard>
-    </div>
-  )
-}
-
 export const SettingsPage = ({
   instance,
   activeTab = 'overview',
@@ -730,7 +643,7 @@ export const SettingsPage = ({
     realAddress(PROVING_VAULT) ||
     realAddress(factoryVault as string | undefined)
 
-  const { data: snapshotReads, isLoading: snapshotLoading } = useReadContracts({
+  const { data: snapshotReads } = useReadContracts({
     contracts: [
       {
         address: snapshotAddress,
@@ -1827,72 +1740,12 @@ export const SettingsPage = ({
           )}
 
           {activeTab === 'scoring' && (
-            <section className="space-y-5">
-              <SectionHeading n="03">Scoring parameters</SectionHeading>
-              <div className="flex flex-wrap items-center gap-3">
-                {snapshotLoading ? (
-                  <StatusPill tone="muted">Checking parameter hash…</StatusPill>
-                ) : paramsMatch === true ? (
-                  <StatusPill tone="good">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Creation tuple
-                    matches live hash
-                  </StatusPill>
-                ) : paramsMatch === false ? (
-                  <StatusPill tone="warn">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Live parameter
-                    hash has changed
-                  </StatusPill>
-                ) : (
-                  <StatusPill tone="muted">
-                    Full creation tuple unavailable
-                  </StatusPill>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  A hash mismatch means the complete live tuple was not
-                  published by the factory event; the values below are labeled
-                  creation-time rather than presented as current.
-                </span>
-              </div>
-
-              <ParameterCards params={instance?.params} fallback={network} />
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <SettingsCard title="Trusted seeds">
-                  {(
-                    instance?.params.trustedSeeds ??
-                    network.pagerank.trustedSeeds
-                  ).map((seed, index) => (
-                    <SettingRow key={seed} label={`Seed ${index + 1}`}>
-                      <Address address={seed} displayMode="auto" />
-                    </SettingRow>
-                  ))}
-                </SettingsCard>
-                <SettingsCard title="Lane-2 domains">
-                  {instance?.params.envelope0DomainSeparators.length ? (
-                    instance.params.envelope0DomainSeparators.map(
-                      (domain, index) => (
-                        <SettingRow key={domain} label={`Domain ${index + 1}`}>
-                          <Hash value={domain} />
-                        </SettingRow>
-                      )
-                    )
-                  ) : (
-                    <SettingRow label="Status">Disabled</SettingRow>
-                  )}
-                </SettingsCard>
-              </div>
-
-              <details className="border border-border bg-surface px-5 py-4">
-                <summary className="cursor-pointer text-sm font-medium">
-                  Show exact parameter tuple
-                </summary>
-                <pre className="mt-4 max-h-[32rem] overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-muted-foreground">
-                  {instance?.params
-                    ? JSON.stringify(instance.params, null, 2)
-                    : 'The complete factory parameter tuple is unavailable for this network.'}
-                </pre>
-              </details>
-            </section>
+            <ScoringSettings
+              instance={instance}
+              factoryAddress={factoryAddress as Hex | undefined}
+              liveParamsHash={liveParamsHash as Hex | undefined}
+              checkpointCount={checkpointCount}
+            />
           )}
 
           {activeTab === 'advanced' && (
@@ -2244,6 +2097,11 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                <ScoringAccessCard
+                  instance={instance}
+                  factoryAddress={factoryAddress as Hex | undefined}
+                  liveParamsHash={liveParamsHash as Hex | undefined}
+                />
                 <SettingsCard
                   title="Contribution cycles"
                   description="Community-scored work whose ratings are weighted by this network."

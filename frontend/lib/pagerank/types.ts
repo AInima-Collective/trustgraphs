@@ -113,6 +113,11 @@ export interface ComputeResult {
   blob: string
   /** The CIDv1 (raw, sha2-256) string. */
   cid: string
+  /** Non-consensus diagnostics for honest UI preview copy. */
+  rankDiagnostics: {
+    iterations: number
+    converged: boolean
+  }
 }
 
 /**

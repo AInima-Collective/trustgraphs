@@ -15,6 +15,7 @@
  *   pnpm run shots -- --routes=/faq   # one route, whole matrix
  *   pnpm run shots:contributions      # contributions + claims, wallet + phase matrix
  *   pnpm run shots:contributions -- --personas=nominee --phases=claimable
+ *   pnpm run shots:scoring             # scoring lifecycle + authority matrix
  *
  * ── Five things this has to work around ──────────────────────────────────────
  *
@@ -117,6 +118,23 @@ const CONTRIBUTIONS_PHASES = [
   'claimable',
   'indexer-down',
 ]
+const SCORING_ROUTES = [
+  {
+    name: 'scoring',
+    path: '/networks/demo-co-op/settings?tab=scoring',
+  },
+]
+const SCORING_VIEWPORTS = ['320', '390', '768', '1280']
+const SCORING_STATES = [
+  'current',
+  'awaiting-checkpoint',
+  'active',
+  'stale',
+  'invalid',
+  'unauthorized',
+  'safe',
+  'timelock',
+]
 
 /** What `lib/directory.fixtures.ts` understands. `live` means "no fixture, read the indexer". */
 const STATES = ['many', 'one', 'none', 'failed']
@@ -152,13 +170,20 @@ const LABEL = String(flag('label', 'latest'))
 const REUSE = Boolean(flag('reuse', false))
 const WITH_STATES = Boolean(flag('states', false))
 const CONTRIBUTIONS = Boolean(flag('contributions', false))
+const SCORING = Boolean(flag('scoring', false))
 const REDUCED_MOTION = Boolean(flag('reduced-motion', false))
 const ONLY_ROUTES = flag('routes', null)
 const reviewViewports = selected('viewports', CONTRIBUTIONS_VIEWPORTS)
 const reviewPersonas = selected('personas', CONTRIBUTIONS_PERSONAS)
 const reviewPhases = selected('phases', CONTRIBUTIONS_PHASES)
+const scoringViewports = selected('viewports', SCORING_VIEWPORTS)
+const scoringStates = selected('scoring-states', SCORING_STATES)
 
-const routeCatalog = CONTRIBUTIONS ? CONTRIBUTIONS_ROUTES : ROUTES
+const routeCatalog = SCORING
+  ? SCORING_ROUTES
+  : CONTRIBUTIONS
+    ? CONTRIBUTIONS_ROUTES
+    : ROUTES
 const routes = ONLY_ROUTES
   ? routeCatalog.filter((r) => String(ONLY_ROUTES).split(',').includes(r.path))
   : routeCatalog
@@ -310,7 +335,7 @@ const stopServer = (child) => {
  */
 const shoot = async (
   browser,
-  { route, viewport, theme, dir, tag, persona, phase }
+  { route, viewport, theme, dir, tag, persona, phase, scoringState }
 ) => {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -318,18 +343,23 @@ const shoot = async (
     ...(REDUCED_MOTION ? { reducedMotion: 'reduce' } : {}),
   })
   await context.addInitScript(
-    ([themeValue, personaValue, phaseValue]) => {
+    ([themeValue, personaValue, phaseValue, scoringStateValue]) => {
       try {
         window.localStorage.setItem('theme', themeValue)
         if (personaValue)
           window.localStorage.setItem('tg-review-persona', personaValue)
         if (phaseValue)
           window.localStorage.setItem('tg-review-phase', phaseValue)
+        if (scoringStateValue)
+          window.localStorage.setItem(
+            'tg-review-scoring-state',
+            scoringStateValue
+          )
       } catch {
         /* storage blocked, the default theme is fine */
       }
     },
-    [theme, persona, phase]
+    [theme, persona, phase, scoringState]
   )
 
   const page = await context.newPage()
@@ -468,6 +498,7 @@ const sweep = async (
     tag,
     personas = [null],
     phases = [null],
+    scoringStates = [null],
   }
 ) => {
   const results = []
@@ -476,36 +507,42 @@ const sweep = async (
       for (const theme of THEMES) {
         for (const persona of personas) {
           for (const phase of phases) {
-            const cellTag = [tag, persona, phase].filter(Boolean).join('__')
-            const result = await shoot(browser, {
-              route,
-              viewport,
-              theme,
-              dir,
-              tag: cellTag || undefined,
-              persona,
-              phase,
-            })
-            results.push({
-              route: route.path,
-              fixture: fixture ?? 'live',
-              persona,
-              phase,
-              ...result,
-            })
-            const flags = [
-              result.status >= 400 ? `HTTP ${result.status}` : null,
-              result.unstyled ? 'NO STYLESHEET' : null,
-              result.horizontalOverflow
-                ? `OVERFLOW +${result.overflowBy}px`
-                : null,
-              result.consoleErrors.length
-                ? `${result.consoleErrors.length} console error(s)`
-                : null,
-            ].filter(Boolean)
-            log(
-              `${result.shot}${flags.length ? `   ⚠ ${flags.join(' · ')}` : ''}`
-            )
+            for (const scoringState of scoringStates) {
+              const cellTag = [tag, persona, phase, scoringState]
+                .filter(Boolean)
+                .join('__')
+              const result = await shoot(browser, {
+                route,
+                viewport,
+                theme,
+                dir,
+                tag: cellTag || undefined,
+                persona,
+                phase,
+                scoringState,
+              })
+              results.push({
+                route: route.path,
+                fixture: fixture ?? 'live',
+                persona,
+                phase,
+                scoringState,
+                ...result,
+              })
+              const flags = [
+                result.status >= 400 ? `HTTP ${result.status}` : null,
+                result.unstyled ? 'NO STYLESHEET' : null,
+                result.horizontalOverflow
+                  ? `OVERFLOW +${result.overflowBy}px`
+                  : null,
+                result.consoleErrors.length
+                  ? `${result.consoleErrors.length} console error(s)`
+                  : null,
+              ].filter(Boolean)
+              log(
+                `${result.shot}${flags.length ? `   ⚠ ${flags.join(' · ')}` : ''}`
+              )
+            }
           }
         }
       }
@@ -525,7 +562,30 @@ const main = async () => {
 
   try {
     let server
-    if (CONTRIBUTIONS) {
+    if (SCORING) {
+      const reviewEnv = { NEXT_PUBLIC_TG_REVIEW_FIXTURES: '1' }
+      if (!REUSE) {
+        log('building (scoring review fixtures)…')
+        await build(null, reviewEnv)
+      }
+      log(`serving ${ORIGIN}`)
+      server = await startServer(null, reviewEnv)
+      try {
+        results.push(
+          ...(await sweep(browser, {
+            dir: OUT,
+            viewports: VIEWPORTS.filter((viewport) =>
+              scoringViewports.includes(viewport.name)
+            ),
+            routeList: routes,
+            fixture: 'scoring-review',
+            scoringStates,
+          }))
+        )
+      } finally {
+        stopServer(server)
+      }
+    } else if (CONTRIBUTIONS) {
       const reviewEnv = { NEXT_PUBLIC_TG_REVIEW_FIXTURES: '1' }
       if (!REUSE) {
         log('building (contributions review fixtures)…')
@@ -570,7 +630,7 @@ const main = async () => {
       }
     }
 
-    if (WITH_STATES && !CONTRIBUTIONS) {
+    if (WITH_STATES && !CONTRIBUTIONS && !SCORING) {
       const stateViewports = VIEWPORTS.filter((v) =>
         STATE_VIEWPORTS.includes(v.name)
       )

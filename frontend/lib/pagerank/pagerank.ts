@@ -91,10 +91,16 @@ const decayPow = (baseFp: bigint, dist: number, s: bigint): bigint => {
   return r
 }
 
-/** Compute normalized PageRank scores (scaled by S; sum ≈ S). Empty graph ⇒ empty map. */
-export const calculate = (graph: Graph, p: Params): Map<string, bigint> => {
+export type RankResult = {
+  scores: Map<string, bigint>
+  iterations: number
+  converged: boolean
+}
+
+/** Compute scores plus the iteration result used by the parameter-change preview. */
+export const calculateDetailed = (graph: Graph, p: Params): RankResult => {
   const n = graph.nodes.length
-  if (n === 0) return new Map()
+  if (n === 0) return { scores: new Map(), iterations: 0, converged: true }
 
   const s = p.precisionScale
   const seeds = new Set<string>(p.trustedSeeds.map((a) => a.toLowerCase()))
@@ -106,6 +112,8 @@ export const calculate = (graph: Graph, p: Params): Map<string, bigint> => {
 
   const baseTeleport = s - p.dampingFp // (1 - d) * S
 
+  let iterations = 0
+  let converged = false
   for (let iteration = 0; iteration < p.maxIterations; iteration++) {
     const newScores = new Map<string, bigint>()
     let maxDelta = 0n
@@ -167,8 +175,12 @@ export const calculate = (graph: Graph, p: Params): Map<string, bigint> => {
     }
 
     current = newScores
+    iterations = iteration + 1
 
-    if (maxDelta < p.toleranceFp) break
+    if (maxDelta < p.toleranceFp) {
+      converged = true
+      break
+    }
   }
 
   // Normalize to sum S.
@@ -177,5 +189,9 @@ export const calculate = (graph: Graph, p: Params): Map<string, bigint> => {
   if (total !== 0n) {
     for (const [k, v] of current) current.set(k, fpDiv(v, total, s))
   }
-  return current
+  return { scores: current, iterations, converged }
 }
+
+/** Consensus-facing compatibility wrapper. */
+export const calculate = (graph: Graph, p: Params): Map<string, bigint> =>
+  calculateDetailed(graph, p).scores
