@@ -66,7 +66,7 @@ function SectionIndex({ dir }: { dir: string }) {
   if (!section) notFound()
 
   return (
-    <div className="w-full max-w-[72ch]">
+    <div className="mx-auto w-full max-w-[72ch]">
       <nav
         aria-label="Breadcrumb"
         className="tg-label mb-3 flex items-center gap-2"
@@ -135,9 +135,16 @@ export default async function DocPage({ params }: Props) {
   const prev = index > 0 ? DOCS_ORDER[index - 1] : undefined
   const next = index < DOCS_ORDER.length - 1 ? DOCS_ORDER[index + 1] : undefined
 
+  // The table of contents renders inline under the title (h2 entries only, and
+  // only when there are enough to be worth a map) instead of as a side rail: a
+  // rail exists only at xl and only on pages with headings, so it either
+  // reserves dead space or makes the reading column jump between pages —
+  // inline, every viewport gets the same jump links, phones included.
+  const contents = doc.toc.filter((entry) => entry.depth === 2)
+
   return (
-    <div className="flex w-full items-start gap-12">
-      <article className="min-w-0 max-w-[72ch] flex-1">
+    <div className="w-full">
+      <article className="mx-auto min-w-0 max-w-[72ch]">
         <nav
           aria-label="Breadcrumb"
           className="tg-label mb-3 flex items-center gap-2"
@@ -166,6 +173,24 @@ export default async function DocPage({ params }: Props) {
         {/* `break-words`: doc H1s carry unbreakable identifiers
          * ("TrustAwarePageRank:") that overflow a 320px viewport otherwise. */}
         <PageTitle className="break-words">{doc.title}</PageTitle>
+
+        {contents.length >= 3 && (
+          <nav aria-label="Contents" className="mt-8">
+            <div className="tg-label border-b border-border pb-2">Contents</div>
+            <ul className="mt-2 list-none columns-1 gap-x-8 p-0 text-sm sm:columns-2">
+              {contents.map((entry) => (
+                <li key={entry.id} className="break-inside-avoid">
+                  <a
+                    href={`#${entry.id}`}
+                    className="block py-1 text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                  >
+                    {entry.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
 
         <div
           className="tg-prose mt-6"
@@ -218,32 +243,6 @@ export default async function DocPage({ params }: Props) {
           </a>
         </footer>
       </article>
-
-      {doc.toc.length >= 2 && (
-        <aside
-          aria-label="On this page"
-          className="sticky top-6 hidden w-52 shrink-0 xl:block"
-        >
-          <div className="tg-label border-b border-border pb-2">
-            On this page
-          </div>
-          <ul className="mt-2 flex list-none flex-col p-0 text-sm">
-            {doc.toc.map((entry) => (
-              <li
-                key={entry.id}
-                className={entry.depth === 3 ? 'pl-3' : undefined}
-              >
-                <a
-                  href={`#${entry.id}`}
-                  className="block py-1 text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-                >
-                  {entry.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      )}
     </div>
   )
 }

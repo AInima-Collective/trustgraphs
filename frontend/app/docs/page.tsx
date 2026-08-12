@@ -27,7 +27,7 @@ const numbered = (i: number) => String(i + 1).padStart(2, '0')
 
 export default function DocsIndexPage() {
   return (
-    <div className="w-full max-w-[72ch]">
+    <div className="mx-auto w-full max-w-[72ch]">
       <PageTitle>Documentation</PageTitle>
       <p className="text-lg text-text-muted">
         From no jargon at all to running the machinery yourself, shallow to
