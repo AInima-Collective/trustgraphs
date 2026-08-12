@@ -12,17 +12,17 @@ program index in [`../PROGRAMS.md`](../PROGRAMS.md).
 
 ## Components
 
-| Path | What it is |
-|---|---|
-| `packages/zk-core` | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
-| `packages/pagerank-core` | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats. |
-| `zk/program` | Multi-bin SP1 guest crate. `trustgraph-program` bin = this program (root). |
-| `zk/prover` | Host CLI `trustgraph-prover`. Clap program groups: `trust-graph {vkey\|paramshash\|execute\|prove}` (and `signer …`). |
-| `packages/input-exporter` | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`. |
-| `src/contracts/eas/AttestationAccumulator.sol` | Chained-hash accumulator (mixed into `EASIndexerResolver`). |
-| `src/contracts/merkle/MerkleSnapshot.sol` | `submitProof` write-gate + two-tier timelock authority. |
-| `src/contracts/merkle/SP1JournalVerifier.sol` | `IZkVerifier` → SP1 gateway adapter (journal-agnostic; one instance per program vkey). |
-| `test/golden/trust-graph.json` + `test/unit/golden/TrustGraphGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors). |
+| Path                                                                              | What it is                                                                                                                                                 |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/zk-core`                                                                | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
+| `packages/pagerank-core`                                                          | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats.                                    |
+| `zk/program`                                                                      | Multi-bin SP1 guest crate. `trustgraph-program` bin = this program (root).                                                                                 |
+| `zk/prover`                                                                       | Host CLI `trustgraph-prover`. Clap program groups: `trust-graph {vkey\|paramshash\|execute\|prove}` (and `signer …`).                                      |
+| `packages/input-exporter`                                                         | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`.                                             |
+| `src/contracts/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
+| `src/contracts/merkle/MerkleSnapshot.sol`                                         | `submitProof` write-gate + two-tier timelock authority.                                                                                                    |
+| `src/contracts/merkle/SP1JournalVerifier.sol`                                     | `IZkVerifier` → SP1 gateway adapter (journal-agnostic; one instance per program vkey).                                                                     |
+| `test/golden/trust-graph.json` + `test/unit/golden/TrustGraphGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors).                                                                                           |
 
 ## Toolchain
 
@@ -32,7 +32,7 @@ curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1
 export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
-Pin the version. The SP1 *SDK* is pinned to `=6.3.1` in `zk/prover/Cargo.toml`, and the vkey depends
+Pin the version. The SP1 _SDK_ is pinned to `=6.3.1` in `zk/prover/Cargo.toml`, and the vkey depends
 on the exact toolchain build — read [`../PROGRAMS.md`](../PROGRAMS.md)'s reproducibility caveat
 before deriving any value you intend to deploy against. Full install walkthrough, including the
 other toolchains: [`../SETUP.md`](../SETUP.md).
@@ -103,7 +103,7 @@ hash check; it must never shadow a controller-backed registry entry.
 
 > **params schema v2.** `Params` carries two domain separators at the end — `accumulator` (the
 > instance's `EASIndexerResolver`) and `chain_id` — so two identically-configured instances cannot
-> accept each other's proofs (`FACTORY.md` §1.1). They are properties of an *instance*, not of the
+> accept each other's proofs (`FACTORY.md` §1.1). They are properties of an _instance_, not of the
 > governance file: `DeployNetwork` / `TrustGraphFactory` supply them at creation, and
 > `input-exporter` fills them from the connection it is reading, erroring if `params.json` names a
 > different instance. A hand-computed `paramshash` over a `params.json` whose `accumulator` /
@@ -122,18 +122,18 @@ SP1_PROVER=cpu cargo run --release -- trust-graph execute ../../.trustgraph/trus
 
 ## Deploy
 
-Order matters (the resolver *is* the accumulator, and `MerkleSnapshot` needs its address):
+Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its address):
 
 1. **SP1 verifier** — `script/DeployZkVerifier.s.sol` with the SP1 verifier-gateway address for the
    target chain and the `programVKey` from `trust-graph vkey`. (`DeployZkVerifier` deploys the shared
    `SP1JournalVerifier` bytecode; each program is a separate labeled instance with its own vkey.)
-2. **Network** — prefer `TrustGraphFactory.createInstance` (the app creation
-   wizard uses it). It deploys the resolver, snapshot, distributor, and one
-   `TrustGraphParamsController`; publishes version 1; registers that controller
-   as the instance's narrow `paramsAuthority`; grants it the snapshot's sole
-   `OPERATIONAL_ROLE`; and makes the community admin its two-step owner. The
-   older `script/DeployNetwork.s.sol` path remains for non-factory/legacy
-   deployments and does not gain versioned parameter control automatically.
+2. **Network** — use `GovernedTrustGraphFactory.createGovernedInstance` for a new community (the app
+   creation wizard does). It calls the canonical `TrustGraphFactory` through a newly created Safe,
+   deploys the resolver, snapshot, distributor and `TrustGraphParamsController`, publishes version
+   1, and enables the snapshot-specific Merkle governance module. The Safe is the community admin
+   and controller owner from that transaction. Direct `TrustGraphFactory.createInstance` remains a
+   lower-level seam for scripted/legacy bring-up where governance is attached and authority handed
+   off separately; `DeployNetwork.s.sol` is the non-factory legacy path.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s. On a controller-backed trust graph, transfer
    the snapshot's `CONSTITUTIONAL_ROLE` to the constitutional timelock and transfer ownership of
@@ -199,7 +199,7 @@ exactly that digest. It files the result at the checkpoint's freeze block, so hi
 Three consequences worth knowing before you debug a revert:
 
 - **A params rotation between trigger and submit does not invalidate your proof.** Every checkpoint
-  is proven under the hash pinned when its inputs froze; the rotation binds the *next* one. A
+  is proven under the hash pinned when its inputs froze; the rotation binds the _next_ one. A
   verifier rotation is different and deliberately does invalidate in-flight proofs — that is the
   SP1-soundness emergency path.
 - **`recipient` must match what the guest committed**, byte for byte. It is how the bounty is made
@@ -379,6 +379,7 @@ The signer module's governance surface is documented in
 ## Proving & on-chain gas — status and requirements
 
 What is validated end-to-end in CI-class hardware:
+
 - **Guest correctness**: `trust-graph execute` runs the real guest ELF in the SP1 RISC-V executor and
   its committed public values are asserted **byte-identical** to native `pagerank-core::compute` and to
   the Solidity golden vectors (`test/golden/trust-graph.json`) and the frontend TS port. Guest cost ≈
@@ -391,6 +392,7 @@ What is validated end-to-end in CI-class hardware:
   to the SP1 gateway with the immutable `programVKey`.
 
 What requires a bigger machine or the prover network:
+
 - **STARK core / Groth16 proof generation** is memory-heavy. On an 11 GiB machine both OOM (SIGKILL);
   SP1 CPU proving of this program needs roughly **16–32 GiB RAM** (or a GPU), or use the **Succinct
   prover network** (`SP1_PROVER=network` with `NETWORK_PRIVATE_KEY`). Run:
@@ -399,6 +401,7 @@ What requires a bigger machine or the prover network:
   `zk/prover/Cargo.toml` (`features = ["blocking", "native-gnark"]`) on a machine that can build it.
 
 Expected on-chain cost of `submitProof`:
+
 - State write + journal keccak + hooks ≈ **~346k gas** (measured with a mock verifier).
 - SP1 Groth16 verify via the gateway ≈ **~270–330k gas** (SP1 constant, version-dependent).
 - Total ≈ **~0.6M gas** per root update. This is a per-snapshot cost, not per-user.

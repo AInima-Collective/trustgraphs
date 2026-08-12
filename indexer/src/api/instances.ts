@@ -25,10 +25,10 @@
  *     &creator= &admin= &snapshot= &resolver= &distributor= &schemaUid=   (exact-match filters)
  *   GET /instances/:id                one instance by its `instanceId`
  */
-import { and, count, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
-import { instance, parameterVersion } from 'ponder:schema'
+import { instance, merkleGovModule, parameterVersion } from 'ponder:schema'
 import { type Hex, isAddress, isHex } from 'viem'
 
 import type { InstanceParamsJson } from '../factory'
@@ -40,6 +40,10 @@ const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 200
 
 type InstanceRow = typeof instance.$inferSelect
+type GovernanceRow = Pick<
+  typeof merkleGovModule.$inferSelect,
+  'address' | 'merkleSnapshot' | 'target'
+>
 
 /**
  * The canonical vouch schema's presentation labels. Every factory instance shares one schema
@@ -61,7 +65,7 @@ const parseSchemaFields = (schema: string) =>
       return { name: name ?? '', type: type ?? '' }
     })
 
-const serialize = (row: InstanceRow) => ({
+const serialize = (row: InstanceRow, governance?: GovernanceRow) => ({
   id: row.id,
   chainId: row.chainId,
   factory: row.factory,
@@ -77,6 +81,8 @@ const serialize = (row: InstanceRow) => ({
     easIndexerResolver: row.resolver,
     merkleFundDistributor: row.distributor,
     trustGraphParamsController: row.paramsController,
+    merkleGovModule: governance?.address ?? null,
+    safe: governance ? { proxy: governance.target } : null,
   },
   // Ready to drop into `Network['schemas']`.
   schema: {
@@ -113,6 +119,31 @@ const serialize = (row: InstanceRow) => ({
   createdTimestamp: row.createdTimestamp.toString(),
   createdTxHash: row.createdTxHash,
 })
+
+const governanceFor = async (rows: InstanceRow[]) => {
+  if (rows.length === 0) return new Map<string, GovernanceRow>()
+
+  const governanceRows = await db
+    .select({
+      address: merkleGovModule.address,
+      merkleSnapshot: merkleGovModule.merkleSnapshot,
+      target: merkleGovModule.target,
+    })
+    .from(merkleGovModule)
+    .where(
+      inArray(
+        merkleGovModule.merkleSnapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+
+  return new Map(
+    governanceRows.map((governance) => [
+      governance.merkleSnapshot.toLowerCase(),
+      governance,
+    ])
+  )
+}
 
 /** Parse a bounded non-negative integer query param. */
 const intParam = (raw: string | undefined, fallback: number, max: number) => {
@@ -171,8 +202,12 @@ app.get('/', async (c) => {
       .from(instance)
       .where(where)
 
+    const governance = await governanceFor(rows)
+
     return c.json({
-      instances: rows.map(serialize),
+      instances: rows.map((row) =>
+        serialize(row, governance.get(row.snapshot.toLowerCase()))
+      ),
       pagination: {
         limit,
         offset,
@@ -259,7 +294,10 @@ app.get('/:id', async (c) => {
     if (!row) {
       return c.json({ error: 'Instance not found' }, 404)
     }
-    return c.json({ instance: serialize(row) })
+    const governance = await governanceFor([row])
+    return c.json({
+      instance: serialize(row, governance.get(row.snapshot.toLowerCase())),
+    })
   } catch (error) {
     console.error('Error fetching instance:', error)
     return c.json({ error: 'Failed to fetch instance' }, 500)

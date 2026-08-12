@@ -54,6 +54,8 @@ export type InstanceRow = {
     easIndexerResolver: Hex
     merkleFundDistributor: Hex | null
     trustGraphParamsController: Hex | null
+    merkleGovModule: Hex | null
+    safe: { proxy: Hex } | null
   }
   schema: NetworkSchema
   distributorToken: Hex | null
@@ -166,6 +168,10 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
               row.contracts.trustGraphParamsController,
           }
         : {}),
+      ...(row.contracts.merkleGovModule
+        ? { merkleGovModule: row.contracts.merkleGovModule }
+        : {}),
+      ...(row.contracts.safe ? { safe: row.contracts.safe } : {}),
     },
     schemas: [row.schema],
     pagerank: {
@@ -186,8 +192,8 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
         ? { lane2MaxHeadAge: Number(row.params.lane2MaxHeadAge) }
         : {}),
     },
-    // Signer-sync is a per-deployment add-on wired outside the factory; a factory instance has
-    // none until someone configures one, and the seed entry supplies it when it does.
+    // Signer-sync remains optional. Governed factory instances always have a Safe and voting
+    // module, while automatic signer rotation can still be added separately.
     safeZodiacSignerSync: {
       enabled: false,
       topNSigners: 5,
@@ -225,9 +231,18 @@ const overlaySeed = (catalog: Network, seed: Network): Network => ({
   about: seed.about || catalog.about,
   criteria: seed.criteria || catalog.criteria,
   contracts: {
-    // Seed-only addresses (Safe, gov module) survive; the factory-owned ones do not get to drift.
+    // Seed-only addresses survive; chain-discovered addresses win. Merge Safe fields separately
+    // so a runtime proxy does not erase the seed's optional factory/singleton metadata.
     ...seed.contracts,
     ...catalog.contracts,
+    ...(seed.contracts.safe || catalog.contracts.safe
+      ? {
+          safe: {
+            ...seed.contracts.safe,
+            ...catalog.contracts.safe,
+          } as NonNullable<Network['contracts']['safe']>,
+        }
+      : {}),
   },
   safeZodiacSignerSync: seed.safeZodiacSignerSync,
   validatedThreshold: seed.validatedThreshold,

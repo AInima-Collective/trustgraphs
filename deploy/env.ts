@@ -130,6 +130,12 @@ abstract class EnvBase implements IEnv {
       // snapshot / resolver / distributor from its `InstanceCreated` events, so this one address is
       // all the trust-graph configuration the indexer needs.
       factory: readJsonIfFileExists('.docker/factory_deploy.json'),
+      // One per chain: the frontend wizard calls this wrapper so a new instance, DAO Safe and
+      // snapshot-specific Merkle governance module are born in one transaction. The base factory
+      // remains the canonical event/catalog source.
+      governedFactory: readJsonIfFileExists(
+        '.docker/governed_factory_deploy.json'
+      ),
       // The chain's ProvingVault, as a bare address string — `indexer/ponder.config.ts` reads
       // `summary.provingVault` and disables the source entirely when it is absent, so omitting it
       // here does not fail loudly, it just silently indexes no deposits, claims or credits.
@@ -368,7 +374,10 @@ export class DevEnv extends EnvBase {
           script: 'script/DeployProvingVault.s.sol:DeployProvingVault',
           sig: 'run(string)',
           args: () => [
-            readJsonKey('.docker/instance_registry_deploy.json', 'instance_registry'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
           ],
           skip: () => process.env.SKIP_PROVING_VAULT === 'true',
         },
@@ -382,7 +391,10 @@ export class DevEnv extends EnvBase {
             readJsonKey('.docker/eas_deploy.json', 'eas'),
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
             readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
-            readJsonKey('.docker/instance_registry_deploy.json', 'instance_registry'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
             // Epoch floor in blocks. Mainnet's is ~30 days (what hosted proving commits to);
             // locally it is one block so a dev proving loop is never waiting on the schedule.
             process.env.FACTORY_EPOCH_FLOOR || '1',
@@ -393,6 +405,16 @@ export class DevEnv extends EnvBase {
               'proving_vault'
             ) || '',
           ],
+        },
+        // The browser-facing creation seam. It has a shared Safe singleton/factory and wraps the
+        // canonical instance factory so every wizard-created controller is Safe-owned from
+        // version one, with a MerkleGovModule enabled before the transaction returns.
+        {
+          name: 'Governed Factory',
+          script:
+            'script/DeployGovernedTrustGraphFactory.s.sol:DeployGovernedTrustGraphFactory',
+          sig: 'run(string)',
+          args: () => [readJsonKey('.docker/factory_deploy.json', 'factory')],
         },
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
         // exercises the same path a community will. Still writes
@@ -434,7 +456,8 @@ export class DevEnv extends EnvBase {
             // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
             // writes the registered schema UIDs back into it, so it is local state, not tracked.
             const paramsFile =
-              process.env.CONTRIBUTIONS_PARAMS_JSON || 'params.contributions.json'
+              process.env.CONTRIBUTIONS_PARAMS_JSON ||
+              'params.contributions.json'
             if (!fs.existsSync(paramsFile)) {
               fs.copyFileSync(
                 'test/e2e/params.contributions.template.json',
@@ -479,13 +502,20 @@ export class DevEnv extends EnvBase {
           (_, index): ContractDeployment => ({
             name: `Safe: ${index}`,
             script: 'script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
-            sig: 'run(string,string)',
+            sig: 'run(string,string,string)',
             args: () => [
               readJsonKey(
                 `config/network_deploy_dev_${index}.json`,
                 'contracts.merkle_snapshot'
               ),
-              readJsonKey('.docker/zk_verifier_signer_deploy.json', 'zk_verifier'),
+              readJsonKey(
+                '.docker/zk_verifier_signer_deploy.json',
+                'zk_verifier'
+              ),
+              readJsonKey(
+                `config/network_deploy_dev_${index}.json`,
+                'contracts.params_controller'
+              ),
             ],
           })
         ),
@@ -723,7 +753,10 @@ export class ProdEnv extends EnvBase {
                 `config/network_deploy_prod_${index}.json`,
                 'contracts.merkle_snapshot'
               ),
-              readJsonKey('.docker/zk_verifier_signer_deploy.json', 'zk_verifier'),
+              readJsonKey(
+                '.docker/zk_verifier_signer_deploy.json',
+                'zk_verifier'
+              ),
             ],
             // Skip if the safe is already deployed / disabled for this network.
             skip: () =>

@@ -6,11 +6,13 @@ import { type Address, formatEther, isAddress, parseEther } from 'viem'
 
 import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
+import { CopyableText } from '@/components/CopyableText'
 import { VoteButtons } from '@/components/VoteButtons'
 import { useEnsResolver } from '@/hooks/useEns'
 import { ProposalAction, VoteType } from '@/hooks/useGovernance'
 import { parseAccountIdentifier } from '@/lib/ens'
 import { getAccountIdentifierErrorMessage } from '@/lib/ens-query'
+import type { GovernancePrefillAction } from '@/lib/governance-prefill'
 import { formatBigNumber } from '@/lib/utils'
 
 import { Card } from './Card'
@@ -69,7 +71,7 @@ interface CreateProposalFormProps {
   prefill?: {
     title: string
     description: string
-    actions: ProposalAction[]
+    actions: GovernancePrefillAction[]
   } | null
 }
 
@@ -89,6 +91,23 @@ export function CreateProposalForm({
   const [voteType, setVoteType] = useState<VoteType>(VoteType.Yes)
   const [drafts, setDrafts] = useState<DraftAction[]>([])
   const resolveAccountIdentifier = useEnsResolver()
+  const proposalJson = prefill
+    ? JSON.stringify(
+        {
+          title,
+          description,
+          targets: prefill.actions.map((action) => action.target),
+          values: prefill.actions.map((action) => action.value),
+          calldatas: prefill.actions.map((action) => action.data),
+          operations: prefill.actions.map((action) => action.operation),
+          actionDescriptions: prefill.actions.map(
+            (action) => action.description ?? ''
+          ),
+        },
+        null,
+        2
+      )
+    : null
 
   useEffect(() => {
     if (!prefill) return
@@ -315,6 +334,14 @@ export function CreateProposalForm({
 
           {prefill ? (
             <div className="space-y-3">
+              <div className="border border-success/40 bg-success-soft p-4 text-sm">
+                <p className="font-medium">DAO proposal ready</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Settings generated these calls from the validated scoring
+                  draft. If the vote passes, the Safe executes them in this
+                  order; no calldata needs to be reconstructed by hand.
+                </p>
+              </div>
               {prefill.actions.map((action, index) => (
                 <Card
                   key={`${action.target}:${index}`}
@@ -322,26 +349,68 @@ export function CreateProposalForm({
                   size="md"
                   className="min-w-0 space-y-2"
                 >
-                  <p className="text-sm font-medium">
-                    {action.description || `Action ${index + 1}`}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="tg-label">
+                      Action {index + 1} of {prefill.actions.length}
+                    </p>
+                    <span className="border border-border px-2 py-1 text-xs text-muted-foreground">
+                      CALL · 0 ETH
+                    </span>
+                  </div>
+                  <p className="break-words font-mono text-sm font-medium">
+                    {action.contractName ?? 'Contract'}.<wbr />
+                    {action.functionSignature ?? 'customCall(bytes)'}
                   </p>
-                  <p className="break-all font-mono text-xs text-muted-foreground">
-                    {action.target}
+                  <p className="text-xs text-muted-foreground">
+                    {action.description || `Execute action ${index + 1}`}
                   </p>
+                  <div className="border-l-2 border-border pl-3">
+                    <p className="text-xs text-muted-foreground">
+                      Target contract
+                    </p>
+                    <CopyableText
+                      text={action.target}
+                      truncate={false}
+                      alwaysShowCopyIcon
+                      className="mt-1 max-w-full"
+                    />
+                  </div>
                   <details>
                     <summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">
-                      Inspect calldata
+                      Inspect and copy exact calldata
                     </summary>
-                    <p className="break-all font-mono text-xs text-muted-foreground">
-                      {action.data}
-                    </p>
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <CopyableText
+                        text={action.data}
+                        displayText="Copy full calldata"
+                        truncate={false}
+                        truncateOnMobile={false}
+                        alwaysShowCopyIcon
+                      />
+                      <p className="break-all font-mono text-xs text-muted-foreground">
+                        {action.data}
+                      </p>
+                    </div>
                   </details>
                 </Card>
               ))}
-              <p className="text-xs text-muted-foreground">
-                These typed actions came from Settings. Return there to edit the
-                scoring configuration.
-              </p>
+              <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Return to Settings to change the tuple. This proposal JSON is
+                  portable and includes the exact target, value, operation, and
+                  calldata arrays.
+                </p>
+                {proposalJson && (
+                  <CopyableText
+                    text={proposalJson}
+                    displayText="Copy DAO proposal JSON"
+                    truncate={false}
+                    truncateOnMobile={false}
+                    alwaysShowCopyIcon
+                    className="min-h-11 shrink-0 border border-border px-3 py-2"
+                  />
+                )}
+              </div>
             </div>
           ) : (
             drafts.map((draft, index) => (
@@ -550,12 +619,24 @@ export function CreateProposalForm({
         </div>
 
         <div className="border-t border-border pt-4">
+          {prefill && !canCreateProposal && (
+            <p className="mb-3 border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
+              The proposal is complete and its calldata is copyable above.
+              Submission needs a connected wallet with current voting power in
+              this DAO; switch to an eligible member wallet to enable the
+              button.
+            </p>
+          )}
           <Button
             type="submit"
             disabled={isSubmitting || isLoading || !canCreateProposal}
             className="w-full px-4 py-2"
           >
-            {isSubmitting ? 'Submitting...' : 'Submit proposal'}
+            {isSubmitting
+              ? 'Submitting...'
+              : canCreateProposal
+                ? 'Submit DAO proposal'
+                : 'Eligible member wallet required'}
           </Button>
         </div>
       </form>

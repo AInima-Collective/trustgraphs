@@ -51,6 +51,7 @@ export type NetworkDeploy = {
     merkle_snapshot: Hex
     eas_indexer_resolver: Hex
     fund_distributor?: Hex
+    params_controller?: Hex
   }
   schemas: {
     [key: string]:

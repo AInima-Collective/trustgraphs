@@ -4,6 +4,40 @@ import { gnosisSafe } from 'ponder:schema'
 import { revalidateNetwork } from './utils'
 import { gnosisSafeAbi } from '../../frontend/lib/contract-abis'
 
+const syncSafe = async ({ event, context }: { event: any; context: any }) => {
+  const [owners, threshold] = await Promise.all([
+    context.client.readContract({
+      address: event.log.address,
+      abi: gnosisSafeAbi,
+      functionName: 'getOwners',
+    }),
+    context.client.readContract({
+      address: event.log.address,
+      abi: gnosisSafeAbi,
+      functionName: 'getThreshold',
+    }),
+  ])
+
+  await context.db
+    .insert(gnosisSafe)
+    .values({
+      address: event.log.address,
+      chainId: `${context.chain.id}`,
+      owners: [...owners],
+      threshold,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+    })
+    .onConflictDoUpdate({
+      owners: [...owners],
+      threshold,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+    })
+
+  await revalidateNetwork()
+}
+
 // Setup: Initialize the safe state from the contract
 ponder.on('gnosisSafe:setup', async ({ context }) => {
   for (const safeAddress of context.contracts.gnosisSafe.address || []) {
@@ -37,100 +71,17 @@ ponder.on('gnosisSafe:setup', async ({ context }) => {
 })
 
 // AddedOwner: Add a new owner to the safe
-ponder.on('gnosisSafe:AddedOwner', async ({ event, context }) => {
-  // Read current owners from the contract to ensure consistency
-  const [owners, threshold] = await Promise.all([
-    context.client.readContract({
-      address: event.log.address,
-      abi: gnosisSafeAbi,
-      functionName: 'getOwners',
-    }),
-    context.client.readContract({
-      address: event.log.address,
-      abi: gnosisSafeAbi,
-      functionName: 'getThreshold',
-    }),
-  ])
-
-  await context.db
-    .insert(gnosisSafe)
-    .values({
-      address: event.log.address,
-      chainId: `${context.chain.id}`,
-      owners: [...owners],
-      threshold,
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-    .onConflictDoUpdate({
-      owners: [...owners],
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-
-  await revalidateNetwork()
-})
+ponder.on('gnosisSafe:AddedOwner', syncSafe)
 
 // RemovedOwner: Remove an owner from the safe
-ponder.on('gnosisSafe:RemovedOwner', async ({ event, context }) => {
-  // Read current owners from the contract to ensure consistency
-  const [owners, threshold] = await Promise.all([
-    context.client.readContract({
-      address: event.log.address,
-      abi: gnosisSafeAbi,
-      functionName: 'getOwners',
-    }),
-    context.client.readContract({
-      address: event.log.address,
-      abi: gnosisSafeAbi,
-      functionName: 'getThreshold',
-    }),
-  ])
-
-  await context.db
-    .insert(gnosisSafe)
-    .values({
-      address: event.log.address,
-      chainId: `${context.chain.id}`,
-      owners: [...owners],
-      threshold,
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-    .onConflictDoUpdate({
-      owners: [...owners],
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-
-  await revalidateNetwork()
-})
+ponder.on('gnosisSafe:RemovedOwner', syncSafe)
 
 // ChangedThreshold: Update the threshold
-ponder.on('gnosisSafe:ChangedThreshold', async ({ event, context }) => {
-  const { threshold } = event.args
+ponder.on('gnosisSafe:ChangedThreshold', syncSafe)
 
-  const owners = await context.client.readContract({
-    address: event.log.address,
-    abi: gnosisSafeAbi,
-    functionName: 'getOwners',
-  })
-
-  await context.db
-    .insert(gnosisSafe)
-    .values({
-      address: event.log.address,
-      chainId: `${context.chain.id}`,
-      owners: [...owners],
-      threshold,
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-    .onConflictDoUpdate({
-      threshold,
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-
-  await revalidateNetwork()
-})
+// Safes created through GovernedTrustGraphFactory are discovered from its event rather than the
+// static deployment summary. Their setup emits AddedOwner/ChangedThreshold in the creation block,
+// so the same canonical read-back handler initializes and maintains them without a config edit.
+ponder.on('governedGnosisSafe:AddedOwner', syncSafe)
+ponder.on('governedGnosisSafe:RemovedOwner', syncSafe)
+ponder.on('governedGnosisSafe:ChangedThreshold', syncSafe)

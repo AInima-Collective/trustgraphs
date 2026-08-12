@@ -17,8 +17,12 @@ import { parseAccountIdentifier } from '@/lib/ens'
 
 /** The factory address for this chain, or empty when no factory is deployed here. */
 export const FACTORY_ADDRESS = (CONTRACT_CONFIG.TrustGraphFactory || '') as Hex
+/** Governed wrapper used by the wizard; absent means this deployment cannot safely create DAOs. */
+export const GOVERNED_FACTORY_ADDRESS =
+  (CONTRACT_CONFIG.GovernedTrustGraphFactory || '') as Hex
 
-export const isFactoryAvailable = () => FACTORY_ADDRESS.length === 42
+export const isFactoryAvailable = () =>
+  FACTORY_ADDRESS.length === 42 && GOVERNED_FACTORY_ADDRESS.length === 42
 
 /** Devnets mine on demand, so "about once a month" is meaningless there. */
 export const IS_LOCAL_CHAIN = CHAIN === 'local'

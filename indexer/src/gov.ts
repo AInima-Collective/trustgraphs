@@ -151,7 +151,7 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
 })
 
 // ProposalCreated: Create a new proposal record
-ponder.on('merkleGovModule:ProposalCreated', async ({ event, context }) => {
+const proposalCreated = async ({ event, context }: any) => {
   const { proposalId } = event.args
 
   // Get full proposal data including actions from contract
@@ -163,12 +163,19 @@ ponder.on('merkleGovModule:ProposalCreated', async ({ event, context }) => {
   })
 
   // Format actions for JSON storage
-  const formattedActions: ProposalAction[] = actions.map((action) => ({
-    target: action.target,
-    value: action.value.toString(),
-    data: action.data,
-    operation: action.operation,
-  }))
+  const formattedActions: ProposalAction[] = actions.map(
+    (action: {
+      target: string
+      value: bigint
+      data: string
+      operation: number
+    }) => ({
+      target: action.target,
+      value: action.value.toString(),
+      data: action.data,
+      operation: action.operation,
+    })
+  )
 
   // Insert the new proposal
   await context.db.insert(merkleGovModuleProposal).values({
@@ -195,10 +202,13 @@ ponder.on('merkleGovModule:ProposalCreated', async ({ event, context }) => {
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ proposalCount: proposalId })
-})
+}
+
+ponder.on('merkleGovModule:ProposalCreated', proposalCreated)
+ponder.on('governedMerkleGovModule:ProposalCreated', proposalCreated)
 
 // VoteCast: Record the vote and update vote counts on the proposal
-ponder.on('merkleGovModule:VoteCast', async ({ event, context }) => {
+const voteCast = async ({ event, context }: any) => {
   const { voter, proposalId, voteType, votingPower } = event.args
 
   // Insert the vote record
@@ -231,10 +241,13 @@ ponder.on('merkleGovModule:VoteCast', async ({ event, context }) => {
       noVotes: proposal.noVotes,
       abstainVotes: proposal.abstainVotes,
     })
-})
+}
+
+ponder.on('merkleGovModule:VoteCast', voteCast)
+ponder.on('governedMerkleGovModule:VoteCast', voteCast)
 
 // ProposalExecuted: Mark proposal as executed
-ponder.on('merkleGovModule:ProposalExecuted', async ({ event, context }) => {
+const proposalExecuted = async ({ event, context }: any) => {
   const { proposalId } = event.args
 
   await context.db
@@ -243,10 +256,13 @@ ponder.on('merkleGovModule:ProposalExecuted', async ({ event, context }) => {
       id: proposalId,
     })
     .set({ executed: true })
-})
+}
+
+ponder.on('merkleGovModule:ProposalExecuted', proposalExecuted)
+ponder.on('governedMerkleGovModule:ProposalExecuted', proposalExecuted)
 
 // ProposalCancelled: Mark proposal as cancelled
-ponder.on('merkleGovModule:ProposalCancelled', async ({ event, context }) => {
+const proposalCancelled = async ({ event, context }: any) => {
   const { proposalId } = event.args
 
   await context.db
@@ -255,49 +271,67 @@ ponder.on('merkleGovModule:ProposalCancelled', async ({ event, context }) => {
       id: proposalId,
     })
     .set({ cancelled: true })
-})
+}
+
+ponder.on('merkleGovModule:ProposalCancelled', proposalCancelled)
+ponder.on('governedMerkleGovModule:ProposalCancelled', proposalCancelled)
 
 // QuorumUpdated: Update quorum on the module
-ponder.on('merkleGovModule:QuorumUpdated', async ({ event, context }) => {
+const quorumUpdated = async ({ event, context }: any) => {
   const { newQuorum } = event.args
 
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ quorum: newQuorum })
-})
+}
+
+ponder.on('merkleGovModule:QuorumUpdated', quorumUpdated)
+ponder.on('governedMerkleGovModule:QuorumUpdated', quorumUpdated)
 
 // VotingDelayUpdated: Update voting delay on the module
-ponder.on('merkleGovModule:VotingDelayUpdated', async ({ event, context }) => {
+const votingDelayUpdated = async ({ event, context }: any) => {
   const { newDelay } = event.args
 
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ votingDelay: newDelay })
-})
+}
+
+ponder.on('merkleGovModule:VotingDelayUpdated', votingDelayUpdated)
+ponder.on('governedMerkleGovModule:VotingDelayUpdated', votingDelayUpdated)
 
 // VotingPeriodUpdated: Update voting period on the module
-ponder.on('merkleGovModule:VotingPeriodUpdated', async ({ event, context }) => {
+const votingPeriodUpdated = async ({ event, context }: any) => {
   const { newPeriod } = event.args
 
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ votingPeriod: newPeriod })
-})
+}
+
+ponder.on('merkleGovModule:VotingPeriodUpdated', votingPeriodUpdated)
+ponder.on('governedMerkleGovModule:VotingPeriodUpdated', votingPeriodUpdated)
 
 // MerkleSnapshotContractUpdated: Update merkle snapshot address on the module
+const merkleSnapshotContractUpdated = async ({ event, context }: any) => {
+  const { newContract } = event.args
+
+  await context.db
+    .update(merkleGovModule, { address: event.log.address })
+    .set({ merkleSnapshot: newContract })
+}
+
 ponder.on(
   'merkleGovModule:MerkleSnapshotContractUpdated',
-  async ({ event, context }) => {
-    const { newContract } = event.args
-
-    await context.db
-      .update(merkleGovModule, { address: event.log.address })
-      .set({ merkleSnapshot: newContract })
-  }
+  merkleSnapshotContractUpdated
+)
+ponder.on(
+  'governedMerkleGovModule:MerkleSnapshotContractUpdated',
+  merkleSnapshotContractUpdated
 )
 
 // MerkleRootUpdated (from IMerkleSnapshot): Update merkle state on the module
-ponder.on('merkleGovModule:MerkleRootUpdated', async ({ event, context }) => {
+const merkleRootUpdated = async ({ event, context }: any) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
 
   await context.db.update(merkleGovModule, { address: event.log.address }).set({
@@ -306,22 +340,31 @@ ponder.on('merkleGovModule:MerkleRootUpdated', async ({ event, context }) => {
     ipfsHashCid,
     totalVotingPower: totalValue,
   })
-})
+}
+
+ponder.on('merkleGovModule:MerkleRootUpdated', merkleRootUpdated)
+ponder.on('governedMerkleGovModule:MerkleRootUpdated', merkleRootUpdated)
 
 // AvatarSet (from Module.sol): Update avatar address on the module
-ponder.on('merkleGovModule:AvatarSet', async ({ event, context }) => {
+const avatarSet = async ({ event, context }: any) => {
   const { newAvatar } = event.args
 
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ avatar: newAvatar })
-})
+}
+
+ponder.on('merkleGovModule:AvatarSet', avatarSet)
+ponder.on('governedMerkleGovModule:AvatarSet', avatarSet)
 
 // TargetSet (from Module.sol): Update target address on the module
-ponder.on('merkleGovModule:TargetSet', async ({ event, context }) => {
+const targetSet = async ({ event, context }: any) => {
   const { newTarget } = event.args
 
   await context.db
     .update(merkleGovModule, { address: event.log.address })
     .set({ target: newTarget })
-})
+}
+
+ponder.on('merkleGovModule:TargetSet', targetSet)
+ponder.on('governedMerkleGovModule:TargetSet', targetSet)

@@ -6,6 +6,8 @@ export type GovernancePrefillAction = {
   data: string
   operation: number
   description?: string
+  contractName?: string
+  functionSignature?: string
 }
 
 export type GovernancePrefill = {

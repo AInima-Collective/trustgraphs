@@ -1,9 +1,9 @@
 # trust-graph — the instance factory
 
-**One transaction creates a working network.** A community fills in the create-a-network wizard,
-signs once, and gets an attestation accumulator, a vouching schema, a `MerkleSnapshot` bound to its
-own `paramsHash`, an optional fund distributor, and a directory entry — with no repo checkout, no
-config PR, and no indexer or frontend redeploy.
+**One transaction creates a working, DAO-owned network.** A community fills in the
+create-a-network wizard, signs once, and gets an attestation accumulator, a vouching schema, a
+`MerkleSnapshot` bound to its own `paramsHash`, an optional fund distributor, a Safe with an enabled
+Merkle voting module, and a directory entry — with no repo checkout, config PR, or app redeploy.
 
 Design provenance: [`../../research/INSTANCE_FACTORY.md`](../../research/INSTANCE_FACTORY.md).
 Program context: [`../PROGRAMS.md`](../PROGRAMS.md) — the factory is what turns "adding an instance
@@ -19,10 +19,10 @@ auditing a community's graph. Treat them like a journal: additive changes only, 
 `pagerank_core::Params` / `ParamsCodec.Params` / the TS `Params` all carry **17** fields. The last
 two were appended for the factory:
 
-| # | Field | Why |
-|---|---|---|
-| 16 | `accumulator` (address) | The instance's `EASIndexerResolver` |
-| 17 | `chainId` (uint64) | `block.chainid` at creation |
+| #   | Field                   | Why                                 |
+| --- | ----------------------- | ----------------------------------- |
+| 16  | `accumulator` (address) | The instance's `EASIndexerResolver` |
+| 17  | `chainId` (uint64)      | `block.chainid` at creation         |
 
 The journal is **untouched** — still the 10 fields of journal v2. Separation lives in the params.
 
@@ -31,7 +31,7 @@ The journal is **untouched** — still the 10 fields of journal v2. Separation l
 `INSTANCE_FACTORY.md` §6.1 says two clones with identical seeds, params and edge sets accept each
 other's proofs. **For two factory instances on one chain, that was already false before v2**, and
 the reason is worth knowing: EAS derives a schema UID as
-`keccak256(abi.encodePacked(schema, resolver, revocable))`, so the resolver address is *inside*
+`keccak256(abi.encodePacked(schema, resolver, revocable))`, so the resolver address is _inside_
 `schemaUid` — and `schemaUid` has been part of `paramsHash` since v1. Two instances always get their
 own resolver, hence their own UID, hence their own hash. The same-chain clone hazard was covered by
 accident.
@@ -39,7 +39,7 @@ accident.
 Three cases it was **not** covered for, which is what the two fields are for:
 
 1. **A cross-chain mirror (`chainId`).** Contract addresses come from `keccak(deployer, nonce)`, so
-   the same deployer running the same sequence on two chains produces *the same* resolver address.
+   the same deployer running the same sequence on two chains produces _the same_ resolver address.
    Measured: deploying this repo's EAS battery on chain 31337 and on chain 1 gave byte-identical
    addresses (`0xDD3F09d7…`, `0x6e5Ef4EE…`). Identical resolver ⇒ identical schema UID ⇒ **identical
    v1 `paramsHash`**, with nothing anywhere in the 15 fields naming a chain. Verified on a real
@@ -143,13 +143,26 @@ for. `weightFieldIndex` is therefore fixed at 1 — `confidence` sits in ABI hea
 ### 1.6 `metadataURI` JSON
 
 ```json
-{ "name": "…", "description": "…", "criteria": "…", "image": "ipfs://…", "applicationUrl": "https://…" }
+{
+  "name": "…",
+  "description": "…",
+  "criteria": "…",
+  "image": "ipfs://…",
+  "applicationUrl": "https://…"
+}
 ```
 
 Presentation only. Nothing here is consensus-relevant, nothing here is hashed, and the graph works
 if it is missing entirely.
 
 ## 2. What one transaction does
+
+`TrustGraphFactory.createInstance` is the canonical deployment and catalog seam. The browser calls
+it through `GovernedTrustGraphFactory.createGovernedInstance`: the wrapper creates a temporary
+bootstrap Safe, makes that Safe the base-factory caller and `admin`, installs the snapshot-specific
+`MerkleGovModule`, then removes itself. The creator wallet remains the Safe's initial break-glass
+signer, but the Safe—not that wallet—owns the params controller, snapshot authority, distributor,
+and governance settings from the creation transaction.
 
 ```
 new EASIndexerResolver(EAS)                                  ← the instance's accumulator
@@ -173,7 +186,7 @@ new EASIndexerResolver(EAS)                                  ← the instance's 
 Two details are worth stating out loud:
 
 **The factory holds a role for part of one transaction, and never again.** `setEpochLength` is
-constitutional-only and is *not* a constructor argument, which is the sole reason the factory ever
+constitutional-only and is _not_ a constructor argument, which is the sole reason the factory ever
 takes `CONSTITUTIONAL_ROLE`. The grant to the admin happens **before** the renounce — the role
 administers itself, so the reverse order would leave the instance with no constitutional holder,
 permanently. Post-condition: the factory holds zero roles on the snapshot, zero ownership of the
@@ -182,7 +195,7 @@ not a convention. A compromised factory can write directory garbage; it cannot t
 instance.
 
 **Distributor ownership is set outright, not via the 2-step handshake.** Two-step transfer protects
-a *live* owner from handing control to an address that cannot act; at construction there is no live
+a _live_ owner from handing control to an address that cannot act; at construction there is no live
 owner to protect, and a pending transfer would leave the factory owning every community's
 distributor until each one remembered to call `acceptOwnership`. `transferOwnership` after
 deployment is unchanged — still 2-step. (`docs/DEVIATIONS.md`.)
@@ -195,31 +208,31 @@ about what makes a good community — they are the envelope the fixed-point gues
 plus the identity rules. Generic `setParamsHash(bytes32)` remains for legacy and other programs,
 but the controller is the sole operational holder on new trust graphs.
 
-| Bound | Value |
-|---|---|
-| `dampingFp` | `0 < d < 1e18` |
-| `toleranceFp` | `0 < t ≤ 1e15` |
-| `maxIterations` | `1 … 500` |
-| weights | `maxWeightFp > 0`, `minWeightFp ≤ maxWeightFp` |
-| `trustShareFp`, `trustDecayFp` | `≤ 1e18` |
-| `trustMultiplierFp` | `≤ 100e18` (defence in depth; the growth rule below is the real bound) |
-| `precisionScale` | exactly `1e18` |
-| `totalPool` | `> 0` (a zero pool scores everyone zero, forever) |
-| `weightFieldIndex` | exactly `1` |
-| `maxWeightFp` | `≤ 1e6 × S` |
-| `trustedSeeds` | 1 … 64, no zero address, no duplicates |
-| rank growth | `(damping × multiplier)^maxIterations × S` must stay under 2²⁵⁶ |
-| lane-2 fields | must be empty — the v1 bundle is lane-1-only |
-| derived fields | must be zero |
-| `name` | 1 … 64 bytes |
-| `admin` | not the factory itself — see below |
-| `epochLength` | raised to `EPOCH_FLOOR`, never rejected |
+| Bound                          | Value                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `dampingFp`                    | `0 < d < 1e18`                                                         |
+| `toleranceFp`                  | `0 < t ≤ 1e15`                                                         |
+| `maxIterations`                | `1 … 500`                                                              |
+| weights                        | `maxWeightFp > 0`, `minWeightFp ≤ maxWeightFp`                         |
+| `trustShareFp`, `trustDecayFp` | `≤ 1e18`                                                               |
+| `trustMultiplierFp`            | `≤ 100e18` (defence in depth; the growth rule below is the real bound) |
+| `precisionScale`               | exactly `1e18`                                                         |
+| `totalPool`                    | `> 0` (a zero pool scores everyone zero, forever)                      |
+| `weightFieldIndex`             | exactly `1`                                                            |
+| `maxWeightFp`                  | `≤ 1e6 × S`                                                            |
+| `trustedSeeds`                 | 1 … 64, no zero address, no duplicates                                 |
+| rank growth                    | `(damping × multiplier)^maxIterations × S` must stay under 2²⁵⁶        |
+| lane-2 fields                  | must be empty — the v1 bundle is lane-1-only                           |
+| derived fields                 | must be zero                                                           |
+| `name`                         | 1 … 64 bytes                                                           |
+| `admin`                        | not the factory itself — see below                                     |
+| `epochLength`                  | raised to `EPOCH_FLOOR`, never rejected                                |
 
 Two of those are less obvious than they look, and both were caught by the M1 battery:
 
 - **`admin` may not be the factory.** Step 5 grants `CONSTITUTIONAL_ROLE` to the admin and then
   renounces the factory's own. Name the factory as admin and those become grant-then-revoke on the
-  *same* address, leaving an instance with no constitutional holder — permanently, because the role
+  _same_ address, leaving an instance with no constitutional holder — permanently, because the role
   administers itself — while the factory keeps `OPERATIONAL_ROLE` and the distributor. Rejected with
   `InvalidAdmin()`.
 - **`EPOCH_FLOOR` may not be zero** (`ZeroEpochFloor()` at construction). Zero is not "no minimum",
@@ -252,6 +265,8 @@ forge script script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry --sig 'r
 forge script script/DeployFactory.s.sol:DeployFactory \
   --sig 'run(string,string,string,string,uint64)' \
   <eas> <schemaRegistrar> <zkVerifier> <instanceRegistry> <epochFloorBlocks> …
+forge script script/DeployGovernedTrustGraphFactory.s.sol:DeployGovernedTrustGraphFactory \
+  --sig 'run(string)' <factory> …
 ```
 
 `DeployFactory` also grants the factory `REGISTRAR_ROLE` on the registry (skip with
@@ -259,9 +274,10 @@ forge script script/DeployFactory.s.sol:DeployFactory \
 a governance action). `update()` stays with the global registry operator, while each controller may
 change only its own row's `paramsHash`; a factory bug can add rows but never rewrite one.
 
-Locally, `pnpm deploy:contracts` does all of it, and `script/CreateDevInstances.s.sol` then creates
-the dev-seed networks **through the factory** — one catalog, and the local stack exercises the same
-path a community will.
+Locally, `pnpm deploy:contracts` does all of it. `script/CreateDevInstances.s.sol` creates the
+dev-seed networks through the canonical factory; `DeployZodiacSafes` then transfers each typed
+params controller and both module authorities to that network's Safe before deployment completes.
+The browser uses the governed wrapper so the equivalent ownership is atomic in one transaction.
 
 ## 5. Proving every instance — chain is the config
 
@@ -315,7 +331,7 @@ submitProof(…)     → and then assert the on-chain root equals the proven one
 
 Everything lands in **`.trustgraph/trust-graph/<instanceId>/`** (`input.json`, `blob.json`,
 `proof.bin`, `public_values.bin`, `params.json`). The prover's default output directory is
-per-*program*, so without the per-instance `--out-dir` the second instance of a pass would overwrite
+per-_program_, so without the per-instance `--out-dir` the second instance of a pass would overwrite
 the first one's proof — hence `zk/prover`'s `--out-dir` flag on both `execute` and `prove`. The scan
 plan itself is written to `.trustgraph/trust-graph/instances.json`.
 
@@ -323,15 +339,15 @@ plan itself is written to `.trustgraph/trust-graph/instances.json`.
 
 One unprovable instance must never stop the other N-1, so each of these is a logged skip:
 
-| Skip | Meaning |
-|---|---|
-| program label ≠ `keccak256("trust-graph")` | another SP1 program owns this instance |
-| no `InstanceCreated` in the registration tx | registered outside the factory; its params are not on chain |
-| epoch boundary not reached | `trigger()` would revert `EpochNotElapsed` — the schedule is the contract's call |
-| no new edges since the last checkpoint | `trigger()` would revert `NoNewInputs()` |
-| no attestations yet | a created-but-unused instance; there is nothing to prove |
+| Skip                                        | Meaning                                                                          |
+| ------------------------------------------- | -------------------------------------------------------------------------------- |
+| program label ≠ `keccak256("trust-graph")`  | another SP1 program owns this instance                                           |
+| no `InstanceCreated` in the registration tx | registered outside the factory; its params are not on chain                      |
+| epoch boundary not reached                  | `trigger()` would revert `EpochNotElapsed` — the schedule is the contract's call |
+| no new edges since the last checkpoint      | `trigger()` would revert `NoNewInputs()`                                         |
+| no attestations yet                         | a created-but-unused instance; there is nothing to prove                         |
 
-A run that proves nothing therefore exits 0. Only a *failed* instance (a reverted submit, a bad
+A run that proves nothing therefore exits 0. Only a _failed_ instance (a reverted submit, a bad
 export) exits non-zero, and even then the remaining instances are still attempted.
 
 ### Scope
@@ -344,7 +360,7 @@ its §2 consumes exactly this seam.
 
 - `SP1_PROVER=mock` (the default) runs the guest for real and commits its real public values, but the
   SNARK itself is a stub. `PROVER=network` (or `cpu` on a 16-32 GiB box with `--features
-  native-gnark`) is the real thing.
+native-gnark`) is the real thing.
 - `SP1_VERIFIER_GATEWAY` names Succinct's real per-chain deployment, which has **no code** on a
   plain anvil — so `submitProof` used to revert inside the verifier before any of its own checks
   ran. The dev deploy now stands up a `MockSP1Gateway` for you (`DeployMockGateway`, wired into
@@ -358,7 +374,7 @@ its §2 consumes exactly this seam.
 every service you need, the create → vouch → prove → pay loop, four security demonstrations (params
 self-check, replay separation, squat resistance and foreign-schema rejection), and the gotchas that
 actually bite — chief among them that restarting anvil silently poisons the indexer's RPC cache
-*and* wedges the proof scheduler's request journal.
+_and_ wedges the proof scheduler's request journal.
 
 ## 7. Related
 

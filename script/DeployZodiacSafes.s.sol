@@ -15,6 +15,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 // Our modules
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
+import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
 
 // MerkleSnapshot + verifier interfaces
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
@@ -53,6 +54,23 @@ contract DeployZodiacSafes is Common {
      *        mock-verifier local run.
      */
     function run(string calldata merkleSnapshotAddr, string calldata signerVerifierAddr) public {
+        _run(merkleSnapshotAddr, signerVerifierAddr, address(0));
+    }
+
+    /// @notice Deploy governance and complete the typed scoring-authority handoff in the same
+    ///         broadcast. Dev/factory instances use this overload; legacy snapshots without a
+    ///         typed controller retain the two-argument overload above.
+    function run(
+        string calldata merkleSnapshotAddr,
+        string calldata signerVerifierAddr,
+        string calldata paramsControllerAddr
+    ) public {
+        _run(merkleSnapshotAddr, signerVerifierAddr, vm.parseAddress(paramsControllerAddr));
+    }
+
+    function _run(string calldata merkleSnapshotAddr, string calldata signerVerifierAddr, address paramsController)
+        internal
+    {
         address deployer = vm.addr(_privateKey);
 
         vm.startBroadcast(_privateKey);
@@ -69,10 +87,52 @@ contract DeployZodiacSafes is Common {
         SafeDeployment memory safe =
             deployZodiacSafeWithMerkle(safeSingleton, safeFactory, deployer, merkleSnapshot, signerVerifier, "Safe1");
 
+        if (paramsController != address(0)) {
+            _handoffScoringAuthority(deployer, safe, TrustGraphParamsController(paramsController));
+        }
+
         vm.stopBroadcast();
 
         // Write deployment results to JSON
         writeDeploymentResults(safe, address(safeSingleton), address(safeFactory));
+    }
+
+    /// @dev The Safe is the execution identity targets observe. Hand both typed scoring seams and
+    ///      both modules' governance knobs to it before the deployment can be reported successful.
+    function _handoffScoringAuthority(
+        address deployer,
+        SafeDeployment memory deployment,
+        TrustGraphParamsController controller
+    ) internal {
+        GnosisSafe safe = GnosisSafe(payable(deployment.safe));
+        MerkleGovModule govModule = MerkleGovModule(deployment.merkleGovModule);
+        SignerSyncZkModule signerModule = SignerSyncZkModule(deployment.signerSyncModule);
+
+        require(controller.owner() == deployer, "DeployZodiacSafes: deployer is not controller owner");
+        controller.transferOwnership(deployment.safe);
+        _execSafe(safe, address(controller), abi.encodeWithSignature("acceptOwnership()"), deployer);
+
+        require(
+            signerModule.paramsAuthority() == deployer, "DeployZodiacSafes: deployer is not signer params authority"
+        );
+        signerModule.transferParamsAuthority(deployment.safe);
+        _execSafe(safe, address(signerModule), abi.encodeWithSignature("acceptParamsAuthority()"), deployer);
+
+        // Configuration of both enabled modules is itself a DAO action after bootstrap.
+        govModule.transferOwnership(deployment.safe);
+        signerModule.transferOwnership(deployment.safe);
+
+        require(controller.owner() == deployment.safe, "DeployZodiacSafes: controller handoff failed");
+        require(signerModule.paramsAuthority() == deployment.safe, "DeployZodiacSafes: signer authority handoff failed");
+        require(govModule.owner() == deployment.safe, "DeployZodiacSafes: gov module handoff failed");
+        require(signerModule.owner() == deployment.safe, "DeployZodiacSafes: signer module handoff failed");
+    }
+
+    function _execSafe(GnosisSafe safe, address target_, bytes memory data, address signer) internal {
+        bool success = safe.execTransaction(
+            target_, 0, data, Enum.Operation.Call, 0, 0, 0, address(0), payable(0), generateSignature(signer)
+        );
+        require(success, "DeployZodiacSafes: Safe execution failed");
     }
 
     function deployZodiacSafeWithMerkle(

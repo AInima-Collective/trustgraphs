@@ -2227,6 +2227,193 @@ export const gnosisSafeAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GovernedTrustGraphFactory
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const governedTrustGraphFactoryAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      {
+        name: 'factory_',
+        internalType: 'contract TrustGraphFactory',
+        type: 'address',
+      },
+      {
+        name: 'safeFactory_',
+        internalType: 'contract GnosisSafeProxyFactory',
+        type: 'address',
+      },
+      { name: 'safeSingleton_', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'FACTORY',
+    outputs: [
+      { name: '', internalType: 'contract TrustGraphFactory', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'SAFE_FACTORY',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract GnosisSafeProxyFactory',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'SAFE_SINGLETON',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'requested',
+        internalType: 'struct TrustGraphFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustMultiplierFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+    ],
+    name: 'createGovernedInstance',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'safeAddress', internalType: 'address', type: 'address' },
+      { name: 'merkleGovModule', internalType: 'address', type: 'address' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'creator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'safe', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'merkleGovModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'GovernedInstanceCreated',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'InstanceDiscoveryFailed',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'target', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'SafeExecutionFailed',
+  },
+  { type: 'error', inputs: [], name: 'SafeFundingFailed' },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MerkleFundDistributor
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -25,6 +25,14 @@ const factoryDeployFile = path.join(
 const factoryAddress = fs.existsSync(factoryDeployFile)
   ? (JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8')).factory ?? '')
   : ''
+const governedFactoryDeployFile = path.join(
+  __dirname,
+  '../../.docker/governed_factory_deploy.json'
+)
+const governedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
+  ? (JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
+      .governed_factory ?? '')
+  : ''
 
 console.log('🔄 Updating config with latest deployment data...')
 
@@ -75,8 +83,10 @@ try {
     // factory instance shares the same vault.
     ProvingVault: deployment.provingVault || '',
 
-    // One per chain: the create-a-network wizard's only write target.
+    // One per chain: the base factory is the catalog source; the wizard writes through the
+    // governed wrapper so the resulting instance is Safe-owned from creation.
     TrustGraphFactory: factoryAddress,
+    GovernedTrustGraphFactory: governedFactoryAddress,
   }
 
   // Make sure ABIs exist for all contracts, and copy them to the frontend.

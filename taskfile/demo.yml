@@ -116,7 +116,7 @@ tasks:
         done
 
   deploy:
-    desc: 'Deploy the stack and complete Demo Co-op, with verifiers pinned to THIS checkout''s guests'
+    desc: "Deploy the stack and complete Demo Co-op, with verifiers pinned to THIS checkout's guests"
     cmds:
       - |
         # The one ordering that silently ruins a demo: SP1JournalVerifier pins its vkey at
@@ -145,7 +145,7 @@ tasks:
       - task: addresses
 
   fund:
-    desc: 'Top up Demo Co-op''s proving tank after deployment'
+    desc: "Top up Demo Co-op's proving tank after deployment"
     cmds:
       - |
         VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
@@ -208,7 +208,7 @@ tasks:
         ' _ '{{.NAME}}' "$FAC" '{{.RPC}}'
 
   seed:
-    desc: 'Vouch: 21 edges over 14 accounts, rooted at the instance''s trusted seed'
+    desc: "Vouch: 21 edges over 14 accounts, rooted at the instance's trusted seed"
     cmds:
       - |
         # BEFORE the first trigger, always. A checkpoint frozen over an empty graph proves to a
@@ -263,21 +263,23 @@ tasks:
     desc: 'Give the demo network a Safe, a gov module and a UI entry for them'
     cmds:
       - |
-        # The factory does not deploy governance — a factory instance has a snapshot, a resolver
-        # and (here) a distributor, and nothing else. This bolts the Zodiac stack on afterwards,
-        # exactly as a real community would.
+        # Raw factory instances have no governance module. This bolts the Zodiac stack on and, in
+        # the same broadcast, hands the typed params controller to the new Safe. The regular demo
+        # deploy already does this; this task is for instances created later via `demo:create`.
         SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+        ID=$(task --silent demo:id NAME='{{.NAME}}')
+        REG=$(jq -r .instance_registry .docker/factory_deploy.json)
+        CONTROLLER=$(cast call "$REG" 'paramsAuthority(bytes32)(address)' "$ID" --rpc-url {{.RPC}})
         SIGNER_VERIFIER=$(jq -r '.signer_zk_verifier // .zk_verifier' \
           .docker/signer_zk_verifier_deploy.json 2>/dev/null \
           || jq -r .zk_verifier .docker/zk_verifier_deploy.json)
         forge script script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
-          --sig 'run(string,string)' "$SNAP" "$SIGNER_VERIFIER" \
+          --sig 'run(string,string,string)' "$SNAP" "$SIGNER_VERIFIER" "$CONTROLLER" \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
       - |
-        # The catalog cannot carry a Safe: `lib/types.ts` says so, and `mergeInstance` overlays a
-        # config ("seed") entry onto the indexer row keyed by merkleSnapshot, with the seed-only
-        # addresses surviving. So governance shows in the UI only if the network has a config
-        # entry. Write one, matched on the snapshot the demo just created.
+        # A module added after raw factory creation has no governed-factory discovery event. Add it
+        # to the local seed as well, matched on the snapshot the demo just created. Networks made
+        # in the browser use GovernedTrustGraphFactory and need no such edit.
         SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
         RESOLVER=$(task --silent demo:resolver NAME='{{.NAME}}' 2>/dev/null || echo "")
         node -e '
@@ -341,7 +343,7 @@ tasks:
         echo "  restart the indexer AND the frontend to pick up the new sources"
 
   contributions:
-    desc: 'A contributions round over the demo network''s own trust graph'
+    desc: "A contributions round over the demo network's own trust graph"
     cmds:
       - |
         # A contributions instance is its own snapshot + verifier + distributor, reading rep from a
@@ -539,7 +541,7 @@ tasks:
         fi
 
   settle:
-    desc: 'Mine past Ponder''s finality window so the indexer will actually serve what just happened'
+    desc: "Mine past Ponder's finality window so the indexer will actually serve what just happened"
     cmds:
       - |
         # anvil mines only on transactions, so the chain stops dead the moment the demo does — and
@@ -605,7 +607,7 @@ tasks:
         echo "  ✓ round funded ({{.FUND_AMOUNT}} base units) and claimed (distribution $IDX)"
 
   resolver:
-    desc: 'The instance''s EASIndexerResolver (its accumulator), from the registry'
+    desc: "The instance's EASIndexerResolver (its accumulator), from the registry"
     cmds:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
@@ -613,7 +615,7 @@ tasks:
           "$(task --silent demo:id NAME='{{.NAME}}')" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f4 | tr -d ' '
 
   snapshot:
-    desc: 'The instance''s MerkleSnapshot address, from the registry'
+    desc: "The instance's MerkleSnapshot address, from the registry"
     cmds:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
@@ -621,7 +623,7 @@ tasks:
           "$(task --silent demo:id NAME='{{.NAME}}')" --rpc-url {{.RPC}} | tr -d '()' | cut -d, -f2 | tr -d ' '
 
   report:
-    desc: 'What happened: the root, the payment, and every instance''s decision'
+    desc: "What happened: the root, the payment, and every instance's decision"
     cmds:
       - |
         R={{.RPC}}
@@ -693,7 +695,7 @@ tasks:
           why: (.action.hold // .action.idle // .action.skip)}]' {{.WORK}}/status.json
 
   clean:
-    desc: 'Throw away the demo''s local state (not the chain)'
+    desc: "Throw away the demo's local state (not the chain)"
     cmds:
       - rm -rf {{.WORK}} .trustgraph/operator
       - echo "✓ removed {{.WORK}} and .trustgraph/operator"

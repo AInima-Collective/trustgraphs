@@ -34,18 +34,10 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
         scheduled to happen {describeBlocks(created.epochBlocks)}. An empty
         scoreboard on day one is normal, not a fault.
       </Note>
-      {/* This used to promise the page "can take a minute or two to appear",
-       * which is the same claim the landing page and the FAQ carried until the
-       * claim audit refuted it: the indexer switches factory discovery off
-       * whenever the deploy environment is production, so on that chain a
-       * network created here is never listed at all. It is still real, and this
-       * screen is holding every address needed to reach it, so the honest note
-       * says that rather than promising a wait that may never end. */}
       <Note tone="warning">
         Your network exists on the chain from this moment. It may take a minute
-        or two to appear in this app, and on some deployments it will not be
-        listed here at all. The addresses below are how you reach it either way,
-        so keep them.
+        or two for the indexer to list it in this app. Keep the addresses below
+        as the direct record of what was created.
       </Note>
     </div>
 
@@ -59,6 +51,12 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
       <SummaryRow label="Where vouches are recorded">
         <CopyableText text={created.resolver} className="text-xs" />
       </SummaryRow>
+      <SummaryRow label="DAO Safe">
+        <CopyableText text={created.safe} className="text-xs" />
+      </SummaryRow>
+      <SummaryRow label="Voting module">
+        <CopyableText text={created.merkleGovModule} className="text-xs" />
+      </SummaryRow>
       {created.distributor !== zeroAddress && (
         <SummaryRow label="Your shared fund">
           <CopyableText text={created.distributor} className="text-xs" />
@@ -67,8 +65,9 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
     </Card>
 
     <Note>
-      Keep the wallet you signed with safe. It is the only account that can
-      change your network&apos;s settings.
+      The DAO Safe owns the network contracts. Your wallet is its initial
+      break-glass signer, while member proposals execute through the enabled
+      voting module.
     </Note>
   </div>
 )

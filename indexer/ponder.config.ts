@@ -16,6 +16,7 @@ import {
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
+  governedTrustGraphFactoryAbi,
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
@@ -44,6 +45,7 @@ const deploymentSummary = deploymentSummaryJson as {
   networks: DeployedNetwork[]
   /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
   factory?: { factory?: string; instance_registry?: string }
+  governedFactory?: { governed_factory?: string }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -123,6 +125,9 @@ const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
 const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
   | Hex
   | undefined
+const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
+  | Hex
+  | undefined
 
 /**
  * Whether to discover trust-graph children from the factory. Production (Optimism) predates the
@@ -144,6 +149,10 @@ const PARAMS_CONTROLLER_CREATED = getAbiItem({
 const PARAMS_AUTHORITY_UPDATED = getAbiItem({
   abi: instanceRegistryParamsAbi,
   name: 'ParamsAuthorityUpdated',
+})
+const GOVERNED_INSTANCE_CREATED = getAbiItem({
+  abi: governedTrustGraphFactoryAbi,
+  name: 'GovernedInstanceCreated',
 })
 
 /**
@@ -174,6 +183,14 @@ const migratedParamsControllers = () =>
     address: INSTANCE_REGISTRY!,
     event: PARAMS_AUTHORITY_UPDATED,
     parameter: 'newAuthority',
+    startBlock: DEV_START_BLOCK,
+  })
+
+const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
+  factory({
+    address: GOVERNED_FACTORY!,
+    event: GOVERNED_INSTANCE_CREATED,
+    parameter,
     startBlock: DEV_START_BLOCK,
   })
 
@@ -238,6 +255,13 @@ export default createConfig({
       startBlock: DEV_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: TRUST_GRAPH_FACTORY! } }
+        : {},
+    },
+    governedTrustGraphFactory: {
+      abi: governedTrustGraphFactoryAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: GOVERNED_FACTORY
+        ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
         : {},
     },
     trustGraphParamsController: {
@@ -376,6 +400,17 @@ export default createConfig({
           }
         : {},
     },
+    governedMerkleGovModule: {
+      abi: merkleGovModuleAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: GOVERNED_FACTORY
+        ? {
+            [CORE_CHAIN]: {
+              address: governedChildren('merkleGovModule'),
+            },
+          }
+        : {},
+    },
     gnosisSafe: {
       abi: gnosisSafeAbi,
       startBlock: IS_PRODUCTION ? 146706138 : 'latest',
@@ -387,6 +422,17 @@ export default createConfig({
               address: deploymentSummary.networks.flatMap(
                 (network) => (network.contracts.safe?.proxy as Hex) || []
               ),
+            },
+          }
+        : {},
+    },
+    governedGnosisSafe: {
+      abi: gnosisSafeAbi,
+      startBlock: DEV_START_BLOCK,
+      chain: GOVERNED_FACTORY
+        ? {
+            [CORE_CHAIN]: {
+              address: governedChildren('safe'),
             },
           }
         : {},

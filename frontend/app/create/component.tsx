@@ -43,7 +43,7 @@ const STEPS = [
 ]
 
 export const CreateNetworkWizard = () => {
-  const { address, isConnected } = useAccount()
+  const { isConnected } = useAccount()
   const chainId = useChainId()
   const { switchChain, isPending: switching } = useSwitchChain()
 
@@ -83,11 +83,14 @@ export const CreateNetworkWizard = () => {
       buildCreateArgs({
         data,
         metadataURI: metadataUri,
-        admin: (address ?? zeroAddress) as Hex,
+        // GovernedTrustGraphFactory replaces this with the new DAO Safe. Keeping zero here makes
+        // it impossible for review copy or a future caller to mistake the connected EOA for the
+        // lasting network authority.
+        admin: zeroAddress as Hex,
         epochFloor,
         salt,
       }),
-    [data, metadataUri, address, epochFloor, salt]
+    [data, metadataUri, epochFloor, salt]
   )
 
   /** What is stopping the person leaving the step they are on. */
@@ -202,8 +205,9 @@ export const CreateNetworkWizard = () => {
       {!isConnected && (
         <Card type="outline" size="md" className="space-y-3">
           <p className="text-sm">
-            Connect the wallet that will run this network. Whoever signs ends up
-            in charge of it, so use the account you want to keep.
+            Connect the wallet that will create this network and become the DAO
+            Safe&apos;s initial signer. The Safe—not this wallet—will own the
+            network contracts.
           </p>
           <WalletConnectionButton />
         </Card>

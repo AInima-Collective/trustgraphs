@@ -19,7 +19,7 @@ does, why it is shaped that way, and what to read when something goes wrong.
 Design: [`FACTORY.md`](./FACTORY.md) for creation, [`../OPERATOR.md`](../OPERATOR.md) for the daemon.
 
 > **What has been re-run, and what is inherited.** §0–§4 were run end to end on a clean anvil via
-> `task demo` *before* the contribution round joined the default flow; the outputs below are from
+> `task demo` _before_ the contribution round joined the default flow; the outputs below are from
 > that run and show the trust half. The round steps (`demo:seed-round`, the second root in
 > `demo:prove`, `demo:payout`) have **not** been re-run end to end on the box this was last edited
 > on — the taskfile, the generated operator config, and the build path were verified in isolation
@@ -54,12 +54,12 @@ to be there already. Full explanation, plus what to do after editing `packages/`
 
 ## 1. Services
 
-| | What | Port | Needed by |
-|---|---|---|---|
-| 1 | anvil | 8545 | everything |
-| 2 | IPFS (kubo) | 5001 / 8080 | publishing the score blob, and reading it back |
-| 3 | Postgres (`ponder-db`) | 6432 | the indexer |
-| 4 | Ponder + Next.js | 65421 / 3000 | the app |
+|     | What                   | Port         | Needed by                                      |
+| --- | ---------------------- | ------------ | ---------------------------------------------- |
+| 1   | anvil                  | 8545         | everything                                     |
+| 2   | IPFS (kubo)            | 5001 / 8080  | publishing the score blob, and reading it back |
+| 3   | Postgres (`ponder-db`) | 6432         | the indexer                                    |
+| 4   | Ponder + Next.js       | 65421 / 3000 | the app                                        |
 
 **anvil first**, because the services task waits for it rather than starting it — and give that
 task its own terminal, since it traps `EXIT` to `docker compose down`:
@@ -160,7 +160,7 @@ The heartbeat is `.demo/status.json` and the crash-safe request journal is
 `.demo/journal.jsonl`. Stop the foreground operator with Ctrl-C; restarting `task demo:operator`
 reattaches to the same journal.
 
-Sanity check — the factory can *append* directory rows but not rewrite them:
+Sanity check — the factory can _append_ directory rows but not rewrite them:
 
 ```bash
 REG=$(jq -r .instance_registry .docker/factory_deploy.json)
@@ -179,10 +179,11 @@ hand, with the indexer and the app already up (§5):
 task demo:create NAME='Bakers Guild'
 ```
 
-One transaction creates the instance and endows its proving tank; a second sets the community's own
-per-root spend limit on the vault. Or use the wizard at <http://localhost:3000/create> — five
-screens, one signature, the same transaction. `script/examples/CreateInstance.s.sol` is the readable
-version of the call.
+`demo:create` uses the raw factory: one transaction creates the instance and endows its proving
+tank; a second sets the community's own per-root spend limit on the vault. Run `demo:govern` for
+that raw instance to add its Safe and transfer scoring authority. The wizard at
+<http://localhost:3000/create> instead uses the governed wrapper: five screens and one signature
+create the instance, Safe, and enabled voting module atomically.
 
 Three fields in the params (`schemaUid`, `accumulator`, `chainId`) must be sent as zero: the factory
 **derives** them and rejects anything else. That is what stops a creator pointing a new instance at
@@ -296,7 +297,7 @@ Everything below cost someone real time.
   indexer looks perfectly healthy while the page stays empty. `task demo` ends with `demo:settle`,
   which mines 64. By hand: `cast rpc anvil_mine 0x40`. Better: `anvil --block-time 1`.
 - **IPFS is not optional, and "pinned" is not the same as "readable".** `indexer/src/merkle.ts`
-  fetches the score blob by CID and *throws* if it cannot, which wedges Ponder on that one event and
+  fetches the score blob by CID and _throws_ if it cannot, which wedges Ponder on that one event and
   leaves every network page 404ing over a perfectly valid proof. Worse, a successful `add` only
   proves the API node took the bytes: if `[ipfs] api` and `IPFS_GATEWAY` are different nodes, the
   daemon reports `pinned` and readers get 504. The operator reads the blob back through
@@ -319,7 +320,7 @@ Everything below cost someone real time.
   is. Driving the daemon by hand after a restart: `task demo:clean`.
 - **Nothing here builds the guest ELFs, and everything here needs them.** Each prover invocation
   in `taskfile/demo.yml` exports `SP1_SKIP_PROGRAM_BUILD=true`, which makes `zk/prover/build.rs`
-  emit the ELF *paths* without producing the ELFs — the right trade when they exist (a rebuild per
+  emit the ELF _paths_ without producing the ELFs — the right trade when they exist (a rebuild per
   tick would be unusable) and a confusing one when they don't: the failure is a missing-file error
   from `include_elf!` naming a path under `zk/program/target/`, minutes into a Rust build.
   `task zk:build` makes them; `demo:preflight` now checks for them and says so by name. The same
@@ -330,7 +331,7 @@ Everything below cost someone real time.
   anything (`{"action":"hold","hold":"verifier_rotated"}`). `task demo:deploy` derives them from the
   checkout rather than trusting the file; `task demo:vkeys` prints them.
 - **…and don't let the vkeys change AFTER deploying.** The mirror image of the previous two: any
-  prover invocation *without* `SP1_SKIP_PROGRAM_BUILD=true` lets `build.rs` rebuild all the guest
+  prover invocation _without_ `SP1_SKIP_PROGRAM_BUILD=true` lets `build.rs` rebuild all the guest
   ELFs with the local toolchain — and a rebuild is not a no-op, because the ELF (hence the vkey) is
   a function of the toolchain that built it. One unguarded `cargo run` between `deploy` and `prove`
   (it was `contributions … paramshash`, inside `seed-round`) re-made every vkey four minutes after
@@ -367,17 +368,19 @@ Everything below cost someone real time.
   re-derivation matches the landed root, which also requires the params sidecar
   (`params.contributions.json` at the repo root — the round tasks maintain it) to hash to the
   on-chain `paramsHash`.
-- **`task demo:govern` writes two files, and they are not interchangeable.** The frontend reads
+- **`task demo:govern` is only needed for later raw `demo:create` instances.** Browser-created
+  instances emit `GovernedInstanceCreated`, so their Safe and module are discovered without a file
+  edit or restart. The raw add-on task still writes two files, and they are not interchangeable: the frontend reads
   `config/networks.development.json`; Ponder reads `.docker/deployment_summary.json`. Updating only
   the first gives a UI with a governance tab over a module nobody indexed, which fails as `Query
-  data cannot be undefined` for `merkle_gov_module`. Restart the **indexer** as well as the app.
+data cannot be undefined` for `merkle_gov_module`. Restart the **indexer** as well as the app.
 - **`registry_from_block` is not optional off-devnet.** Left at 0 against a registry deployed at
   block 21,000,000 the scan issues ~2,100 empty `eth_getLogs` calls, and most providers reject the
-  range outright as an archive request — so the daemon gets *no catalog at all and every tick
-  fails*. Startup alerts if you forget. Irrelevant on a fresh anvil, fatal on a real chain.
+  range outright as an archive request — so the daemon gets _no catalog at all and every tick
+  fails_. Startup alerts if you forget. Irrelevant on a fresh anvil, fatal on a real chain.
 - **Deploy artifacts are not chain-scoped.** `.docker/*.json` and `config/networks.development.json`
   have fixed filenames, so deploying to a second chain overwrites the first's — and fails
-  *confidently*, because the same deployer and nonce sequence produces the same addresses on both.
+  _confidently_, because the same deployer and nonce sequence produces the same addresses on both.
   One chain at a time.
 - **`pnpm deploy:contracts` needs a platform-matched esbuild.** If `node_modules` was installed on a
   different OS you get `TransformError`; fetch the right `@esbuild/<platform>` tarball and point
@@ -391,7 +394,7 @@ Everything below cost someone real time.
 - **Proving is mocked locally, and here is exactly where that stops.** `SP1_PROVER=mock` runs the
   guest for real and commits its real public values; the dev gateway is a stub too. The params
   self-check, the exporter's re-fold proof, guest-vs-native byte equality, journal binding, the
-  vault's payout arithmetic and the entire write path are production code either way. What is *not*
+  vault's payout arithmetic and the entire write path are production code either way. What is _not_
   demonstrated is that a real Groth16 proof verifies at Succinct's canonical gateway — that needs
   `SP1_PROVER=network` or a 16–32 GiB box, and it is the first thing a real deployment should do
   ([`DEVIATIONS`](../DEVIATIONS.md) #20).

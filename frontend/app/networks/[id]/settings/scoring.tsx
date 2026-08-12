@@ -950,6 +950,62 @@ const safeBundleDownload = (
   URL.revokeObjectURL(url)
 }
 
+const proposalBundleDownload = ({
+  networkName,
+  chainId,
+  parentHash,
+  proposedHash,
+  title,
+  description,
+  actions,
+}: {
+  networkName: string
+  chainId: bigint
+  parentHash: Hex
+  proposedHash: Hex
+  title: string
+  description: string
+  actions: ParameterAction[]
+}) => {
+  const bundle = {
+    schema: 'trustgraph.scoring-proposal.v1',
+    network: networkName,
+    chainId: chainId.toString(),
+    parentHash,
+    proposedHash,
+    generatedAt: new Date().toISOString(),
+    proposal: {
+      title,
+      description,
+      targets: actions.map((action) => action.target),
+      values: actions.map((action) => action.value),
+      calldatas: actions.map((action) => action.data),
+      operations: actions.map((action) => action.operation),
+      actionDescriptions: actions.map((action) => action.description),
+    },
+    actions: actions.map((action, index) => ({
+      order: index + 1,
+      contract: action.contractName,
+      function: action.functionSignature,
+      target: action.target,
+      value: action.value,
+      operation: 'CALL',
+      calldata: action.data,
+      calldataDigest: keccak256(action.data),
+      description: action.description,
+    })),
+  }
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+    type: 'application/json',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `trustgraph-${networkName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-scoring-proposal.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const LiveScoringSettings = ({
   instance,
   factoryAddress,
@@ -1290,6 +1346,28 @@ const LiveScoringSettings = ({
         : [],
     [companionAddress, controller.controllerAddress, evidenceURI, proposed]
   )
+  const proposedDiffs = useMemo(
+    () =>
+      controller.params && proposed
+        ? diffParams(controller.params, proposed)
+        : [],
+    [controller.params, proposed]
+  )
+  const proposalTitle = `Update ${network.name} scoring parameters`
+  const proposalDescription = `${rationale.trim()}\n\nParent hash: ${parentHash ?? 'Unavailable'}\nProposed hash: ${proposedHash ?? 'Unavailable'}\n\n${proposedDiffs
+    .map((diff) => `${diff.label}: ${diff.before} → ${diff.after}`)
+    .join('\n')}`
+  const proposalActions = useMemo(
+    () =>
+      actions.map((action) => ({
+        ...action,
+        description:
+          action.target === controller.controllerAddress
+            ? `Publish scoring update: ${proposedDiffs.map((diff) => diff.label).join(', ')}`
+            : action.description,
+      })),
+    [actions, controller.controllerAddress, proposedDiffs]
+  )
   const operationSalt = useMemo(
     () =>
       proposedHash && parentHash
@@ -1418,24 +1496,14 @@ const LiveScoringSettings = ({
   const createGovernanceProposal = () => {
     if (!proposedHash || !parentHash) return
     const fingerprint = paramsFingerprint(proposed!)
-    const diffs = diffParams(controller.params!, proposed!)
-    const readable = diffs
-      .map((diff) => `${diff.label}: ${diff.before} → ${diff.after}`)
-      .join('\n')
     saveGovernancePrefill({
       networkId: network.id,
       fingerprint,
       parentHash,
       proposedHash,
-      title: `Update ${network.name} scoring parameters`,
-      description: `${rationale.trim()}\n\nParent hash: ${parentHash}\nProposed hash: ${proposedHash}\n\n${readable}`,
-      actions: actions.map((action) => ({
-        ...action,
-        description:
-          action.target === controller.controllerAddress
-            ? `Publish scoring update: ${diffs.map((diff) => diff.label).join(', ')}`
-            : action.description,
-      })),
+      title: proposalTitle,
+      description: proposalDescription,
+      actions: proposalActions,
       createdAt: Date.now(),
     })
     router.push(
@@ -1585,7 +1653,6 @@ const LiveScoringSettings = ({
     route.kind === 'unavailable' ||
     route.kind === 'contract' ||
     (route.kind === 'direct' && !route.canAct) ||
-    (route.kind === 'safe-governance' && !route.canAct) ||
     (route.kind === 'timelock' &&
       !route.canPropose &&
       !(ready && route.canExecute))
@@ -2145,26 +2212,106 @@ const LiveScoringSettings = ({
                     </p>
                   </Card>
                   <Card type="detail" size="md" className="min-w-0">
-                    <p className="font-medium">Required on-chain actions</p>
+                    <p className="font-medium">Proposal execution plan</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {authorityLabel(route)}. The signer companion runs first;
-                      the typed controller runs last.
+                      Execution path: {authorityLabel(route)}. If approved,
+                      these calls run in this exact order. The signer companion
+                      is synchronized first; the controller publishes the new
+                      version last.
                     </p>
-                    <ol className="mt-3 space-y-3">
+                    <ol className="mt-4 space-y-4">
                       {actions.map((action, index) => (
                         <li
                           key={`${action.target}:${index}`}
-                          className="text-xs"
+                          className="min-w-0 border border-border bg-surface p-4 text-xs"
                         >
-                          <span className="font-medium">
-                            {index + 1}. {action.description}
-                          </span>
-                          <p className="mt-1 break-all font-mono text-muted-foreground">
-                            {action.target} · calldata {keccak256(action.data)}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="tg-label">
+                              Action {index + 1} of {actions.length}
+                            </span>
+                            <span className="border border-border px-2 py-1 text-muted-foreground">
+                              CALL · 0 ETH
+                            </span>
+                          </div>
+                          <p className="mt-3 break-words font-mono text-sm font-medium">
+                            {action.contractName}.<wbr />
+                            {action.functionSignature}
                           </p>
+                          <p className="mt-2 text-muted-foreground">
+                            {action.description}
+                          </p>
+                          <div className="mt-3 border-l-2 border-border pl-3">
+                            <p className="text-muted-foreground">
+                              Target contract
+                            </p>
+                            <CopyableText
+                              text={action.target}
+                              truncate={false}
+                              alwaysShowCopyIcon
+                              className="mt-1 max-w-full"
+                            />
+                          </div>
+                          {action.contractName ===
+                            'TrustGraphParamsController' && (
+                            <div className="mt-3 space-y-1 border-l-2 border-border pl-3 text-muted-foreground">
+                              <p>
+                                Changes:{' '}
+                                {proposedDiffs
+                                  .map((diff) => diff.label)
+                                  .join(', ')}
+                              </p>
+                              <p className="break-all">
+                                Proposed hash: {proposedHash}
+                              </p>
+                              <p className="break-all">
+                                Evidence: {evidenceURI || 'none'}
+                              </p>
+                            </div>
+                          )}
+                          <details className="mt-2">
+                            <summary className="min-h-11 cursor-pointer py-3 text-muted-foreground">
+                              Inspect and copy exact calldata
+                            </summary>
+                            <div className="space-y-3 border-t border-border pt-3">
+                              <CopyableText
+                                text={action.data}
+                                displayText="Copy full calldata"
+                                truncate={false}
+                                truncateOnMobile={false}
+                                alwaysShowCopyIcon
+                              />
+                              <p className="break-all font-mono text-muted-foreground">
+                                Digest: {keccak256(action.data)}
+                              </p>
+                              <p className="max-h-40 overflow-auto break-all font-mono text-muted-foreground">
+                                {action.data}
+                              </p>
+                            </div>
+                          </details>
                         </li>
                       ))}
                     </ol>
+                    {parentHash && proposedHash && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-4 w-full"
+                        onClick={() =>
+                          proposalBundleDownload({
+                            networkName: network.name,
+                            chainId: BigInt(controller.params!.chainId),
+                            parentHash,
+                            proposedHash,
+                            title: proposalTitle,
+                            description: proposalDescription,
+                            actions: proposalActions,
+                          })
+                        }
+                      >
+                        <Download /> Download proposal JSON
+                      </Button>
+                    )}
                   </Card>
                 </div>
 
@@ -2219,13 +2366,15 @@ const LiveScoringSettings = ({
                         {applying ? 'Applying…' : 'Apply parameter update'}
                       </Button>
                     )}
-                    {route?.kind === 'safe-governance' && route.canAct && (
+                    {route?.kind === 'safe-governance' && (
                       <Button
                         type="button"
                         size="lg"
                         onClick={createGovernanceProposal}
                       >
-                        Create governance proposal
+                        {route.canAct
+                          ? 'Create DAO proposal'
+                          : 'Prepare DAO proposal'}
                       </Button>
                     )}
                     {route?.kind === 'timelock' &&
@@ -2271,18 +2420,46 @@ const LiveScoringSettings = ({
                       </Button>
                     )}
                     {noAuthorityAction && (
-                      <Button type="button" size="lg" disabled>
-                        View proposed configuration
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        disabled={!parentHash || !proposedHash}
+                        onClick={() =>
+                          parentHash &&
+                          proposedHash &&
+                          proposalBundleDownload({
+                            networkName: network.name,
+                            chainId: BigInt(controller.params!.chainId),
+                            parentHash,
+                            proposedHash,
+                            title: proposalTitle,
+                            description: proposalDescription,
+                            actions: proposalActions,
+                          })
+                        }
+                      >
+                        <Download /> Download action bundle
                       </Button>
                     )}
                   </div>
                 </div>
+                {route?.kind === 'safe-governance' && !route.canAct && (
+                  <p className="border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
+                    The DAO controls this scoring controller, so the proposal
+                    draft is executable. This wallet does not currently have
+                    indexed voting power; you can still prepare and copy the
+                    complete proposal, then connect an eligible member wallet to
+                    submit it.
+                  </p>
+                )}
                 {route && noAuthorityAction && (
                   <p className="text-xs text-muted-foreground">
-                    This wallet cannot submit the next action. The controller
-                    owner is {controller.owner}; the detected path is{' '}
-                    {authorityLabel(route)}. No transaction button is offered
-                    that would knowingly revert.
+                    {route.kind === 'direct'
+                      ? `The controller is directly owned by ${controller.owner}. That owner must apply the update, or explicitly transfer controller ownership to the DAO's Safe before a DAO proposal can execute it.`
+                      : route.kind === 'timelock'
+                        ? `This wallet is not a proposer or ready executor for the operational timelock at ${route.owner}. Share the downloaded calls with an authorized proposer.`
+                        : `The controller owner is ${controller.owner}, but the app cannot identify an executable proposal route for it. The downloaded bundle is for review; verify the owner's contract path before submission.`}
                   </p>
                 )}
               </div>
@@ -2365,11 +2542,13 @@ const ScoringReviewFixture = () => {
 
   return (
     <section className="min-w-0 space-y-8" data-review-scoring-state={state}>
-      <SectionHeading
-        eyebrow="Settings · Scoring"
-        title="Current scoring configuration"
-        description="The complete tuple read from the typed controller. Changes apply prospectively at a checkpoint boundary."
-      />
+      <div className="space-y-2">
+        <SectionHeading>Current scoring configuration</SectionHeading>
+        <p className="text-sm text-muted-foreground">
+          The complete tuple read from the typed controller. Changes apply
+          prospectively at a checkpoint boundary.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center gap-3 border border-border bg-surface-2 p-4 text-sm">
         <Status tone={state === 'awaiting-checkpoint' ? 'muted' : 'good'}>
           {lifecycle}
@@ -2422,13 +2601,27 @@ const ScoringReviewFixture = () => {
               </p>
             </div>
             <div className="min-w-0 border border-border p-4 text-xs">
-              <p className="font-medium">Required typed action</p>
-              <p className="mt-2">
-                Publish the complete 17-field scoring configuration. The
-                controller action runs last after any signer companion.
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">Proposal execution plan</p>
+                <span className="border border-border px-2 py-1 text-muted-foreground">
+                  CALL · 0 ETH
+                </span>
+              </div>
+              <p className="mt-3 break-words font-mono text-sm font-medium">
+                TrustGraphParamsController.
+                <wbr />
+                updateParams(Params,string)
               </p>
-              <p className="mt-3 break-all font-mono text-muted-foreground">
-                Controller 0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc
+              <p className="mt-2 text-muted-foreground">
+                Publish the validated tuple as the next parameter version. If
+                the DAO vote passes, its Safe executes this call automatically.
+              </p>
+              <p className="mt-3 text-muted-foreground">Target contract</p>
+              <p className="mt-1 break-all font-mono">
+                0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc
+              </p>
+              <p className="mt-3 min-h-11 border-t border-border py-3 text-muted-foreground">
+                Inspect and copy exact calldata
               </p>
             </div>
           </div>
@@ -2459,7 +2652,8 @@ const ScoringReviewFixture = () => {
               <p className="font-medium">No authority from this wallet</p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
                 Controller owner 0x15d34aaf54267db7d7c367839aaf71a00a2c6a65 must
-                act. No knowingly doomed transaction is offered.
+                act or transfer ownership to the DAO Safe. The exact call bundle
+                remains downloadable.
               </p>
             </div>
           )}
@@ -2490,15 +2684,15 @@ const ScoringReviewFixture = () => {
           <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:justify-end">
             {state === 'safe' ? (
               <Button type="button" size="lg">
-                Create governance proposal
+                Prepare DAO proposal
               </Button>
             ) : state === 'timelock' ? (
               <Button type="button" size="lg">
                 Schedule parameter update
               </Button>
             ) : state === 'unauthorized' ? (
-              <Button type="button" size="lg" disabled>
-                View proposed configuration
+              <Button type="button" size="lg" variant="outline">
+                <Download /> Download action bundle
               </Button>
             ) : (
               <Button type="button" size="lg" disabled>

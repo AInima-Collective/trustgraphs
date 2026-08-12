@@ -53,10 +53,10 @@ export type Network = {
     /** Typed, self-describing scoring control plane for migrated/factory networks. */
     trustGraphParamsController?: Hex
     safe?: {
-      factory: Hex
-      singleton: Hex
+      factory?: Hex
+      singleton?: Hex
       proxy: Hex
-      signerSyncManager: Hex
+      signerSyncManager?: Hex
     }
   }
   schemas: NetworkSchema[]

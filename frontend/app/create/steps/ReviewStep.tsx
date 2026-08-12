@@ -14,7 +14,10 @@ import { usePublicClient, useSimulateContract } from 'wagmi'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { useEnsResolver } from '@/hooks/useEns'
-import { trustGraphFactoryAbi } from '@/lib/contract-abis'
+import {
+  governedTrustGraphFactoryAbi,
+  trustGraphFactoryAbi,
+} from '@/lib/contract-abis'
 import {
   EnsResolutionChangedError,
   getAccountIdentifierErrorMessage,
@@ -24,6 +27,7 @@ import { txToast } from '@/lib/tx'
 import {
   CreateArgs,
   FACTORY_ADDRESS,
+  GOVERNED_FACTORY_ADDRESS,
   WizardData,
   describeBlocks,
   effectiveBlocks,
@@ -38,6 +42,8 @@ export type CreatedNetwork = {
   distributor: Hex
   epochBlocks: bigint
   name: string
+  safe: Hex
+  merkleGovModule: Hex
 }
 
 const shortAddress = (address: string) =>
@@ -65,23 +71,22 @@ export const ReviewStep = ({
   const [failure, setFailure] = useState<string | null>(null)
   const resolveAccountIdentifier = useEnsResolver()
 
-  // The factory runs the same checks as a view, so a bad setting shows up here rather than as a
-  // The optional prepay rides along as `msg.value`; the factory forwards it into the new
-  // instance's proving tank inside the same transaction. Blank means none, which is the default.
+  // The optional prepay rides along as `msg.value`; the governed wrapper forwards it through the
+  // Safe and into the new instance's proving tank. Blank means none, which is the default.
   const prepay = data.prepayEth.trim() ? parseEther(data.prepayEth.trim()) : 0n
 
-  // failed signature.
+  // Simulation runs the same validation before the wallet asks for a signature.
   const {
     error: preflightError,
     isLoading: preflighting,
     isSuccess: preflightPassed,
   } = useSimulateContract({
-    address: FACTORY_ADDRESS,
-    abi: trustGraphFactoryAbi,
-    functionName: 'createInstance',
+    address: GOVERNED_FACTORY_ADDRESS,
+    abi: governedTrustGraphFactoryAbi,
+    functionName: 'createGovernedInstance',
     args: [args] as any,
     ...(prepay > 0n ? { value: prepay } : {}),
-    query: { enabled: !!FACTORY_ADDRESS && !!args.name },
+    query: { enabled: !!GOVERNED_FACTORY_ADDRESS && !!args.name },
   })
 
   const effective = effectiveBlocks(data.tuning.cadence, epochFloor)
@@ -130,9 +135,9 @@ export const ReviewStep = ({
       let gas: bigint | undefined
       try {
         const estimate = await publicClient?.estimateContractGas({
-          address: FACTORY_ADDRESS,
-          abi: trustGraphFactoryAbi,
-          functionName: 'createInstance',
+          address: GOVERNED_FACTORY_ADDRESS,
+          abi: governedTrustGraphFactoryAbi,
+          functionName: 'createGovernedInstance',
           args: [args] as any,
           ...(prepay > 0n ? { value: prepay } : {}),
         })
@@ -143,9 +148,9 @@ export const ReviewStep = ({
 
       const [receipt] = await txToast({
         tx: {
-          address: FACTORY_ADDRESS,
-          abi: trustGraphFactoryAbi,
-          functionName: 'createInstance',
+          address: GOVERNED_FACTORY_ADDRESS,
+          abi: governedTrustGraphFactoryAbi,
+          functionName: 'createGovernedInstance',
           args: [args],
           ...(gas ? { gas } : {}),
           ...(prepay > 0n ? { value: prepay } : {}),
@@ -153,32 +158,49 @@ export const ReviewStep = ({
         successMessage: 'Your network is live!',
       })
 
+      let createdEvent: Record<string, unknown> | undefined
+      let governedEvent: Record<string, unknown> | undefined
       for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== FACTORY_ADDRESS.toLowerCase()) {
-          continue
-        }
         try {
-          const decoded = decodeEventLog({
-            abi: trustGraphFactoryAbi,
-            data: log.data,
-            topics: log.topics,
-          })
-          if (decoded.eventName !== 'InstanceCreated') {
-            continue
+          if (log.address.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
+            const decoded = decodeEventLog({
+              abi: trustGraphFactoryAbi,
+              data: log.data,
+              topics: log.topics,
+            })
+            if (decoded.eventName === 'InstanceCreated') {
+              createdEvent = decoded.args as Record<string, unknown>
+            }
+          } else if (
+            log.address.toLowerCase() === GOVERNED_FACTORY_ADDRESS.toLowerCase()
+          ) {
+            const decoded = decodeEventLog({
+              abi: governedTrustGraphFactoryAbi,
+              data: log.data,
+              topics: log.topics,
+            })
+            if (decoded.eventName === 'GovernedInstanceCreated') {
+              governedEvent = decoded.args as Record<string, unknown>
+            }
           }
-          const eventArgs = decoded.args as any
-          onCreated({
-            instanceId: eventArgs.instanceId as Hex,
-            snapshot: eventArgs.snapshot as Hex,
-            resolver: eventArgs.resolver as Hex,
-            distributor: (eventArgs.distributor ?? zeroAddress) as Hex,
-            epochBlocks: BigInt(eventArgs.epochLength ?? effective),
-            name: (eventArgs.name as string) || args.name,
-          })
-          return
         } catch {
           // Not one of ours.
         }
+      }
+
+      if (createdEvent && governedEvent) {
+        onCreated({
+          instanceId: createdEvent.instanceId as Hex,
+          snapshot: createdEvent.snapshot as Hex,
+          resolver: createdEvent.resolver as Hex,
+          distributor: (createdEvent.distributor ?? zeroAddress) as Hex,
+          epochBlocks:
+            (createdEvent.epochLength as bigint | undefined) ?? effective,
+          name: (createdEvent.name as string) || args.name,
+          safe: governedEvent.safe as Hex,
+          merkleGovModule: governedEvent.merkleGovModule as Hex,
+        })
+        return
       }
 
       setFailure(
@@ -201,7 +223,7 @@ export const ReviewStep = ({
     <div className="space-y-6">
       <StepHeader
         title="Check it over, then sign once"
-        lead="One transaction creates everything: the place vouches are recorded, your network's own scoreboard, and the publishing schedule. You end up in charge of all of it."
+        lead="One transaction creates the vouch registry, scoreboard, DAO Safe, and voting module. The Safe owns every network authority from the first block."
       />
 
       <Card type="outline" size="md">
@@ -236,7 +258,8 @@ export const ReviewStep = ({
         </SummaryRow>
         <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
         <SummaryRow label="In charge afterwards">
-          <span className="font-mono text-xs">{args.admin}</span>
+          DAO Safe with Merkle voting; your connected wallet is its initial
+          signer.
         </SummaryRow>
         <SummaryRow label="Description saved at">
           {metadataUri ? (

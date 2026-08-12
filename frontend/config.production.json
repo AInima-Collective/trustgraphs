@@ -12,6 +12,7 @@
     "EASIndexerResolver": "",
     "MerkleSnapshot": "",
     "MerkleGovModule": "",
-    "MerkleFundDistributor": ""
+    "MerkleFundDistributor": "",
+    "GovernedTrustGraphFactory": ""
   }
 }

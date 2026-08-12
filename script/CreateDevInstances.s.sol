@@ -94,8 +94,20 @@ contract CreateDevInstances is Common {
             console.log("  snapshot: ", snapshot);
             console.log("  resolver: ", resolver);
 
+            address controller = factory.INSTANCE_REGISTRY().paramsAuthority(instanceId);
+            require(controller != address(0), "CreateDevInstances: missing params controller");
+
             _writeNetworkDeployJson(
-                env, i, deployer, snapshot, resolver, distributor, schemaUid, factory.VOUCH_SCHEMA(), withDistributor
+                env,
+                i,
+                deployer,
+                snapshot,
+                resolver,
+                distributor,
+                controller,
+                schemaUid,
+                factory.VOUCH_SCHEMA(),
+                withDistributor
             );
 
             // Keep the prover's params file in sync for a single-instance run, exactly as
@@ -119,6 +131,7 @@ contract CreateDevInstances is Common {
         address snapshot,
         address resolver,
         address distributor,
+        address controller,
         bytes32 schemaUid,
         string memory vouchSchema,
         bool withDistributor
@@ -128,6 +141,7 @@ contract CreateDevInstances is Common {
         if (withDistributor) {
             vm.serializeString(contractsJson, "fund_distributor", Strings.toChecksumHexString(distributor));
         }
+        vm.serializeString(contractsJson, "params_controller", Strings.toChecksumHexString(controller));
         string memory finalContractsJson =
             vm.serializeString(contractsJson, "merkle_snapshot", Strings.toChecksumHexString(snapshot));
 

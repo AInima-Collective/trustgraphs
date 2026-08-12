@@ -637,6 +637,8 @@ export type ParameterAction = {
   data: Hex
   operation: 0
   description: string
+  contractName: 'SignerSyncZkModule' | 'TrustGraphParamsController'
+  functionSignature: 'setParamsHash(bytes32)' | 'updateParams(Params,string)'
 }
 
 /** One canonical bundle for direct, Safe-governance, export, and timelock routes. */
@@ -663,7 +665,9 @@ export const buildParameterActions = ({
         args: [proposedHash],
       }),
       operation: 0,
-      description: `Update signer selection to scoring hash ${proposedHash}`,
+      description: `Set the signer-sync companion to the proposed scoring hash ${proposedHash}`,
+      contractName: 'SignerSyncZkModule',
+      functionSignature: 'setParamsHash(bytes32)',
     })
   }
   actions.push({
@@ -675,7 +679,9 @@ export const buildParameterActions = ({
       args: [paramsToContract(proposed), evidenceURI],
     }),
     operation: 0,
-    description: `Publish the complete scoring configuration ${proposedHash}`,
+    description: `Publish the complete scoring configuration as the next parameter version ${proposedHash}`,
+    contractName: 'TrustGraphParamsController',
+    functionSignature: 'updateParams(Params,string)',
   })
   return actions
 }
