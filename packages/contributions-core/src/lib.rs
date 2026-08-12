@@ -5,7 +5,7 @@
 //! view — same discipline as `pagerank-core`: NO floats, BTree-only iteration, deterministic
 //! everything.
 //!
-//! Interface contract: `docs/contributions/INTERFACES.md` (FROZEN). Golden vectors:
+//! Interface contract: `docs/build/contributions/interfaces.md` (FROZEN). Golden vectors:
 //! `test/golden/contributions.json` (Rust ⟷ Solidity ⟷ guest ⟷ TS four-way parity).
 //!
 //! Stage-1 reputation is `pagerank-core`'s algorithm, imported — never forked. This crate owns

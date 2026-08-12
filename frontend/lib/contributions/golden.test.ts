@@ -1,6 +1,6 @@
 /**
  * Golden-vector reproduction test for the contributions program's TS port — the FOURTH parity
- * leg (Rust crate ⟷ Solidity ⟷ SP1 guest ⟷ TS), per docs/contributions/INTERFACES.md §6.
+ * leg (Rust crate ⟷ Solidity ⟷ SP1 guest ⟷ TS), per docs/build/contributions/interfaces.md §6.
  *
  * Loads `test/golden/contributions.json` (written by `cargo run -p contributions-core --example
  * export_golden`) and asserts byte-identity for:

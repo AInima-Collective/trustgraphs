@@ -23,14 +23,14 @@ reputation, contribution-funding splits) with the same discipline — one canoni
 per program, compiled into the SP1 guest and cross-checked byte-for-byte against Solidity
 and TypeScript ports.
 
-New to all of this? Start with the plain-language [`docs/ELI5.md`](./docs/ELI5.md).
-The algorithm itself is specified in [`docs/ALGORITHM.md`](./docs/ALGORITHM.md), and the
+New to all of this? Start with the plain-language [`docs/learn/what-is-trustgraphs.md`](./docs/learn/what-is-trustgraphs.md).
+The algorithm itself is specified in [`docs/concepts/algorithm.md`](./docs/concepts/algorithm.md), and the
 ZK design in [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md).
 
 ## Run it
 
 Install the toolchains first — Docker, [go-task](https://taskfile.dev), `jq`, Node 21+ with pnpm,
-[Foundry](https://getfoundry.sh), Rust, and SP1: [`docs/SETUP.md`](./docs/SETUP.md) walks through
+[Foundry](https://getfoundry.sh), Rust, and SP1: [`docs/build/setup.md`](./docs/build/setup.md) walks through
 each one. Then, once per checkout:
 
 ```bash
@@ -66,7 +66,7 @@ task demo
 
 One transaction creates a network and endows its proving tank; a daemon watches the chain, freezes
 checkpoints on the contract's cadence, proves them, lands them, and collects the bounty.
-[`docs/trust-graph/DEMO.md`](./docs/trust-graph/DEMO.md) is the walkthrough: what each step does,
+[`docs/build/quickstart.md`](./docs/build/quickstart.md) is the walkthrough: what each step does,
 the security properties worth demonstrating, and every gotcha that has cost someone an afternoon.
 
 > **Note on proving.** Running the guest in the SP1 *executor* (to validate correctness) works
@@ -75,20 +75,20 @@ the security properties worth demonstrating, and every gotcha that has cost some
 > *proof* needs ≥16–32 GiB of RAM or the Succinct prover network (`SP1_PROVER=network`). The
 > mainnet-fork rehearsal where the proof is real — deployed contracts, the canonical SP1 gateway,
 > indexer and frontend showing the scores — is
-> [`docs/trust-graph/LOCAL_TESTING.md`](./docs/trust-graph/LOCAL_TESTING.md).
+> [`docs/build/trust-graph/local-testing.md`](./docs/build/trust-graph/local-testing.md).
 
 ## Programs
 
-[`docs/PROGRAMS.md`](./docs/PROGRAMS.md) is the authoritative index — per program: its
+[`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md) is the authoritative index — per program: its
 status, its *vkey* (program verification key — the on-chain fingerprint of the exact prover
 binary), and its deployed instances. Status snapshot:
 
 | Program | What it proves | Status | Docs |
 |---|---|---|---|
-| **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/trust-graph/ARCHITECTURE.md) · [runbook](./docs/trust-graph/RUNBOOK.md) · [local testing](./docs/trust-graph/LOCAL_TESTING.md) |
-| **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/signer-sync/ARCHITECTURE.md) · [runbook](./docs/signer-sync/RUNBOOK.md) |
-| **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/hypercerts/ARCHITECTURE.md) · [runbook](./docs/hypercerts/RUNBOOK.md) · [local testing](./docs/hypercerts/LOCAL_TESTING.md) |
-| **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/contributions/ARCHITECTURE.md) · [runbook](./docs/contributions/RUNBOOK.md) · [local testing](./docs/contributions/LOCAL_TESTING.md) |
+| **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/build/trust-graph/architecture.md) · [runbook](./docs/build/trust-graph/runbook.md) · [local testing](./docs/build/trust-graph/local-testing.md) |
+| **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/build/signer-sync/architecture.md) · [runbook](./docs/build/signer-sync/runbook.md) |
+| **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/build/hypercerts/architecture.md) · [runbook](./docs/build/hypercerts/runbook.md) · [local testing](./docs/build/hypercerts/local-testing.md) |
+| **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/build/contributions/architecture.md) · [runbook](./docs/build/contributions/runbook.md) · [local testing](./docs/build/contributions/local-testing.md) |
 
 Running one program by hand — `trigger()` a checkpoint, reconstruct the input from chain, prove,
 pin the score blob, `submitProof` — is step by step in each program's runbook, linked above. All
@@ -103,8 +103,8 @@ gitignored `.trustgraph/` directory, one subdirectory per program.
 | `packages/` | Rust cores — `zk-core` (shared encodings), `pagerank-core` (canonical algorithm), `hypercerts-core`, `contributions-core`, `envelopes` (atproto verification), `input-exporter` |
 | `zk/program` · `zk/prover` | the SP1 guest bins and the `trustgraph-prover` host CLI |
 | `frontend/` · `indexer/` | Next.js app and Ponder indexer (with a browser port of the algorithm for client-side recompute) |
-| `docs/` | operator docs: [`PROGRAMS.md`](./docs/PROGRAMS.md) index, per-program `ARCHITECTURE`/`RUNBOOK`/`LOCAL_TESTING`, [`SETUP.md`](./docs/SETUP.md), [`PRODUCTION.md`](./docs/PRODUCTION.md), [`DEVIATIONS.md`](./docs/DEVIATIONS.md) |
-| `research/` | design provenance — why the architecture is what it is (`ZK_ARCHITECTURE.md`, program plans, `archive/` for superseded designs) |
+| `docs/` | product docs — `learn/` (plain-language intros), `concepts/` ([`networks-and-programs.md`](./docs/concepts/networks-and-programs.md) index, the algorithm), `build/` ([`setup.md`](./docs/build/setup.md), [`production.md`](./docs/build/production.md), per-program `architecture`/`runbook`/`local-testing`), `verify/` (epoch reproduction) |
+| `research/` | design provenance — why the architecture is what it is (`ZK_ARCHITECTURE.md`, program plans, the [`DEVIATIONS.md`](./research/DEVIATIONS.md) log, `archive/` for superseded designs) |
 | `test/` | Solidity suites, golden vectors (`test/golden/`), atproto fixtures (`test/fixtures/atproto/`), the `task e2e` script |
 | `paper/` | the governance research paper |
 

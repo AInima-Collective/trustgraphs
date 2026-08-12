@@ -32,7 +32,7 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
     ///      (`MerkleSnapshot.sol:44-46`) was false. Second, and worse for a two-lane instance, a
     ///      directly-minted id was never seen by `trigger()`, so the snapshot's
     ///      `anchorCheckpoints[id]` sat at `(0, 0)` and a proof over an EMPTY lane 2 verified
-    ///      against it — the AUDIT_M6.md M6-1 shape, which `TrustAccumulatorMirror` was already
+    ///      against it — the research/audits/2026-07-M6.md M6-1 shape, which `TrustAccumulatorMirror` was already
     ///      hardened against but this mix-in was not.
     address public snapshot;
 

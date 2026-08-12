@@ -7,8 +7,8 @@ version: '3'
 # proof-bundle-API seams the frontend screens drive. The operator-side actions
 # (window params, trigger, prove, submit, fund, sweep) live here.
 #
-# Full walkthrough: docs/contributions/LOCAL_TESTING.md
-# Operator view:    docs/contributions/RUNBOOK.md
+# Full walkthrough: docs/build/contributions/local-testing.md
+# Operator view:    docs/build/contributions/runbook.md
 
 vars:
   RPC_URL: 'http://localhost:8545'
@@ -92,7 +92,7 @@ tasks:
 
   # fetch → execute → prove (mock Groth16) → pin the payout blob. Writes the submitProof args
   # to {{.SUBMIT_ENV}}. SP1_PROVER=mock: the dev deploy uses a MockSP1Gateway; the executor and
-  # journal bytes are identical to a real prove (see docs/contributions/RUNBOOK.md for real
+  # journal bytes are identical to a real prove (see docs/build/contributions/runbook.md for real
   # proving).
   prove-round:
     desc: 'Reconstruct input from chain, execute + mock-prove the guest, pin the blob'

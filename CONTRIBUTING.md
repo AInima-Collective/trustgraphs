@@ -3,7 +3,7 @@
 ## Dev setup
 
 System tools + toolchains (Docker, go-task, Node 21+/pnpm, Foundry, Rust, SP1) are covered in
-[`docs/SETUP.md`](./docs/SETUP.md). Then:
+[`docs/build/setup.md`](./docs/build/setup.md). Then:
 
 ```bash
 task -y setup       # pnpm install + forge install
@@ -37,12 +37,12 @@ Two hard rules inherited from the codebase:
   No floats, `BTreeMap` only — the guest must be byte-reproducible everywhere.
 - **An encoding change without regenerated golden vectors in the same PR is a CI failure.**
   Regenerate with `task zk:vectors PROGRAM=<name>`; the vkey consequences of guest changes are
-  documented in [`docs/PROGRAMS.md`](./docs/PROGRAMS.md).
+  documented in [`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md).
 
 ## PR conventions
 
 - Keep PRs scoped to one concern; note any deviation from the documented design in
-  [`docs/DEVIATIONS.md`](./docs/DEVIATIONS.md) (what changed and why).
+  [`research/DEVIATIONS.md`](./research/DEVIATIONS.md) (what changed and why).
 - `task fmt` before committing (forge fmt + cargo fmt); frontend/indexer use
   `pnpm run format`.
 - Generated artifacts belong under the gitignored `.trustgraph/` directory — never commit
@@ -50,6 +50,6 @@ Two hard rules inherited from the codebase:
 
 ## Where things live
 
-- Operator docs: [`docs/`](./docs/README.md) (per-program `ARCHITECTURE`/`RUNBOOK`/`LOCAL_TESTING`)
+- Operator docs: [`docs/`](./docs/README.md) (per-program `architecture`/`runbook`/`local-testing` under `docs/build/<program>/`)
 - Design docs / provenance: [`research/`](./research/) (superseded designs in `research/archive/`)
-- Change history: git and [`docs/DEVIATIONS.md`](./docs/DEVIATIONS.md)
+- Change history: git and [`research/DEVIATIONS.md`](./research/DEVIATIONS.md)

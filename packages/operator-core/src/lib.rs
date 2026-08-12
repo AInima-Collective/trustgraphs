@@ -20,7 +20,7 @@
 //! ```
 //!
 //! Design: [`research/PROOF_SCHEDULER.md`](../../../research/PROOF_SCHEDULER.md) §2 (operator),
-//! §5 (failure semantics). Operation: [`docs/OPERATOR.md`](../../../docs/OPERATOR.md).
+//! §5 (failure semantics). Operation: [`docs/build/run-a-prover.md`](../../../docs/build/run-a-prover.md).
 
 pub mod catalog;
 pub mod decide;

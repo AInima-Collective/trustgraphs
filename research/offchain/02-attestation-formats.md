@@ -1,6 +1,6 @@
 # Offchain Attestation Formats & Ecosystems — Technical Dossier
 
-**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); realized — see [`../../docs/PROGRAMS.md`](../../docs/PROGRAMS.md)).
+**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); realized — see [`../../docs/concepts/networks-and-programs.md`](../../docs/concepts/networks-and-programs.md)).
 
 > Source research for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md). Compiled 2026-07-10; all claims web-checked; uncertainty flagged inline.
 

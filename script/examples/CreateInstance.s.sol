@@ -10,7 +10,7 @@ import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
 /// @title CreateInstance
 /// @notice Create one instance through the factory AND endow its proving tank in the same
-///         transaction. Used by `test/e2e/fork.sh` and by the demo in `DEMO.md`.
+///         transaction. Used by `test/e2e/fork.sh` and by the demo in `docs/build/quickstart.md`.
 /// @dev Exists so the fork e2e exercises the real `createInstance` entry point (payable, with the
 ///      full `CreateArgs` struct and every creation-time bound) rather than a hand-rolled
 ///      approximation of it. Writes the resulting id to `/tmp/fork-create.json` because the

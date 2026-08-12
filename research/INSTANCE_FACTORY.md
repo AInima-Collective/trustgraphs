@@ -1,13 +1,13 @@
 # INSTANCE_FACTORY — permissionless community instances via a TrustGraphFactory
 
 Status: **BUILD DECIDED 2026-07-24** — the execution spec is
-[`GOAL.md`](../GOAL.md); all §8 questions are answered in place below.
+`GOAL.md` (retired; see git history); all §8 questions are answered in place below.
 Tracked as [issue #6](https://github.com/JakeHartnell/ZkTrustGraph/issues/6). **The repo cleanup
 program this was sequenced after closed 2026-07-24** (all six milestones landed; see
-`docs/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
+`research/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
 code is gone, generated artifacts live under `.trustgraph/`, and there is no live
 production network to migrate (the legacy v1 Optimism instance is frozen on journal v1
-and never migrates — `docs/PROGRAMS.md` is the canonical statement).
+and never migrates — `docs/concepts/networks-and-programs.md` is the canonical statement).
 
 ## 0. Product shape (decided up front)
 
@@ -40,7 +40,7 @@ platform doc (`research/MULTI_PROGRAM_PLATFORM.md` §4):
 - SP1 verifier gateway (canonical Succinct deployment; never ours)
 - `SP1JournalVerifier` — **one per (chain, program vkey)**, shared by all
   instances of that program (`src/contracts/merkle/SP1JournalVerifier.sol:10-11`,
-  `docs/PROGRAMS.md:85-89`: "a new instance costs only a deployment, no verifier")
+  `docs/concepts/networks-and-programs.md:85-89`: "a new instance costs only a deployment, no verifier")
 - `InstanceRegistry` — one per chain (`src/contracts/registry/InstanceRegistry.sol:8`).
   **Built but dormant**: zero references in `deploy/`, `indexer/`, `frontend/` today.
 
@@ -319,12 +319,12 @@ Sustainable posture given "hosted by us initially":
    with work `UPGRADE_GOVERNANCE.md` Lane C already schedules. Do not
    block the factory on it.
    **DONE 2026-07-24, in the factory build itself** rather than after it
-   (`GOAL.md` M0; `docs/DEVIATIONS.md` #7): `Params` is now 17 fields,
+   (`GOAL.md` M0; `research/DEVIATIONS.md` #7): `Params` is now 17 fields,
    ending `accumulator: address, chainId: uint64`. Rotating before the
    first mainnet instance costs zero ceremony; rotating after the factory
    ships would be contagious across N live instances. Journal v2
    untouched. Operator-facing statement:
-   [`docs/trust-graph/FACTORY.md`](../docs/trust-graph/FACTORY.md) §1.1.
+   [`docs/build/create-a-network.md`](../docs/build/create-a-network.md) §1.1.
 
    **CORRECTION to the paragraph above (measured during the build).** The
    claim "two factory clones with identical seeds/params and identical

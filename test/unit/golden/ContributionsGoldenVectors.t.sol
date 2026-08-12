@@ -8,7 +8,7 @@ import {ContributionsParamsCodec} from "contracts/params/ContributionsParamsCode
 
 /// @title ContributionsGoldenVectors
 /// @notice Cross-language lock for the `contributions` program's frozen interface
-///         (docs/contributions/INTERFACES.md): independently recompute in Solidity every byte
+///         (docs/build/contributions/interfaces.md): independently recompute in Solidity every byte
 ///         format that `contributions-core` exports (via
 ///         `cargo run -p contributions-core --example export_golden`) and assert equality.
 ///         The 21-word `paramsHash`, the seed-set root, the fold `kind` tagging, and the

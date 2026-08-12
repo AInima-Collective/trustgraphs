@@ -23,7 +23,7 @@ import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 
 /// @title AuditM6Poc
-/// @notice Adversarial PoCs for the M6 contributions surface. See docs/contributions/AUDIT_M6.md.
+/// @notice Adversarial PoCs for the M6 contributions surface. See research/audits/2026-07-M6.md.
 contract AuditM6Poc is Test {
     string constant CLAIM_SCHEMA = "string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares";
     string constant RESPONSE_SCHEMA = "bytes32 claimUID,uint8 response";

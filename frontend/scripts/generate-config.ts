@@ -15,7 +15,7 @@ const deploymentSummaryFile = path.join(
   '../../.docker/deployment_summary.json'
 )
 
-// The permissionless instance factory (docs/trust-graph/FACTORY.md). It is deployed once per chain
+// The permissionless instance factory (docs/build/create-a-network.md). It is deployed once per chain
 // by its own step, so it lands in its own file rather than the deployment summary. Absent on chains
 // where the factory has not been stood up yet — the create wizard hides itself in that case.
 const factoryDeployFile = path.join(

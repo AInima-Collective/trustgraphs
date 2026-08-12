@@ -1,28 +1,46 @@
-# docs/ — operator documentation
+# docs/ — trustgraphs product documentation
 
-How to set up, run, and operate TrustGraph today. Design provenance (the *why*) lives in
-[`../research/`](../research/); superseded designs are in [`../research/archive/`](../research/archive/).
+User-facing documentation for trustgraphs, organized shallow-to-deep. This tree is the source
+the in-app `/docs` pages render from; the filesystem layout is the sitemap.
+
+Design provenance (the *why*) lives in [`../research/`](../research/); superseded designs are in
+[`../research/archive/`](../research/archive/). Historical build records (deviations, audits, lab
+measurements) also live in `research/` — they are not product documentation.
+
+## Sections
+
+- [`learn/`](./learn/) — what trustgraphs is and why it works, for anyone. No jargon, no code.
+  Start at [`what-is-trustgraphs.md`](./learn/what-is-trustgraphs.md).
+- [`concepts/`](./concepts/) — how the system fits together, for readers who want the mechanics:
+  the [architecture](./concepts/architecture.md), [networks and programs](./concepts/networks-and-programs.md),
+  [epochs and proofs](./concepts/epochs-and-proofs.md), and the full
+  [algorithm spec](./concepts/algorithm.md).
+- [`build/`](./build/) — for developers. Leads with [creating a network](./build/create-a-network.md)
+  and [integrating scores](./build/integrate-scores.md); the advanced pages
+  ([run a prover](./build/run-a-prover.md), [production](./build/production.md),
+  [add a program](./build/add-a-program.md)) and the per-program directories
+  (`trust-graph/`, `signer-sync/`, `hypercerts/`, `contributions/`) cover operating the
+  machinery yourself.
+- [`verify/`](./verify/) — check the work: [reproduce an epoch from public data](./verify/reproduce-an-epoch.md),
+  [golden vectors and cross-language parity](./verify/golden-vectors.md), and
+  [addresses and vkeys](./verify/addresses-and-vkeys.md).
 
 ## By what you're trying to do
 
 | I want to… | Read |
 |---|---|
-| understand what this is, without jargon | [`ELI5.md`](./ELI5.md) |
-| get the toolchains installed and the guests built | [`SETUP.md`](./SETUP.md) |
-| watch the whole thing run on a local chain | [`trust-graph/DEMO.md`](./trust-graph/DEMO.md) |
-| know which programs exist, their vkeys and instances | [`PROGRAMS.md`](./PROGRAMS.md) |
-| know exactly what the scores mean | [`ALGORITHM.md`](./ALGORITHM.md) |
-| run the proving daemon | [`OPERATOR.md`](./OPERATOR.md) |
-| deploy a program, or operate one by hand | that program's `RUNBOOK.md` — indexed in [`PROGRAMS.md`](./PROGRAMS.md) |
-| exercise a program end to end locally | that program's `LOCAL_TESTING.md` — same index |
-| deploy to a real chain | [`PRODUCTION.md`](./PRODUCTION.md) (no production network is live today) |
-| know where a build departed from its plan | [`DEVIATIONS.md`](./DEVIATIONS.md) |
+| understand what this is, without jargon | [`learn/what-is-trustgraphs.md`](./learn/what-is-trustgraphs.md) |
+| see how scores are computed and proven | [`learn/how-scoring-works.md`](./learn/how-scoring-works.md) · [`concepts/algorithm.md`](./concepts/algorithm.md) |
+| stand up a trust network for my community | [`build/create-a-network.md`](./build/create-a-network.md) |
+| read scores from my app or contract | [`build/integrate-scores.md`](./build/integrate-scores.md) |
+| run everything locally, end to end | [`build/setup.md`](./build/setup.md) → [`build/quickstart.md`](./build/quickstart.md) |
+| run the proving daemon | [`build/run-a-prover.md`](./build/run-a-prover.md) |
+| deploy to a real chain | [`build/production.md`](./build/production.md) |
+| check the system's claims for myself | [`verify/`](./verify/) |
 
-[`PROGRAMS.md`](./PROGRAMS.md) is the authoritative per-program index — status, vkey, deployed
-instances, and every doc each program owns. It is deliberately the only place that list is
-maintained. Each program directory has the same shape: `ARCHITECTURE.md` (what it is, pointer to
-the research design), `RUNBOOK.md` (deploy + operate), and where applicable `LOCAL_TESTING.md`
-(end-to-end walkthrough on a local chain).
+[`concepts/networks-and-programs.md`](./concepts/networks-and-programs.md) is the authoritative
+per-program index — status, vkey, deployed instances, and every doc each program owns. It is
+deliberately the only place that list is maintained.
 
 ## Related
 

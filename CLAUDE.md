@@ -30,13 +30,13 @@ TrustGraph implements attestation-based governance using EAS (Ethereum Attestati
 > **Root producer: ZK (not WAVS).** The `{account → score}` merkle root is produced by a permissionless
 > **SP1 zero-knowledge proof** of correct fixed-point PageRank, not a WAVS operator quorum. See
 > [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) for the design and
-> [`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md) for build/deploy/run. The canonical algorithm + encodings live in `packages/pagerank-core` (compiled to
+> [`docs/build/trust-graph/runbook.md`](./docs/build/trust-graph/runbook.md) for build/deploy/run. The canonical algorithm + encodings live in `packages/pagerank-core` (compiled to
 > the SP1 guest in `zk/program`, the host in `zk/prover`, and ported to the browser in
 > `frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
 > EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
 > was reimplemented as a ZK proof (`SignerSyncZkModule` + a signer guest in `zk/program`); see
 > [`research/SIGNER_SYNC_ZK_PLAN.md`](./research/SIGNER_SYNC_ZK_PLAN.md). TrustGraph is a **multi-program
-> platform**: [`docs/PROGRAMS.md`](./docs/PROGRAMS.md) indexes each SP1 program (trust-graph,
+> platform**: [`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md) indexes each SP1 program (trust-graph,
 > signer-sync, hypercerts); shared byte encodings live in `packages/zk-core`, which `pagerank-core`
 > re-exports.
 
@@ -61,7 +61,7 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 `frontend/lib/pagerank`). Input completeness is proven against an on-chain `AttestationAccumulator`
 (a chained-hash mixin folded into `EASIndexerResolver`). See
 [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) and
-[`docs/trust-graph/RUNBOOK.md`](./docs/trust-graph/RUNBOOK.md).
+[`docs/build/trust-graph/runbook.md`](./docs/build/trust-graph/runbook.md).
 
 > **WAVS has been fully removed.** The former WAVS root producer (`trust-graph` / `merkler-pruner`),
 > the non-producer WASI components (`eas-attest`, `aggregator`, `wavs-indexer`, `safe-signer-sync`),
@@ -96,4 +96,4 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 - When changing an encoding, update the golden vectors (`test/golden/trust-graph.json`, read by
   `test/unit/golden/TrustGraphGoldenVectors.t.sol` + `SignerGoldenVectors.t.sol`, and the frontend
   `golden.test.ts`) so cross-language parity stays enforced. Each program owns its own vector file; see
-  [`docs/PROGRAMS.md`](./docs/PROGRAMS.md)
+  [`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md)

@@ -1,6 +1,6 @@
 # Dossier: Pinning Off-chain Input Sets for ZK Proofs — Input Completeness & Censorship Resistance
 
-**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); realized — see [`../../docs/PROGRAMS.md`](../../docs/PROGRAMS.md)).
+**Status:** Source dossier (substrate for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md); realized — see [`../../docs/concepts/networks-and-programs.md`](../../docs/concepts/networks-and-programs.md)).
 
 > Source research for [`../OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md). Compiled 2026-07-10. All prices/gas figures are point-in-time and volatile; sources noted inline. Synthesis is marked "Analysis."
 

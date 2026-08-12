@@ -1,6 +1,6 @@
 # Multi-Program Platform — One Seam, Many Graphs
 
-**Status:** Realized, 2026-07-14 plan — the platform reorg this document specifies shipped as the build plan's M0. Current program index: [`docs/PROGRAMS.md`](../docs/PROGRAMS.md).
+**Status:** Realized, 2026-07-14 plan — the platform reorg this document specifies shipped as the build plan's M0. Current program index: [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md).
 **Scope:** How to reorganize the repo so it supports **multiple SP1 programs and provers** — the existing trust-graph root producer, the signer-sync program, and the incoming Hypercerts/AT-Protocol program ([`HYPERCERTS_ATPROTO_PLAN.md`](./HYPERCERTS_ATPROTO_PLAN.md)) — without weakening the four-way byte-parity discipline that makes v1 sound.
 **Relationship to [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md) / [`SIGNER_SYNC_ZK_PLAN.md`](./SIGNER_SYNC_ZK_PLAN.md) / [`OFFCHAIN_ATTESTATIONS_ZK.md`](./OFFCHAIN_ATTESTATIONS_ZK.md):** nothing in those designs changes. This document is about *packaging*: where code lives, what is shared, what is per-program, and how each additional graph pays only for its own semantics.
 
@@ -164,7 +164,7 @@ Ordered so nothing breaks between steps; this is the build plan's milestone M0 p
 5. Contract polish: `SP1JournalVerifier` rename — clean rename, no alias (no backwards compatibility per the 2026-07-14 decisions; the frozen v1 deployment keeps its already-deployed bytecode regardless).
 6. **Not in M0:** journal v2 (`MerkleSnapshot`), `AnchorRegistry`, `envelopes` crate — those land with lane 2 (GOAL M2), because shipping journal v2 without a lane-2 producer would force a pointless instance migration.
 
-Exit criterion for the whole reorg: **all four parity layers green, vectors byte-identical to pre-reorg, both existing programs prove end-to-end on anvil via the new CLI.** Vkeys will differ (ELF layout changes under refactor even when semantics don't) — re-derive, record in `docs/PROGRAMS.md`, and treat redeployment as part of the next scheduled rotation, not an emergency.
+Exit criterion for the whole reorg: **all four parity layers green, vectors byte-identical to pre-reorg, both existing programs prove end-to-end on anvil via the new CLI.** Vkeys will differ (ELF layout changes under refactor even when semantics don't) — re-derive, record in `docs/concepts/networks-and-programs.md`, and treat redeployment as part of the next scheduled rotation, not an emergency.
 
 ## 11. Open questions — resolved 2026-07-14 (Jake)
 

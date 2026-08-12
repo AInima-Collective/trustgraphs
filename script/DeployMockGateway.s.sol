@@ -23,7 +23,7 @@ import {Common} from "script/Common.s.sol";
 ///      The stub is at the GATEWAY seam only: the real `SP1JournalVerifier` still runs, so journal
 ///      digest binding, vkey pinning and proof-blob decoding are all exercised — only the SNARK
 ///      check itself is faked. Exactly the seam `test/e2e/run.sh` already uses, and the one
-///      `docs/DEVIATIONS.md` #1 records. Never run this against a chain where a real gateway exists;
+///      `research/DEVIATIONS.md` #1 records. Never run this against a chain where a real gateway exists;
 ///      the dev deploy skips it when the configured gateway already has code.
 contract DeployMockGateway is Common {
     using stdJson for string;
@@ -39,7 +39,7 @@ contract DeployMockGateway is Common {
     ///        vkey enforcement only happens against a real gateway.
     /// @return gateway The deployed `MockSP1Gateway`.
     function run(bytes32 expectedVKey) public returns (address gateway) {
-        // Chain id alone is not enough of a gate: `docs/trust-graph/LOCAL_TESTING.md` runs the
+        // Chain id alone is not enough of a gate: `docs/build/trust-graph/local-testing.md` runs the
         // MAINNET FORK as `anvil --fork-url … --chain-id 31337`, whose entire purpose is that a
         // real Groth16 proof verifies against Succinct's real gateway. Silently swapping in a stub
         // there would make that rehearsal prove nothing. So refuse whenever the configured gateway

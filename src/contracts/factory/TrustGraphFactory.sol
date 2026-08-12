@@ -28,7 +28,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 ///         creator, none of it owned by this factory.
 ///
 /// @dev The whole design lives in `research/INSTANCE_FACTORY.md`; the operator's view is
-///      `docs/trust-graph/FACTORY.md`. Three properties carry the weight:
+///      `docs/build/create-a-network.md`. Three properties carry the weight:
 ///
 ///      1. **The factory ends the transaction holding nothing.** It takes `CONSTITUTIONAL_ROLE` on
 ///         the new snapshot only because `setEpochLength` is constitutional-only and is not a

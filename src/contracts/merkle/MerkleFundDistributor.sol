@@ -112,7 +112,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         // the same transaction that hands the instance to its creator — a pending transfer would
         // leave the factory owning every community's distributor until each one remembered to
         // call `acceptOwnership`). `transferOwnership` after deployment is unchanged: still
-        // 2-step. See docs/DEVIATIONS.md.
+        // 2-step. See research/DEVIATIONS.md.
         if (owner_ == address(0)) {
             revert InvalidAddress();
         }

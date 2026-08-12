@@ -11,7 +11,7 @@
 //! 1. `getInstanceIds()` enumerates the directory; `getInstance(id)` gives the contract set.
 //! 2. `InstanceRegistered` on the registry gives the *transaction* that registered each id.
 //! 3. That same transaction's receipt contains the factory's `InstanceCreated` log, which carries
-//!    the FULL params struct (`docs/trust-graph/FACTORY.md` §1.4). The log's emitter **is** the
+//!    the FULL params struct (`docs/build/create-a-network.md` §1.4). The log's emitter **is** the
 //!    factory, so the factory address never has to be supplied either — and `factory.EAS()` then
 //!    yields the EAS the exporter needs.
 //!

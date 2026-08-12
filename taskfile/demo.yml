@@ -1,4 +1,4 @@
-# The demo, as tasks. Prose walkthrough: docs/trust-graph/DEMO.md
+# The demo, as tasks. Prose walkthrough: docs/build/quickstart.md
 #
 # `task demo` is the finite walkthrough: deploy one complete funded network, seed its real graph
 # and a contribution round over that same graph, let one-shot proof-scheduler ticks land both roots
@@ -255,7 +255,7 @@ tasks:
         # Those six vouches land ON TOP of the 21 edges `seed` just planted — same trust
         # accumulator, mirrored into the round at its checkpoint. That composition is the point:
         # rater reputation comes from the community's real graph, not a lab fixture. It is also
-        # why the payout numbers differ from docs/contributions/LOCAL_TESTING.md, whose wei-exact
+        # why the payout numbers differ from docs/build/contributions/local-testing.md, whose wei-exact
         # expectations assume the fixture graph alone.
         task contributions:create-contribution-round-network
 

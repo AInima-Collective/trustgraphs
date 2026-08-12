@@ -2,7 +2,7 @@
 //! source of truth). The fourth parity leg (Rust ⟷ Solidity ⟷ SP1 guest ⟷ TS), locked by
 //! `golden.test.ts` against `test/golden/contributions.json`.
 //!
-//! Interface contract: `docs/contributions/INTERFACES.md` (FROZEN). Stage-1 reputation is the
+//! Interface contract: `docs/build/contributions/interfaces.md` (FROZEN). Stage-1 reputation is the
 //! `../pagerank` port, imported — never forked. This module owns only the contribution record
 //! decoding, reconciliation, the stage-2 aggregation, and the program's params encoding.
 //!

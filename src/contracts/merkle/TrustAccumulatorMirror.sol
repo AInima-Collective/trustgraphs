@@ -19,7 +19,7 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 ///      `InputsCheckpointed` like the real accumulator so provers can watch one event shape
 ///      everywhere.
 ///
-///      `checkpoint()` is callable ONLY by the bound snapshot (AUDIT_M6.md finding M6-1): a
+///      `checkpoint()` is callable ONLY by the bound snapshot (research/audits/2026-07-M6.md finding M6-1): a
 ///      directly-minted mirror checkpoint would carry an id that `trigger()` never created, so the
 ///      snapshot's `anchorCheckpoints[id]` (the lane-2 contribution freeze) would sit at the
 ///      default `(0, 0)` — and a proof over an EMPTY contribution log against that id verifies,

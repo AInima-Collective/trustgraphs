@@ -192,7 +192,7 @@ abstract class EnvBase implements IEnv {
       // DeployZodiacSafes writes a single .docker/zodiac_safes_deploy.json (the Safe + its
       // MerkleGovModule + SignerSyncZkModule). For a single-network deploy this is that network's
       // Safe; a multi-network deploy reuses the file, so the last-deployed Safe wins (fine for the
-      // local fork demo — see docs/trust-graph/RUNBOOK.md for the real loop).
+      // local fork demo — see docs/build/trust-graph/runbook.md for the real loop).
       const zodiacSafesDeployData = readJsonIfFileExists<ZodiacSafesDeploy>(
         '.docker/zodiac_safes_deploy.json'
       )
@@ -308,7 +308,7 @@ export class DevEnv extends EnvBase {
     //
     // The stub is at the GATEWAY seam only: the real `SP1JournalVerifier` still runs, so journal
     // digest binding, vkey pinning and proof-blob decoding are all exercised. Same seam
-    // `test/e2e/run.sh` uses; recorded in docs/DEVIATIONS.md #1.
+    // `test/e2e/run.sh` uses; recorded in research/DEVIATIONS.md #1.
     const mockGateway = process.env.DEV_MOCK_SP1_GATEWAY !== 'false'
     const gatewayAddress = () =>
       mockGateway
@@ -365,7 +365,7 @@ export class DevEnv extends EnvBase {
           args: () => ['', ''],
         },
         // The proving tank communities top up so somebody keeps proving their scores
-        // (docs/OPERATOR.md). MUST precede the factory: the vault is a factory constructor
+        // (docs/build/run-a-prover.md). MUST precede the factory: the vault is a factory constructor
         // argument and it is what makes `createInstance` payable, so the reverse order gives you a
         // factory that permanently reverts on any prepay. Locally it brings its own mock ETH/USD
         // feed and TestUSDC; off-devnet both are required from the environment.

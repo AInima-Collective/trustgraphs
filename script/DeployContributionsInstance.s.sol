@@ -28,7 +28,7 @@ import {ContributionsParamsJson} from "script/lib/ContributionsParamsJson.sol";
 
 /// @title DeployContributionsInstance
 /// @notice One labeled script for the WHOLE contributions instance battery
-///         (docs/contributions/INTERFACES.md): ContributionResolver → the three schema
+///         (docs/build/contributions/interfaces.md): ContributionResolver → the three schema
 ///         registrations (exact IF §1 strings) → one-shot `setSchemas` allowlist →
 ///         TrustAccumulatorMirror over the trust instance's accumulator →
 ///         SP1JournalVerifier (contributions vkey) → MerkleSnapshot (journal v2: slot A =
@@ -51,7 +51,7 @@ contract DeployContributionsInstance is Common {
 
     string public root = vm.projectRoot();
 
-    /// The three schema strings, EXACTLY as frozen in docs/contributions/INTERFACES.md §1
+    /// The three schema strings, EXACTLY as frozen in docs/build/contributions/interfaces.md §1
     /// (canonical registered form is comma-separated without spaces, the house schema-string
     /// format the config field parser consumes).
     string constant CLAIM_SCHEMA = "string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares";

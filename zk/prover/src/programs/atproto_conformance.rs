@@ -4,7 +4,7 @@
 //! parser verdict deferred.
 //!
 //! This is a conformance harness, not a production program: it has no on-chain consumer,
-//! no journal contract, and does not appear in docs/PROGRAMS.md's index.
+//! no journal contract, and does not appear in docs/concepts/networks-and-programs.md's index.
 
 use alloy_primitives::{keccak256, B256};
 use anyhow::{anyhow, bail, Context, Result};

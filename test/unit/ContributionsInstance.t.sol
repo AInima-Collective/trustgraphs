@@ -28,7 +28,7 @@ import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 ///         `MerkleSnapshot.trigger()` freezes both accumulators at the same block — slot A
 ///         `(acc, leafCount)` = trust via `TrustAccumulatorMirror`, slot B
 ///         `(anchorAcc, anchorCount)` = contributions via the resolver's IAnchorRegistry aliases
-///         (docs/contributions/INTERFACES.md §4). Includes the quiet-trust-lane liveness property
+///         (docs/build/contributions/interfaces.md §4). Includes the quiet-trust-lane liveness property
 ///         and the journal slot binding through `submitProof`.
 contract ContributionsInstanceTest is Test {
     string constant VOUCH_SCHEMA = "string comment,uint256 confidence";

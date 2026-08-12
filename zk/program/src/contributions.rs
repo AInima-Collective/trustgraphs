@@ -8,7 +8,7 @@
 //! valuation + carve-out, and commits the ABI-encoded journal-v2 tuple as `publicValues`. The
 //! journal is the shared `pagerank_core::Journal`, so the same `SP1JournalVerifier` /
 //! `MerkleSnapshot` bind it exactly as for every other program. All semantics live in
-//! `contributions-core` (docs/contributions/INTERFACES.md).
+//! `contributions-core` (docs/build/contributions/interfaces.md).
 
 #![no_main]
 sp1_zkvm::entrypoint!(main);

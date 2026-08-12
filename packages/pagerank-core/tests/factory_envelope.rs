@@ -1,7 +1,7 @@
 //! The representable-range backstop, and the factory bounds that keep real instances away from it.
 //!
 //! Provenance: the M6 security review refuted "the creation-time bounds keep every instance inside
-//! the envelope the guest is proven safe over" (`docs/trust-graph/FACTORY.md` §3). At the time,
+//! the envelope the guest is proven safe over" (`docs/build/create-a-network.md` §3). At the time,
 //! `zk_core::fixed::mul_div` truncated its 512-bit quotient back to 256 bits on the assumption that
 //! "the mathematical result always fits for our magnitudes", and the rank loop's accumulations were
 //! unchecked alloy adds (which wrap silently, even in a debug build). A factory-legal instance

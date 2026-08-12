@@ -5,7 +5,7 @@
     "link": {
       "prefix": "Learn more:",
       "label": "trustgraphs demo guide",
-      "href": "https://github.com/JakeHartnell/ZkTrustGraph/blob/main/docs/trust-graph/DEMO.md"
+      "href": "https://github.com/JakeHartnell/ZkTrustGraph/blob/main/docs/build/quickstart.md"
     },
     "about": "Demo Co-op is a fictional member-owned collective that shows the complete trustgraphs workflow in one place. Members build a trust network from first-hand collaboration, use their resulting scores to govern a shared Safe, distribute funds, and evaluate contributions in a dedicated funding round.",
     "applicationUrl": "https://github.com/JakeHartnell/ZkTrustGraph/issues/new?title=Demo%20Co-op%20application",

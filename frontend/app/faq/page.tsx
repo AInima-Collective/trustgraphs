@@ -9,8 +9,9 @@ import { OpenTargetAnswer } from './OpenTargetAnswer'
 /**
  * The questions page.
  *
- * Every sentence here is verbatim from `FAQ_PAGE_COPY.md`. If a line needs to
- * change, that file changes in the same commit.
+ * The copy's source of record is `docs/learn/faq.md` (this page differs only in
+ * typographic quotes). If a line needs to change, that file changes in the same
+ * commit.
  *
  * ── Why <details> and not an accordion component ────────────────────────────
  * The old landing page carried a four-item accordion built on `useState`. That
@@ -57,8 +58,8 @@ const REPO = 'https://github.com/JakeHartnell/trustgraphs'
 // against a public repo. Not a pin: the default has already moved once, and a
 // SHA would freeze "start with the plain-language explainer" on a stale copy of
 // a document that is still being edited.
-const ELI5 = `${REPO}/blob/HEAD/docs/ELI5.md`
-const ALGORITHM = `${REPO}/blob/HEAD/docs/ALGORITHM.md`
+const ELI5 = `${REPO}/blob/HEAD/docs/learn/what-is-trustgraphs.md`
+const ALGORITHM = `${REPO}/blob/HEAD/docs/concepts/algorithm.md`
 
 /** Ink, underlined, and legible in prose at answer weight. No hue anywhere. */
 const PROSE_LINK =
@@ -98,7 +99,7 @@ const GROUPS: Group[] = [
         id: 'how-often-do-scores-update',
         question: 'How often do scores update?',
         answer:
-          'In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new scores, and the result goes on-chain. Every network sets its own pace, and a settled round is never recalculated as long as your network keeps a schedule.',
+          'In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new scores, and the result goes on-chain. Every network sets its own pace, and a settled round is never recalculated.',
       },
     ],
   },

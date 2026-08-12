@@ -20,14 +20,14 @@ import {Common} from "script/Common.s.sol";
 
 /// @title DeployHypercertsInstance
 /// @notice One labeled script for the WHOLE lane-2-only hypercerts instance battery
-///         (docs/hypercerts/RUNBOOK.md): EmptyLaneAccumulator → AnchorRegistry →
+///         (docs/build/hypercerts/runbook.md): EmptyLaneAccumulator → AnchorRegistry →
 ///         SP1JournalVerifier (hypercerts vkey, canonical gateway) → MerkleSnapshot
 ///         (journal v2) → setAnchorRegistry → setEpochLength → optional InstanceRegistry
 ///         entry. Inputs via env so the OP Sepolia rehearsal and the Optimism pilot run
 ///         the same script with different .env files.
 ///
 /// Env: SP1_VERIFIER_GATEWAY (canonical per-chain gateway; MockSP1Gateway only on a dev
-///      chain), HYPERCERTS_VKEY (derive on the PINNED toolchain — docs/PROGRAMS.md caveat),
+///      chain), HYPERCERTS_VKEY (derive on the PINNED toolchain — docs/concepts/networks-and-programs.md caveat),
 ///      HYPERCERTS_PARAMS_HASH (`prover hypercerts paramshash params.json`),
 ///      HYPERCERTS_EPOCH_LENGTH (blocks; 302400 = 1 week @ 2s; 0 = unscheduled rehearsal),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN / REGISTRAR_ADMIN (default: deployer),

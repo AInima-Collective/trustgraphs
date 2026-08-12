@@ -15,7 +15,7 @@ silent: true
 # The loop body is `taskfile/instances.sh` (same shape as `task e2e` -> `test/e2e/run.sh`): it is a
 # long bash pipeline over cast + the existing binaries, and it stays runnable without go-task.
 #
-# Docs: `docs/trust-graph/FACTORY.md` §5.
+# Docs: `docs/build/create-a-network.md` §5.
 
 tasks:
   scan:

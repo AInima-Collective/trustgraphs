@@ -9,7 +9,7 @@ import {AttestationAccumulator} from "../AttestationAccumulator.sol";
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 
 /// @title ContributionResolver
-/// @notice The contributions program's resolver + accumulator (docs/contributions/INTERFACES.md):
+/// @notice The contributions program's resolver + accumulator (docs/build/contributions/interfaces.md):
 ///         one resolver serving all three contribution schemas (claim / response / valuation),
 ///         folding every attestation and revocation into a single chained-hash accumulator with the
 ///         schema discriminated in the leaf's `kind` byte:

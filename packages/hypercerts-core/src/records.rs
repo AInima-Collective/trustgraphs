@@ -1,5 +1,5 @@
 //! Typed decode of the seven §2 collections from dag-cbor, following the REAL lexicon
-//! v1.1.0 shapes (docs/DEVIATIONS.md #2 — measured from the seeded-PDS fixture, not the
+//! v1.1.0 shapes (research/DEVIATIONS.md #2 — measured from the seeded-PDS fixture, not the
 //! plan's table). Every decode failure is a DETERMINISTIC per-record skip, never an abort:
 //! a stock PDS writes these NSIDs unvalidated, so these rules are the ONLY shape
 //! enforcement anywhere (§3.5).

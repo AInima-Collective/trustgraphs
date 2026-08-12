@@ -438,7 +438,7 @@ export const anchorCheckpoint = onchainTable(
 
 // The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
 // accumulator-bearing resolver (the trust EASIndexerResolver instances, kinds {0, 1}, and the
-// ContributionResolver, kinds 0–5 per docs/contributions/INTERFACES.md §2). This is the indexer's
+// ContributionResolver, kinds 0–5 per docs/build/contributions/interfaces.md §2). This is the indexer's
 // mirror of the exact `RawEdge` stream the ZK guest consumes: ordering by (block_number, log_index)
 // is fold order (each fold emits exactly one AttestationAttested/AttestationRevoked marker), and
 // `data` is the payload preimage of the folded `dataHash`. The derived-scoring recompute truncates

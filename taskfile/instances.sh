@@ -32,7 +32,7 @@
 #
 # Scope: this is the DOCUMENTED FALLBACK. The operator daemon (`zk/operator`) does this loop
 # unattended, with finality tracking, coalescing, loss budgets, holds and vault claims; see
-# `docs/OPERATOR.md`. Keep this script working — it is what a community runs to prove its own
+# `docs/build/run-a-prover.md`. Keep this script working — it is what a community runs to prove its own
 # instance by hand, and what we run when the daemon is the thing that is broken.
 #
 # Caveat on backends: `SP1_PROVER=mock` runs the guest for real and commits its real public values,

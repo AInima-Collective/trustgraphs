@@ -12,7 +12,7 @@
 //! Revocation is IN-LOG: a revoke entry deletes a previously-attested UID, and completeness
 //! of the deletion set is inherited from the signed head — the same way the atproto envelope
 //! gets revocation by record absence. The on-chain `EAS.revokeOffchain` channel is
-//! deliberately OUT of the proven statement in v1 (docs/DEVIATIONS.md #3): binding it
+//! deliberately OUT of the proven statement in v1 (research/DEVIATIONS.md #3): binding it
 //! soundly requires a storage-proof witness against a checkpointed block hash, or an
 //! on-chain revocation-mirror accumulator — both deliberate future events, not silent
 //! best-effort reads.

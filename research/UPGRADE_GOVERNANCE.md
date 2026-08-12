@@ -74,9 +74,9 @@ Other load-bearing facts:
   invalidates in-flight proofs instantly. That is the intended cutover semantics, but it means
   rotations should land at checkpoint boundaries (§5.5).
 - **Vkey rotation is contagious.** The programs share a key-generic rank core; any guest change (or
-  toolchain change — a reinstall shifted vkeys with zero source change, `docs/PROGRAMS.md:30-38`)
+  toolchain change — a reinstall shifted vkeys with zero source change, `docs/concepts/networks-and-programs.md:30-38`)
   rotates trust-graph, signer, and hypercerts vkeys together. Rotations must be batched
-  (`docs/PROGRAMS.md:64-66`).
+  (`docs/concepts/networks-and-programs.md:64-66`).
 - **The four-way parity set is the real coupling surface.** pagerank-core / zk-core → guest → host →
   golden JSONs → Solidity golden tests → frontend TS port must move atomically on any encoding
   change. The address-keyed merkle-leaf format (`keccak256(keccak256(abi.encode(account, value)))`)
@@ -410,8 +410,8 @@ positive upgrade power.
 `src/contracts/params/ParamsCodec.sol`, `script/DeployTimelocks.s.sol`,
 `packages/pagerank-core/src/encode.rs`, `research/ZK_ARCHITECTURE.md` (Decisions 1–3, trust-surface
 table), `research/GRAPH_SEEDING.md` (§seed_prior_root, §open governance question),
-`research/MULTI_PROGRAM_PLATFORM.md`, `docs/PROGRAMS.md` (vkey table, toolchain caveat),
-`docs/trust-graph/RUNBOOK.md`, `docs/DEVIATIONS.md`.
+`research/MULTI_PROGRAM_PLATFORM.md`, `docs/concepts/networks-and-programs.md` (vkey table, toolchain caveat),
+`docs/build/trust-graph/runbook.md`, `research/DEVIATIONS.md`.
 
 **ZK / rollup governance**: [L2BEAT stages](https://l2beat.com/stages) ·
 [Introducing Stages](https://medium.com/l2beat/introducing-stages-a-framework-to-evaluate-rollups-maturity-d290bb22befe) ·

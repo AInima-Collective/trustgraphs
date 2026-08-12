@@ -43,7 +43,7 @@ contract MerkleSnapshotDeployer {
 /// @title MerkleFundDistributorDeployer
 /// @notice The same trick for `MerkleFundDistributor` (see `MerkleSnapshotDeployer` for why).
 /// @dev    Safe for the same reason: since the distributor's constructor sets `owner = owner_`
-///         directly (docs/DEVIATIONS.md), this deployer is never the owner of what it deploys.
+///         directly (research/DEVIATIONS.md), this deployer is never the owner of what it deploys.
 contract MerkleFundDistributorDeployer {
     /// @notice Deploy a `MerkleFundDistributor` owned by `owner`.
     /// @param owner The distributor's owner (the instance admin), set outright — no pending transfer.

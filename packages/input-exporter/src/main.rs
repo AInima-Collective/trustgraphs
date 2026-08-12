@@ -2,7 +2,7 @@
 //!
 //! Reads the accumulator's `EdgeFolded` events + EAS attestations up to a checkpoint, reassembles the
 //! exact ordered edge set, self-verifies it re-folds to the checkpoint's `acc`, and writes the JSON
-//! the prover consumes. See `zk/RUNBOOK.md`.
+//! the prover consumes. See `docs/build/trust-graph/runbook.md`.
 
 use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};

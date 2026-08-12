@@ -17,7 +17,7 @@
 #
 #     task demo:prove
 #
-# or by hand, which is now the documented fallback (docs/trust-graph/RUNBOOK.md):
+# or by hand, which is now the documented fallback (docs/build/trust-graph/runbook.md):
 #
 #     REGISTRY=$(jq -r .instance_registry .docker/instance_registry_deploy.json) \
 #     PK=$(grep -E '^FUNDED_KEY=' .env | cut -d= -f2) bash taskfile/instances.sh

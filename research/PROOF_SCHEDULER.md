@@ -1,6 +1,6 @@
 # Proof Scheduling & Proving Economics
 
-**Status:** **BUILD DECIDED 2026-07-27** — the execution spec is [`GOAL.md`](../GOAL.md), covering
+**Status:** **BUILD DECIDED 2026-07-27** — the execution spec is `GOAL.md` (retired; see git history), covering
 all four phases of §6. Every question this doc raised is answered in §7, §8, and §9; §9 also
 records the three architecture decisions taken at build time, one of which **supersedes §4.3's
 commit-reveal recommendation**.
@@ -371,7 +371,7 @@ a correct root.
 ## 6. Build plan
 
 *(Phasing as researched. The executable version, with milestones, exit criteria and the §9
-architecture, is [`GOAL.md`](../GOAL.md): IF + M0 journal v3, M1 `operator-core`, M2 daemon,
+architecture, is `GOAL.md`: IF + M0 journal v3, M1 `operator-core`, M2 daemon,
 M3 lane 2, M4 vault, M5 wiring, M6 fork e2e. Phases 3 and 4 merged there, because §9.1 moved the
 rotation to the front.)*
 
@@ -423,7 +423,7 @@ rotation to the front.)*
 
 ## 9. Decisions, round 3 (Jake, 2026-07-27) — and the architecture they force
 
-Taken while writing [`GOAL.md`](../GOAL.md). The first two change what gets built; the rest are
+Taken while writing `GOAL.md`. The first two change what gets built; the rest are
 consequences worked out against the code and recorded here so the build has one design to follow.
 
 ### 9.1 Journal v3 now: the bounty recipient is proven, not hidden
@@ -447,7 +447,7 @@ Two reasons this beats §4.3's ladder:
    transaction per root, the commitment/expiry contract surface, and the hosted operator's
    private-orderflow dependency.
 
-Cost, stated honestly: one vkey rotation across all four programs (contagion — `PROGRAMS.md`
+Cost, stated honestly: one vkey rotation across all four programs (contagion — `docs/concepts/networks-and-programs.md`
 records the measurement methodology), plus regenerating three golden vector files and the frontend
 TS port.
 
@@ -592,4 +592,4 @@ must compare anchor commitments rather than leaf counts, and the vault's leafCou
 band misprices a lane-2-only program for the same reason — hence per-program band functions with
 an *unsupported ⇒ zero fee* default.
 
-Every question this doc raised is decided; what remains is the build ([`GOAL.md`](../GOAL.md)).
+Every question this doc raised is decided; what remains is the build (`GOAL.md`).
