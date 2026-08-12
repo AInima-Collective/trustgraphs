@@ -1,7 +1,7 @@
 # Why you can trust the scores
 
 Most scoring systems ask you to trust whoever runs the computer: Google computes your
-rank, a credit bureau computes your score, and you take their word for it. trustgraphs is
+rank, a credit bureau computes your score, and you take their word for it. Trustgraphs is
 built so you never have to do that.
 
 This page assumes you know [how scoring works](./how-scoring-works.md).
@@ -34,7 +34,7 @@ scores.
 A subtler attack than faking scores is leaving vouches out: a prover who could quietly
 drop the vouches they dislike could tilt the scoreboard while still "running the rules."
 
-trustgraphs closes this. The chain keeps a running tally of every vouch ever made (and
+Trustgraphs closes this. The chain keeps a running tally of every vouch ever made (and
 every one revoked), updated the moment each attestation lands. The proof must account for
 exactly that tally: consume the complete set, nothing missing, nothing invented. A proof
 built on a doctored input set simply doesn't verify.

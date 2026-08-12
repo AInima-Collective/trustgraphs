@@ -47,7 +47,7 @@ Then build the repo and the guest programs. **`task zk:build` is the step people
 `task demo` refuses to start without it:
 
 ```bash
-task -y setup      # pnpm install + forge install
+task setup         # pnpm install + forge install
 task zk:build      # the five SP1 guest ELFs + the prover host — minutes the first time
 ```
 

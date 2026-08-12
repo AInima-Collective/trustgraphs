@@ -15,7 +15,7 @@ Two ways to exercise it locally:
   `submitProof` against Succinct's real SP1 gateway on a mainnet-fork anvil. Zero mocks.
 
 Prereqs are the same as the main guide: Foundry, Rust, `jq`, the SP1 toolchain, then
-`task -y setup` and `task zk:build` ([`../setup.md`](../setup.md)). The quick check needs nothing
+`task setup` and `task zk:build` ([`../setup.md`](../setup.md)). The quick check needs nothing
 else — the seeded fixture is committed. The full pipeline needs network access, and (for the real
 proof) either the Succinct prover network or a 16–32 GiB box.
 

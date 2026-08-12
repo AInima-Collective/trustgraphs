@@ -24,7 +24,7 @@ Ports/services used by the full stack:
 | Postgres (Ponder) | localhost:6432 | `docker compose -f docker-compose.dev.yml up` |
 
 Prereqs (one-time): Foundry, Rust, `jq`, Docker, Node 21+/pnpm and the SP1 toolchain —
-[`../setup.md`](../setup.md) installs each. Then `task -y setup` and `task zk:build`; the guest ELFs
+[`../setup.md`](../setup.md) installs each. Then `task setup` and `task zk:build`; the guest ELFs
 are a separate one-time step and everything below assumes they exist.
 
 ---

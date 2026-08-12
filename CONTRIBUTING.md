@@ -6,7 +6,7 @@ System tools + toolchains (Docker, go-task, Node 21+/pnpm, Foundry, Rust, SP1) a
 [`docs/build/setup.md`](./docs/build/setup.md). Then:
 
 ```bash
-task -y setup       # pnpm install + forge install
+task setup          # pnpm install + forge install
 task build:forge
 task zk:build       # the SP1 guest ELFs + the prover host — a separate one-time step
 ```
