@@ -50,7 +50,7 @@ export const Footer = () => {
           FAQ
         </Link>
         <a
-          href="https://github.com/JakeHartnell/ZkTrustGraph/tree/HEAD/docs"
+          href="https://github.com/JakeHartnell/trustgraphs/tree/HEAD/docs"
           target="_blank"
           rel="noopener noreferrer"
           className={`${LINK} px-2 sm:px-3`}
@@ -58,7 +58,7 @@ export const Footer = () => {
           Docs
         </a>
         <a
-          href="https://github.com/JakeHartnell/ZkTrustGraph"
+          href="https://github.com/JakeHartnell/trustgraphs"
           target="_blank"
           rel="noopener noreferrer"
           className={ICON_LINK}

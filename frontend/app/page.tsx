@@ -10,6 +10,7 @@ import { ProofDiagram } from '@/components/marketing/ProofDiagram'
 import { resolveNetwork } from '@/lib/catalog'
 import { getCatalog } from '@/lib/catalog.server'
 import { socialCard } from '@/lib/metadata'
+import { cn } from '@/lib/utils'
 
 import { HeroGraph } from './HeroGraph'
 import { HeroGraphUnavailable } from './HeroGraphUnavailable'
@@ -32,7 +33,7 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
 // `CATALOG_REVALIDATE_SECONDS` in lib/catalog.server.ts.
 export const revalidate = 10
 
-const REPO_URL = 'https://github.com/JakeHartnell/ZkTrustGraph'
+const REPO_URL = 'https://github.com/JakeHartnell/trustgraphs'
 
 /**
  * The slug of the demo network in `config/networks.<env>.json`. The landing
@@ -60,6 +61,47 @@ const DESCRIPTION =
  */
 const HERO_FIGURE =
   'h-[calc(100svh-7.5rem)] min-h-[32rem] max-h-[52rem] w-full [@media(max-height:520px)]:h-[calc(100svh-5.5rem)] [@media(max-height:520px)]:min-h-[20rem]'
+
+/**
+ * The roadmap steps, in order. A plain array rather than four inline JSX
+ * elements because the stepper layout needs each item's index and the total
+ * count, to know which connecting-line segments to draw.
+ */
+const ROADMAP: Array<{
+  n: string
+  status: string
+  title: string
+  description: string
+}> = [
+  {
+    n: '01',
+    status: 'Current',
+    title: 'On-chain EAS',
+    description:
+      'Public attestations, with every update committed before the graph is computed.',
+  },
+  {
+    n: '02',
+    status: 'Integrating',
+    title: 'Off-chain EAS',
+    description:
+      'Signed attestations without a transaction per edge, anchored so the prover can’t choose the inputs.',
+  },
+  {
+    n: '03',
+    status: 'Pilot',
+    title: 'AT Protocol',
+    description:
+      'Verify repo history and records before computing over social and impact data.',
+  },
+  {
+    n: '04',
+    status: 'Research',
+    title: 'Private graphs',
+    description:
+      'Keep relationships and scores hidden while proving the result is correct.',
+  },
+]
 
 export const metadata: Metadata = {
   // `absolute` so the root page is "Trustgraphs" rather than "Trustgraphs | Trustgraphs".
@@ -93,7 +135,7 @@ export default async function LandingPage() {
             {graphReachable ? 'Live example' : 'Example'} · Demo Co-op
           </p>
           <h1 className="mt-1 max-w-[22ch] text-xl leading-[1.05] text-text text-balance sm:text-3xl">
-            Verifiable computations over graphs of data.
+            Your community already knows who to trust.
           </h1>
         </div>
         {/* The graph is the product, so it gets the whole first screen. The
@@ -124,7 +166,7 @@ export default async function LandingPage() {
 
           <div className="border-t border-border py-8 lg:border-l lg:border-t-0 lg:py-12 lg:pl-16">
             <p className="max-w-[32ch] text-xl leading-snug text-text sm:text-2xl">
-              Each community, application, or protocol can define its own graph,
+              Each community, application, or protocol defines its own graph,
               its own rules, and the result it needs.
             </p>
 
@@ -135,8 +177,7 @@ export default async function LandingPage() {
               </p>
               <p>
                 trustgraphs compose. Scores from one graph can weight
-                relationships in another, turning several kinds of data into a
-                new, verifiable result.
+                relationships in another, producing a new, verifiable result.
               </p>
             </div>
           </div>
@@ -153,7 +194,7 @@ export default async function LandingPage() {
         standfirst={
           <p className="max-w-[72ch] text-lg text-text-muted">
             Demo Co-op asks who its community trusts, then turns the answer into
-            something other applications can use.
+            something other apps can use.
           </p>
         }
       >
@@ -170,16 +211,14 @@ export default async function LandingPage() {
           </Move>
 
           <Move n="2" title="Score" figure={<ScoreFigure />}>
-            Trust flows from accounts your community chooses, giving more weight
-            to vouches from trusted people.
+            Trust compounds: vouches from trusted people carry more weight.
           </Move>
 
           {/* "Check", not "read". `MerkleSnapshot` stores a root, not scores,
            * and `verifyProof(account, value, proof)` needs the caller to hold
            * both already. There is no enumeration on chain. */}
           <Move n="3" title="Use" figure={<UseFigure />}>
-            Commit each round on-chain, where apps and contracts can verify
-            scores for voting, payouts, or access.
+            Commit each round on-chain, so contracts can verify the scores.
           </Move>
         </div>
       </Section>
@@ -218,12 +257,12 @@ export default async function LandingPage() {
           </UseCase>
           <UseCase
             n="04"
-            title="Adaptive coordination"
-            input="A proven score graph and a policy"
-            output="Voting power, access, or a signer set"
+            title="Signer rotation"
+            input="A proven score ranking and a signer threshold"
+            output="A Safe multisig's signer set"
           >
-            Let authority change with the graph instead of freezing it in a
-            token or an admin list.
+            Rotate a Safe’s signers with the graph, not a hand-managed admin
+            list.
           </UseCase>
         </ul>
       </Section>
@@ -241,8 +280,8 @@ export default async function LandingPage() {
           </div>
           <p className="max-w-[62ch] self-end text-lg text-ink-fg opacity-70">
             The rules are public, so anyone can recompute the result. A short
-            zero-knowledge proof shows that every committed input was included
-            and the published result followed those rules.
+            zero-knowledge proof shows every committed input was included and
+            the result matches those rules.
           </p>
         </div>
 
@@ -260,30 +299,21 @@ export default async function LandingPage() {
               reveal only what the result needs.
             </p>
             <p>
-              The path runs from public on-chain attestations toward flexible
-              off-chain sources and, ultimately, fully private graphs that
-              remain verifiable.
+              The path runs from public on-chain attestations, through flexible
+              off-chain sources, to fully private graphs that remain verifiable.
             </p>
           </>
         }
       >
-        <ol className="mx-auto max-w-4xl list-none border-t border-border p-0">
-          <RoadmapItem n="01" status="Current" title="On-chain EAS">
-            Public attestations, with every update committed before the graph is
-            computed.
-          </RoadmapItem>
-          <RoadmapItem n="02" status="Integrating" title="Off-chain EAS">
-            Signed attestations without a transaction per edge, anchored so the
-            prover cannot choose the input set.
-          </RoadmapItem>
-          <RoadmapItem n="03" status="Pilot" title="AT Protocol">
-            Verify repo history and records before computing over social and
-            impact data.
-          </RoadmapItem>
-          <RoadmapItem n="04" status="Research" title="Private graphs">
-            Keep relationships and scores hidden while proving the result was
-            computed correctly.
-          </RoadmapItem>
+        <ol className="mx-auto max-w-5xl list-none border-t border-border p-0 lg:grid lg:grid-cols-4 lg:items-start lg:gap-0 lg:pt-10">
+          {ROADMAP.map((item, index) => (
+            <RoadmapItem
+              key={item.n}
+              {...item}
+              index={index}
+              total={ROADMAP.length}
+            />
+          ))}
         </ol>
       </Section>
 
@@ -297,12 +327,12 @@ export default async function LandingPage() {
 
           <div className="mt-8 flex max-w-[62ch] flex-col gap-4 text-text-muted sm:mt-10">
             <p className="text-lg text-text">
-              Start with a community vouching network today. Choose its starting
+              Start a community vouching network today. Choose its starting
               accounts, define what a vouch means, and tune how trust flows.
             </p>
             <p className="max-w-prose">
-              The proof system is permissionless, and the platform is open for
-              new graph programs as the input layer expands.
+              The proof system is permissionless. The platform stays open to new
+              graph programs as the input layer grows.
             </p>
           </div>
 
@@ -420,7 +450,7 @@ function Move({
   return (
     <div className="relative flex min-h-80 flex-col overflow-hidden bg-surface p-6 sm:p-8 lg:min-h-[26rem]">
       <span
-        className="tg-display pointer-events-none absolute -right-1 -top-5 text-7xl leading-none text-text opacity-[0.045]"
+        className="tg-display pointer-events-none absolute right-4 top-3 text-6xl leading-none text-text opacity-[0.045]"
         aria-hidden="true"
       >
         {n}
@@ -430,7 +460,7 @@ function Move({
 
       <div className="mt-4 flex flex-1 flex-col gap-8 sm:flex-row sm:items-start sm:justify-between lg:flex-col lg:items-stretch lg:gap-0">
         <p className="max-w-prose text-text-muted">{children}</p>
-        <div className="shrink-0 text-text sm:self-end lg:mt-auto lg:self-auto lg:pt-10 [&>svg]:h-auto [&>svg]:w-64 [&>svg]:max-w-full">
+        <div className="shrink-0 text-text sm:self-end lg:mt-auto lg:w-full lg:self-auto lg:pt-10 [&>svg]:h-auto [&>svg]:w-64 [&>svg]:max-w-full lg:[&>svg]:w-full lg:[&>svg]:max-w-[24rem]">
           {figure}
         </div>
       </div>
@@ -552,33 +582,64 @@ function UseCase({
   )
 }
 
+/**
+ * One roadmap step.
+ *
+ * Below `lg` this is the original stacked row: a numbered box left of its
+ * content, rows divided by a hairline. At `lg` it becomes one step in a
+ * horizontal stepper: the same markup switches to a column (circle above
+ * text) and a connecting line is drawn behind the circle from two half
+ * segments — left-to-centre and centre-to-right — so adjacent steps meet
+ * exactly at each circle's centre without hardcoding pixel widths. The line
+ * sits at `z-0` and the circle at `z-10` with an opaque fill, which is what
+ * masks the line inside a hollow (non-current) circle instead of drawing a
+ * stray line straight through it.
+ */
 function RoadmapItem({
   n,
   status,
   title,
-  children,
+  description,
+  index,
+  total,
 }: {
   n: string
   status: string
   title: string
-  children: React.ReactNode
+  description: string
+  index: number
+  total: number
 }) {
   const current = status === 'Current'
 
   return (
-    <li className="grid grid-cols-[3rem_minmax(0,1fr)] gap-5 border-b border-border py-7 sm:grid-cols-[4rem_minmax(0,1fr)] sm:gap-7 sm:py-9">
+    <li className="relative flex gap-5 border-b border-border py-7 last:border-b-0 sm:gap-7 sm:py-9 lg:flex-col lg:items-center lg:gap-4 lg:border-b-0 lg:px-4 lg:py-0 lg:text-center">
+      {index > 0 && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 right-1/2 top-6 z-0 hidden h-px bg-border lg:block"
+        />
+      )}
+      {index < total - 1 && (
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 right-0 top-6 z-0 hidden h-px bg-border lg:block"
+        />
+      )}
+
       <div
-        className={
+        className={cn(
+          'relative z-10 flex h-10 w-10 shrink-0 items-center justify-center border text-[10px] tracking-wider sm:h-12 sm:w-12',
           current
-            ? 'flex h-10 w-10 items-center justify-center border border-ink bg-ink text-[10px] tracking-wider text-ink-fg sm:h-12 sm:w-12'
-            : 'flex h-10 w-10 items-center justify-center border border-hairline-strong text-[10px] tracking-wider text-text-muted sm:h-12 sm:w-12'
-        }
+            ? 'border-ink bg-ink text-ink-fg'
+            : 'border-hairline-strong bg-background text-text-muted'
+        )}
       >
         {n}
       </div>
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-2xl">{title}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 lg:flex-col lg:justify-center lg:gap-2">
+          <h3 className="text-2xl lg:text-xl">{title}</h3>
           <span
             className={
               current
@@ -589,7 +650,9 @@ function RoadmapItem({
             {status}
           </span>
         </div>
-        <p className="mt-3 max-w-[62ch] text-sm text-text-muted">{children}</p>
+        <p className="mt-3 max-w-[62ch] text-sm text-text-muted lg:mx-auto lg:max-w-[24ch]">
+          {description}
+        </p>
       </div>
     </li>
   )

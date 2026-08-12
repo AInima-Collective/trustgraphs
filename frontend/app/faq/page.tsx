@@ -49,7 +49,7 @@ export const metadata: Metadata = {
   }),
 }
 
-const REPO = 'https://github.com/JakeHartnell/ZkTrustGraph'
+const REPO = 'https://github.com/JakeHartnell/trustgraphs'
 // `HEAD`, not `main`. `main` is not a branch on this repository at all: the
 // default is `zk` and `origin/main` is not a valid ref, so both of these 404
 // today and would still 404 the day the repo goes public. GitHub resolves HEAD
