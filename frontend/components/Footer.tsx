@@ -35,9 +35,9 @@ export const Footer = () => {
         <BrandMark size="xs" className="text-text-subtle" />
         {/* Tracked, not uppercased. The brand has exactly two cases:
          * `trustgraphs` in copy and `Trustgraphs` in the wordmark and titles.
-         * `text-transform: uppercase` invented a third one, in the single place
-         * the brand appears as prose rather than as a wordmark. */}
-        <span className="tracking-wider">trustgraphs</span>
+         * This sits directly next to the mark, so it is the wordmark lockup,
+         * not prose — it takes the capitalized case. */}
+        <span className="tracking-wider">Trustgraphs</span>
         <span aria-hidden="true">·</span>
         <span>Trust, made legible</span>
       </div>

@@ -84,6 +84,15 @@ export const instance = onchainTable(
     epochLength: t.bigint().notNull(),
     paramsHash: t.hex().notNull(),
     params: t.json().notNull(),
+    // Null for legacy raw-hash instances. Versioned factory instances discover this from the
+    // separate `ParamsControllerCreated` event so the frozen `InstanceCreated` ABI never changes.
+    paramsController: t.hex(),
+    paramsVersion: t.bigint(),
+    paramsExecutedAtBlock: t.bigint(),
+    paramsExecutedTimestamp: t.bigint(),
+    paramsExecutedTxHash: t.hex(),
+    // Null until the first CheckpointParamsPinned event carrying the current version's hash.
+    paramsFirstCheckpoint: t.bigint(),
     // Denormalized out of `params` so seed membership is queryable without unpacking the JSON.
     trustedSeeds: t.hex().array().notNull(),
     createdBlock: t.bigint().notNull(),
@@ -100,6 +109,45 @@ export const instance = onchainTable(
     schemaUidIdx: index().on(t.schemaUid),
     createdBlockIdx: index().on(t.createdBlock),
     createdTimestampIdx: index().on(t.createdTimestamp),
+    paramsControllerIdx: index().on(t.paramsController),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
+       APPEND-ONLY TRUST-GRAPH PARAMETER VERSION HISTORY
+//////////////////////////////////////////////////////////////*/
+
+export const parameterVersion = onchainTable(
+  'parameter_version',
+  (t) => ({
+    id: t.text().primaryKey(), // `${instanceId}-${version}`
+    instanceId: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    paramsHash: t.hex().notNull(),
+    previousParamsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    trustedSeeds: t.hex().array().notNull(),
+    evidenceURI: t.text().notNull(),
+    executor: t.hex().notNull(),
+    executedAtBlock: t.bigint().notNull(),
+    executedTimestamp: t.bigint().notNull(),
+    executedTxHash: t.hex().notNull(),
+    firstCheckpoint: t.bigint(),
+    firstCheckpointBlock: t.bigint(),
+    firstCheckpointTimestamp: t.bigint(),
+    firstCheckpointTxHash: t.hex(),
+    // Inconsistent versions remain visible for diagnosis but never replace the instance's current
+    // tuple. This prevents one malformed instance from stalling indexing for healthy networks.
+    valid: t.boolean().notNull(),
+    invalidReason: t.text(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    controllerIdx: index().on(t.controller),
+    versionIdx: index().on(t.instanceId, t.version),
+    paramsHashIdx: index().on(t.instanceId, t.paramsHash),
+    checkpointIdx: index().on(t.instanceId, t.firstCheckpoint),
   })
 )
 
@@ -390,7 +438,7 @@ export const anchorCheckpoint = onchainTable(
 
 // The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
 // accumulator-bearing resolver (the trust EASIndexerResolver instances, kinds {0, 1}, and the
-// ContributionResolver, kinds 0–5 per docs/contributions/INTERFACES.md §2). This is the indexer's
+// ContributionResolver, kinds 0–5 per docs/build/contributions/interfaces.md §2). This is the indexer's
 // mirror of the exact `RawEdge` stream the ZK guest consumes: ordering by (block_number, log_index)
 // is fold order (each fold emits exactly one AttestationAttested/AttestationRevoked marker), and
 // `data` is the payload preimage of the folded `dataHash`. The derived-scoring recompute truncates
