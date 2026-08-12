@@ -81,7 +81,7 @@ Install the latest version of pnpm: https://pnpm.io/installation
 curl -L https://foundry.paradigm.xyz | bash && $HOME/.foundry/bin/foundryup
 ```
 
-## Rust v1.85+
+## Rust v1.87+
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh

@@ -32,7 +32,7 @@ tasks:
       RPC_URL:
         sh: task get-rpc
     requires:
-      vars: [INPUT]
+      vars: [INPUT, STATEMENT_SCHEMA_UID]
     cmds:
       - |
         forge script script/EASAttest.s.sol:EASAttest \
@@ -81,6 +81,7 @@ tasks:
       RPC_URL:
         sh: task get-rpc
       MERKLE_FUND_DISTRIBUTOR_ADDRESS: '{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}'
+      DISTRIBUTION_INDEX: '{{.DISTRIBUTION_INDEX | default "0"}}'
     preconditions:
       - test -f .docker/deployment_summary.json
       - test -n "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
@@ -88,8 +89,9 @@ tasks:
       - |
         echo "Using reward distributor: {{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
         forge script script/Merkler.s.sol:Merkler \
-          --sig "queryContractState(string)" \
+          --sig "queryContractState(string,uint256)" \
           "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}" \
+          "{{.DISTRIBUTION_INDEX}}" \
           --rpc-url {{.RPC_URL}}
 
   claim-rewards:
@@ -98,39 +100,35 @@ tasks:
       RPC_URL:
         sh: task get-rpc
       MERKLE_FUND_DISTRIBUTOR_ADDRESS: '{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}'
-      REWARDS_TOKEN_ADDRESS: '{{.REWARDS_TOKEN_ADDRESS}}'
+      DISTRIBUTION_INDEX: '{{.DISTRIBUTION_INDEX | default "0"}}'
     env:
       IPFS_GATEWAY_URL: 'http://127.0.0.1:8080/ipfs/'
     preconditions:
       - test -f .docker/deployment_summary.json
       - test -n "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
-      - test -n "{{.REWARDS_TOKEN_ADDRESS}}"
     cmds:
       - |
         echo "Using reward distributor: {{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
-        echo "Using rewards token: {{.REWARDS_TOKEN_ADDRESS}}"
+        echo "Using distribution index: {{.DISTRIBUTION_INDEX}}"
         forge script script/Merkler.s.sol:Merkler \
-          --sig "claimRewards(string,string)" \
+          --sig "claimRewards(string,uint256)" \
           "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}" \
-          "{{.REWARDS_TOKEN_ADDRESS}}" \
+          "{{.DISTRIBUTION_INDEX}}" \
           --rpc-url {{.RPC_URL}} \
           --broadcast --ffi
 
   query-rewards-balance:
-    desc: 'Query rewards token balance for an address'
+    desc: 'Query native ETH balance for an address'
     vars:
       RPC_URL:
         sh: task get-rpc
-      REWARDS_TOKEN_ADDRESS: '{{.REWARDS_TOKEN_ADDRESS}}'
     preconditions:
       - test -f .docker/deployment_summary.json
-      - test -n "{{.REWARDS_TOKEN_ADDRESS}}"
+      - test -n "{{.WALLET_ADDRESS}}"
     cmds:
       - |
         echo "Querying rewards balance for: {{.WALLET_ADDRESS}}"
-        echo "Using rewards token: {{.REWARDS_TOKEN_ADDRESS}}"
         forge script script/Merkler.s.sol:Merkler \
-          --sig "queryBalance(string,string)" \
-          "{{.REWARDS_TOKEN_ADDRESS}}" \
+          --sig "queryBalance(string)" \
           "{{.WALLET_ADDRESS}}" \
           --rpc-url {{.RPC_URL}}

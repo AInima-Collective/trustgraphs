@@ -316,10 +316,9 @@ forge script script/Schema.s.sol:EasSchema \
 
 ### Common Errors
 
-- **"Invalid schema"**: Check schema syntax - ensure proper type,name formatting
+- **"Invalid schema"**: Check schema syntax - ensure proper type,name formatting (the registrar also rejects empty schemas)
 - **"Schema already exists"**: The exact schema+resolver+revocable combination is already registered
 - **"Invalid resolver"**: Resolver address doesn't implement ISchemaResolver interface
-- **"Insufficient permissions"**: Using registrar contract without proper permissions
 
 ### Schema Syntax Validation
 

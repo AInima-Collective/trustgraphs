@@ -59,7 +59,7 @@ build the guests itself if they're missing — it just takes minutes instead of 
 **The whole product — a funded network, a real graph, the scheduler, the payout:**
 
 ```bash
-anvil --block-time 1 &     # task demo refuses to own your chain, or your services
+anvil --block-time 1     # task demo refuses to own your chain, or your services
 task start-all-local       # IPFS + the ponder database, from docker-compose.dev.yml
 task demo
 ```
@@ -85,7 +85,7 @@ binary), and its deployed instances. Status snapshot:
 
 | Program | What it proves | Status | Docs |
 |---|---|---|---|
-| **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** (a legacy v1 instance runs on Optimism, frozen — see [PROGRAMS.md](./docs/PROGRAMS.md)) | [architecture](./docs/trust-graph/ARCHITECTURE.md) · [runbook](./docs/trust-graph/RUNBOOK.md) · [local testing](./docs/trust-graph/LOCAL_TESTING.md) |
+| **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/trust-graph/ARCHITECTURE.md) · [runbook](./docs/trust-graph/RUNBOOK.md) · [local testing](./docs/trust-graph/LOCAL_TESTING.md) |
 | **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/signer-sync/ARCHITECTURE.md) · [runbook](./docs/signer-sync/RUNBOOK.md) |
 | **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/hypercerts/ARCHITECTURE.md) · [runbook](./docs/hypercerts/RUNBOOK.md) · [local testing](./docs/hypercerts/LOCAL_TESTING.md) |
 | **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/contributions/ARCHITECTURE.md) · [runbook](./docs/contributions/RUNBOOK.md) · [local testing](./docs/contributions/LOCAL_TESTING.md) |
@@ -117,3 +117,11 @@ attestation feed; its vectors live under that file's `signer` key).
 ## License
 
 [MIT](./LICENSE)
+
+## Acknowledgements
+
+Many people have worked on trustgraphs over the years, it's part of the scenius atm.
+
+We don't claim to be the first or have any ownership over the term.
+
+We are grateful to all who came before for the work they've done.

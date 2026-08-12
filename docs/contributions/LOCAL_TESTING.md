@@ -169,7 +169,7 @@ The frontend first: its `predev` regenerates `frontend/lib/contract-abis` and th
 from `.docker/deployment_summary.json`, which the indexer then imports. (For a pure CLI/indexer
 run without the UI you can regenerate the ABIs directly with `pnpm frontend wagmi:generate`
 before starting the indexer — but keep the order.) Contributions networks route to the round view;
-keep `NEXT_PUBLIC_CONTRIBUTIONS_MOCKS` unset so the pages read the live API.
+keep `NEXT_PUBLIC_TG_REVIEW_FIXTURES` unset so the pages read the live API.
 
 ### 4. Seed the round (the 6-persona fixture)
 
@@ -370,9 +370,9 @@ task contributions:prove-round ID=<checkpoint>
   sidecar params file's 21-word hash reproduces the snapshot's on-chain `paramsHash` at ingest
   time. Keep `params.contributions.json` in sync: the `open-round-window` task maintains it, so if
   you rotate params by hand, rotate the file in the same breath, **before** `submit-proof`.
-- **`NEXT_PUBLIC_CONTRIBUTIONS_MOCKS` must stay OFF** (unset). It exists only for building
-  screens before an indexer exists; with it on, the driver and the pages read mock fixtures
-  instead of the live API.
+- **`NEXT_PUBLIC_TG_REVIEW_FIXTURES` must stay OFF** (unset). It exists only for building and
+  reviewing screens without live data; with it set to `1`, the pages read built-in review
+  fixtures instead of the live API.
 - **Trigger reverts `EpochNotElapsed`?** `CONTRIBUTIONS_EPOCH_LENGTH` (default 10 blocks in dev)
   paces `trigger()`. Mine blocks (`cast rpc anvil_mine 10`) or wait.
 - **Trigger reverts `NotSnapshot`?** The mirror's one-shot `bindSnapshot` is missing — only

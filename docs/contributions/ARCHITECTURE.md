@@ -8,8 +8,8 @@ lifecycle §6, decisions §9 — normative; deviations are recorded in
 schema strings, fold `kind` tags, the 21-word params tuple, journal reuse,
 blob format — is [`INTERFACES.md`](./INTERFACES.md).
 
-`contributions` is the fifth program
-([`../PROGRAMS.md`](../PROGRAMS.md)): attest a contribution (or nominate
+`contributions` is one of the platform's SP1 programs
+([`../PROGRAMS.md`](../PROGRAMS.md) is the index): attest a contribution (or nominate
 one), let others score it, and split a funding pool by those valuations
 weighted by the raters' **proven** reputation — the whole path from vouch
 graph to payout computed inside one SP1 proof and claimed through
@@ -23,7 +23,8 @@ same module), and golden-locked four ways in
 
 ## The two-accumulator wiring
 
-Journal v2 is reused unmodified with both lanes live:
+The shared journal (v3 — [`INTERFACES.md`](./INTERFACES.md) §4) is reused unmodified with both
+lanes live:
 
 | slot | commitment | contract |
 |---|---|---|
@@ -53,7 +54,7 @@ the resolver's own allowlist index, not attacker-supplied.
 both lanes to the checkpointed accumulators, embeds the params sidecar) →
 guest: reconcile (revocation-excludes, LWW, round window) → stage-1 PageRank →
 stage-2 filters/budgets/consent/carve-out → `distribute_points_generic` →
-journal v2 (`paramsHash` = the 21-word tuple; `skippedDigest` = 0 in v1;
+journal v3 (`paramsHash` = the 21-word tuple; `skippedDigest` = 0 in v1;
 outputs: root over `(address, value)` leaves + canonical blob CID) →
 `submitProof` (journal digest reconstructed from checkpointed storage) →
 `distribute`/`claim`/`sweep` on `MerkleFundDistributor`. The indexer's

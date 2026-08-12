@@ -9,7 +9,7 @@
  *
  * Data source: the `offchain.hypercerts_metadata` + `offchain.hypercerts_score` tables (the lane-2
  * twins of `merkle_metadata`/`merkle_entry`). Their ingestion is the off-chain prover/witness pipeline
- * (`ingestHypercertsScores` in ../anchor.ts), stubbed for now — so with no live rows these routes 404;
+ * (`ingestHypercertsScores` in ../anchor.ts) — with no ingested rows these routes 404;
  * the proof-construction logic is verified independently by src/api/hypercerts-tree.test.ts.
  *
  * The proof is rebuilt with the guest's exact OZ StandardMerkleTree over the SAME leaf set the guest

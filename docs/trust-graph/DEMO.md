@@ -108,10 +108,9 @@ can actually see any of it:
   scores        readable at http://127.0.0.1:8080/ipfs/bafkreiclfxhopt…
 ```
 
-(That capture predates the round joining the flow. `prove` now tags each tick with
+(That capture predates the round joining the flow: `prove` now tags each tick with
 `[trust … · round …]` and waits for both roots, the report adds `round landed` / `round funded` /
-`ALICE holds` lines, and a `payout` step follows `settle` — re-capture the block on the next
-verified run.)
+`ALICE holds` lines, and a `payout` step follows `settle`.)
 
 Every step is also its own task, because the useful thing about a demo is re-running one piece of
 it:

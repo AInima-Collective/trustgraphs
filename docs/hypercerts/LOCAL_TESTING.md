@@ -114,7 +114,7 @@ $PROVER hypercerts buildinput \
 # (reads $HC/witness-archive, writes $HC/hypercerts_input.json; --archive-dir/--out override)
 # --snapshot is what fills the journal-v3 `instanceDomain`. It matters MORE for this program than
 # any other: its params carry no instance-unique field and lane 1 is permanently (0, 0), so the
-# domain is the ONLY thing separating two identically-configured instances (issue #9). Omit it and
+# domain is the ONLY thing separating two identically-configured instances. Omit it and
 # `buildinput` warns, `execute` still works, and `submitProof` refuses the proof. If the snapshot
 # does not exist yet, run step 3 first and re-run this.
 
@@ -257,10 +257,10 @@ on-chain root with no mock anywhere in the path.
 
 ### 8. See it in the UI
 
-The frontend ships a **Hypercerts** card (`config/networks.development.json`, the
-`program: "hypercerts"` entry) that renders the proven scores read-only: a DID-keyed member
-table with handles resolved via the PLC directory, instance statistics, and no attest flow.
-Keep that entry's `merkleSnapshot` in sync with your deploy artifact.
+The frontend renders any `program: "hypercerts"` entry in `config/networks.development.json` as a
+read-only **Hypercerts** card: a DID-keyed member table with handles resolved via the PLC
+directory, instance statistics, and no attest flow. Add an entry for your instance (the shipped
+catalog has none) and keep its `merkleSnapshot` in sync with your deploy artifact.
 
 ```bash
 # a. Tell the indexer about the instance (Ponder discovers contracts from the deployment summary).
@@ -293,8 +293,8 @@ pnpm frontend dev        # → http://localhost:3000/networks/hypercerts
 
 > **Addresses must match YOUR deploy.** The `hypercerts` entries in
 > `config/networks.development.json` and `.docker/deployment_summary.json` must both carry the
-> `merkle_snapshot` from `.docker/hypercerts_instance_local_deploy.json` — the catalog ships with
-> the deterministic addresses of the documented flow, which drift if your deployer nonce
+> `merkle_snapshot` from `.docker/hypercerts_instance_local_deploy.json` — contract addresses are
+> deterministic per deployer nonce, so a copied entry drifts as soon as your deploy sequence
 > differs. Diagnosis order when the page is empty: `curl localhost:65421/hypercerts/roots`
 > (indexer saw the event?) → `cast call $SNAP "getLatestState()(...)"` (proof on the current
 > chain?) → fetch the cid through the local gateway (blob pinned?) → the indexer console

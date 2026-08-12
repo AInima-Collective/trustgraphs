@@ -8,7 +8,8 @@ TrustGraph is not ready to deploy to Sepolia by changing environment variables a
 The repository currently has two coupled modes:
 
 - development means local chain 31337 and the modern factory/registry stack;
-- production means Optimism chain 10 and a legacy direct-per-network deployment.
+- production currently means Optimism chain 10 and a legacy direct-per-network deployment path.
+  Both are slated for retirement: Ethereum mainnet is the go-forward production chain.
 
 Ethereum Sepolia should be added as an explicit chain target and should use the modern
 factory/registry architecture. It must use canonical Sepolia EAS, a real SP1 verifier
@@ -83,17 +84,17 @@ parity/test suite. Never substitute MockSP1Gateway on Sepolia.
 
 ## Configuration model
 
-Do not redefine the existing Optimism production deployment as Sepolia. Separate operational
+Do not redefine the legacy Optimism production code path as Sepolia. Separate operational
 strictness from chain identity:
 
 - deployment stage: development or production behavior;
-- chain target: local, sepolia, or optimism;
+- chain target: local, sepolia, or mainnet;
 - chain profile: chain ID, RPC variable, explorer, external addresses, start block, and
   generated artifact names.
 
 A minimally disruptive implementation can add a SepoliaEnv, but a reusable PublicEnv driven
-by a typed chain profile is preferable. Both Sepolia and future Optimism deployments should
-then share the same modern deployment path.
+by a typed chain profile is preferable. Both Sepolia and the future Ethereum mainnet
+deployment should then share the same modern deployment path.
 
 Use chain-scoped, sanitized manifests such as **deployments/sepolia.json** as the interface
 between deployment, indexer, operator, and frontend. Do not use
@@ -328,7 +329,7 @@ size limits. Validate CIDs and add response limits/timeouts on the read proxy.
 
 ### User experience and browser acceptance
 
-- Show a persistent “Ethereum Sepolia — testnet assets have no value” indicator.
+- Show a persistent “Ethereum Sepolia: testnet assets have no value” indicator.
 - Give a clear wrong-network prompt and an add/switch-to-Sepolia action.
 - Link to Sepolia Etherscan and appropriate ETH/test-USDC acquisition guidance.
 - Test WalletConnect allowed origins for the deployed domain.

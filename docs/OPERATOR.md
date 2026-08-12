@@ -133,10 +133,11 @@ track_block_hash = true
 # ── proving ─────────────────────────────────────────────────────────────────
 [prover]
 backend      = "network"        # network | cpu | mock
-cycle_limit  = 1_000_000_000    # refuse instances that would exceed it. MUST name the same
-                                # boundary as the vault's top fee band; that agreement is a test
 groth16      = true
 timeout_s    = 3_600
+# The refuse-to-prove cycle ceiling is deliberately NOT configurable: it is derived from the
+# vault's top fee band (MAX_PRICED_INPUTS) so both sides name the same boundary, and a test on
+# each side asserts the agreement.
 
 # ── loss budgets ────────────────────────────────────────────────────────────
 # Unpreventable spend is real. When one of these is exceeded the instance is HALTED and alerted,
@@ -183,7 +184,6 @@ log_format   = "json"
 | `gas.replacement_after_s` | stuck-tx bump | 300 |
 | `finality.confirmations` | before spending on a checkpoint | 12 |
 | `prover.backend` | `network` \| `cpu` \| `mock` | `network` |
-| `prover.cycle_limit` | refuse-to-prove ceiling | 1e9 |
 | `budget.*_usd_per_day` | halt thresholds | 25 / 250 |
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
@@ -200,9 +200,10 @@ Two keys, following the sp1-blobstream template:
 - `SUBMITTER_PRIVATE_KEY` — pays submit gas. Separate on purpose: the payee is in the journal, so
   the submitting key holds no value and can be rotated without touching bounties.
 
-Startup refuses to run if either balance is below its floor, if the deployed
-`SP1JournalVerifier`'s vkey does not match the guest the binary was built from, or if `chain_id`
-disagrees with `eth_chainId`.
+Startup aborts if `chain_id` disagrees with `eth_chainId`, and alerts if the submitter key has a
+zero balance (every send would fail). An instance whose deployed `SP1JournalVerifier` is pinned to
+a vkey this binary's guest cannot produce is held per instance (`VerifierRotated`) rather than
+spent on.
 
 ---
 
@@ -249,7 +250,7 @@ survives only for index lag or a request created but not yet visible.
 
 One trap, because it silently disarms all of the above: the SDK attaches `public_values_hash` only
 when it simulates, and it skips simulation when **both** `cycle_limit` and `gas_limit` are set.
-This operator's config sets `cycle_limit`. So the adapter must call the lower-level
+This operator sets a `cycle_limit` on every request. So the adapter must call the lower-level
 `NetworkClient::request_proof` with the hash it already computed, not the convenience builder.
 
 ---

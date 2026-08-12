@@ -1,7 +1,7 @@
 # Reproducing a hypercerts epoch from public data (clean-room)
 
-The build plan's "Done when" #3: *for any pilot epoch, a third party holding only public data — the
-chain, the archived CARs, and the witness bundle — can re-derive the root and the full
+The guarantee this document makes good on: *for any pilot epoch, a third party holding only public
+data — the chain, the archived CARs, and the witness bundle — can re-derive the root and the full
 `skippedDigest` preimage, with no appeal to our indexer.* This is the procedure. Every step
 uses only public inputs and this repo's code; nothing consults our infrastructure.
 
@@ -67,5 +67,5 @@ every consumed head is on-chain, and every skipped one is in `hypercerts_skips.j
   *convenience* copy of re-servable-at-the-time public data; its content hashes let you
   cross-check any other archive of the same revs.
 
-The independent-reproduction requirement of the pilot (M5 exit) is this document executed
-by someone who is not us.
+The pilot's independent-reproduction requirement is this document executed by someone who is
+not us.

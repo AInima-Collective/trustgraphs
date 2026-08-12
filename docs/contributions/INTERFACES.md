@@ -1,14 +1,14 @@
-# Contributions program — Interface Freeze (IF)
+# Contributions program — Interfaces
 
 **Status: FROZEN.** This file is the interface contract for the `contributions`
-program (the fifth program on the platform — see [`../PROGRAMS.md`](../PROGRAMS.md)).
+program (see [`../PROGRAMS.md`](../PROGRAMS.md) for the program index).
 Every lane (contracts, core crate, guest/host, indexer, frontend) builds against
 these definitions. A change to anything in this file requires regenerated golden
 vectors (`test/golden/contributions.json`) in the same PR and a
 [`../DEVIATIONS.md`](../DEVIATIONS.md) entry.
 
 Design provenance: [`../../research/CONTRIBUTION_FUNDING.md`](../../research/CONTRIBUTION_FUNDING.md)
-(normative); build history: [`../PROGRAMS.md`](../PROGRAMS.md), deviations of record: [`../DEVIATIONS.md`](../DEVIATIONS.md).
+(normative); program index: [`../PROGRAMS.md`](../PROGRAMS.md), deviations of record: [`../DEVIATIONS.md`](../DEVIATIONS.md).
 
 ## 1. The three EAS schemas
 
@@ -86,7 +86,7 @@ contributions round params.
 | 5 | `maxWeightFp` | uint256 | vouch-weight clamp cap |
 | 6 | `trustMultiplierFp` | uint256 | |
 | 7 | `trustShareFp` | uint256 | |
-| 8 | `trustDecayFp` | uint256 | required by the trust algorithm; included though GOAL's shorthand list omits it |
+| 8 | `trustDecayFp` | uint256 | required by the trust algorithm |
 | 9 | `seedSetRoot` | bytes32 | OZ standard tree over the **sorted** seed addresses, leaf = `keccak256(abi.encode(address))` — same builder as the trust program |
 | 10 | `precisionScale` | uint256 | fixed-point scale S (1e18) |
 | 11 | `weightFieldIndex` | uint32 | ABI head slot of the vouch confidence field |
@@ -104,9 +104,9 @@ contributions round params.
 The struct fields carry the raw (unsorted) seed list; `seedSetRoot` sorts
 internally, so the hash depends only on the seed *set*.
 
-## 4. Journal — v2 reused, frozen
+## 4. Journal — shared shape reused, frozen
 
-The 10-word journal v2 tuple is reused **unmodified** (shape, order, digest rule
+The 12-word journal v3 tuple is reused **unmodified** (shape, order, digest rule
 identical to the trust program — `pagerank-core::encode::journal_encoded`):
 
 | field | contributions meaning |
@@ -118,6 +118,8 @@ identical to the trust program — `pagerank-core::encode::journal_encoded`):
 | `ipfsHash`, `cidDigest` | sha256 + CIDv1(raw) of the canonical blob (§5) |
 | `totalValue` | Σ of all leaf values (= the distributed pool) |
 | `skippedDigest` | **`bytes32(0)` in v1.** Contribution-record skips/filters are deterministic from committed inputs; the indexer derives skip reasons for display. |
+| `recipient` | the bounty payee (v3), committed verbatim by the guest; `submitProof` folds its own `recipient` argument into the digest. Zero address = no bounty. |
+| `instanceDomain` | `keccak256(abi.encode(snapshot, chainId))` (v3), rebuilt on-chain by `submitProof` from `address(this)` + `block.chainid` — binds the proof to one instance. |
 
 ## 5. Blob format
 
@@ -133,8 +135,8 @@ CID = CIDv1, `raw` codec, sha2-256.
 
 - `test/unit/golden/ContributionsGoldenVectors.t.sol` (Solidity)
 - `contributions-core` unit tests (native Rust)
-- the SP1 guest (M2) and `frontend/lib/contributions/golden.test.ts` (M4)
+- the SP1 guest and `frontend/lib/contributions/golden.test.ts`
 
-IF ships the `params` family (every field + `seedSetRoot` + `paramsHash`), the
-`kinds` table, a sample contribution accumulator `leaf`, and a `blob` sample.
-M1 extends the file with the full compute family (fixture edges → journal).
+The file carries the `params` family (every field + `seedSetRoot` + `paramsHash`),
+the `kinds` table, a sample contribution accumulator `leaf`, a `blob` sample, and
+the full `compute` family (fixture edges → journal).

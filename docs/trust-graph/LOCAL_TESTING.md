@@ -124,7 +124,7 @@ DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 
 The Network step deploys the resolver, registers the schema, then computes
 `paramsHash = ParamsCodec.hash(params.json, schemaUid)` — byte-identical to the guest's Rust
-`params_hash` (locked by `test/unit/GoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
+`params_hash` (locked by `test/unit/golden/TrustGraphGoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
 Override the params path with `PARAMS_JSON=/path/to/params.json` if it isn't at the repo root.
 
 **Sync the prover's `schema_uid`.** The proof's params must carry the deployed schema UID. A DEV deploy
@@ -142,7 +142,8 @@ jq --arg s "$(jq -r '.schemas.vouching.uid' config/network_deploy_dev_0.json)" \
 > the schema UID is produced *and* consumed inside the same deploy, so nothing has to reproduce across
 > runs. (Needing it to reproduce is exactly what used to force a pinned-deployer, two-pass,
 > restart-the-fork dance.) Reach for `DEPLOY_ENV=PROD` when you want the production timelock/config
-> wiring and a fixed `FUNDED_KEY` — see the note in [`RUNBOOK.md`](./RUNBOOK.md).
+> wiring and a fixed `FUNDED_KEY` (DEV regenerates the deployer key each run — see the note in
+> `.env.example`).
 
 Addresses are written to `.docker/deployment_summary.json` (Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`), and the frontend + indexer read them from there.

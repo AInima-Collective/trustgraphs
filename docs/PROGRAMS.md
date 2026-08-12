@@ -22,9 +22,9 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 
 | Program | Status | vkey | Docs | Instances |
 |---|---|---|---|---|
-| **trust-graph** (root producer) | **Built** | `0x005c236fe2e6157bd911925c2faefcae4d903e229dee2fc0ef555763dd31c496` (journal v3; box-derived, see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | **The only production deployment**: a legacy v1 instance on Optimism, frozen on journal v1 with its original vkey (`0x00a3d155…`) and never migrated — the current codebase targets fresh deployments (see [PRODUCTION.md](./PRODUCTION.md)) |
+| **trust-graph** (root producer) | **Built** | `0x005c236fe2e6157bd911925c2faefcae4d903e229dee2fc0ef555763dd31c496` (journal v3; box-derived, see the reproducibility caveat below) | [architecture](./trust-graph/ARCHITECTURE.md) · [runbook](./trust-graph/RUNBOOK.md) | no production deployment yet — Ethereum mainnet is the target (see [PRODUCTION.md](./PRODUCTION.md)) |
 | **signer-sync** (Safe owner rotation) | **Built** | `0x00ae498beaea90c508eb3462169d6c516e864672fcadf135bb8a36f5b3ce51f0` (rotated by journal-v3 contagion — its own `SignerJournal` shape is unchanged; box-derived, see the reproducibility caveat below) | [architecture](./signer-sync/ARCHITECTURE.md) · [runbook](./signer-sync/RUNBOOK.md) | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`) |
-| **hypercerts** (AT-proto graph) | **Built** | `0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346` (journal v3; SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Optimism planned (OP Sepolia rehearsal first) |
+| **hypercerts** (AT-proto graph) | **Built** | `0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346` (journal v3; SP1 6.3.1, box-derived) | [architecture](./hypercerts/ARCHITECTURE.md) · [runbook](./hypercerts/RUNBOOK.md) · [partner brief](./hypercerts/PARTNER_BRIEF.md) | pilot on Ethereum mainnet planned (Sepolia rehearsal first) |
 | **contributions** (rep-weighted funding split) | **Built** | `0x00ad63b643bf1af6995e0fd21e444db6d9b831375b601f951c1666f2e1a7231d` (journal v3; SP1 6.3.1, box-derived) | [architecture](./contributions/ARCHITECTURE.md) · [runbook](./contributions/RUNBOOK.md) · [interfaces](./contributions/INTERFACES.md) · [local testing](./contributions/LOCAL_TESTING.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture) |
 
 > **vkeys:** a vkey identifies one exact guest binary, so it changes whenever the guest ELF
@@ -36,8 +36,7 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 > adding a guest bin WITHOUT new crypto patches does NOT rotate sibling vkeys (byte-diff-verified
 > both ways). Deployment-grade vkeys must be derived on the pinned toolchain recorded in the deploy
 > runbook, not an arbitrary box; the values above are from this repo's dev box.
-> The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is never
-> migrated; re-derived vkeys apply to fresh deployments. Rotate live instances' vkeys in
+> Rotate live instances' vkeys in
 > **batches** through the constitutional-timelock path — don't dribble one rotation per change.
 >
 > **params-schema v2 (2026-07-24), measured per program.** The instance factory appended
@@ -56,7 +55,7 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 > reproducibility caveat above, observed again. Treat every value here as this box's, and derive
 > deployment vkeys on the pinned toolchain in the deploy runbook.
 >
-> **journal v3 (2026-07-28).** The proof-scheduler program appended two words to the journal —
+> **journal v3 (2026-07-28).** The proof-scheduler build appended two words to the journal —
 > `recipient` (the bounty payee) and `instanceDomain` (`keccak256(abi.encode(snapshot, chainId))`,
 > rebuilt on-chain by `submitProof`). Because the shape lives in `pagerank_core::Journal` /
 > `encode::journal_encoded`, which every program's guest commits, this rotated **all four** vkeys.
@@ -70,7 +69,7 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 > and no conclusion should be drawn from comparing them. Derive deployment vkeys on the pinned
 > toolchain in the deploy runbook.
 >
-> **Overflow backstop (2026-07-24, same build).** The M6 security review found that
+> **Overflow backstop (2026-07-24, same build).** The instance-factory build's security review found that
 > `zk_core::fixed::mul_div` truncated an over-256-bit quotient instead of failing, so a
 > badly-tuned instance proved WRONG scores and disagreed with the browser's arbitrary-precision
 > port. It now asserts, and the rank loop's accumulations are checked. Because `zk-core` is shared
@@ -82,7 +81,7 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 ## Layout
 
 - `packages/zk-core` — shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal),
-  the single source of truth for the primitives. Extracted at M0; every core crate re-exports it.
+  the single source of truth for the primitives. Extracted in the platform reorg; every core crate re-exports it.
 - `packages/pagerank-core` — trust-graph + signer semantics and their Params/Journal encodings; its
   public API survives the extraction by re-exporting `zk-core`.
 - `zk/program` — one multi-bin guest crate; `build.rs` builds every `[[bin]]`.
@@ -93,7 +92,7 @@ subcommands + golden vectors; adding an instance costs only a deployment.**
 - `docs/<program>/` — how to operate each program today (runbooks, params, addresses). `research/`
   holds *why* (design provenance).
 
-## Adding a fourth program
+## Adding a new program
 
 Per [`../research/MULTI_PROGRAM_PLATFORM.md`](../research/MULTI_PROGRAM_PLATFORM.md) §3 / §8, a new
 program (call it `foo`) is exactly these additions — no change to any existing program's semantics:
@@ -119,13 +118,13 @@ program (call it `foo`) is exactly these additions — no change to any existing
    plus a new row in this table.
 
 Task/CI plumbing: `zk:{vkey|execute|prove|parity}` are generic via `PROGRAM=foo`; `zk:vectors` needs a
-per-program branch (each program writes its own vector file — see the hypercerts branch added at M4),
+per-program branch (each program writes its own vector file — see the existing hypercerts branch),
 and the frontend `pnpm test` script must be extended to compile+run the new program's golden suite.
 The prover's `Cargo.toml` also gains the new core crate as a dependency (step 3's clap group needs it).
 The CI parity job runs for every program on every PR touching `packages/` or `zk/`.
 
 **Contracts are reuse, not new code.** A new program deploys a fresh labeled `SP1JournalVerifier`
 instance (same bytecode, its own immutable vkey) against the same SP1 gateway, reuses `MerkleSnapshot`
-on journal v2, and adds a `ParamsCodec` twin golden-locked to its crate's `params_hash`. Standing up
+on journal v3, and adds a `ParamsCodec` twin golden-locked to its crate's `params_hash`. Standing up
 another *instance* of an existing program costs only a deployment (a new contract set + params +
 indexer/frontend view) — no Rust, no guest, no vectors.

@@ -41,8 +41,8 @@ Two hard rules inherited from the codebase:
 
 ## PR conventions
 
-- Keep PRs scoped to one concern; note any plan deviation in
-  [`docs/DEVIATIONS.md`](./docs/DEVIATIONS.md) (what changed, why, which plan section).
+- Keep PRs scoped to one concern; note any deviation from the documented design in
+  [`docs/DEVIATIONS.md`](./docs/DEVIATIONS.md) (what changed and why).
 - `task fmt` before committing (forge fmt + cargo fmt); frontend/indexer use
   `pnpm run format`.
 - Generated artifacts belong under the gitignored `.trustgraph/` directory — never commit
@@ -52,5 +52,4 @@ Two hard rules inherited from the codebase:
 
 - Operator docs: [`docs/`](./docs/README.md) (per-program `ARCHITECTURE`/`RUNBOOK`/`LOCAL_TESTING`)
 - Design docs / provenance: [`research/`](./research/) (superseded designs in `research/archive/`)
-- Active build plan (when one is in flight): `GOAL.md` at the repo root — deleted when the
-  program closes; history lives in git and `docs/DEVIATIONS.md`
+- Change history: git and [`docs/DEVIATIONS.md`](./docs/DEVIATIONS.md)

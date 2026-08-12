@@ -24,7 +24,7 @@ two were appended for the factory:
 | 16  | `accumulator` (address) | The instance's `EASIndexerResolver` |
 | 17  | `chainId` (uint64)      | `block.chainid` at creation         |
 
-The journal is **untouched** — still the 10 fields of journal v2. Separation lives in the params.
+The journal is **untouched** by this change — domain separation lives in the params, not the journal.
 
 #### What this actually buys (measured, and narrower than the design doc claimed)
 
@@ -57,11 +57,9 @@ constant so only the new field moves — a proof whose params differ **solely** 
 refused by the instance it was otherwise built for.
 
 Consequences, all already applied: golden vectors regenerated (`test/golden/trust-graph.json`);
-the trust-graph, signer-sync and contributions vkeys rotated for this change while hypercerts' ELF
-stayed byte-identical (a later overflow fix in the shared `zk-core` then rotated all four — see
-[`../PROGRAMS.md`](../PROGRAMS.md) for the measured tables); `params.json` gained `accumulator` and
-`chain_id`; `input-exporter` fills both from the connection it is actually reading and **errors** if
-the file names a different instance.
+the program vkeys rotated (current values in [`../PROGRAMS.md`](../PROGRAMS.md)); `params.json`
+gained `accumulator` and `chain_id`; `input-exporter` fills both from the connection it is actually
+reading and **errors** if the file names a different instance.
 
 ### 1.2 `CreateArgs`
 
@@ -120,13 +118,10 @@ event InstanceCreated(
 
 - the prover reconstructs any instance's input from chain data alone (registry → addresses, event →
   params), self-checking `ParamsCodec.hash(event.params) == snapshot.paramsHash()`. That invariant
-  always holds, and the M5 loop treats a violation as a hard stop;
+  always holds, and the proving loop treats a violation as a hard stop (§5);
 - the indexer and UI can show what a community actually computes — seeds, damping, epoch — instead of
   an opaque 32-byte hash;
 - anyone can audit a community's parameters without asking its operator for a JSON file.
-
-It is a superset of the design doc's list (`admin`, `distributorToken` and the effective
-`epochLength` were added); nothing was removed.
 
 ### 1.5 The canonical vouch schema
 
@@ -228,7 +223,7 @@ but the controller is the sole operational holder on new trust graphs.
 | `admin`                        | not the factory itself — see below                                     |
 | `epochLength`                  | raised to `EPOCH_FLOOR`, never rejected                                |
 
-Two of those are less obvious than they look, and both were caught by the M1 battery:
+Two of those are less obvious than they look, and both were caught by the factory's test battery:
 
 - **`admin` may not be the factory.** Step 5 grants `CONSTITUTIONAL_ROLE` to the admin and then
   renounces the factory's own. Name the factory as admin and those become grant-then-revoke on the

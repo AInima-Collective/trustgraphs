@@ -6,6 +6,7 @@ The `EASAttest.s.sol` script provides a simple interface for making direct attes
 
 This Foundry script allows you to:
 
+- Create vouching attestations (comment + confidence)
 - Create basic EAS attestations without payment
 - Create EAS attestations with ETH payment (useful for payment-enabled resolvers)
 - Use convenient milliether units for payments
@@ -16,8 +17,12 @@ This Foundry script allows you to:
 ### Via Taskfile (Recommended)
 
 ```bash
+# Create a vouching attestation (uses the dev network's vouching schema)
+task forge:vouch RECIPIENT=0xYOUR_RECIPIENT_ADDRESS COMMENT="great work" CONFIDENCE=90
+
 # Create a statement attestation with 0.001 ETH payment
-task forge:trigger-statement-attestation INPUT="Hello, World!"
+# (STATEMENT_SCHEMA_UID is not auto-resolved; pass it explicitly)
+task forge:trigger-statement-attestation INPUT="Hello, World!" STATEMENT_SCHEMA_UID=0xYOUR_SCHEMA_UID
 ```
 
 ### Direct Forge Script Execution
@@ -44,6 +49,25 @@ forge script script/EASAttest.s.sol:EASAttest \
 ```
 
 ## Available Methods
+
+### 0. `vouch(easAddr, vouchingSchema, recipient, comment, confidence)`
+
+Creates a vouching attestation (the schema behind trust-graph edges).
+
+**Parameters:**
+
+- `easAddr`: EAS contract address (hex string with 0x prefix)
+- `vouchingSchema`: Vouching schema UID (hex string with 0x prefix, 32 bytes)
+- `recipient`: Recipient address (hex string with 0x prefix)
+- `comment`: Comment string
+- `confidence`: Confidence level (0-100)
+
+**Features:**
+
+- Encodes `(comment, confidence)` as the attestation data
+- Revocable attestation, no expiration time, no payment
+- Uses FUNDED_KEY for signing
+- Available via `task forge:vouch` (reads the vouching schema UID from `config/network_deploy_dev_<N>.json`)
 
 ### 1. `attest(easAddr, schema, recipient, data)`
 
@@ -110,7 +134,7 @@ The script uses the following environment variables (configured via `.env`):
 
 The script is integrated with the project's Taskfile workflow:
 
-### Updated Task: `forge:trigger-statement-attestation`
+### Task: `forge:trigger-statement-attestation`
 
 ```yaml
 trigger-statement-attestation:
@@ -141,11 +165,13 @@ trigger-statement-attestation:
 
 ## Environment Variable Sources
 
-The Taskfile automatically resolves environment variables from deployment configuration:
+The Taskfile automatically resolves most variables from deployment configuration:
 
 - `EAS_ADDR`: From `.docker/deployment_summary.json` → `eas.eas`
-- `STATEMENT_SCHEMA_UID`: From `.docker/deployment_summary.json` → `eas.schemas.statement`
 - `WALLET_ADDRESS`: Derived from `FUNDED_KEY` using `cast wallet address`
+- `STATEMENT_SCHEMA_UID`: Not auto-resolved; pass it on the command line
+  (`task forge:trigger-statement-attestation INPUT=... STATEMENT_SCHEMA_UID=0x...`)
+  after registering a statement schema (see `SchemaExamples.md`)
 
 ## Payment Support
 

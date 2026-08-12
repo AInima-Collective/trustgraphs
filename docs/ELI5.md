@@ -114,9 +114,11 @@ the scoring rules?" is its own attack surface. The short version of TrustGraph's
   had time to object, switch versions, or exit. An emergency brake exists for genuine
   bugs, but it can only stop the machine, never change the rules.
 
-One honest caveat: this upgrade machinery is **designed but not yet fully implemented** —
-unlike the proof loop above, which is built and running. The full design is in
-[`research/UPGRADE_GOVERNANCE.md`](../research/UPGRADE_GOVERNANCE.md).
+One honest caveat: only part of this is running today. Sealed, governed parameter
+versions are built — including a preview that shows how a proposed change would move
+everyone's scores before it takes effect. The rest of the machinery, including the slow
+path for changing the algorithm itself, is **designed but not yet implemented**. The full
+design is in [`research/UPGRADE_GOVERNANCE.md`](../research/UPGRADE_GOVERNANCE.md).
 
 ## In one paragraph
 

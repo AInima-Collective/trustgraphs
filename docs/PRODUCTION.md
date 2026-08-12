@@ -61,8 +61,11 @@ Three things to get right before the first tick:
 The indexer has two production processes: a versioned writer and a stable read server. Set:
 
 ```bash
-PONDER_RPC_URL_10=https://your-archive-capable-optimism-rpc
-PONDER_START_BLOCK_10=<earliest configured contract deployment block>
+PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # note: the production profile in
+                                        # indexer/ponder.config.ts is currently pinned to chain 10
+                                        # (reads PONDER_RPC_URL_10); the go-forward production
+                                        # chain is Ethereum mainnet (chain 1)
+PONDER_START_BLOCK_<chainId>=<earliest configured contract deployment block>
 PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
 PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
 DATABASE_URL=postgresql://...

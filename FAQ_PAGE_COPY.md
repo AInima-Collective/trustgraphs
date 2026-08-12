@@ -33,15 +33,16 @@ Service. A vouch is one kind. You can revoke it later.
 
 **Who picks the starting accounts?**
 Your community does, when the network is created. They anchor the whole graph, so choosing
-them well is the real work. Changing them later is a settings change only the network’s
-admin wallet can make.
+them well is the real work. Changing them later is a settings change made through the
+network’s own governance.
 
-`["Everything downstream is math" was refuted twice over. The seed set lives inside the
-params commitment, and setParamsHash is held by the admin wallet from birth with no
-timelock, so the seeds can be re-pinned for the next round. And setZkVerifier sits with the
-same wallet, so downstream of the seed pick is a key that can replace the thing checking the
-maths. The wizard already concedes the first half: "Changing this list later means editing
-your network's settings by hand."]`
+`["Everything downstream is math" would still overclaim. The seed set lives inside the
+params commitment, and for a network created through the app the powers that re-pin it
+(setParamsHash, via the params controller) and setZkVerifier sit with the network's
+governance account. Score-weighted proposals can exercise them, and so can the creator's
+wallet, which is that account's only signer at birth. So downstream of the seed pick is
+still a key that can replace the thing checking the maths. The wizard already concedes the
+first half: "Changing this list later means editing your network's settings by hand."]`
 
 **How often do scores update?**
 In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new
@@ -110,9 +111,9 @@ one account’s score against the on-chain root, given the score and its proof.
 **Is this ready for production?**
 No. The proof loop is built and runs end to end on a test chain, though the on-chain proof
 check is still a stand-in and no real proof has been produced yet. The pieces around it are
-not finished. A network created through the app is governed by one wallet: the timelock
-that should hold those powers exists but is not wired up yet. More attestation sources are
-in progress.
+not finished. A network created through the app can pass proposals with its own scores, but
+the wallet that created it keeps an emergency key that can still change anything. More
+attestation sources are in progress.
 
 **Has it been audited?**
 Not by an outside firm. Point a network at something you can afford to get wrong.

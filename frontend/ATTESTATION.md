@@ -5,19 +5,19 @@ This document describes the functional attestation UI implementation for the Tru
 ## Features Implemented
 
 ### 1. Wallet Integration
-- **Connect Wallet**: Uses wagmi's useConnect hook with injected connector (MetaMask)
+- **Connect Wallet**: Uses wagmi's useConnect hook; the picker lists the browser wallet plus any wallets the browser announces (MetaMask, Coinbase Wallet, WalletConnect, Porto)
 - **Account Status**: Displays connected wallet address and connection status
 - **Local Chain Support**: Configured for Anvil local development (chain ID 31337)
 
 ### 2. Attestation Form
-- **Schema Selection**: Dropdown with available schemas (Basic and Compute)
+- **Schema Selection**: Dropdown with the schemas registered for this deployment (from the schema registry)
 - **Recipient Input**: Ethereum address validation
-- **Data Input**: Textarea for attestation data with schema-specific hints
+- **Data Input**: Schema-specific fields with hints
 - **Form Validation**: React Hook Form integration with proper error handling
 
 ### 3. Contract Integration
-- **Contract Address**: Uses deployed Attester contract from deployment_summary.json
-- **ABI Integration**: Full Attester contract ABI included
+- **Contract Address**: Attestations are created directly against the deployed EAS contract; addresses come from the generated config
+- **ABI Integration**: EAS ABI included via generated contract bindings
 - **Transaction Handling**: Proper loading states and transaction confirmation
 - **Error Handling**: Displays contract and network errors
 
@@ -36,16 +36,17 @@ This document describes the functional attestation UI implementation for the Tru
 
 ### Key Files
 - `lib/wagmi.ts`: Wagmi configuration with local chain support
-- `lib/contracts.ts`: Contract addresses, ABIs, and schema UIDs
+- `lib/contracts.ts`: Generated contract addresses and ABIs
+- `lib/schemas.ts` / `lib/schema-registry.ts`: Schema definitions, encoding, and decoding
 - `hooks/useAttestation.ts`: Custom hook for attestation creation
-- `app/backroom/attestations/page.tsx`: Main attestation page component
-- `components/ui/*`: UI component library
+- `app/attestations/page.tsx`: Main attestation page component
+- `components/*`: UI component library
 
 ### Contract Integration Details
-- **Attester Contract**: `0xB593Ee0C7b01711449129b655d28d5b69f9488BE`
+- **EAS Contract**: Address comes from the generated config for the active deployment
 - **Chain ID**: 31337 (local Anvil)
 - **RPC URL**: `http://localhost:8545`
-- **Schema Support**: Basic Schema and Compute Schema from deployment
+- **Schema Support**: Schema UIDs come from the deployment's schema registry
 
 ## Usage
 
@@ -67,7 +68,7 @@ This document describes the functional attestation UI implementation for the Tru
 
 To test the attestation functionality:
 1. Ensure Anvil is running on `http://localhost:8545`
-2. Ensure the Attester contract is deployed at the specified address
+2. Ensure the contracts are deployed (EAS, resolver, and schemas) and the frontend config has been generated
 3. Have a wallet with ETH for gas fees
 4. Connect the wallet and try creating an attestation
 

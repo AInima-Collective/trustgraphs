@@ -105,5 +105,9 @@ The selection rule (`topN` / `minThreshold` / `targetThresholdBps`) is governanc
 ## Governance
 
 `SignerSyncZkModule`: its `owner` (set a `TimelockController` in production) governs `setZkVerifier`,
-`setAccumulator`, `setParamsHash`, and `setSelectionParamsHash`. Deploy a new signer verifier
-(`SP1JournalVerifier(gateway, newSignerVkey)`) + `setZkVerifier` when the signer guest changes.
+`setAccumulator`, and `setSelectionParamsHash`. `setParamsHash` is held by a separate
+`paramsAuthority` — initialized to the owner, handed off by the owner via a two-step
+transfer/accept — so params rotation can sit with a different governance lane than the
+truth-defining knobs. Deploy a new
+signer verifier (`SP1JournalVerifier(gateway, newSignerVkey)`) + `setZkVerifier` when the signer
+guest changes.

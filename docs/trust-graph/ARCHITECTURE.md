@@ -10,9 +10,10 @@ in `packages/pagerank-core` (which re-exports the shared `packages/zk-core` prim
 byte-identical across native Rust, the SP1 guest (`zk/program`), Solidity golden tests, and the
 frontend TS port.
 
-> **Journal note.** The research doc describes v1's 7-field journal. From **M2**, journal **v2** (the
-> two-lane shape, empty-lane-as-zero-accumulator) supersedes that section for all new instances; see
-> [`../../research/MULTI_PROGRAM_PLATFORM.md`](../../research/MULTI_PROGRAM_PLATFORM.md) §4. The live v1
-> Optimism deployment stays frozen on journal v1.
+> **Journal note.** The research doc describes v1's 7-field journal. All new instances use the
+> two-lane journal (empty-lane-as-zero-accumulator; see
+> [`../../research/MULTI_PROGRAM_PLATFORM.md`](../../research/MULTI_PROGRAM_PLATFORM.md) §4), now at
+> **v3** with the bounty `recipient` and `instanceDomain` fields appended
+> ([`../PROGRAMS.md`](../PROGRAMS.md)).
 
 To operate the program, see [`RUNBOOK.md`](./RUNBOOK.md).

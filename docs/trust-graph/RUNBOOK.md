@@ -77,19 +77,16 @@ cargo run --release -- trust-graph vkey        # -> 0x....   (programVKey)
 ```
 
 > **vkey:** the current trust-graph vkey is recorded in [`../PROGRAMS.md`](../PROGRAMS.md) (it
-> rotates whenever the guest ELF changes, even for refactors that don't change semantics). The
-> **frozen v1 Optimism deployment** keeps its already-deployed vkey
-> `0x00a3d155dede72bb1651783cb67497e4215bf9bfd688096cb33bbef7a632a819` and is never migrated;
-> fresh deployments use the current value.
+> rotates whenever the guest ELF changes, even for refactors that don't change semantics).
 
 The canonical `paramsHash` is **not** a manual deploy input — `DeployNetwork` computes it on-chain from
 `params.json` after registering the schema (`ParamsCodec.hash`, byte-identical to the guest's
 `params_hash`, locked by `TrustGraphGoldenVectors.t.sol`). The CLI still computes it for
-verification/CI, but note `paramshash` deserializes a full `GuestInput` (`{edges, params}`), not a bare
-params file — wrap it:
+verification/CI; `paramshash` reads a full `GuestInput` (`{edges, params}`) by default, so pass a bare
+params file with `--params`:
 
 ```bash
-jq '{edges: [], params: .}' params.json | cargo run --release -- trust-graph paramshash /dev/stdin   # -> 0x....
+cargo run --release -- trust-graph paramshash --params params.json   # -> 0x....
 ```
 
 `params.json` is a serialized `pagerank_core::Params` (the governance-pinned PageRank parameters).
@@ -384,9 +381,9 @@ What is validated end-to-end in CI-class hardware:
   its committed public values are asserted **byte-identical** to native `pagerank-core::compute` and to
   the Solidity golden vectors (`test/golden/trust-graph.json`) and the frontend TS port. Guest cost ≈
   **1.79M cycles** for the sample (seconds-to-minutes to prove on adequate hardware).
-- **Verification key** (deploy constant): re-derived at M0 exit and recorded in
+- **Verification key** (deploy constant): recorded in
   [`../PROGRAMS.md`](../PROGRAMS.md) — `cargo run -p trustgraph-prover -- trust-graph vkey`. Re-derive
-  after any guest change. (The frozen v1 deployment keeps `0x00a3d155…`.)
+  after any guest change.
 - **On-chain verify adapter** (`SP1JournalVerifier`) is unit-tested against a mock verifier
   (`test/unit/MerkleSnapshot.t.sol`): it binds `keccak256(publicValues) == journalDigest` and delegates
   to the SP1 gateway with the immutable `programVKey`.

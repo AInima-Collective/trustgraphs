@@ -1,14 +1,15 @@
 # Deviations
 
 Build-time deviations from the normative plans — the milestone build plans (platform reorg,
-offchain attestations, hypercerts, contributions, and the current cleanup program) plus
+offchain attestations, hypercerts, contributions, the repo cleanup, and the proof scheduler) plus
 [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](../research/OFFCHAIN_ATTESTATIONS_ZK.md),
 [`research/MULTI_PROGRAM_PLATFORM.md`](../research/MULTI_PROGRAM_PLATFORM.md), and
 [`research/HYPERCERTS_ATPROTO_PLAN.md`](../research/HYPERCERTS_ATPROTO_PLAN.md): what changed, why,
 and which plan section it touches. No silent divergence. Convention: the active build plan lives at
-the repo root as `GOAL.md` while a program is in flight and is deleted (not archived) when done —
+the repo root as `GOAL.md` while a build is in flight and is deleted (not archived) when done —
 history lives in git and in this file. "GOAL.md" in the table below refers to whichever build plan
-was active on that row's date.
+was active on that row's date, and milestone codes (M0, M1, …) are that plan's own build-stage
+labels.
 
 | # | Date | Plan section | What | Why |
 |---|---|---|---|---|
@@ -43,9 +44,10 @@ Notes that are **not** deviations, recorded for context:
   `taskfile/zk.yml` and `test/e2e/run.sh`: the default cpu backend eagerly allocates the ~5 GiB CPU
   prover machine these commands never use, OOM-killing small boxes/CI runners. The executor and the
   guest==native byte-assert are identical under mock; `prove` respects the caller's `SP1_PROVER`.
-- M0 re-derived vkeys (ELF layout changed under the refactor; semantics didn't — golden vectors are
-  byte-identical to pre-reorg). Recorded in [`PROGRAMS.md`](./PROGRAMS.md); rotation of the live stack
-  is batched to M2 per GOAL.md ground rule 7.
+- The platform reorg (M0) re-derived vkeys (ELF layout changed under the refactor; semantics didn't —
+  golden vectors are byte-identical to pre-reorg). Recorded in [`PROGRAMS.md`](./PROGRAMS.md);
+  rotation of the live stack was batched to the M2 deploy per that plan's ground rule against
+  dribbling vkey rotations.
 - Contributions slot-A wiring is a **read-only mirror**, resolving CONTRIBUTION_FUNDING.md §3's
   stated open question ("whether the contrib snapshot reads the trust accumulator's existing
   checkpoints or pushes its own — two snapshots triggering one accumulator needs a look"): the

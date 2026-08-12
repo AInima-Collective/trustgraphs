@@ -2,7 +2,7 @@
 
 How the **hypercerts** root producer (the third SP1 program) is deployed and run today. It proves a
 trust-weighted `{node → score}` merkle root over **Hypercerts' AT Protocol records** and commits it on
-a journal-v2 `MerkleSnapshot`, permissionlessly. This is a **lane-2-only** instance (no EAS lane 1):
+a `MerkleSnapshot` (journal v3), permissionlessly. This is a **lane-2-only** instance (no EAS lane 1):
 the input commitment is the two-lane `AnchorRegistry` of per-repo head anchors, not an
 `AttestationAccumulator`.
 
@@ -14,7 +14,7 @@ this reuses. The **exact end-to-end sequence this runbook operationalizes is the
 submitProof → InstanceRegistry); every command below mirrors a real step there.
 
 > **Program vs. instance.** `hypercerts` is one program (one guest, one vkey, one journal shape). This
-> runbook stands up **one instance** of it: OP Sepolia for rehearsal, Optimism for the pilot. Standing
+> runbook stands up **one instance** of it: Sepolia for rehearsal, Ethereum mainnet for the pilot. Standing
 > up another instance later costs only a deployment (no Rust, no guest, no vectors) —
 > [`../PROGRAMS.md`](../PROGRAMS.md).
 
@@ -32,13 +32,13 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 
 | Path | What it is |
 |---|---|
-| `packages/hypercerts-core` | The §3 record→edge semantics + fixed-point Trust-Aware PageRank + the `Params`/`Journal` encodings. Re-exports `zk-core`/`pagerank-core`. No floats. |
+| `packages/hypercerts-core` | The record→edge semantics (research plan §3) + fixed-point Trust-Aware PageRank + the `Params`/`Journal` encodings. Re-exports `zk-core`/`pagerank-core`. No floats. |
 | `packages/envelopes` | Envelope-1 (atproto) verification: CAR/MST walk, commit signature, PLC key-chain, `link.evm` EIP-712. Verified in-guest. |
 | `zk/program` (bin `trustgraph-hypercerts-program`) | The hypercerts guest `[[bin]]`. |
-| `zk/prover` (`trustgraph-prover hypercerts …`) | Host CLI group: `hypercerts {vkey \| paramshash \| fetch \| execute \| prove}`. Witness assembly is the shared `witness fetch` group behind `--features witness-atproto`. |
+| `zk/prover` (`trustgraph-prover hypercerts …`) | Host CLI group: `hypercerts {vkey \| paramshash \| execute \| prove \| buildinput}`. `buildinput` and witness assembly (the shared `witness fetch` group) need `--features witness-atproto`. |
 | `src/contracts/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). Bound one-shot to its `MerkleSnapshot` at deploy, so only `trigger()` may mint — on a lane-2-only instance the checkpoint id is the only thing separating one epoch's inputs from another's. |
 | `src/contracts/registry/AnchorRegistry.sol` | Lane-2 input commitment: chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` gates DID-node registration (the PDS-allowlist gate). |
-| `src/contracts/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v2) + two-tier authority + `epochLength` schedule. |
+| `src/contracts/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v3) + two-tier authority + `epochLength` schedule. |
 | `src/contracts/merkle/SP1JournalVerifier.sol` | The SP1 gateway adapter, one labeled instance pinned to the **hypercerts vkey**. |
 | `src/contracts/registry/InstanceRegistry.sol` | Per-chain directory: frontends/indexers discover the contract set on-chain. |
 | `test/golden/hypercerts.json` + `test/unit/golden/HypercertsGoldenVectors.t.sol` | Four-way byte lock (native / guest / Solidity / TS) for this program. |
@@ -52,8 +52,8 @@ export PATH="$HOME/.sp1/bin:$PATH"
 ```
 
 > **The vkey is toolchain-reproducible, not machine-portable** ([`../PROGRAMS.md`](../PROGRAMS.md),
-> measured at M4). The hypercerts guest vkey is
-> **`0x007b0fc964221d8496f4fae791235afe12b7790575f5b8c4c7287f319766d9b0`** (SP1 6.3.1). But the value
+> measured). The hypercerts guest vkey is
+> **`0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346`** (journal v3, SP1 6.3.1). But the value
 > depends on the exact `succinct` toolchain build — a reinstall shifted sibling vkeys with zero source
 > change. **Derive the deployment vkey on the pinned toolchain recorded here, not an arbitrary box**,
 > and diff it against the table in `../PROGRAMS.md` before trusting it:
@@ -61,8 +61,8 @@ export PATH="$HOME/.sp1/bin:$PATH"
 > cd zk/prover && cargo run --release -- hypercerts vkey   # must equal the value above
 > ```
 > Any guest change (or a `[patch.crates-io]` crypto bump that recompiles the ELF) **rotates this vkey
-> and the sibling trust-graph/signer vkeys**; batch rotations through the constitutional timelock
-> (a build-plan ground rule) — see [§ vkey rotation](#vkey-rotation-constitutional-batched).
+> and the sibling trust-graph/signer vkeys**; batch rotations through the constitutional timelock —
+> see [§ vkey rotation](#vkey-rotation-constitutional-batched).
 
 ## Build & test (before every deploy)
 
@@ -80,10 +80,10 @@ cd zk/prover && SP1_PROVER=cpu cargo run --release -- hypercerts execute
 
 ---
 
-## Deploy battery (OP Sepolia rehearsal → Optimism)
+## Deploy battery (Sepolia rehearsal → Ethereum mainnet)
 
-Rehearse the **entire** battery on **OP Sepolia** first (mock gateway is fine for the rehearsal proof;
-a real Groth16 proof needs `SP1_PROVER=network`). Repeat verbatim on **Optimism** for the pilot with the
+Rehearse the **entire** battery on **Sepolia** first (mock gateway is fine for the rehearsal proof;
+a real Groth16 proof needs `SP1_PROVER=network`). Repeat verbatim on **Ethereum mainnet** for the pilot with the
 canonical Succinct gateway. Order matters: the snapshot needs the verifier + empty accumulator at
 construction, and the registry is wired in afterward.
 
@@ -186,7 +186,8 @@ the operator relays for the pilot, but it is a force-inclusion hatch open to all
 ```bash
 # One-time per DID node (REGISTRAR_ROLE): kind 1 = DID.
 cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$NODE_ID" 1 --rpc-url "$RPC" --private-key "$REGISTRAR_PK"
-# NODE_ID = keccak256(utf8(did))  ==  `trustgraph-prover hypercerts` did_node_id.
+# NODE_ID = keccak256(utf8(did)) (`hypercerts_core::semantics::did_node_id`; `hypercerts
+# buildinput` prints each node's id on stdout).
 
 # Anchor a head (envelopeKind 1 = atproto; dataCommitment 0 for v1 — the CAR archive is the availability proof).
 cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$NODE_ID" 1 "$HEAD_SHA256" \
@@ -241,7 +242,7 @@ cast send "$HC_SNAPSHOT" \
 
 > **This program depends on journal v3 more than any other.** Its params carry no instance-unique
 > field, and lane 1 is permanently `(0, 0)`, so before v3 two identically-configured hypercerts
-> instances accepted each other's proofs (issue #9). The `instanceDomain` the guest commits — and
+> instances accepted each other's proofs. The `instanceDomain` the guest commits — and
 > `submitProof` rebuilds from `address(this)` + `block.chainid` — is what separates them. Set it
 > from the snapshot you are submitting to (`--snapshot` on `buildinput`), or the proof lands
 > nowhere.
@@ -289,14 +290,12 @@ leaving v1.1.0 (Partner Brief §3) — rotates the hypercerts vkey **and** recom
 1. Re-derive all affected vkeys on the **pinned toolchain**; diff against [`../PROGRAMS.md`](../PROGRAMS.md).
 2. Deploy a fresh `SP1JournalVerifier(gateway, newHypercertsVkey)`.
 3. Through the **constitutional timelock**, `setZkVerifier(newVerifier)` on the hypercerts snapshot —
-   and batch the sibling instances' rotations into the same timelock cycle (a build-plan ground rule).
+   and batch the sibling instances' rotations into the same timelock cycle.
    Do not dribble rotations.
-
-The frozen v1 Optimism trust-graph deployment keeps its already-deployed vkey and is **never** migrated.
 
 ---
 
-## Params (§6.1)
+## Params (research plan §6.1)
 
 Governance-pinned, all fixed-point at `precision_scale` (1e18), tunable via the operational-timelock
 `paramsHash` path with **no** guest change.
@@ -371,10 +370,13 @@ the proof and root, so a consumer verifies it against the chain and can ignore t
   recomputed root against the on-chain `outputRoot` before serving (409 on mismatch).
 - **Data source**: the `offchain.hypercerts_metadata` + `offchain.hypercerts_score` tables (the lane-2
   twins of `merkle_metadata`/`merkle_entry`). Their ingestion (`ingestHypercertsScores` in
-  `indexer/src/anchor.ts`) is **stubbed** like `skipped_node`'s — it will fetch the pinned blob + the
-  prover's binding/skip bundle and validate the rebuilt root against the on-chain root. Until it is
-  wired, these routes 404; the proof-construction logic is verified independently by
-  `indexer/src/api/hypercerts-tree.test.ts` (`node --test`).
+  `indexer/src/anchor.ts`) runs on each hypercerts `MerkleRootUpdated`: it fetches the pinned blob at
+  the event's CID, reads DID labels + `link.evm` bindings from the prover's sidecar bundle
+  (`HYPERCERTS_BUNDLE_PATH`, written by `hypercerts execute`/`prove`), rebuilds the guest's output
+  tree, and only upserts rows once the rebuilt root reproduces the on-chain `outputRoot`. With no
+  ingested rows the routes 404. The proof-construction logic is also verified independently by
+  `indexer/src/api/hypercerts-tree.test.ts` (`node --test`). (`skipped_node` ingestion remains a
+  documented stub — see `ingestSkippedNodes` in the same file.)
 
 ---
 
