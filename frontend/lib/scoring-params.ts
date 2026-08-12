@@ -709,4 +709,19 @@ export const decodeParameterUpdateAction = (
   }
 }
 
+/** Decode the companion call that binds signer selection to a scoring version. */
+export const decodeSignerParamsHashAction = (data: string): Hex | null => {
+  if (!data.startsWith('0x')) return null
+  try {
+    const decoded = decodeFunctionData({
+      abi: signerParamsAbi,
+      data: data as Hex,
+    })
+    if (decoded.functionName !== 'setParamsHash' || !decoded.args) return null
+    return decoded.args[0]
+  } catch {
+    return null
+  }
+}
+
 export const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex

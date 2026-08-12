@@ -7,6 +7,7 @@ import { type Address, formatEther, isAddress, parseEther } from 'viem'
 import { AccountIdentifierInput } from '@/components/AccountIdentifierInput'
 import { Button } from '@/components/Button'
 import { CopyableText } from '@/components/CopyableText'
+import { ProposalActionList } from '@/components/ProposalActionList'
 import { VoteButtons } from '@/components/VoteButtons'
 import { useEnsResolver } from '@/hooks/useEns'
 import { ProposalAction, VoteType } from '@/hooks/useGovernance'
@@ -342,58 +343,10 @@ export function CreateProposalForm({
                   order; no calldata needs to be reconstructed by hand.
                 </p>
               </div>
-              {prefill.actions.map((action, index) => (
-                <Card
-                  key={`${action.target}:${index}`}
-                  type="detail"
-                  size="md"
-                  className="min-w-0 space-y-2"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="tg-label">
-                      Action {index + 1} of {prefill.actions.length}
-                    </p>
-                    <span className="border border-border px-2 py-1 text-xs text-muted-foreground">
-                      CALL · 0 ETH
-                    </span>
-                  </div>
-                  <p className="break-words font-mono text-sm font-medium">
-                    {action.contractName ?? 'Contract'}.<wbr />
-                    {action.functionSignature ?? 'customCall(bytes)'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {action.description || `Execute action ${index + 1}`}
-                  </p>
-                  <div className="border-l-2 border-border pl-3">
-                    <p className="text-xs text-muted-foreground">
-                      Target contract
-                    </p>
-                    <CopyableText
-                      text={action.target}
-                      truncate={false}
-                      alwaysShowCopyIcon
-                      className="mt-1 max-w-full"
-                    />
-                  </div>
-                  <details>
-                    <summary className="min-h-11 cursor-pointer py-3 text-xs text-muted-foreground">
-                      Inspect and copy exact calldata
-                    </summary>
-                    <div className="space-y-3 border-t border-border pt-3">
-                      <CopyableText
-                        text={action.data}
-                        displayText="Copy full calldata"
-                        truncate={false}
-                        truncateOnMobile={false}
-                        alwaysShowCopyIcon
-                      />
-                      <p className="break-all font-mono text-xs text-muted-foreground">
-                        {action.data}
-                      </p>
-                    </div>
-                  </details>
-                </Card>
-              ))}
+              <ProposalActionList
+                actions={prefill.actions}
+                proposalDescription={prefill.description}
+              />
               <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   Return to Settings to change the tuple. This proposal JSON is

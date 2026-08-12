@@ -21,6 +21,7 @@ import {
 import {
   type Address,
   type Hex,
+  encodeAbiParameters,
   isAddress,
   keccak256,
   parseAbiItem,
@@ -42,6 +43,8 @@ import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { Modal } from '@/components/Modal'
+import { ProposalActionList } from '@/components/ProposalActionList'
+import { ScoringGraphPreview } from '@/components/ScoringGraphPreview'
 import { SectionHeading } from '@/components/SectionHeading'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useGovernance } from '@/hooks/useGovernance'
@@ -2082,6 +2085,14 @@ const LiveScoringSettings = ({
               </>
             ) : (
               <div className="min-w-0 space-y-6">
+                {preview && controller.params && proposed && (
+                  <ScoringGraphPreview
+                    preview={preview}
+                    currentSeeds={controller.params.trustedSeeds}
+                    proposedSeeds={proposed.trustedSeeds}
+                  />
+                )}
+
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <Card type="detail" size="md">
                     <p className="tg-label">Gain / lose / unchanged</p>
@@ -2219,78 +2230,11 @@ const LiveScoringSettings = ({
                       is synchronized first; the controller publishes the new
                       version last.
                     </p>
-                    <ol className="mt-4 space-y-4">
-                      {actions.map((action, index) => (
-                        <li
-                          key={`${action.target}:${index}`}
-                          className="min-w-0 border border-border bg-surface p-4 text-xs"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="tg-label">
-                              Action {index + 1} of {actions.length}
-                            </span>
-                            <span className="border border-border px-2 py-1 text-muted-foreground">
-                              CALL · 0 ETH
-                            </span>
-                          </div>
-                          <p className="mt-3 break-words font-mono text-sm font-medium">
-                            {action.contractName}.<wbr />
-                            {action.functionSignature}
-                          </p>
-                          <p className="mt-2 text-muted-foreground">
-                            {action.description}
-                          </p>
-                          <div className="mt-3 border-l-2 border-border pl-3">
-                            <p className="text-muted-foreground">
-                              Target contract
-                            </p>
-                            <CopyableText
-                              text={action.target}
-                              truncate={false}
-                              alwaysShowCopyIcon
-                              className="mt-1 max-w-full"
-                            />
-                          </div>
-                          {action.contractName ===
-                            'TrustGraphParamsController' && (
-                            <div className="mt-3 space-y-1 border-l-2 border-border pl-3 text-muted-foreground">
-                              <p>
-                                Changes:{' '}
-                                {proposedDiffs
-                                  .map((diff) => diff.label)
-                                  .join(', ')}
-                              </p>
-                              <p className="break-all">
-                                Proposed hash: {proposedHash}
-                              </p>
-                              <p className="break-all">
-                                Evidence: {evidenceURI || 'none'}
-                              </p>
-                            </div>
-                          )}
-                          <details className="mt-2">
-                            <summary className="min-h-11 cursor-pointer py-3 text-muted-foreground">
-                              Inspect and copy exact calldata
-                            </summary>
-                            <div className="space-y-3 border-t border-border pt-3">
-                              <CopyableText
-                                text={action.data}
-                                displayText="Copy full calldata"
-                                truncate={false}
-                                truncateOnMobile={false}
-                                alwaysShowCopyIcon
-                              />
-                              <p className="break-all font-mono text-muted-foreground">
-                                Digest: {keccak256(action.data)}
-                              </p>
-                              <p className="max-h-40 overflow-auto break-all font-mono text-muted-foreground">
-                                {action.data}
-                              </p>
-                            </div>
-                          </details>
-                        </li>
-                      ))}
-                    </ol>
+                    <ProposalActionList
+                      actions={actions}
+                      proposalDescription={proposalDescription}
+                      className="mt-4"
+                    />
                     {parentHash && proposedHash && (
                       <Button
                         type="button"
@@ -2506,6 +2450,49 @@ const reviewParams: Params = {
   chainId: 31_337n,
 }
 
+const reviewAccounts = [
+  '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+  '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+  '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc',
+  '0x90f79bf6eb2c4f870365e785982e1f101e93b906',
+  '0x15d34aaf54267db7d7c367839aaf71a00a2c6a65',
+  '0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc',
+  '0x976ea74026e726554db657fa54763abd0c3a0aa9',
+  '0x14dc79964da2c08b23698b3d3cc7ca32193d9955',
+] as const satisfies readonly Hex[]
+
+const reviewEdge = (
+  source: number,
+  target: number,
+  index: number,
+  confidence: bigint
+): RawEdge => ({
+  kind: 0,
+  attester: reviewAccounts[source]!,
+  recipient: reviewAccounts[target]!,
+  uid: `0x${index.toString(16).padStart(64, '0')}` as Hex,
+  blockTimestamp: 1_700_000_000n + BigInt(index),
+  data: encodeAbiParameters(
+    [{ type: 'string' }, { type: 'uint256' }],
+    ['Review fixture', confidence]
+  ),
+})
+
+const reviewEdges: RawEdge[] = [
+  reviewEdge(0, 1, 1, 95n),
+  reviewEdge(0, 2, 2, 65n),
+  reviewEdge(1, 3, 3, 85n),
+  reviewEdge(2, 1, 4, 75n),
+  reviewEdge(3, 0, 5, 80n),
+  reviewEdge(4, 5, 6, 60n),
+  reviewEdge(5, 0, 7, 70n),
+  reviewEdge(6, 3, 8, 55n),
+  reviewEdge(7, 2, 9, 88n),
+  reviewEdge(1, 4, 10, 50n),
+  reviewEdge(2, 6, 11, 68n),
+  reviewEdge(3, 7, 12, 72n),
+]
+
 const ScoringReviewFixture = () => {
   const [state, setState] = useState<ReviewScoringState>('current')
   useEffect(() => {
@@ -2539,6 +2526,11 @@ const ScoringReviewFixture = () => {
   ]
   const currentHash = paramsHash(reviewParams)
   const proposedHash = paramsHash(proposed)
+  const reviewPreview = previewScoringChange({
+    edges: reviewEdges,
+    current: reviewParams,
+    proposed,
+  })
 
   return (
     <section className="min-w-0 space-y-8" data-review-scoring-state={state}>
@@ -2566,23 +2558,39 @@ const ScoringReviewFixture = () => {
               Change trusted accounts and damping
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              Preview over checkpoint 18 · 42 folded records · converged in 27
-              iterations. This preview does not change settled roots or funded
-              distributions.
+              Preview over checkpoint 18 · {reviewPreview.inputCount.toString()}{' '}
+              folded records ·{' '}
+              {reviewPreview.proposedConverged ? 'converged' : 'hit cap'} in{' '}
+              {reviewPreview.proposedIterations} iterations. This preview does
+              not change settled roots or funded distributions.
             </p>
           </div>
+          <ScoringGraphPreview
+            preview={reviewPreview}
+            currentSeeds={reviewParams.trustedSeeds}
+            proposedSeeds={proposed.trustedSeeds}
+          />
           <div className="grid gap-4 sm:grid-cols-3">
             <Card type="detail" size="sm">
               <p className="tg-label">Gain / lose / unchanged</p>
-              <p className="mt-2 text-lg">8 / 6 / 28</p>
+              <p className="mt-2 text-lg">
+                {reviewPreview.gained} / {reviewPreview.lost} /{' '}
+                {reviewPreview.unchanged}
+              </p>
             </Card>
             <Card type="detail" size="sm">
               <p className="tg-label">Trusted score mass</p>
-              <p className="mt-2 text-lg">34.20% → 31.75%</p>
+              <p className="mt-2 text-lg">
+                {(reviewPreview.currentTrustedMassBps / 100).toFixed(2)}% →{' '}
+                {(reviewPreview.proposedTrustedMassBps / 100).toFixed(2)}%
+              </p>
             </Card>
             <Card type="detail" size="sm">
               <p className="tg-label">Top-10 concentration</p>
-              <p className="mt-2 text-lg">72.40% → 69.18%</p>
+              <p className="mt-2 text-lg">
+                {(reviewPreview.currentTopTenMassBps / 100).toFixed(2)}% →{' '}
+                {(reviewPreview.proposedTopTenMassBps / 100).toFixed(2)}%
+              </p>
             </Card>
           </div>
           <div className="grid min-w-0 gap-4 lg:grid-cols-2">

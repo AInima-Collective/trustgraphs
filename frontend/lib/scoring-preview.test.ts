@@ -64,6 +64,12 @@ assert.equal(same.gained, 0)
 assert.equal(same.lost, 0)
 assert.equal(same.unchanged, 3)
 assert.equal(same.signerChange?.changed, false)
+assert.equal(same.graphNodes.length, 3)
+assert.equal(same.graphEdges.length, 3)
+assert.ok(same.graphEdges.every((edge) => edge.currentWeight > 0n))
+assert.ok(
+  same.graphEdges.every((edge) => edge.currentWeight === edge.proposedWeight)
+)
 
 const proposed = { ...params, trustMultiplierFp: 3n * S }
 const changed = previewScoringChange({ edges, current: params, proposed })
@@ -71,5 +77,7 @@ assert.notEqual(changed.currentRoot, changed.proposedRoot)
 assert.equal(changed.gained + changed.lost + changed.unchanged, 3)
 assert.equal(changed.inputAcc, same.inputAcc)
 assert.equal(changed.inputCount, 3n)
+assert.equal(changed.graphNodes.length, 3)
+assert.equal(changed.graphEdges.length, 3)
 
 console.log('scoring preview golden parity and comparison: ok')

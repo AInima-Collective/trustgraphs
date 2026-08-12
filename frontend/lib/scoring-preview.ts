@@ -1,6 +1,7 @@
 import type { Hex } from 'viem'
 
 import { compute } from './pagerank/compute'
+import { buildGraph } from './pagerank/reconcile'
 import { selectSigners } from './pagerank/signer'
 import type { Params, RawEdge, SelectionParams } from './pagerank/types'
 
@@ -9,6 +10,13 @@ export type ScoreMove = {
   current: bigint
   proposed: bigint
   delta: bigint
+}
+
+export type PreviewGraphEdge = {
+  source: Hex
+  target: Hex
+  currentWeight: bigint
+  proposedWeight: bigint
 }
 
 export type ScoringPreview = {
@@ -22,6 +30,8 @@ export type ScoringPreview = {
   lost: number
   unchanged: number
   largestMovers: ScoreMove[]
+  graphNodes: ScoreMove[]
+  graphEdges: PreviewGraphEdge[]
   currentTrustedMassBps: number
   proposedTrustedMassBps: number
   currentTopTenMassBps: number
@@ -69,6 +79,22 @@ const topTenMassBps = (scores: Map<string, bigint>) => {
   )
 }
 
+const asEdgeMap = (
+  outgoing: Map<string, Map<string, bigint>>
+): Map<string, { source: Hex; target: Hex; weight: bigint }> => {
+  const result = new Map<string, { source: Hex; target: Hex; weight: bigint }>()
+  for (const [source, recipients] of outgoing) {
+    for (const [target, weight] of recipients) {
+      result.set(`${source}:${target}`, {
+        source: source as Hex,
+        target: target as Hex,
+        weight,
+      })
+    }
+  }
+  return result
+}
+
 /** Compare two exact tuples over one exact fold log using the parity-locked browser core. */
 export const previewScoringChange = ({
   edges,
@@ -86,6 +112,8 @@ export const previewScoringChange = ({
   const beforeScores = asMap(before.scores)
   const afterScores = asMap(after.scores)
   const accounts = new Set([...beforeScores.keys(), ...afterScores.keys()])
+  const currentGraph = buildGraph(edges, current)
+  const proposedGraph = buildGraph(edges, proposed)
 
   let gained = 0
   let lost = 0
@@ -111,6 +139,43 @@ export const previewScoringChange = ({
     return aa === bb ? a.account.localeCompare(b.account) : aa > bb ? -1 : 1
   })
 
+  const movesByAccount = new Map(
+    moves.map((move) => [move.account.toLowerCase(), move])
+  )
+  const graphAccounts = new Set([
+    ...currentGraph.nodes.map((node) => node.toLowerCase()),
+    ...proposedGraph.nodes.map((node) => node.toLowerCase()),
+  ])
+  const graphNodes = Array.from(graphAccounts)
+    .sort()
+    .map(
+      (account): ScoreMove =>
+        movesByAccount.get(account) ?? {
+          account: account as Hex,
+          current: beforeScores.get(account) ?? 0n,
+          proposed: afterScores.get(account) ?? 0n,
+          delta:
+            (afterScores.get(account) ?? 0n) -
+            (beforeScores.get(account) ?? 0n),
+        }
+    )
+  const currentEdges = asEdgeMap(currentGraph.outgoing)
+  const proposedEdges = asEdgeMap(proposedGraph.outgoing)
+  const edgeKeys = new Set([...currentEdges.keys(), ...proposedEdges.keys()])
+  const graphEdges = Array.from(edgeKeys)
+    .sort()
+    .map((key): PreviewGraphEdge => {
+      const currentEdge = currentEdges.get(key)
+      const proposedEdge = proposedEdges.get(key)
+      const identity = currentEdge ?? proposedEdge!
+      return {
+        source: identity.source,
+        target: identity.target,
+        currentWeight: currentEdge?.weight ?? 0n,
+        proposedWeight: proposedEdge?.weight ?? 0n,
+      }
+    })
+
   const beforeSigners = signerSelection
     ? selectSigners(before.scores, signerSelection)
     : null
@@ -129,6 +194,8 @@ export const previewScoringChange = ({
     lost,
     unchanged,
     largestMovers: moves.slice(0, 20),
+    graphNodes,
+    graphEdges,
     currentTrustedMassBps: trustedMassBps(beforeScores, current.trustedSeeds),
     proposedTrustedMassBps: trustedMassBps(afterScores, proposed.trustedSeeds),
     currentTopTenMassBps: topTenMassBps(beforeScores),

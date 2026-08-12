@@ -9,6 +9,7 @@ import {
   buildParameterActions,
   cloneParams,
   decodeParameterUpdateAction,
+  decodeSignerParamsHashAction,
   formatFixed,
   paramsFingerprint,
   paramsFromChain,
@@ -123,5 +124,10 @@ assert.equal(decoded.evidenceURI, 'ipfs://evidence')
 assert.equal(decoded.proposedHash, paramsHash(changed))
 assert.equal(serializeParams(decoded.proposed), serializeParams(changed))
 assert.equal(decodeParameterUpdateAction(actions[0]!.data), null)
+assert.equal(
+  decodeSignerParamsHashAction(actions[0]!.data),
+  paramsHash(changed)
+)
+assert.equal(decodeSignerParamsHashAction(actions[1]!.data), null)
 
 console.log('scoring params exact round-trip and validation: ok')

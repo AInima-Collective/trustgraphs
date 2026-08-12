@@ -731,6 +731,14 @@ export const ponderQueryFns = {
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,
       }),
+  getProofSubmission:
+    (options: { snapshot: Hex; root: Hex }) =>
+    (db: Client<ResolvedSchema>['db']) =>
+      db.query.proofSubmission.findFirst({
+        where: (t, { and, eq }) =>
+          and(eq(t.snapshot, options.snapshot), eq(t.root, options.root)),
+        orderBy: (t, { desc }) => desc(t.blockNumber),
+      }),
   getGnosisSafe: (address: Hex) => (db: Client<ResolvedSchema>['db']) =>
     db.query.gnosisSafe.findFirst({
       where: (t, { eq }) => eq(t.address, address),
