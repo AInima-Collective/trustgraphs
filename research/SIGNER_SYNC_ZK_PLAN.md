@@ -45,11 +45,11 @@ The original design is retained below for reference.
 
 This document specifies bringing the capability back as a permissionless SP1 proof, analogous to the
 ZK root producer (`packages/pagerank-core` → `zk/program` → `zk/prover` →
-`MerkleSnapshot.submitProof`, verified by `SP1TrustGraphVerifier` behind `IZkVerifier`).
+`MerkleSnapshot.submitProof`, verified by `SP1TrustgraphsVerifier` behind `IZkVerifier`).
 
 ## 1. What it did (the capability we are replacing)
 
-`safe-signer-sync` turned the TrustGraph score ranking into the owner set of a Gnosis Safe:
+`safe-signer-sync` turned the trustgraphs score ranking into the owner set of a Gnosis Safe:
 
 1. **Trigger:** `MerkleSnapshot` emits `MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue)`
    on every new proven root. That fired the component.
@@ -121,7 +121,7 @@ separate proof):
 `journal_encoded` (static ABI words) and `journal_digest = keccak256(...)` carry over in style. The
 contract rebuilds the digest from **stored** governance params + **submitted** `signerSetRoot`/
 `targetThreshold`, so any mismatch fails verification — the same binding pattern as
-`MerkleSnapshot.submitProof` and `SP1TrustGraphVerifier.verify`.
+`MerkleSnapshot.submitProof` and `SP1TrustgraphsVerifier.verify`.
 
 ### 3.3 Host (`zk/prover`)
 
@@ -129,7 +129,7 @@ Add `selectionparamshash` and signer outputs to the existing host CLI (`vkey` / 
 `execute` / `prove`). `execute` should cross-check the guest's committed signer set against a native
 `select_signers` run, same as it already cross-checks the journal. If the signer proof is fused into
 the root proof, no new vkey is needed; if it is a separate guest, mint a new immutable `programVKey`
-for a second `SP1TrustGraphVerifier` instance.
+for a second `SP1TrustgraphsVerifier` instance.
 
 ## 4. New contract: `SignerSyncZkModule` (replaces `SignerSyncManagerModule`)
 

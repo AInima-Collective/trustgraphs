@@ -57,7 +57,7 @@ sol! {
         uint64 chainId;
     }
 
-    /// The frozen factory interface (`TrustGraphFactory.sol`).
+    /// The frozen factory interface (`TrustgraphsFactory.sol`).
     event InstanceCreated(
         bytes32 indexed instanceId,
         address indexed creator,
@@ -105,7 +105,7 @@ sol! {
     function checkpointCount() external view returns (uint256);
     function getCheckpoint(uint256 id) external view returns (Checkpoint);
 
-    /// `TrustGraphFactory` — the shared singletons an instance inherits.
+    /// `TrustgraphsFactory` — the shared singletons an instance inherits.
     function EAS() external view returns (address);
 }
 

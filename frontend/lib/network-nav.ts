@@ -3,7 +3,7 @@
 //! One place decides which sub-pages exist for a given instance, so every page presents the same
 //! navigation and any future entry point can reuse it.
 //!
-//! Tabs are CONTRACT-GATED, not hard-coded. A network minted by `TrustGraphFactory` has no Safe
+//! Tabs are CONTRACT-GATED, not hard-coded. A network minted by `TrustgraphsFactory` has no Safe
 //! gov module and no fund distributor until someone deploys them, so offering those tabs would
 //! route people to a page that can only tell them the feature does not exist here.
 
@@ -49,7 +49,7 @@ export const contributionsRoundsFor = (
   )
 
 /** Sub-pages of an address-keyed trust-graph network, including its contributions experience. */
-export const trustGraphTabs = (network: Network): NetworkTab[] => {
+export const trustgraphsTabs = (network: Network): NetworkTab[] => {
   const base = `/networks/${network.id}`
   const contributionRounds = contributionsRoundsFor(network)
 

@@ -128,7 +128,7 @@ impl Default for Policy {
             cycles_per_input: CYCLES_PER_INPUT,
             base_cycles: BASE_CYCLES,
             supported_programs: BTreeSet::from([
-                Program::TrustGraph,
+                Program::Trustgraphs,
                 Program::Contributions,
                 Program::Signer,
             ]),

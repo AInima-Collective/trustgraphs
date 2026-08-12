@@ -1,4 +1,4 @@
-# Hypercerts × TrustGraph — AT Protocol Trust Graph Implementation Plan
+# Hypercerts × trustgraphs — AT Protocol trustgraph implementation plan
 
 **Status:** Realized, 2026-07-14 plan — the hypercerts program is **Built** (the build plan's M1–M4 are exit-green; the M5 pilot deploy is pending). Current status: [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md); deviations of record: [`research/DEVIATIONS.md`](../research/DEVIATIONS.md).
 **Scope:** A concrete plan for the first production consumer of the offchain-attestation architecture: a ZK-proven trust graph over **Hypercerts' AT Protocol records**, published with `@hypercerts-org/lexicon` (v1.1.0, pinned). The output is the familiar `{node → score}` merkle root, proven permissionlessly by SP1, anchored by the two-lane input commitment.

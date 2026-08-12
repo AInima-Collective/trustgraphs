@@ -214,7 +214,7 @@ interface IProvingVault {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Top up an instance's tank with ETH. Permissionless: anyone may fund any instance,
-    ///         which is what lets `TrustGraphFactory.createInstance` forward `msg.value` and lets
+    ///         which is what lets `TrustgraphsFactory.createInstance` forward `msg.value` and lets
     ///         a supporter endow a community they are not a member of.
     /// @dev The first deposit binds `(snapshot, program)` by resolving `InstanceRegistry` once.
     function depositETH(bytes32 instanceId) external payable;

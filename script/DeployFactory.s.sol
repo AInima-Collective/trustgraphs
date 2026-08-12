@@ -8,11 +8,11 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
-    TrustGraphParamsControllerDeployer
+    TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -23,7 +23,7 @@ import {Common} from "script/Common.s.sol";
 
 /// @title DeployFactory
 /// @notice Stands up the permissionless instance factory: the two creation-code deployers, the
-///         `TrustGraphFactory` itself, and the `OPERATOR_ROLE` grant that lets it register into the
+///         `TrustgraphsFactory` itself, and the `OPERATOR_ROLE` grant that lets it register into the
 ///         chain's `InstanceRegistry`.
 ///
 /// @dev Runs AFTER `DeployEAS`, `DeployZkVerifier` and `DeployInstanceRegistry` — it consumes all
@@ -41,7 +41,7 @@ contract DeployFactory is Common {
     /// @param zkVerifierAddr The shared trust-graph `SP1JournalVerifier`.
     /// @param instanceRegistryAddr The chain's `InstanceRegistry`.
     /// @param epochFloor Minimum epoch length in blocks (mainnet: ~30 days; anvil: small).
-    /// @return factory The deployed `TrustGraphFactory`.
+    /// @return factory The deployed `TrustgraphsFactory`.
     function run(
         string calldata easAddr,
         string calldata schemaRegistrarAddr,
@@ -98,9 +98,9 @@ contract DeployFactory is Common {
         // The two children whose creation code will not fit inside the factory (EIP-170).
         MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();
         MerkleFundDistributorDeployer distributorDeployer = new MerkleFundDistributorDeployer();
-        TrustGraphParamsControllerDeployer paramsControllerDeployer = new TrustGraphParamsControllerDeployer();
+        TrustgraphsParamsControllerDeployer paramsControllerDeployer = new TrustgraphsParamsControllerDeployer();
 
-        TrustGraphFactory trustGraphFactory = new TrustGraphFactory(
+        TrustgraphsFactory trustgraphsFactory = new TrustgraphsFactory(
             IEAS(eas),
             SchemaRegistrar(schemaRegistrar),
             IZkVerifier(zkVerifier),
@@ -111,7 +111,7 @@ contract DeployFactory is Common {
             epochFloor,
             vault
         );
-        factory = address(trustGraphFactory);
+        factory = address(trustgraphsFactory);
 
         // The factory's ONLY privilege anywhere: it may APPEND rows to the directory.
         // `REGISTRAR_ROLE`, deliberately NOT `OPERATOR_ROLE` — the latter also grants `update()`,
@@ -135,8 +135,8 @@ contract DeployFactory is Common {
         console.log("ProvingVault:", address(vault), address(vault) == address(0) ? "(no prepay path)" : "");
         console.log("MerkleSnapshotDeployer:", address(snapshotDeployer));
         console.log("MerkleFundDistributorDeployer:", address(distributorDeployer));
-        console.log("TrustGraphParamsControllerDeployer:", address(paramsControllerDeployer));
-        console.log("TrustGraphFactory:", factory);
+        console.log("TrustgraphsParamsControllerDeployer:", address(paramsControllerDeployer));
+        console.log("TrustgraphsFactory:", factory);
         console.log("epochFloor (blocks):", epochFloor);
 
         string memory _json = "json";

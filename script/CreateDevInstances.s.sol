@@ -5,7 +5,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {console} from "forge-std/console.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {ParamsJson} from "script/lib/ParamsJson.sol";
 
@@ -27,7 +27,7 @@ contract CreateDevInstances is Common {
     string public root = vm.projectRoot();
 
     /// @notice Create `count` instances via the factory.
-    /// @param factoryAddr The `TrustGraphFactory`.
+    /// @param factoryAddr The `TrustgraphsFactory`.
     /// @param paramsPath The governance params file (its `schema_uid` / `accumulator` / `chain_id`
     ///        are ignored — the factory derives all three).
     /// @param templatePath The networks config TEMPLATE, read for each instance's display name.
@@ -48,7 +48,7 @@ contract CreateDevInstances is Common {
         uint256 prepayWei,
         uint96 maxPerRootUsd
     ) public {
-        TrustGraphFactory factory = TrustGraphFactory(vm.parseAddress(factoryAddr));
+        TrustgraphsFactory factory = TrustgraphsFactory(vm.parseAddress(factoryAddr));
         address deployer = vm.addr(_privateKey);
         string memory template = vm.readFile(templatePath);
         require(maxPerRootUsd == 0 || prepayWei > 0, "CreateDevInstances: policy needs a funded tank");
@@ -65,7 +65,7 @@ contract CreateDevInstances is Common {
             (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid) = factory.createInstance{
                 value: prepayWei
             }(
-                TrustGraphFactory.CreateArgs({
+                TrustgraphsFactory.CreateArgs({
                     name: name,
                     // The dev catalog's presentation comes from the networks template, not IPFS.
                     metadataURI: "",

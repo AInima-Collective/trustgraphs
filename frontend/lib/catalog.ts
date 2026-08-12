@@ -2,7 +2,7 @@
 //!
 //! Trust-graph networks used to be a build-time list: `config/networks.<env>.json` → the
 //! `networks.json` symlink → a synchronous `import` in `lib/config.ts`. Adding a network meant
-//! editing JSON and redeploying the app. `TrustGraphFactory` makes networks appear at any moment,
+//! editing JSON and redeploying the app. `TrustgraphsFactory` makes networks appear at any moment,
 //! so the list has to be read at runtime instead — from the indexer's `/instances` route, which is
 //! built from the frozen `InstanceCreated` event.
 //!
@@ -53,7 +53,7 @@ export type InstanceRow = {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
     merkleFundDistributor: Hex | null
-    trustGraphParamsController: Hex | null
+    trustgraphsParamsController: Hex | null
     merkleGovModule: Hex | null
     safe: { proxy: Hex } | null
   }
@@ -162,10 +162,10 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
       ...(row.contracts.merkleFundDistributor
         ? { merkleFundDistributor: row.contracts.merkleFundDistributor }
         : {}),
-      ...(row.contracts.trustGraphParamsController
+      ...(row.contracts.trustgraphsParamsController
         ? {
-            trustGraphParamsController:
-              row.contracts.trustGraphParamsController,
+            trustgraphsParamsController:
+              row.contracts.trustgraphsParamsController,
           }
         : {}),
       ...(row.contracts.merkleGovModule

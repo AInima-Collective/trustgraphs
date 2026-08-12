@@ -12,12 +12,12 @@ import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contr
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
-    TrustGraphParamsControllerDeployer
+    TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
@@ -31,16 +31,16 @@ import {MockEthUsdFeed} from "../../mocks/MockEthUsdFeed.sol";
 import {ProvingVault} from "contracts/vault/ProvingVault.sol";
 import {TestUSDC} from "contracts/tokens/TestUSDC.sol";
 
-/// @title TrustGraphFactoryBase
+/// @title TrustgraphsFactoryBase
 /// @notice Shared rig for the M1 factory battery: a real EAS + `SchemaRegistry` (so created
 ///         instances can actually be attested against), a real `InstanceRegistry` with the factory
 ///         holding `REGISTRAR_ROLE`, and a mock verifier standing in for the shared
 ///         `SP1JournalVerifier`.
 /// @dev    The default params are the GOLDEN vector's params with the three derived identity fields
 ///         zeroed. Every test therefore exercises the same encoding the cross-language parity job
-///         locks, and `TrustGraphFactoryTest.test_ParamsHashMatchesGoldenEncoder` closes the loop
+///         locks, and `TrustgraphsFactoryTest.test_ParamsHashMatchesGoldenEncoder` closes the loop
 ///         between the factory's own hash path and `test/golden/trust-graph.json`.
-abstract contract TrustGraphFactoryBase is Test {
+abstract contract TrustgraphsFactoryBase is Test {
     using stdJson for string;
 
     /*//////////////////////////////////////////////////////////////
@@ -54,8 +54,8 @@ abstract contract TrustGraphFactoryBase is Test {
     InstanceRegistry internal registry;
     MerkleSnapshotDeployer internal snapshotDeployer;
     MerkleFundDistributorDeployer internal distributorDeployer;
-    TrustGraphParamsControllerDeployer internal paramsControllerDeployer;
-    TrustGraphFactory internal factory;
+    TrustgraphsParamsControllerDeployer internal paramsControllerDeployer;
+    TrustgraphsFactory internal factory;
 
     /// @notice The registry's own admin (the operational timelock in production).
     address internal registryAdmin = address(0x0BE7);
@@ -111,7 +111,7 @@ abstract contract TrustGraphFactoryBase is Test {
         registry = new InstanceRegistry(registryAdmin);
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
-        paramsControllerDeployer = new TrustGraphParamsControllerDeployer();
+        paramsControllerDeployer = new TrustgraphsParamsControllerDeployer();
         // A real vault, so the prepay path in `createInstance` is exercised rather than stubbed.
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -119,7 +119,7 @@ abstract contract TrustGraphFactoryBase is Test {
             IInstanceRegistry(address(registry)), usdc, feed, 1 hours, 100e8, 100_000e8, address(this), address(this)
         );
 
-        factory = new TrustGraphFactory(
+        factory = new TrustgraphsFactory(
             IEAS(address(eas)),
             registrar,
             IZkVerifier(address(verifier)),
@@ -182,7 +182,7 @@ abstract contract TrustGraphFactoryBase is Test {
     function _args(string memory name, ParamsCodec.Params memory params)
         internal
         pure
-        returns (TrustGraphFactory.CreateArgs memory args)
+        returns (TrustgraphsFactory.CreateArgs memory args)
     {
         args.name = name;
         args.metadataURI = "ipfs://bafkreiexamplemetadatacid";
@@ -190,7 +190,7 @@ abstract contract TrustGraphFactoryBase is Test {
         args.epochLength = EPOCH_FLOOR;
     }
 
-    function _args(string memory name) internal view returns (TrustGraphFactory.CreateArgs memory) {
+    function _args(string memory name) internal view returns (TrustgraphsFactory.CreateArgs memory) {
         return _args(name, _baseParams());
     }
 
@@ -201,7 +201,7 @@ abstract contract TrustGraphFactoryBase is Test {
     /// @dev Run one creation and hand back everything an assertion could want: the return tuple, the
     ///      decoded `InstanceCreated` event, and the raw logs (from which roles are ENUMERATED
     ///      rather than guessed).
-    function _create(TrustGraphFactory.CreateArgs memory args) internal returns (Created memory c) {
+    function _create(TrustgraphsFactory.CreateArgs memory args) internal returns (Created memory c) {
         vm.recordLogs();
         (c.instanceId, c.snapshot, c.resolver, c.distributor, c.schemaUid) = factory.createInstance(args);
         c.logs = vm.getRecordedLogs();
@@ -213,7 +213,7 @@ abstract contract TrustGraphFactoryBase is Test {
     function _decodeController(Vm.Log[] memory logs, bytes32 instanceId) internal view returns (address) {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].emitter != address(factory) || logs[i].topics.length != 3) continue;
-            if (logs[i].topics[0] != TrustGraphFactory.ParamsControllerCreated.selector) continue;
+            if (logs[i].topics[0] != TrustgraphsFactory.ParamsControllerCreated.selector) continue;
             if (logs[i].topics[1] != instanceId) continue;
             return address(uint160(uint256(logs[i].topics[2])));
         }
@@ -225,7 +225,7 @@ abstract contract TrustGraphFactoryBase is Test {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].emitter != address(factory)) continue;
             if (logs[i].topics.length != 4) continue;
-            if (logs[i].topics[0] != TrustGraphFactory.InstanceCreated.selector) continue;
+            if (logs[i].topics[0] != TrustgraphsFactory.InstanceCreated.selector) continue;
 
             e.instanceId = logs[i].topics[1];
             e.creator = address(uint160(uint256(logs[i].topics[2])));
@@ -311,7 +311,7 @@ abstract contract TrustGraphFactoryBase is Test {
         assertTrue(snapshot.hasRole(constitutional, c.admin), "admin must hold CONSTITUTIONAL_ROLE");
         assertFalse(snapshot.hasRole(operational, c.admin), "admin must not retain the raw-hash path");
         assertTrue(snapshot.hasRole(operational, c.controller), "controller must hold OPERATIONAL_ROLE");
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         assertEq(controller.owner(), c.admin, "admin must own the typed controller");
         assertEq(controller.pendingOwner(), address(0), "no controller ownership handoff may dangle");
         assertEq(controller.snapshot(), c.snapshot, "controller must govern this snapshot");

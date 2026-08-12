@@ -121,7 +121,7 @@ pub fn build_input(
     let params_path = params_path(entry)?;
 
     match entry.program {
-        Program::TrustGraph | Program::Signer => {
+        Program::Trustgraphs | Program::Signer => {
             let eas = entry.eas.ok_or_else(|| {
                 anyhow!("no EAS address for {}; add one to its manifest entry", entry.name)
             })?;
@@ -203,7 +203,7 @@ pub fn build_input(
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let text = std::fs::read_to_string(input_path)?;
     let (j, cid, vk, blob) = match program {
-        Program::TrustGraph => {
+        Program::Trustgraphs => {
             let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
             let r = pagerank_core::compute::compute(&input);
             let vk =
@@ -339,7 +339,7 @@ fn readable(gateway: &str, cid: &str) -> Result<()> {
 pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
     let text = std::fs::read_to_string(&built.input_path)?;
     let (proof, native_pub) = match built.program {
-        Program::TrustGraph => {
+        Program::Trustgraphs => {
             let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
             let native = pagerank_core::encode::journal_encoded(
                 &pagerank_core::compute::compute(&input).journal,

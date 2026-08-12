@@ -17,7 +17,7 @@ export const revalidateNetwork = async (networkId: string = 'all') => {
  * Handler args for an event that is registered on MORE THAN ONE source.
  *
  * The snapshot and fund-distributor contracts each live on two Ponder sources: the
- * factory-discovered one (every trust-graph instance the `TrustGraphFactory` minted —
+ * factory-discovered one (every trust-graph instance the `TrustgraphsFactory` minted —
  * `merkleSnapshot`, `merkleFundDistributor`) and the static one (the contributions and hypercerts
  * instances, deployed by their own scripts — `programSnapshot`, `programFundDistributor`). Ponder's
  * `address` is either a static list or a `factory()`, never both, hence the pair; the handler is

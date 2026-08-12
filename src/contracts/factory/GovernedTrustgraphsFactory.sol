@@ -5,25 +5,25 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 
-/// @title GovernedTrustGraphFactory
+/// @title GovernedTrustgraphsFactory
 /// @notice Creates a factory trust graph and its DAO Safe + Merkle governance module as one
 ///         transaction, with the Safe installed as every instance authority from genesis.
 /// @dev The base factory remains the canonical instance creator. This wrapper temporarily owns a
-///      fresh one-owner Safe, has that Safe call `TrustGraphFactory.createInstance`, installs the
+///      fresh one-owner Safe, has that Safe call `TrustgraphsFactory.createInstance`, installs the
 ///      snapshot-specific governance module, and finally replaces itself with the caller as the
 ///      Safe's initial break-glass signer. Targets therefore see the Safe — never this wrapper or
-///      the creator EOA — as `msg.sender`, and `TrustGraphParamsController.owner()` is correct from
+///      the creator EOA — as `msg.sender`, and `TrustgraphsParamsController.owner()` is correct from
 ///      version one onward.
-contract GovernedTrustGraphFactory {
+contract GovernedTrustgraphsFactory {
     address internal constant SENTINEL_OWNERS = address(0x1);
 
-    TrustGraphFactory public immutable FACTORY;
+    TrustgraphsFactory public immutable FACTORY;
     GnosisSafeProxyFactory public immutable SAFE_FACTORY;
     address public immutable SAFE_SINGLETON;
 
@@ -40,7 +40,7 @@ contract GovernedTrustGraphFactory {
         address snapshot
     );
 
-    constructor(TrustGraphFactory factory_, GnosisSafeProxyFactory safeFactory_, address safeSingleton_) {
+    constructor(TrustgraphsFactory factory_, GnosisSafeProxyFactory safeFactory_, address safeSingleton_) {
         if (address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)) {
             revert ZeroAddress();
         }
@@ -51,7 +51,7 @@ contract GovernedTrustGraphFactory {
 
     /// @notice Create one DAO-governed trust graph. `requested.admin` is deliberately ignored:
     ///         the newly-created Safe is the instance admin, controller owner and fund owner.
-    function createGovernedInstance(TrustGraphFactory.CreateArgs calldata requested)
+    function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested)
         external
         payable
         returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot)
@@ -59,7 +59,7 @@ contract GovernedTrustGraphFactory {
         GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
         safeAddress = address(safe);
 
-        TrustGraphFactory.CreateArgs memory args = requested;
+        TrustgraphsFactory.CreateArgs memory args = requested;
         args.admin = safeAddress;
 
         if (msg.value != 0) {
@@ -67,7 +67,7 @@ contract GovernedTrustGraphFactory {
             if (!funded) revert SafeFundingFailed();
         }
 
-        _execSafe(safe, address(FACTORY), msg.value, abi.encodeCall(TrustGraphFactory.createInstance, (args)));
+        _execSafe(safe, address(FACTORY), msg.value, abi.encodeCall(TrustgraphsFactory.createInstance, (args)));
 
         // The Safe is the actual factory caller, hence part of the canonical instance id.
         instanceId = FACTORY.computeInstanceId(safeAddress, args.name, args.salt);

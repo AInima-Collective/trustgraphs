@@ -42,7 +42,7 @@ fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
 
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
 fn supported() -> BTreeSet<Program> {
-    BTreeSet::from([Program::TrustGraph, Program::Contributions, Program::Signer])
+    BTreeSet::from([Program::Trustgraphs, Program::Contributions, Program::Signer])
 }
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
@@ -651,7 +651,7 @@ fn now() -> u64 {
 fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
     let mut out = BTreeMap::new();
     for (program, vk) in [
-        (Program::TrustGraph, trustgraph_prover::programs::trust_graph::elf()),
+        (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
         (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {

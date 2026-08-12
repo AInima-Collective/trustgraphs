@@ -6,7 +6,7 @@
 
 ## 1. What we're building
 
-An attestation-based contribution system on TrustGraph:
+An attestation-based contribution system on trustgraphs:
 
 1. **Claim** — attest to something you contributed, or nominate someone else's contribution.
 2. **Value** — others attest to how valuable that contribution is.

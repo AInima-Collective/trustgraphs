@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-12
 
-**Scope:** candidate graph computations that could become reusable TrustGraph primitives, with
+**Scope:** candidate graph computations that could become reusable trustgraphs primitives, with
 specific attention to product semantics, adversarial behavior, deterministic SP1 execution, and
 the existing checkpoint/accumulator/Merkle-root architecture.
 
@@ -12,7 +12,7 @@ the existing checkpoint/accumulator/Merkle-root architecture.
 
 ## Executive conclusion
 
-TrustGraph should not add a shelf of algorithms that all emit an ambiguously named `trust_score`.
+Trustgraphs should not add a shelf of algorithms that all emit an ambiguously named `trust_score`.
 The useful expansion is a small set of computations with **different output contracts**:
 
 | Question | Primitive | Output |
@@ -30,7 +30,7 @@ smallest trust bottleneck. The best near-term extension of the existing engine i
 personalized diffusion**: arbitrary seed priors, edge-type and direction constraints, temporal
 views, and stationary or deliberately short-horizon execution.
 
-Before either, TrustGraph needs a canonical **graph projection** abstraction. Relation type,
+Before either, trustgraphs needs a canonical **graph projection** abstraction. Relation type,
 scope, time, direction, provenance equivalence, and capacity policy determine what a computation
 means. If they remain implicit, a correct proof can still certify a semantically meaningless or
 easily gamed result.
@@ -98,7 +98,7 @@ local graph took approximately 3.7–3.8 million guest cycles in the
 
 A global rank, a source-relative judgment, a group membership decision, a posterior label, and an
 anomaly finding should not share one interface or be casually substituted for one another.
-TrustGraph should define a small tagged result family:
+Trustgraphs should define a small tagged result family:
 
 ```text
 RankVector       { node -> normalized_score }
@@ -216,7 +216,7 @@ its theoretical attack-resistance bound. The min-cut is also unusually legible t
 “all support for this account passes through these two issuers” is actionable in a way that a score
 of 0.0047 is not. See the [original USENIX paper](https://www.usenix.org/conference/7th-usenix-security-symposium/attack-resistant-trust-metrics-public-key-certification).
 
-The important TrustGraph-specific design is **capacity by real independence**, not raw edge count.
+The important trustgraphs-specific design is **capacity by real independence**, not raw edge count.
 Ten vertex-disjoint address paths may still be controlled by one person, funded by one wallet,
 issued from one service, or copied from one document. Capacity policies should be able to cap a
 principal, issuer, provenance root, administrative domain, or infrastructure cluster. The output
@@ -494,7 +494,7 @@ Sources: [Leiden](https://doi.org/10.1038/s41598-019-41695-z),
 ## 9. Learned graph methods: downstream only for now
 
 node2vec, GraphSAGE, GCNs, and temporal GNNs can help with candidate generation, similarity,
-classification, and fraud detection once TrustGraph has features and labeled outcomes. They should
+classification, and fraud detection once trustgraphs has features and labeled outcomes. They should
 not be first-class trust primitives yet:
 
 - the training set and objective introduce a larger trust boundary than the graph computation;
@@ -518,7 +518,7 @@ and the [Nettack adversarial study](https://arxiv.org/abs/1805.07984).
 
 ## 10. Comparative recommendation matrix
 
-Ratings are relative to the current TrustGraph architecture. “Proof fit” includes deterministic
+Ratings are relative to the current trustgraphs architecture. “Proof fit” includes deterministic
 arithmetic, bounded execution, and whether the output maps naturally to the current epoch/Merkle
 model.
 
@@ -724,6 +724,6 @@ credentials, or some combination. Douceur's foundational result remains the righ
 - unqualified time decay as an anti-Sybil mechanism; or
 - embeddings/GNN outputs in governance or reward paths.
 
-The strategic opportunity is to make TrustGraph answer more kinds of graph questions while
+The strategic opportunity is to make trustgraphs answer more kinds of graph questions while
 preserving its strongest property: every important answer names its inputs and semantics precisely
 enough to reproduce, explain, and—where necessary—prove.

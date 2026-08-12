@@ -511,7 +511,7 @@ pre {
 /* @react-sigma's component-level stylesheet is loaded after this file and its
  * more-specific `div.react-sigma` rule paints `--sigma-background-color`.
  * Override the variables on the graph itself: then either rule resolves to
- * the active TrustGraph theme, independent of CSS chunk order. */
+ * the active trustgraphs theme, independent of CSS chunk order. */
 .react-sigma {
   --sigma-background-color: var(--graph-canvas);
   --sigma-controls-background-color: var(--surface);

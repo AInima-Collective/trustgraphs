@@ -5,13 +5,13 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 /// @title MerkleSnapshotDeployer
 /// @notice A one-per-chain singleton whose only job is to hold `MerkleSnapshot`'s creation code so
-///         `TrustGraphFactory` doesn't have to.
+///         `TrustgraphsFactory` doesn't have to.
 /// @dev    Why this exists at all: a factory that deploys N child types carries every child's
 ///         creation code in its own RUNTIME bytecode. Resolver + snapshot + distributor initcode is
 ///         ~22.6 KB before the factory's own logic, which blows the 24,576-byte EIP-170 limit. The
@@ -62,16 +62,16 @@ contract MerkleFundDistributorDeployer {
     }
 }
 
-/// @title TrustGraphParamsControllerDeployer
-/// @notice Holds the typed controller's creation code outside `TrustGraphFactory` for EIP-170.
-contract TrustGraphParamsControllerDeployer {
+/// @title TrustgraphsParamsControllerDeployer
+/// @notice Holds the typed controller's creation code outside `TrustgraphsFactory` for EIP-170.
+contract TrustgraphsParamsControllerDeployer {
     function deploy(
         bytes32 instanceId,
         address snapshot,
         IInstanceRegistry registry,
         ParamsCodec.Params calldata initialParams,
         address owner
-    ) external returns (TrustGraphParamsController) {
-        return new TrustGraphParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
+    ) external returns (TrustgraphsParamsController) {
+        return new TrustgraphsParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
     }
 }

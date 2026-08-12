@@ -92,7 +92,7 @@ const presentAction = (action: DisplayProposalAction): ActionPresentation => {
     title: action.description || 'Execute a contract call',
     summary: action.description
       ? 'Execute this custom contract call from the DAO.'
-      : 'This action is not yet recognized by TrustGraph.',
+      : 'This action is not yet recognized by trustgraphs.',
     badge: action.operation === 1 ? 'Delegate call' : 'Contract call',
     icon: Code2,
   }

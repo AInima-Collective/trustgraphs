@@ -33,7 +33,7 @@ score blob, CID. The signer-sync program is the one exception: it reads the same
 feed as trust-graph, so its vectors live under the `signer` key of `trust-graph.json` rather
 than in a separate file.
 
-The Solidity suites (`TrustGraphGoldenVectors.t.sol`, `SignerGoldenVectors.t.sol`,
+The Solidity suites (`TrustgraphsGoldenVectors.t.sol`, `SignerGoldenVectors.t.sol`,
 `HypercertsGoldenVectors.t.sol`, `ContributionsGoldenVectors.t.sol`) and the frontend
 `golden.test.ts` files all read those same JSON files and re-derive the same bytes
 independently.

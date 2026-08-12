@@ -7,7 +7,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-/// @title TrustGraphGoldenVectors
+/// @title TrustgraphsGoldenVectors
 /// @notice Cross-language lock (Risk R2) for the `trust-graph` (root-producer) program: independently
 ///         recompute in Solidity every frozen byte format that `pagerank-core` produces (via
 ///         `cargo run --example export_golden`) and assert equality. If the guest's Rust encoding and
@@ -16,7 +16,7 @@ import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 /// @dev    The `trust-graph` and `signer` programs share the same golden feed
 ///         (`test/golden/trust-graph.json`); the `.signer` section is asserted in
 ///         SignerGoldenVectors.t.sol.
-contract TrustGraphGoldenVectorsTest is Test {
+contract TrustgraphsGoldenVectorsTest is Test {
     using stdJson for string;
 
     string json;
@@ -162,7 +162,7 @@ contract TrustGraphGoldenVectorsTest is Test {
         );
     }
 
-    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustGraphFactory) must
+    /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustgraphsFactory) must
     /// reproduce the golden vector, locking the on-chain 17-field encoding to
     /// pagerank-core::encode::params_hash.
     function test_ParamsHashEncoding() public view {

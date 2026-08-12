@@ -40,7 +40,7 @@ The flagship [trust-graph program](../build/trust-graph/runbook.md) ingests EAS 
    the epoch you are checking names its checkpoint id.
 3. **The governance-pinned params** (`params.json`), whose hash must equal the `paramsHash`
    pinned at that checkpoint. On a controller-backed network the full tuple is readable
-   on-chain from `TrustGraphParamsController.getCurrentParams()`.
+   on-chain from `TrustgraphsParamsController.getCurrentParams()`.
 
 The procedure:
 

@@ -106,7 +106,7 @@ const ROADMAP: Array<{
 ]
 
 export const metadata: Metadata = {
-  // `absolute` so the root page is "Trustgraphs" rather than "Trustgraphs | Trustgraphs".
+  // `absolute` so the root page is "Trustgraphs" rather than "trustgraphs | trustgraphs".
   title: { absolute: 'Trustgraphs' },
   ...socialCard({
     title: 'Trustgraphs',

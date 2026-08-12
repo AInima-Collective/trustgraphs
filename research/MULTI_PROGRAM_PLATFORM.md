@@ -21,7 +21,7 @@ The signer-sync build quietly proved most of the pattern. Inventory of what gene
 
 | Piece | Why it already generalizes |
 |---|---|
-| `SP1TrustGraphVerifier` | Journal-agnostic: checks `keccak256(publicValues) == journalDigest`, delegates to the SP1 gateway with an immutable per-program `programVKey`. A new program = a new instance with a new vkey. (Rename to `SP1JournalVerifier.sol` for honesty — optional polish, new deployments only.) |
+| `SP1TrustgraphsVerifier` | Journal-agnostic: checks `keccak256(publicValues) == journalDigest`, delegates to the SP1 gateway with an immutable per-program `programVKey`. A new program = a new instance with a new vkey. (Rename to `SP1JournalVerifier.sol` for honesty — optional polish, new deployments only.) |
 | `IZkVerifier` seam | `verify(bytes proof, bytes32 journalDigest)` — the consumer decides the journal shape; the verifier doesn't care. |
 | Guest packaging | `zk/program` is already a **multi-bin crate** (`trustgraph-program` + `trustgraph-signer-program`); `zk/prover/build.rs`'s single `sp1_build::build_program("../program")` builds every bin. A third program = a third `[[bin]]`. |
 | `AttestationAccumulator` | The chained-hash fold is the input-commitment primitive for *any* lane-1 feed; `AnchorRegistry` (offchain design §4.1) is the same fold one level up for lane 2. |
@@ -71,7 +71,7 @@ Two decisions worth stating explicitly:
 
 | Contract | Multi-program answer |
 |---|---|
-| `SP1TrustGraphVerifier` → `SP1JournalVerifier` | **Reuse bytecode, deploy per program.** Immutable vkey per instance; same gateway. |
+| `SP1TrustgraphsVerifier` → `SP1JournalVerifier` | **Reuse bytecode, deploy per program.** Immutable vkey per instance; same gateway. |
 | `MerkleSnapshot` | **One codebase on journal v2; deploy per instance.** See below — the load-bearing decision. |
 | `AttestationAccumulator` (+ resolvers) | Reuse as-is for any instance with a lane-1 EAS feed. One accumulator per instance (the §3.2 invariant: one checkpoint freezes one `acc`). |
 | `AnchorRegistry` (new, offchain design §4.1) | **Per instance.** Each graph owns its anchor log — sharing one registry across graphs would couple their epoch schedules and registration gates for no benefit. |

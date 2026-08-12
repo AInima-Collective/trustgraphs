@@ -32,7 +32,7 @@ export const easAttestation = onchainTable(
 //////////////////////////////////////////////////////////////*/
 
 /**
- * `TrustGraphFactory.InstanceCreated`, one row per trust-graph network created through the factory
+ * `TrustgraphsFactory.InstanceCreated`, one row per trust-graph network created through the factory
  * (research/INSTANCE_FACTORY.md §3). This table REPLACES `config/networks.json` as the trust-graph
  * catalog: a community that signs one `createInstance` transaction is browsable here seconds later,
  * with no config edit, no redeploy, and no indexer restart. The same event is what Ponder's

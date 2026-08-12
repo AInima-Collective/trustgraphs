@@ -44,7 +44,7 @@ const DESCRIPTION = 'What people ask before they trust a scoreboard.'
 export const metadata: Metadata = {
   title: 'Questions',
   ...socialCard({
-    title: 'Questions | Trustgraphs',
+    title: 'Questions | trustgraphs',
     description: DESCRIPTION,
     path: '/faq',
   }),

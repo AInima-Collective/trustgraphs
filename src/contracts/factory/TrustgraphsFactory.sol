@@ -9,19 +9,19 @@ import {EASIndexerResolver} from "contracts/eas/resolvers/EASIndexerResolver.sol
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
-import {TrustGraphParamsValidator} from "contracts/params/TrustGraphParamsValidator.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsParamsValidator} from "contracts/params/TrustgraphsParamsValidator.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
-    TrustGraphParamsControllerDeployer
+    TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
-/// @title TrustGraphFactory
+/// @title TrustgraphsFactory
 /// @notice Creates a complete, working trust-graph instance in ONE transaction: an attestation
 ///         accumulator, its vouching schema, a `MerkleSnapshot` bound to a freshly computed
 ///         `paramsHash`, an optional fund distributor, and a directory entry — all owned by the
@@ -44,7 +44,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 ///      3. **Permissionless is not unvalidated.** `paramsHash` is otherwise an opaque bytes32 that
 ///         accepts anything; creation-time bounds (below) keep every instance inside the envelope
 ///         the guest is proven safe over, and the epoch floor bounds what hosted proving costs.
-contract TrustGraphFactory {
+contract TrustgraphsFactory {
     /*//////////////////////////////////////////////////////////////
                           THE FROZEN INTERFACE
     //////////////////////////////////////////////////////////////*/
@@ -168,7 +168,7 @@ contract TrustGraphFactory {
     MerkleSnapshotDeployer public immutable SNAPSHOT_DEPLOYER;
     MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
     /// @notice Creation-code holder for the trust-graph-specific typed params controller.
-    TrustGraphParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
+    TrustgraphsParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
 
     /// @notice The minimum epoch length, in blocks. Chain-appropriate: roughly monthly on mainnet
     ///         (what hosted proving commits to), tiny on a devnet. A shorter request is raised to
@@ -230,7 +230,7 @@ contract TrustGraphFactory {
         IInstanceRegistry instanceRegistry,
         MerkleSnapshotDeployer snapshotDeployer,
         MerkleFundDistributorDeployer distributorDeployer,
-        TrustGraphParamsControllerDeployer paramsControllerDeployer,
+        TrustgraphsParamsControllerDeployer paramsControllerDeployer,
         uint64 epochFloor,
         IProvingVault vault
     ) {
@@ -364,7 +364,7 @@ contract TrustGraphFactory {
         uint64 epochLength = args.epochLength < EPOCH_FLOOR ? EPOCH_FLOOR : args.epochLength;
         merkleSnapshot.setEpochLength(epochLength);
 
-        TrustGraphParamsController controller =
+        TrustgraphsParamsController controller =
             PARAMS_CONTROLLER_DEPLOYER.deploy(instanceId, snapshot, INSTANCE_REGISTRY, params, admin);
         merkleSnapshot.grantRole(merkleSnapshot.OPERATIONAL_ROLE(), address(controller));
         merkleSnapshot.renounceRole(merkleSnapshot.OPERATIONAL_ROLE(), address(this));
@@ -440,6 +440,6 @@ contract TrustGraphFactory {
     /// @dev The §2.2 bounds. These are not opinions about what makes a good community — they are
     ///      the envelope the fixed-point guest is proven over, plus the two identity rules.
     function _validateParams(ParamsCodec.Params memory p) internal pure {
-        TrustGraphParamsValidator.validateCreation(p);
+        TrustgraphsParamsValidator.validateCreation(p);
     }
 }

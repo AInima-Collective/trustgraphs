@@ -2227,16 +2227,16 @@ export const gnosisSafeAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// GovernedTrustGraphFactory
+// GovernedTrustgraphsFactory
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const governedTrustGraphFactoryAbi = [
+export const governedTrustgraphsFactoryAbi = [
   {
     type: 'constructor',
     inputs: [
       {
         name: 'factory_',
-        internalType: 'contract TrustGraphFactory',
+        internalType: 'contract TrustgraphsFactory',
         type: 'address',
       },
       {
@@ -2253,7 +2253,7 @@ export const governedTrustGraphFactoryAbi = [
     inputs: [],
     name: 'FACTORY',
     outputs: [
-      { name: '', internalType: 'contract TrustGraphFactory', type: 'address' },
+      { name: '', internalType: 'contract TrustgraphsFactory', type: 'address' },
     ],
     stateMutability: 'view',
   },
@@ -2282,7 +2282,7 @@ export const governedTrustGraphFactoryAbi = [
     inputs: [
       {
         name: 'requested',
-        internalType: 'struct TrustGraphFactory.CreateArgs',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
         type: 'tuple',
         components: [
           { name: 'name', internalType: 'string', type: 'string' },
@@ -5999,10 +5999,10 @@ export const trustAccumulatorMirrorAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TrustGraphFactory
+// TrustgraphsFactory
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const trustGraphFactoryAbi = [
+export const trustgraphsFactoryAbi = [
   {
     type: 'constructor',
     inputs: [
@@ -6034,7 +6034,7 @@ export const trustGraphFactoryAbi = [
       },
       {
         name: 'paramsControllerDeployer',
-        internalType: 'contract TrustGraphParamsControllerDeployer',
+        internalType: 'contract TrustgraphsParamsControllerDeployer',
         type: 'address',
       },
       { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
@@ -6138,7 +6138,7 @@ export const trustGraphFactoryAbi = [
     outputs: [
       {
         name: '',
-        internalType: 'contract TrustGraphParamsControllerDeployer',
+        internalType: 'contract TrustgraphsParamsControllerDeployer',
         type: 'address',
       },
     ],
@@ -6228,7 +6228,7 @@ export const trustGraphFactoryAbi = [
     inputs: [
       {
         name: 'args',
-        internalType: 'struct TrustGraphFactory.CreateArgs',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
         type: 'tuple',
         components: [
           { name: 'name', internalType: 'string', type: 'string' },

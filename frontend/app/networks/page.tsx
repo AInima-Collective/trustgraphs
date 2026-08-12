@@ -71,7 +71,7 @@ const COLUMN_NOTE =
 export const metadata: Metadata = {
   title: 'Networks',
   ...socialCard({
-    title: 'Networks | Trustgraphs',
+    title: 'Networks | trustgraphs',
     description: STANDFIRST,
     path: '/networks',
   }),

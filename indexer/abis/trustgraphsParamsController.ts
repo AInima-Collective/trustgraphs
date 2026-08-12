@@ -1,4 +1,4 @@
-export const trustGraphParamsComponents = [
+export const trustgraphsParamsComponents = [
   { name: 'dampingFp', type: 'uint256', internalType: 'uint256' },
   { name: 'toleranceFp', type: 'uint256', internalType: 'uint256' },
   { name: 'maxIterations', type: 'uint32', internalType: 'uint32' },
@@ -22,7 +22,7 @@ export const trustGraphParamsComponents = [
   { name: 'chainId', type: 'uint64', internalType: 'uint64' },
 ] as const
 
-export const trustGraphParamsControllerAbi = [
+export const trustgraphsParamsControllerAbi = [
   {
     type: 'event',
     name: 'ParamsUpdated',
@@ -56,7 +56,7 @@ export const trustGraphParamsControllerAbi = [
         type: 'tuple',
         indexed: false,
         internalType: 'struct ParamsCodec.Params',
-        components: trustGraphParamsComponents,
+        components: trustgraphsParamsComponents,
       },
       {
         name: 'evidenceURI',
@@ -117,7 +117,7 @@ export const trustGraphParamsControllerAbi = [
         name: '',
         type: 'tuple',
         internalType: 'struct ParamsCodec.Params',
-        components: trustGraphParamsComponents,
+        components: trustgraphsParamsComponents,
       },
     ],
     stateMutability: 'view',

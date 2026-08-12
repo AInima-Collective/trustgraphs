@@ -10,7 +10,7 @@
 
 ## 1. SP1 precompile landscape as of July 2026
 
-**Current version:** SP1 **v6.3.1** (released 2026-06-25; verified via `gh api repos/succinctlabs/sp1/releases/latest`). This is exactly what TrustGraph pins, so no upgrade needed. Recent releases (v6.2.x–6.3.x) added: `no_std` guest support, mprotect, private stdin for the network (v6.2.1), Rust 1.94 toolchain, DAG-native GPU prover, and market-based PGU pricing defaults. The current prover backend generation is **SP1 Hypercube** (multilinear/jagged PCS), live on mainnet since late 2025 ([blog](https://blog.succinct.xyz/sp1-hypercube-is-now-live-on-mainnet/)).
+**Current version:** SP1 **v6.3.1** (released 2026-06-25; verified via `gh api repos/succinctlabs/sp1/releases/latest`). This is exactly what trustgraphs pins, so no upgrade needed. Recent releases (v6.2.x–6.3.x) added: `no_std` guest support, mprotect, private stdin for the network (v6.2.1), Rust 1.94 toolchain, DAG-native GPU prover, and market-based PGU pricing defaults. The current prover backend generation is **SP1 Hypercube** (multilinear/jagged PCS), live on mainnet since late 2025 ([blog](https://blog.succinct.xyz/sp1-hypercube-is-now-live-on-mainnet/)).
 
 **Full syscall list** (verified from `crates/core/executor/src/syscall_code.rs` on `succinctlabs/sp1@main`):
 
@@ -98,10 +98,10 @@ Note the fit with EAS: EAS already defines **off-chain attestations as EIP-712 s
 
 Mechanism ([docs](https://docs.succinct.xyz/docs/sp1/writing-programs/proof-aggregation)): guest calls `sp1_zkvm::lib::verify::verify_sp1_proof(vk_digest, pv_digest)` (verified in `crates/zkvm/lib/src/verify.rs`: a thin `VERIFY_SP1_PROOF` syscall over the two digests); proofs must be **compressed** (constant-size STARKs) and are fed via the proof input stream, not stdin bytes. In-guest cycle cost is trivial (syscall + committing digests); the real cost is prover-side, where each deferred proof adds recursion-tree work (roughly one extra recursion node, seconds of GPU each). Docs' guidance, verbatim: *"Generally proving a single program is faster and more cost-effective than generating multiple proofs and aggregating them"* — aggregation is for >~120B cycles, >~2GB memory, multi-party proofs, or pipelining.
 
-**Verdict for TrustGraph:**
+**Verdict for trustgraphs:**
 - **N ≤ ~100k signatures: monolithic guest wins.** 23–45B cycles is inside single-proof territory; aggregation overhead (per-attester setup ~ fixed millions of cycles + recursion nodes + orchestration) would exceed the savings for a one-shot proof.
 - **Aggregation becomes the right answer for *incremental epochs*:** one compressed sub-proof per attester repo (`vk_attester`, public values = `(did, signingKeyDigest, commitRev, edgesDigest)`), cached until the repo's `rev` changes; the root guest verifies A digests via `verify_sp1_proof` + runs PageRank over the union of `edgesDigest`-committed edge lists. Steady-state proving cost ∝ churned repos, not corpus. At A=1,000 sub-proofs the root aggregation is still modest (in-guest: thousands of cycles per proof; prover-side: est. ~1–3 GPU-seconds per deferred proof — **estimate, unpublished**; use a 32-ary aggregation tree if flat aggregation strains prover memory). This mirrors OP Succinct's production pattern (parallel range proofs → single hourly aggregate on-chain, [blog](https://blog.succinct.xyz/op-succinct/)).
-- Bonus: sub-proofs can be produced permissionlessly by different parties (even attesters themselves via the network), matching TrustGraph's permissionless-prover ethos.
+- Bonus: sub-proofs can be produced permissionlessly by different parties (even attesters themselves via the network), matching trustgraphs' permissionless-prover ethos.
 
 ## 6. Input-size / memory limits
 
@@ -115,12 +115,12 @@ Mechanism ([docs](https://docs.succinct.xyz/docs/sp1/writing-programs/proof-aggr
 |---|---|---|---|
 | **Status quo:** on-chain EAS + keccak accumulator | ~100–200k L2 gas (~$0.001–0.01) | none | Guest just re-hashes the chain (~cheap). The thing you're trying to escape. |
 | **Thin on-chain registrar:** off-chain EIP-712, contract runs `ecrecover` (3k gas) + folds hash into the accumulator | ~30–80k gas incl. calldata | none | ~2–5× cheaper than full EAS; guest unchanged. The "boring" middle option — worth pricing seriously. |
-| **AVS/operator pre-verification** (WAVS/EigenLayer/Symbiotic-style quorum signs a batch root; guest consumes root) | ~0 per attestation | economic quorum honesty | Reintroduces exactly the operator trust TrustGraph removed when it dropped WAVS. |
+| **AVS/operator pre-verification** (WAVS/EigenLayer/Symbiotic-style quorum signs a batch root; guest consumes root) | ~0 per attestation | economic quorum honesty | Reintroduces exactly the operator trust trustgraphs removed when it dropped WAVS. |
 | **TEE pre-verification** (incl. SP1's own TEE integration — the v6 SDK ships TEE endpoints for two-factor proving) | ~0 | TEE vendor | Good as *2FA* alongside ZK, weak as sole verifier. |
 | **Optimistic:** post set-commitment + fraud window; ZK only for PageRank | ~0 | 1-of-N watcher liveness | Adds latency (challenge window) to every root update. |
 | **Poseidon2 accumulator (new option):** any pre-verification layer commits the accepted set with Poseidon2; guest re-hashes via the new `POSEIDON2` syscall | ~0 in guest | whatever the pre-verifier is | The v6 `POSEIDON2` precompile makes in-guest set re-commitment nearly free vs keccak — relevant whichever layer does sig checking. **Flag:** recent syscall; confirm patched-crate/API maturity before depending on it. |
 
-**Assessment:** given §2's numbers, outsourcing signature verification buys little at this scale — even 100k in-guest signatures cost tens of dollars per epoch, and 1k costs cents. The strongest reason to keep signatures **in-guest** is that it preserves TrustGraph's zero-added-trust story; the strongest hybrid is per-attester **sub-proofs** (§5), which are still ZK, still trustless, and make cost proportional to churn.
+**Assessment:** given §2's numbers, outsourcing signature verification buys little at this scale — even 100k in-guest signatures cost tens of dollars per epoch, and 1k costs cents. The strongest reason to keep signatures **in-guest** is that it preserves trustgraphs' zero-added-trust story; the strongest hybrid is per-attester **sub-proofs** (§5), which are still ZK, still trustless, and make cost proportional to churn.
 
 ---
 

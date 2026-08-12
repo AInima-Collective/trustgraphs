@@ -8,7 +8,7 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 
 /// @title SignerSyncZkModule
-/// @notice Zodiac module that rotates a Safe's owner set to the top-scored TrustGraph accounts,
+/// @notice Zodiac module that rotates a Safe's owner set to the top-scored trustgraph accounts,
 ///         gated by a permissionless zero-knowledge proof (the signer-sync analogue of
 ///         `MerkleSnapshot.submitProof`). A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint,

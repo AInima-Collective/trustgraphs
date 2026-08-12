@@ -31,7 +31,8 @@ use zk_core::words::{word_addr, word_u256, word_u64, word_u8};
 use crate::ecdsa::{eip191_digest32, recover_address};
 use crate::{AuthedEdge, EnvelopeError};
 
-/// Domain tag for the head signature: `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")`.
+/// Frozen v1 domain tag for head signatures. The pre-rename bytes remain part of the protocol:
+/// `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")`.
 pub fn head_domain_tag() -> B256 {
     keccak256(b"TRUSTGRAPH_ENVELOPE0_HEAD_V1")
 }

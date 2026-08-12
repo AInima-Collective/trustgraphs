@@ -1,12 +1,12 @@
-// AUTO-DERIVED from the forge artifact out/TrustGraphFactory.sol/TrustGraphFactory.json.
-// Source of truth: src/contracts/factory/TrustGraphFactory.sol. Kept in the indexer (not in
+// AUTO-DERIVED from the forge artifact out/TrustgraphsFactory.sol/TrustgraphsFactory.json.
+// Source of truth: src/contracts/factory/TrustgraphsFactory.sol. Kept in the indexer (not in
 // frontend/lib/contract-abis.ts) so the indexer can keep a narrow event-oriented surface without
 // importing frontend build output.
 //
 // `InstanceCreated` is the frozen discovery interface (research/INSTANCE_FACTORY.md §3): the
 // indexer catalogs instances from it AND derives every child-contract address from it via Ponder
 // `factory()` sources, so its shape must match the contract exactly.
-export const trustGraphFactoryAbi = [
+export const trustgraphsFactoryAbi = [
   {
     type: 'constructor',
     inputs: [
@@ -43,7 +43,7 @@ export const trustGraphFactoryAbi = [
       {
         name: 'paramsControllerDeployer',
         type: 'address',
-        internalType: 'contract TrustGraphParamsControllerDeployer',
+        internalType: 'contract TrustgraphsParamsControllerDeployer',
       },
       {
         name: 'epochFloor',
@@ -302,7 +302,7 @@ export const trustGraphFactoryAbi = [
       {
         name: 'args',
         type: 'tuple',
-        internalType: 'struct TrustGraphFactory.CreateArgs',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
         components: [
           {
             name: 'name',

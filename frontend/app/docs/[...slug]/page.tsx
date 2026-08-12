@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
       title: `${section.label} · Docs`,
       ...socialCard({
-        title: `${section.label} · Docs | Trustgraphs`,
+        title: `${section.label} · Docs | trustgraphs`,
         description: section.blurb,
         path: `/docs/${path}`,
       }),
@@ -54,7 +54,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: summary.title,
     ...socialCard({
-      title: `${summary.title} | Trustgraphs`,
+      title: `${summary.title} | trustgraphs`,
       description: summary.description,
       path: `/docs/${path}`,
     }),

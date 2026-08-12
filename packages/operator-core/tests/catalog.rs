@@ -101,7 +101,7 @@ fn add_healthy(chain: &mut FakeChain, seed: u8) -> B256 {
     chain.records.insert(
         id,
         RegistryRecord {
-            program: Program::TrustGraph.id(),
+            program: Program::Trustgraphs.id(),
             snapshot,
             verifier: Address::from([seed.wrapping_add(0x30); 20]),
             registry_or_accumulator: resolver,
@@ -145,7 +145,7 @@ fn add_controller(chain: &mut FakeChain, id: B256, version: u64, current: Params
 }
 
 fn scan_all(chain: &FakeChain) -> Catalog {
-    scan(chain, Program::TrustGraph, &Manifest::default()).unwrap()
+    scan(chain, Program::Trustgraphs, &Manifest::default()).unwrap()
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn a_healthy_instance_is_reconstructed_with_zero_per_instance_config() {
     let catalog = scan_all(&chain);
     assert!(catalog.skipped.is_empty());
     let entry = catalog.get(id).expect("reconstructed");
-    assert_eq!(entry.program, Program::TrustGraph);
+    assert_eq!(entry.program, Program::Trustgraphs);
     assert_eq!(entry.eas, Some(EAS));
     assert_eq!(entry.name, "net-1");
     assert!(entry.manifest.is_none(), "the chain described it; no manifest needed");
@@ -293,7 +293,7 @@ fn a_manifest_covers_what_the_chain_cannot_describe() {
     manifest.validate().unwrap();
 
     // Scanning for trust-graph does not pick up the contributions entry...
-    let tg = scan(&chain, Program::TrustGraph, &manifest).unwrap();
+    let tg = scan(&chain, Program::Trustgraphs, &manifest).unwrap();
     assert_eq!(tg.entries.len(), 1);
     assert!(tg.entries.iter().all(|e| e.manifest.is_none()));
 
@@ -315,7 +315,7 @@ fn the_chain_wins_when_a_manifest_duplicates_a_registered_instance() {
 
     let manifest = Manifest {
         entries: vec![ManifestEntry {
-            program: Program::TrustGraph,
+            program: Program::Trustgraphs,
             snapshot,
             params: "stale.json".into(),
             eas: Some(EAS),
@@ -325,7 +325,7 @@ fn the_chain_wins_when_a_manifest_duplicates_a_registered_instance() {
             from_block: 0,
         }],
     };
-    let catalog = scan(&chain, Program::TrustGraph, &manifest).unwrap();
+    let catalog = scan(&chain, Program::Trustgraphs, &manifest).unwrap();
     assert_eq!(catalog.entries.len(), 1);
     assert!(
         catalog.entries[0].manifest.is_none(),

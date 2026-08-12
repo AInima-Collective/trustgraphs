@@ -1,4 +1,4 @@
-# Graph Seeding: Initializing TrustGraph with Scores, Without Attestations
+# Graph Seeding: Initializing trustgraphs with Scores, Without Attestations
 
 **Status:** research report, 2026-07-22. Design-thinking output; no implementation decision yet.
 **Question:** how do we initialize a trust graph with a pre-existing score distribution (cold-start bootstrap, imported standing) instead of, or ahead of, organic attestations?
@@ -46,7 +46,7 @@ transform subsidizes identity-splitting).
   nearly-empty graph is approximately the prior echoed back. That is expected behavior; day-one
   scores *are* the prior, and organic structure takes over as edges arrive.
 - **Imported standing.** A community already has reputation elsewhere (hypercert impact scores, a
-  prior TrustGraph instance, contribution history) and wants it as a durable prior rather than
+  prior trustgraphs instance, contribution history) and wants it as a durable prior rather than
   starting from zero.
 
 These pull temporality in opposite directions (fade vs persist), which is why the prior must be a

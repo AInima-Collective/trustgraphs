@@ -79,7 +79,7 @@ ponder.on('gnosisSafe:RemovedOwner', syncSafe)
 // ChangedThreshold: Update the threshold
 ponder.on('gnosisSafe:ChangedThreshold', syncSafe)
 
-// Safes created through GovernedTrustGraphFactory are discovered from its event rather than the
+// Safes created through GovernedTrustgraphsFactory are discovered from its event rather than the
 // static deployment summary. Their setup emits AddedOwner/ChangedThreshold in the creation block,
 // so the same canonical read-back handler initializes and maintains them without a config edit.
 ponder.on('governedGnosisSafe:AddedOwner', syncSafe)

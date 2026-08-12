@@ -11,7 +11,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 ///         the on-chain Solidity encoding ever diverge, this test fails.
 /// @dev    The `trust-graph` and `signer` programs share the same golden feed
 ///         (`test/golden/trust-graph.json`); the root-producer sections are asserted in
-///         TrustGraphGoldenVectors.t.sol.
+///         TrustgraphsGoldenVectors.t.sol.
 contract SignerGoldenVectorsTest is Test {
     using stdJson for string;
 

@@ -5,7 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
 /// @title CreateInstance
@@ -46,7 +46,7 @@ contract CreateInstance is Script {
         returns (bytes32 instanceId, address snapshot, address resolver, bytes32 schemaUid)
     {
         require(trustedSeed != address(0), "CreateInstance: trustedSeed is zero");
-        TrustGraphFactory f = TrustGraphFactory(factory);
+        TrustgraphsFactory f = TrustgraphsFactory(factory);
 
         ParamsCodec.Params memory p;
         p.dampingFp = (85 * S) / 100;
@@ -65,7 +65,7 @@ contract CreateInstance is Script {
         // schemaUid / accumulator / chainId are DERIVED — the factory fills them, and submitting
         // anything but zero is rejected.
 
-        TrustGraphFactory.CreateArgs memory args = TrustGraphFactory.CreateArgs({
+        TrustgraphsFactory.CreateArgs memory args = TrustgraphsFactory.CreateArgs({
             name: name,
             metadataURI: "ipfs://fork-e2e",
             params: p,

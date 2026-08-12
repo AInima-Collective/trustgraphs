@@ -10,7 +10,7 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 
 /// @title MerkleSnapshot
-/// @notice Merkle-root snapshotter for TrustGraph. The `{account => score}` root is produced by a
+/// @notice Merkle-root snapshotter for trustgraphs. The `{account => score}` root is produced by a
 ///         permissionless zero-knowledge proof of correct fixed-point Trust-Aware PageRank
 ///         (`submitProof`) instead of a WAVS operator quorum. A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint, and

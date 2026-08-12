@@ -7,7 +7,7 @@ vars:
 
 tasks:
   create-network:
-    desc: 'Create TrustGraph vouching attestation network'
+    desc: 'Create trustgraphs vouching attestation network'
     vars:
       TEST_ADDRESS: '{{.TEST_ADDRESS}}'
     preconditions:
@@ -24,7 +24,7 @@ tasks:
         CYAN='\033[0;36m'
         NC='\033[0m'
 
-        echo -e "${PURPLE}Creating Direct EAS TrustGraph Vouching Network${NC}"
+        echo -e "${PURPLE}Creating Direct EAS trustgraphs Vouching Network${NC}"
 
         # Load deployment configuration
         NET_INDEX="{{.NET_INDEX | default 0}}"
@@ -101,7 +101,7 @@ tasks:
           fi
         }
 
-        echo -e "${BLUE}=== Creating TrustGraph Vouching Network ===${NC}"
+        echo -e "${BLUE}=== Creating trustgraphs Vouching Network ===${NC}"
 
         total_attestations=0
         failed_attestations=0
@@ -204,7 +204,7 @@ tasks:
         fi
 
   analyze:
-    desc: 'Analyze the created TrustGraph vouching network'
+    desc: 'Analyze the created trustgraphs vouching network'
     vars:
       TEST_ADDRESS: '{{.TEST_ADDRESS}}'
     preconditions:
@@ -220,7 +220,7 @@ tasks:
         EAS_ADDRESS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
         VOUCHING_SCHEMA_ID=$(jq -r ".networks[$NET_INDEX].schemas[] | select(.key==\"vouching\") | .uid" {{.DEPLOYMENT_FILE}})
 
-        echo -e "${CYAN}📊 TrustGraph Vouching Network Analysis${NC}"
+        echo -e "${CYAN}📊 trustgraphs Vouching Network Analysis${NC}"
         echo "==========================="
         echo ""
         echo "👥 Test Accounts (using anvil accounts):"
@@ -235,7 +235,7 @@ tasks:
         echo "   • Ivy: 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720"
         echo "   • TestAccount: {{.TEST_ADDRESS}} (Custom Test Address)"
         echo ""
-        echo "📈 Expected TrustGraph Leaders:"
+        echo "📈 Expected trustgraphs Leaders:"
         echo "   1. Alice - Authority figure with high outgoing confidence scores"
         echo "   2. TestAccount ({{.TEST_ADDRESS}}) - Receives high-confidence vouches"
         echo "   3. Bob - Receives high-confidence vouch from Alice"
@@ -250,7 +250,7 @@ tasks:
         echo "   • RPC: {{.RPC_URL}}"
 
   next-steps:
-    desc: 'Show next steps for TrustGraph testing'
+    desc: 'Show next steps for trustgraphs testing'
     vars:
       TEST_ADDRESS: '{{.TEST_ADDRESS}}'
     preconditions:
@@ -264,7 +264,7 @@ tasks:
         EAS_ADDRESS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
         VOUCHING_SCHEMA_ID=$(jq -r ".networks[$NET_INDEX].schemas[] | select(.key==\"vouching\") | .uid" {{.DEPLOYMENT_FILE}})
 
-        echo -e "${YELLOW}🎯 Next Steps for TrustGraph Testing${NC}"
+        echo -e "${YELLOW}🎯 Next Steps for trustgraphs Testing${NC}"
         echo ""
         echo "🔄 Environment setup:"
         echo "   export EAS_ADDRESS=\"$EAS_ADDRESS\""
@@ -284,7 +284,7 @@ tasks:
         echo "   • Confidence scores (0-100) provide weighted trust values"
 
   full-setup:
-    desc: 'Complete TrustGraph network setup with analysis'
+    desc: 'Complete trustgraphs network setup with analysis'
     vars:
       TEST_ADDRESS: '{{.TEST_ADDRESS}}'
     preconditions:

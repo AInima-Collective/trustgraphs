@@ -14,7 +14,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "operator", about = "Keep proven TrustGraph scores fresh, unattended")]
+#[command(name = "operator", about = "Keep proven trustgraphs scores fresh, unattended")]
 struct Cli {
     /// Path to the operator config (docs/build/run-a-prover.md §2).
     #[arg(long)]

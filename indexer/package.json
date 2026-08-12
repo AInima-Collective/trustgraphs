@@ -1,5 +1,5 @@
 {
-  "name": "trust-graph-indexer",
+  "name": "trustgraphs-indexer",
   "private": true,
   "type": "module",
   "scripts": {

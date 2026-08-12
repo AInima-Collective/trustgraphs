@@ -124,7 +124,7 @@ DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 
 The Network step deploys the resolver, registers the schema, then computes
 `paramsHash = ParamsCodec.hash(params.json, schemaUid)` — byte-identical to the guest's Rust
-`params_hash` (locked by `test/unit/golden/TrustGraphGoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
+`params_hash` (locked by `test/unit/golden/TrustgraphsGoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
 Override the params path with `PARAMS_JSON=/path/to/params.json` if it isn't at the repo root.
 
 **Sync the prover's `schema_uid`.** The proof's params must carry the deployed schema UID. A DEV deploy

@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://trustgraph.network'),
   title: {
     default: 'Trustgraphs',
-    template: '%s | Trustgraphs',
+    template: '%s | trustgraphs',
   },
   description: DESCRIPTION,
   applicationName: 'Trustgraphs',
@@ -83,7 +83,7 @@ export default async function RootLayout({
   children: ReactNode
 }>) {
   // The trust-graph directory is a RUNTIME read now (GOAL.md M3): networks are created by
-  // `TrustGraphFactory` at any moment, so the app asks the indexer which ones exist rather than
+  // `TrustgraphsFactory` at any moment, so the app asks the indexer which ones exist rather than
   // shipping a list. Reading it once here means every screen — client and server — shares one
   // fetch per request and renders the same set. `getCatalog` never throws; on an indexer failure
   // it degrades to the shipped list and flags the error for the UI to show.

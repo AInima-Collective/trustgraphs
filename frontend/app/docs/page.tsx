@@ -17,7 +17,7 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: 'Docs',
   ...socialCard({
-    title: 'Docs | Trustgraphs',
+    title: 'Docs | trustgraphs',
     description: DESCRIPTION,
     path: '/docs',
   }),

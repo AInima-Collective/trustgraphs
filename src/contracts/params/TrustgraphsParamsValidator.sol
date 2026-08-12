@@ -3,11 +3,11 @@ pragma solidity ^0.8.22;
 
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-/// @title TrustGraphParamsValidator
+/// @title TrustgraphsParamsValidator
 /// @notice The single computational-safety envelope shared by factory creation and typed updates.
 /// @dev Keep the error signatures stable: the creation path exposed these selectors before the
 ///      validator was factored out, and existing clients use them for field-level feedback.
-library TrustGraphParamsValidator {
+library TrustgraphsParamsValidator {
     uint256 internal constant PRECISION_SCALE = 1e18;
     uint32 internal constant WEIGHT_FIELD_INDEX = 1;
     uint32 internal constant MAX_ITERATIONS = 500;
@@ -35,7 +35,7 @@ library TrustGraphParamsValidator {
     error Lane2NotSupported();
     error IdentityFieldChanged();
 
-    /// @notice Validate the tuple accepted by `TrustGraphFactory.createInstance`.
+    /// @notice Validate the tuple accepted by `TrustgraphsFactory.createInstance`.
     /// @dev The factory derives the three instance-domain fields after this check.
     function validateCreation(ParamsCodec.Params memory p) internal pure {
         if (p.schemaUid != bytes32(0) || p.accumulator != address(0) || p.chainId != 0) {

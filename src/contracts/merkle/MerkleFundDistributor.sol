@@ -108,7 +108,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         // Bootstrap ownership DIRECTLY, without the 2-step handshake. Two-step transfer exists to
         // stop a live owner from handing the contract to an address that cannot act; at
         // construction there is no live owner to protect, and the deployer is frequently a
-        // factory or a script that must not linger as owner (`TrustGraphFactory` deploys this in
+        // factory or a script that must not linger as owner (`TrustgraphsFactory` deploys this in
         // the same transaction that hands the instance to its creator — a pending transfer would
         // leave the factory owning every community's distributor until each one remembered to
         // call `acceptOwnership`). `transferOwnership` after deployment is unchanged: still

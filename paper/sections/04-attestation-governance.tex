@@ -2,7 +2,7 @@
 
 Attestations are cryptographically signed statements that make verifiable claims about real-world attributes, relationships, or events. Unlike traditional credentials or certificates that rely on trusted authorities, attestations create a decentralized web of verifiable claims where anyone can attest to facts they have direct knowledge of. This includes confirming expertise in a domain, vouching for contributions to a project, or verifying participation in events.
 
-While on-chain attestation protocols such as the Ethereum Attestation Service (EAS) have existed for a while, computation over attestation graphs in smart contracts was too expensive to leverage in DAO governance or incentive systems. Verifiable off-chain technologies change this by enabling verifiable computation over attestation graphs while keeping outputs checkable on chain (see Section 3). Networks like TrustGraph demonstrate this approach in production with 65+ experts participating in governance through attestation-based trust scores.
+While on-chain attestation protocols such as the Ethereum Attestation Service (EAS) have existed for a while, computation over attestation graphs in smart contracts was too expensive to leverage in DAO governance or incentive systems. Verifiable off-chain technologies change this by enabling verifiable computation over attestation graphs while keeping outputs checkable on chain (see Section 3). Networks like trustgraphs demonstrate this approach in production with 65+ experts participating in governance through attestation-based trust scores.
 
 Attestation-based governance creates rich, verifiable social graphs that capture real-world attributes, relationships, and the nuanced reality of community contribution and expertise, rather than relying solely on token holdings or simple credential checks.
 
@@ -71,7 +71,7 @@ One approach uses a three-layer bootstrapping strategy:
 
 \textbf{Layer 3 - Progressive trust building:} New members earn attestations through small contributions initially, building reputation over time. Early participation is limited but grows with earned trust.
 
-The bootstrapping configuration becomes a critical governance parameter. Too restrictive, and the network cannot grow. Too permissive, and Sybil attacks become feasible. Successful systems will likely require iteration and adjustment as they scale. Pioneering implementations like TrustGraph demonstrate viable solutions through trusted seeds and evidence-based onboarding.
+The bootstrapping configuration becomes a critical governance parameter. Too restrictive, and the network cannot grow. Too permissive, and Sybil attacks become feasible. Successful systems will likely require iteration and adjustment as they scale. Pioneering implementations like trustgraphs demonstrate viable solutions through trusted seeds and evidence-based onboarding.
 
 \subsection{Use Cases}
 
@@ -115,7 +115,7 @@ Cross-DAO attestation networks also enable reputation portability. Contributions
 
 While attestation-based governance offers significant potential, implementations must address several theoretical challenges:
 
-\textbf{Bootstrapping and Network Effects:} Cold-start presents a fundamental challenge—initial participants have no one to attest to them, while the value of attestations depends on network density. Implementations must design bootstrapping mechanisms that balance initial accessibility with long-term Sybil resistance. Pioneering implementations like TrustGraph demonstrate viable solutions through trusted seeds and evidence-based onboarding.
+\textbf{Bootstrapping and Network Effects:} Cold-start presents a fundamental challenge—initial participants have no one to attest to them, while the value of attestations depends on network density. Implementations must design bootstrapping mechanisms that balance initial accessibility with long-term Sybil resistance. Pioneering implementations like trustgraphs demonstrate viable solutions through trusted seeds and evidence-based onboarding.
 
 \textbf{Gaming and Coordination Risks:} Public attestation systems face potential manipulation through reciprocal attestation rings or social pressure dynamics. Decay mechanisms, negative attestations, and multi-dimensional scoring can mitigate but not eliminate these risks. The challenge lies in designing mechanisms robust to adversarial behavior while remaining accessible to legitimate participants.
 

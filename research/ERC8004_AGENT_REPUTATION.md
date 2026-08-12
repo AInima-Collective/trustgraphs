@@ -13,12 +13,12 @@ The relevant proposal is **ERC-8004, Trustless Agents**, not ERC-8003. ERC-8004 
 ERC, although the reference Identity and Reputation registries are deployed on Optimism and many
 other EVM chains. ERC-8003 is an unrelated, non-canonical ERC-20 sentinel-storage proposal.
 
-TrustGraph should explore ERC-8004 in two deliberately separate layers:
+Trustgraphs should explore ERC-8004 in two deliberately separate layers:
 
 1. **Ship an identity enrichment layer and an agents-only lens over existing trust graphs.** Mark
    an address as the current verified wallet for one or more agents, separately show agent NFT
    ownership, render agent metadata, and filter the existing vouch graph to agent-associated
-   accounts. This is useful, relatively small, and does not alter TrustGraph's proven scores.
+   accounts. This is useful, relatively small, and does not alter trustgraphs' proven scores.
 2. **Prototype an explicitly experimental agent-to-agent reputation graph.** Index raw ERC-8004
    feedback, map a reviewer address to an agent only when the mapping is unambiguous at the
    feedback block, and apply a narrow, published scoring policy. Do not call this output
@@ -50,7 +50,7 @@ agentRegistry = eip155:<chainId>:<identityRegistry>
 agentId       = <ERC-721 tokenId>
 ```
 
-TrustGraph should use the following canonical application key and never a bare token ID:
+Trustgraphs should use the following canonical application key and never a bare token ID:
 
 ```text
 agent:eip155:<chainId>:<lowercase identityRegistry>:<decimal agentId>
@@ -116,7 +116,7 @@ any address can append a response pointer. The `endpoint`, `feedbackURI`, and `f
 in events but not contract storage, so durable consumers need an event index.
 
 The registry's `getSummary` requires a non-empty reviewer address list specifically to limit
-Sybil/spam exposure. This is a useful confirmation of TrustGraph's opportunity: the ERC is a
+Sybil/spam exposure. This is a useful confirmation of trustgraphs' opportunity: the ERC is a
 standard signal transport, while reviewer selection and graph-aware aggregation are intentionally
 left to consumers.
 
@@ -165,14 +165,14 @@ Sources:
 
 | Path | Good for | Constraint | Recommendation |
 | --- | --- | --- | --- |
-| Index allowlisted registries in Ponder | Canonical events, exact provenance, Optimism support, historical bindings | Requires new tables, handlers, reorg-safe replay, and a safe metadata fetcher | Durable TrustGraph path |
+| Index allowlisted registries in Ponder | Canonical events, exact provenance, Optimism support, historical bindings | Requires new tables, handlers, reorg-safe replay, and a safe metadata fetcher | Durable trustgraphs path |
 | Agent0 subgraphs | Fast search and parsed metadata on its supported chains | External Graph API/key and indexing policy; documented mainnet set does not include Optimism | Comparison/backfill for the spike, not canonical state |
 | Direct RPC getters | Bounded spot verification | No address-to-agent reverse lookup or NFT enumeration; large feedback getters can be impractical | Verification only, not discovery |
 | Explorer/vendor APIs | Very fast disposable UI prototype | Vendor availability, coverage, schema, and composite-score semantics | Optional prototype adapter behind the same internal types |
 
 The Graph documents the open-source Agent0 subgraphs as indexing registrations, parsed metadata,
 feedback, validations, and aggregates. They are valuable prior art for schema and queries. For the
-TrustGraph product, self-indexed registry events should remain authoritative so a hosted parser or
+Trustgraphs product, self-indexed registry events should remain authoritative so a hosted parser or
 score cannot silently become part of the proof story.
 
 ## “Is this account an agent?”
@@ -184,7 +184,7 @@ is not ERC721Enumerable, so it does not enumerate those IDs. `getAgentWallet(age
 is a stronger operational/payment-wallet relation, but the contract has no wallet-to-agent reverse
 mapping. Both questions require event indexing.
 
-TrustGraph should expose relations rather than one `isAgent` boolean:
+Trustgraphs should expose relations rather than one `isAgent` boolean:
 
 | UI state | Evidence | Meaning |
 | --- | --- | --- |
@@ -208,7 +208,7 @@ the wallet bindings that existed at that event's block, not today's bindings.
 
 There are two useful graphs, with different nodes and claims.
 
-### 1. Agent lens over an existing TrustGraph
+### 1. Agent lens over an existing trustgraph
 
 This is an induced view of the already-proven address graph:
 
@@ -223,7 +223,7 @@ address ---- current verified-wallet relation ----> ERC-8004 agent identity
 ```
 
 Nodes and edges remain addresses and EAS vouches. “Agents only” means addresses having at least one
-current verified-wallet relation; the score is still that address's existing TrustGraph score.
+current verified-wallet relation; the score is still that address's existing trustgraphs score.
 If a wallet represents multiple agents, the graph keeps one address node and its inspector lists
 all associated identities. This avoids pretending that an address-level vouch names one particular
 agent.
@@ -232,7 +232,7 @@ This phase can accurately say:
 
 - “This address is the verified wallet for these ERC-8004 agents.”
 - “This is the vouch subgraph induced by verified agent wallets.”
-- “Node size is the existing, proven TrustGraph score.”
+- “Node size is the existing, proven trustgraphs score.”
 
 It must not say that the ERC-8004 feedback graph was proven or that every associated service is
 functional.
@@ -281,7 +281,7 @@ algorithm parameters
 Recommended v0 semantics:
 
 1. Select one understood feedback descriptor; do not mix uptime, latency, dollars, ratings, and
-   free-form tags. A TrustGraph-specific tag profile can be proposed for new feedback, while public
+   free-form tags. A trustgraphs-specific tag profile can be proposed for new feedback, while public
    experiments can separately analyze established tags such as `starred` or `successRate`.
 2. Normalize `value / 10^valueDecimals` into that descriptor's declared range. Reject, rather than
    guess at, values outside the configured semantics.
@@ -293,7 +293,7 @@ Recommended v0 semantics:
 5. Feed only non-negative endorsement weights into the current PageRank family. Negative feedback
    becomes a separate risk/incident signal until a signed graph algorithm is specified and tested;
    silently clipping negatives inside an alleged unified score would be misleading.
-6. Weight or filter reviewers through an explicit trusted seed set or a pinned upstream TrustGraph
+6. Weight or filter reviewers through an explicit trusted seed set or a pinned upstream trustgraph
    root. A moving “latest score” is not reproducible.
 7. Publish coverage next to score: accepted feedback count, unique reviewers, excluded/ambiguous
    count, last activity, transfer since feedback, and confidence. A sparse score without coverage
@@ -302,7 +302,7 @@ Recommended v0 semantics:
 An interesting composition is:
 
 ```text
-proven TrustGraph reviewer root at block B
+proven trustgraphs reviewer root at block B
                  +
 ERC-8004 feedback through checkpoint C
                  |
@@ -312,7 +312,7 @@ ERC-8004 feedback through checkpoint C
 
 If this becomes a proved program, both `B` and `C` and the exact mapping/scoring policy must be
 journal-bound. This is the promising research direction: ERC-8004 supplies public interoperable
-signals; TrustGraph supplies resistance to reviewer Sybil rings and a verifiable aggregation
+signals; trustgraphs supplies resistance to reviewer Sybil rings and a verifiable aggregation
 policy.
 
 ### Transfer semantics are a product decision
@@ -327,11 +327,11 @@ erase history or silently imply operator continuity. A later network policy can 
 decay pre-transfer feedback or require continuity evidence such as rebinding the same wallet and
 reciprocal service domain.
 
-## Proposed TrustGraph integration
+## Proposed trustgraphs integration
 
 ### Phase 1 — identity enrichment and agent lens
 
-Start with the official registry on TrustGraph's application chain (Optimism), plus a local test
+Start with the official registry on trustgraphs' application chain (Optimism), plus a local test
 fixture. Keep the qualified identity model so adding Ethereum/Base or other configured chains does
 not require a migration.
 
@@ -425,7 +425,7 @@ experimental.
 
 ### Phase 3 — proved agent-reputation program
 
-TrustGraph's multi-program layout is already a good fit:
+Trustgraphs' multi-program layout is already a good fit:
 
 - the PageRank core is generic over the node key;
 - Hypercerts already demonstrates durable `bytes32` nodes and optional address-bound leaves;
@@ -440,15 +440,15 @@ assumptions must be removed:
 2. The indexer currently infers a program from score-key length: 32-byte keys route to Hypercerts.
    An ERC-8004 node ID is also 32 bytes, so ingestion must dispatch from instance program metadata.
 
-The gating issue is **input completeness**. Existing TrustGraph proofs cannot omit or invent EAS
+The gating issue is **input completeness**. Existing trustgraphs proofs cannot omit or invent EAS
 vouches because its resolver maintains the accumulator that is frozen at a checkpoint. The
-external ERC-8004 Reputation Registry exposes logs and storage but no TrustGraph-compatible
+external ERC-8004 Reputation Registry exposes logs and storage but no trustgraphs-compatible
 accumulator. Replaying a Ponder result inside SP1 would prove a calculation over a supplied list,
 not that the list contains every canonical feedback event.
 
 Credible paths are:
 
-- a TrustGraph wrapper/mirror with an accumulator, proving only feedback routed through it;
+- a trustgraphs wrapper/mirror with an accumulator, proving only feedback routed through it;
 - receipt/storage proofs against a checkpointed canonical block/state root, verified in-guest;
 - a canonical-registry change that exposes a checkpointable accumulator;
 - or an explicit trusted/committee availability anchor, with the weaker trust claim stated.
@@ -456,7 +456,7 @@ Credible paths are:
 Anchoring an exporter-produced list with the existing lane-2 machinery proves consistency with
 that anchor, but by itself does not prove completeness relative to an external chain contract.
 Until one of the first three paths is designed, the agent graph is not a canonical ZK-proven
-TrustGraph program.
+Trustgraphs program.
 
 ### Phase 4 — validation and composed trust
 
@@ -469,7 +469,7 @@ a trust score.
 
 The current code already has most of the presentation and program structure needed:
 
-- `frontend/lib/types.ts` distinguishes address-keyed TrustGraph instances from node-ID-keyed
+- `frontend/lib/types.ts` distinguishes address-keyed trustgraphs instances from node-ID-keyed
   Hypercerts instances, but `NetworkEntry` and `NetworkGraphNode` are currently address-specific.
 - `frontend/contexts/NetworkContext.tsx` is the right owner for bulk enrichment, just as it owns
   bounded graph-wide ENS resolution.
@@ -483,7 +483,7 @@ The current code already has most of the presentation and program structure need
   durable identities back to addresses.
 
 The larger program path also exposes existing platform debt: runtime program discovery is split
-between the generic `InstanceRegistry`, a TrustGraph-specific factory catalog, and static lists for
+between the generic `InstanceRegistry`, a trustgraphs-specific factory catalog, and static lists for
 other programs. An ERC-8004 program should use program metadata for routing rather than add another
 key-shape or static-list special case.
 
@@ -526,15 +526,15 @@ The identity-enrichment spike is successful when:
 ## Decision points before implementation
 
 1. **First chain:** Optimism is the smallest fit with the current production indexer. If the
-   product question is cross-chain discovery rather than TrustGraph enrichment, add selected
+   product question is cross-chain discovery rather than trustgraphs enrichment, add selected
    Ethereum/Base sources or use a hosted index only as a temporary comparison layer.
 2. **Relationship label:** use “verified agent wallet,” not the ambiguous “agent account.”
 3. **Agent lens membership:** include only current verified wallets by default; offer NFT ownership
    as a separate filter.
-4. **Metadata availability:** decide whether TrustGraph operates its own safe fetch sidecar or
+4. **Metadata availability:** decide whether trustgraphs operates its own safe fetch sidecar or
    initially consumes a hosted parsed index while chain events remain canonical.
 5. **Feedback descriptor:** choose one exact tag/unit profile before computing any score.
-6. **Reviewer trust:** choose a curated seed set or a specific pinned TrustGraph root.
+6. **Reviewer trust:** choose a curated seed set or a specific pinned trustgraph root.
 7. **Completeness path:** choose mirror, chain proofs, registry cooperation, or explicitly
    indexer-computed status before starting a guest program.
 
@@ -550,4 +550,4 @@ Primary sources were checked on 2026-08-12 and pinned here where possible:
 - [Reputation Registry implementation](https://github.com/erc-8004/erc-8004-contracts/blob/68fc6765761a10fb26f0692df21c8a6f9d12b1be/contracts/ReputationRegistryUpgradeable.sol)
 - [Validation Registry implementation](https://github.com/erc-8004/erc-8004-contracts/blob/68fc6765761a10fb26f0692df21c8a6f9d12b1be/contracts/ValidationRegistryUpgradeable.sol)
 - [Reference deployment upgrade model](https://github.com/erc-8004/erc-8004-contracts/blob/68fc6765761a10fb26f0692df21c8a6f9d12b1be/UPGRADEABLE_IMPLEMENTATION.md)
-- [Agent0 ERC-8004 subgraphs documented by The Graph](https://thegraph.com/docs/en/subgraphs/existing-subgraphs/agent0/) — useful for a hosted comparison/backfill, not the canonical TrustGraph data source
+- [Agent0 ERC-8004 subgraphs documented by The Graph](https://thegraph.com/docs/en/subgraphs/existing-subgraphs/agent0/) — useful for a hosted comparison/backfill, not the canonical trustgraphs data source

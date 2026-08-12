@@ -25,7 +25,7 @@ Use `task --list-all` to see all available commands.
 
 ## Architecture Overview
 
-TrustGraph implements attestation-based governance using EAS (Ethereum Attestation Service) and Trust-Aware PageRank. Trust attestations between accounts calculate governance weights and distribute rewards.
+Trustgraphs implements attestation-based governance using EAS (Ethereum Attestation Service) and Trust-Aware PageRank. Trust attestations between accounts calculate governance weights and distribute rewards.
 
 > **Root producer: ZK (not WAVS).** The `{account → score}` merkle root is produced by a permissionless
 > **SP1 zero-knowledge proof** of correct fixed-point PageRank, not a WAVS operator quorum. See
@@ -35,7 +35,7 @@ TrustGraph implements attestation-based governance using EAS (Ethereum Attestati
 > `frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
 > EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
 > was reimplemented as a ZK proof (`SignerSyncZkModule` + a signer guest in `zk/program`); see
-> [`research/SIGNER_SYNC_ZK_PLAN.md`](./research/SIGNER_SYNC_ZK_PLAN.md). TrustGraph is a **multi-program
+> [`research/SIGNER_SYNC_ZK_PLAN.md`](./research/SIGNER_SYNC_ZK_PLAN.md). Trustgraphs is a **multi-program
 > platform**: [`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md) indexes each SP1 program (trust-graph,
 > signer-sync, hypercerts); shared byte encodings live in `packages/zk-core`, which `pagerank-core`
 > re-exports.
@@ -94,6 +94,6 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 - No floats and no non-deterministic iteration (use `BTreeMap`, not `HashMap`) — the guest must be
   reproducible
 - When changing an encoding, update the golden vectors (`test/golden/trust-graph.json`, read by
-  `test/unit/golden/TrustGraphGoldenVectors.t.sol` + `SignerGoldenVectors.t.sol`, and the frontend
+  `test/unit/golden/TrustgraphsGoldenVectors.t.sol` + `SignerGoldenVectors.t.sol`, and the frontend
   `golden.test.ts`) so cross-language parity stays enforced. Each program owns its own vector file; see
   [`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md)

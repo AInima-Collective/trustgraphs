@@ -2,7 +2,7 @@
 
 **Status:** Spike complete, all questions answered affirmatively.
 **Code:** `test/spike/TrustPoolSpike.t.sol` (6 tests, all green, `forge test --match-path "test/spike/TrustPoolSpike.t.sol"`)
-**Context:** Validates the TrustPool design (Path 2 of `research/GITCOIN_TRUSTGRAPH_PATHS.md`):
+**Context:** Validates the TrustPool design (Path 2 of `research/GITCOIN_TRUSTGRAPHS_PATHS.md`):
 a pooled manager that holds program GTC, self-delegates, and casts per-delegate fractional
 votes on `GitcoinGovernorWithGuardian`, with each delegate's weight derived at vote time from
 a merkle proof against the root that was current at the proposal snapshot.

@@ -15,7 +15,7 @@ import {Common} from "script/Common.s.sol";
 ///         bootstrap → handoff: grant the roles to the timelocks, then have the deployer renounce
 ///         them so ONLY the timelocks retain authority (DECISIONS D7).
 /// @dev Factory-created trust graphs do not use this script for scoring authority: their snapshot's
-///      operational role belongs permanently to `TrustGraphParamsController`. Use
+///      operational role belongs permanently to `TrustgraphsParamsController`. Use
 ///      `DeployParamsTimelock.s.sol` to transfer that controller's two-step ownership instead.
 ///
 ///  - CONSTITUTIONAL timelock (long delay, default 14 days) → holds `CONSTITUTIONAL_ROLE`

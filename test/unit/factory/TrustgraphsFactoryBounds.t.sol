@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
+import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
-/// @title TrustGraphFactoryBoundsTest
+/// @title TrustgraphsFactoryBoundsTest
 /// @notice The §2.2 creation-time bounds, one test per bound, each pinned to its specific custom
 ///         error. Permissionless creation makes `paramsHash` an otherwise opaque bytes32 that would
 ///         accept anything; these bounds are the envelope the fixed-point guest is proven over, plus
@@ -16,7 +16,7 @@ import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
 ///         would either block valid creations or wave through ones that revert after the user signs.
 ///         The name bounds are the documented exception: they belong to `CreateArgs`, not to the
 ///         params struct, so only `createInstance` can see them.
-contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
+contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     /*//////////////////////////////////////////////////////////////
                                 HARNESS
     //////////////////////////////////////////////////////////////*/
@@ -26,7 +26,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         vm.expectRevert(err);
         factory.validateParams(p);
 
-        TrustGraphFactory.CreateArgs memory args = _args("bounds", p);
+        TrustgraphsFactory.CreateArgs memory args = _args("bounds", p);
         vm.expectRevert(err);
         factory.createInstance(args);
     }
@@ -49,25 +49,25 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsSuppliedSchemaUid() public {
         ParamsCodec.Params memory p = _baseParams();
         p.schemaUid = keccak256("someone else's schema");
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
     }
 
     function test_RejectsSuppliedAccumulator() public {
         ParamsCodec.Params memory p = _baseParams();
         p.accumulator = address(0xACC);
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
     }
 
     function test_RejectsSuppliedChainId() public {
         ParamsCodec.Params memory p = _baseParams();
         p.chainId = 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.DerivedFieldNotZero.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
     }
 
     /// The golden vector itself carries all three derived fields, so submitting it verbatim — the
     /// most likely copy-paste a creator would attempt — is refused.
     function test_RejectsTheGoldenParamsVerbatim() public {
-        _expectRejected(_goldenParams(), abi.encodeWithSelector(TrustGraphFactory.DerivedFieldNotZero.selector));
+        _expectRejected(_goldenParams(), abi.encodeWithSelector(TrustgraphsFactory.DerivedFieldNotZero.selector));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -79,17 +79,17 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsZeroDamping() public {
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidDamping.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, 0));
     }
 
     function test_RejectsDampingAtOrAboveScale() public {
         uint256 scale = factory.PRECISION_SCALE();
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = scale;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidDamping.selector, scale));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, scale));
 
         p.dampingFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidDamping.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidDamping.selector, scale + 1));
     }
 
     /// Tolerance zero never converges within the iteration cap; too loose and "converged" stops
@@ -97,14 +97,14 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsZeroTolerance() public {
         ParamsCodec.Params memory p = _baseParams();
         p.toleranceFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTolerance.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, 0));
     }
 
     function test_RejectsToleranceAboveMax() public {
         uint256 max = factory.MAX_TOLERANCE_FP();
         ParamsCodec.Params memory p = _baseParams();
         p.toleranceFp = max + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTolerance.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, max + 1));
 
         // The boundary itself is inside the envelope.
         p.toleranceFp = max;
@@ -114,7 +114,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsZeroIterations() public {
         ParamsCodec.Params memory p = _baseParams();
         p.maxIterations = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidIterations.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidIterations.selector, 0));
     }
 
     /// Past the cap the guest's cycle count, not the mathematics, becomes the limit.
@@ -125,7 +125,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         uint32 max = factory.MAX_ITERATIONS();
         ParamsCodec.Params memory p = _baseParams();
         p.maxIterations = max + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidIterations.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidIterations.selector, max + 1));
 
         p.maxIterations = max;
         p.trustMultiplierFp = 1e18; // no boost => ranks cannot grow at any iteration count
@@ -145,7 +145,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         factory.validateParams(p);
 
         p.maxIterations = 500;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.RankGrowthUnbounded.selector, 1.7e18, 500));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.RankGrowthUnbounded.selector, 1.7e18, 500));
     }
 
     /// ...and a multiplier at or below `1 / damping` never grows, so no iteration count rejects it.
@@ -161,7 +161,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.minWeightFp = 0;
         p.maxWeightFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidWeightBounds.selector, 0, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightBounds.selector, 0, 0));
     }
 
     /// An inverted window would clamp every weight to a value outside its own range.
@@ -169,7 +169,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.minWeightFp = 10e18;
         p.maxWeightFp = 1e18;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidWeightBounds.selector, 10e18, 1e18));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightBounds.selector, 10e18, 1e18));
     }
 
     /// A degenerate-but-coherent window (min == max) is a choice, not an error.
@@ -186,7 +186,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         uint256 scale = factory.PRECISION_SCALE();
         ParamsCodec.Params memory p = _baseParams();
         p.trustShareFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTrustShare.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustShare.selector, scale + 1));
 
         p.trustShareFp = scale; // 100% seeded is extreme but coherent
         factory.validateParams(p);
@@ -196,7 +196,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         uint256 scale = factory.PRECISION_SCALE();
         ParamsCodec.Params memory p = _baseParams();
         p.trustDecayFp = scale + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTrustDecay.selector, scale + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustDecay.selector, scale + 1));
 
         p.trustDecayFp = scale;
         factory.validateParams(p);
@@ -211,7 +211,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         uint256 cap = factory.MAX_TRUST_MULTIPLIER_FP();
         ParamsCodec.Params memory p = _baseParams();
         p.trustMultiplierFp = cap + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTrustMultiplier.selector, cap + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustMultiplier.selector, cap + 1));
 
         p.trustMultiplierFp = cap;
         p.maxIterations = 20;
@@ -223,14 +223,14 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsWrongPrecisionScale() public {
         ParamsCodec.Params memory p = _baseParams();
         p.precisionScale = 1e17;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidPrecisionScale.selector, 1e17));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidPrecisionScale.selector, 1e17));
     }
 
     /// A zero pool scores every member zero — a network that renders as all-zeros forever.
     function test_RejectsZeroTotalPool() public {
         ParamsCodec.Params memory p = _baseParams();
         p.totalPool = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidTotalPool.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTotalPool.selector));
     }
 
     /// `weightFieldIndex` is fixed by the canonical vouch schema: `confidence` is ABI head slot 1.
@@ -238,10 +238,10 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsWrongWeightFieldIndex() public {
         ParamsCodec.Params memory p = _baseParams();
         p.weightFieldIndex = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidWeightFieldIndex.selector, 0));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightFieldIndex.selector, 0));
 
         p.weightFieldIndex = 2;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidWeightFieldIndex.selector, 2));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidWeightFieldIndex.selector, 2));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -253,7 +253,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     function test_RejectsEmptySeedSet() public {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = new address[](0);
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.NoTrustedSeeds.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.NoTrustedSeeds.selector));
     }
 
     /// Seeds are hashed into a merkle root at creation; the loop stays bounded.
@@ -261,7 +261,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         uint256 max = factory.MAX_TRUSTED_SEEDS();
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(max + 1);
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.TooManyTrustedSeeds.selector, max + 1));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.TooManyTrustedSeeds.selector, max + 1));
     }
 
     function test_AcceptsExactlyMaxSeeds() public {
@@ -278,7 +278,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(3);
         p.trustedSeeds[1] = address(0);
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidSeed.selector, address(0)));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidSeed.selector, address(0)));
     }
 
     /// `seedSetRoot` sorts and would absorb a duplicate silently, so a repeated seed is always a
@@ -287,7 +287,7 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.trustedSeeds = _seeds(4);
         p.trustedSeeds[3] = p.trustedSeeds[1];
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.InvalidSeed.selector, p.trustedSeeds[1]));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidSeed.selector, p.trustedSeeds[1]));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -301,13 +301,13 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         p.envelope0DomainSeparators = new bytes32[](1);
         p.envelope0DomainSeparators[0] = keccak256("some-eip712-domain");
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.Lane2NotSupported.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.Lane2NotSupported.selector));
     }
 
     function test_RejectsLane2MaxHeadAge() public {
         ParamsCodec.Params memory p = _baseParams();
         p.lane2MaxHeadAge = 86_400;
-        _expectRejected(p, abi.encodeWithSelector(TrustGraphFactory.Lane2NotSupported.selector));
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.Lane2NotSupported.selector));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -317,8 +317,8 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     /// An unnamed instance would be indistinguishable in every directory row, and its `instanceId`
     /// would collapse to a per-creator salt namespace.
     function test_RejectsEmptyName() public {
-        TrustGraphFactory.CreateArgs memory args = _args("");
-        vm.expectRevert(TrustGraphFactory.EmptyName.selector);
+        TrustgraphsFactory.CreateArgs memory args = _args("");
+        vm.expectRevert(TrustgraphsFactory.EmptyName.selector);
         factory.createInstance(args);
     }
 
@@ -326,8 +326,8 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
     /// multi-byte label is measured the way calldata charges for it.
     function test_RejectsOverlongName() public {
         uint256 max = factory.MAX_NAME_BYTES();
-        TrustGraphFactory.CreateArgs memory args = _args(_name(max + 1));
-        vm.expectRevert(abi.encodeWithSelector(TrustGraphFactory.NameTooLong.selector, max + 1));
+        TrustgraphsFactory.CreateArgs memory args = _args(_name(max + 1));
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.NameTooLong.selector, max + 1));
         factory.createInstance(args);
     }
 
@@ -343,8 +343,8 @@ contract TrustGraphFactoryBoundsTest is TrustGraphFactoryBase {
         ParamsCodec.Params memory p = _baseParams();
         factory.validateParams(p); // the view is content...
 
-        TrustGraphFactory.CreateArgs memory args = _args("", p);
-        vm.expectRevert(TrustGraphFactory.EmptyName.selector); // ...the transaction is not
+        TrustgraphsFactory.CreateArgs memory args = _args("", p);
+        vm.expectRevert(TrustgraphsFactory.EmptyName.selector); // ...the transaction is not
         factory.createInstance(args);
     }
 

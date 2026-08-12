@@ -1,7 +1,7 @@
 import { parseAbi } from 'viem'
 
 /** Read-only surface used by the settings page. Kept small so the UI remains independent of the
- * generated address map; the shared vault can also be discovered from `TrustGraphFactory.VAULT`.
+ * generated address map; the shared vault can also be discovered from `TrustgraphsFactory.VAULT`.
  */
 export const provingVaultReadAbi = parseAbi([
   'function depositETH(bytes32 instanceId) payable',

@@ -82,7 +82,7 @@ fn mutual_seeds() -> Vec<RawEdge> {
 #[test]
 fn live_params_normalize_exactly_at_every_iteration_count() {
     // 500 is deliberately absent: at 1.7x growth per iteration that is genuinely past what U256
-    // can represent, and `TrustGraphFactory._validateGrowth` refuses the pairing at creation.
+    // can represent, and `TrustgraphsFactory._validateGrowth` refuses the pairing at creation.
     for iters in [1u32, 5, 24, 100, 200] {
         let sum: U256 =
             scores(&live_params(iters), &mutual_seeds()).into_iter().fold(U256::ZERO, |a, b| a + b);

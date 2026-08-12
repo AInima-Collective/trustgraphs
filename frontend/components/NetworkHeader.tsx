@@ -4,7 +4,7 @@ import { Link as LinkIcon } from 'lucide-react'
 
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
-import { NetworkTab, trustGraphTabs } from '@/lib/network-nav'
+import { NetworkTab, trustgraphsTabs } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -61,7 +61,7 @@ export function NetworkHeader({
       )}
 
       <NetworkNav
-        tabs={tabs ?? trustGraphTabs(network as Network)}
+        tabs={tabs ?? trustgraphsTabs(network as Network)}
         className="w-full mt-2"
       />
     </div>

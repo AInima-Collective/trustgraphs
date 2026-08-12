@@ -227,7 +227,7 @@ tasks:
         # first vouch dies as a bare revert. Regenerate in predev's order: config, symlink, ABIs.
         #
         # `pnpm frontend …` (the root script) and NOT `pnpm --filter frontend …`: --filter
-        # matches package NAMES, the package is named trust-graph-frontend, and pnpm treats a
+        # matches package NAMES, the package is named trustgraphs-frontend, and pnpm treats a
         # filter that matches nothing as success — it prints "No projects matched" and exits 0,
         # which is how this step once no-opped its way into that bare revert.
         pnpm frontend config:generate
@@ -279,7 +279,7 @@ tasks:
       - |
         # A module added after raw factory creation has no governed-factory discovery event. Add it
         # to the local seed as well, matched on the snapshot the demo just created. Networks made
-        # in the browser use GovernedTrustGraphFactory and need no such edit.
+        # in the browser use GovernedTrustgraphsFactory and need no such edit.
         SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
         RESOLVER=$(task --silent demo:resolver NAME='{{.NAME}}' 2>/dev/null || echo "")
         node -e '

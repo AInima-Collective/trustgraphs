@@ -39,7 +39,7 @@ fn checkpoint(id: u64, block: u64, n: u64) -> CheckpointRef {
 fn healthy() -> InstanceState {
     InstanceState {
         instance_id: B256::from([0x01; 32]),
-        program: Program::TrustGraph,
+        program: Program::Trustgraphs,
         snapshot: SNAPSHOT,
         head_block: 1_000,
         basefee_wei: 5_000_000_000, // 5 gwei

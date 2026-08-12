@@ -5,7 +5,7 @@ import { BrandMark } from '@/components/BrandMark'
  * failed.
  *
  * Either way the honest answer is that this one thing is unreachable, not that
- * trustgraphs is empty, so the panel says so and does not get a caption
+ * Trustgraphs is empty, so the panel says so and does not get a caption
  * describing a graph that is not there.
  *
  * ITS OWN MODULE, and a server component, so the landing page can render it

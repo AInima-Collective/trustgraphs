@@ -40,7 +40,7 @@ sol! {
     function getInstance(bytes32 instanceId) external view returns (Instance);
     function paramsAuthority(bytes32 instanceId) external view returns (address);
 
-    /// `TrustGraphParamsController`.
+    /// `TrustgraphsParamsController`.
     function instanceId() external view returns (bytes32);
     function snapshot() external view returns (address);
     function version() external view returns (uint64);
@@ -76,7 +76,7 @@ sol! {
     function anchorAcc() external view returns (bytes32);
     function anchorCount() external view returns (uint64);
 
-    /// `TrustGraphFactory`.
+    /// `TrustgraphsFactory`.
     function EAS() external view returns (address);
 
     /// `SP1JournalVerifier`.

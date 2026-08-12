@@ -4,7 +4,7 @@ export type Network = {
   /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
   program?: 'trust-graph'
   /**
-   * The `/networks/[id]` path segment. For a network created through `TrustGraphFactory` this is
+   * The `/networks/[id]` path segment. For a network created through `TrustgraphsFactory` this is
    * its `instanceId`; networks that predate the factory keep the human slug from
    * `config/networks.<env>.json` so existing links keep working.
    */
@@ -51,7 +51,7 @@ export type Network = {
      */
     merkleGovModule?: Hex
     /** Typed, self-describing scoring control plane for migrated/factory networks. */
-    trustGraphParamsController?: Hex
+    trustgraphsParamsController?: Hex
     safe?: {
       factory?: Hex
       singleton?: Hex

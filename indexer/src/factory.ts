@@ -2,7 +2,7 @@
  * Discovery — the trust-graph catalog, built from the chain (GOAL.md M2;
  * research/INSTANCE_FACTORY.md §3).
  *
- * `TrustGraphFactory.InstanceCreated` is the frozen interface every consumer reconstructs an
+ * `TrustgraphsFactory.InstanceCreated` is the frozen interface every consumer reconstructs an
  * instance from: the hosted prover (registry → addresses, event → params), third parties auditing
  * what a community actually computes, and this indexer. One handler turns it into one `instance`
  * row, and the same event is what Ponder's `factory()` sources use to discover the instance's
@@ -16,7 +16,7 @@ import { type Hex, zeroAddress } from 'viem'
 
 import { revalidateNetwork } from './utils'
 import { paramsHash } from '../../frontend/lib/pagerank/encode'
-import { trustGraphFactoryAbi } from '../abis/trustGraphFactory'
+import { trustgraphsFactoryAbi } from '../abis/trustgraphsFactory'
 
 /**
  * The full 17-field params struct as stored/served: every field that is a bigint on-chain
@@ -140,7 +140,7 @@ const fetchMetadata = async (metadataURI: string): Promise<unknown | null> => {
   }
 }
 
-ponder.on('trustGraphFactory:InstanceCreated', async ({ event, context }) => {
+ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
   const {
     instanceId,
     creator,
@@ -162,7 +162,7 @@ ponder.on('trustGraphFactory:InstanceCreated', async ({ event, context }) => {
   try {
     schemaString = await context.client.readContract({
       address: event.log.address,
-      abi: trustGraphFactoryAbi,
+      abi: trustgraphsFactoryAbi,
       functionName: 'VOUCH_SCHEMA',
     })
   } catch (error) {

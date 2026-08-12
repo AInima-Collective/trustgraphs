@@ -1,10 +1,10 @@
-# TrustGraph on Ethereum Sepolia
+# Trustgraphs on Ethereum Sepolia
 
 Status: deployment research and implementation plan, 2026-08-07.
 
 ## Outcome
 
-TrustGraph is not ready to deploy to Sepolia by changing environment variables alone.
+Trustgraphs is not ready to deploy to Sepolia by changing environment variables alone.
 The repository currently has two coupled modes:
 
 - development means local chain 31337 and the modern factory/registry stack;
@@ -25,11 +25,11 @@ OP Sepolia.
 The first public testnet release should include:
 
 1. Canonical Sepolia EAS and Schema Registry as external dependencies.
-2. TrustGraph SchemaRegistrar.
+2. Trustgraphs SchemaRegistrar.
 3. SP1JournalVerifier for the trust-graph root program.
 4. InstanceRegistry.
 5. ProvingVault, using Sepolia test USDC and an ETH/USD feed, if the UI will offer prepaid proving.
-6. MerkleSnapshotDeployer, MerkleFundDistributorDeployer, and TrustGraphFactory.
+6. MerkleSnapshotDeployer, MerkleFundDistributorDeployer, and TrustgraphsFactory.
 7. One project-controlled seeded instance created through the factory.
 8. A production Ponder writer/API, a continuously running operator, IPFS persistence, and the web app.
 
@@ -122,10 +122,10 @@ A release manifest should contain at least:
     "rootVerifier": { "address": "0x...", "block": 0, "txHash": "0x..." },
     "instanceRegistry": { "address": "0x...", "block": 0, "txHash": "0x..." },
     "provingVault": { "address": "0x...", "block": 0, "txHash": "0x..." },
-    "trustGraphFactory": { "address": "0x...", "block": 0, "txHash": "0x..." }
+    "trustgraphsFactory": { "address": "0x...", "block": 0, "txHash": "0x..." }
   },
   "programs": {
-    "trustGraph": {
+    "trustgraphs": {
       "sp1Version": "resolved version",
       "elfSha256": "0x...",
       "vkey": "0x..."
@@ -171,8 +171,8 @@ developer defaults:
 4. Deploy InstanceRegistry.
 5. Deploy ProvingVault if paid/prepaid proving is in scope.
 6. Deploy MerkleSnapshotDeployer and MerkleFundDistributorDeployer.
-7. Deploy TrustGraphFactory and grant only its required registrar capability.
-8. Create the seeded instance through TrustGraphFactory.
+7. Deploy TrustgraphsFactory and grant only its required registrar capability.
+8. Create the seeded instance through TrustgraphsFactory.
 9. Configure vault policies and top-ups, if enabled.
 10. Transfer operational and administrative roles, then remove deployer privileges that are
     not part of the documented custody model.
@@ -214,7 +214,7 @@ included later:
 ## Contracts
 
 No core Solidity business-logic change is inherently required for chain 11155111.
-TrustGraph commits block.chainid into its parameters, and the configured Cancun EVM target is
+Trustgraphs commits block.chainid into its parameters, and the configured Cancun EVM target is
 available on Sepolia. The work is deployment integration, validation, and custody.
 
 ### Pre-deploy contract checks
@@ -244,7 +244,7 @@ An automated script should assert:
 - no unintended deployer privileges remain; and
 - every manifest address has bytecode.
 
-SP1JournalVerifier’s vkey is immutable, and TrustGraphFactory’s verifier reference is immutable.
+SP1JournalVerifier’s vkey is immutable, and TrustgraphsFactory’s verifier reference is immutable.
 A new program vkey therefore requires a new verifier and a new factory for future instances.
 Existing snapshots can rotate their verifier only through their constitutional governance path.
 This should be treated as a release migration, not an in-place configuration edit.
@@ -281,7 +281,7 @@ head, and factory discovery in production mode.
 - Run Ponder writer and serve processes against Postgres.
 - Use distinct schemas, for example **trustgraph_sepolia_v1** for the release writer and
   **trustgraph_sepolia** for stable/public views. Never share the Optimism production schema.
-- Start at or before the earliest TrustGraph deployment event. A fresh deployment does not
+- Start at or before the earliest trustgraphs deployment event. A fresh deployment does not
   need an archive provider back to genesis, but the provider must reliably serve logs and
   historical calls from that start block.
 - Use a paid, rate-limited provider with enough getLogs capacity. Keep the RPC URL server-side.
@@ -344,7 +344,7 @@ the release scope.
 
 ## Operator and supporting infrastructure
 
-The contracts, indexer, and frontend are not a functioning TrustGraph without an operator;
+The contracts, indexer, and frontend are not a functioning trustgraphs deployment without an operator;
 roots otherwise become stale.
 
 Configure **zk/operator** with:
@@ -496,4 +496,4 @@ reason to resolve the SP1 version gate before any public factory is deployed.
 7. Deploy contracts, then indexer, operator, and frontend in that order.
 
 The shortest safe path is therefore a focused chain-configuration and release-hardening change,
-not a new set of TrustGraph contracts.
+not a new set of trustgraphs contracts.

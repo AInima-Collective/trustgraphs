@@ -6,7 +6,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {Common} from "script/Common.s.sol";
 
 /// @title DeployParamsTimelock
@@ -25,7 +25,7 @@ contract DeployParamsTimelock is Common {
         require(controller != address(0), "DeployParamsTimelock: controller is zero");
         address deployer = vm.addr(_privateKey);
         require(
-            TrustGraphParamsController(controller).owner() == deployer,
+            TrustgraphsParamsController(controller).owner() == deployer,
             "DeployParamsTimelock: deployer is not controller owner"
         );
 
@@ -41,9 +41,9 @@ contract DeployParamsTimelock is Common {
         TimelockController operational = new TimelockController(minDelay, proposers, executors, address(0));
         timelock = address(operational);
 
-        TrustGraphParamsController(controller).transferOwnership(timelock);
+        TrustgraphsParamsController(controller).transferOwnership(timelock);
         require(
-            TrustGraphParamsController(controller).pendingOwner() == timelock,
+            TrustgraphsParamsController(controller).pendingOwner() == timelock,
             "DeployParamsTimelock: pending owner mismatch"
         );
 

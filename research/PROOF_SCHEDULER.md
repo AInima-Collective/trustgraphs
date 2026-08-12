@@ -249,7 +249,7 @@ structural facts shape everything else:
 **Layer 0 — free floor (hosted, our cost).** Every factory instance gets automatic
 proving at a **monthly** floor cadence (decided 2026-07-24; this answers
 INSTANCE_FACTORY §8.5 and sets the factory `epochLength` floor at ~30 days of blocks).
-This is CAC: a community's first contact with TrustGraph must not be a bill. Bounded and
+This is CAC: a community's first contact with trustgraphs must not be a bill. Bounded and
 predictable: `N_active × cost per root / month`. The floor never draws the vault —
 everything above it does; that keeps "free tier" an honest sentence.
 
@@ -260,7 +260,7 @@ everything above it does; that keeps "free tier" an honest sentence.
 > factory `epochLength` floor does not bound per-instance cost either: the admin holds
 > `CONSTITUTIONAL_ROLE` from the creating transaction and `setEpochLength` is
 > constitutional, so any creator can lower their own epoch immediately after creation
-> (`TrustGraphFactory.sol:317-319`). The floor binds creation, nothing after it.
+> (`TrustgraphsFactory.sol:317-319`). The floor binds creation, nothing after it.
 > The replacement: the hosted operator proves a **curated set**; everyone else
 > self-proves (free, permissionless, unchanged) or funds a vault. Three intervals are
 > now distinct — the factory's creation floor (anti-spam), the operator's subsidy

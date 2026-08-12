@@ -1,5 +1,5 @@
 //! Exact byte encodings shared with Solidity. Every function here is golden-tested against
-//! `abi.encode` / `keccak256` / `sha256` in `test/unit/golden/TrustGraphGoldenVectors.t.sol` (PLAN.md §1, WP2).
+//! `abi.encode` / `keccak256` / `sha256` in `test/unit/golden/TrustgraphsGoldenVectors.t.sol` (PLAN.md §1, WP2).
 //!
 //! All tuples we encode are composed of STATIC ABI types (uintN, address, bytes32), so
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather

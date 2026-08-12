@@ -1,4 +1,4 @@
-//! Program-agnostic ZK building blocks shared by every TrustGraph program
+//! Program-agnostic ZK building blocks shared by every trustgraphs program
 //! (trust-graph, signer-sync, hypercerts, …).
 //!
 //! This crate holds the encodings that are NOT specific to any one program: 32-byte ABI
