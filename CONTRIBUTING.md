@@ -48,6 +48,20 @@ Two hard rules inherited from the codebase:
 - Generated artifacts belong under the gitignored `.trustgraph/` directory — never commit
   prover outputs, reconstructed inputs, or witness archives.
 
+## Copy and voice
+
+For anything a user reads — the site, UI strings, and the `docs/learn/` pages:
+
+- The brand is **trustgraphs**, lowercase in copy. The unit is **a trustgraph**. Leading
+  cap only in the wordmark and page titles, and wherever it opens a sentence — grammar
+  wins over brand styling there.
+- Short declaratives. No em-dashes.
+- Say "vouch" to a newcomer, "attestation" once you've defined it. Never lead with
+  PageRank, merkle roots, SP1, or epochs. Those belong in the developer docs.
+- The differentiator is the receipt, not the ZK. Lead with what it prevents.
+- Don't promise what isn't built. The honest status copy is the reason the rest of the
+  page gets believed.
+
 ## Where things live
 
 - Operator docs: [`docs/`](./docs/README.md) (per-program `architecture`/`runbook`/`local-testing` under `docs/build/<program>/`)

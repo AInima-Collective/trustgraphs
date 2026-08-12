@@ -49,14 +49,9 @@ export const Footer = () => {
         <Link href="/faq" prefetch={false} className={`${LINK} px-2 sm:px-3`}>
           FAQ
         </Link>
-        <a
-          href="https://github.com/JakeHartnell/trustgraphs/tree/HEAD/docs"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`${LINK} px-2 sm:px-3`}
-        >
+        <Link href="/docs" prefetch={false} className={`${LINK} px-2 sm:px-3`}>
           Docs
-        </a>
+        </Link>
         <a
           href="https://github.com/JakeHartnell/trustgraphs"
           target="_blank"

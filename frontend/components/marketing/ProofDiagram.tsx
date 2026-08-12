@@ -15,8 +15,6 @@ import { cn } from '@/lib/utils'
  * allows for "the protocol is telling you something". It does not rely on that
  * colour: the arrow is broken and struck through, so the meaning survives in
  * grayscale and for anyone who cannot separate the two.
- *
- * Copy lives in LANDING_PAGE_COPY.md under "The proof".
  */
 
 const Glyph = ({

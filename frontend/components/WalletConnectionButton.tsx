@@ -27,8 +27,7 @@ export interface WalletConnectionButtonProps {
  * `injected` is the big one: it is wagmi's word for "whatever extension put an
  * `ethereum` object on the page", and it shipped into the picker as the literal
  * string "Injected". It is one click from the nav on every public page, and a
- * normal reader has no way to know what it means. See LANDING_PAGE_COPY.md,
- * "Site chrome".
+ * normal reader has no way to know what it means.
  */
 const CONNECTOR_LABELS: Record<string, string> = {
   injected: 'Browser wallet',

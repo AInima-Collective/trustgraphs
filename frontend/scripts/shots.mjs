@@ -96,6 +96,13 @@ const ROUTES = [
   { name: 'home', path: '/' },
   { name: 'networks', path: '/networks' },
   { name: 'faq', path: '/faq' },
+  // The docs are a public surface too. Four cells cover the four genres the
+  // renderer has to get right: the index, a Learn prose page, the algorithm
+  // spec (deep TOC), and a runbook (code blocks and wide tables).
+  { name: 'docs', path: '/docs' },
+  { name: 'docs-learn', path: '/docs/learn/what-is-trustgraphs' },
+  { name: 'docs-algorithm', path: '/docs/concepts/algorithm' },
+  { name: 'docs-runbook', path: '/docs/build/trust-graph/runbook' },
 ]
 
 const CONTRIBUTIONS_ROUTES = [

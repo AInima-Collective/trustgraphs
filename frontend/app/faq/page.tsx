@@ -51,15 +51,10 @@ export const metadata: Metadata = {
 }
 
 const REPO = 'https://github.com/JakeHartnell/trustgraphs'
-// `HEAD`, not `main`. `main` is not a branch on this repository at all: the
-// default is `zk` and `origin/main` is not a valid ref, so both of these 404
-// today and would still 404 the day the repo goes public. GitHub resolves HEAD
-// in a blob or tree URL to whatever the default branch currently is, verified
-// against a public repo. Not a pin: the default has already moved once, and a
-// SHA would freeze "start with the plain-language explainer" on a stale copy of
-// a document that is still being edited.
-const ELI5 = `${REPO}/blob/HEAD/docs/learn/what-is-trustgraphs.md`
-const ALGORITHM = `${REPO}/blob/HEAD/docs/concepts/algorithm.md`
+// The explainer and the spec are served by this app now (/docs renders the
+// repo's docs/ tree), so these two stay on-site; only the code link leaves.
+const ELI5 = '/docs/learn/what-is-trustgraphs'
+const ALGORITHM = '/docs/concepts/algorithm'
 
 /** Ink, underlined, and legible in prose at answer weight. No hue anywhere. */
 const PROSE_LINK =
@@ -220,21 +215,11 @@ const GROUPS: Group[] = [
               The code and the design docs
             </a>{' '}
             are open. Start with{' '}
-            <a
-              href={ELI5}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={PROSE_LINK}
-            >
+            <a href={ELI5} className={PROSE_LINK}>
               the plain-language explainer
             </a>
             , then{' '}
-            <a
-              href={ALGORITHM}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={PROSE_LINK}
-            >
+            <a href={ALGORITHM} className={PROSE_LINK}>
               the algorithm spec
             </a>
             .

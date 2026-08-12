@@ -18,9 +18,11 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
 /**
  * The landing page.
  *
- * Every sentence here appears verbatim in `LANDING_PAGE_COPY.md`, which is the
- * source of the words. Change one and change the other in the same commit;
- * a page and a copy doc that quietly disagree is worse than either alone.
+ * This file is the copy's source of record. The `LANDING_PAGE_COPY.md` design
+ * doc it used to mirror is retired (see git history) — the page had converged
+ * on it, and a page and a copy doc that quietly disagree is worse than either
+ * alone. The voice rules it carried live on in CONTRIBUTING.md, "Copy and
+ * voice".
  *
  * SERVER COMPONENT, deliberately. The only client code on this route is the
  * hero graph, behind its own dynamic boundary in `HeroGraph.tsx`. Everything
@@ -43,8 +45,8 @@ const REPO_URL = 'https://github.com/JakeHartnell/trustgraphs'
 const DEMO_NETWORK_ID = 'demo-co-op'
 
 /**
- * The site description, per LANDING_PAGE_COPY.md, which specifies one string
- * for search results and share cards on every page.
+ * The one site description, used for search results and share cards on every
+ * page.
  *
  * It is NOT the hero subhead. Setting the subhead here made the doc's site
  * description copy that renders nowhere, and put a definition of a trustgraph

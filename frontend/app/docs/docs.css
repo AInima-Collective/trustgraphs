@@ -1,0 +1,197 @@
+/*
+ * Long-form prose for the /docs pages. Everything resolves through the tokens
+ * in app/tokens.css — no new colours, no new radii, no new type.
+ *
+ * The register mirrors the rest of the app: the page title and section
+ * headings (h2, h3) carry Instrument Serif in sentence case, exactly as the
+ * global heading rules already set them; h4 drops to the mono uppercase label
+ * voice, the same register as SectionHeading, because at that depth a heading
+ * is apparatus rather than display. Code, tables and data are mono on a
+ * hairline-bordered surface. Deliberately no syntax highlighting: this design
+ * has no hue to give it, and monochrome code on ink is the brand, not a gap.
+ *
+ * These rules are UNLAYERED on purpose. The global heading sizes live in
+ * `@layer base`, and unlayered CSS beats layered CSS regardless of
+ * specificity — which is exactly the precedence long-form margins need over
+ * the app-wide defaults, without an .important in sight.
+ */
+
+.tg-prose {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.tg-prose > * + * {
+  margin-top: 1em;
+}
+
+/* ── Headings ──────────────────────────────────────────────────────────── */
+
+.tg-prose h2 {
+  margin-top: 2.75em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+  font-size: calc(var(--text-2xl) * var(--display-scale));
+}
+
+.tg-prose h3 {
+  margin-top: 2em;
+  font-size: calc(var(--text-xl) * var(--display-scale));
+}
+
+.tg-prose h4,
+.tg-prose h5,
+.tg-prose h6 {
+  margin-top: 2em;
+  font-family: var(--mono-family);
+  font-size: var(--text-xs);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+}
+
+.tg-prose h2 + *,
+.tg-prose h3 + *,
+.tg-prose h4 + * {
+  margin-top: 0.75em;
+}
+
+/* The section anchor: invisible until the heading is hovered or the anchor
+ * itself is focused, then a mono # in the subtle ink. Focusable always, so
+ * keyboard users are not locked out of what mouse users get. */
+.tg-prose .tg-anchor {
+  margin-left: 0.45em;
+  font-family: var(--mono-family);
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.tg-prose h2:hover .tg-anchor,
+.tg-prose h3:hover .tg-anchor,
+.tg-prose h4:hover .tg-anchor,
+.tg-prose .tg-anchor:focus-visible {
+  opacity: 1;
+}
+
+.tg-prose .tg-anchor:hover {
+  color: var(--text);
+}
+
+/* Deep links land with breathing room under the sticky-free top edge. */
+.tg-prose h2,
+.tg-prose h3,
+.tg-prose h4 {
+  scroll-margin-top: 1.5rem;
+}
+
+/* ── Body copy ─────────────────────────────────────────────────────────── */
+
+.tg-prose a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition);
+}
+
+.tg-prose a:hover {
+  color: var(--text-muted);
+}
+
+.tg-prose strong {
+  font-weight: 600;
+}
+
+.tg-prose ul,
+.tg-prose ol {
+  padding-left: 1.5rem;
+}
+
+.tg-prose ol {
+  list-style: decimal outside;
+}
+
+.tg-prose li + li {
+  margin-top: 0.375em;
+}
+
+.tg-prose li > ul,
+.tg-prose li > ol {
+  margin-top: 0.375em;
+}
+
+/* A note in the author's margin: hairline on the left, a tonal step down. */
+.tg-prose blockquote {
+  border-left: 1px solid var(--border-strong);
+  padding-left: 1rem;
+  color: var(--text-muted);
+}
+
+.tg-prose hr {
+  height: 1px;
+  margin-top: 3em;
+  margin-bottom: 3em;
+  border: 0;
+  background: var(--border);
+}
+
+/* ── Code ──────────────────────────────────────────────────────────────── */
+
+.tg-prose code {
+  font-family: var(--mono-family);
+  font-size: 0.95em;
+  background: var(--surface-2);
+  padding: 0.1em 0.35em;
+}
+
+.tg-prose pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 0.875rem 1rem;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  overflow-x: auto;
+  /* The global stylesheet wraps <pre>; these blocks hold commands and ASCII
+   * diagrams whose alignment is the content, so they scroll instead. */
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.tg-prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+
+.tg-prose .tg-table-scroll {
+  overflow-x: auto;
+}
+
+.tg-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.tg-prose th {
+  font-family: var(--mono-family);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  text-align: left;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.tg-prose td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}

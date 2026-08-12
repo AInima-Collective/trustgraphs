@@ -17,6 +17,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // /docs renders the repo's own `docs/**.md` at request time, and that tree
+  // sits one directory above the frontend. Deployments that trace files into
+  // a bundle (standalone output, serverless) drop anything fs-read outside
+  // the app dir unless it is named here.
+  outputFileTracingIncludes: {
+    '/docs/[...slug]': ['../docs/**/*.md'],
+    '/docs': ['../docs/**/*.md'],
+  },
   devIndicators: false,
   webpack: (config) => {
     // Suppress all expression-based dependency warnings
