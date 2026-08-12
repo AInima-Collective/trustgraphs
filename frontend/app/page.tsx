@@ -51,7 +51,7 @@ const DEMO_NETWORK_ID = 'demo-co-op'
  * in the slot that wants the pitch.
  */
 const DESCRIPTION =
-  'trustgraphs turn graph data into results anyone can verify, compose, and use.'
+  'Trustgraphs turn graph data into results anyone can verify, compose, and use.'
 
 /**
  * The hero is the graph. It takes the first screen after the nav, with a cap on
@@ -170,16 +170,10 @@ export default async function LandingPage() {
               its own rules, and the result it needs.
             </p>
 
-            <div className="mt-8 grid gap-6 border-t border-border pt-7 text-text-muted sm:grid-cols-2 sm:gap-8">
-              <p>
-                Anyone can run the computation. A proof lets everyone else check
-                the result without trusting the machine that produced it.
-              </p>
-              <p>
-                trustgraphs compose. Scores from one graph can weight
-                relationships in another, producing a new, verifiable result.
-              </p>
-            </div>
+            <p className="mt-8 max-w-prose border-t border-border pt-7 text-text-muted">
+              Anyone can run the computation. A proof lets everyone else check
+              the result without trusting the machine that produced it.
+            </p>
           </div>
         </div>
 
@@ -295,7 +289,7 @@ export default async function LandingPage() {
         standfirst={
           <>
             <p className="text-lg text-text">
-              trustgraphs should work wherever useful graph data lives, then
+              Trustgraphs should work wherever useful graph data lives, then
               reveal only what the result needs.
             </p>
             <p>
@@ -470,8 +464,8 @@ function Move({
 
 function Composition() {
   return (
-    <figure className="border-x border-b border-border bg-surface">
-      <div className="grid md:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
+    <figure className="flex flex-col gap-4 sm:gap-5">
+      <div className="grid border-x border-b border-border bg-surface md:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)_4.5rem_minmax(0,1fr)]">
         <CompositionTerm n="01" marker="Source graph" title="Community vouches">
           become reputation scores.
         </CompositionTerm>
@@ -489,10 +483,11 @@ function Composition() {
           produces a proven split of a shared pool.
         </CompositionTerm>
       </div>
-      <figcaption className="sr-only">
-        A community vouch graph produces reputation scores. Those scores weight
-        peer evaluations in a contribution graph, which produces a proven
-        funding split.
+      <figcaption className="text-center text-text-muted text-balance">
+        <em>
+          Trustgraphs compose: scores from one graph weight relationships in
+          another, producing a new, verifiable result.
+        </em>
       </figcaption>
     </figure>
   )
@@ -515,8 +510,8 @@ function CompositionTerm({
     <div
       className={
         result
-          ? 'flex min-h-44 flex-col justify-between gap-10 bg-surface-2 p-6 sm:min-h-52 sm:p-8'
-          : 'flex min-h-44 flex-col justify-between gap-10 p-6 sm:min-h-52 sm:p-8'
+          ? 'flex min-h-44 flex-col justify-center gap-3 bg-surface-2 p-6 sm:min-h-52 sm:p-8'
+          : 'flex min-h-44 flex-col justify-center gap-3 p-6 sm:min-h-52 sm:p-8'
       }
     >
       <p className="text-[10px] uppercase tracking-widest text-text-subtle">

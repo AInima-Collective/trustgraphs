@@ -26,7 +26,7 @@ import {
   clearGovernancePrefill,
   loadGovernancePrefill,
 } from '@/lib/governance-prefill'
-import { formatBigNumber } from '@/lib/utils'
+import { formatBigNumber, formatPercentage } from '@/lib/utils'
 
 interface ProposalRow {
   core: ProposalCore
@@ -133,6 +133,8 @@ function GovernancePageContent() {
     getAllProposals,
     getProposalStateText,
     safeBalance,
+    quorum,
+    votingPeriod,
   } = useGovernance()
 
   const proposals = getAllProposals()
@@ -208,12 +210,9 @@ function GovernancePageContent() {
 
   return (
     <div className="space-y-6">
-      <p className="text-muted-foreground text-sm max-w-2xl">
-        Propose and vote on how {network.name} spends its treasury. Your voting
-        power is your trust score in the network.
-      </p>
-
-      {/* Context strip: the two numbers that motivate action, one slim row. */}
+      {/* Context strip: the numbers that motivate action and the rules that bound it, one slim
+          row. No intro sentence above it — "Governance" is already the tab, and every noun here
+          is defined by its own label. */}
       <div className="flex flex-wrap items-baseline gap-x-10 gap-y-3 border-y border-border py-4">
         <div className="space-y-1">
           <div className="tg-label">Treasury</div>
@@ -244,8 +243,22 @@ function GovernancePageContent() {
             )}
           </div>
         </div>
+        <div className="space-y-1">
+          <div className="tg-label">Quorum</div>
+          <div className="text-2xl tabular-nums">
+            {isLoadingModule ? '...' : formatPercentage(quorum * 100)}
+          </div>
+        </div>
+        <div className="space-y-1">
+          <div className="tg-label">Voting period</div>
+          <div className="text-2xl tabular-nums">
+            {isLoadingModule
+              ? '...'
+              : `${votingPeriod.toLocaleString()} blocks`}
+          </div>
+        </div>
         <Link
-          href={`/networks/${network.id}/settings`}
+          href={`/networks/${network.id}/settings?tab=advanced`}
           className="ml-auto self-end text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-text"
         >
           Voting rules and contracts

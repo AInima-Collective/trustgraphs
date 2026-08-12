@@ -386,17 +386,8 @@ export const RewardsPage = ({
   return (
     <div className="space-y-10 sm:space-y-12">
       <header className="space-y-6">
-        <BreadcrumbRenderer
-          fallback={{ title: 'Network', route: `/networks/${network.id}` }}
-        />
+        <BreadcrumbRenderer />
         <NetworkHeader network={network} className="w-full" />
-        <div className="max-w-3xl space-y-2">
-          <h2 className="text-2xl font-semibold">Rewards</h2>
-          <p className="text-text-muted">
-            See rewards allocated to your wallet from network funding and
-            contribution rounds.
-          </p>
-        </div>
       </header>
 
       <section

@@ -331,13 +331,7 @@ export const DistributePage = ({
       {/* Header */}
       {!embedded && (
         <div className="flex flex-col items-start gap-4">
-          <BreadcrumbRenderer
-            className="mb-2"
-            fallback={{
-              title: 'Network',
-              route: `/networks/${network.id}`,
-            }}
-          />
+          <BreadcrumbRenderer className="mb-2" />
 
           <NetworkHeader network={network} className="w-full" />
 

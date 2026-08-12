@@ -14,7 +14,7 @@ import { isHexEqual } from './utils'
 export type NetworkTab = {
   href: string
   label: string
-  icon?: 'governance' | 'contributions' | 'rewards' | 'settings'
+  icon?: 'overview' | 'governance' | 'contributions' | 'rewards' | 'settings'
   /**
    * Match the pathname exactly rather than by prefix. Set on a tab whose href is a prefix of its
    * siblings' (the overview `/networks/[id]`), which would otherwise read as active everywhere.
@@ -54,7 +54,7 @@ export const trustGraphTabs = (network: Network): NetworkTab[] => {
   const contributionRounds = contributionsRoundsFor(network)
 
   return [
-    { href: base, label: 'Overview', exact: true },
+    { href: base, label: 'Overview', icon: 'overview' as const, exact: true },
     ...(contributionRounds.length > 0
       ? [
           {
@@ -121,7 +121,7 @@ export const contributionsTabs = (
   const trustNetwork = trustNetworkFor(network)
 
   return [
-    { href: base, label: 'Round', exact: true },
+    { href: base, label: 'Round', icon: 'overview' as const, exact: true },
     { href: `${base}/claim`, label: 'Claim' },
     // Closes the loop: the trust network offers this round as a tab, so the round has to offer
     // the way back or navigating into it is a dead end.

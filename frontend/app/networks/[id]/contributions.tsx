@@ -910,12 +910,7 @@ export const ContributionsNetworkPage = ({
   return (
     <div className="space-y-10">
       <header className="space-y-6">
-        <BreadcrumbRenderer
-          fallback={{
-            title: 'Network',
-            route: trustNetwork ? `/networks/${trustNetwork.id}` : '/networks',
-          }}
-        />
+        <BreadcrumbRenderer />
         <NetworkHeader
           network={trustNetwork ?? network}
           tabs={
@@ -926,11 +921,7 @@ export const ContributionsNetworkPage = ({
           className="w-full"
         />
 
-        <div className="max-w-3xl space-y-2">
-          <h2 className="text-2xl font-semibold">Contributions</h2>
-          <p className="text-sm leading-relaxed text-text-muted">
-            {network.about}
-          </p>
+        <div className="max-w-3xl">
           {trustNetwork ? (
             <p className="text-sm text-text-muted">
               Rater influence is weighted by this network&apos;s{' '}

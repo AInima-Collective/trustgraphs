@@ -3,6 +3,7 @@
 import {
   ArrowUpRight,
   HandCoins,
+  LayoutDashboard,
   Settings,
   Vote,
   WalletCards,
@@ -49,6 +50,7 @@ export const NetworkNav = ({
   const related = tabs.filter((tab) => tab.crossInstance)
 
   const icons = {
+    overview: LayoutDashboard,
     governance: Vote,
     contributions: HandCoins,
     rewards: WalletCards,
