@@ -63,6 +63,11 @@ struct Args {
     /// Path to the selection params (serialized `pagerank_core::SelectionParams`); required with --signer.
     #[arg(long)]
     selection: Option<String>,
+    /// The SignerSyncZkModule this signer input will be proven against. REQUIRED with --signer: it
+    /// is half of the `instanceDomain` the module rebuilds from `address(this)` and `block.chainid`
+    /// (audit M-3), so an export without it produces a proof no module can accept.
+    #[arg(long)]
+    module: Option<String>,
     /// First block to scan for events (default: 0). Set to the accumulator's deploy block for speed.
     #[arg(long, default_value_t = 0)]
     from_block: u64,
@@ -133,7 +138,24 @@ async fn main() -> Result<()> {
     // Journal-v3 bindings. `instanceDomain` is derived from the snapshot this input will be proven
     // against and the chain it lives on, byte-identically to the rebuild inside
     // `MerkleSnapshot.submitProof` — so naming the wrong snapshot fails here, at export time,
-    // instead of after a proof has been paid for. A `SignerInput` carries no bindings.
+    // instead of after a proof has been paid for. A `SignerInput` binds the analogous module
+    // domain (audit M-3), derived below from --module.
+    let signer_domain = if args.signer {
+        let Some(m) = &args.module else {
+            bail!(
+                "--module <0x…> is required with --signer: it is half of the instanceDomain that \
+                 SignerSyncZkModule.submitSignerProof rebuilds from address(this) and \
+                 block.chainid, so an input exported without it proves nothing any module will \
+                 accept"
+            );
+        };
+        let module = parse_addr(m)?;
+        let d = pagerank_core::encode::instance_domain(module, chain_id);
+        eprintln!("signer instanceDomain: module={module:#x} chainId={chain_id} domain={d:#x}");
+        Some(d)
+    } else {
+        None
+    };
     let binding = if args.signer {
         Binding::default()
     } else {
@@ -356,9 +378,10 @@ async fn main() -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let out_json = if let Some(selection) = selection {
-        // `SignerInput` has no journal-v3 bindings: `SignerSyncZkModule` pays no bounty and there
-        // is one module per trust instance, so there is nothing for either word to separate.
-        serde_json::to_string_pretty(&SignerInput { edges, params, selection })?
+        // The signer journal carries no bounty recipient (`SignerSyncZkModule` pays none) but DOES
+        // bind the module's instance domain (audit M-3), derived above from --module + chainId.
+        let instance_domain = signer_domain.expect("--signer guarantees signer_domain");
+        serde_json::to_string_pretty(&SignerInput { edges, params, selection, instance_domain })?
     } else {
         serde_json::to_string_pretty(&GuestInput { edges, params, lane2, binding })?
     };

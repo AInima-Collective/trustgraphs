@@ -35,7 +35,10 @@ Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == fr
   env (default 0 → inert until governance sets it, the fail-closed pattern).
 
 The signer journal (frozen): `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash,
-bytes32 selectionParamsHash, bytes32 signerSetRoot, uint256 targetThreshold)`.
+bytes32 selectionParamsHash, bytes32 signerSetRoot, uint256 targetThreshold, bytes32
+instanceDomain)`. The final word was added by the 2026-08-13 pre-mainnet audit fix (M-3):
+`submitSignerProof` rebuilds it from `keccak256(abi.encode(address(this), block.chainid))`, so an
+owner-rotation proof binds to exactly one module on one chain.
 
 The original design is retained below for reference.
 

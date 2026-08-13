@@ -326,13 +326,31 @@ contract SignerSyncZkModuleTest is Test {
 
     /*//////////////////////// journal digest binding ////////////////////////*/
 
+    /// @dev The exact digest `submitSignerProof` rebuilds for `mod_` on the current chain: the
+    ///      frozen 7-word signer journal, whose final word is the M-3 instance/chain binding.
+    function _expectedDigest(SignerSyncZkModule mod_, bytes32 acc, uint64 leafCount, address[] memory signers, uint256 threshold)
+        internal
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encode(
+                acc,
+                leafCount,
+                mod_.paramsHash(),
+                mod_.selectionParamsHash(),
+                _ozRoot(signers),
+                threshold,
+                keccak256(abi.encode(address(mod_), block.chainid))
+            )
+        );
+    }
+
     function test_JournalDigestBinding() public {
         // Lock the exact on-chain signer-journal encoding: the verifier is told to require the digest
         // the module rebuilds, so the encode() order/types are asserted.
         address[] memory signers = _arr(D, E, F);
-        bytes32 signerSetRoot = _ozRoot(signers);
-        bytes32 expected =
-            keccak256(abi.encode(keccak256("acc0"), uint64(10), PARAMS_HASH, SEL_HASH, signerSetRoot, uint256(2)));
+        bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, signers, 2);
         verifier.setExpectedDigest(expected);
         module.submitSignerProof(0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
@@ -343,11 +361,75 @@ contract SignerSyncZkModuleTest is Test {
         address[] memory signers = _arr(D, E, F);
         bytes32 signerSetRoot = _ozRoot(signers);
         bytes32 madeForDifferentParams = keccak256(
-            abi.encode(keccak256("acc0"), uint64(10), keccak256("OTHER"), SEL_HASH, signerSetRoot, uint256(2))
+            abi.encode(
+                keccak256("acc0"),
+                uint64(10),
+                keccak256("OTHER"),
+                SEL_HASH,
+                signerSetRoot,
+                uint256(2),
+                keccak256(abi.encode(address(module), block.chainid))
+            )
         );
         verifier.setExpectedDigest(madeForDifferentParams);
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
         module.submitSignerProof(0, signers, 2, PROOF);
+    }
+
+    /*//////////////////////// M-3: instance/chain binding ////////////////////////*/
+
+    /// @dev Audit M-3 regression: two same-params modules sharing one accumulator must NOT accept
+    ///      each other's owner-rotation proofs. A proof made for `module` (its digest carries
+    ///      module's address) fails verification on a sibling module, even with identical
+    ///      paramsHash/selectionParamsHash/checkpoint/signer set.
+    function test_M3_CrossInstanceReplayRejected() public {
+        SignerSyncZkModule sibling = new SignerSyncZkModule(
+            owner,
+            address(safe),
+            address(safe),
+            IZkVerifier(address(verifier)),
+            IAttestationAccumulator(address(accumulator)),
+            PARAMS_HASH,
+            SEL_HASH
+        );
+        vm.prank(address(safe));
+        safe.enableModule(address(sibling));
+
+        address[] memory signers = _arr(D, E, F);
+        // The proof that exists in the wild was made for `module`.
+        verifier.setExpectedDigest(_expectedDigest(module, keccak256("acc0"), 10, signers, 2));
+
+        // Replaying it against the sibling module fails: the sibling rebuilds the domain word from
+        // ITS OWN address, producing a digest the proof does not verify against.
+        vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
+        sibling.submitSignerProof(0, signers, 2, PROOF);
+
+        // The module it was made for still accepts it.
+        module.submitSignerProof(0, signers, 2, PROOF);
+        _assertOwnerSet(signers, 2);
+    }
+
+    /// @dev Audit M-3 regression: a module mirrored at the SAME address on another chain (CREATE2)
+    ///      must not accept a proof made for this chain — the domain word commits block.chainid.
+    ///      (Positive control first: this foundry version does not honor a second vm.chainId call
+    ///      within one test, so the chain switch is one-way.)
+    function test_M3_CrossChainReplayRejected() public {
+        address[] memory signers = _arr(D, E, F);
+
+        // Sanity: the proof verifies on the chain it was made for (the test chain, 31337).
+        verifier.setExpectedDigest(_expectedDigest(module, keccak256("acc0"), 10, signers, 2));
+        module.submitSignerProof(0, signers, 2, PROOF);
+        _assertOwnerSet(signers, 2);
+
+        // A second proof also made for chain 31337 (digest computed BEFORE the switch) ...
+        address[] memory next = _arr(A, B, C);
+        verifier.setExpectedDigest(_expectedDigest(module, keccak256("acc1"), 20, next, 2));
+
+        // ... is rejected by the mirrored deployment on chain 1: the module rebuilds the domain
+        // word from ITS chain id, producing a digest the proof does not verify against.
+        vm.chainId(1);
+        vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
+        module.submitSignerProof(1, next, 2, PROOF);
     }
 
     /// @dev Mirror of the module/pagerank-core OZ root (leaf = keccak256(abi.encode(address))).

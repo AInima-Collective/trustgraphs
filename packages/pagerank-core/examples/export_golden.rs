@@ -107,9 +107,17 @@ fn main() {
 
     let params_hash = encode::params_hash(&input.params);
 
-    // Signer-sync selection: derive the Safe owner set + threshold + signer journal.
+    // Signer-sync selection: derive the Safe owner set + threshold + signer journal. The instance
+    // domain is the real derivation over a fixed (module, chainId) pair — deliberately a DIFFERENT
+    // address than the trust-graph binding's 0x5A so a port that cross-wires the two domains fails.
     let selection = SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 };
-    let signer_input = SignerInput { edges: edges.clone(), params: params(), selection };
+    let signer_domain = encode::instance_domain(addr(0x5B), 31337);
+    let signer_input = SignerInput {
+        edges: edges.clone(),
+        params: params(),
+        selection,
+        instance_domain: signer_domain,
+    };
     let signer_result = signer::compute_signers(&signer_input);
     let sj = &signer_result.journal;
     let selection_params_hash = encode::selection_params_hash(&selection);
@@ -236,6 +244,13 @@ fn main() {
             "signers": signer_result.signers.iter().map(|a| hx(a.as_slice())).collect::<Vec<_>>(),
             "signerSetRoot": hx(sj.signer_set_root.as_slice()),
             "targetThreshold": sj.target_threshold.to_string(),
+            "instanceDomain": {
+                // The M-3 binding preimage: keccak256(abi.encode(module, chainId)), rebuilt
+                // on-chain by submitSignerProof from address(this) + block.chainid.
+                "module": hx(addr(0x5B).as_slice()),
+                "chainId": 31337u64,
+                "domain": hx(signer_domain.as_slice())
+            },
             "journal": {
                 "acc": hx(sj.acc.as_slice()),
                 "leafCount": sj.leaf_count,
@@ -243,6 +258,7 @@ fn main() {
                 "selectionParamsHash": hx(sj.selection_params_hash.as_slice()),
                 "signerSetRoot": hx(sj.signer_set_root.as_slice()),
                 "targetThreshold": sj.target_threshold.to_string(),
+                "instanceDomain": hx(sj.instance_domain.as_slice()),
                 "encoded": hx(&encode::signer_journal_encoded(sj)),
                 "digest": hx(encode::signer_journal_digest(sj).as_slice())
             }

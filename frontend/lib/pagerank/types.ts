@@ -135,16 +135,24 @@ export interface SelectionParams {
 
 /**
  * The input the signer-sync computer receives: the same folded edges + params as the root producer,
- * plus the selection parameters. Mirrors `pagerank_core::SignerInput`.
+ * plus the selection parameters and the instance binding. Mirrors `pagerank_core::SignerInput`.
  */
 export interface SignerInput {
   edges: RawEdge[]
   params: Params
   selection: SelectionParams
+  /**
+   * `keccak256(abi.encode(module, chainId))` — see `encode.instanceDomain`, with the
+   * `SignerSyncZkModule` address in the snapshot slot. Committed verbatim into the signer journal
+   * and made binding by `submitSignerProof`, which rebuilds it from `address(this)` and
+   * `block.chainid` (audit M-3). Optional to mirror the Rust `#[serde(default)]`; a missing value
+   * commits the zero word, which no deployed module accepts.
+   */
+  instanceDomain?: Hex
 }
 
 /**
- * The 6 public signer-journal fields. `keccak256(abi.encode(..))` is the digest the on-chain
+ * The 7 public signer-journal fields. `keccak256(abi.encode(..))` is the digest the on-chain
  * `SignerSyncZkModule` binds. Field order is FROZEN — see `encode.signerJournalEncoded`.
  * Mirrors `pagerank_core::SignerJournal`.
  */
@@ -159,6 +167,8 @@ export interface SignerJournal {
    */
   signerSetRoot: Hex
   targetThreshold: bigint
+  /** M-3: the module this proof is for, committed verbatim from `SignerInput.instanceDomain`. */
+  instanceDomain: Hex
 }
 
 /**

@@ -165,7 +165,9 @@ export const selectionParamsHash = (sp: SelectionParams): Hex =>
 /**
  * The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
  * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
- *             bytes32 signerSetRoot, uint256 targetThreshold)`.
+ *             bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
+ * `instanceDomain` is made binding by `SignerSyncZkModule.submitSignerProof`, which rebuilds the
+ * digest with a domain derived from `address(this)` + `block.chainid` (audit M-3).
  */
 export const signerJournalEncoded = (j: SignerJournal): Hex =>
   concat([
@@ -175,6 +177,7 @@ export const signerJournalEncoded = (j: SignerJournal): Hex =>
     j.selectionParamsHash,
     j.signerSetRoot,
     wordU256(j.targetThreshold),
+    j.instanceDomain,
   ])
 
 /** The signer journal digest = `keccak256(signerJournalEncoded(j))`. */

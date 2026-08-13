@@ -21,12 +21,16 @@ fn load_signer_elf() -> Elf {
 }
 
 /// The built-in signer sample (same edges/params as the root sample + a 3/50%/min-1 selection).
+/// The zero `instance_domain` is fine for local execute/vkey smoke tests but no deployed module
+/// will accept a proof of it — real inputs come from `input-exporter --signer --module <addr>`,
+/// which derives the domain from the module address + chain id (audit M-3).
 fn sample_signer_input() -> SignerInput {
     let g = sample_input();
     SignerInput {
         edges: g.edges,
         params: g.params,
         selection: SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 },
+        instance_domain: Default::default(),
     }
 }
 
@@ -93,6 +97,7 @@ fn cmd_signer_execute(input: SignerInput) -> Result<()> {
     println!("paramsHash:          0x{}", hex::encode(native.journal.params_hash));
     println!("selectionParamsHash: 0x{}", hex::encode(native.journal.selection_params_hash));
     println!("targetThreshold:     {}", native.journal.target_threshold);
+    println!("instanceDomain:      0x{}", hex::encode(native.journal.instance_domain));
     println!("signers ({}):", native.signers.len());
     for s in &native.signers {
         println!("  0x{}", hex::encode(s));

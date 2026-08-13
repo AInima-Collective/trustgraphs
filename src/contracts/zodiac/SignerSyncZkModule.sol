@@ -21,7 +21,11 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 ///         old off-chain WAVS component got wrong). See SIGNER_SYNC_ZK_PLAN.md.
 /// @dev The signer journal (frozen, reproduced by `pagerank-core::encode::signer_journal_encoded`):
 ///      `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
-///                  bytes32 signerSetRoot, uint256 targetThreshold)`.
+///                  bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
+///      `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` is REBUILT here
+///      rather than accepted as an argument (audit M-3), so an owner-rotation proof made for one
+///      module cannot be replayed against a same-params module sharing the accumulator, nor against
+///      a mirrored deployment on another chain.
 contract SignerSyncZkModule is Module {
     /// @notice Gnosis Safe OwnerManager linked-list sentinel.
     address internal constant SENTINEL = address(0x1);
@@ -228,9 +232,19 @@ contract SignerSyncZkModule is Module {
         }
 
         // Rebuild the signer journal digest from stored (governance-pinned) + submitted (proven)
-        // fields; a mismatch on ANY field fails verification.
-        bytes32 journalDigest =
-            keccak256(abi.encode(c.acc, c.leafCount, paramsHash, selectionParamsHash, signerSetRoot, targetThreshold));
+        // fields; a mismatch on ANY field fails verification. The final word binds the proof to
+        // THIS module on THIS chain (audit M-3) — rebuilt, never submitted.
+        bytes32 journalDigest = keccak256(
+            abi.encode(
+                c.acc,
+                c.leafCount,
+                paramsHash,
+                selectionParamsHash,
+                signerSetRoot,
+                targetThreshold,
+                keccak256(abi.encode(address(this), block.chainid))
+            )
+        );
 
         // Reverts on an invalid proof.
         zkVerifier.verify(proof, journalDigest);
