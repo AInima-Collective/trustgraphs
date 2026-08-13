@@ -22,6 +22,10 @@ import {
   EnsResolutionChangedError,
   getAccountIdentifierErrorMessage,
 } from '@/lib/ens-query'
+import {
+  hasUnreservedTrustShare,
+  unreservedTrustSharePct,
+} from '@/lib/trust-share'
 import { txToast } from '@/lib/tx'
 
 import {
@@ -256,6 +260,9 @@ export const ReviewStep = ({
         <SummaryRow label="Scores published">
           {describeBlocks(effective)}
         </SummaryRow>
+        <SummaryRow label="Starting-account share">
+          {data.tuning.headStartPct}%
+        </SummaryRow>
         <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
         <SummaryRow label="In charge afterwards">
           DAO Safe with Merkle voting; your connected wallet is its initial
@@ -271,6 +278,14 @@ export const ReviewStep = ({
           )}
         </SummaryRow>
       </Card>
+
+      {hasUnreservedTrustShare(data.tuning.headStartPct) && (
+        <Note tone="warning">
+          The remaining {unreservedTrustSharePct(data.tuning.headStartPct)}% is
+          shared among every other account before vouches are applied. A
+          disconnected group can gain scoreboard share by adding accounts.
+        </Note>
+      )}
 
       <div className="flex flex-row flex-wrap gap-2">
         <Button
@@ -288,6 +303,14 @@ export const ReviewStep = ({
           onClick={() => onJumpTo(1)}
         >
           Edit the starting accounts
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onJumpTo(2)}
+        >
+          Edit scoring
         </Button>
       </div>
 

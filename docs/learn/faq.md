@@ -30,11 +30,10 @@ already has.
 **Why don't bot armies work?**
 Score comes from trust flowing out of the starting accounts. A thousand bots vouching for
 each other form an island with lots of arrows and nothing flowing in, so none of those
-vouches earns any trust. They do still land on the scoreboard. Every account that is not
-one of your starting accounts gets an equal slice of whatever head start you did not
-reserve for them, and the create form reserves 15% by default, so a big enough island can
-hold a real share. Set "Head start for your starting accounts" to 100% and an island
-nobody vouched for from outside holds nothing.
+vouches earns any trust. The create form reserves the full starting share by default, which
+leaves a disconnected island at zero. A community can lower that advanced setting, but
+then every other account gets an equal slice of the remainder and a big enough island can
+hold a real share.
 
 **Is my data private?**
 No. Vouches, rules, code, and scores are all public. That is what makes the scoreboard

@@ -1,15 +1,33 @@
 import type { EventNames, IndexingFunctionArgs } from 'ponder:registry'
 import type { Hex } from 'viem'
 
-import { IS_PRODUCTION } from '../ponder.config'
+const defaultFrontendOrigin = (env: NodeJS.ProcessEnv): string =>
+  env.DEPLOY_ENV?.trim().toUpperCase() === 'PROD'
+    ? 'https://trustgraph.network'
+    : 'http://127.0.0.1:3000'
+
+/** The app origin whose cache the indexer invalidates after an indexed state change. */
+export const frontendOrigin = (env: NodeJS.ProcessEnv = process.env): string =>
+  (env.FRONTEND_URL?.trim() || defaultFrontendOrigin(env)).replace(/\/+$/, '')
+
+export const revalidationUrl = (
+  networkId: string,
+  env: NodeJS.ProcessEnv = process.env
+): string =>
+  `${frontendOrigin(env)}/api/revalidate/${encodeURIComponent(networkId)}`
 
 export const revalidateNetwork = async (networkId: string = 'all') => {
-  if (IS_PRODUCTION) {
-    await fetch(`https://trustgraph.network/api/revalidate/${networkId}`).catch(
-      (err) => {
-        console.error('Error revalidating networks', err)
-      }
-    )
+  try {
+    const response = await fetch(revalidationUrl(networkId), {
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) {
+      console.error(
+        `Error revalidating networks: ${response.status} ${response.statusText}`
+      )
+    }
+  } catch (err) {
+    console.error('Error revalidating networks', err)
   }
 }
 

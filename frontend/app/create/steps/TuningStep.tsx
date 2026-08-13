@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
+import { hasUnreservedTrustShare } from '@/lib/trust-share'
 
 import {
   CADENCE_OPTIONS,
@@ -52,7 +53,7 @@ export const TuningStep = ({
     <div className="space-y-6">
       <StepHeader
         title="How scores are worked out"
-        lead="These are the settings the existing networks run on. Most communities change nothing here."
+        lead="The defaults keep score anchored to your starting accounts. Most communities change nothing here."
       />
 
       <Card type="outline" size="md" className="space-y-2">
@@ -130,8 +131,17 @@ export const TuningStep = ({
             label="Head start for your starting accounts"
             value={tuning.headStartPct}
             onChange={(value) => setTuning({ headStartPct: value })}
-            description="Of everything handed out before any vouching happens, this share is split between the accounts you picked. The rest is split evenly among everyone else."
+            description="Of everything handed out before any vouching happens, this share is split between the accounts you picked. At 100%, an account disconnected from them starts at zero."
           />
+
+          {hasUnreservedTrustShare(tuning.headStartPct) && (
+            <Note tone="warning" className="-mt-6">
+              Below 100%, the remainder is split among every other account. A
+              disconnected group can then gain scoreboard share by adding
+              accounts, even when no trust reaches it from your starting
+              accounts.
+            </Note>
+          )}
 
           <PercentSetting
             label="Weight kept at each step away from a starting account"

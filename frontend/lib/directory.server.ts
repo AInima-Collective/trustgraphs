@@ -9,10 +9,9 @@
 //! could not be read says "Unknown" rather than "0".
 //!
 //! WHERE EACH NUMBER COMES FROM, because they do not all come from the same place. `scored` and
-//! `provenAt` are read off the latest proven root, so they agree with each other. `attestations` is
-//! counted LIVE by the indexer (`revocationTime == 0` at query time, among the accounts in that
-//! root), so it moves when someone revokes. The page says so rather than implying one timestamp
-//! covers the whole row.
+//! `provenAt` are read off the latest proven root. The canonical blob contains only positive scores,
+//! so `scored` uses the same set as the network roster. `attestations` is counted LIVE by the
+//! indexer (`revocationTime == 0` at query time, among that same set), so it moves on revocation.
 
 import { getCatalog } from './catalog.server'
 import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from './config'
