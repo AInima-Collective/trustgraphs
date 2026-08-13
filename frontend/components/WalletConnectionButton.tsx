@@ -49,7 +49,8 @@ const connectorLabel = (id: string, name: string) =>
 export const WalletConnectionButton = ({
   className,
 }: WalletConnectionButtonProps) => {
-  const { _openId } = useWalletConnectionContext()
+  const { _openId, walletOptionsLoading, prepareWalletConnectors } =
+    useWalletConnectionContext()
   const { address, isConnected } = useAccount()
   const { connectors, connectAsync, isPending: isConnecting } = useConnect()
   const { disconnect } = useDisconnect()
@@ -107,7 +108,15 @@ export const WalletConnectionButton = ({
           Renderer: ({ onClick, open }) => (
             <Button
               variant={open ? 'outline' : 'default'}
-              onClick={onClick}
+              onClick={() => {
+                if (!isConnected) {
+                  void prepareWalletConnectors().catch((error) => {
+                    console.error('Failed to load wallet options:', error)
+                    toast.error('Some wallet options could not be loaded')
+                  })
+                }
+                onClick()
+              }}
               size="default"
               // 44px rather than the default 36px. On a phone this collapses to
               // an icon-only control, which is exactly the case where an
@@ -229,6 +238,15 @@ export const WalletConnectionButton = ({
           </div>
         ) : (
           <div className="space-y-2">
+            {walletOptionsLoading && (
+              <div
+                className="flex h-11 items-center gap-2 px-3 text-sm text-muted-foreground"
+                role="status"
+              >
+                <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+                Loading wallet options…
+              </div>
+            )}
             {connectors && connectors.length > 0 ? (
               <div className="flex flex-col gap-1 text-sm">
                 {connectors.map((connector) => (

@@ -14,13 +14,18 @@ import {
   createNetworkAddParams,
   getTargetChainConfig,
   getTargetChainId,
+  loadWalletConnectors,
 } from '@/lib/wagmi'
 
 const WalletConnectionContext = createContext<{
   _openId: number
+  walletOptionsLoading: boolean
+  prepareWalletConnectors: () => Promise<void>
   openConnectWallet: (event?: BaseSyntheticEvent) => void
 }>({
   _openId: 0,
+  walletOptionsLoading: false,
+  prepareWalletConnectors: async () => {},
   openConnectWallet: () => {},
 })
 
@@ -35,10 +40,27 @@ export const WalletConnectionProvider = ({
   children: React.ReactNode
 }) => {
   const [_openId, setOpenId] = useState(0)
-  const openConnectWallet = useCallback((event?: BaseSyntheticEvent) => {
-    event?.stopPropagation()
-    setOpenId((openId) => openId + 1)
+  const [walletOptionsLoading, setWalletOptionsLoading] = useState(false)
+  const prepareWalletConnectors = useCallback(async () => {
+    setWalletOptionsLoading(true)
+    try {
+      await loadWalletConnectors()
+    } finally {
+      setWalletOptionsLoading(false)
+    }
   }, [])
+  const openConnectWallet = useCallback(
+    (event?: BaseSyntheticEvent) => {
+      event?.stopPropagation()
+      // Opening the picker is explicit connect intent. Let the panel appear immediately while
+      // its optional vendor connector chunk downloads.
+      void prepareWalletConnectors().catch((error) => {
+        console.error('Failed to load wallet options:', error)
+      })
+      setOpenId((openId) => openId + 1)
+    },
+    [prepareWalletConnectors]
+  )
 
   const addTargetNetwork = async () => {
     try {
@@ -92,7 +114,14 @@ export const WalletConnectionProvider = ({
   }, [isConnected, chain])
 
   return (
-    <WalletConnectionContext.Provider value={{ _openId, openConnectWallet }}>
+    <WalletConnectionContext.Provider
+      value={{
+        _openId,
+        walletOptionsLoading,
+        prepareWalletConnectors,
+        openConnectWallet,
+      }}
+    >
       {children}
     </WalletConnectionContext.Provider>
   )
