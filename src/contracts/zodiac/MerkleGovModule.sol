@@ -32,7 +32,6 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     error InvalidVotingPeriod();
     error InvalidAddress();
     error OnlyMerkleSnapshot();
-    error InvalidTotalVotingPower();
 
     /*///////////////////////////////////////////////////////////////
                                 TYPES
@@ -75,6 +74,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         bool cancelled;
         bytes32 merkleRoot; // Snapshot of merkle root at proposal creation (startBlock)
         uint256 totalVotingPower; // Snapshot of total voting power at proposal creation (startBlock)
+        uint256 quorumFraction; // Snapshot of the quorum fraction at proposal creation (startBlock)
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -313,7 +313,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         // Check if proposal passed
         // Quorum is a percentage of snapshotted totalVotingPower (e.g., 4e16 = 4%)
         uint256 totalVotes = proposal.yesVotes + proposal.noVotes + proposal.abstainVotes;
-        uint256 quorumThreshold = Math.mulDiv(proposal.totalVotingPower, quorum, QUORUM_RANGE);
+        uint256 quorumThreshold = Math.mulDiv(proposal.totalVotingPower, proposal.quorumFraction, QUORUM_RANGE);
         if (totalVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
             return ProposalState.Passed;
         }
@@ -384,8 +384,12 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @inheritdoc IMerkleSnapshotHook
     function onMerkleUpdate(IMerkleSnapshot.MerkleState memory state_) external {
         if (msg.sender != merkleSnapshotContract) revert OnlyMerkleSnapshot();
-        if (state_.totalValue == 0) revert InvalidTotalVotingPower();
 
+        // A proven root with `totalValue == 0` (an empty / fully-revoked graph) is legitimate and
+        // MUST NOT be rejected here: reverting would bubble up through MerkleSnapshot.submitProof and
+        // brick all future root submission for every consumer. We store it as-is; with zero voting
+        // power the quorum threshold is unreachable and `propose` refuses (currentMerkleRoot == 0),
+        // so no proposal can be created or pass against an empty root.
         currentMerkleRoot = state_.root;
         ipfsHash = state_.ipfsHash;
         ipfsHashCid = state_.ipfsHashCid;
@@ -438,6 +442,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         proposal.endBlock = proposal.startBlock + votingPeriod;
         proposal.merkleRoot = currentMerkleRoot;
         proposal.totalVotingPower = totalVotingPower;
+        // Snapshot the quorum fraction alongside the total, so a later `setQuorum` cannot
+        // retroactively re-decide a proposal whose voting window has already opened/closed.
+        proposal.quorumFraction = quorum;
 
         // Store actions
         for (uint256 i = 0; i < targets.length; i++) {

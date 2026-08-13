@@ -338,8 +338,34 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert UnexpectedMerkleRoot(expectedRoot, merkleState.root);
         }
 
-        // Calculate the fee amount.
-        uint256 feeAmount = Math.mulDiv(amount, feePercentage, FEE_RANGE);
+        bool isNativeToken = _isNativeToken(token);
+
+        // Move the funds in FIRST, then book what the contract actually received. All distributions
+        // of a given token share one balance, so booking the requested `amount` for a fee-on-transfer
+        // or deflationary token would let this distribution's claims/sweep draw on sibling
+        // distributions' funds. `funded` is the measured balance delta (exact for native ETH).
+        uint256 funded;
+        if (isNativeToken) {
+            // Ensure the native token amount sent is correct.
+            if (msg.value != amount) {
+                revert InvalidNativeTokenTransferAmount();
+            }
+            funded = amount;
+        } else {
+            // Ensure no native token is sent along with the ERC20 token.
+            if (msg.value > 0) {
+                revert InvalidNativeTokenTransfer();
+            }
+
+            // Transfer ERC20 from the sender to this distributor contract, measuring the delta so a
+            // fee-on-transfer/deflationary token books only what actually arrived.
+            uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            funded = IERC20(token).balanceOf(address(this)) - balanceBefore;
+        }
+
+        // Calculate the fee amount from the funded (received) amount, not the requested amount.
+        uint256 feeAmount = Math.mulDiv(funded, feePercentage, FEE_RANGE);
 
         // Create new distribution.
         distributionIndex = distributions.length;
@@ -353,7 +379,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
                 totalMerkleValue: merkleState.totalValue,
                 distributor: msg.sender,
                 token: token,
-                amountFunded: amount,
+                amountFunded: funded,
                 amountDistributed: 0,
                 feeRecipient: feeRecipient,
                 feeAmount: feeAmount,
@@ -362,34 +388,19 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             })
         );
 
-        bool isNativeToken = _isNativeToken(token);
-
-        // Move funds around.
-        if (isNativeToken) {
-            // Ensure the native token amount sent is correct.
-            if (msg.value != amount) {
-                revert InvalidNativeTokenTransferAmount();
+        // Pay the fee. Skip a zero-value transfer so a revert-on-zero token can't block distribution.
+        if (feeAmount > 0) {
+            if (isNativeToken) {
+                (bool success, bytes memory data) = payable(feeRecipient).call{value: feeAmount}("");
+                if (!success) {
+                    revert FailedToTransferFee(data);
+                }
+            } else {
+                IERC20(token).safeTransfer(feeRecipient, feeAmount);
             }
-
-            // Transfer fee to the fee recipient.
-            (bool success, bytes memory data) = payable(feeRecipient).call{value: feeAmount}("");
-            if (!success) {
-                revert FailedToTransferFee(data);
-            }
-        } else {
-            // Ensure no native token is sent along with the ERC20 token.
-            if (msg.value > 0) {
-                revert InvalidNativeTokenTransfer();
-            }
-
-            // Transfer ERC20 from the sender to this distributor contract.
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-
-            // Transfer fee to the fee recipient.
-            IERC20(token).safeTransfer(feeRecipient, feeAmount);
         }
 
-        emit Distributed(distributionIndex, msg.sender, token, amount, feeAmount);
+        emit Distributed(distributionIndex, msg.sender, token, funded, feeAmount);
     }
 
     /// @notice Claims tokens for a given distribution.

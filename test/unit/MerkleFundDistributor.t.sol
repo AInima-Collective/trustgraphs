@@ -1420,6 +1420,50 @@ contract MerkleFundDistributorTest is Test {
     function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
         return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
     }
+
+    /// H-1: a fee-on-transfer token must book the amount RECEIVED (balance delta), not the amount
+    /// requested. Otherwise a distribution over-books its share of the shared per-token balance and
+    /// drains sibling distributions. This also verifies the fee is taken on the received amount so
+    /// the contract stays exactly solvent: retained == amountFunded - feeAmount.
+    function test_Distribute_FeeOnTransfer_BooksReceivedNotRequested() public {
+        FeeOnTransferToken fot = new FeeOnTransferToken(1000); // 10% fee
+        fot.mint(alice, 1000 ether);
+
+        vm.startPrank(alice);
+        fot.approve(address(distributor), type(uint256).max);
+        uint256 idx = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, 0);
+        vm.stopPrank();
+
+        IMerkleFundDistributor.DistributionState memory d = distributor.getDistribution(idx);
+        // 10% burned in transit → only 900 arrived, and that is what gets booked.
+        assertEq(d.amountFunded, 900 ether, "books received, not requested");
+        // Fee is 1% of the RECEIVED amount (9), not 1% of the requested amount (10).
+        assertEq(d.feeAmount, 9 ether, "fee computed on received");
+        // Contract retains received - fee = the exact distributable; no phantom liability.
+        assertEq(fot.balanceOf(address(distributor)), 891 ether, "distributor solvent for this pool");
+    }
+
+    /// H-1 (solvency across siblings): two fee-on-transfer distributions of the same token must not
+    /// let one distribution's booked total exceed what actually arrived, so the shared balance always
+    /// covers the sum of distributable amounts.
+    function test_Distribute_FeeOnTransfer_SiblingsStaySolvent() public {
+        FeeOnTransferToken fot = new FeeOnTransferToken(1000); // 10% fee
+        fot.mint(alice, 5000 ether);
+
+        vm.startPrank(alice);
+        fot.approve(address(distributor), type(uint256).max);
+        uint256 a = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, 0);
+        uint256 b = distributor.distribute(address(fot), 2000 ether, TEST_ROOT, 0);
+        vm.stopPrank();
+
+        IMerkleFundDistributor.DistributionState memory da = distributor.getDistribution(a);
+        IMerkleFundDistributor.DistributionState memory db = distributor.getDistribution(b);
+
+        uint256 distributableA = da.amountFunded - da.feeAmount;
+        uint256 distributableB = db.amountFunded - db.feeAmount;
+        // The shared balance must cover the sum of both distributions' distributable amounts.
+        assertGe(fot.balanceOf(address(distributor)), distributableA + distributableB, "pool covers all claims");
+    }
 }
 
 /* ========== MOCK CONTRACTS ========== */
@@ -1441,6 +1485,30 @@ contract MockERC20 is ERC20 {
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+}
+
+/// @notice A fee-on-transfer token that burns `feeBps` of every transfer, like PAXG or an
+///         activated-fee USDT. Used to prove the distributor books received, not requested, amounts.
+contract FeeOnTransferToken is ERC20 {
+    uint256 public immutable feeBps; // out of 10_000
+
+    constructor(uint256 _feeBps) ERC20("Fee Token", "FEE") {
+        feeBps = _feeBps;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0) && feeBps > 0) {
+            uint256 fee = (value * feeBps) / 10_000;
+            super._update(from, address(0xdead), fee); // burn the fee
+            super._update(from, to, value - fee);
+        } else {
+            super._update(from, to, value);
+        }
     }
 }
 

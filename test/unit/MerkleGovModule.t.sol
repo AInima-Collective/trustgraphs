@@ -231,7 +231,7 @@ contract MerkleGovModuleTest is Test {
             uint256 abstainVotes,
             bool executed,
             bool cancelled,,
-            uint256 totalVotingPower
+            uint256 totalVotingPower,
         ) = govModule.proposals(proposalId);
 
         assertEq(id, proposalId);
@@ -299,7 +299,7 @@ contract MerkleGovModuleTest is Test {
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Abstain, votingPowers[charlie], proofs[charlie]);
 
         // Check vote tallies
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, votingPowers[alice]);
         assertEq(noVotes, votingPowers[bob]);
         assertEq(abstainVotes, votingPowers[charlie]);
@@ -510,6 +510,56 @@ contract MerkleGovModuleTest is Test {
         assertEq(govModule.merkleSnapshotContract(), address(newSnapshot));
     }
 
+    /// Helper: create an action-less proposal from `alice` (enough for state()-only assertions).
+    function _proposeEmpty() internal returns (uint256 proposalId) {
+        address[] memory targets = new address[](0);
+        uint256[] memory values = new uint256[](0);
+        bytes[] memory calldatas = new bytes[](0);
+        Operation[] memory operations = new Operation[](0);
+        string[] memory actionDescriptions = new string[](0);
+        vm.prank(alice);
+        proposalId = govModule.propose(
+            "t", "d", targets, values, calldatas, operations, actionDescriptions, votingPowers[alice], proofs[alice]
+        );
+    }
+
+    /// Roll into a proposal's active window (just past its startBlock), read from the proposal itself.
+    function _rollToActive(uint256 proposalId) internal {
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(proposalId);
+        vm.roll(p.startBlock + 1);
+    }
+
+    /// Roll just past a proposal's endBlock so it becomes decided.
+    function _rollPastEnd(uint256 proposalId) internal {
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(proposalId);
+        vm.roll(p.endBlock + 1);
+    }
+
+    /// M-1: the quorum fraction is snapshotted per proposal at creation. A later `setQuorum` must not
+    /// retroactively flip a decided proposal, and only affects proposals created after it.
+    function test_QuorumIsSnapshottedPerProposal() public {
+        // P1 under the default 4% quorum (threshold 23e18 of 575e18); alice's 100e18 Yes clears it.
+        uint256 p1 = _proposeEmpty();
+        _rollToActive(p1);
+        vm.prank(alice);
+        govModule.castVote(p1, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
+        _rollPastEnd(p1);
+        assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
+
+        // Raising the quorum to 50% must NOT flip the already-decided P1 (its snapshot is honored).
+        vm.prank(owner);
+        govModule.setQuorum(5e17); // 50%
+        assertEq(uint256(govModule.state(p1)), uint256(MerkleGovModule.ProposalState.Passed));
+
+        // A NEW proposal P2 snapshots the new 50% quorum (threshold 287.5e18); 100e18 can't clear it.
+        uint256 p2 = _proposeEmpty();
+        _rollToActive(p2);
+        vm.prank(alice);
+        govModule.castVote(p2, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
+        _rollPastEnd(p2);
+        assertEq(uint256(govModule.state(p2)), uint256(MerkleGovModule.ProposalState.Rejected));
+    }
+
     function test_NonMemberCannotPropose() public {
         // Create proposal data
         address[] memory targets = new address[](1);
@@ -681,19 +731,22 @@ contract MerkleGovModuleTest is Test {
             })
         );
 
-        // Invalid totalValue should revert
+        // A proven root with totalValue == 0 (empty / fully-revoked graph) is legitimate and must be
+        // tolerated, not reverted: reverting here would bubble up and brick MerkleSnapshot.submitProof
+        // for every consumer. The hook records the root and zeroes the voting power.
         merkleSnapshot.setLatestState(
             IMerkleSnapshot.MerkleState({
                 blockNumber: block.number,
                 timestamp: block.timestamp,
-                root: bytes32(uint256(0xbeef)),
+                root: bytes32(uint256(0xd00d)),
                 ipfsHash: bytes32(uint256(0x5678)),
                 ipfsHashCid: "ipfs://test",
                 totalValue: 0
             })
         );
-        vm.expectRevert(MerkleGovModule.InvalidTotalVotingPower.selector);
         merkleSnapshot.pushUpdate(address(govModule));
+        assertEq(govModule.currentMerkleRoot(), bytes32(uint256(0xd00d)));
+        assertEq(govModule.totalVotingPower(), 0);
     }
 
     function test_MerkleRootUpdateDuringVoting() public {
@@ -1066,7 +1119,7 @@ contract MerkleGovModuleTest is Test {
             uint256 abstainVotes,
             bool executed,
             bool cancelled,,
-            uint256 totalVotingPower
+            uint256 totalVotingPower,
         ) = govModule.proposals(proposalId);
 
         assertEq(id, proposalId);
@@ -1095,7 +1148,7 @@ contract MerkleGovModuleTest is Test {
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob]);
 
         // Check updated vote tallies
-        (,,,,,, yesVotes, noVotes, abstainVotes,,,,) = govModule.proposals(proposalId);
+        (,,,,,, yesVotes, noVotes, abstainVotes,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, votingPowers[alice] + votingPowers[bob]);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, 0);
@@ -1130,7 +1183,7 @@ contract MerkleGovModuleTest is Test {
         );
 
         // Check that No vote is recorded
-        (,,,,,, uint256 yesVotes, uint256 noVotes,,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes,,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, 0);
         assertEq(noVotes, votingPowers[bob]);
 
@@ -1166,7 +1219,7 @@ contract MerkleGovModuleTest is Test {
         );
 
         // Check that Abstain vote is recorded
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, 0);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, votingPowers[charlie]);
