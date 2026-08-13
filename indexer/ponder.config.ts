@@ -130,12 +130,12 @@ const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | undefined
 
 /**
- * Whether to discover trust-graph children from the factory. Production (Optimism) predates the
- * factory — its instances were stood up by `DeployNetwork.s.sol` and stay statically configured
- * until the factory is deployed there; likewise a dev box whose deploy chain never ran
- * `DeployFactory` (a lane-2-only hypercerts box) falls back to the static lists.
+ * Whether to discover trust-graph children from the factory. Discovery follows the deployment
+ * artifact, not the environment: a production factory must behave exactly like a development one.
+ * A box whose deploy chain never ran `DeployFactory` (for example a lane-2-only hypercerts box)
+ * still falls back to the static lists.
  */
-const FACTORY_DISCOVERY = !IS_PRODUCTION && TRUSTGRAPHS_FACTORY !== undefined
+const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORY !== undefined
 
 /** The frozen discovery event. Every child address below is one of its arguments. */
 const INSTANCE_CREATED = getAbiItem({
@@ -167,7 +167,7 @@ const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
     address: TRUSTGRAPHS_FACTORY!,
     event: INSTANCE_CREATED,
     parameter,
-    startBlock: DEV_START_BLOCK,
+    startBlock: CORE_START_BLOCK,
   })
 
 const paramsControllers = () =>
@@ -175,7 +175,7 @@ const paramsControllers = () =>
     address: TRUSTGRAPHS_FACTORY!,
     event: PARAMS_CONTROLLER_CREATED,
     parameter: 'controller',
-    startBlock: DEV_START_BLOCK,
+    startBlock: CORE_START_BLOCK,
   })
 
 const migratedParamsControllers = () =>
@@ -183,7 +183,7 @@ const migratedParamsControllers = () =>
     address: INSTANCE_REGISTRY!,
     event: PARAMS_AUTHORITY_UPDATED,
     parameter: 'newAuthority',
-    startBlock: DEV_START_BLOCK,
+    startBlock: CORE_START_BLOCK,
   })
 
 const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
@@ -191,7 +191,7 @@ const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
     address: GOVERNED_FACTORY!,
     event: GOVERNED_INSTANCE_CREATED,
     parameter,
-    startBlock: DEV_START_BLOCK,
+    startBlock: CORE_START_BLOCK,
   })
 
 /** Is this summary entry a trust-graph (vouching) network? Absent `program` means yes. */
@@ -252,28 +252,28 @@ export default createConfig({
     // address source for the three child contracts below.
     trustgraphsFactory: {
       abi: trustgraphsFactoryAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: TRUSTGRAPHS_FACTORY! } }
         : {},
     },
     governedTrustgraphsFactory: {
       abi: governedTrustgraphsFactoryAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: GOVERNED_FACTORY
         ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
         : {},
     },
     trustgraphsParamsController: {
       abi: trustgraphsParamsControllerAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: paramsControllers() } }
         : {},
     },
     migratedTrustgraphsParamsController: {
       abi: trustgraphsParamsControllerAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
         : {},

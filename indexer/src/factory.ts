@@ -225,5 +225,5 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
       .onConflictDoNothing()
   }
 
-  await revalidateNetwork()
+  await revalidateNetwork(instanceId)
 })

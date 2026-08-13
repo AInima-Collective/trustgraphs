@@ -2,19 +2,19 @@
 
 import { Braces, ChevronDown, Table } from 'lucide-react'
 
+import {
+  ScoreboardExportEntry,
+  ScoreboardExportMetadata,
+  serializeScoreboardCSV,
+  serializeScoreboardJSON,
+} from '@/lib/scoreboard-export'
+
 import { Button, ButtonProps } from './Button'
 import { Popup } from './Popup'
 
-interface MerkleEntry {
-  account: string
-  received?: number
-  sent?: number
-  value: string
-  proof?: string[]
-}
-
 interface ExportButtonProps {
-  data: MerkleEntry[]
+  data: ScoreboardExportEntry[]
+  metadata: ScoreboardExportMetadata
   filename?: string
   className?: string
   size?: ButtonProps['size']
@@ -22,6 +22,7 @@ interface ExportButtonProps {
 
 export const ExportButton = ({
   data,
+  metadata,
   filename = 'trust-graph-network',
   className,
   size = 'default',
@@ -48,24 +49,12 @@ export const ExportButton = ({
       return
     }
 
-    // CSV header
-    const headers = ['Rank', 'Account', 'Received', 'Sent', 'Score']
-
-    // CSV rows
-    const rows = data.map((entry, index) => [
-      (index + 1).toString(),
-      entry.account,
-      (entry.received || 0).toString(),
-      (entry.sent || 0).toString(),
-      entry.value,
-    ])
-
-    // Combine headers and rows
-    const csvContent = [headers, ...rows]
-      .map((row) => row.map((field) => `"${field}"`).join(','))
-      .join('\n')
-
-    downloadFile(csvContent, `${filename}.csv`, 'text/csv')
+    const csvContent = serializeScoreboardCSV({ data, metadata })
+    downloadFile(
+      csvContent,
+      `${filename}${metadata.mode === 'simulation' ? '_SIMULATION' : ''}.csv`,
+      'text/csv'
+    )
   }
 
   const exportAsJSON = () => {
@@ -74,26 +63,12 @@ export const ExportButton = ({
       return
     }
 
-    // Create enriched data with rankings
-    const enrichedData = data.map((entry, index) => ({
-      rank: index + 1,
-      account: entry.account,
-      received: entry.received || 0,
-      sent: entry.sent || 0,
-      score: entry.value,
-    }))
-
-    const jsonContent = JSON.stringify(
-      {
-        exportDate: new Date().toISOString(),
-        totalParticipants: data.length,
-        network: enrichedData,
-      },
-      null,
-      2
+    const jsonContent = serializeScoreboardJSON({ data, metadata })
+    downloadFile(
+      jsonContent,
+      `${filename}${metadata.mode === 'simulation' ? '_SIMULATION' : ''}.json`,
+      'application/json'
     )
-
-    downloadFile(jsonContent, `${filename}.json`, 'application/json')
   }
 
   if (!data || data.length === 0) {
@@ -114,7 +89,9 @@ export const ExportButton = ({
             size={size}
             className={className}
           >
-            <span>EXPORT</span>
+            <span>
+              {metadata.mode === 'simulation' ? 'EXPORT SIMULATION' : 'EXPORT'}
+            </span>
             <ChevronDown className="w-4 h-4" />
           </Button>
         ),
@@ -127,7 +104,7 @@ export const ExportButton = ({
         onClick={exportAsCSV}
       >
         <Table className="!w-4 !h-4" />
-        CSV
+        {metadata.mode === 'simulation' ? 'SIMULATED CSV' : 'CSV'}
       </Button>
       <Button
         variant="ghost"
@@ -136,7 +113,7 @@ export const ExportButton = ({
         onClick={exportAsJSON}
       >
         <Braces className="!w-4 !h-4" />
-        JSON
+        {metadata.mode === 'simulation' ? 'SIMULATED JSON' : 'JSON'}
       </Button>
     </Popup>
   )

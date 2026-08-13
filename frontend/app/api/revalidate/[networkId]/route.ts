@@ -1,8 +1,6 @@
 import { revalidatePath } from 'next/cache'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getNetwork } from '@/lib/catalog.server'
-
 export async function GET(
   _: NextRequest,
   { params }: { params: Promise<{ networkId: string }> }
@@ -17,23 +15,24 @@ export async function GET(
       )
     }
 
-    revalidatePath('/')
+    const allNetworks = networkId.toLowerCase() === 'all'
+    const instanceId = /^0x[0-9a-fA-F]{64}$/.test(networkId)
+    if (!allNetworks && !instanceId) {
+      return NextResponse.json(
+        { error: 'Network ID must be "all" or a factory instance ID' },
+        { status: 400 }
+      )
+    }
 
-    if (networkId.toLowerCase() === 'all') {
+    revalidatePath('/')
+    revalidatePath('/networks')
+
+    if (allNetworks) {
       revalidatePath('/networks/[id]', 'page')
     } else {
-      // Resolved against the runtime catalog, so a freshly created instance can be revalidated
-      // without waiting for a redeploy.
-      const { network, catalogError } = await getNetwork(networkId)
-      if (!network) {
-        return catalogError
-          ? NextResponse.json(
-              { error: 'Network directory unavailable', reason: catalogError },
-              { status: 503 }
-            )
-          : NextResponse.json({ error: 'Network not found' }, { status: 404 })
-      }
-
+      // Do not read the catalog here. Factory handlers call this endpoint before their database
+      // transaction commits, so existence-checking the new instance races the write and can turn a
+      // valid cache bust into a 404. Revalidating a path does not require it to have rendered yet.
       revalidatePath(`/networks/${networkId}`)
     }
 

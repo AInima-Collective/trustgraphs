@@ -37,21 +37,15 @@ import { DirectorySearch } from './DirectorySearch'
 // stops appearing here.
 export const revalidate = 10
 
-// "Every" was more than this page can promise. The vouching section reads one page of the registry,
-// capped at 200 by the indexer with the returned total discarded. The repo section is a filtered
-// slice of the shipped config file rather than a chain read, so a stranger's instance appears only
-// once someone edits that JSON. Issue filed for the cap.
+// "Every" is still more than this page can promise: the repo section is a filtered slice of the
+// shipped config file rather than a chain read, so a stranger's instance appears only once someone
+// edits that JSON. The factory-backed vouching section does read every catalog page.
 const STANDFIRST = 'Networks on this chain, and what each one counts.'
 
 /**
- * Two corrections in one sentence, both found by reading the query rather than the column.
- *
- * "Members" was `numAccounts`, which the indexer writes as every entry in the proven tree,
- * zero-scored accounts included. "Counted live" was true of the clock and not of the set:
- * `indexer/src/api/network.ts` does count at query time, so a revocation drops out straight away,
- * but it restricts both ends of every edge to accounts scoring ABOVE ZERO in the latest root. A
- * vouch involving anyone who joined since that root, or anyone the round left at zero, is not in
- * the number.
+ * The canonical score blob contains only value > 0 entries, so its `numAccounts` is the same set
+ * the network roster and the live vouch query use. A vouch involving anyone who joined since that
+ * root is not in the number.
  *
  * The one thing that looks like a defect and is not: the query is `selectDistinctOn(attester,
  * recipient)`, so a pair counts once however many times they have attested. `reconcile.rs` is
@@ -62,7 +56,7 @@ const STANDFIRST = 'Networks on this chain, and what each one counts.'
  * real product defect with its own issue.
  */
 const COLUMN_NOTE =
-  'Accounts and the date come from the last proven scoreboard. The vouch count is up to date, and covers only accounts that scored above zero on that scoreboard.'
+  'Scored accounts and the date come from the last proven scoreboard. The vouch count is up to date, between those same accounts.'
 
 // The share card is set explicitly rather than inherited. Without it, the
 // root layout's openGraph block wins and every route shares one card titled
@@ -92,7 +86,7 @@ const VOUCHES = 'Vouches'
  * The first track is `1fr` with `min-w-0` on its cell, so a network name longer than the column
  * wraps instead of pushing the figures off the page.
  */
-const GRID_WITH_VOUCHES = 'lg:grid-cols-[1fr_7rem_7rem_9rem]'
+const GRID_WITH_VOUCHES = 'lg:grid-cols-[1fr_8rem_7rem_9rem]'
 const GRID_PLAIN = 'lg:grid-cols-[1fr_9rem_9rem]'
 
 // An explicit locale, not the runtime's: the grouping separator has to be the same character in the

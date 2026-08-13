@@ -2,6 +2,7 @@ import { Hex, isAddress, zeroAddress } from 'viem'
 
 import { CHAIN, CONTRACT_CONFIG } from '@/lib/config'
 import { parseAccountIdentifier } from '@/lib/ens'
+import { FULL_SEED_TRUST_SHARE_PCT } from '@/lib/trust-share'
 
 /**
  * The data model behind the create-a-network wizard, plus the translation from the plain-language
@@ -72,8 +73,9 @@ export const CADENCE_OPTIONS: { value: Cadence; label: string }[] = [
 ]
 
 /**
- * The knobs the "advanced" section exposes, in the units a person reads them in. Defaults are what
- * the live networks run on.
+ * The knobs the "advanced" section exposes, in the units a person reads them in. The full seed
+ * share is deliberate: with less than 100%, disconnected accounts retain baseline teleport mass
+ * even though no trusted path reaches them.
  */
 export type Tuning = {
   /** Damping, as a percentage. */
@@ -91,7 +93,7 @@ export type Tuning = {
 
 export const DEFAULT_TUNING: Tuning = {
   vouchWeightPct: 85,
-  headStartPct: 15,
+  headStartPct: FULL_SEED_TRUST_SHARE_PCT,
   headStartKeptPct: 80,
   startingAccountBoost: 2,
   totalPoints: 1_000_000,

@@ -9,7 +9,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -19,9 +18,17 @@ import { useAccount } from 'wagmi'
 import { registerNetworks } from '@/components/schema-components/registerNetworks'
 import { ENS_EAGER_ADDRESS_LIMIT, useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
+import {
+  ROUTINE_INDEXER_QUERY_OPTIONS,
+  createIndexerPollingPolicy,
+} from '@/lib/indexer-query-policy'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { nullable } from '@/lib/ponder-query'
+import {
+  ScoreboardExportEntry,
+  ScoreboardExportMetadata,
+} from '@/lib/scoreboard-export'
 import { Network, NetworkEntry } from '@/lib/types'
 import { realAddress } from '@/lib/utils'
 import { getCurrentChainConfig } from '@/lib/wagmi'
@@ -46,18 +53,19 @@ export type NetworkContextType = {
    * Loading state of the two reads that actually draw the graph: the latest
    * merkle tree and the network. Deliberately excludes the Gnosis Safe read.
    *
-   * `isLoading` is the aggregate and stays that way, because a page that
-   * displays the Safe's threshold has to wait for it. The landing page does not
-   * display it, and against an unreachable indexer the Safe query retries four
-   * times on an exponential ladder while the other two resolve immediately: the
-   * hero's data was ready at 7.7s and the figure claimed to be loading until
-   * 18.4s. Anything that only draws nodes and edges wants this one.
+   * `isLoading` and `graphLoading` both exclude the optional Gnosis Safe read.
+   * UI that specifically needs the Safe can use `safeLoading`; graph-only UI
+   * must be usable as soon as the merkle and network reads settle.
    */
   graphLoading: boolean
+  /** Loading state for UI that specifically renders Safe ownership/threshold data. */
+  safeLoading: boolean
   error: string | null
 
   // Data
   accountData: NetworkEntry[]
+  scoreboardExportData: ScoreboardExportEntry[]
+  scoreboardExportMetadata: ScoreboardExportMetadata | undefined
   attestationsData: AttestationData[] | undefined
   totalValue: number
   totalParticipants: number
@@ -95,6 +103,17 @@ export type NetworkContextType = {
 
 export const NetworkContext = createContext<NetworkContextType | null>(null)
 
+const pollGraphIndexer = createIndexerPollingPolicy({
+  baseMs: 10_000,
+  maxMs: 60_000,
+  stopAfter: 3,
+})
+const pollSafeIndexer = createIndexerPollingPolicy({
+  baseMs: 30_000,
+  maxMs: 120_000,
+  stopAfter: 3,
+})
+
 export const NetworkProvider = ({
   network,
   children,
@@ -117,18 +136,21 @@ export const NetworkProvider = ({
     refetch: refetchMerkle,
   } = useQuery({
     ...ponderQueries.latestMerkleTree(network.contracts.merkleSnapshot),
-    refetchInterval: 10_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollGraphIndexer,
   })
 
   // Fetch network
   const {
     data: _networkData,
+    dataUpdatedAt: networkDataUpdatedAt,
     isLoading: networkLoading,
     error: networkError,
     refetch: refetchNetwork,
   } = useQuery({
     ...ponderQueries.network(network.contracts.merkleSnapshot),
-    refetchInterval: 10_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollGraphIndexer,
   })
 
   // Fetch Gnosis Safe (if this network has one at all).
@@ -142,7 +164,6 @@ export const NetworkProvider = ({
   const {
     data: gnosisSafeData,
     isLoading: gnosisSafeLoading,
-    refetch: refetchGnosisSafe,
     // `usePonderQueryOptions` + `useQuery` rather than `usePonderQuery`, so the result can go
     // through `nullable()`. `live` was already false here, which is all `usePonderQuery` adds.
   } = useQuery({
@@ -151,14 +172,10 @@ export const NetworkProvider = ({
         ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress)
       )
     ),
-    refetchInterval: 30_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollSafeIndexer,
     enabled: !!safeProxy,
   })
-
-  // Refetch Gnosis Safe when network accounts length changes
-  useEffect(() => {
-    refetchGnosisSafe()
-  }, [_networkData?.accounts.length])
 
   // Simulation config
   const [simulationConfig, setSimulationConfig] =
@@ -240,12 +257,30 @@ export const NetworkProvider = ({
 
   const simulatedResults = simulation?.results ?? null
 
+  const simulatedEntries = useMemo(
+    () =>
+      simulation?.entries
+        .map(({ account, value, proof }) => ({
+          account,
+          value: value.toString(),
+          proof,
+        }))
+        .sort((a, b) =>
+          BigInt(a.value) === BigInt(b.value)
+            ? 0
+            : BigInt(a.value) > BigInt(b.value)
+              ? -1
+              : 1
+        ) ?? null,
+    [simulation]
+  )
+
   // Use simulated or real data based on the simulation config
   const { networkData, merkleTreeData } = useMemo((): {
     networkData: typeof _networkData
     merkleTreeData: typeof _merkleTreeData
   } => {
-    if (!simulationConfig.enabled || !simulatedResults) {
+    if (!simulationConfig.enabled || !simulatedResults || !simulatedEntries) {
       return {
         networkData: _networkData,
         merkleTreeData: _merkleTreeData,
@@ -281,11 +316,7 @@ export const NetworkProvider = ({
         blockNumber: '0',
         timestamp: '0',
       },
-      entries: _merkleTreeData.entries.map((entry) => ({
-        ...entry,
-        proof: [],
-        value: simulatedResults[entry.account.toLowerCase()]?.toString() || '0',
-      })),
+      entries: simulatedEntries,
     }
 
     return {
@@ -295,6 +326,7 @@ export const NetworkProvider = ({
   }, [
     simulationConfig.enabled,
     simulatedResults,
+    simulatedEntries,
     simulation,
     _merkleTreeData,
     _networkData,
@@ -353,6 +385,101 @@ export const NetworkProvider = ({
     return accountData
   }, [networkData, ensData])
 
+  // Scores and proofs must come from one response/root. The separately queried network endpoint is
+  // used only to decorate those authoritative Merkle rows with live sent/received counts.
+  const scoreboardExportData = useMemo<ScoreboardExportEntry[]>(() => {
+    if (!merkleTreeData?.entries.length) return []
+
+    const liveCounts = new Map(
+      (_networkData?.accounts ?? []).map((entry) => [
+        entry.account.toLowerCase(),
+        { sent: entry.sent, received: entry.received },
+      ])
+    )
+    return merkleTreeData.entries.map((entry) => ({
+      account: entry.account,
+      value: entry.value,
+      proof: entry.proof,
+      ...liveCounts.get(entry.account.toLowerCase()),
+    }))
+  }, [merkleTreeData, _networkData])
+
+  const liveCountsFetchedAt = networkDataUpdatedAt
+    ? new Date(networkDataUpdatedAt).toISOString()
+    : undefined
+  const scoreboardExportMetadata = useMemo<
+    ScoreboardExportMetadata | undefined
+  >(() => {
+    if (!merkleTreeData?.tree.root) return undefined
+
+    // If a requested simulation failed, do not offer a published export under a simulation-on UI.
+    if (simulationConfig.enabled && !simulation) return undefined
+
+    if (!simulationConfig.enabled) {
+      return {
+        mode: 'published',
+        snapshot: network.contracts.merkleSnapshot,
+        root: merkleTreeData.tree.root,
+        ipfsHashCid: merkleTreeData.tree.ipfsHashCid,
+        scoresAsOf: {
+          blockNumber: merkleTreeData.tree.blockNumber,
+          timestamp: merkleTreeData.tree.timestamp,
+        },
+        liveCountsFetchedAt,
+      }
+    }
+
+    const schemaUid = network.schemas.find(
+      (schema) => schema.key === 'vouching'
+    )?.uid
+    const referenceTree = _merkleTreeData?.tree
+    return {
+      mode: 'simulation',
+      snapshot: network.contracts.merkleSnapshot,
+      root: simulation.outputRoot,
+      ipfsHashCid: simulation.cid,
+      liveCountsFetchedAt,
+      simulation: {
+        kind: 'reduced-lane-1-browser-recompute',
+        inputDataFetchedAt: liveCountsFetchedAt,
+        referencePublishedRoot: referenceTree?.root,
+        referencePublishedRootAsOf: referenceTree
+          ? {
+              blockNumber: referenceTree.blockNumber,
+              timestamp: referenceTree.timestamp,
+            }
+          : undefined,
+        params: {
+          dampingFactor: simulationConfig.dampingFactor,
+          trustMultiplier: simulationConfig.trustMultiplier,
+          trustShare: simulationConfig.trustShare,
+          trustDecay: simulationConfig.trustDecay,
+          maxIterations: simulationConfig.maxIterations,
+          minWeight: network.pagerank.minWeight,
+          maxWeight: network.pagerank.maxWeight,
+          trustedSeeds: network.pagerank.trustedSeeds,
+          pointsPool: String(network.pagerank.pointsPool || 0),
+          precisionScale: (10n ** 18n).toString(),
+          schemaUid,
+          accumulator: network.contracts.easIndexerResolver,
+          chainId: getCurrentChainConfig().id.toString(),
+          envelope0DomainSeparators: network.pagerank.envelope0DomainSeparators,
+          lane2MaxHeadAge: network.pagerank.lane2MaxHeadAge,
+        },
+        paramsHash: simulation.journal.paramsHash,
+        inputAccumulator: simulation.journal.acc,
+        inputLeafCount: simulation.journal.leafCount.toString(),
+      },
+    }
+  }, [
+    merkleTreeData,
+    simulationConfig,
+    simulation,
+    network,
+    _merkleTreeData,
+    liveCountsFetchedAt,
+  ])
+
   // Calculate derived values
   const totalValue = Number(merkleTreeData?.tree?.totalValue || 0)
   const totalParticipants = merkleTreeData?.tree?.numAccounts || 0
@@ -365,12 +492,10 @@ export const NetworkProvider = ({
       ? Number(accountData[Math.ceil(accountData.length / 2)].value)
       : Number(accountData[0]?.value || 0)
 
-  // Combined loading state
-  const isLoading = merkleLoading || networkLoading || gnosisSafeLoading
-
-  // The graph's own, without the Safe read folded in. See the type declaration
-  // for why this is a second field rather than a change to the first.
+  // The primary network loading state contains only the graph reads. A Safe is optional metadata;
+  // its indexer latency must not hold the graph, member table or exports behind a loading screen.
   const graphLoading = merkleLoading || networkLoading
+  const isLoading = graphLoading
 
   // Combined error state
   const error = merkleError?.message || networkError?.message || null
@@ -393,10 +518,13 @@ export const NetworkProvider = ({
     // Loading states
     isLoading,
     graphLoading,
+    safeLoading: gnosisSafeLoading,
     error,
 
     // Data
     accountData,
+    scoreboardExportData,
+    scoreboardExportMetadata,
     attestationsData: networkData?.attestations,
     totalValue,
     totalParticipants,
