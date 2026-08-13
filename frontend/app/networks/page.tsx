@@ -37,10 +37,9 @@ import { DirectorySearch } from './DirectorySearch'
 // stops appearing here.
 export const revalidate = 10
 
-// "Every" was more than this page can promise. The vouching section reads one page of the registry,
-// capped at 200 by the indexer with the returned total discarded. The repo section is a filtered
-// slice of the shipped config file rather than a chain read, so a stranger's instance appears only
-// once someone edits that JSON. Issue filed for the cap.
+// "Every" is still more than this page can promise: the repo section is a filtered slice of the
+// shipped config file rather than a chain read, so a stranger's instance appears only once someone
+// edits that JSON. The factory-backed vouching section does read every catalog page.
 const STANDFIRST = 'Networks on this chain, and what each one counts.'
 
 /**

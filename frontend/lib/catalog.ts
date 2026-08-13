@@ -25,6 +25,7 @@
 
 import { type Hex, isAddressEqual } from 'viem'
 
+import { collectCatalogPages } from './catalog-pagination'
 import { APIS, VISIBLE_SEED_NETWORKS } from './config'
 import type { ExactParamsJson } from './scoring-params'
 import { Network, NetworkSchema } from './types'
@@ -93,7 +94,7 @@ export type Catalog = {
   live: boolean
 }
 
-/** One page is plenty for a directory; `/instances` caps `limit` at 200 anyway. */
+/** Largest page the indexer's `/instances` route accepts. */
 const CATALOG_PAGE_SIZE = 200
 
 export const CATALOG_QUERY_KEY = ['catalog', 'instances'] as const
@@ -321,8 +322,7 @@ export const CATALOG_TIMEOUT_MS = 3_000
 
 export const fetchInstances = async (
   init?: RequestInit & { next?: { revalidate?: number } }
-): Promise<InstanceRow[]> => {
-  const url = `${APIS.ponder}/instances?limit=${CATALOG_PAGE_SIZE}`
+): Promise<InstancesResponse> => {
   // The root layout awaits this on EVERY route, and `fetch` has no timeout of its own. An
   // indexer that is down rejects immediately and degrades fine; one that accepts the
   // connection and then stops talking would hold `/`, `/networks` and `/faq` open until the
@@ -330,15 +330,14 @@ export const fetchInstances = async (
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS)
   try {
-    const response = await fetch(url, { signal: controller.signal, ...init })
-    if (!response.ok) {
-      throw new Error(`GET /instances responded ${response.status}`)
-    }
-    const body = (await response.json()) as InstancesResponse
-    if (!body || !Array.isArray(body.instances)) {
-      throw new Error('GET /instances returned an unexpected body')
-    }
-    return body.instances
+    return await collectCatalogPages<InstanceRow>(async (offset) => {
+      const url = `${APIS.ponder}/instances?limit=${CATALOG_PAGE_SIZE}&offset=${offset}`
+      const response = await fetch(url, { ...init, signal: controller.signal })
+      if (!response.ok) {
+        throw new Error(`GET /instances responded ${response.status}`)
+      }
+      return response.json()
+    })
   } finally {
     clearTimeout(timer)
   }
@@ -349,8 +348,8 @@ export const loadCatalog = async (
   init?: RequestInit & { next?: { revalidate?: number } }
 ): Promise<Catalog> => {
   try {
-    const rows = await fetchInstances(init)
-    return { networks: mergeCatalog(rows), error: null, live: true }
+    const { instances } = await fetchInstances(init)
+    return { networks: mergeCatalog(instances), error: null, live: true }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     console.error('[catalog] falling back to the static network list:', reason)
