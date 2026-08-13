@@ -105,6 +105,10 @@ pub struct AnchorRecord {
     pub node_id: B256,
     pub envelope_kind: u8,
     pub head: B256,
+    /// The head's signed monotonic position (envelope 0: the log length co-signed with the
+    /// head, ingress-verified by `AnchorRegistry` for address nodes). H-5: rule Φ rejects any
+    /// anchored head whose count is below the node's max anchored count.
+    pub count: u64,
     pub data_commitment: B256,
     pub block_timestamp: u64,
 }

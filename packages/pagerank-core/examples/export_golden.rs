@@ -194,12 +194,16 @@ fn main() {
                 "nodeId": hx(&[0x11u8; 32]),
                 "envelopeKind": 0,
                 "head": hx(&[0x22u8; 32]),
+                // H-5: the head's signed count rides the leaf. Deliberately non-zero so the
+                // vectors catch a port that drops or zero-defaults the word.
+                "count": 5u64,
                 "dataCommitment": hx(&[0x33u8; 32]),
                 "blockTimestamp": 1234u64,
                 "leaf": hx(zk_core::anchor::anchor_leaf(
                     alloy_primitives::B256::from([0x11u8; 32]),
                     0,
                     alloy_primitives::B256::from([0x22u8; 32]),
+                    5,
                     alloy_primitives::B256::from([0x33u8; 32]),
                     1234,
                 ).as_slice())

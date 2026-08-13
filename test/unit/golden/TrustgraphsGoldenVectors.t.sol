@@ -90,17 +90,19 @@ contract TrustgraphsGoldenVectorsTest is Test {
         assertEq(expected, json.readBytes32(".journal.instanceDomain"), "journal domain mismatch");
     }
 
-    /// Anchor-log leaf: keccak256(abi.encode(bytes32, uint8, bytes32, bytes32, uint256)) — must
-    /// match AnchorRegistry.anchor and zk_core::anchor::anchor_leaf.
+    /// Anchor-log leaf: keccak256(abi.encode(bytes32, uint8, bytes32, uint64, bytes32, uint256)) —
+    /// must match AnchorRegistry.anchor and zk_core::anchor::anchor_leaf. The uint64 `count` word
+    /// is the head's owner-signed monotonic position (H-5).
     function test_AnchorLeaf() public view {
         bytes32 nodeId = json.readBytes32(".anchor.leaf.nodeId");
         uint8 envelopeKind = uint8(json.readUint(".anchor.leaf.envelopeKind"));
         bytes32 head = json.readBytes32(".anchor.leaf.head");
+        uint64 count = uint64(json.readUint(".anchor.leaf.count"));
         bytes32 dataCommitment = json.readBytes32(".anchor.leaf.dataCommitment");
         uint256 ts = json.readUint(".anchor.leaf.blockTimestamp");
         bytes32 expected = json.readBytes32(".anchor.leaf.leaf");
 
-        bytes32 leaf = keccak256(abi.encode(nodeId, envelopeKind, head, dataCommitment, ts));
+        bytes32 leaf = keccak256(abi.encode(nodeId, envelopeKind, head, count, dataCommitment, ts));
         assertEq(leaf, expected, "anchor leaf mismatch");
     }
 

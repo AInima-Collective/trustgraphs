@@ -33,6 +33,7 @@ ponder.on('anchorRegistry:HeadAnchored', async ({ event, context }) => {
     nodeId,
     envelopeKind,
     head,
+    count,
     dataCommitment,
     blockTimestamp,
   } = event.args
@@ -44,6 +45,7 @@ ponder.on('anchorRegistry:HeadAnchored', async ({ event, context }) => {
     nodeId,
     envelopeKind,
     head,
+    count,
     dataCommitment,
     blockTimestamp,
     txHash: event.transaction.hash,

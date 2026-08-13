@@ -30,6 +30,19 @@ export const anchorRegistryAbi = [
   },
   {
     type: 'function',
+    name: 'HEAD_DOMAIN_TAG',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'NODE_KIND_ADDRESS',
     inputs: [],
     outputs: [
@@ -74,9 +87,19 @@ export const anchorRegistryAbi = [
         internalType: 'bytes32',
       },
       {
+        name: 'count',
+        type: 'uint64',
+        internalType: 'uint64',
+      },
+      {
         name: 'dataCommitment',
         type: 'bytes32',
         internalType: 'bytes32',
+      },
+      {
+        name: 'headSignature',
+        type: 'bytes',
+        internalType: 'bytes',
       },
     ],
     outputs: [],
@@ -171,6 +194,25 @@ export const anchorRegistryAbi = [
   },
   {
     type: 'function',
+    name: 'lastCount',
+    inputs: [
+      {
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+    outputs: [
+      {
+        name: 'count',
+        type: 'uint64',
+        internalType: 'uint64',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'nodeKind',
     inputs: [
       {
@@ -184,6 +226,25 @@ export const anchorRegistryAbi = [
         name: 'kind',
         type: 'uint8',
         internalType: 'uint8',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'ownerOf',
+    inputs: [
+      {
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+    outputs: [
+      {
+        name: 'owner',
+        type: 'address',
+        internalType: 'address',
       },
     ],
     stateMutability: 'view',
@@ -314,6 +375,12 @@ export const anchorRegistryAbi = [
         type: 'bytes32',
         indexed: false,
         internalType: 'bytes32',
+      },
+      {
+        name: 'count',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
       },
       {
         name: 'dataCommitment',
@@ -469,12 +536,71 @@ export const anchorRegistryAbi = [
   },
   {
     type: 'error',
+    name: 'BadHeadSignature',
+    inputs: [
+      {
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'ECDSAInvalidSignature',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'ECDSAInvalidSignatureLength',
+    inputs: [
+      {
+        name: 'length',
+        type: 'uint256',
+        internalType: 'uint256',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'ECDSAInvalidSignatureS',
+    inputs: [
+      {
+        name: 's',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+    ],
+  },
+  {
+    type: 'error',
     name: 'NotRegistered',
     inputs: [
       {
         name: 'nodeId',
         type: 'bytes32',
         internalType: 'bytes32',
+      },
+    ],
+  },
+  {
+    type: 'error',
+    name: 'StaleHeadCount',
+    inputs: [
+      {
+        name: 'nodeId',
+        type: 'bytes32',
+        internalType: 'bytes32',
+      },
+      {
+        name: 'count',
+        type: 'uint64',
+        internalType: 'uint64',
+      },
+      {
+        name: 'lastAnchored',
+        type: 'uint64',
+        internalType: 'uint64',
       },
     ],
   },

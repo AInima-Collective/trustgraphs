@@ -7,19 +7,26 @@ use crate::words::{word_u256, word_u8};
 use alloy_primitives::{keccak256, B256, U256};
 
 /// The anchor-log leaf, exactly as `AnchorRegistry.anchor` folds it on-chain:
-/// `keccak256(abi.encode(bytes32 nodeId, uint8 envelopeKind, bytes32 head,
+/// `keccak256(abi.encode(bytes32 nodeId, uint8 envelopeKind, bytes32 head, uint64 count,
 ///                       bytes32 dataCommitment, uint256 blockTimestamp))`.
+///
+/// `count` is the head's signed monotonic position (envelope 0: the chained-log length the
+/// owner co-signed with the head). Binding it into the leaf is the H-5 head-replay fix: the
+/// guest can rank a node's anchored heads by signed count without needing every head's
+/// witness, so a re-anchored stale head can never outrank a newer one.
 pub fn anchor_leaf(
     node_id: B256,
     envelope_kind: u8,
     head: B256,
+    count: u64,
     data_commitment: B256,
     block_timestamp: u64,
 ) -> B256 {
-    let mut buf = Vec::with_capacity(32 * 5);
+    let mut buf = Vec::with_capacity(32 * 6);
     buf.extend_from_slice(node_id.as_slice());
     buf.extend_from_slice(&word_u8(envelope_kind));
     buf.extend_from_slice(head.as_slice());
+    buf.extend_from_slice(&crate::words::word_u64(count));
     buf.extend_from_slice(data_commitment.as_slice());
     buf.extend_from_slice(&word_u256(U256::from(block_timestamp)));
     keccak256(&buf)

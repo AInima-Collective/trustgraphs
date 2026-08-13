@@ -29,7 +29,7 @@ sol! {
     event EdgeFolded(uint64 indexed index, bytes32 leaf, bytes32 acc);
     event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID);
 
-    event HeadAnchored(uint64 indexed foldIndex, bytes32 indexed nodeId, uint8 envelopeKind, bytes32 head, bytes32 dataCommitment, uint256 blockTimestamp);
+    event HeadAnchored(uint64 indexed foldIndex, bytes32 indexed nodeId, uint8 envelopeKind, bytes32 head, uint64 count, bytes32 dataCommitment, uint256 blockTimestamp);
     function anchorCheckpoints(uint256 checkpointId) external view returns (bytes32 anchorAcc, uint64 anchorCount);
 }
 
@@ -301,6 +301,7 @@ async fn main() -> Result<()> {
                     node_id: ev.nodeId,
                     envelope_kind: ev.envelopeKind,
                     head: ev.head,
+                    count: ev.count,
                     data_commitment: ev.dataCommitment,
                     block_timestamp: u64::try_from(ev.blockTimestamp)
                         .context("anchor timestamp overflows u64")?,
@@ -334,6 +335,7 @@ async fn main() -> Result<()> {
                     a.node_id,
                     a.envelope_kind,
                     a.head,
+                    a.count,
                     a.data_commitment,
                     a.block_timestamp,
                 );

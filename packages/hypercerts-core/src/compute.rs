@@ -187,9 +187,21 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     // 1. Re-fold the anchor log (binds the witness to the checkpointed anchorAcc).
     let mut anchor_acc = B256::ZERO;
     for a in &input.anchors {
+        // `count` rides the leaf (H-5 fix, shared encoding). For envelope-1 (atproto) nodes it
+        // is a claimed ordinal — registrar-gated at ingress, not signature-verified — so this
+        // program's rule Φ deliberately does NOT rank by it yet; ranking stays anchor-order
+        // until the atproto rev is bound the way envelope 0 binds its log length (E2-adjacent
+        // design work, tracked in the outstanding report's lane-2 mediums).
         anchor_acc = fold(
             anchor_acc,
-            anchor_leaf(a.node_id, a.envelope_kind, a.head, a.data_commitment, a.block_timestamp),
+            anchor_leaf(
+                a.node_id,
+                a.envelope_kind,
+                a.head,
+                a.count,
+                a.data_commitment,
+                a.block_timestamp,
+            ),
         );
     }
     let anchor_count = input.anchors.len() as u64;

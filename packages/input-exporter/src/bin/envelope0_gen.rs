@@ -129,10 +129,13 @@ fn main() -> Result<()> {
     let witness = Envelope0Witness { owner, entries, attestations, head_signature };
 
     std::fs::write(&args.out, serde_json::to_string_pretty(&witness)?)?;
-    println!("owner:  0x{}", hex::encode(owner));
-    println!("nodeId: 0x{}", hex::encode(address_node_id(owner)));
-    println!("head:   0x{}", hex::encode(head));
-    println!("count:  {}", witness.entries.len());
+    println!("owner:   0x{}", hex::encode(owner));
+    println!("nodeId:  0x{}", hex::encode(address_node_id(owner)));
+    println!("head:    0x{}", hex::encode(head));
+    println!("count:   {}", witness.entries.len());
+    // The head co-signature doubles as the on-chain ingress proof (H-5):
+    // anchor(bytes32 nodeId, uint8 0, bytes32 head, uint64 count, bytes32 dataCommitment, bytes headSig)
+    println!("headSig: 0x{}", hex::encode(&witness.head_signature));
     println!("wrote {}", args.out);
     Ok(())
 }

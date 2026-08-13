@@ -189,9 +189,11 @@ cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$NODE_ID" 1 --rpc-url "$
 # NODE_ID = keccak256(utf8(did)) (`hypercerts_core::semantics::did_node_id`; `hypercerts
 # buildinput` prints each node's id on stdout).
 
-# Anchor a head (envelopeKind 1 = atproto; dataCommitment 0 for v1 — the CAR archive is the availability proof).
-cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$NODE_ID" 1 "$HEAD_SHA256" \
-  0x0000000000000000000000000000000000000000000000000000000000000000 --rpc-url "$RPC" --private-key "$PK"
+# Anchor a head (envelopeKind 1 = atproto; dataCommitment 0 for v1 — the CAR archive is the
+# availability proof). `count` is the head's monotonic revision ordinal (H-5 leaf word; increment it
+# per anchored head). Non-address node kinds need no head signature — pass 0x.
+cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" "$NODE_ID" 1 "$HEAD_SHA256" 1 \
+  0x0000000000000000000000000000000000000000000000000000000000000000 0x --rpc-url "$RPC" --private-key "$PK"
 ```
 
 ### 3. Trigger the checkpoint (weekly cadence)

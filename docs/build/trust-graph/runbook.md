@@ -334,6 +334,28 @@ cd ../..
 The signer program's deploy constants (`SP1_SIGNER_PROGRAM_VKEY`, `SELECTION_PARAMS_HASH`) are in
 [`../signer-sync/runbook.md`](../signer-sync/runbook.md).
 
+### Rotating the trust-graph vkey (guest change runbook)
+
+Any change to the trust-graph guest — including `pagerank-core`, `zk-core`, or `envelopes` code it
+compiles in — rotates the trust-graph program vkey. The 2026-08-13 audit batch (H-5 anchored-count
+head-replay fix + M-12 CAR bounds-checks) is such a rotation, and it ALSO changes `AnchorRegistry`
+(the anchor leaf gains the head's signed `count` word and `anchor()` verifies the owner's
+co-signature for address nodes), so lane-2 instances redeploy the registry alongside the verifier.
+Per the batching rule, group every guest-affecting change into one rotation:
+
+1. Land the guest edits in one batch; regenerate golden vectors
+   (`cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json` — and the
+   hypercerts feed if `zk-core` encodings changed) in the same commit; confirm guest==native,
+   Solidity goldens, and the frontend TS golden test are green.
+2. `cargo run -q --release -- trust-graph vkey` → the new `SP1_PROGRAM_VKEY`.
+3. Deploy a new `SP1JournalVerifier(gateway, newVkey)`; point `MerkleSnapshot` at it via its
+   governance (`setZkVerifier`, constitutional timelock). Old proofs stop verifying at that instant.
+4. If the anchor encoding changed (as in the H-5 rotation): deploy the new `AnchorRegistry`,
+   re-register nodes, and re-anchor current heads (owners co-sign `(head, count)`); the old
+   registry's log does not migrate — its acc is a different encoding.
+5. Re-export inputs and prove with the new guest; record the new vkey in
+   [`networks-and-programs.md`](../../concepts/networks-and-programs.md).
+
 ### Deploy + loop
 
 ```bash

@@ -366,6 +366,7 @@ export const anchor = onchainTable(
     nodeId: t.hex().notNull(),
     envelopeKind: t.integer().notNull(), // uint8 — 0 = EAS-offchain, 1 = atproto, ...
     head: t.hex().notNull(),
+    count: t.bigint().notNull(), // uint64 — the head's owner-signed monotonic position (H-5)
     dataCommitment: t.hex().notNull(),
     blockTimestamp: t.bigint().notNull(), // the on-chain timestamp folded into the leaf
     txHash: t.hex().notNull(),

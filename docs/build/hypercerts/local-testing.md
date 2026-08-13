@@ -187,7 +187,8 @@ i=0
 while read -r _ node head; do
   NODE=${node#nodeId=}; HEAD=${head#head=}
   cast send $HC_REGISTRY "registerNode(bytes32,uint8)" $NODE 1 --rpc-url $RPC --private-key $PK
-  cast send $HC_REGISTRY "anchor(bytes32,uint8,bytes32,bytes32)" $NODE 1 $HEAD $ZERO32 \
+  # count 1 = first anchored revision for the node; non-address kinds need no head signature (0x).
+  cast send $HC_REGISTRY "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" $NODE 1 $HEAD 1 $ZERO32 0x \
     --rpc-url $RPC --private-key $PK
   TS=$(cast block latest --field timestamp --rpc-url $RPC)
   jq --argjson i $i --argjson ts $TS '.anchors[$i].block_timestamp = $ts' \

@@ -18,6 +18,13 @@ export const anchorRegistryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'HEAD_DOMAIN_TAG',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'NODE_KIND_ADDRESS',
     outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
     stateMutability: 'view',
@@ -35,7 +42,9 @@ export const anchorRegistryAbi = [
       { name: 'nodeId', internalType: 'bytes32', type: 'bytes32' },
       { name: 'envelopeKind', internalType: 'uint8', type: 'uint8' },
       { name: 'head', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'count', internalType: 'uint64', type: 'uint64' },
       { name: 'dataCommitment', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'headSignature', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'anchor',
     outputs: [],
@@ -85,8 +94,22 @@ export const anchorRegistryAbi = [
   {
     type: 'function',
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'lastCount',
+    outputs: [{ name: 'count', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'nodeKind',
     outputs: [{ name: 'kind', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'ownerOf',
+    outputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -168,6 +191,7 @@ export const anchorRegistryAbi = [
         type: 'bytes32',
         indexed: false,
       },
+      { name: 'count', internalType: 'uint64', type: 'uint64', indexed: false },
       {
         name: 'dataCommitment',
         internalType: 'bytes32',
@@ -281,7 +305,32 @@ export const anchorRegistryAbi = [
   {
     type: 'error',
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'BadHeadSignature',
+  },
+  { type: 'error', inputs: [], name: 'ECDSAInvalidSignature' },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'ECDSAInvalidSignatureLength',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 's', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'ECDSAInvalidSignatureS',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'NotRegistered',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'nodeId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'count', internalType: 'uint64', type: 'uint64' },
+      { name: 'lastAnchored', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'StaleHeadCount',
   },
   {
     type: 'error',
