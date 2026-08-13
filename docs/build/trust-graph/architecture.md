@@ -13,9 +13,12 @@ attestation and revocation into an on-chain `AttestationAccumulator`, a chained 
 ordered edge log. A permissionless `trigger()` freezes a checkpoint `(acc, leafCount)`; the
 prover reconstructs the exact edge set from the `EdgeFolded` logs (`packages/input-exporter`)
 and the guest re-folds it to the checkpointed accumulator, so input completeness is proven, not
-assumed. Scoring parameters are governance-pinned as `paramsHash`. An instance can also wire a
-second, off-chain input lane (an `AnchorRegistry` of signed attestation logs); an absent lane
-commits as the zero accumulator.
+assumed. The guest replays those records in `(block timestamp, fold index)` order: an attestation
+replaces the current vouch for its `(attester, recipient)` pair, and a revocation clears the pair
+only if it names that current vouch's UID. Clearing a pair never falls back to an older vouch; a
+later attestation can explicitly reactivate it. Scoring parameters are governance-pinned as
+`paramsHash`. An instance can also wire a second, off-chain input lane (an `AnchorRegistry` of
+signed attestation logs); an absent lane commits as the zero accumulator.
 
 **What the journal commits.** The guest (`zk/program`, bin `trustgraph-program`) runs
 `pagerank-core::compute` and commits the ABI-encoded journal tuple as its public values: both

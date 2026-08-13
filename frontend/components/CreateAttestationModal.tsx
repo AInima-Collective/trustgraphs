@@ -517,10 +517,10 @@ export const CreateAttestationModal = ({
               {attestationsGivenToRecipient.length > 0 && (
                 <Card type="outline" size="sm" className="border-warn">
                   <p className="text-sm text-warn">
-                    <span className="font-bold">Note:</span> You may want to
-                    revoke your other attestation
-                    {attestationsGivenToRecipient.length > 1 ? 's' : ''} for
-                    this recipient before making a new one.
+                    <span className="font-bold">Note:</span> A new vouch becomes
+                    the current vouch for this recipient. Older vouches remain
+                    visible as history, but scores will not fall back to them if
+                    you later revoke the current one.
                   </p>
 
                   <Table

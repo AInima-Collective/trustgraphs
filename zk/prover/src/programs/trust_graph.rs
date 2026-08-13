@@ -65,8 +65,16 @@ pub fn sample_input() -> GuestInput {
         accumulator: addr(0xAC),
         chain_id: 31337,
     };
-    let edges =
-        vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
+    let edges = vec![
+        edge(0, 1, 2, 1, 100, 50),
+        edge(0, 2, 3, 2, 101, 75),
+        edge(0, 3, 1, 3, 102, 90),
+        // Regression for pair-state reconciliation: revoking the current replacement must not
+        // resurrect the older 100-weight vouch.
+        edge(0, 4, 5, 4, 103, 100),
+        edge(0, 4, 5, 5, 104, 20),
+        edge(1, 4, 5, 5, 105, 20),
+    ];
     // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays byte-identical
     // to test/golden/trust-graph.json. Both non-zero: a sample that left them at the default would
     // exercise neither new word.

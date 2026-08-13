@@ -107,7 +107,7 @@ function onRevoke(Attestation calldata a, uint256) internal override returns (bo
 
 ### 3.3 Deliberate design points
 
-- **Raw log, not reconciled state.** The chain does **not** dedup, apply last-write-wins, drop self-loops, or cap weights. It folds the raw ordered event log. All reconstruction happens **inside the guest**, because the guest *is* `eas_pagerank.rs` compiled to the zkVM (which already timestamp-sorts + overrides at `eas_pagerank.rs:135`, excludes self-loops per `PLAN.md`, and caps weights). Keeping the chain dumb means the accumulator **cannot disagree** with the compute logic — there is exactly one definition of "what the edges mean."
+- **Raw log, not reconciled state.** The chain does **not** dedup, apply pair-state transitions, drop self-loops, or cap weights. It folds the raw ordered event log. All reconstruction happens **inside the guest**: `pagerank_core::reconcile` timestamp-sorts the records, lets an attest replace the current `(attester, recipient)` edge, and lets a revoke clear that pair only when it names the current UID. A cleared pair has no fallback to an older edge; a later attest can reactivate it. Keeping the chain dumb means the accumulator **cannot disagree** with the compute logic — there is exactly one definition of "what the edges mean."
 - **`dataHash`, not raw data.** We commit `keccak256(a.data)` and the guest supplies the preimage (recovered from EAS storage via `getAttestation(uid)`). One storage word per attest; the confidence/comment decode stays schema-coupled to nothing on-chain.
 - **`block.timestamp` is folded in**, because the sort/override logic is timestamp-ordered — the guest needs the same timestamps the chain saw, so they must be committed, not prover-supplied.
 - **Fold order is the canonical tie-break.** `leafCount` gives each edge a strictly increasing index in fold order. The reconciliation sort is timestamp-keyed and many edges share a block timestamp, so the guest breaks last-write-wins ties by fold index — a stable sort over fold order, i.e. the total order `(timestamp, fold index)`. The chain, the guest, and the browser recompute must all agree on this order (see §4.1 and §8).
@@ -175,7 +175,7 @@ function _updateStateAtBlock(uint256 blockNumber, bytes32 root, bytes32 ipfsHash
 The `journal` above is the complete interface. The guest, given preimages for all `leafCount` leaves plus the private inputs (seed list, `data` preimages):
 
 1. Recompute the chained `acc` from the leaves; assert it equals `c.acc` and that the leaf count equals `c.leafCount`. → **completeness + integrity of inputs**
-2. Decode each `data`; apply revoke / last-write-wins / self-loop filter / weight cap exactly as `eas_pagerank.rs`, resolving last-write-wins ties by the total order `(timestamp, fold index)` (§3.3). → **deterministic reconciliation**
+2. Decode each `data`; replay pair-state transitions, then apply the self-loop filter and weight cap exactly as `pagerank_core::reconcile`, resolving ordering ties by the total order `(timestamp, fold index)` (§3.3). → **deterministic reconciliation**
 3. Assert the supplied params (incl. `seedSetRoot` over the sorted seed list) hash to `paramsHash`. → **no favorable-parameter cheating**
 4. Run **fixed-point** Trust-Aware PageRank (the `f64` → fixed-point port; see `PRIVACY_ARCHITECTURE.md` and the guest-diff scope).
 5. Build the **exact** `keccak256(keccak256(abi.encode(account, value)))` leaf tree → `outputRoot`; hash the canonical IPFS JSON → `ipfsHash`; encode its CID string → `ipfsHashCid`; sum points → `totalValue`.

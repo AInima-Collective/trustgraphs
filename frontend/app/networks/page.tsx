@@ -47,13 +47,9 @@ const STANDFIRST = 'Networks on this chain, and what each one counts.'
  * the network roster and the live vouch query use. A vouch involving anyone who joined since that
  * root is not in the number.
  *
- * The one thing that looks like a defect and is not: the query is `selectDistinctOn(attester,
- * recipient)`, so a pair counts once however many times they have attested. `reconcile.rs` is
- * last-write-wins per pair, so distinct pairs IS the live vouch count. The first version of this
- * note said re-vouching "replaces" the earlier attestation, which is wrong and worth correcting
- * here rather than quietly: it OUTRANKS it. Revocation excludes by uid, so revoking the newer one
- * brings the older one back at its original weight. That does not change the count, and it is a
- * real product defect with its own issue.
+ * The indexer derives the live pair set from the same accumulator fold order as the guest. A pair
+ * counts once however many historical attestations it has; revoking its current vouch removes the
+ * pair rather than resurrecting an older record.
  */
 const COLUMN_NOTE =
   'Scored accounts and the date come from the last proven scoreboard. The vouch count is up to date, between those same accounts.'

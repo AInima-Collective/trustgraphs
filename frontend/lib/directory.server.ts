@@ -10,8 +10,9 @@
 //!
 //! WHERE EACH NUMBER COMES FROM, because they do not all come from the same place. `scored` and
 //! `provenAt` are read off the latest proven root. The canonical blob contains only positive scores,
-//! so `scored` uses the same set as the network roster. `attestations` is counted LIVE by the
-//! indexer (`revocationTime == 0` at query time, among that same set), so it moves on revocation.
+//! so `scored` uses the same set as the network roster. `attestations` is counted LIVE by replaying
+//! the accumulator's pair state among that same set, so it moves on revocation without reviving an
+//! older vouch.
 
 import { getCatalog } from './catalog.server'
 import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from './config'

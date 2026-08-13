@@ -1,11 +1,13 @@
 //! Attestation reconciliation → graph, in the canonical total order `(timestamp, fold_index)`.
 //!
-//! Mirrors `components/trust-graph/src/eas_pagerank.rs` + `graph_computer.rs::add_edge`
-//! (`allow_duplicates = false`), with two deliberate canonicalizations (PLAN.md §2):
-//!  * ordering is a single GLOBAL stable sort by `(timestamp, fold_index)` (the legacy per-100-batch
-//!    sort is a quirk we do not reproduce);
-//!  * `revoke` (kind=1) leaves exclude their `uid`'s attestation from the graph (the legacy
-//!    "deleted" skip), regardless of position.
+//! Reconciliation is an ordered state machine per `(attester, recipient)` pair:
+//!  * an attest leaf replaces that pair's current edge;
+//!  * a revoke leaf clears the pair only when it names the current edge's UID;
+//!  * clearing a pair never falls back to an older attestation; and
+//!  * a later attest leaf may explicitly reactivate the pair.
+//!
+//! The one global stable sort by `(timestamp, fold_index)` is consensus: `block.timestamp` is part
+//! of every folded leaf and the input vector's index is the accumulator fold position.
 
 use crate::encode::decode_weight;
 use crate::{Params, RawEdge};
@@ -43,27 +45,50 @@ fn weight_fp(edge: &RawEdge, p: &Params) -> U256 {
 
 /// Build the reconciled graph from folded edges.
 pub fn build_graph(edges: &[RawEdge], p: &Params) -> Graph {
-    // uids that were ever revoked are excluded entirely.
-    let revoked: BTreeSet<B256> = edges.iter().filter(|e| e.kind == 1).map(|e| e.uid).collect();
-
-    // Attest edges in canonical (timestamp, fold_index) order.
-    let mut indexed: Vec<(u64, &RawEdge)> = edges
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.kind == 0 && !revoked.contains(&e.uid))
-        .map(|(i, e)| (i as u64, e))
-        .collect();
+    // Every event participates in the canonical order. Filtering revoked UIDs before resolving
+    // duplicate pairs made `old(100) -> new(20) -> revoke(new)` resurrect `old(100)`.
+    let mut indexed: Vec<(u64, &RawEdge)> =
+        edges.iter().enumerate().map(|(i, e)| (i as u64, e)).collect();
     indexed.sort_by(|a, b| a.1.block_timestamp.cmp(&b.1.block_timestamp).then(a.0.cmp(&b.0)));
+
+    // Keep the current UID alongside its weight so revoking an older, superseded attestation does
+    // not clear a newer one for the same pair.
+    let mut current: BTreeMap<Address, BTreeMap<Address, (B256, U256)>> = BTreeMap::new();
+    for (_, e) in indexed {
+        match e.kind {
+            0 => {
+                current
+                    .entry(e.attester)
+                    .or_default()
+                    .insert(e.recipient, (e.uid, weight_fp(e, p)));
+            }
+            1 => {
+                let Some(recipients) = current.get_mut(&e.attester) else {
+                    continue;
+                };
+                if recipients.get(&e.recipient).is_some_and(|(uid, _)| *uid == e.uid) {
+                    recipients.remove(&e.recipient);
+                }
+                if recipients.is_empty() {
+                    current.remove(&e.attester);
+                }
+            }
+            _ => {} // Other program-specific kinds are not trust edges.
+        }
+    }
 
     let mut outgoing: BTreeMap<Address, BTreeMap<Address, U256>> = BTreeMap::new();
     let mut node_set: BTreeSet<Address> = BTreeSet::new();
-
-    for (_, e) in &indexed {
-        let w = weight_fp(e, p);
-        node_set.insert(e.attester);
-        node_set.insert(e.recipient);
-        // last-write-wins: a later edge for the same (attester, recipient) overrides the weight.
-        outgoing.entry(e.attester).or_default().insert(e.recipient, w);
+    for (attester, recipients) in current {
+        let weights = recipients
+            .into_iter()
+            .map(|(recipient, (_, weight))| {
+                node_set.insert(recipient);
+                (recipient, weight)
+            })
+            .collect();
+        node_set.insert(attester);
+        outgoing.insert(attester, weights);
     }
 
     Graph { nodes: node_set.into_iter().collect(), outgoing }
@@ -104,6 +129,35 @@ mod tests {
         let edges = vec![edge(0, 1, 2, 7, 100, 10), edge(1, 1, 2, 7, 150, 0)];
         let g = build_graph(&edges, &p);
         assert!(g.is_empty(), "revoked edge should leave an empty graph");
+    }
+
+    #[test]
+    fn revoking_latest_does_not_resurrect_older_pair_edge() {
+        let p = default_params();
+        let edges =
+            vec![edge(0, 1, 2, 1, 100, 100), edge(0, 1, 2, 2, 200, 20), edge(1, 1, 2, 2, 300, 20)];
+        let g = build_graph(&edges, &p);
+        assert!(g.is_empty(), "revoking the current vouch must leave the pair absent");
+    }
+
+    #[test]
+    fn revoking_superseded_uid_does_not_clear_current_pair_edge() {
+        let p = default_params();
+        let edges =
+            vec![edge(0, 1, 2, 1, 100, 100), edge(0, 1, 2, 2, 200, 20), edge(1, 1, 2, 1, 300, 100)];
+        let g = build_graph(&edges, &p);
+        let w = g.outgoing[&Address::from([1; 20])][&Address::from([2; 20])];
+        assert_eq!(w, U256::from(20) * p.precision_scale);
+    }
+
+    #[test]
+    fn later_attestation_reactivates_cleared_pair() {
+        let p = default_params();
+        let edges =
+            vec![edge(0, 1, 2, 1, 100, 100), edge(1, 1, 2, 1, 200, 100), edge(0, 1, 2, 2, 300, 30)];
+        let g = build_graph(&edges, &p);
+        let w = g.outgoing[&Address::from([1; 20])][&Address::from([2; 20])];
+        assert_eq!(w, U256::from(30) * p.precision_scale);
     }
 
     #[test]

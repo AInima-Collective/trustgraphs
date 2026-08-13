@@ -260,8 +260,9 @@ async fn main() -> Result<()> {
             block_timestamp: a.time,
             data: data.clone(),
         });
-        // Revoke edge (folded in onRevoke at revocationTime), if revoked. Leaf-matching drops it if
-        // the revoke happened after this checkpoint.
+        // Revoke edge (folded in onRevoke at revocationTime), if revoked. Reconstruction includes
+        // it only when its fold leaf is inside this checkpoint; reconciliation then clears the
+        // pair only if this UID is still current.
         if a.revocationTime != 0 {
             candidates.push(RawEdge {
                 kind: 1,

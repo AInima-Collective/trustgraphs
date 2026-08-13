@@ -2,7 +2,11 @@ import { and, asc, desc, eq, inArray, ne, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { uniqBy } from 'lodash'
 import { db } from 'ponder:api'
-import { easAttestation, merkleSnapshot } from 'ponder:schema'
+import {
+  accumulatorRecord,
+  easAttestation,
+  merkleSnapshot,
+} from 'ponder:schema'
 import { Hex } from 'viem'
 
 import {
@@ -12,6 +16,7 @@ import {
   isHexEqual,
   lower,
 } from './utils'
+import { currentVouches } from '../trust-reconcile'
 
 export type NetworkProfile = {
   /** The chain ID of the merkle snapshot contract. */
@@ -99,9 +104,7 @@ app.get('/:account/networks', async (c) => {
             eq(easAttestation.recipient, account as `0x${string}`)
           ),
           // not self-attested
-          ne(easAttestation.attester, easAttestation.recipient),
-          // not revoked
-          eq(easAttestation.revocationTime, 0n)
+          ne(easAttestation.attester, easAttestation.recipient)
         )
       )
       .orderBy(desc(easAttestation.timestamp))
@@ -126,6 +129,10 @@ app.get('/:account/networks', async (c) => {
             return null
           }
 
+          const currentAttestationUids = await currentUidsForResolver(
+            network.contracts.easIndexerResolver
+          )
+
           // Get the merkle tree with its entries for the latest merkle root.
           const merkleTreeWithEntries = await getMerkleTreeWithEntries(
             snapshot.address,
@@ -141,6 +148,7 @@ app.get('/:account/networks', async (c) => {
             merkleTreeWithEntries,
             attestations,
             network,
+            currentAttestationUids,
           })
         })
       )
@@ -204,9 +212,7 @@ app.get('/:account/network/:snapshot', async (c) => {
             eq(easAttestation.recipient, account as `0x${string}`)
           ),
           // not self-attested
-          ne(easAttestation.attester, easAttestation.recipient),
-          // not revoked
-          eq(easAttestation.revocationTime, 0n)
+          ne(easAttestation.attester, easAttestation.recipient)
         )
       )
       .orderBy(desc(easAttestation.timestamp))
@@ -226,6 +232,9 @@ app.get('/:account/network/:snapshot', async (c) => {
       merkleTreeWithEntries,
       attestations,
       network,
+      currentAttestationUids: await currentUidsForResolver(
+        network.contracts.easIndexerResolver
+      ),
     })
 
     return c.json({ network: networkProfile })
@@ -246,12 +255,14 @@ const buildNetworkProfile = ({
   merkleTreeWithEntries: { tree, entries },
   attestations,
   network,
+  currentAttestationUids,
 }: {
   account: string
   snapshot: typeof merkleSnapshot.$inferSelect
   merkleTreeWithEntries: MerkleTreeWithEntries
   attestations: (typeof easAttestation.$inferSelect)[]
   network: (typeof NETWORKS)[number]
+  currentAttestationUids: Set<string>
 }): NetworkProfile => {
   // Set of in-network account addresses.
   const inNetworkAccounts = new Set(
@@ -283,8 +294,10 @@ const buildNetworkProfile = ({
   // Attestations sent to accounts if this account is in the network (de-duplicated by recipient, the most recent attestation is kept).
   const inNetworkAttestationsGiven = isInNetwork
     ? uniqBy(
-        attestationsGiven.filter((attestation) =>
-          inNetworkAccounts.has(attestation.recipient.toLowerCase())
+        attestationsGiven.filter(
+          (attestation) =>
+            inNetworkAccounts.has(attestation.recipient.toLowerCase()) &&
+            currentAttestationUids.has(attestation.uid.toLowerCase())
         ),
         'recipient'
       ).map((attestation) => attestation.uid)
@@ -312,8 +325,10 @@ const buildNetworkProfile = ({
 
   // Attestations received from in-network accounts (de-duplicated by attester, the most recent attestation is kept).
   const inNetworkAttestationsReceived = uniqBy(
-    attestationsReceived.filter((attestation) =>
-      inNetworkAccounts.has(attestation.attester.toLowerCase())
+    attestationsReceived.filter(
+      (attestation) =>
+        inNetworkAccounts.has(attestation.attester.toLowerCase()) &&
+        currentAttestationUids.has(attestation.uid.toLowerCase())
     ),
     'attester'
   ).map((attestation) => attestation.uid)
@@ -342,4 +357,27 @@ const buildNetworkProfile = ({
       outOfNetwork: outOfNetworkAttestationsReceived,
     },
   }
+}
+
+/** The exact current pair state for a trust-graph resolver, derived from accumulator fold order. */
+const currentUidsForResolver = async (resolver: string | undefined) => {
+  if (!resolver) return new Set<string>()
+  const rows = await db
+    .select({
+      kind: accumulatorRecord.kind,
+      attester: accumulatorRecord.attester,
+      recipient: accumulatorRecord.recipient,
+      uid: accumulatorRecord.uid,
+      blockNumber: accumulatorRecord.blockNumber,
+      logIndex: accumulatorRecord.logIndex,
+    })
+    .from(accumulatorRecord)
+    .where(
+      eq(accumulatorRecord.accumulator, resolver.toLowerCase() as `0x${string}`)
+    )
+    .orderBy(
+      asc(accumulatorRecord.blockNumber),
+      asc(accumulatorRecord.logIndex)
+    )
+  return new Set(currentVouches(rows).map((row) => row.uid.toLowerCase()))
 }

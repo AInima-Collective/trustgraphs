@@ -34,37 +34,54 @@ const weightFp = (edge: RawEdge, p: Params): bigint => {
 
 /** Build the reconciled graph from folded edges. Mirrors `build_graph`. */
 export const buildGraph = (edges: RawEdge[], p: Params): Graph => {
-  // uids that were ever revoked are excluded entirely.
-  const revoked = new Set<string>()
-  for (const e of edges) {
-    if (e.kind === 1) revoked.add(e.uid.toLowerCase())
-  }
-
-  // Attest edges in canonical (timestamp, fold_index) order.
-  const indexed = edges
-    .map((e, i) => ({ e, i }))
-    .filter(({ e }) => e.kind === 0 && !revoked.has(e.uid.toLowerCase()))
+  // Every event participates in the canonical order. Filtering revoked UIDs before resolving
+  // duplicate pairs made `old(100) -> new(20) -> revoke(new)` resurrect `old(100)`.
+  const indexed = edges.map((e, i) => ({ e, i }))
   indexed.sort((a, b) => {
     const t = cmpBig(a.e.blockTimestamp, b.e.blockTimestamp)
     return t !== 0 ? t : a.i - b.i
   })
 
+  // Current edge per pair. The UID is retained so revoking an older, superseded attestation does
+  // not clear a newer one. Deleting the current edge leaves no older edge to fall back to.
+  const current = new Map<
+    string,
+    Map<string, { uid: string; weight: bigint }>
+  >()
+
+  for (const { e } of indexed) {
+    const attester = e.attester.toLowerCase()
+    const recipient = e.recipient.toLowerCase()
+    if (e.kind === 0) {
+      let recipients = current.get(attester)
+      if (!recipients) {
+        recipients = new Map()
+        current.set(attester, recipients)
+      }
+      recipients.set(recipient, {
+        uid: e.uid.toLowerCase(),
+        weight: weightFp(e, p),
+      })
+    } else if (e.kind === 1) {
+      const recipients = current.get(attester)
+      if (recipients?.get(recipient)?.uid === e.uid.toLowerCase()) {
+        recipients.delete(recipient)
+        if (recipients.size === 0) current.delete(attester)
+      }
+    }
+  }
+
   const outgoing = new Map<string, Map<string, bigint>>()
   const nodeSet = new Set<string>()
 
-  for (const { e } of indexed) {
-    const w = weightFp(e, p)
-    const attester = e.attester.toLowerCase()
-    const recipient = e.recipient.toLowerCase()
+  for (const [attester, recipients] of current) {
     nodeSet.add(attester)
-    nodeSet.add(recipient)
-    // last-write-wins: a later edge for the same (attester, recipient) overrides the weight.
-    let inner = outgoing.get(attester)
-    if (!inner) {
-      inner = new Map<string, bigint>()
-      outgoing.set(attester, inner)
+    const weights = new Map<string, bigint>()
+    for (const [recipient, edge] of recipients) {
+      nodeSet.add(recipient)
+      weights.set(recipient, edge.weight)
     }
-    inner.set(recipient, w)
+    outgoing.set(attester, weights)
   }
 
   const nodes = Array.from(nodeSet).sort((a, b) =>

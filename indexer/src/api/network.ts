@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, lt, ne, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
@@ -13,6 +13,7 @@ import { Hex, isAddress } from 'viem'
 
 import { offchainDb } from './db'
 import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
+import { currentVouches } from '../trust-reconcile'
 
 const app = new Hono()
 
@@ -126,29 +127,50 @@ app.get('/:snapshot', async (c) => {
     }
 
     const relevantAccounts = Array.from(accountsMap.keys()) as `0x${string}`[]
-    const attestations = await db
-      .selectDistinctOn([easAttestation.attester, easAttestation.recipient])
-      .from(easAttestation)
-      .where(
-        and(
-          // Only include non-revoked attestations.
-          eq(easAttestation.revocationTime, 0n),
-          // Ignore self-attestations.
-          ne(easAttestation.attester, easAttestation.recipient),
-          // Only include attestations between in-network accounts.
-          inArray(easAttestation.attester, relevantAccounts),
-          inArray(easAttestation.recipient, relevantAccounts),
-          // Only include attestations for network schemas.
-          inArray(easAttestation.schema, schemaUids)
-        )
-      )
+    const resolver = await resolverForSnapshot(merkleSnapshotContract)
+    if (!resolver) return c.json({ error: 'Network resolver not found' }, 404)
+    const foldRows = await db
+      .select({
+        kind: accumulatorRecord.kind,
+        attester: accumulatorRecord.attester,
+        recipient: accumulatorRecord.recipient,
+        uid: accumulatorRecord.uid,
+        blockNumber: accumulatorRecord.blockNumber,
+        logIndex: accumulatorRecord.logIndex,
+      })
+      .from(accumulatorRecord)
+      .where(eq(accumulatorRecord.accumulator, resolver))
       .orderBy(
-        // Same order as distinct columns.
-        asc(easAttestation.attester),
-        asc(easAttestation.recipient),
-        // Newest attestations override older ones, so pick newer first.
-        desc(easAttestation.timestamp)
+        asc(accumulatorRecord.blockNumber),
+        asc(accumulatorRecord.logIndex)
       )
+    const currentUids = currentVouches(foldRows)
+      .filter(
+        (row) =>
+          accountsMap.has(row.attester) &&
+          accountsMap.has(row.recipient) &&
+          row.attester !== row.recipient
+      )
+      .map((row) => row.uid)
+
+    const attestations =
+      currentUids.length === 0
+        ? []
+        : await db
+            .select()
+            .from(easAttestation)
+            .where(
+              and(
+                inArray(easAttestation.uid, currentUids),
+                inArray(easAttestation.schema, schemaUids),
+                inArray(easAttestation.attester, relevantAccounts),
+                inArray(easAttestation.recipient, relevantAccounts)
+              )
+            )
+            .orderBy(
+              asc(easAttestation.attester),
+              asc(easAttestation.recipient)
+            )
 
     for (const attestation of attestations) {
       accountsMap.get(attestation.attester)!.sent++

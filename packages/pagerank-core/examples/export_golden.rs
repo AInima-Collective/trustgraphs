@@ -76,8 +76,17 @@ fn binding() -> pagerank_core::Binding {
 }
 
 fn main() {
-    let edges =
-        vec![edge(0, 1, 2, 1, 100, 50), edge(0, 2, 3, 2, 101, 75), edge(0, 3, 1, 3, 102, 90)];
+    let edges = vec![
+        edge(0, 1, 2, 1, 100, 50),
+        edge(0, 2, 3, 2, 101, 75),
+        edge(0, 3, 1, 3, 102, 90),
+        // #32 regression: revoking the current vouch for a pair leaves the pair absent; it must
+        // not resurrect the older weight-100 vouch. These three leaves change the accumulator but
+        // deliberately leave the original three-node output graph unchanged.
+        edge(0, 4, 5, 4, 103, 100),
+        edge(0, 4, 5, 5, 104, 20),
+        edge(1, 4, 5, 5, 105, 20),
+    ];
     let input =
         GuestInput { edges: edges.clone(), params: params(), lane2: None, binding: binding() };
     let result = compute(&input);
