@@ -214,7 +214,8 @@ export default async function LandingPage() {
            * and `verifyProof(account, value, proof)` needs the caller to hold
            * both already. There is no enumeration on chain. */}
           <Move n="3" title="Use" figure={<UseFigure />}>
-            Commit each round on-chain, so contracts can verify the scores.
+            Apps can use verified scores for voting power, incentive
+            distribution, or gated chats.
           </Move>
         </div>
       </Section>
