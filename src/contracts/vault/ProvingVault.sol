@@ -19,12 +19,11 @@ import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 ///
 ///      1. **Fee before gas.** Under partial funding the fee is settled first, or a copier could
 ///         consume the remaining balance as gas reimbursement and leave the prover with nothing.
-///      2. **`reimbursement <= demonstrable caller cost`, by construction.** The measured span
-///         excludes intrinsic gas (21k + calldata) and everything after the measurement, and it is
-///         priced at `block.basefee`, which is strictly below the caller's effective gas price
-///         whenever they paid any priority fee. Both errors point the same way: we under-pay. The
-///         alternative — trying to be exact — is not available, because `gasleft()` cannot see
-///         intrinsic cost.
+///      2. **`reimbursement <= demonstrable caller cost`, including refunds.** EIP-3529 can refund
+///         at most 20% of a transaction's gross gas, so only 80% of the measured span is eligible.
+///         That span excludes intrinsic gas and everything after it, and is priced at
+///         `block.basefee`, no more than the caller's effective gas price. Trying to reimburse the
+///         full measured span would overpay a hook that clears storage inside it.
 ///      3. **Fail open on correctness, closed on money.** A stale or unusable price feed pays a
 ///         zero proving fee and still lands the root. A root that cannot be paid for is still a
 ///         root; a payment we cannot price is not a payment we should guess at.
@@ -58,6 +57,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
     /// @notice What `quote()` assumes a claim will cost, since a view cannot measure.
     uint256 public nominalGasUnits = 700_000;
+
+    /// @dev EIP-3529 caps refunds at `gas_used / 5`. Reimbursing at most the complementary 4/5 of
+    ///      our narrower measured span keeps the gas leg below the caller's post-refund cost.
+    uint256 internal constant REFUND_SAFE_NUMERATOR = 4;
+    uint256 internal constant REFUND_SAFE_DENOMINATOR = 5;
 
     /// @notice The largest instance this vault will price, in proof inputs (edges or anchors).
     /// @dev This is the SAME boundary the operator refuses above: `operator_core::Policy` derives
@@ -336,7 +340,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         }
 
         // --- the gas reimbursement ------------------------------------------------------------
-        uint256 units = gasUsed > maxGasUnitsPerClaim ? maxGasUnitsPerClaim : gasUsed;
+        uint256 units = _refundSafeGasUnits(_min(gasUsed, maxGasUnitsPerClaim));
         if (units != 0) {
             gasUsd = (units * block.basefee * ethUsdPrice) / 1e18;
             uint256 room = cap > feeUsd ? cap - feeUsd : 0;
@@ -440,6 +444,10 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
     function _min(uint256 x, uint256 y) internal pure returns (uint256) {
         return x < y ? x : y;
+    }
+
+    function _refundSafeGasUnits(uint256 grossUnits) internal pure returns (uint256) {
+        return (grossUnits * REFUND_SAFE_NUMERATOR) / REFUND_SAFE_DENOMINATOR;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -691,7 +699,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         // Bounded so this view cannot overflow-revert. `quote()` is the pre-flight the operator
         // is instructed to trust before spending proving time; a reverting quote is
         // indistinguishable from an unreachable node and stops the loop for every instance.
-        q.gasUsd = ((_min(nominalGasUnits, maxGasUnitsPerClaim) * block.basefee) / 1e9) * ethUsdPrice / 1e9;
+        uint256 units = _refundSafeGasUnits(_min(nominalGasUnits, maxGasUnitsPerClaim));
+        q.gasUsd = ((units * block.basefee) / 1e9) * ethUsdPrice / 1e9;
         uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
         if (q.gasUsd > room) q.gasUsd = room;
 

@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
@@ -178,6 +179,57 @@ contract MerkleSnapshotTest is Test {
         _submit(id);
         assertEq(hook.calls(), 1);
         assertEq(hook.lastRoot(), ROOT);
+    }
+
+    function test_ZeroAddressHookIsRejected() public {
+        vm.prank(constitutional);
+        vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
+        ms.addHook(IMerkleSnapshotHook(address(0)));
+    }
+
+    function test_RemovingAHookCompactsTheLiveSet() public {
+        MockHook first = new MockHook();
+        MockHook middle = new MockHook();
+        MockHook last = new MockHook();
+        vm.startPrank(constitutional);
+        ms.addHook(first);
+        ms.addHook(middle);
+        ms.addHook(last);
+        ms.removeHook(middle);
+        vm.stopPrank();
+
+        assertEq(ms.hookCount(), 2);
+        assertEq(ms.nextHookIndex(), 3, "one past the last live hook");
+        assertEq(address(ms.hooks(1)), address(first));
+        assertEq(address(ms.hooks(2)), address(last), "last hook fills the removed slot");
+        assertEq(ms.hookIndex(last), 2, "reverse index follows the moved hook");
+        assertEq(ms.hookIndex(middle), 0);
+        assertEq(address(ms.hooks(3)), address(0), "the old tail is cleared");
+
+        IMerkleSnapshotHook[] memory live = ms.getHooks();
+        assertEq(live.length, 2);
+        assertEq(address(live[0]), address(first));
+        assertEq(address(live[1]), address(last));
+
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
+        _submit(id);
+        assertEq(first.calls(), 1);
+        assertEq(middle.calls(), 0, "removed hook does not fire");
+        assertEq(last.calls(), 1, "moved hook still fires");
+    }
+
+    function test_AddRemoveChurnCannotGrowTheHookLoop() public {
+        MockHook hook = new MockHook();
+        vm.startPrank(constitutional);
+        for (uint256 i = 0; i < 100; i++) {
+            ms.addHook(hook);
+            ms.removeHook(hook);
+        }
+        vm.stopPrank();
+
+        assertEq(ms.hookCount(), 0);
+        assertEq(ms.nextHookIndex(), 1, "churn leaves no tombstones to scan");
+        assertEq(ms.getHooks().length, 0);
     }
 
     /// M-2: a reverting hook must NOT block proof submission — it is caught, HookFailed is emitted,

@@ -4017,6 +4017,13 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'HOOK_GAS_STIPEND',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'OPERATIONAL_ROLE',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
@@ -4625,6 +4632,20 @@ export const merkleSnapshotAbi = [
       },
     ],
     name: 'EpochLengthUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'hookIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      { name: 'hook', internalType: 'address', type: 'address', indexed: true },
+    ],
+    name: 'HookFailed',
   },
   {
     type: 'event',

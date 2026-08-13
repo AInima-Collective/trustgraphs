@@ -91,11 +91,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @dev Only one state per block is allowed
     mapping(uint256 blockNumber => uint256 stateIndex) public blockToStateIndex;
 
-    /// @notice Array of contracts to execute when the merkle state is updated.
+    /// @notice Dense, one-indexed set of contracts to execute when the merkle state is updated.
     mapping(uint256 hookIndex => IMerkleSnapshotHook hook) public hooks;
     /// @notice Mapping from hook to hook index for efficient removal.
     mapping(IMerkleSnapshotHook hook => uint256 hookIndex) public hookIndex;
-    /// @notice The next hook index to use. Start at 1 since 0 is the default value in the mappings above.
+    /// @notice One past the last live hook. Starts at 1 since 0 is the membership sentinel.
     uint64 public nextHookIndex = 1;
     /// @notice The number of hooks.
     uint64 public hookCount;
@@ -571,6 +571,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Add a hook
     function addHook(IMerkleSnapshotHook hook) external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (address(hook) == address(0)) revert ZeroAddress();
         if (hookIndex[hook] != 0) {
             revert HookAlreadyAdded();
         }
@@ -583,25 +584,32 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Remove a hook
     function removeHook(IMerkleSnapshotHook hook) external onlyRole(CONSTITUTIONAL_ROLE) {
-        if (hookIndex[hook] == 0) {
+        uint256 removedIndex = hookIndex[hook];
+        if (removedIndex == 0) {
             revert HookNotAdded();
         }
 
-        delete hooks[hookIndex[hook]];
+        // Keep the set dense: move the last hook into the removed slot, then pop the last slot.
+        // Iteration and getHooks therefore remain proportional to live hooks after arbitrary
+        // governance churn instead of accumulating permanent tombstone SLOADs.
+        uint256 lastIndex = nextHookIndex - 1;
+        if (removedIndex != lastIndex) {
+            IMerkleSnapshotHook movedHook = hooks[lastIndex];
+            hooks[removedIndex] = movedHook;
+            hookIndex[movedHook] = removedIndex;
+        }
+
+        delete hooks[lastIndex];
         delete hookIndex[hook];
+        nextHookIndex = uint64(lastIndex);
         hookCount--;
     }
 
     /// @notice List all hooks
     function getHooks() external view returns (IMerkleSnapshotHook[] memory) {
         IMerkleSnapshotHook[] memory result = new IMerkleSnapshotHook[](hookCount);
-        uint256 resultIndex = 0;
         for (uint256 i = 1; i < nextHookIndex; i++) {
-            if (address(hooks[i]) == address(0)) {
-                continue;
-            }
-            result[resultIndex] = hooks[i];
-            resultIndex++;
+            result[i - 1] = hooks[i];
         }
         return result;
     }

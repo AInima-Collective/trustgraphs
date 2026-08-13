@@ -750,7 +750,7 @@ contract ProvingVaultTest is Test {
                             GAS REIMBURSEMENT
     //////////////////////////////////////////////////////////////*/
 
-    /// `reimbursement <= demonstrable caller cost`, as a fuzz property.
+    /// `reimbursement <= demonstrable post-refund caller cost`, as a fuzz property.
     ///
     /// "Demonstrable" is the load-bearing word: the vault can only see the gas the forwarded call
     /// burned, priced at `block.basefee`. The caller additionally paid intrinsic gas (21k plus
@@ -773,8 +773,9 @@ contract ProvingVaultTest is Test {
         uint256 reimbursedWei = vault.creditOf(mallory, address(0));
         // A floor on what the caller actually burned: the units this test observed around the
         // whole call (already more than the vault measured) plus the 21k intrinsic they cannot
-        // avoid, at the basefee alone (ignoring any priority fee they paid).
-        uint256 callerFloorWei = (observedUnits + 21_000) * basefee;
+        // avoid, at the basefee alone (ignoring any priority fee they paid). EIP-3529 can erase
+        // at most 20% of those gross units, so 80% is the demonstrable post-refund floor.
+        uint256 callerFloorWei = ((observedUnits + 21_000) * basefee * 4) / 5;
         assertLe(reimbursedWei, callerFloorWei, "the vault must never over-reimburse");
         assertLe(gasUsd, (callerFloorWei * 3_000e8) / 1e18);
     }
@@ -789,8 +790,20 @@ contract ProvingVaultTest is Test {
         uint256 id = _mint(bytes32(uint256(1)), 5, 100);
         _claim(id, mallory, alice);
 
-        uint256 ceilingWei = 1_000 * block.basefee;
+        uint256 ceilingWei = 800 * block.basefee;
         assertLe(vault.creditOf(mallory, address(0)), ceilingWei);
+    }
+
+    function test_QuoteAppliesTheSameRefundSafetyHaircut() public {
+        _fund(10 ether, 0);
+        _policy(0, type(uint96).max);
+        vm.prank(feeSetter);
+        vault.setGasParams(1_000, 1_000);
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
+        uint256 expectedGasUsd = ((800 * block.basefee) / 1e9) * 3_000e8 / 1e9;
+        assertEq(q.gasUsd, expectedGasUsd, "quote prices only the refund-safe 80% of nominal gas");
     }
 
     /*///////////////////////////////////////////////////////////////
