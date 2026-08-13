@@ -165,6 +165,8 @@ const quoteReasons = [
   'Insufficient balance',
   'Program or size is not priced',
   'Withdrawal pending',
+  'Checkpoint already paid',
+  'Price feed unavailable',
 ]
 
 const claimReasons = quoteReasons
@@ -759,6 +761,10 @@ export const SettingsPage = ({
   const liveAcc = asString(readResult(resolverReads, 0))
   const leafCount = asBigInt(readResult(resolverReads, 1)) ?? 0n
   const checkpointCount = asBigInt(readResult(resolverReads, 2))
+  const latestCheckpointId =
+    checkpointCount !== undefined && checkpointCount > 0n
+      ? checkpointCount - 1n
+      : 0n
   const resolverSnapshot = asString(readResult(resolverReads, 3))
   const boundSchema = asString(readResult(resolverReads, 4))
   const resolverVersion = asString(readResult(resolverReads, 5))
@@ -814,7 +820,7 @@ export const SettingsPage = ({
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'quote',
-              args: [instanceId as Hex, leafCount, anchorCount],
+              args: [instanceId as Hex, latestCheckpointId],
             },
             {
               address: vaultAddress,

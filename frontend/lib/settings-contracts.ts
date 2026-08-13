@@ -9,7 +9,7 @@ export const provingVaultReadAbi = parseAbi([
   'function accountOf(bytes32 instanceId) view returns (address snapshot, bytes32 program, uint128 ethBalance, uint128 usdcBalance)',
   'function policyOf(bytes32 instanceId) view returns (uint64 minPaidIntervalBlocks, uint96 maxPerRootUsd, uint64 lastPaidBlock)',
   'function pendingWithdrawalOf(bytes32 instanceId) view returns (uint128 ethAmount, uint128 usdcAmount, uint64 readyAt)',
-  'function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount) view returns (uint256 feeUsd, uint256 gasUsd, uint256 payableUsd, bool eligible, uint8 reason)',
+  'function quote(bytes32 instanceId, uint256 checkpointId) view returns (uint256 feeUsd, uint256 gasUsd, uint256 payableUsd, bool eligible, uint8 reason)',
   'function bandOf(bytes32 program, uint64 leafCount, uint64 anchorCount) view returns (uint8)',
   'function feePerRootUsd(bytes32 program, uint8 band) view returns (uint256)',
   'function REGISTRY() view returns (address)',

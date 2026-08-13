@@ -5140,8 +5140,7 @@ export const provingVaultAbi = [
     type: 'function',
     inputs: [
       { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
-      { name: 'anchorCount', internalType: 'uint64', type: 'uint64' },
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'quote',
     outputs: [

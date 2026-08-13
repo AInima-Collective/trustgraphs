@@ -81,7 +81,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     mapping(bytes32 instanceId => Account) internal _accounts;
     mapping(bytes32 instanceId => Policy) internal _policies;
     mapping(bytes32 instanceId => PendingWithdrawal) internal _pending;
-    mapping(bytes32 instanceId => mapping(uint256 checkpointId => bool)) internal _claimed;
+    mapping(bytes32 instanceId => mapping(address snapshot => mapping(uint256 checkpointId => bool))) internal _claimed;
     /// @notice Proven statements already paid for, so two checkpoints carrying the SAME proof
     ///         cannot each collect. `MerkleSnapshot.trigger()` refuses a no-movement checkpoint,
     ///         which makes this unreachable; it is the belt to that braces.
@@ -216,7 +216,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     {
         Account storage a = _accounts[instanceId];
         if (a.snapshot == address(0)) revert UnknownInstance(instanceId);
-        _requireUnclaimed(instanceId, args.checkpointId);
+        _requireUnclaimed(instanceId, a.snapshot, args.checkpointId);
 
         Terms memory t = _terms(instanceId, a, args.checkpointId, args.outputRoot);
 
@@ -249,7 +249,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     function claim(bytes32 instanceId, uint256 checkpointId) external nonReentrant returns (uint256 feeUsd) {
         Account storage a = _accounts[instanceId];
         if (a.snapshot == address(0)) revert UnknownInstance(instanceId);
-        _requireUnclaimed(instanceId, checkpointId);
+        _requireUnclaimed(instanceId, a.snapshot, checkpointId);
 
         MerkleSnapshot snapshot = MerkleSnapshot(a.snapshot);
         if (!snapshot.hasAppliedCheckpoint() || snapshot.lastAppliedCheckpoint() < checkpointId) {
@@ -263,8 +263,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         (feeUsd,) = _settle(instanceId, a, t, checkpointId, recipient, 0, 0);
     }
 
-    function _requireUnclaimed(bytes32 instanceId, uint256 checkpointId) internal view {
-        if (_claimed[instanceId][checkpointId]) revert AlreadyClaimed(instanceId, checkpointId);
+    function _requireUnclaimed(bytes32 instanceId, address snapshot, uint256 checkpointId) internal view {
+        if (_claimed[instanceId][snapshot][checkpointId]) revert AlreadyClaimed(instanceId, checkpointId);
     }
 
     /// The second half of pay-once, keyed on the statement rather than the id.
@@ -311,6 +311,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             return (0, 0);
         }
 
+        if (!t.sizeKnown || bandOf(t.program, t.leafCount, t.anchorCount) == 0) {
+            _skip(instanceId, checkpointId, IneligibleReason.UnknownProgram, minPayoutUsd);
+            return (0, 0);
+        }
+
         // `trigger()` refuses a checkpoint identical to the last one, so a second checkpoint
         // carrying the same proven statement should be unreachable. This is the belt to that
         // braces: it costs one warm SLOAD and it is the difference between "we believe the
@@ -319,16 +324,20 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
         uint256 cap = t.maxPerRootUsd;
         (uint256 ethUsdPrice, bool feedOk) = _ethUsd();
+        if (!feedOk) {
+            _skip(instanceId, checkpointId, IneligibleReason.PriceFeedUnavailable, minPayoutUsd);
+            return (0, 0);
+        }
 
         // --- the proving fee ----------------------------------------------------------------
-        if (feedOk && t.sizeKnown) {
+        if (t.sizeKnown) {
             feeUsd = feePerRootUsd[t.program][bandOf(t.program, t.leafCount, t.anchorCount)];
             if (feeUsd > cap) feeUsd = cap;
         }
 
         // --- the gas reimbursement ------------------------------------------------------------
         uint256 units = gasUsed > maxGasUnitsPerClaim ? maxGasUnitsPerClaim : gasUsed;
-        if (feedOk && units != 0) {
+        if (units != 0) {
             gasUsd = (units * block.basefee * ethUsdPrice) / 1e18;
             uint256 room = cap > feeUsd ? cap - feeUsd : 0;
             if (gasUsd > room) gasUsd = room;
@@ -352,7 +361,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         // regardless made every transient failure — a missed oracle heartbeat, a briefly empty
         // tank — permanently destroy that root's bounty with no retry.
         if (ethSpent != 0 || usdcSpent != 0) {
-            _claimed[instanceId][checkpointId] = true;
+            _claimed[instanceId][t.snapshot][checkpointId] = true;
             _paidStatement[instanceId][t.statement] = true;
             _policies[instanceId].lastPaidBlock = uint64(block.number);
             emit Claimed(instanceId, checkpointId, recipient, msg.sender, feeUsd, gasUsd, ethSpent, usdcSpent);
@@ -640,10 +649,14 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IProvingVault
-    function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount) external view returns (Quote memory q) {
+    function quote(bytes32 instanceId, uint256 checkpointId) external view returns (Quote memory q) {
         Account storage a = _accounts[instanceId];
         if (a.snapshot == address(0)) {
             q.reason = uint8(IneligibleReason.NoAccount);
+            return q;
+        }
+        if (_claimed[instanceId][a.snapshot][checkpointId]) {
+            q.reason = uint8(IneligibleReason.AlreadyClaimed);
             return q;
         }
         Policy storage p = _policies[instanceId];
@@ -657,24 +670,31 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         }
         uint256 cap = p.maxPerRootUsd;
         (uint256 ethUsdPrice, bool feedOk) = _ethUsd();
-
-        uint8 band = bandOf(a.program, leafCount, anchorCount);
-        q.feeUsd = feedOk ? feePerRootUsd[a.program][band] : 0;
-        if (q.feeUsd > cap) q.feeUsd = cap;
-        if (band == 0) {
-            q.reason = uint8(IneligibleReason.UnknownProgram);
-        }
-
-        if (feedOk) {
-            // Bounded so this view cannot overflow-revert. `quote()` is the pre-flight the
-            // operator is instructed to trust before spending proving time; a reverting quote is
-            // indistinguishable from an unreachable node and stops the loop for every instance.
-            q.gasUsd = ((_min(nominalGasUnits, maxGasUnitsPerClaim) * block.basefee) / 1e9) * ethUsdPrice / 1e9;
-            uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
-            if (q.gasUsd > room) q.gasUsd = room;
-        }
-
         q.payableUsd = _payableUsd(a, ethUsdPrice, feedOk);
+
+        (uint64 leafCount, uint64 anchorCount, bool sizeKnown) = _sizeOf(a.snapshot, checkpointId);
+        uint8 band = bandOf(a.program, leafCount, anchorCount);
+        if (!sizeKnown || band == 0) {
+            q.reason = uint8(IneligibleReason.UnknownProgram);
+            return q;
+        }
+        if (!feedOk) {
+            q.reason = uint8(IneligibleReason.PriceFeedUnavailable);
+            return q;
+        }
+
+        if (sizeKnown) {
+            q.feeUsd = feePerRootUsd[a.program][band];
+            if (q.feeUsd > cap) q.feeUsd = cap;
+        }
+
+        // Bounded so this view cannot overflow-revert. `quote()` is the pre-flight the operator
+        // is instructed to trust before spending proving time; a reverting quote is
+        // indistinguishable from an unreachable node and stops the loop for every instance.
+        q.gasUsd = ((_min(nominalGasUnits, maxGasUnitsPerClaim) * block.basefee) / 1e9) * ethUsdPrice / 1e9;
+        uint256 room = cap > q.feeUsd ? cap - q.feeUsd : 0;
+        if (q.gasUsd > room) q.gasUsd = room;
+
         uint256 wanted = q.feeUsd + q.gasUsd;
         q.eligible = wanted != 0 && q.payableUsd >= wanted;
         if (!q.eligible && q.reason == uint8(IneligibleReason.None)) {
@@ -692,7 +712,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
 
     /// @inheritdoc IProvingVault
     function isClaimed(bytes32 instanceId, uint256 checkpointId) external view returns (bool) {
-        return _claimed[instanceId][checkpointId];
+        return _claimed[instanceId][_accounts[instanceId].snapshot][checkpointId];
     }
 
     /// @inheritdoc IProvingVault

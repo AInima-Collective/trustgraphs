@@ -500,7 +500,9 @@ fn build_state(
     });
 
     let vault = match (cfg.paid.enabled, cfg.paid.vault) {
-        (true, Some(vault)) => handlers::vault_quote(rpc, vault, entry.instance_id, &view).ok(),
+        (true, Some(vault)) => newest.and_then(|checkpoint_id| {
+            handlers::vault_quote(rpc, vault, entry.instance_id, checkpoint_id).ok()
+        }),
         _ => None,
     };
 

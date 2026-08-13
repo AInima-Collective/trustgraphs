@@ -679,6 +679,55 @@ contract ProvingVaultTest is Test {
         assertEq(vault.accountOf(INSTANCE).ethBalance, 5 ether + 1 wei);
     }
 
+    function test_ClaimIdsAreScopedToTheBoundSnapshotAcrossMigration() public {
+        MerkleSnapshot oldSnapshot = snapshot;
+        MockAccumulator oldAcc = accer;
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        uint256 oldId = _mint(bytes32(uint256(1)), 5, 100);
+        _claim(oldId, alice, alice);
+        assertTrue(vault.isClaimed(INSTANCE, oldId));
+
+        MockAccumulator acc2 = new MockAccumulator();
+        MerkleSnapshot next = new MerkleSnapshot(verifier, PARAMS, acc2, constitutional, operational);
+        registry.update(
+            INSTANCE,
+            IInstanceRegistry.Instance({
+                program: PROGRAM,
+                snapshot: address(next),
+                verifier: address(verifier),
+                registryOrAccumulator: address(acc2),
+                paramsHash: PARAMS
+            })
+        );
+        vm.prank(constitutional);
+        vault.migrate(INSTANCE);
+
+        assertFalse(vault.isClaimed(INSTANCE, oldId), "the replacement snapshot has a fresh id space");
+        snapshot = next;
+        accer = acc2;
+        uint256 newId = _mint(bytes32(uint256(2)), 5, 200);
+        assertEq(newId, oldId, "each accumulator starts checkpoint ids at zero");
+
+        (uint256 feeUsd,) = _claim(newId, alice, alice);
+        assertGt(feeUsd, 0, "the replacement snapshot's first checkpoint can be paid");
+        assertTrue(vault.isClaimed(INSTANCE, newId));
+
+        registry.update(
+            INSTANCE,
+            IInstanceRegistry.Instance({
+                program: PROGRAM,
+                snapshot: address(oldSnapshot),
+                verifier: address(verifier),
+                registryOrAccumulator: address(oldAcc),
+                paramsHash: PARAMS
+            })
+        );
+        vm.prank(constitutional);
+        vault.migrate(INSTANCE);
+        assertTrue(vault.isClaimed(INSTANCE, oldId), "migrating back remembers the original payout");
+    }
+
     function test_MigratingToTheSameSnapshotIsRejected() public {
         _fund(1 ether, 0);
         vm.prank(constitutional);
@@ -977,27 +1026,29 @@ contract ProvingVaultTest is Test {
     /// paid for is the failure it exists to prevent.
     function test_QuoteReportsEveryIneligibilityBeforeAnyProvingHappens() public {
         // No account.
-        IProvingVault.Quote memory q = vault.quote(keccak256("nope"), 5, 0);
+        IProvingVault.Quote memory q = vault.quote(keccak256("nope"), 0);
         assertFalse(q.eligible);
         assertEq(q.reason, uint8(IProvingVault.IneligibleReason.NoAccount));
 
         // No policy.
         _fund(10 ether, 0);
-        q = vault.quote(INSTANCE, 5, 0);
+        q = vault.quote(INSTANCE, 0);
         assertEq(q.reason, uint8(IProvingVault.IneligibleReason.PolicyDisabled));
 
         // Funded and priced.
         _policy(0, 1_000 * vault.USD());
-        q = vault.quote(INSTANCE, 5, 0);
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+        q = vault.quote(INSTANCE, id);
         assertTrue(q.eligible);
+        assertEq(q.reason, uint8(IProvingVault.IneligibleReason.None));
         assertEq(q.feeUsd, 10 * vault.USD());
         assertGt(q.payableUsd, 0);
 
         // Cadence.
-        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
         _claim(id, alice, alice);
         _policy(1_000, 1_000 * vault.USD());
-        q = vault.quote(INSTANCE, 5, 0);
+        uint256 nextId = _mint(bytes32(uint256(2)), 5, 200);
+        q = vault.quote(INSTANCE, nextId);
         assertFalse(q.eligible);
         assertEq(q.reason, uint8(IProvingVault.IneligibleReason.CadenceNotElapsed));
     }
@@ -1005,9 +1056,69 @@ contract ProvingVaultTest is Test {
     function test_QuoteReportsInsufficientBalance() public {
         _fund(1 wei, 0);
         _policy(0, 1_000 * vault.USD());
-        IProvingVault.Quote memory q = vault.quote(INSTANCE, 5, 0);
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
         assertFalse(q.eligible);
         assertEq(q.reason, uint8(IProvingVault.IneligibleReason.InsufficientBalance));
+    }
+
+    function test_QuoteReportsAlreadyClaimedCheckpoint() public {
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+        _claim(id, alice, alice);
+
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
+        assertFalse(q.eligible);
+        assertEq(q.reason, uint8(IProvingVault.IneligibleReason.AlreadyClaimed));
+    }
+
+    function test_UnknownProgramIsIneligibleInQuoteAndSettlement() public {
+        bytes32 unknown = keccak256("unknown-program");
+        registry.update(
+            INSTANCE,
+            IInstanceRegistry.Instance({
+                program: unknown,
+                snapshot: address(snapshot),
+                verifier: address(verifier),
+                registryOrAccumulator: address(accer),
+                paramsHash: PARAMS
+            })
+        );
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
+        assertFalse(q.eligible);
+        assertEq(q.reason, uint8(IProvingVault.IneligibleReason.UnknownProgram));
+        assertEq(q.feeUsd, 0);
+        assertEq(q.gasUsd, 0);
+
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit IProvingVault.ClaimSkipped(INSTANCE, id, uint8(IProvingVault.IneligibleReason.UnknownProgram));
+        (uint256 feeUsd, uint256 gasUsd) = _claim(id, alice, alice);
+        assertEq(feeUsd, 0);
+        assertEq(gasUsd, 0);
+        assertEq(snapshot.lastAppliedCheckpoint(), id, "an unpriced root still lands");
+    }
+
+    function test_FeedOutageIsReportedAsTransientInQuoteAndSettlement() public {
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+        feed.set(3_000e8, block.timestamp - 2 hours);
+
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
+        assertFalse(q.eligible);
+        assertEq(q.reason, uint8(IProvingVault.IneligibleReason.PriceFeedUnavailable));
+
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit IProvingVault.ClaimSkipped(INSTANCE, id, uint8(IProvingVault.IneligibleReason.PriceFeedUnavailable));
+        (uint256 feeUsd, uint256 gasUsd) = _claim(id, alice, alice);
+        assertEq(feeUsd, 0);
+        assertEq(gasUsd, 0);
+        assertFalse(vault.isClaimed(INSTANCE, id), "a transient outage does not consume the bounty");
     }
 
     /// A pending withdrawal is deliberately NOT an ineligibility. Making it one was how an
@@ -1018,7 +1129,8 @@ contract ProvingVaultTest is Test {
         _policy(0, 1_000 * vault.USD());
         vm.prank(constitutional);
         vault.requestWithdrawal(INSTANCE, 1 ether, 0);
-        IProvingVault.Quote memory q = vault.quote(INSTANCE, 5, 0);
+        uint256 id = _mint(bytes32(uint256(1)), 5, 100);
+        IProvingVault.Quote memory q = vault.quote(INSTANCE, id);
         assertTrue(q.eligible, "the money is still there and still spendable");
     }
 }

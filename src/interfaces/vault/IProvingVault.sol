@@ -134,7 +134,11 @@ interface IProvingVault {
         ///         withdrawal no longer removes funds from the spendable balance, so a prover
         ///         proving today is still paid today. Making it a blocker was how an earlier
         ///         version let a community take roots for free.
-        WithdrawalPending
+        WithdrawalPending,
+        /// @notice This checkpoint on the currently bound snapshot already paid its bounty.
+        AlreadyClaimed,
+        /// @notice The ETH/USD feed is currently unusable. Transient: retry after it recovers.
+        PriceFeedUnavailable
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -240,12 +244,13 @@ interface IProvingVault {
         external
         returns (uint256 feeUsd, uint256 gasUsd);
 
-    /// @notice What `submitAndClaim` would pay for this instance at this block.
+    /// @notice What `submitAndClaim` would pay for this checkpoint at this block.
     /// @dev The operator calls this BEFORE proving. Discovering mid-flight that a proof will not
-    ///      be paid for is the failure this exists to prevent.
-    function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount) external view returns (Quote memory);
+    ///      be paid for is the failure this exists to prevent. Checkpoint size is read from the
+    ///      currently bound snapshot, exactly as settlement reads it.
+    function quote(bytes32 instanceId, uint256 checkpointId) external view returns (Quote memory);
 
-    /// @notice Whether a bounty was already paid for this checkpoint.
+    /// @notice Whether a bounty was already paid for this checkpoint on the bound snapshot.
     function isClaimed(bytes32 instanceId, uint256 checkpointId) external view returns (bool);
 
     /// @notice Pay the bounty for a root that has ALREADY been applied, to the recipient the

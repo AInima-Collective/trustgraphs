@@ -20,14 +20,14 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::chain::{Rpc, SnapshotView};
+use crate::chain::Rpc;
 use crate::config::Config;
 
 sol! {
     struct Quote {
         uint256 feeUsd; uint256 gasUsd; uint256 payableUsd; bool eligible; uint8 reason;
     }
-    function quote(bytes32 instanceId, uint64 leafCount, uint64 anchorCount)
+    function quote(bytes32 instanceId, uint256 checkpointId)
         external view returns (Quote);
 }
 
@@ -416,16 +416,11 @@ pub fn vault_quote(
     rpc: &Rpc,
     vault: Address,
     instance_id: B256,
-    view: &SnapshotView,
+    checkpoint_id: u64,
 ) -> Result<VaultView> {
     let ret = rpc.eth_call(
         vault,
-        quoteCall {
-            instanceId: instance_id,
-            leafCount: view.live.leaf_count,
-            anchorCount: view.live.anchor_count,
-        }
-        .abi_encode(),
+        quoteCall { instanceId: instance_id, checkpointId: U256::from(checkpoint_id) }.abi_encode(),
     )?;
     let q = quoteCall::abi_decode_returns(&ret)?;
     Ok(VaultView { eligible: q.eligible, payable_usd: q.payableUsd.to::<u128>(), reason: q.reason })
