@@ -1,5 +1,27 @@
 # GOAL — Close the Pre-Mainnet Audit
 
+> **STATUS (2026-08-13): LAUNCH GATE MET for the trust-graph path.** All launch-blocking and
+> recommended milestones are landed with regression tests, on `audit-fixes-2026-08-13`:
+>
+> - **A1 · M-3** — signer journal binds `instanceDomain` (signer vkey rotates) — `3e7b98c`
+> - **A2 · H-5 + A3 · M-12** — anchored-count head-replay fix (registry ingress sig +
+>   count-ranked rule Φ) + CAR bounds-checks (trust-graph vkey rotates once) — `682a595`
+> - **B1–B5 · H-3, M-6, M-9, M-10, M-11** — operator hot-wallet hardening — `6655834`
+> - **C1–C4 · M-4, M-5, M-8, M-7** — governance delay + delegatecall allowlist, abstain
+>   out of quorum, exec() honored, fee-hike timelock + funder guards — `446baf0`
+> - **D1 · H-4** — ceiling documented (production.md) + 80% operator alert — `ddd63f4`
+> - **F1** — CI secret-scan gate — `ddd63f4`; **F2** — oracle staleness default (this commit)
+> - **E1** (hypercerts content-addressing) was already banked in `ce9a9d8`.
+>
+> Suites: forge 488 → **503** green; Rust workspace 33 suites green; operator 21 green;
+> golden vectors regenerated for both rotated programs; TS golden PASS.
+>
+> **Still open, by design:** **E2** (hypercerts suppression/DA — needs Jake's design decision;
+> hypercerts must not ship with value until it lands), **D2** (price/stake ingress — required
+> only before an open-to-adversary set), **F3** (low/info backlog, non-blocking). Deploy-time:
+> each program's vkey rotation runbook is written into its runbook; rotations happen at the
+> mainnet deploy, one per program.
+
 Take Trustgraphs from "audited, cheap cluster fixed" to **safe to run the
 first Ethereum-mainnet experiments with real value**, and clear the path
 for hypercerts to follow later.

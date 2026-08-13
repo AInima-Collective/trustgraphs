@@ -56,8 +56,8 @@ if [ -n "$matches" ]; then
   done <<<"$matches"
 fi
 
-# 2. PEM private-key blocks, anywhere.
-pem=$(git grep -nI -- '-----BEGIN .*PRIVATE KEY-----' || true)
+# 2. PEM private-key blocks, anywhere (except this script's own pattern).
+pem=$(git grep -nI -e '-----BEGIN .*PRIVATE KEY-----' -- ':!scripts/secret-scan.sh' || true)
 if [ -n "$pem" ]; then
   echo "PEM PRIVATE KEY BLOCK:"
   echo "$pem"

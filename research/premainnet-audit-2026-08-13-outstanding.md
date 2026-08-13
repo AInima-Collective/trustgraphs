@@ -1,5 +1,16 @@
 # Trustgraphs — Pre-Mainnet Audit: Outstanding Issues
 
+> **REMEDIATION STATUS (2026-08-13, `audit-fixes-2026-08-13` branch):** every launch-blocking
+> and strongly-recommended finding below is FIXED with a regression test. M-3 → `3e7b98c`
+> (signer vkey rotation). H-5 + M-12 → `682a595` (trust-graph vkey rotation; `AnchorRegistry`
+> gains count-bound, owner-co-signed ingress). H-3, M-6, M-9, M-10, M-11 → `6655834`.
+> M-4, M-5, M-7, M-8 → `446baf0`. H-4 → documented + 80% operator alert (D1) in `ddd63f4`
+> (D2 — ingress pricing — still required before an open-to-adversary set). C-1's tractable
+> half (content-addressing, E1) was banked in `ce9a9d8`; the suppression/DA half (E2) awaits a
+> design decision and gates hypercerts-with-value. Of the Low/Info backlog, the CI secret-scan
+> gate (H-2 follow-through) and ORCL-1 (staleness default) are done; the rest is tracked in
+> `GOAL.md` Milestone F3. Suite: 488 → 503 forge tests green.
+
 **Date:** 2026-08-13
 **Scope of this report:** what remains after the fix commit `a6f89c5`, ranked by whether it blocks the initial Ethereum-mainnet experiments.
 **Launch scope (confirmed with Jake):** the trust-graph score/governance/reward path **and** signer-sync (Safe owner rotation) go to mainnet. Hypercerts does **not** — its Critical is deferred. Whether **lane 2** (off-chain attestations via `AnchorRegistry` / envelope-0) is enabled in the first experiments is an **open question** that changes the status of two findings (flagged inline).
