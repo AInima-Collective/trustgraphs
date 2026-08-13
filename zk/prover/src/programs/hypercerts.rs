@@ -114,6 +114,7 @@ pub fn sample_input() -> GuestInput {
             node_id: did_node_id(&seed_did),
             envelope_kind: ENVELOPE_ATPROTO,
             head,
+            count: 0,
             data_commitment: B256::ZERO,
             block_timestamp: 1_000,
         }],

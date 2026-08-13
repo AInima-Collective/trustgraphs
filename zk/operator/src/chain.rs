@@ -169,12 +169,27 @@ impl Rpc {
 
     /// Simulate a state-changing call from `from`. A revert here is a hold, not a broadcast: it is
     /// the difference between noticing a paused instance and paying to discover it.
-    pub fn simulate(&self, from: Address, to: Address, data: &[u8]) -> Result<()> {
+    ///
+    /// `gas` is the limit the REAL transaction will carry (H-3): without it a node simulates at
+    /// its own cap, so a call that only reverts because our limit is too small passes simulation
+    /// and then burns the full limit on-chain.
+    pub fn simulate(&self, from: Address, to: Address, data: &[u8], gas: Option<u64>) -> Result<()> {
+        let mut obj = json!({ "from": from, "to": to, "data": format!("0x{}", hex::encode(data)) });
+        if let Some(g) = gas {
+            obj["gas"] = json!(format!("0x{g:x}"));
+        }
+        self.call("eth_call", json!([obj, "latest"])).map(|_| ())
+    }
+
+    /// `eth_estimateGas` for a call from `from`. A revert during estimation is an `Err` — the
+    /// same hold-not-broadcast semantics as [`Self::simulate`] (H-3: the estimate is also what
+    /// keeps a hard-coded limit from either under-gassing a revert or over-paying a griefed one).
+    pub fn estimate_gas(&self, from: Address, to: Address, data: &[u8]) -> Result<u64> {
         let params = json!([
             { "from": from, "to": to, "data": format!("0x{}", hex::encode(data)) },
             "latest"
         ]);
-        self.call("eth_call", params).map(|_| ())
+        Self::hex_u64(&self.call("eth_estimateGas", params)?)
     }
 
     pub fn logs(
@@ -516,39 +531,57 @@ pub struct SnapshotView {
 /// to coalesce and makes a stale `lastApplied` visible.
 const CHECKPOINT_WINDOW: u64 = 8;
 
+/// First 32-byte word of an `eth_call` return, or an error. A short or empty `0x` return from a
+/// lagging/flaky provider is a TRANSIENT read failure (M-10, 2026-08-13 audit) — it must surface
+/// as an `Err` the tick loop already tolerates (`instance_unreadable`, next tick re-reads),
+/// never as a slice panic that kills the whole daemon.
+fn word32(ret: &[u8], what: &str) -> Result<B256> {
+    anyhow::ensure!(
+        ret.len() >= 32,
+        "{what}: short eth_call return ({} bytes) — transient provider error, not decoded",
+        ret.len()
+    );
+    Ok(B256::from_slice(&ret[..32]))
+}
+
+fn word_addr(ret: &[u8], what: &str) -> Result<Address> {
+    Ok(Address::from_slice(&word32(ret, what)?.as_slice()[12..32]))
+}
+
+fn word_u64(ret: &[u8], what: &str) -> Result<u64> {
+    Ok(U256::from_be_slice(word32(ret, what)?.as_slice()).to::<u64>())
+}
+
 pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
-    let b32 = |data: Vec<u8>| -> Result<B256> {
-        let ret = rpc.eth_call(snapshot, data)?;
-        Ok(B256::from_slice(&ret[..32]))
+    let b32 = |data: Vec<u8>, what: &str| -> Result<B256> {
+        word32(&rpc.eth_call(snapshot, data)?, what)
     };
-    let addr = |data: Vec<u8>| -> Result<Address> {
-        let ret = rpc.eth_call(snapshot, data)?;
-        Ok(Address::from_slice(&ret[12..32]))
+    let addr = |data: Vec<u8>, what: &str| -> Result<Address> {
+        word_addr(&rpc.eth_call(snapshot, data)?, what)
     };
-    let u64v = |data: Vec<u8>| -> Result<u64> {
-        let ret = rpc.eth_call(snapshot, data)?;
-        Ok(U256::from_be_slice(&ret[..32]).to::<u64>())
+    let u64v = |data: Vec<u8>, what: &str| -> Result<u64> {
+        word_u64(&rpc.eth_call(snapshot, data)?, what)
     };
 
-    let params_hash = b32(paramsHashCall {}.abi_encode())?;
-    let zk_verifier = addr(zkVerifierCall {}.abi_encode())?;
-    let accumulator = addr(accumulatorCall {}.abi_encode())?;
-    let anchor_registry = addr(anchorRegistryCall {}.abi_encode())?;
-    let epoch_length = u64v(epochLengthCall {}.abi_encode())?;
-    let last_trigger_block = u64v(lastTriggerBlockCall {}.abi_encode())?;
-    let instance_domain = b32(instanceDomainCall {}.abi_encode())?;
+    let params_hash = b32(paramsHashCall {}.abi_encode(), "paramsHash")?;
+    let zk_verifier = addr(zkVerifierCall {}.abi_encode(), "zkVerifier")?;
+    let accumulator = addr(accumulatorCall {}.abi_encode(), "accumulator")?;
+    let anchor_registry = addr(anchorRegistryCall {}.abi_encode(), "anchorRegistry")?;
+    let epoch_length = u64v(epochLengthCall {}.abi_encode(), "epochLength")?;
+    let last_trigger_block = u64v(lastTriggerBlockCall {}.abi_encode(), "lastTriggerBlock")?;
+    let instance_domain = b32(instanceDomainCall {}.abi_encode(), "instanceDomain")?;
 
     let has_applied = {
         let ret = rpc.eth_call(snapshot, hasAppliedCheckpointCall {}.abi_encode())?;
         ret.last().is_some_and(|b| *b == 1)
     };
     let last_applied =
-        if has_applied { Some(u64v(lastAppliedCheckpointCall {}.abi_encode())?) } else { None };
+        if has_applied { Some(u64v(lastAppliedCheckpointCall {}.abi_encode(), "lastAppliedCheckpoint")?) } else { None };
 
     // Checkpoints, newest-window only.
     let count = {
         let ret = rpc.eth_call(accumulator, checkpointCountCall {}.abi_encode())?;
-        U256::from_be_slice(&ret[..32]).to::<u64>()
+        word_u64(&ret, "checkpointCount")?
     };
     let mut checkpoints = Vec::new();
     let start = count.saturating_sub(CHECKPOINT_WINDOW);
@@ -569,7 +602,7 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
                 snapshot,
                 checkpointParamsHashCall { checkpointId: U256::from(id) }.abi_encode(),
             )?;
-            let h = B256::from_slice(&r[..32]);
+            let h = word32(&r, "checkpointParamsHash")?;
             // Zero is the "not pinned" sentinel: this checkpoint was minted outside `trigger()`
             // and `submitProof` would revert `UnpinnedCheckpoint`.
             (h != B256::ZERO).then_some(h)
@@ -590,18 +623,18 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
     // Live commitments, for the quiet check.
     let live_acc = {
         let r = rpc.eth_call(accumulator, accCall {}.abi_encode())?;
-        B256::from_slice(&r[..32])
+        word32(&r, "acc")?
     };
     let live_leaves = {
         let r = rpc.eth_call(accumulator, leafCountCall {}.abi_encode())?;
-        U256::from_be_slice(&r[..32]).to::<u64>()
+        word_u64(&r, "leafCount")?
     };
     let (live_anchor_acc, live_anchor_count) = if anchor_registry == Address::ZERO {
         (B256::ZERO, 0u64)
     } else {
         let a = rpc.eth_call(anchor_registry, anchorAccCall {}.abi_encode())?;
         let n = rpc.eth_call(anchor_registry, anchorCountCall {}.abi_encode())?;
-        (B256::from_slice(&a[..32]), U256::from_be_slice(&n[..32]).to::<u64>())
+        (word32(&a, "anchorAcc")?, word_u64(&n, "anchorCount")?)
     };
 
     Ok(SnapshotView {
@@ -627,7 +660,7 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
 /// built from, so a mismatch is a refusal to start rather than a failed submit later.
 pub fn verifier_vkey(rpc: &Rpc, verifier: Address) -> Result<B256> {
     let ret = rpc.eth_call(verifier, programVKeyCall {}.abi_encode())?;
-    Ok(B256::from_slice(&ret[..32]))
+    word32(&ret, "programVKey")
 }
 
 /// Calldata for `trigger()`.

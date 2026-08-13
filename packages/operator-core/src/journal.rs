@@ -93,6 +93,19 @@ pub enum Record {
     Settled { key: WorkKey, outcome: Outcome, at: u64 },
     /// A human looked at an `OutcomeUnknown` and said what it was.
     Resolved { key: WorkKey, request_id: Option<B256>, at: u64 },
+    /// One on-chain submit attempt burned gas (H-3, 2026-08-13 audit). Written from the receipt
+    /// — landed or reverted — so on-chain gas registers in the same rolling budget as proving
+    /// cost, and a revert LOOP registers as strikes instead of silently draining the hot wallet.
+    /// Does not change the key's request status; it is spend + strike bookkeeping only.
+    SubmitGas {
+        key: WorkKey,
+        /// True when the receipt said the tx reverted — gas burned for nothing.
+        reverted: bool,
+        /// `gas_used × effective_gas_price`, converted to USD-cents at the configured crude
+        /// ETH price (same philosophy as `cents_per_billion_cycles`: stop a runaway, not bill).
+        cost_cents: u64,
+        at: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,23 +336,45 @@ impl Journal {
 
     /// Rolling spend inside `window_secs` ending at `now`, for the budget check.
     ///
-    /// Counts INTENTS, not settlements: an intent is the moment money is committed, and a request
-    /// that fails still cost something. Counting settlements would let a run of failures spend
-    /// without ever registering.
+    /// Counts INTENTS (the moment proving money is committed — a request that fails still cost
+    /// something) plus on-chain [`Record::SubmitGas`] (H-3: gas burned by a submit, landed or
+    /// reverted, is unpreventable spend the moment it broadcast). Counting settlements alone
+    /// would let a run of failures spend without ever registering.
     pub fn spend(&self, instance_id: B256, now: u64, window_secs: u64) -> Spend {
         let floor = now.saturating_sub(window_secs);
         let mut s = Spend::default();
-        for r in &self.records {
-            if let Record::Intent { key, at, cost_cents, .. } = r {
-                if *at >= floor {
-                    s.global_cents_today = s.global_cents_today.saturating_add(*cost_cents);
-                    if key.instance_id == instance_id {
-                        s.instance_cents_today = s.instance_cents_today.saturating_add(*cost_cents);
-                    }
+        let mut add = |key: &WorkKey, at: u64, cost_cents: u64| {
+            if at >= floor {
+                s.global_cents_today = s.global_cents_today.saturating_add(cost_cents);
+                if key.instance_id == instance_id {
+                    s.instance_cents_today = s.instance_cents_today.saturating_add(cost_cents);
                 }
+            }
+        };
+        for r in &self.records {
+            match r {
+                Record::Intent { key, at, cost_cents, .. } => add(key, *at, *cost_cents),
+                Record::SubmitGas { key, at, cost_cents, .. } => add(key, *at, *cost_cents),
+                _ => {}
             }
         }
         s
+    }
+
+    /// How many times a submit for this key has REVERTED on-chain since the last human
+    /// `Resolved` line for it (H-3's 3-strikes hold). A revert loop is a standing invitation to
+    /// drain the hot wallet — after enough strikes the caller must hold for a human instead of
+    /// re-broadcasting; appending a `Resolved` record clears the count.
+    pub fn submit_strikes(&self, key: &WorkKey) -> u32 {
+        let mut strikes = 0u32;
+        for r in &self.records {
+            match r {
+                Record::SubmitGas { key: k, reverted: true, .. } if k == key => strikes += 1,
+                Record::Resolved { key: k, .. } if k == key => strikes = 0,
+                _ => {}
+            }
+        }
+        strikes
     }
 
     pub fn records(&self) -> &[Record] {
