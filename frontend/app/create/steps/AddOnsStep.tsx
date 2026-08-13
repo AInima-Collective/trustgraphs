@@ -81,7 +81,7 @@ export const AddOnsStep = ({
       <Card type="detail" size="md">
         <Field
           label="Pay for score refreshes up front?"
-          hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put some ETH in now and whoever refreshes your scores gets paid for it. You can add more at any time, and take back what is left."
+          hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put ETH in during creation to fund the first refreshes; you can top up later in network settings. Withdrawing unused ETH is not available in this app; a constitutional administrator must request and execute it directly through ProvingVault, separated by the vault's withdrawal notice period."
           error={prepayError}
         >
           <div className="flex items-center gap-2">
