@@ -22,6 +22,10 @@ import { AttestationData, AttestationStatus } from '@/lib/attestation'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { nullable } from '@/lib/ponder-query'
+import {
+  ScoreboardExportEntry,
+  ScoreboardExportMetadata,
+} from '@/lib/scoreboard-export'
 import { Network, NetworkEntry } from '@/lib/types'
 import { realAddress } from '@/lib/utils'
 import { getCurrentChainConfig } from '@/lib/wagmi'
@@ -58,6 +62,8 @@ export type NetworkContextType = {
 
   // Data
   accountData: NetworkEntry[]
+  scoreboardExportData: ScoreboardExportEntry[]
+  scoreboardExportMetadata: ScoreboardExportMetadata | undefined
   attestationsData: AttestationData[] | undefined
   totalValue: number
   totalParticipants: number
@@ -123,6 +129,7 @@ export const NetworkProvider = ({
   // Fetch network
   const {
     data: _networkData,
+    dataUpdatedAt: networkDataUpdatedAt,
     isLoading: networkLoading,
     error: networkError,
     refetch: refetchNetwork,
@@ -240,12 +247,30 @@ export const NetworkProvider = ({
 
   const simulatedResults = simulation?.results ?? null
 
+  const simulatedEntries = useMemo(
+    () =>
+      simulation?.entries
+        .map(({ account, value, proof }) => ({
+          account,
+          value: value.toString(),
+          proof,
+        }))
+        .sort((a, b) =>
+          BigInt(a.value) === BigInt(b.value)
+            ? 0
+            : BigInt(a.value) > BigInt(b.value)
+              ? -1
+              : 1
+        ) ?? null,
+    [simulation]
+  )
+
   // Use simulated or real data based on the simulation config
   const { networkData, merkleTreeData } = useMemo((): {
     networkData: typeof _networkData
     merkleTreeData: typeof _merkleTreeData
   } => {
-    if (!simulationConfig.enabled || !simulatedResults) {
+    if (!simulationConfig.enabled || !simulatedResults || !simulatedEntries) {
       return {
         networkData: _networkData,
         merkleTreeData: _merkleTreeData,
@@ -281,11 +306,7 @@ export const NetworkProvider = ({
         blockNumber: '0',
         timestamp: '0',
       },
-      entries: _merkleTreeData.entries.map((entry) => ({
-        ...entry,
-        proof: [],
-        value: simulatedResults[entry.account.toLowerCase()]?.toString() || '0',
-      })),
+      entries: simulatedEntries,
     }
 
     return {
@@ -295,6 +316,7 @@ export const NetworkProvider = ({
   }, [
     simulationConfig.enabled,
     simulatedResults,
+    simulatedEntries,
     simulation,
     _merkleTreeData,
     _networkData,
@@ -353,6 +375,101 @@ export const NetworkProvider = ({
     return accountData
   }, [networkData, ensData])
 
+  // Scores and proofs must come from one response/root. The separately queried network endpoint is
+  // used only to decorate those authoritative Merkle rows with live sent/received counts.
+  const scoreboardExportData = useMemo<ScoreboardExportEntry[]>(() => {
+    if (!merkleTreeData?.entries.length) return []
+
+    const liveCounts = new Map(
+      (_networkData?.accounts ?? []).map((entry) => [
+        entry.account.toLowerCase(),
+        { sent: entry.sent, received: entry.received },
+      ])
+    )
+    return merkleTreeData.entries.map((entry) => ({
+      account: entry.account,
+      value: entry.value,
+      proof: entry.proof,
+      ...liveCounts.get(entry.account.toLowerCase()),
+    }))
+  }, [merkleTreeData, _networkData])
+
+  const liveCountsFetchedAt = networkDataUpdatedAt
+    ? new Date(networkDataUpdatedAt).toISOString()
+    : undefined
+  const scoreboardExportMetadata = useMemo<
+    ScoreboardExportMetadata | undefined
+  >(() => {
+    if (!merkleTreeData?.tree.root) return undefined
+
+    // If a requested simulation failed, do not offer a published export under a simulation-on UI.
+    if (simulationConfig.enabled && !simulation) return undefined
+
+    if (!simulationConfig.enabled) {
+      return {
+        mode: 'published',
+        snapshot: network.contracts.merkleSnapshot,
+        root: merkleTreeData.tree.root,
+        ipfsHashCid: merkleTreeData.tree.ipfsHashCid,
+        scoresAsOf: {
+          blockNumber: merkleTreeData.tree.blockNumber,
+          timestamp: merkleTreeData.tree.timestamp,
+        },
+        liveCountsFetchedAt,
+      }
+    }
+
+    const schemaUid = network.schemas.find(
+      (schema) => schema.key === 'vouching'
+    )?.uid
+    const referenceTree = _merkleTreeData?.tree
+    return {
+      mode: 'simulation',
+      snapshot: network.contracts.merkleSnapshot,
+      root: simulation.outputRoot,
+      ipfsHashCid: simulation.cid,
+      liveCountsFetchedAt,
+      simulation: {
+        kind: 'reduced-lane-1-browser-recompute',
+        inputDataFetchedAt: liveCountsFetchedAt,
+        referencePublishedRoot: referenceTree?.root,
+        referencePublishedRootAsOf: referenceTree
+          ? {
+              blockNumber: referenceTree.blockNumber,
+              timestamp: referenceTree.timestamp,
+            }
+          : undefined,
+        params: {
+          dampingFactor: simulationConfig.dampingFactor,
+          trustMultiplier: simulationConfig.trustMultiplier,
+          trustShare: simulationConfig.trustShare,
+          trustDecay: simulationConfig.trustDecay,
+          maxIterations: simulationConfig.maxIterations,
+          minWeight: network.pagerank.minWeight,
+          maxWeight: network.pagerank.maxWeight,
+          trustedSeeds: network.pagerank.trustedSeeds,
+          pointsPool: String(network.pagerank.pointsPool || 0),
+          precisionScale: (10n ** 18n).toString(),
+          schemaUid,
+          accumulator: network.contracts.easIndexerResolver,
+          chainId: getCurrentChainConfig().id.toString(),
+          envelope0DomainSeparators: network.pagerank.envelope0DomainSeparators,
+          lane2MaxHeadAge: network.pagerank.lane2MaxHeadAge,
+        },
+        paramsHash: simulation.journal.paramsHash,
+        inputAccumulator: simulation.journal.acc,
+        inputLeafCount: simulation.journal.leafCount.toString(),
+      },
+    }
+  }, [
+    merkleTreeData,
+    simulationConfig,
+    simulation,
+    network,
+    _merkleTreeData,
+    liveCountsFetchedAt,
+  ])
+
   // Calculate derived values
   const totalValue = Number(merkleTreeData?.tree?.totalValue || 0)
   const totalParticipants = merkleTreeData?.tree?.numAccounts || 0
@@ -397,6 +514,8 @@ export const NetworkProvider = ({
 
     // Data
     accountData,
+    scoreboardExportData,
+    scoreboardExportMetadata,
     attestationsData: networkData?.attestations,
     totalValue,
     totalParticipants,

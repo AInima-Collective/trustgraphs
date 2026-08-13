@@ -14,6 +14,7 @@
 import { type Hex, concat } from 'viem'
 
 import { compute } from './compute'
+import { buildTree, outputLeaf, proofFor } from './merkle'
 import { type Journal, type Params, type RawEdge } from './types'
 import { wordU256 } from './words'
 
@@ -65,6 +66,8 @@ export interface SimResult {
   ipfsHash: Hex
   cid: string
   totalValue: bigint
+  /** Score rows plus locally generated sibling paths against `outputRoot`. */
+  entries: Array<{ account: Hex; value: bigint; proof: Hex[] }>
   /**
    * The full journal-v2 the recompute produced (lane-1-only: `anchorAcc`/`anchorCount`/
    * `skippedDigest` are the zero accumulator here — see the file header). Callers comparing against
@@ -72,6 +75,26 @@ export interface SimResult {
    * `totalValue` directly; lane-2 fields must be read from the chain (AnchorRegistry / events).
    */
   journal: Journal
+}
+
+/** Build the proof-bearing rows for a canonical score set. */
+export const merkleEntriesForScores = (
+  scores: Array<[Hex, bigint]>
+): SimResult['entries'] => {
+  const leaves = scores.map(([account, value]) => ({
+    account,
+    value,
+    leaf: outputLeaf(account, value),
+  }))
+  const tree = buildTree(leaves.map(({ leaf }) => leaf))
+
+  return leaves.map(({ account, value, leaf }) => {
+    const proof = proofFor(tree, leaf)
+    if (!proof) {
+      throw new Error(`Failed to construct simulated proof for ${account}`)
+    }
+    return { account, value, proof }
+  })
 }
 
 /** ABI-encode `(string comment, uint256 confidence)` head so `weightFieldIndex = 1` reads the weight. */
@@ -139,6 +162,7 @@ export const simulateNetwork = (
     ipfsHash: r.journal.ipfsHash,
     cid: r.cid,
     totalValue: r.journal.totalValue,
+    entries: merkleEntriesForScores(r.scores),
     journal: r.journal,
   }
 }
