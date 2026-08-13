@@ -213,11 +213,20 @@ pub fn derive(
             Record::BadgeAward { badge, subject, created_at } => {
                 // allowedIssuers: enforced when the definition block is witnessed (§3.3);
                 // absent definition = open-vocabulary default.
+                //
+                // C-1: only honor a definition block that is content-addressed by the
+                // badge's own strongRef CID (author-signed). A prover-supplied block whose
+                // bytes do not hash to the CID is not the referenced definition — ignore it
+                // so a prover can neither forge a restriction to censor a legitimate award
+                // nor swap in permissive bytes. (Withholding a real definition to fall back
+                // to open-vocabulary is the separate data-availability gap C-1/E2.)
                 if let Some(def_bytes) = strongref_targets.get(&badge.cid) {
-                    if let Some(allowed) = decode_allowed_issuers(def_bytes) {
-                        if !allowed.iter().any(|d| d == author) {
-                            skip(author_node, skip_reason::ALLOWED_ISSUERS_MISS);
-                            continue;
+                    if zk_core::cid::verify_dagcbor_cid(&badge.cid, def_bytes) {
+                        if let Some(allowed) = decode_allowed_issuers(def_bytes) {
+                            if !allowed.iter().any(|d| d == author) {
+                                skip(author_node, skip_reason::ALLOWED_ISSUERS_MISS);
+                                continue;
+                            }
                         }
                     }
                 }

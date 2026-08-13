@@ -50,6 +50,79 @@ pub fn cid_v1_raw(digest: &[u8; 32]) -> String {
     out
 }
 
+/// CIDv1, dag-cbor codec (0x71), sha2-256 multihash, multibase base32-lower ("b" prefix).
+///
+/// The inverse of [`verify_dagcbor_cid`]'s parse: `0x01 || 0x71 || 0x12 || 0x20 || digest`.
+/// atproto tooling produces these for every record block; this mirrors it for tests/tools.
+pub fn cid_v1_dagcbor(digest: &[u8; 32]) -> String {
+    let mut bytes = Vec::with_capacity(4 + 32);
+    bytes.extend_from_slice(&[0x01, 0x71, 0x12, 0x20]);
+    bytes.extend_from_slice(digest);
+    let mut out = String::from("b");
+    out.push_str(&base32_lower_nopad(&bytes));
+    out
+}
+
+/// Verify that `block` is the content addressed by `cid` — a CIDv1, dag-cbor codec
+/// (0x71), sha2-256 multihash, multibase base32-lower ("b" prefix). This is the codec
+/// atproto uses for every record block, so a badge-definition strongRef resolves here.
+///
+/// Content-addressing is what makes a prover-supplied `(cid -> bytes)` map trustworthy:
+/// only a block whose sha2-256 digest matches the multihash embedded in the CID is the
+/// block the author actually referenced. Returns `false` on any structural mismatch
+/// (wrong multibase/codec/hash/length) or digest mismatch — callers should treat a
+/// `false` as "no verifiable definition" and fall back to their default.
+pub fn verify_dagcbor_cid(cid: &str, block: &[u8]) -> bool {
+    match dagcbor_sha256_digest(cid) {
+        Some(digest) => sha256(block) == digest,
+        None => false,
+    }
+}
+
+/// Extract the sha2-256 digest from a CIDv1 dag-cbor CID string, or `None` if the string
+/// is not exactly `'b' || base32-lower(0x01 0x71 0x12 0x20 || digest[32])`.
+fn dagcbor_sha256_digest(cid: &str) -> Option<[u8; 32]> {
+    let rest = cid.strip_prefix('b')?;
+    let bytes = base32_lower_decode(rest)?;
+    // 0x01 (cidv1) || 0x71 (dag-cbor) || 0x12 (sha2-256) || 0x20 (len 32) || digest[32]
+    if bytes.len() != 4 + 32 {
+        return None;
+    }
+    if bytes[0] != 0x01 || bytes[1] != 0x71 || bytes[2] != 0x12 || bytes[3] != 0x20 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes[4..]);
+    Some(out)
+}
+
+/// RFC 4648 base32 lowercase, no padding — inverse of `base32_lower_nopad`. Returns
+/// `None` on any character outside the alphabet or non-zero trailing pad bits (so a
+/// non-canonical encoding is rejected, keeping the CID→bytes map deterministic).
+fn base32_lower_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 5 / 8);
+    let mut acc: u32 = 0;
+    let mut bits: u32 = 0;
+    for c in s.bytes() {
+        let val = match c {
+            b'a'..=b'z' => c - b'a',
+            b'2'..=b'7' => c - b'2' + 26,
+            _ => return None,
+        } as u32;
+        acc = (acc << 5) | val;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    // Canonical no-pad: fewer than 5 leftover bits, and they must be zero.
+    if bits >= 5 || (bits > 0 && (acc & ((1 << bits) - 1)) != 0) {
+        return None;
+    }
+    Some(out)
+}
+
 /// RFC 4648 base32, lowercase alphabet, no padding.
 fn base32_lower_nopad(data: &[u8]) -> String {
     const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
@@ -94,6 +167,57 @@ mod tests {
             "{\"0x0101010101010101010101010101010101010101\":\"5\",\
               \"0x0202020202020202020202020202020202020202\":\"9\"}"
         );
+    }
+
+    /// Build a CIDv1 dag-cbor (0x71) sha2-256 CID over `block` — mirrors how atproto
+    /// content-addresses a record block.
+    fn dagcbor_cid(block: &[u8]) -> String {
+        let digest = sha256(block);
+        let mut bytes = vec![0x01, 0x71, 0x12, 0x20];
+        bytes.extend_from_slice(&digest);
+        let mut out = String::from("b");
+        out.push_str(&base32_lower_nopad(&bytes));
+        out
+    }
+
+    #[test]
+    fn base32_roundtrips() {
+        for v in [&b""[..], b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar", &[0u8; 36]] {
+            let enc = base32_lower_nopad(v);
+            assert_eq!(base32_lower_decode(&enc).as_deref(), Some(v), "roundtrip {v:?}");
+        }
+    }
+
+    #[test]
+    fn base32_decode_rejects_bad_chars() {
+        assert_eq!(base32_lower_decode("abc1"), None); // '1' not in alphabet
+        assert_eq!(base32_lower_decode("ABC"), None); // uppercase not accepted
+    }
+
+    #[test]
+    fn verify_accepts_matching_block() {
+        let block = b"a badge definition record, dag-cbor bytes";
+        let cid = dagcbor_cid(block);
+        assert!(verify_dagcbor_cid(&cid, block));
+    }
+
+    #[test]
+    fn verify_rejects_tampered_block() {
+        // The C-1 attack: prover keeps the CID but swaps the bytes (e.g. a forged
+        // allowedIssuers list). The digest no longer matches, so it is not honored.
+        let cid = dagcbor_cid(b"the real definition");
+        assert!(!verify_dagcbor_cid(&cid, b"a forged definition"));
+    }
+
+    #[test]
+    fn verify_rejects_wrong_codec_and_garbage() {
+        // A raw-codec (0x55) CID over the same bytes must not validate as a dag-cbor
+        // definition, and non-CID garbage fails closed.
+        let block = b"some bytes";
+        let raw_cid = cid_v1_raw(&sha256(block));
+        assert!(!verify_dagcbor_cid(&raw_cid, block));
+        assert!(!verify_dagcbor_cid("not-a-cid", block));
+        assert!(!verify_dagcbor_cid("", block));
     }
 
     #[test]

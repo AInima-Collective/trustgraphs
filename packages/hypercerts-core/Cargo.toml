@@ -25,3 +25,4 @@ k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 serde_json = { workspace = true }
 hex = { workspace = true }
 sha2 = { version = "0.10", default-features = false }
+zk-core = { path = "../zk-core" }
