@@ -42,6 +42,8 @@ export const NetworkPage = () => {
     isLoading,
     error,
     accountData: networkData,
+    scoreboardExportData,
+    scoreboardExportMetadata,
     totalValue,
     totalParticipants,
     averageValue,
@@ -213,12 +215,15 @@ export const NetworkPage = () => {
 
               <NetworkSimulationConfigDropdown size="sm" className="text-xs" />
 
-              <ExportButton
-                size="sm"
-                className="text-xs"
-                data={networkData}
-                filename={`trustgraph_${name}_${new Date().toISOString()}`}
-              />
+              {scoreboardExportMetadata && (
+                <ExportButton
+                  size="sm"
+                  className="text-xs"
+                  data={scoreboardExportData}
+                  metadata={scoreboardExportMetadata}
+                  filename={`trustgraph_${name}_${new Date().toISOString()}`}
+                />
+              )}
 
               <Dropdown
                 options={[
