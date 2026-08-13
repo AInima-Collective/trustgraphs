@@ -62,17 +62,10 @@ export function Providers({
   // browser session, which is what the lazy initialiser gives it.
   const [queryClient] = React.useState(makeQueryClient)
 
-  // Same lazy treatment, and it buys less than the note here used to claim.
-  // `lib/wagmi.ts` already memoises into a module-scope binding, so the count
-  // was one per JS context either way; the initialiser only changes WHEN it is
-  // built. It does not stop the connectors downloading: measured on the shipped
-  // build, every marketing route still pulls the Coinbase, MetaMask, Reown and
-  // WalletConnect SDKs — 537 KB — and beacons five vendor endpoints before the
-  // reader has touched anything, because `WagmiProvider` reconnects on mount and
-  // that asks every connector for its provider. That is the same defect the
-  // Clarity change above was written to fix, with different vendors. It needs a
-  // connector list built on first connect intent, which is an app-wide call and
-  // has its own issue.
+  // The initial config contains only injected/EIP-6963 wallets. Vendor-backed
+  // connectors are dynamically registered when the wallet picker is opened, so
+  // reconnect-on-mount remains useful without making passive readers download or
+  // contact Coinbase, MetaMask, Reown or WalletConnect.
   const [wagmiConfig] = React.useState(makeWagmiConfig)
 
   return (

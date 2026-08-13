@@ -1,14 +1,9 @@
-import { porto } from 'porto/wagmi'
+import type { Connector, CreateConnectorFn } from '@wagmi/core'
 import { Chain } from 'viem'
 import { optimism } from 'viem/chains'
 import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
-import {
-  coinbaseWallet,
-  injected,
-  metaMask,
-  walletConnect,
-} from 'wagmi/connectors'
+import { injected } from 'wagmi/connectors'
 
 import { CHAIN } from './config'
 import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
@@ -117,24 +112,6 @@ export const _makeWagmiConfig = () =>
           ]
         : []),
       injected(),
-      ...(CHAIN !== 'local' ? [porto()] : []),
-      metaMask(),
-      coinbaseWallet(),
-      // Only include WalletConnect on the browser to avoid logging annoying warnings on the server.
-      ...(typeof window !== 'undefined'
-        ? [
-            walletConnect({
-              projectId: '842e3d38e32065c8b0ce2622ff296651',
-              metadata: {
-                name: 'Trustgraphs',
-                description:
-                  'Turn community vouches into reputation scores that apps can use and contracts can verify.',
-                url: 'https://trustgraph.network',
-                icons: ['https://trustgraph.network/images/icon-512.png'],
-              },
-            }),
-          ]
-        : []),
     ],
     transports: supportedChains.reduce(
       (acc, chain) => {
@@ -151,6 +128,74 @@ export const _makeWagmiConfig = () =>
       {} as Record<number, any>
     ),
   })
+
+let walletConnectorsPromise: Promise<void> | undefined
+
+/**
+ * Add vendor-backed wallet choices after a person explicitly opens the wallet picker.
+ *
+ * Keeping this dynamic import out of the root provider is intentional. Constructing the
+ * Coinbase, MetaMask, Porto/Reown and WalletConnect connectors asks those SDKs for providers;
+ * doing that during hydration made every read-only page download their chunks and contact their
+ * telemetry/config endpoints. The eager `injected()` connector above remains enough for browser
+ * extensions (including EIP-6963 providers) and lets previously-authorized injected wallets
+ * reconnect without a click.
+ *
+ * wagmi exposes connector setup through `_internal` because its own `connect()` and `reconnect()`
+ * actions use the same path when handed a connector factory. Updating the connector store keeps
+ * the existing config, connections and clients intact, and `useConnectors()` observes the new
+ * choices without remounting the application.
+ */
+export const loadWalletConnectors = (): Promise<void> => {
+  if (typeof window === 'undefined' || CHAIN === 'local') {
+    return Promise.resolve()
+  }
+  if (walletConnectorsPromise) return walletConnectorsPromise
+
+  walletConnectorsPromise = import('./wallet-connectors')
+    .then(({ makeWalletConnectors }) => {
+      const config = makeWagmiConfig()
+      const added = makeWalletConnectors().map((factory: CreateConnectorFn) =>
+        config._internal.connectors.setup(factory)
+      )
+
+      config._internal.connectors.setState((current) => {
+        const ids = new Set(current.map((connector) => connector.id))
+        const rdns = new Set(
+          current.flatMap((connector) =>
+            connector.rdns
+              ? Array.isArray(connector.rdns)
+                ? connector.rdns
+                : [connector.rdns]
+              : []
+          )
+        )
+
+        const unique = added.filter((connector: Connector) => {
+          if (ids.has(connector.id)) return false
+          const connectorRdns = connector.rdns
+            ? Array.isArray(connector.rdns)
+              ? connector.rdns
+              : [connector.rdns]
+            : []
+          if (connectorRdns.some((value) => rdns.has(value))) return false
+
+          ids.add(connector.id)
+          connectorRdns.forEach((value) => rdns.add(value))
+          return true
+        })
+
+        return [...current, ...unique]
+      })
+    })
+    .catch((error) => {
+      // A transient chunk/network failure should be retryable on the next picker open.
+      walletConnectorsPromise = undefined
+      throw error
+    })
+
+  return walletConnectorsPromise
+}
 
 // Export utility functions for network management
 export const getTargetChainId = (): number => {

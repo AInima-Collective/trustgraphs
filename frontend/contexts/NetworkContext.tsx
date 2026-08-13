@@ -9,7 +9,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -19,6 +18,10 @@ import { useAccount } from 'wagmi'
 import { registerNetworks } from '@/components/schema-components/registerNetworks'
 import { ENS_EAGER_ADDRESS_LIMIT, useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
+import {
+  ROUTINE_INDEXER_QUERY_OPTIONS,
+  createIndexerPollingPolicy,
+} from '@/lib/indexer-query-policy'
 import { isTrustedSeed } from '@/lib/network'
 import { simulateNetwork } from '@/lib/pagerank/simulate'
 import { nullable } from '@/lib/ponder-query'
@@ -50,14 +53,13 @@ export type NetworkContextType = {
    * Loading state of the two reads that actually draw the graph: the latest
    * merkle tree and the network. Deliberately excludes the Gnosis Safe read.
    *
-   * `isLoading` is the aggregate and stays that way, because a page that
-   * displays the Safe's threshold has to wait for it. The landing page does not
-   * display it, and against an unreachable indexer the Safe query retries four
-   * times on an exponential ladder while the other two resolve immediately: the
-   * hero's data was ready at 7.7s and the figure claimed to be loading until
-   * 18.4s. Anything that only draws nodes and edges wants this one.
+   * `isLoading` and `graphLoading` both exclude the optional Gnosis Safe read.
+   * UI that specifically needs the Safe can use `safeLoading`; graph-only UI
+   * must be usable as soon as the merkle and network reads settle.
    */
   graphLoading: boolean
+  /** Loading state for UI that specifically renders Safe ownership/threshold data. */
+  safeLoading: boolean
   error: string | null
 
   // Data
@@ -101,6 +103,17 @@ export type NetworkContextType = {
 
 export const NetworkContext = createContext<NetworkContextType | null>(null)
 
+const pollGraphIndexer = createIndexerPollingPolicy({
+  baseMs: 10_000,
+  maxMs: 60_000,
+  stopAfter: 3,
+})
+const pollSafeIndexer = createIndexerPollingPolicy({
+  baseMs: 30_000,
+  maxMs: 120_000,
+  stopAfter: 3,
+})
+
 export const NetworkProvider = ({
   network,
   children,
@@ -123,7 +136,8 @@ export const NetworkProvider = ({
     refetch: refetchMerkle,
   } = useQuery({
     ...ponderQueries.latestMerkleTree(network.contracts.merkleSnapshot),
-    refetchInterval: 10_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollGraphIndexer,
   })
 
   // Fetch network
@@ -135,7 +149,8 @@ export const NetworkProvider = ({
     refetch: refetchNetwork,
   } = useQuery({
     ...ponderQueries.network(network.contracts.merkleSnapshot),
-    refetchInterval: 10_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollGraphIndexer,
   })
 
   // Fetch Gnosis Safe (if this network has one at all).
@@ -149,7 +164,6 @@ export const NetworkProvider = ({
   const {
     data: gnosisSafeData,
     isLoading: gnosisSafeLoading,
-    refetch: refetchGnosisSafe,
     // `usePonderQueryOptions` + `useQuery` rather than `usePonderQuery`, so the result can go
     // through `nullable()`. `live` was already false here, which is all `usePonderQuery` adds.
   } = useQuery({
@@ -158,14 +172,10 @@ export const NetworkProvider = ({
         ponderQueryFns.getGnosisSafe(safeProxy ?? zeroAddress)
       )
     ),
-    refetchInterval: 30_000,
+    ...ROUTINE_INDEXER_QUERY_OPTIONS,
+    refetchInterval: pollSafeIndexer,
     enabled: !!safeProxy,
   })
-
-  // Refetch Gnosis Safe when network accounts length changes
-  useEffect(() => {
-    refetchGnosisSafe()
-  }, [_networkData?.accounts.length])
 
   // Simulation config
   const [simulationConfig, setSimulationConfig] =
@@ -482,12 +492,10 @@ export const NetworkProvider = ({
       ? Number(accountData[Math.ceil(accountData.length / 2)].value)
       : Number(accountData[0]?.value || 0)
 
-  // Combined loading state
-  const isLoading = merkleLoading || networkLoading || gnosisSafeLoading
-
-  // The graph's own, without the Safe read folded in. See the type declaration
-  // for why this is a second field rather than a change to the first.
+  // The primary network loading state contains only the graph reads. A Safe is optional metadata;
+  // its indexer latency must not hold the graph, member table or exports behind a loading screen.
   const graphLoading = merkleLoading || networkLoading
+  const isLoading = graphLoading
 
   // Combined error state
   const error = merkleError?.message || networkError?.message || null
@@ -510,6 +518,7 @@ export const NetworkProvider = ({
     // Loading states
     isLoading,
     graphLoading,
+    safeLoading: gnosisSafeLoading,
     error,
 
     // Data
