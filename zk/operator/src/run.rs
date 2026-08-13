@@ -273,6 +273,36 @@ fn tick(
                 }
             };
 
+            // H-4 (2026-08-13 audit): the accumulator only ever grows — attestations AND
+            // revocations both append a leaf, anchors append forever, and the chained hash
+            // cannot be trimmed. Past MAX_PRICED_INPUTS the root is unprovable (cycle refusal)
+            // and unpaid (vault band 0) PERMANENTLY, so approaching the cliff must be a loud
+            // operational event long before it is a fact. 80% is the alarm line.
+            let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
+            let ceiling = operator_core::policy::MAX_PRICED_INPUTS;
+            if inputs >= ceiling.saturating_mul(8) / 10 {
+                let text = format!(
+                    "{} ({}): {inputs} of {ceiling} accumulator inputs ({}%) — the H-4 ceiling \
+                     is PERMANENT (leaves cannot be trimmed; past it the root is unprovable and \
+                     unpaid). Act now: gate/price ingress, or plan the constitutional \
+                     setAccumulator re-seed (docs/build/production.md, 'The accumulator \
+                     ceiling').",
+                    entry.name,
+                    program.name(),
+                    inputs.saturating_mul(100) / ceiling
+                );
+                logger.event(
+                    "input_ceiling_approaching",
+                    json!({
+                        "instance": format!("{:#x}", entry.instance_id),
+                        "inputs": inputs,
+                        "ceiling": ceiling,
+                    }),
+                );
+                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                alerts_raised.push(text);
+            }
+
             let policy = cfg.policy_for(entry.instance_id, supported());
             // Rolling spend, from the journal. This is what makes `LossBudget` reachable at all:
             // it was `Spend::default()` here, so the budget could never fire and "unpreventable
