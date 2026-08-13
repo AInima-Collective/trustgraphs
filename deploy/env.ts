@@ -47,6 +47,20 @@ function requireProdBytes32(name: string): string {
   return v
 }
 
+/** Require an explicit, nonzero uint64 deployment value instead of silently choosing policy. */
+function requireProdUint64(name: string): string {
+  const value = process.env[name]
+  if (!value || !/^[1-9][0-9]*$/.test(value)) {
+    throw new Error(
+      `${name} must be set to a positive integer number of blocks`
+    )
+  }
+  if (BigInt(value) > (1n << 64n) - 1n) {
+    throw new Error(`${name} exceeds uint64`)
+  }
+  return value
+}
+
 type NonFunctionPropertyNames<T> = {
   [K in keyof T]: T[K] extends Function ? never : K
 }[keyof T]
@@ -727,7 +741,7 @@ export class ProdEnv extends EnvBase {
           {
             name: `Network: ${network.name}`,
             script: 'script/DeployNetwork.s.sol:DeployScript',
-            sig: 'run(string,string,string,string,bool,string,uint256,uint256)',
+            sig: 'run(string,string,string,string,bool,string,uint256,uint256,uint64)',
             args: () => [
               readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
               // Path to the governance params; the script computes paramsHash from it on-chain after
@@ -740,6 +754,10 @@ export class ProdEnv extends EnvBase {
               'prod',
               index,
               1,
+              // Direct/legacy deploys do not inherit the factory's EPOCH_FLOOR. Require an
+              // explicit schedule so a missing setting cannot silently produce an unscheduled
+              // network whose proof submitter chooses the epoch boundaries.
+              requireProdUint64('NETWORK_EPOCH_LENGTH'),
             ],
             // Skip if network is already complete.
             skip: () => isNetworkComplete(network),

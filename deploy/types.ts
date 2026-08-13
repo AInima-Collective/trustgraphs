@@ -47,6 +47,8 @@ export type ProgramContext = {
 
 export type NetworkDeploy = {
   deployer: Hex
+  /** Present on direct DeployNetwork artifacts; older and factory-derived files omit it. */
+  epoch_length?: number
   contracts: {
     merkle_snapshot: Hex
     eas_indexer_resolver: Hex

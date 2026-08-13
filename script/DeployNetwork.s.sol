@@ -25,6 +25,13 @@ contract DeployScript is Common {
 
     string public root = vm.projectRoot();
 
+    struct NetworkDeployment {
+        EASIndexerResolver resolver;
+        MerkleSnapshot snapshot;
+        MerkleFundDistributor distributor;
+        bytes32 schemaUid;
+    }
+
     /**
      * @dev Deploys the contracts and writes the results to a JSON file.
      * @param zkVerifierAddr The address of the ZK proof verifier gating root updates
@@ -39,6 +46,7 @@ contract DeployScript is Common {
      * @param env The environment suffix for the deployment file name
      * @param firstIndex The index of the first network to deploy
      * @param count How many networks to deploy
+     * @param epochLength Nonzero number of blocks between score checkpoints
      */
     function run(
         string calldata zkVerifierAddr,
@@ -48,7 +56,8 @@ contract DeployScript is Common {
         bool deployFundDistributor,
         string calldata env,
         uint256 firstIndex,
-        uint256 count
+        uint256 count,
+        uint64 epochLength
     ) public {
         address zkVerifier = vm.parseAddress(zkVerifierAddr);
         address eas = vm.parseAddress(easAddr);
@@ -57,6 +66,7 @@ contract DeployScript is Common {
         require(zkVerifier != address(0), "DeployNetwork: zkVerifier is zero");
         require(eas != address(0), "DeployNetwork: eas is zero");
         require(schemaRegistrar != address(0), "DeployNetwork: schemaRegistrar is zero");
+        require(epochLength != 0, "DeployNetwork: epoch length is zero");
 
         vm.startBroadcast(_privateKey);
 
@@ -69,78 +79,26 @@ contract DeployScript is Common {
 
             address deployer = vm.addr(_privateKey);
 
-            // Deploy the indexer resolver first: it IS the attestation accumulator that produces the
-            // checkpoints MerkleSnapshot consumes.
-            EASIndexerResolver indexerResolver = new EASIndexerResolver(IEAS(eas));
-            _contractsJson.serialize("eas_indexer_resolver", Strings.toChecksumHexString(address(indexerResolver)));
-
-            // Register the vouching schema BEFORE the snapshot. Its UID = getUID(schema, resolver,
-            // revocable) is bound into `paramsHash`, so it must exist first. The dependency chain
-            // resolver -> schemaUid -> paramsHash -> MerkleSnapshot is a clean DAG; the old two-phase
-            // "deploy, read uid, recompute hash, redeploy" dance only existed because the hash used to be
-            // supplied from outside before this schema was registered.
-            bytes32 schemaUid = createSchema(
-                _schemasJson,
-                i,
-                schemaRegistrar,
-                address(indexerResolver),
-                "vouching",
-                "Vouch",
-                "Weighted endorsement",
-                "string comment,uint256 confidence",
-                true
+            NetworkDeployment memory deployed = _deployNetwork(
+                zkVerifier, paramsPath, eas, schemaRegistrar, deployFundDistributor, epochLength, deployer
             );
 
-            // Compute the canonical paramsHash on-chain from the governance params + this schema UID +
-            // this instance's domain separators (params-schema v2: the resolver that IS this instance's
-            // accumulator, and the chain it lives on). `ParamsCodec.hash` is byte-identical to
-            // `pagerank-core::encode::params_hash` (golden-tested), so the value the guest commits
-            // matches what MerkleSnapshot stores — and no two instances share a hash.
-            bytes32 paramsHash = ParamsCodec.hash(
-                ParamsJson.read(paramsPath, schemaUid, address(indexerResolver), uint64(block.chainid))
-            );
+            _contractsJson.serialize("eas_indexer_resolver", Strings.toChecksumHexString(address(deployed.resolver)));
+            _serializeSchema(_schemasJson, i, address(deployed.resolver), deployed.schemaUid);
 
-            // Create the merkle snapshot, gated by the ZK verifier and fed by the accumulator, bound to the
-            // paramsHash just computed. Admin roles are the deployer at bootstrap; DeployTimelocks transfers
-            // them to the timelocks. paramsHash thereafter is mutable only through the operational timelock.
-            MerkleSnapshot merkleSnapshot = new MerkleSnapshot(
-                IZkVerifier(zkVerifier),
-                paramsHash,
-                IAttestationAccumulator(address(indexerResolver)),
-                deployer,
-                deployer
-            );
-
-            // Bind the resolver both ways, in the same script run the factory does them in one
-            // transaction: to its schema (so a stranger's second schema cannot fold a foreign edge
-            // into this instance's `acc`) and to its snapshot (so `trigger()` is the only way to
-            // mint a checkpoint, which is what makes the epoch schedule binding — issue #10).
-            indexerResolver.bindSchema(schemaUid);
-            indexerResolver.bindSnapshot(address(merkleSnapshot));
-
-            // Create the distributor.
-            if (deployFundDistributor) {
-                MerkleFundDistributor merkleFundDistributor = new MerkleFundDistributor(
-                    deployer, // owner
-                    address(merkleSnapshot), // merkle snapshot
-                    deployer, // fee recipient
-                    3e16, // 3% fee
-                    false // disable allowlist
-                );
-
-                _contractsJson.serialize(
-                    "fund_distributor", Strings.toChecksumHexString(address(merkleFundDistributor))
-                );
+            if (address(deployed.distributor) != address(0)) {
+                _contractsJson.serialize("fund_distributor", Strings.toChecksumHexString(address(deployed.distributor)));
             }
 
             string memory finalContractsJson =
-                _contractsJson.serialize("merkle_snapshot", Strings.toChecksumHexString(address(merkleSnapshot)));
+                _contractsJson.serialize("merkle_snapshot", Strings.toChecksumHexString(address(deployed.snapshot)));
 
             string memory finalSchemasJson = vm.serializeString(_schemasJson, "_", "_");
 
             string memory rootJson = string.concat("root", Strings.toString(i));
             rootJson.serialize("deployer", Strings.toChecksumHexString(deployer));
             rootJson.serialize("contracts", finalContractsJson);
+            rootJson.serialize("epoch_length", uint256(epochLength));
             rootJson = rootJson.serialize("schemas", finalSchemasJson);
 
             vm.writeFile(scriptOutputPath, rootJson);
@@ -152,18 +110,18 @@ contract DeployScript is Common {
             // shared file can't hold N distinct instances) — and the input-exporter fills the separators
             // from the chain it is reading regardless, so the prover never depends on this write.
             if (count == 1) {
-                vm.writeJson(vm.toString(schemaUid), paramsPath, ".schema_uid");
-                vm.writeJson(vm.toString(address(indexerResolver)), paramsPath, ".accumulator");
+                vm.writeJson(vm.toString(deployed.schemaUid), paramsPath, ".schema_uid");
+                vm.writeJson(vm.toString(address(deployed.resolver)), paramsPath, ".accumulator");
                 vm.writeJson(vm.toString(block.chainid), paramsPath, ".chain_id");
-                console.log("params.json schema_uid synced ->", vm.toString(schemaUid));
-                console.log("params.json accumulator synced ->", vm.toString(address(indexerResolver)));
+                console.log("params.json schema_uid synced ->", vm.toString(deployed.schemaUid));
+                console.log("params.json accumulator synced ->", vm.toString(address(deployed.resolver)));
             } else {
                 console.log(
                     string.concat(
                         "network ",
                         Strings.toString(i),
                         " schema_uid (sync into its params.json): ",
-                        vm.toString(schemaUid)
+                        vm.toString(deployed.schemaUid)
                     )
                 );
             }
@@ -172,34 +130,63 @@ contract DeployScript is Common {
         vm.stopBroadcast();
     }
 
-    /// @notice Create a new schema
-    function createSchema(
-        string memory schemasJson,
-        uint256 index,
+    /// @dev Deploy one fully wired legacy network. Kept separate from file serialization so the
+    ///      deployment invariants themselves can be exercised in Foundry tests.
+    function _deployNetwork(
+        address zkVerifier,
+        string memory paramsPath,
+        address eas,
         address schemaRegistrar,
-        address resolverAddr,
-        string memory key,
-        string memory name,
-        string memory description,
-        string memory schema,
-        bool revocable
-    ) public returns (bytes32) {
-        string memory newSchemaJson = string.concat(key, "_", Strings.toString(index), "_schema_json");
+        bool deployFundDistributor,
+        uint64 epochLength,
+        address deployer
+    ) internal returns (NetworkDeployment memory deployed) {
+        require(epochLength != 0, "DeployNetwork: epoch length is zero");
 
-        bytes32 uid = SchemaRegistrar(schemaRegistrar).register(schema, ISchemaResolver(resolverAddr), revocable);
-        console.log(key, "schema ID:", vm.toString(uid));
+        // The resolver is the attestation accumulator whose checkpoints MerkleSnapshot consumes.
+        deployed.resolver = new EASIndexerResolver(IEAS(eas));
+        deployed.schemaUid = SchemaRegistrar(schemaRegistrar)
+            .register("string comment,uint256 confidence", ISchemaResolver(address(deployed.resolver)), true);
+
+        // The registered schema and instance domain are part of the canonical guest params.
+        bytes32 paramsHash = ParamsCodec.hash(
+            ParamsJson.read(paramsPath, deployed.schemaUid, address(deployed.resolver), uint64(block.chainid))
+        );
+        deployed.snapshot = new MerkleSnapshot(
+            IZkVerifier(zkVerifier), paramsHash, IAttestationAccumulator(address(deployed.resolver)), deployer, deployer
+        );
+
+        // A direct deployment must never leave the lane unscheduled: otherwise whoever proves
+        // first chooses epoch boundaries and multiple settled states may share one block.
+        deployed.snapshot.setEpochLength(epochLength);
+
+        deployed.resolver.bindSchema(deployed.schemaUid);
+        deployed.resolver.bindSnapshot(address(deployed.snapshot));
+
+        if (deployFundDistributor) {
+            deployed.distributor = new MerkleFundDistributor(
+                deployer, // owner
+                address(deployed.snapshot), // merkle snapshot
+                deployer, // fee recipient
+                3e16, // 3% fee
+                false // disable allowlist
+            );
+        }
+    }
+
+    function _serializeSchema(string memory schemasJson, uint256 index, address resolverAddr, bytes32 uid) internal {
+        string memory newSchemaJson = string.concat("vouching_", Strings.toString(index), "_schema_json");
+
+        console.log("vouching schema ID:", vm.toString(uid));
 
         newSchemaJson.serialize("uid", vm.toString(uid));
-        newSchemaJson.serialize("key", key);
-        newSchemaJson.serialize("name", name);
-        newSchemaJson.serialize("description", description);
-        newSchemaJson.serialize("schema", schema);
-        vm.serializeBool(newSchemaJson, "revocable", revocable);
+        vm.serializeString(newSchemaJson, "key", "vouching");
+        vm.serializeString(newSchemaJson, "name", "Vouch");
+        vm.serializeString(newSchemaJson, "description", "Weighted endorsement");
+        vm.serializeString(newSchemaJson, "schema", "string comment,uint256 confidence");
+        vm.serializeBool(newSchemaJson, "revocable", true);
         newSchemaJson = newSchemaJson.serialize("resolver", Strings.toChecksumHexString(resolverAddr));
 
-        // Add the new schema to the schemas JSON
-        schemasJson.serialize(key, newSchemaJson);
-
-        return uid;
+        schemasJson.serialize("vouching", newSchemaJson);
     }
 }

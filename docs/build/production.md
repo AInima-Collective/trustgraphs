@@ -18,6 +18,9 @@ Set the ZK deployment parameters in your environment (see `deploy/env.ts` and `.
 - `SP1_SIGNER_PROGRAM_VKEY` / `SELECTION_PARAMS_HASH` — the signer-sync equivalents (see the
   [signer-sync runbook](./signer-sync/runbook.md))
 - `SP1_VERIFIER_GATEWAY` — the canonical SP1 verifier gateway on the target chain
+- `NETWORK_EPOCH_LENGTH` — a nonzero block count between score checkpoints for each network
+  created through the legacy production deploy path (for example, `1296000` is about 30 days on
+  Optimism). The deploy fails closed when this is missing or zero.
 
 There is **no `PARAMS_HASH` env var**: `DeployNetwork` computes the params hash on-chain from
 `params.json` (the same file the prover feeds the guest) right after it registers the schema —

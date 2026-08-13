@@ -131,6 +131,8 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
    and controller owner from that transaction. Direct `TrustgraphsFactory.createInstance` remains a
    lower-level seam for scripted/legacy bring-up where governance is attached and authority handed
    off separately; `DeployNetwork.s.sol` is the non-factory legacy path.
+   That legacy script requires a nonzero `epochLength` argument and applies it before returning;
+   zero is rejected because it disables the schedule and hands checkpoint timing to callers.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s. On a controller-backed trust graph, transfer
    the snapshot's `CONSTITUTIONAL_ROLE` to the constitutional timelock and transfer ownership of
