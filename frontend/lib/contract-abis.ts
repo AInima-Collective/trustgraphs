@@ -2253,7 +2253,11 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [],
     name: 'FACTORY',
     outputs: [
-      { name: '', internalType: 'contract TrustgraphsFactory', type: 'address' },
+      {
+        name: '',
+        internalType: 'contract TrustgraphsFactory',
+        type: 'address',
+      },
     ],
     stateMutability: 'view',
   },
