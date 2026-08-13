@@ -53,6 +53,12 @@ interface IMerkleFundDistributor {
     /// @param newFeePercentage The new fee percentage.
     event FeePercentageSet(uint256 indexed previousFeePercentage, uint256 indexed newFeePercentage);
 
+    /// @notice Emitted when a fee-percentage INCREASE is scheduled (M-7: increases are
+    ///         timelocked so the owner cannot front-run a funder's `distribute`).
+    /// @param newFeePercentage The scheduled fee percentage.
+    /// @param effectiveAt The timestamp at which the increase can be applied.
+    event FeePercentageIncreaseScheduled(uint256 indexed newFeePercentage, uint64 effectiveAt);
+
     /// @notice Emitted when the merkle snapshot contract is updated.
     /// @param previousContract The previous merkle snapshot contract address.
     /// @param newContract The new merkle snapshot contract address.
@@ -124,4 +130,8 @@ interface IMerkleFundDistributor {
     error NoClaimDeadline();
     error AlreadySwept();
     error NothingToSweep();
+    error NoScheduledFeeIncrease();
+    error FeeIncreaseNotYetEffective(uint64 effectiveAt);
+    error FeeExceedsFunderCap(uint256 feeAmount, uint256 maxFeeAmount);
+    error UnexpectedFeeRecipient(address expected, address actual);
 }

@@ -7,6 +7,7 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract MerkleFundDistributorTest is Test {
     MerkleFundDistributor public distributor;
@@ -191,14 +192,100 @@ contract MerkleFundDistributorTest is Test {
         distributor.setFeeRecipient(address(0));
     }
 
-    function test_SetFeePercentage_UpdatesValue() public {
+    function test_SetFeePercentage_IncreaseIsScheduledThenApplied() public {
+        // M-7: an INCREASE is scheduled, not immediate — the owner cannot front-run a funder.
         uint256 newFee = 5e16; // 5%
+        uint64 delay = distributor.FEE_INCREASE_DELAY();
         vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit IMerkleFundDistributor.FeePercentageIncreaseScheduled(newFee, uint64(block.timestamp) + delay);
+        distributor.setFeePercentage(newFee);
+        assertEq(distributor.feePercentage(), DEFAULT_FEE_PERCENTAGE, "increase must not be immediate");
+        assertEq(distributor.pendingFeePercentage(), newFee);
+
+        // Not yet effective.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.FeeIncreaseNotYetEffective.selector, uint64(block.timestamp) + delay
+            )
+        );
+        distributor.applyFeePercentageIncrease();
+
+        // After the delay anyone can apply it.
+        vm.warp(block.timestamp + delay);
         vm.expectEmit(true, true, false, false);
         emit IMerkleFundDistributor.FeePercentageSet(DEFAULT_FEE_PERCENTAGE, newFee);
-        distributor.setFeePercentage(newFee);
-
+        distributor.applyFeePercentageIncrease();
         assertEq(distributor.feePercentage(), newFee);
+        assertEq(distributor.pendingFeeEffectiveAt(), 0, "schedule consumed");
+    }
+
+    function test_SetFeePercentage_DecreaseIsImmediateAndCancelsPending() public {
+        // M-7: a decrease cannot take a funder's money, so it applies at once — and it cancels
+        // any scheduled increase (the owner picked a lower fee).
+        vm.startPrank(owner);
+        distributor.setFeePercentage(5e16); // scheduled increase
+        assertEq(distributor.pendingFeePercentage(), 5e16);
+
+        uint256 lower = 5e15; // 0.5% < current 1%
+        vm.expectEmit(true, true, false, false);
+        emit IMerkleFundDistributor.FeePercentageSet(DEFAULT_FEE_PERCENTAGE, lower);
+        distributor.setFeePercentage(lower);
+        vm.stopPrank();
+        assertEq(distributor.feePercentage(), lower);
+        assertEq(distributor.pendingFeePercentage(), 0, "pending increase cancelled");
+        assertEq(distributor.pendingFeeEffectiveAt(), 0);
+
+        vm.expectRevert(IMerkleFundDistributor.NoScheduledFeeIncrease.selector);
+        distributor.applyFeePercentageIncrease();
+    }
+
+    /// M-7 regression: the exact audit exploit — owner sets 100% fee in front of a funder's
+    /// distribute. The increase is only scheduled, so the round pays the OLD fee.
+    function test_M7_OwnerCannotFrontRunDistributeWithFeeHike() public {
+        vm.prank(owner);
+        distributor.setFeePercentage(FEE_RANGE); // "100%" — front-running attempt
+
+        uint256 amount = 100 ether;
+        _createERC20Distribution(alice, amount);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
+        assertEq(
+            dist.feeAmount,
+            Math.mulDiv(amount, DEFAULT_FEE_PERCENTAGE, FEE_RANGE),
+            "REGRESSION: the scheduled hike must not touch this round"
+        );
+    }
+
+    /// M-7: the funder-guarded overload rejects a fee above the funder's cap or an unexpected
+    /// recipient, and passes when the terms are as agreed.
+    function test_M7_FunderGuardedDistribute() public {
+        uint256 amount = 100 ether;
+        uint256 expectedFee = Math.mulDiv(amount, DEFAULT_FEE_PERCENTAGE, FEE_RANGE);
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 3 * amount);
+
+        // Fee above the funder's cap.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.FeeExceedsFunderCap.selector, expectedFee, expectedFee - 1
+            )
+        );
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee - 1, feeRecipient);
+
+        // Wrong fee recipient.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0xD00D), feeRecipient
+            )
+        );
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, address(0xD00D));
+
+        // As agreed: passes and books the expected fee.
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, feeRecipient);
+        vm.stopPrank();
+        assertEq(distributor.getDistribution(0).feeAmount, expectedFee);
     }
 
     function test_SetFeePercentage_RevertsIfNotOwner() public {
@@ -216,6 +303,8 @@ contract MerkleFundDistributorTest is Test {
     function test_SetFeePercentage_AllowsMaxFee() public {
         vm.prank(owner);
         distributor.setFeePercentage(FEE_RANGE);
+        vm.warp(block.timestamp + distributor.FEE_INCREASE_DELAY());
+        distributor.applyFeePercentageIncrease();
         assertEq(distributor.feePercentage(), FEE_RANGE);
     }
 
@@ -646,7 +735,9 @@ contract MerkleFundDistributorTest is Test {
 
     function test_Distribute_MaxFeePercentage() public {
         vm.prank(owner);
-        distributor.setFeePercentage(FEE_RANGE); // 100%
+        distributor.setFeePercentage(FEE_RANGE); // 100% — scheduled (M-7), applied after the delay
+        vm.warp(block.timestamp + distributor.FEE_INCREASE_DELAY());
+        distributor.applyFeePercentageIncrease();
 
         uint256 amount = 100 ether;
 

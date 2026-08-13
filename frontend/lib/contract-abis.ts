@@ -2485,6 +2485,13 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'FEE_INCREASE_DELAY',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'FEE_RANGE',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
@@ -2502,6 +2509,13 @@ export const merkleFundDistributorAbi = [
     name: 'allowlistEnabled',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'applyFeePercentageIncrease',
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -2526,6 +2540,26 @@ export const merkleFundDistributorAbi = [
     name: 'claimed',
     outputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'token', internalType: 'address', type: 'address' },
+      { name: 'amount', internalType: 'uint256', type: 'uint256' },
+      { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+      { name: 'maxFeeAmount', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'expectedFeeRecipient',
+        internalType: 'address',
+        type: 'address',
+      },
+    ],
+    name: 'distribute',
+    outputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -2745,6 +2779,20 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'pendingFeeEffectiveAt',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'pendingFeePercentage',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'pendingOwner',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
@@ -2930,6 +2978,25 @@ export const merkleFundDistributorAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'newFeePercentage',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'effectiveAt',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'FeePercentageIncreaseScheduled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'previousFeePercentage',
         internalType: 'uint256',
         type: 'uint256',
@@ -3078,6 +3145,19 @@ export const merkleFundDistributorAbi = [
     inputs: [{ name: 'data', internalType: 'bytes', type: 'bytes' }],
     name: 'FailedToTransferTokens',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxFeeAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'FeeExceedsFunderCap',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'effectiveAt', internalType: 'uint64', type: 'uint64' }],
+    name: 'FeeIncreaseNotYetEffective',
+  },
   { type: 'error', inputs: [], name: 'FeePercentageTooHigh' },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
   { type: 'error', inputs: [], name: 'InvalidClaimDeadline' },
@@ -3087,6 +3167,7 @@ export const merkleFundDistributorAbi = [
   { type: 'error', inputs: [], name: 'InvalidNativeTokenTransferAmount' },
   { type: 'error', inputs: [], name: 'NoClaimDeadline' },
   { type: 'error', inputs: [], name: 'NoFundsToClaim' },
+  { type: 'error', inputs: [], name: 'NoScheduledFeeIncrease' },
   { type: 'error', inputs: [], name: 'NotOwner' },
   { type: 'error', inputs: [], name: 'NotPendingOwner' },
   { type: 'error', inputs: [], name: 'NothingToSweep' },
@@ -3095,6 +3176,14 @@ export const merkleFundDistributorAbi = [
     type: 'error',
     inputs: [{ name: 'token', internalType: 'address', type: 'address' }],
     name: 'SafeERC20FailedOperation',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expected', internalType: 'address', type: 'address' },
+      { name: 'actual', internalType: 'address', type: 'address' },
+    ],
+    name: 'UnexpectedFeeRecipient',
   },
   {
     type: 'error',
@@ -3167,10 +3256,24 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
+    name: 'delegateCallAllowlist',
+    outputs: [{ name: 'allowed', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'proposalId', internalType: 'uint256', type: 'uint256' }],
     name: 'execute',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'executionDelay',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -3219,6 +3322,7 @@ export const merkleGovModuleAbi = [
             internalType: 'uint256',
             type: 'uint256',
           },
+          { name: 'quorumFraction', internalType: 'uint256', type: 'uint256' },
         ],
       },
       {
@@ -3341,6 +3445,7 @@ export const merkleGovModuleAbi = [
       { name: 'cancelled', internalType: 'bool', type: 'bool' },
       { name: 'merkleRoot', internalType: 'bytes32', type: 'bytes32' },
       { name: 'totalVotingPower', internalType: 'uint256', type: 'uint256' },
+      { name: 'quorumFraction', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'view',
   },
@@ -3409,6 +3514,23 @@ export const merkleGovModuleAbi = [
     type: 'function',
     inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
     name: 'setAvatar',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'target_', internalType: 'address', type: 'address' },
+      { name: 'allowed', internalType: 'bool', type: 'bool' },
+    ],
+    name: 'setDelegateCallTarget',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newDelay', internalType: 'uint256', type: 'uint256' }],
+    name: 'setExecutionDelay',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -3538,6 +3660,33 @@ export const merkleGovModuleAbi = [
       },
     ],
     name: 'AvatarSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'target',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'allowed', internalType: 'bool', type: 'bool', indexed: false },
+    ],
+    name: 'DelegateCallTargetSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'newDelay',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ExecutionDelayUpdated',
   },
   {
     type: 'event',
@@ -3781,14 +3930,30 @@ export const merkleGovModuleAbi = [
     ],
     name: 'VotingPeriodUpdated',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'ActionFailed',
+  },
   { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'AlreadyVoted' },
+  {
+    type: 'error',
+    inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
+    name: 'DelegateCallNotAllowed',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'executableAtBlock', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ExecutionDelayNotElapsed',
+  },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
   { type: 'error', inputs: [], name: 'InvalidInitialization' },
   { type: 'error', inputs: [], name: 'InvalidMerkleProof' },
   { type: 'error', inputs: [], name: 'InvalidProposalData' },
   { type: 'error', inputs: [], name: 'InvalidQuorum' },
-  { type: 'error', inputs: [], name: 'InvalidTotalVotingPower' },
   { type: 'error', inputs: [], name: 'InvalidVotingPeriod' },
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },

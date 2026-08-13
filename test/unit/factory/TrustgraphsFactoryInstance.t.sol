@@ -182,8 +182,13 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
         assertEq(dist.feePercentage(), 0, "no fee by default");
         assertFalse(dist.allowlistEnabled(), "anyone may fund a round by default");
 
+        // M-7: raising the fee from zero is an INCREASE, so it schedules and waits out the delay
+        // before applying — the admin cannot front-run a funder's round.
         vm.prank(member);
         dist.setFeePercentage(1e15);
+        assertEq(dist.feePercentage(), 0, "increase must not be immediate");
+        vm.warp(block.timestamp + dist.FEE_INCREASE_DELAY());
+        dist.applyFeePercentageIncrease();
         assertEq(dist.feePercentage(), 1e15);
     }
 

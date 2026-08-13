@@ -32,6 +32,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     error InvalidVotingPeriod();
     error InvalidAddress();
     error OnlyMerkleSnapshot();
+    error ExecutionDelayNotElapsed(uint256 executableAtBlock);
+    error DelegateCallNotAllowed(address target);
+    error ActionFailed(uint256 index);
 
     /*///////////////////////////////////////////////////////////////
                                 TYPES
@@ -99,6 +102,8 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     event QuorumUpdated(uint256 newQuorum);
     event VotingDelayUpdated(uint256 newDelay);
     event VotingPeriodUpdated(uint256 newPeriod);
+    event ExecutionDelayUpdated(uint256 newDelay);
+    event DelegateCallTargetSet(address indexed target, bool allowed);
     event MerkleSnapshotContractUpdated(address indexed previousContract, address indexed newContract);
 
     /*///////////////////////////////////////////////////////////////
@@ -139,6 +144,18 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     uint256 public votingDelay = 1; // blocks
     uint256 public votingPeriod = 50400; // ~1 week at 12s blocks
     uint256 public quorum = 4e16; // 4% in basis points (4e16 = 4% of 1e18)
+
+    /// @notice Blocks between a proposal passing (endBlock) and becoming executable (M-4,
+    ///         2026-08-13 audit). The exit window: a passed-but-hostile proposal cannot reach the
+    ///         Safe's funds in the same block its voting closes. ~1 day by default; governance can
+    ///         tune it, but there is deliberately no zero-delay fast path baked in.
+    uint256 public executionDelay = 7200; // ~1 day at 12s blocks
+
+    /// @notice Targets a proposal action may `DelegateCall` (M-4). A delegatecall executes
+    ///         arbitrary code IN THE SAFE'S CONTEXT, bypassing any Guard and able to rewrite
+    ///         module/owner storage — so it is deny-by-default and per-target allowlisted (e.g. a
+    ///         reviewed MultiSendCallOnly). Checked at BOTH propose and execute time.
+    mapping(address target => bool allowed) public delegateCallAllowlist;
 
     /// @notice The divisor for quorum calculations (quorum = QUORUM_RANGE = 100% quorum)
     uint256 public constant QUORUM_RANGE = 1e18;
@@ -254,17 +271,29 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice Execute a successful proposal
     /// @param proposalId The proposal to execute
+    /// @dev M-4: only after `executionDelay` blocks past the voting end — the exit window between
+    ///      "passed" and "touching the Safe". M-8: a failed action REVERTS the whole execution
+    ///      (the proposal stays Passed and retryable) instead of being silently swallowed while
+    ///      the proposal is marked executed forever.
     function execute(uint256 proposalId) external {
         if (state(proposalId) != ProposalState.Passed) {
             revert ProposalNotPassed();
         }
 
         Proposal storage proposal = proposals[proposalId];
+        uint256 executableAt = proposal.endBlock + executionDelay;
+        if (block.number <= executableAt) revert ExecutionDelayNotElapsed(executableAt);
+
         proposal.executed = true;
 
         ProposalAction[] memory actions = proposalActions[proposalId];
         for (uint256 i = 0; i < actions.length; i++) {
-            exec(actions[i].target, actions[i].value, actions[i].data, actions[i].operation);
+            // Re-checked at execute time: the allowlist may have changed since propose (M-4).
+            if (actions[i].operation == Operation.DelegateCall && !delegateCallAllowlist[actions[i].target]) {
+                revert DelegateCallNotAllowed(actions[i].target);
+            }
+            bool ok = exec(actions[i].target, actions[i].value, actions[i].data, actions[i].operation);
+            if (!ok) revert ActionFailed(i);
         }
 
         emit ProposalExecuted(proposalId);
@@ -311,10 +340,13 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         if (currentBlock <= proposal.endBlock) return ProposalState.Active;
 
         // Check if proposal passed
-        // Quorum is a percentage of snapshotted totalVotingPower (e.g., 4e16 = 4%)
-        uint256 totalVotes = proposal.yesVotes + proposal.noVotes + proposal.abstainVotes;
+        // Quorum is a percentage of snapshotted totalVotingPower (e.g., 4e16 = 4%).
+        // M-5 (2026-08-13 audit): abstain votes are EXCLUDED from the quorum sum. Counting them
+        // let a tiny "for" minority pass a proposal whose participation was mostly abstentions —
+        // quorum must measure decisive (yes/no) participation.
+        uint256 decisiveVotes = proposal.yesVotes + proposal.noVotes;
         uint256 quorumThreshold = Math.mulDiv(proposal.totalVotingPower, proposal.quorumFraction, QUORUM_RANGE);
-        if (totalVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
+        if (decisiveVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
             return ProposalState.Passed;
         }
 
@@ -370,6 +402,20 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         if (newPeriod == 0) revert InvalidVotingPeriod();
         votingPeriod = newPeriod;
         emit VotingPeriodUpdated(newPeriod);
+    }
+
+    /// @notice Update the execution delay (M-4). Zero is allowed but is an explicit governance
+    ///         decision to give up the exit window, never a default.
+    function setExecutionDelay(uint256 newDelay) external onlyOwner {
+        executionDelay = newDelay;
+        emit ExecutionDelayUpdated(newDelay);
+    }
+
+    /// @notice Allow or revoke a `DelegateCall` target for proposal actions (M-4).
+    function setDelegateCallTarget(address target_, bool allowed) external onlyOwner {
+        if (target_ == address(0)) revert InvalidAddress();
+        delegateCallAllowlist[target_] = allowed;
+        emit DelegateCallTargetSet(target_, allowed);
     }
 
     /// @notice Update merkle snapshot contract
@@ -430,6 +476,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
         // Verify proposer is in merkle tree
         _verifyMerkleProof(msg.sender, votingPower, currentMerkleRoot, proof);
+
+        // M-4: DelegateCall runs in the Safe's context and bypasses any Guard — deny at the door
+        // unless the target is explicitly allowlisted (re-checked at execute time).
+        for (uint256 i = 0; i < targets.length; i++) {
+            if (operations[i] == Operation.DelegateCall && !delegateCallAllowlist[targets[i]]) {
+                revert DelegateCallNotAllowed(targets[i]);
+            }
+        }
 
         proposalId = ++proposalCount;
         Proposal storage proposal = proposals[proposalId];

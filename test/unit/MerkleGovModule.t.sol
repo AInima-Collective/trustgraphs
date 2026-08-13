@@ -398,6 +398,9 @@ contract MerkleGovModuleTest is Test {
         // Check proposal succeeded
         assertEq(uint256(govModule.state(proposalId)), uint256(MerkleGovModule.ProposalState.Passed));
 
+        // M-4: execution only opens after the execution delay past the voting end.
+        vm.roll(block.number + govModule.executionDelay() + 1);
+
         // Execute proposal
         vm.expectEmit(true, false, false, true);
         emit ProposalExecuted(proposalId);
@@ -704,8 +707,8 @@ contract MerkleGovModuleTest is Test {
         vm.prank(bob);
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob]);
 
-        // Execute
-        vm.roll(block.number + 50401);
+        // Execute (M-4: past the voting end AND the execution delay)
+        vm.roll(block.number + 50401 + govModule.executionDelay() + 1);
 
         uint256 balanceBefore = address(0x8888).balance;
         govModule.execute(proposalId);
@@ -1226,7 +1229,165 @@ contract MerkleGovModuleTest is Test {
 
         assertEq(uint256(govModule.votes(proposalId, charlie)), uint256(MerkleGovModule.VoteType.Abstain));
     }
+
+    /*//////////////////////////////////////////////////////////////
+            2026-08-13 AUDIT REGRESSIONS (M-4, M-5, M-8)
+    //////////////////////////////////////////////////////////////*/
+
+    /// Helper: a one-action proposal from `alice` targeting `target_` with `data` and `op`.
+    function _proposeAction(address target_, bytes memory data, Operation op)
+        internal
+        returns (uint256 proposalId)
+    {
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        Operation[] memory operations = new Operation[](1);
+        string[] memory actionDescriptions = new string[](1);
+        targets[0] = target_;
+        calldatas[0] = data;
+        operations[0] = op;
+        actionDescriptions[0] = "";
+        vm.prank(alice);
+        proposalId = govModule.propose(
+            "t", "d", targets, values, calldatas, operations, actionDescriptions, votingPowers[alice], proofs[alice]
+        );
+    }
+
+    /// Pass a proposal with alice's Yes vote and roll just past its end (NOT past the delay).
+    function _passWithAliceYes(uint256 proposalId) internal {
+        _rollToActive(proposalId);
+        vm.prank(alice);
+        govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
+        _rollPastEnd(proposalId);
+        assertEq(uint256(govModule.state(proposalId)), uint256(MerkleGovModule.ProposalState.Passed));
+    }
+
+    /// M-4 regression: a passed proposal cannot reach the Safe in the block its voting closes —
+    /// execution opens only after `executionDelay` more blocks (the exit window).
+    function test_M4_ExecutionDelayGatesExecute() public {
+        TestTarget target_ = new TestTarget();
+        uint256 pid = _proposeAction(address(target_), abi.encodeWithSignature("setValue(uint256)", 7), Operation.Call);
+        _passWithAliceYes(pid);
+
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
+        uint256 executableAt = p.endBlock + govModule.executionDelay();
+
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.ExecutionDelayNotElapsed.selector, executableAt));
+        govModule.execute(pid);
+
+        // Still gated AT the boundary (strictly-after semantics).
+        vm.roll(executableAt);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.ExecutionDelayNotElapsed.selector, executableAt));
+        govModule.execute(pid);
+
+        vm.roll(executableAt + 1);
+        govModule.execute(pid);
+        assertEq(target_.value(), 7);
+    }
+
+    /// M-4 regression: DelegateCall runs in the Safe's context and bypasses any Guard — it is
+    /// deny-by-default at propose time, allowlisted per target by the owner, and RE-CHECKED at
+    /// execute time so a revoked target cannot slip through a passed proposal.
+    function test_M4_DelegateCallDenyByDefaultAndRecheckedAtExecute() public {
+        TestTarget target_ = new TestTarget();
+        bytes memory data = abi.encodeWithSignature("setValue(uint256)", 1);
+
+        // Deny at the door.
+        address[] memory targets = new address[](1);
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        Operation[] memory operations = new Operation[](1);
+        string[] memory actionDescriptions = new string[](1);
+        targets[0] = address(target_);
+        calldatas[0] = data;
+        operations[0] = Operation.DelegateCall;
+        actionDescriptions[0] = "";
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.DelegateCallNotAllowed.selector, address(target_)));
+        govModule.propose(
+            "t", "d", targets, values, calldatas, operations, actionDescriptions, votingPowers[alice], proofs[alice]
+        );
+
+        // Allowlisted: proposable.
+        vm.prank(owner);
+        govModule.setDelegateCallTarget(address(target_), true);
+        uint256 pid = _proposeAction(address(target_), data, Operation.DelegateCall);
+        _passWithAliceYes(pid);
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
+        vm.roll(p.endBlock + govModule.executionDelay() + 1);
+
+        // Revoked between propose and execute: the execute-time re-check refuses.
+        vm.prank(owner);
+        govModule.setDelegateCallTarget(address(target_), false);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.DelegateCallNotAllowed.selector, address(target_)));
+        govModule.execute(pid);
+    }
+
+    /// M-5 regression: abstain votes are excluded from the quorum sum. Pre-fix, a proposal whose
+    /// participation was mostly abstentions passed on a tiny "for" minority.
+    function test_M5_AbstainDoesNotCountTowardQuorum() public {
+        // Raise quorum to 50% of 575e18 = 287.5e18 for a clean separation.
+        vm.prank(owner);
+        govModule.setQuorum(5e17);
+
+        uint256 pid = _proposeEmpty();
+        _rollToActive(pid);
+        // bob Yes (200e18); charlie + eve Abstain (150e18 + 75e18).
+        vm.prank(bob);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob]);
+        vm.prank(charlie);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Abstain, votingPowers[charlie], proofs[charlie]);
+        vm.prank(eve);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Abstain, votingPowers[eve], proofs[eve]);
+        _rollPastEnd(pid);
+
+        // Pre-fix: yes+no+abstain = 425e18 >= 287.5e18 and yes > no => Passed on a 200e18 "for"
+        // minority. Post-fix: decisive (yes+no) = 200e18 < 287.5e18 => Rejected.
+        assertEq(
+            uint256(govModule.state(pid)),
+            uint256(MerkleGovModule.ProposalState.Rejected),
+            "REGRESSION: abstain-stuffed quorum passed a minority proposal"
+        );
+
+        // Control: the same decisive turnout WITH quorum met still passes.
+        uint256 pid2 = _proposeEmpty();
+        _rollToActive(pid2);
+        vm.prank(bob);
+        govModule.castVote(pid2, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob]);
+        vm.prank(charlie);
+        govModule.castVote(pid2, MerkleGovModule.VoteType.Yes, votingPowers[charlie], proofs[charlie]);
+        _rollPastEnd(pid2);
+        assertEq(uint256(govModule.state(pid2)), uint256(MerkleGovModule.ProposalState.Passed));
+    }
+
+    /// M-8 regression: a failed action reverts the whole execution — the proposal stays Passed
+    /// and retryable — instead of being silently swallowed while the proposal is marked executed.
+    function test_M8_FailedActionRevertsInsteadOfSilentlyExecuting() public {
+        FlakyTarget flaky = new FlakyTarget();
+        uint256 pid = _proposeAction(address(flaky), abi.encodeWithSignature("go()"), Operation.Call);
+        _passWithAliceYes(pid);
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
+        vm.roll(p.endBlock + govModule.executionDelay() + 1);
+
+        // The action fails (not armed): execute must revert, naming the failing index.
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.ActionFailed.selector, 0));
+        govModule.execute(pid);
+        assertEq(
+            uint256(govModule.state(pid)),
+            uint256(MerkleGovModule.ProposalState.Passed),
+            "REGRESSION: proposal marked executed despite the action failing"
+        );
+        assertFalse(flaky.done());
+
+        // Once the target works, the same proposal executes.
+        flaky.arm();
+        govModule.execute(pid);
+        assertTrue(flaky.done());
+        assertEq(uint256(govModule.state(pid)), uint256(MerkleGovModule.ProposalState.Executed));
+    }
 }
+
 
 contract MockMerkleSnapshot is IMerkleSnapshot {
     IMerkleSnapshot.MerkleState private _latest;
@@ -1260,5 +1421,20 @@ contract TestTarget {
 
     function setValue(uint256 _value) external {
         value = _value;
+    }
+}
+
+/// M-8 helper: fails until armed, so a failed execution can be retried after the fix.
+contract FlakyTarget {
+    bool public armed;
+    bool public done;
+
+    function arm() external {
+        armed = true;
+    }
+
+    function go() external {
+        require(armed, "not armed");
+        done = true;
     }
 }
