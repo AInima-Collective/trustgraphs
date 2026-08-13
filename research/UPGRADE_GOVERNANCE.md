@@ -1,4 +1,4 @@
-# How a Trust Graph Upgrades Itself
+# How a trustgraph upgrades itself
 
 **Status:** research report, no implementation decision yet.
 **Question:** what is the right pattern for changing the algorithm, its parameters, the guest program
@@ -13,7 +13,7 @@ end; first-principles reasoning marked **[FP]**.
 
 ## 1. TL;DR — the proposed pattern
 
-TrustGraph already has the right backbone: **no proxies, immutable verifiers, versioning by
+Trustgraphs already has the right backbone: **no proxies, immutable verifiers, versioning by
 redeploy-and-repoint, two timelocked authority tiers**. The report proposes hardening that backbone
 into a complete pattern, "**versioned root streams, four lanes, exit as veto**":
 
@@ -99,7 +99,7 @@ Other load-bearing facts:
 
 The failure modes, ranked by likelihood × severity (full precedent detail in the sources):
 
-| # | Failure mode | Precedent | Why TrustGraph is exposed |
+| # | Failure mode | Precedent | Why trustgraphs is exposed |
 |---|---|---|---|
 | 1 | **Metric front-running of announced changes** — farm the edges the new rule will reward, before activation | universal in SEO; X open-sourcing its ranker spawned a weight-farming meta | transparency is *mandatory* here (provers need the algorithm); the entire mitigation budget must come from mechanism design |
 | 2 | **Slow incumbent capture via parameter drift** — many small "reasonable" changes compound entrenchment; seeds vote seeds | Vitalik's coin-voting critique; conviction voting's "slow capture" caveat; Google self-preferencing (€2.4B, upheld 2024) | the reflexive loop is explicit: the planned MerkleGovModule-as-proposer closes it |
@@ -137,7 +137,7 @@ Council (≥8 members, >75% threshold, ≥50% external) give a **≥7-day exit w
 a **≥30-day exit window** and restricts council action to **onchain-provable errors**; the 2025
 "walkaway test" requires guarantees to hold even if the council goes inactive. Note the subtlety:
 *exit window = upgrade delay minus the time to actually complete an exit.* **Aztec is the model
-closest to TrustGraph:** it reached Stage 2 by revoking ownership — rollup and verifier immutable,
+closest to trustgraphs:** it reached Stage 2 by revoking ownership — rollup and verifier immutable,
 upgrades = new opt-in deployments registered in a Registry, governance only moves the pointer.
 
 **SP1 practice.** The canonical `SP1VerifierGateway` routes by a 4-byte selector to versioned
@@ -175,7 +175,7 @@ anti-pattern: semantic drift under an unchanged identifier); OpenRank lets the *
 algorithm + params per job and only guarantees faithful execution; EAS never mutates a schema — new
 version = new UID, consumers opt in; Colony changes its reputation formula only via coordinated
 network upgrades, and because reputation re-derives from the event log a rule change *can* recompute
-history (which TrustGraph must explicitly refuse for settled epochs); Optimism RetroFunding 4 showed
+history (which trustgraphs must explicitly refuse for settled epochs); Optimism RetroFunding 4 showed
 that voting on metric *weights* leaves the real power with whoever defines the *metrics*; Curve's
 Mochi incident showed a formula-legal attack ultimately killed by a small discretionary override —
 the human backstop question cannot be designed away, only scoped and sunset. And Vitalik's credible
@@ -201,7 +201,7 @@ the registry pointer, protected by the activation delay). This is the Aztec/EAS/
 kills failure mode #9 structurally and #3 partially (a step change can no longer be imposed on a
 pinned consumer).
 
-**[FP]** TrustGraph is unusually cheap to migrate: state (attestations) lives outside the contracts
+**[FP]** trustgraphs is unusually cheap to migrate: state (attestations) lives outside the contracts
 and every root is recomputable from the event log, so side-by-side deployment costs a deploy + a
 prover run, not a state migration. The Trail of Bits "migrate, don't proxy" argument applies with
 full force; staying proxy-free is a feature to defend, not a limitation.

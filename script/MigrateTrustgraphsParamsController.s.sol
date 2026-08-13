@@ -3,8 +3,8 @@ pragma solidity ^0.8.27;
 
 import {console} from "forge-std/console.sol";
 
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
-import {TrustGraphParamsControllerDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
+import {TrustgraphsParamsControllerDeployer} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
@@ -13,12 +13,12 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {Common} from "script/Common.s.sol";
 import {ParamsJson} from "script/lib/ParamsJson.sol";
 
-/// @title MigrateTrustGraphParamsController
+/// @title MigrateTrustgraphsParamsController
 /// @notice Guarded grant-before-revoke ceremony for one legacy trust-graph instance.
 /// @dev The broadcasting authority must be able to set the registry association and administer the
 ///      snapshot's OPERATIONAL_ROLE. For a Safe/timelock, use these calls as the ordered batch rather
 ///      than attempting to bypass that network's constitutional path.
-contract MigrateTrustGraphParamsController is Common {
+contract MigrateTrustgraphsParamsController is Common {
     function run(
         bytes32 instanceId,
         address snapshotAddress,
@@ -50,7 +50,7 @@ contract MigrateTrustGraphParamsController is Common {
 
         vm.startBroadcast(_privateKey);
 
-        TrustGraphParamsController controller = TrustGraphParamsControllerDeployer(controllerDeployerAddress)
+        TrustgraphsParamsController controller = TrustgraphsParamsControllerDeployer(controllerDeployerAddress)
             .deploy(instanceId, snapshotAddress, IInstanceRegistry(registryAddress), params, controllerOwner);
         controllerAddress = address(controller);
 
@@ -88,6 +88,6 @@ contract MigrateTrustGraphParamsController is Common {
         require(snapshot.paramsHash() == expectedHash, "migration: snapshot hash changed");
         require(registry.getInstance(instanceId).paramsHash == expectedHash, "migration: registry hash changed");
 
-        console.log("TrustGraphParamsController:", controllerAddress);
+        console.log("TrustgraphsParamsController:", controllerAddress);
     }
 }

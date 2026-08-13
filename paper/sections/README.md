@@ -40,7 +40,7 @@ The paper has been split into 8 separate files for easier editing and collaborat
    - Adaptive systems
    - Oversight mechanisms and theoretical limitations
 
-7. **07-trustgraph-synthesis.tex** - Synthesis: TrustGraph as Pioneering Implementation
+7. **07-trustgraphs-synthesis.tex** - Synthesis: trustgraphs as Pioneering Implementation
    - Architecture realized in practice
    - Bootstrapping innovation
    - Collective intelligence validation
@@ -61,7 +61,7 @@ These section files are included in the main `main.tex` file using `\input` comm
 \input{sections/04-attestation-governance}
 \input{sections/05-collective-intelligence}
 \input{sections/06-proactive-governance}
-\input{sections/07-trustgraph-synthesis}
+\input{sections/07-trustgraphs-synthesis}
 \input{sections/08-conclusion}
 ```
 

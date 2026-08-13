@@ -98,6 +98,9 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     selectionParamsHash: selectionHash,
     signerSetRoot: setRoot,
     targetThreshold,
+    // M-3: committed verbatim; a missing value commits the zero word, which no module accepts
+    // (submitSignerProof rebuilds the domain from address(this) + block.chainid).
+    instanceDomain: input.instanceDomain ?? (`0x${'00'.repeat(32)}` as Hex),
   }
   return { journal, signers, targetThreshold }
 }

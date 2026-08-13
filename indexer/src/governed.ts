@@ -13,7 +13,7 @@ import {
  * makes a browser-created network immediately usable without editing deployment_summary.json.
  */
 ponder.on(
-  'governedTrustGraphFactory:GovernedInstanceCreated',
+  'governedTrustgraphsFactory:GovernedInstanceCreated',
   async ({ event, context }) => {
     const { safe, merkleGovModule: moduleAddress } = event.args
 

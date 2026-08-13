@@ -1,4 +1,4 @@
-# Private TrustGraph Architecture
+# Private trustgraphs Architecture
 
 - **Status:** Research recommendation
 - **Date:** 2026-08-12
@@ -7,7 +7,7 @@
 
 ## Executive decision
 
-TrustGraph should add a **separate private network profile**, not attempt to make the current public-EAS profile private with a configuration flag.
+Trustgraphs should add a **separate private network profile**, not attempt to make the current public-EAS profile private with a configuration flag.
 
 The recommended design is a **Private Epoch Rollup** with four independently replaceable layers:
 
@@ -16,9 +16,9 @@ The recommended design is a **Private Epoch Rollup** with four independently rep
 3. **Private score presentation.** The public output is only a commitment root and minimal epoch metadata. Members receive private openings or anonymous credentials and prove policy predicates such as `score >= threshold` without disclosing identity or exact score.
 4. **Privacy-compatible consumers.** Governance and rewards must consume anonymous score proofs. The current voting, distribution, and signer-sync contracts re-publish identity or score and therefore cannot be attached unchanged.
 
-Interfold is worth prototyping for two bounded roles: private aggregate governance and the CRISP vote-masking pattern for receipt ambiguity. Its current E3 protocol is a one-shot private-input/public-output computation, not a drop-in persistent private graph or private-score service. TrustGraph should not make the current Interfold network its sole production confidentiality boundary.
+Interfold is worth prototyping for two bounded roles: private aggregate governance and the CRISP vote-masking pattern for receipt ambiguity. Its current E3 protocol is a one-shot private-input/public-output computation, not a drop-in persistent private graph or private-score service. Trustgraphs should not make the current Interfold network its sole production confidentiality boundary.
 
-Commonware is also worth a focused prototype. It is a strong candidate for the active-MPC committee's networking, consensus, encrypted log, storage, DKG/resharing, and result-certification substrate. Its current libraries should not be mistaken for a general-purpose MPC engine: TrustGraph would still need an actively secure secret-shared PageRank implementation and a separate private-output protocol.
+Commonware is also worth a focused prototype. It is a strong candidate for the active-MPC committee's networking, consensus, encrypted log, storage, DKG/resharing, and result-certification substrate. Its current libraries should not be mistaken for a general-purpose MPC engine: trustgraphs would still need an actively secure secret-shared PageRank implementation and a separate private-output protocol.
 
 The minimum credible product claim is:
 
@@ -44,7 +44,7 @@ public EAS attestation
   -> contracts reveal identity, score, vote, or payment on use
 ```
 
-This gives TrustGraph a valuable integrity property: the SP1 journal is bound to the exact accumulator checkpoint, so a prover cannot silently omit an unfavorable edge. It does not give confidentiality. SP1 hides a witness from the onchain verifier; it does not hide the witness from the host or proving service that receives it.
+This gives trustgraphs a valuable integrity property: the SP1 journal is bound to the exact accumulator checkpoint, so a prover cannot silently omit an unfavorable edge. It does not give confidentiality. SP1 hides a witness from the onchain verifier; it does not hide the witness from the host or proving service that receives it.
 
 The archived privacy proposal was written for the removed WAVS/Commonware operator topology. Its threat analysis remains useful, especially the observation that global PageRank requires some confidential domain to see or jointly process the graph. Its recommended WAVS operator substrate and integration plan no longer match the permissionless SP1 architecture. This report therefore preserves the current checkpoint/completeness invariant while replacing both the input and output formats. The later Commonware assessment is a fresh evaluation of the current library as a bounded MPC committee substrate, not a restoration of the old WAVS design.
 
@@ -194,7 +194,7 @@ Padding policy is part of the privacy claim and must be measurable. “Encrypted
 
 ### 4. Confidential scoring
 
-Global TrustGraph scoring depends on the whole graph. A zero-knowledge proof protects the witness from the verifier, not from the machine constructing the witness and proof. There are three credible compute paths.
+Global trustgraphs scoring depends on the whole graph. A zero-knowledge proof protects the witness from the verifier, not from the machine constructing the witness and proof. There are three credible compute paths.
 
 #### Recommended pilot: hardened TEE scorer
 
@@ -223,7 +223,7 @@ Secret-share inputs and persistent graph state across three or four operationall
 - dishonest-majority systems such as SPDZ tolerate stronger collusion assumptions at greater preprocessing and runtime cost;
 - identifiable abort and public slashing improve accountability but do not guarantee liveness.
 
-[MP-SPDZ](https://github.com/data61/MP-SPDZ) is useful for prototypes and benchmarks; its maintainers explicitly do not position it as production software for security-critical applications. Recent private-graph work shows that specialized protocols are improving: [RMS](https://eprint.iacr.org/2024/568) provides actively secure graph analysis including PageRank, [emGraph](https://eprint.iacr.org/2025/590.pdf) explores efficient multi-party graph computation in a semi-honest model, and [GraphAce](https://www.usenix.org/system/files/usenixsecurity25-yu-jiping.pdf) studies secure two-party graph analytics. None is a drop-in TrustGraph service; their ownership models, leakage, corruption assumptions, and benchmarks must be reproduced against TrustGraph's sparse update stream.
+[MP-SPDZ](https://github.com/data61/MP-SPDZ) is useful for prototypes and benchmarks; its maintainers explicitly do not position it as production software for security-critical applications. Recent private-graph work shows that specialized protocols are improving: [RMS](https://eprint.iacr.org/2024/568) provides actively secure graph analysis including PageRank, [emGraph](https://eprint.iacr.org/2025/590.pdf) explores efficient multi-party graph computation in a semi-honest model, and [GraphAce](https://www.usenix.org/system/files/usenixsecurity25-yu-jiping.pdf) studies secure two-party graph analytics. None is a drop-in trustgraphs service; their ownership models, leakage, corruption assumptions, and benchmarks must be reproduced against trustgraphs' sparse update stream.
 
 #### Conditional path: threshold FHE
 
@@ -314,7 +314,7 @@ Some roles are inherently public. A Safe owner or onchain administrator cannot b
 
 Encryption prevents an observer from reading a vouch; it does not prevent the sender from proving what they encrypted. A public signature, ciphertext plus encryption randomness, or deterministic acknowledgment can become a bribery receipt. Formal voting literature distinguishes ballot secrecy from receipt-freeness and coercion resistance; see Ryan and Schneider's [coercion-resistance analysis](https://markryan.eu/research/papers/pdf/06-csfw.pdf).
 
-TrustGraph should describe the goal as **coercion minimization and receipt ambiguity** until a formal protocol and audit support a stronger claim.
+Trustgraphs should describe the goal as **coercion minimization and receipt ambiguity** until a formal protocol and audit support a stronger claim.
 
 Recommended mechanisms are cumulative:
 
@@ -326,7 +326,7 @@ Recommended mechanisms are cumulative:
 6. **No final-block privilege.** Accept a mask/finalization period after the update deadline so a coercer cannot demand the last observable message.
 7. **Coarse outputs and cohort rules.** Reduce inference from individual score movement.
 
-Interfold's CRISP example demonstrates an especially relevant mask: anyone can homomorphically add an encryption of zero to a ballot slot, changing the ciphertext without changing the plaintext. Its [receipt-freeness article](https://blog.theinterfold.com/vote-masking-receipt-freeness-secret-ballots/) explains the intended ambiguity, and the [CRISP circuit](https://github.com/theinterfold/interfold/blob/main/examples/CRISP/circuits/bin/crisp/src/main.nr) makes the mask/real branch private. TrustGraph can adapt the idea to epoch update slots, but must solve masker incentives, public slot linkage, front-running, final-window timing, and persistent state.
+Interfold's CRISP example demonstrates an especially relevant mask: anyone can homomorphically add an encryption of zero to a ballot slot, changing the ciphertext without changing the plaintext. Its [receipt-freeness article](https://blog.theinterfold.com/vote-masking-receipt-freeness-secret-ballots/) explains the intended ambiguity, and the [CRISP circuit](https://github.com/theinterfold/interfold/blob/main/examples/CRISP/circuits/bin/crisp/src/main.nr) makes the mask/real branch private. Trustgraphs can adapt the idea to epoch update slots, but must solve masker incentives, public slot linkage, front-running, final-window timing, and persistent state.
 
 Masking does not erase a previously published ciphertext or protect a coerced device. It makes proof of the **final effective state** less reliable. That is meaningful but narrower than full coercion resistance.
 
@@ -343,9 +343,9 @@ That is an excellent match for:
 - studying publicly verifiable DKG and threshold decryption; and
 - studying CRISP's ciphertext rerandomization/masking pattern.
 
-### What TrustGraph would still need
+### What trustgraphs would still need
 
-The documented E3 lifecycle normally ends by publicly decrypting one result. TrustGraph needs capabilities not currently exposed as a production path:
+The documented E3 lifecycle normally ends by publicly decrypting one result. Trustgraphs needs capabilities not currently exposed as a production path:
 
 - a persistent encrypted graph across many epochs;
 - state key rotation, key switching, or full re-encryption between ephemeral committees;
@@ -354,13 +354,13 @@ The documented E3 lifecycle normally ends by publicly decrypting one result. Tru
 - sparse private graph traversal, normalization, convergence, and ranking; and
 - a defined recovery path if an epoch committee aborts after receiving updates.
 
-Without those additions, TrustGraph would have to resubmit the full graph for every E3 or keep a long-lived E3/key, undermining the ephemeral model.
+Without those additions, trustgraphs would have to resubmit the full graph for every E3 or keep a long-lived E3/key, undermining the ephemeral model.
 
 ### Performance and maturity
 
 Interfold's repository is active and released [v0.7.0 on 2026-08-10](https://github.com/theinterfold/interfold/releases/tag/v0.7.0), but the project describes Network Alpha as forthcoming rather than a production-open network in its [launch article](https://blog.theinterfold.com/fold-auction-uniswap/). The repository's [release-readiness issue](https://github.com/theinterfold/interfold/issues/1725) makes assurance work a no-go gate; public remediation includes [contract](https://github.com/theinterfold/interfold/pull/1727) and [circuit](https://github.com/theinterfold/interfold/pull/1703) work. The published [audit directory](https://github.com/theinterfold/interfold/blob/main/packages/interfold-contracts/audits/README.md) currently lists a token audit, not a complete assurance package for the full E3 stack. The documented Sepolia workflow uses mock proof verification, so it is appropriate for integration testing rather than evidence of production privacy or proof soundness ([operator documentation](https://docs.theinterfold.com/ciphernode-operators), [testnet tutorial](https://docs.theinterfold.com/tutorials/deploy-to-testnet)).
 
-Repository benchmark reports are indicative rather than service-level commitments. Under the report's secure minimum parameters, the in-process Apple M4 Pro run records roughly 9.9 minutes for public-key generation and 12.4 minutes end to end; a nine-ciphernode micro configuration records roughly 87.5 and 93.4 minutes respectively, with multi-million-gas proof-verification steps ([minimum report](https://github.com/theinterfold/interfold/blob/main/circuits/benchmarks/results_secure_minimum/report.md), [micro report](https://github.com/theinterfold/interfold/blob/main/circuits/benchmarks/results_secure_micro/report.md)). PageRank would be materially more complex than the examples, so TrustGraph needs its own benchmark before drawing capacity conclusions.
+Repository benchmark reports are indicative rather than service-level commitments. Under the report's secure minimum parameters, the in-process Apple M4 Pro run records roughly 9.9 minutes for public-key generation and 12.4 minutes end to end; a nine-ciphernode micro configuration records roughly 87.5 and 93.4 minutes respectively, with multi-million-gas proof-verification steps ([minimum report](https://github.com/theinterfold/interfold/blob/main/circuits/benchmarks/results_secure_minimum/report.md), [micro report](https://github.com/theinterfold/interfold/blob/main/circuits/benchmarks/results_secure_micro/report.md)). PageRank would be materially more complex than the examples, so trustgraphs needs its own benchmark before drawing capacity conclusions.
 
 Forward-secure per-E3 state remains an explicit design topic in [issue #1148](https://github.com/theinterfold/interfold/issues/1148). That is directly relevant because a later key compromise must not decrypt a permanent archive of historical vouches.
 
@@ -384,7 +384,7 @@ Commonware is a modular Rust library for specialized distributed systems. Its do
 
 Those capabilities map well to the operational shell around an MPC scorer:
 
-| Private TrustGraph need | Potential Commonware role |
+| Private trustgraphs need | Potential Commonware role |
 |---|---|
 | One canonical encrypted input history | BFT consensus over ciphertext-batch commitments and an append-only encrypted journal |
 | Committee communication | Authenticated encrypted peer channels and message dissemination |
@@ -406,7 +406,7 @@ The distinctions matter:
 - **A threshold certificate is not a correctness proof.** It proves that the required committee signed a result. If the signing threshold is corrupt, it can certify a false root. Active MPC or a separate validity proof must establish the state transition.
 - **Resharing the signing key does not refresh graph state.** The private graph's shares need their own proactive refresh, authenticated storage, recovery, and committee-transfer protocol.
 - **Timelock encryption is not private computation.** It releases plaintext after a threshold signature for a round becomes available. It does not evaluate PageRank while the graph remains encrypted.
-- **Threshold decryption is not private output by default.** Reconstructing a ciphertext for the committee or public still reveals it. TrustGraph needs decryption into a measured TEE, secret-shared reconstruction inside MPC, threshold re-encryption, or anonymous credential issuance.
+- **Threshold decryption is not private output by default.** Reconstructing a ciphertext for the committee or public still reveals it. Trustgraphs needs decryption into a measured TEE, secret-shared reconstruction inside MPC, threshold re-encryption, or anonymous credential issuance.
 - **ZK input proofs are not metadata privacy or receipt-freeness.** Relayers, padding, replacement, masking, and result-inference controls remain separate layers.
 
 Commonware is actively researching batched threshold encryption. Its 2026 construction is especially relevant to efficient epoch ingestion, but the published setup requires secure multiplications in MPC and is presented with a Rust prototype rather than as an integrated production primitive ([BTE research](https://commonware.xyz/blogs/bte)). An open implementation item separately tracks on-demand batched threshold decryption ([issue #2182](https://github.com/commonwarexyz/monorepo/issues/2182)). This work could improve the encrypted inbox or conditional key-release layer; it does not replace the hidden graph computation.
@@ -438,7 +438,7 @@ Use certificate modes deliberately. A compact threshold BLS certificate is usefu
 
 ### Maturity and recommendation
 
-Commonware's February 2026 maturity statement classifies its BLS12-381 DKG/resharing, encrypted P2P, consensus, journal/archive storage, polynomial math, and several runtime components as **BETA**. In Commonware's terminology, BETA means stable wire/storage formats and long-term-support eligibility. The same statement says the library is not yet battle-tested and that no primitive had reached its DELTA, bug-bounty-eligible tier ([maturity statement](https://commonware.xyz/blogs/is-it-ready-yet)). Each selected primitive must therefore be pinned, stability-filtered, independently reviewed, and tested under TrustGraph's corruption and recovery model.
+Commonware's February 2026 maturity statement classifies its BLS12-381 DKG/resharing, encrypted P2P, consensus, journal/archive storage, polynomial math, and several runtime components as **BETA**. In Commonware's terminology, BETA means stable wire/storage formats and long-term-support eligibility. The same statement says the library is not yet battle-tested and that no primitive had reached its DELTA, bug-bounty-eligible tier ([maturity statement](https://commonware.xyz/blogs/is-it-ready-yet)). Each selected primitive must therefore be pinned, stability-filtered, independently reviewed, and tested under trustgraphs' corruption and recovery model.
 
 Proceed with a bounded four-node substrate spike:
 
@@ -449,7 +449,7 @@ Proceed with a bounded four-node substrate spike:
 5. Exercise equivocation, malformed batches, a silent node, a Byzantine dealer, stale state, committee rotation, and threshold loss in the deterministic runtime.
 6. Measure message volume, finalization latency, recovery time, and operational complexity independently from the later PageRank benchmark.
 
-Exit gate: Commonware demonstrably reduces committee engineering without weakening input completeness, creating a second canonical log, conflating signing shares with graph shares, or forcing TrustGraph to operate a separate blockchain.
+Exit gate: Commonware demonstrably reduces committee engineering without weakening input completeness, creating a second canonical log, conflating signing shares with graph shares, or forcing trustgraphs to operate a separate blockchain.
 
 ## Options considered
 
@@ -466,7 +466,7 @@ Exit gate: Commonware demonstrably reduces committee engineering without weakeni
 
 ### A simpler alternative worth preserving
 
-If research shows that global confidential PageRank is too costly or fragile, change the product rather than make a false privacy claim. A local-first model could let vouchers issue unlinkable credentials directly to recipients, who prove accumulated thresholds or diverse-issuer predicates. BBS, AnonCreds, Coconut, or newer private promise/credential systems are relevant. This gives strong private presentation and removes the central graph processor, but it cannot reproduce global PageRank, transitive propagation, or graph-wide Sybil analysis. It is a different TrustGraph algorithm and product.
+If research shows that global confidential PageRank is too costly or fragile, change the product rather than make a false privacy claim. A local-first model could let vouchers issue unlinkable credentials directly to recipients, who prove accumulated thresholds or diverse-issuer predicates. BBS, AnonCreds, Coconut, or newer private promise/credential systems are relevant. This gives strong private presentation and removes the central graph processor, but it cannot reproduce global PageRank, transitive propagation, or graph-wide Sybil analysis. It is a different trustgraphs algorithm and product.
 
 ## Mapping to the current codebase
 
@@ -581,9 +581,9 @@ Do not advertise “coercion resistant,” “anonymous,” or “no one can see
 
 ## Bottom line
 
-Private TrustGraph is feasible if the project treats privacy as a new protocol profile and narrows its claims carefully. The architecture should retain public input completeness while changing what is accumulated: commitments to anonymous encrypted updates rather than public EAS edges. It should retain verifiable scoring while changing who sees the witness: an attested confidential domain for the pilot and an active MPC committee as the stronger target. It should retain composability while changing the output: purpose-bound private predicates rather than a public address/score table.
+Private trustgraphs is feasible if the project treats privacy as a new protocol profile and narrows its claims carefully. The architecture should retain public input completeness while changing what is accumulated: commitments to anonymous encrypted updates rather than public EAS edges. It should retain verifiable scoring while changing who sees the witness: an attested confidential domain for the pilot and an active MPC committee as the stronger target. It should retain composability while changing the output: purpose-bound private predicates rather than a public address/score table.
 
-Interfold contributes valuable FHE/ZK/DKG machinery and the most directly relevant receipt-ambiguity experiment found in this review. Today it is best treated as a component and research partner, especially for private aggregate governance, not as the sole persistent TrustGraph compute layer.
+Interfold contributes valuable FHE/ZK/DKG machinery and the most directly relevant receipt-ambiguity experiment found in this review. Today it is best treated as a component and research partner, especially for private aggregate governance, not as the sole persistent trustgraphs compute layer.
 
 Commonware is a complementary candidate rather than an Interfold alternative: it can provide the durable, Byzantine committee substrate around active MPC, while the MPC engine provides graph confidentiality and computation. A bounded integration spike is warranted, but threshold cryptography and consensus must not be presented as though they already implement private PageRank.
 
@@ -591,7 +591,7 @@ Most importantly, encryption alone does not solve bribery or coercion. Replaceab
 
 ## Primary references
 
-### TrustGraph implementation
+### Trustgraphs implementation
 
 - [`src/contracts/eas/AttestationAccumulator.sol`](../src/contracts/eas/AttestationAccumulator.sol)
 - [`src/contracts/eas/resolvers/EASIndexerResolver.sol`](../src/contracts/eas/resolvers/EASIndexerResolver.sol)

@@ -42,6 +42,9 @@ pub struct AuthedEdge {
 pub enum EnvelopeError {
     /// The witness does not re-fold to the anchored head (incomplete or reordered log).
     HeadMismatch,
+    /// The witnessed log length differs from the anchored count (H-5: the count is part of
+    /// the anchored claim; a head can only verify at the exact length its owner co-signed).
+    CountMismatch,
     /// The head signature does not recover to the log owner.
     BadHeadSignature,
     /// A per-edge signature is invalid or recovers to someone other than the log owner.

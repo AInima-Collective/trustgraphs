@@ -9,22 +9,22 @@ import {
 } from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {NO_EXPIRATION_TIME, EMPTY_UID} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 
-import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
+import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
-/// @title TrustGraphFactoryInstanceTest
+/// @title TrustgraphsFactoryInstanceTest
 /// @notice The half of M1 that a deployment check cannot fake: an instance minted by one transaction
 ///         is a WORKING instance. Members attest against its schema, its resolver folds the edge, its
 ///         snapshot checkpoints on its own epoch schedule, and a proof over that checkpoint writes a
 ///         root — through the real EAS, not a mock. Plus the factory-level half of the
 ///         domain-separation criterion.
-contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
+contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
     address internal member = address(0x11);
     address internal peer = address(0x22);
 
@@ -129,7 +129,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     function test_ParameterRotationPreservesOldCheckpointAndPinsTheNext() public {
         Created memory c = _create(_args("rotating"));
         MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
 
         _vouch(c.schemaUid, member, peer, "version one", 90);
         vm.roll(uint256(EPOCH_FLOOR) + 1);
@@ -170,7 +170,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     /// The optional distributor is a working consumer of the instance's root, not a loose contract:
     /// it reads this snapshot, and only the admin can govern it.
     function test_DistributorIsWiredAndAdminOwned() public {
-        TrustGraphFactory.CreateArgs memory args = _args("funded");
+        TrustgraphsFactory.CreateArgs memory args = _args("funded");
         args.withDistributor = true;
         args.admin = member;
         Created memory c = _create(args);
@@ -182,8 +182,13 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
         assertEq(dist.feePercentage(), 0, "no fee by default");
         assertFalse(dist.allowlistEnabled(), "anyone may fund a round by default");
 
+        // M-7: raising the fee from zero is an INCREASE, so it schedules and waits out the delay
+        // before applying — the admin cannot front-run a funder's round.
         vm.prank(member);
         dist.setFeePercentage(1e15);
+        assertEq(dist.feePercentage(), 0, "increase must not be immediate");
+        vm.warp(block.timestamp + dist.FEE_INCREASE_DELAY());
+        dist.applyFeePercentageIncrease();
         assertEq(dist.feePercentage(), 1e15);
     }
 
@@ -196,7 +201,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     /// accumulator and chainId — are what make clones distinguishable; without them these two
     /// structs would be byte-identical and their hashes equal.
     function test_IdenticalParamsProduceDifferentInstanceHashes() public {
-        TrustGraphFactory.CreateArgs memory args = _args("clone");
+        TrustgraphsFactory.CreateArgs memory args = _args("clone");
         Created memory a = _create(args);
 
         args.salt = bytes32(uint256(1));
@@ -228,7 +233,7 @@ contract TrustGraphFactoryInstanceTest is TrustGraphFactoryBase {
     /// because its `paramsHash` (and its own checkpointed inputs) enter that digest. A proof whose
     /// public journal was accepted by A therefore cannot satisfy B's verification call.
     function test_AProofBoundToOneInstanceDoesNotSatisfyAnother() public {
-        TrustGraphFactory.CreateArgs memory args = _args("clone");
+        TrustgraphsFactory.CreateArgs memory args = _args("clone");
         Created memory a = _create(args);
         args.salt = bytes32(uint256(1));
         Created memory b = _create(args);

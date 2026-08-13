@@ -15,7 +15,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 // Our modules
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 
 // MerkleSnapshot + verifier interfaces
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
@@ -88,7 +88,7 @@ contract DeployZodiacSafes is Common {
             deployZodiacSafeWithMerkle(safeSingleton, safeFactory, deployer, merkleSnapshot, signerVerifier, "Safe1");
 
         if (paramsController != address(0)) {
-            _handoffScoringAuthority(deployer, safe, TrustGraphParamsController(paramsController));
+            _handoffScoringAuthority(deployer, safe, TrustgraphsParamsController(paramsController));
         }
 
         vm.stopBroadcast();
@@ -102,7 +102,7 @@ contract DeployZodiacSafes is Common {
     function _handoffScoringAuthority(
         address deployer,
         SafeDeployment memory deployment,
-        TrustGraphParamsController controller
+        TrustgraphsParamsController controller
     ) internal {
         GnosisSafe safe = GnosisSafe(payable(deployment.safe));
         MerkleGovModule govModule = MerkleGovModule(deployment.merkleGovModule);

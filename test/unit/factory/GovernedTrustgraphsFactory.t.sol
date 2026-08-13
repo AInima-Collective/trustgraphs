@@ -5,9 +5,9 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-import {GovernedTrustGraphFactory} from "contracts/factory/GovernedTrustGraphFactory.sol";
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {GovernedTrustgraphsFactory} from "contracts/factory/GovernedTrustgraphsFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
@@ -16,18 +16,18 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {DeployZodiacSafes} from "script/DeployZodiacSafes.s.sol";
-import {TrustGraphFactoryBase} from "test/unit/factory/TrustGraphFactoryBase.sol";
+import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
 
 contract DeployZodiacSafesHarness is DeployZodiacSafes {
-    function handoff(address deployer, SafeDeployment memory deployment, TrustGraphParamsController controller)
+    function handoff(address deployer, SafeDeployment memory deployment, TrustgraphsParamsController controller)
         external
     {
         _handoffScoringAuthority(deployer, deployment, controller);
     }
 }
 
-contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
-    GovernedTrustGraphFactory internal governedFactory;
+contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
+    GovernedTrustgraphsFactory internal governedFactory;
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
     DeployZodiacSafesHarness internal zodiacHarness;
@@ -38,12 +38,12 @@ contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
         super.setUp();
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
-        governedFactory = new GovernedTrustGraphFactory(factory, safeFactory, address(safeSingleton));
+        governedFactory = new GovernedTrustgraphsFactory(factory, safeFactory, address(safeSingleton));
         zodiacHarness = new DeployZodiacSafesHarness();
     }
 
     function test_CreateGovernedInstanceMakesSafeTheAuthorityFromGenesis() public {
-        TrustGraphFactory.CreateArgs memory args = _args("member-owned");
+        TrustgraphsFactory.CreateArgs memory args = _args("member-owned");
         args.admin = address(0xBAD); // ignored: governed creation is never EOA-administered
         args.withDistributor = true;
         args.salt = bytes32(uint256(7));
@@ -61,7 +61,7 @@ contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
         assertEq(factory.computeInstanceId(safe, args.name, args.salt), instanceId, "instance id creator mismatch");
         assertEq(created.snapshot, snapshot, "wrapper discovered the wrong snapshot");
 
-        assertEq(TrustGraphParamsController(controller).owner(), safe, "Safe must own scoring controller");
+        assertEq(TrustgraphsParamsController(controller).owner(), safe, "Safe must own scoring controller");
         assertEq(MerkleFundDistributor(created.distributor).owner(), safe, "Safe must own shared fund");
         assertTrue(
             MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), safe),
@@ -85,7 +85,7 @@ contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
     }
 
     function test_CreateGovernedInstanceForwardsPrepayThroughSafe() public {
-        TrustGraphFactory.CreateArgs memory args = _args("member-funded");
+        TrustgraphsFactory.CreateArgs memory args = _args("member-funded");
         vm.deal(creator, 3 ether);
 
         vm.prank(creator);
@@ -99,7 +99,7 @@ contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
     }
 
     function test_DemoHandoffMakesSafeTheScoringAuthority() public {
-        TrustGraphFactory.CreateArgs memory args = _args("demo-handoff");
+        TrustgraphsFactory.CreateArgs memory args = _args("demo-handoff");
         args.admin = address(zodiacHarness);
         Created memory created = _create(args);
 
@@ -128,9 +128,9 @@ contract GovernedTrustGraphFactoryTest is TrustGraphFactoryBase {
             fundingAmount: 0
         });
 
-        zodiacHarness.handoff(address(zodiacHarness), deployment, TrustGraphParamsController(created.controller));
+        zodiacHarness.handoff(address(zodiacHarness), deployment, TrustgraphsParamsController(created.controller));
 
-        assertEq(TrustGraphParamsController(created.controller).owner(), address(demoSafe));
+        assertEq(TrustgraphsParamsController(created.controller).owner(), address(demoSafe));
         assertEq(signer.paramsAuthority(), address(demoSafe));
         assertEq(gov.owner(), address(demoSafe));
         assertEq(signer.owner(), address(demoSafe));

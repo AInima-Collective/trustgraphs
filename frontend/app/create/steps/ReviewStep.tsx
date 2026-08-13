@@ -15,8 +15,8 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { useEnsResolver } from '@/hooks/useEns'
 import {
-  governedTrustGraphFactoryAbi,
-  trustGraphFactoryAbi,
+  governedTrustgraphsFactoryAbi,
+  trustgraphsFactoryAbi,
 } from '@/lib/contract-abis'
 import {
   EnsResolutionChangedError,
@@ -86,7 +86,7 @@ export const ReviewStep = ({
     isSuccess: preflightPassed,
   } = useSimulateContract({
     address: GOVERNED_FACTORY_ADDRESS,
-    abi: governedTrustGraphFactoryAbi,
+    abi: governedTrustgraphsFactoryAbi,
     functionName: 'createGovernedInstance',
     args: [args] as any,
     ...(prepay > 0n ? { value: prepay } : {}),
@@ -140,7 +140,7 @@ export const ReviewStep = ({
       try {
         const estimate = await publicClient?.estimateContractGas({
           address: GOVERNED_FACTORY_ADDRESS,
-          abi: governedTrustGraphFactoryAbi,
+          abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
           args: [args] as any,
           ...(prepay > 0n ? { value: prepay } : {}),
@@ -153,7 +153,7 @@ export const ReviewStep = ({
       const [receipt] = await txToast({
         tx: {
           address: GOVERNED_FACTORY_ADDRESS,
-          abi: governedTrustGraphFactoryAbi,
+          abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
           args: [args],
           ...(gas ? { gas } : {}),
@@ -168,7 +168,7 @@ export const ReviewStep = ({
         try {
           if (log.address.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
             const decoded = decodeEventLog({
-              abi: trustGraphFactoryAbi,
+              abi: trustgraphsFactoryAbi,
               data: log.data,
               topics: log.topics,
             })
@@ -179,7 +179,7 @@ export const ReviewStep = ({
             log.address.toLowerCase() === GOVERNED_FACTORY_ADDRESS.toLowerCase()
           ) {
             const decoded = decodeEventLog({
-              abi: governedTrustGraphFactoryAbi,
+              abi: governedTrustgraphsFactoryAbi,
               data: log.data,
               topics: log.topics,
             })

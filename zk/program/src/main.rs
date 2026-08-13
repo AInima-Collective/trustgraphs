@@ -1,7 +1,7 @@
 //! SP1 guest: prove `journal == compute(pinned edges, pinned params)`.
 //!
 //! The guest reads the full `GuestInput`, runs the canonical `pagerank-core` pipeline, and commits
-//! the ABI-encoded journal tuple as `publicValues`. The on-chain `SP1TrustGraphVerifier` then binds
+//! the ABI-encoded journal tuple as `publicValues`. The on-chain `SP1TrustgraphsVerifier` then binds
 //! `keccak256(publicValues)` to the checkpoint's `acc/leafCount`, the stored `paramsHash`, and the
 //! submitted `outputRoot/ipfsHash/cid/totalValue`. All semantics live in `pagerank-core`.
 

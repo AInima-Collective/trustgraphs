@@ -71,10 +71,11 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
         // The signer journal has no lane-2 fields to bind, so signer selection is lane-1-only
         // until its journal shape deliberately grows (a vkey + module event, not a default).
         lane2: None,
-        // Nor does it carry the v3 bindings: `SignerSyncZkModule` pays no bounty and there is
-        // exactly one module per trust instance, so the recipient/domain words have nothing to
-        // bind to. The base computation only supplies `acc`/`leafCount`/`paramsHash` here, all
-        // three independent of the binding, so the default is not a silent hole.
+        // The base computation carries no bounty recipient (`SignerSyncZkModule` pays none); its
+        // binding words are unused here — the signer journal commits its OWN `instance_domain`
+        // below (audit M-3), which `submitSignerProof` rebuilds from `address(this)` +
+        // `block.chainid`. The base outputs consumed (`acc`/`leafCount`/`paramsHash`) are all
+        // independent of the binding, so the default is not a silent hole.
         binding: Default::default(),
     });
 
@@ -89,6 +90,7 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
         selection_params_hash,
         signer_set_root,
         target_threshold,
+        instance_domain: input.instance_domain,
     };
     SignerComputeResult { journal, signers, target_threshold }
 }

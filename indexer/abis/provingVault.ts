@@ -1,5 +1,5 @@
 // Generated from `out/ProvingVault.sol/ProvingVault.json`. Kept here rather than in the
-// frontend's wagmi output (like anchorRegistry and trustGraphFactory) because the vault is not
+// frontend's wagmi output (like anchorRegistry and trustgraphsFactory) because the vault is not
 // wired into the frontend's contract config yet. Events only: the indexer never calls it.
 export const provingVaultAbi = [
   {

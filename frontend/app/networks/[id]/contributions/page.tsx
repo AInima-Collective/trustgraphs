@@ -27,7 +27,7 @@ export async function generateMetadata({
   return {
     title: `${network.name} contributions`,
     ...socialCard({
-      title: `${network.name} contributions | Trustgraphs`,
+      title: `${network.name} contributions | trustgraphs`,
       description:
         'See the work, rate it, submit yours, and follow how the community pool will split.',
       path: `/networks/${id}/contributions`,

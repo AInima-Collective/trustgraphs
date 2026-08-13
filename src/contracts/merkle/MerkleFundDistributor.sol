@@ -41,6 +41,14 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     /// @dev 1e15 = 0.1%
     uint64 public constant FEE_RANGE = 1e18;
 
+    /// @notice Delay before a scheduled fee-percentage INCREASE takes effect (M-7, 2026-08-13
+    ///         audit): the owner could `setFeePercentage(100%)` in front of a funder's
+    ///         `distribute` and capture the whole round. Increases now announce themselves and
+    ///         wait; decreases and recipient changes stay immediate (they cannot take a funder's
+    ///         money). Funders wanting a per-round guarantee also have the guarded `distribute`
+    ///         overload with `maxFeeAmount` / `expectedFeeRecipient`.
+    uint64 public constant FEE_INCREASE_DELAY = 3 days;
+
     /* STORAGE */
 
     /// @notice Address of the MerkleSnapshot contract to query for merkle state
@@ -57,6 +65,10 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
 
     /// @notice The fee percentage taken from the distributed amount.
     uint256 public feePercentage;
+
+    /// @notice A scheduled fee-percentage increase (M-7). Zero `pendingFeeEffectiveAt` = none.
+    uint256 public pendingFeePercentage;
+    uint64 public pendingFeeEffectiveAt;
 
     /// @notice Whether the distributor allowlist is enabled.
     bool public allowlistEnabled;
@@ -108,7 +120,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         // Bootstrap ownership DIRECTLY, without the 2-step handshake. Two-step transfer exists to
         // stop a live owner from handing the contract to an address that cannot act; at
         // construction there is no live owner to protect, and the deployer is frequently a
-        // factory or a script that must not linger as owner (`TrustGraphFactory` deploys this in
+        // factory or a script that must not linger as owner (`TrustgraphsFactory` deploys this in
         // the same transaction that hands the instance to its creator — a pending transfer would
         // leave the factory owning every community's distributor until each one remembered to
         // call `acceptOwnership`). `transferOwnership` after deployment is unchanged: still
@@ -245,7 +257,38 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
 
     /// @notice Sets the `feePercentage` of the contract to `newFeePercentage`.
     /// @param newFeePercentage The new fee percentage.
+    /// @dev M-7: a DECREASE applies immediately (it cannot take a funder's money); an INCREASE is
+    ///      only scheduled here — it becomes claimable via `applyFeePercentageIncrease` after
+    ///      `FEE_INCREASE_DELAY`, so a funder always has time to see it coming.
     function setFeePercentage(uint256 newFeePercentage) external onlyOwner {
+        if (newFeePercentage <= feePercentage) {
+            // Cancels any scheduled increase too: the owner has picked a lower fee.
+            pendingFeePercentage = 0;
+            pendingFeeEffectiveAt = 0;
+            _setFeePercentage(newFeePercentage);
+        } else {
+            if (newFeePercentage > FEE_RANGE) {
+                revert FeePercentageTooHigh();
+            }
+            pendingFeePercentage = newFeePercentage;
+            pendingFeeEffectiveAt = uint64(block.timestamp) + FEE_INCREASE_DELAY;
+            emit FeePercentageIncreaseScheduled(newFeePercentage, pendingFeeEffectiveAt);
+        }
+    }
+
+    /// @notice Applies a scheduled fee-percentage increase once its delay has elapsed (M-7).
+    ///         Callable by anyone — the schedule, not the caller, is the authority.
+    function applyFeePercentageIncrease() external {
+        uint64 effectiveAt = pendingFeeEffectiveAt;
+        if (effectiveAt == 0) {
+            revert NoScheduledFeeIncrease();
+        }
+        if (block.timestamp < effectiveAt) {
+            revert FeeIncreaseNotYetEffective(effectiveAt);
+        }
+        uint256 newFeePercentage = pendingFeePercentage;
+        pendingFeePercentage = 0;
+        pendingFeeEffectiveAt = 0;
         _setFeePercentage(newFeePercentage);
     }
 
@@ -322,6 +365,41 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         return _distribute(token, amount, expectedRoot, claimDeadline);
     }
 
+    /// @notice Distributes funds with funder-supplied fee guards (M-7): the round reverts if the
+    ///         fee taken would exceed `maxFeeAmount`, or if the fee recipient is not the one the
+    ///         funder expected — so a fee/recipient change cannot be slipped in front of this
+    ///         transaction in the mempool.
+    /// @param token The token to distribute.
+    /// @param amount The amount of token to distribute.
+    /// @param expectedRoot The expected root of the merkle tree (pass 0 to skip).
+    /// @param claimDeadline The timestamp after which claims close (0 = no expiry).
+    /// @param maxFeeAmount The most the funder will pay in fees, in token units.
+    /// @param expectedFeeRecipient The fee recipient the funder is agreeing to pay (pass 0 to skip).
+    /// @return distributionIndex The index of the distribution.
+    function distribute(
+        address token,
+        uint256 amount,
+        bytes32 expectedRoot,
+        uint64 claimDeadline,
+        uint256 maxFeeAmount,
+        address expectedFeeRecipient
+    ) external payable onlyDistributor nonReentrant whenNotPaused returns (uint256 distributionIndex) {
+        if (claimDeadline != 0 && claimDeadline <= block.timestamp) {
+            revert InvalidClaimDeadline();
+        }
+        if (expectedFeeRecipient != address(0) && feeRecipient != expectedFeeRecipient) {
+            revert UnexpectedFeeRecipient(expectedFeeRecipient, feeRecipient);
+        }
+        // Pre-check against the requested amount (covers native exactly; for fee-on-transfer
+        // tokens the funded amount can only be LOWER, so the real fee can only be lower too).
+        uint256 wouldPay = Math.mulDiv(amount, feePercentage, FEE_RANGE);
+        if (wouldPay > maxFeeAmount) {
+            revert FeeExceedsFunderCap(wouldPay, maxFeeAmount);
+        }
+
+        return _distribute(token, amount, expectedRoot, claimDeadline);
+    }
+
     /// @dev Creates a distribution and moves the funds. Shared by both `distribute` overloads.
     function _distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
         internal
@@ -338,8 +416,34 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert UnexpectedMerkleRoot(expectedRoot, merkleState.root);
         }
 
-        // Calculate the fee amount.
-        uint256 feeAmount = Math.mulDiv(amount, feePercentage, FEE_RANGE);
+        bool isNativeToken = _isNativeToken(token);
+
+        // Move the funds in FIRST, then book what the contract actually received. All distributions
+        // of a given token share one balance, so booking the requested `amount` for a fee-on-transfer
+        // or deflationary token would let this distribution's claims/sweep draw on sibling
+        // distributions' funds. `funded` is the measured balance delta (exact for native ETH).
+        uint256 funded;
+        if (isNativeToken) {
+            // Ensure the native token amount sent is correct.
+            if (msg.value != amount) {
+                revert InvalidNativeTokenTransferAmount();
+            }
+            funded = amount;
+        } else {
+            // Ensure no native token is sent along with the ERC20 token.
+            if (msg.value > 0) {
+                revert InvalidNativeTokenTransfer();
+            }
+
+            // Transfer ERC20 from the sender to this distributor contract, measuring the delta so a
+            // fee-on-transfer/deflationary token books only what actually arrived.
+            uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            funded = IERC20(token).balanceOf(address(this)) - balanceBefore;
+        }
+
+        // Calculate the fee amount from the funded (received) amount, not the requested amount.
+        uint256 feeAmount = Math.mulDiv(funded, feePercentage, FEE_RANGE);
 
         // Create new distribution.
         distributionIndex = distributions.length;
@@ -353,7 +457,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
                 totalMerkleValue: merkleState.totalValue,
                 distributor: msg.sender,
                 token: token,
-                amountFunded: amount,
+                amountFunded: funded,
                 amountDistributed: 0,
                 feeRecipient: feeRecipient,
                 feeAmount: feeAmount,
@@ -362,34 +466,19 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             })
         );
 
-        bool isNativeToken = _isNativeToken(token);
-
-        // Move funds around.
-        if (isNativeToken) {
-            // Ensure the native token amount sent is correct.
-            if (msg.value != amount) {
-                revert InvalidNativeTokenTransferAmount();
+        // Pay the fee. Skip a zero-value transfer so a revert-on-zero token can't block distribution.
+        if (feeAmount > 0) {
+            if (isNativeToken) {
+                (bool success, bytes memory data) = payable(feeRecipient).call{value: feeAmount}("");
+                if (!success) {
+                    revert FailedToTransferFee(data);
+                }
+            } else {
+                IERC20(token).safeTransfer(feeRecipient, feeAmount);
             }
-
-            // Transfer fee to the fee recipient.
-            (bool success, bytes memory data) = payable(feeRecipient).call{value: feeAmount}("");
-            if (!success) {
-                revert FailedToTransferFee(data);
-            }
-        } else {
-            // Ensure no native token is sent along with the ERC20 token.
-            if (msg.value > 0) {
-                revert InvalidNativeTokenTransfer();
-            }
-
-            // Transfer ERC20 from the sender to this distributor contract.
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-
-            // Transfer fee to the fee recipient.
-            IERC20(token).safeTransfer(feeRecipient, feeAmount);
         }
 
-        emit Distributed(distributionIndex, msg.sender, token, amount, feeAmount);
+        emit Distributed(distributionIndex, msg.sender, token, funded, feeAmount);
     }
 
     /// @notice Claims tokens for a given distribution.

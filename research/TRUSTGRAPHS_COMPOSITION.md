@@ -1,4 +1,4 @@
-# TrustGraph Composition
+# Trustgraphs Composition
 
 **Status:** research report, 2026-08-12. Design recommendation; no implementation decision yet.
 **Question:** how should a user combine trust graphs A, B, and C into one scored graph, and what would it mean for graphs themselves to earn reputation and vouch for other graphs?
@@ -7,7 +7,7 @@
 
 ## Executive summary
 
-TrustGraph should treat composition as a family of different operators, not one feature hidden
+Trustgraphs should treat composition as a family of different operators, not one feature hidden
 behind a single “combine” button. The stated user story has a simple, rigorous first answer:
 
 > Normalize each source's published allocation into a probability distribution, combine those
@@ -80,7 +80,7 @@ Two outputs sharing the same `(address, value)` leaf shape are not automatically
 compatible. A contribution payout, an interpersonal trust score, and an anti-fraud probability
 must not be blended merely because all three contain addresses and integers.
 
-TrustGraph already makes the important architectural distinction between a **program**, which
+Trustgraphs already makes the important architectural distinction between a **program**, which
 fixes semantics and proof logic, and an **instance**, which deploys those semantics with a
 particular configuration. A new composition rule should therefore be a new program, not an
 unlabelled behavior change to existing instances ([program model](../docs/concepts/networks-and-programs.md)).
@@ -104,7 +104,7 @@ These operators answer different questions:
 - Prior injection asks, “Whose standing should bootstrap influence in this destination graph?”
 - Sequential composition asks, “Whose judgment should weight a different kind of record?”
 
-TrustGraph already contains examples adjacent to three of them:
+Trustgraphs already contains examples adjacent to three of them:
 
 - The two accumulator lanes are merged into **one raw edge set** before reconciliation and one
   PageRank run ([compute.rs](../packages/pagerank-core/src/compute.rs)). Because raw edges have no
@@ -122,7 +122,7 @@ were propagated through B and C.
 
 ## 3. Current score semantics constrain a correct blend
 
-### 3.1 A published TrustGraph score is a relative allocation
+### 3.1 A published trustgraphs score is a relative allocation
 
 The rank core first computes a fixed-point normalized PageRank-like distribution
 ([pagerank.rs](../packages/pagerank-core/src/pagerank.rs)). The distribution step then:
@@ -236,7 +236,7 @@ transform in the baseline. Each is a substantive policy that can reward splittin
 meaning of a source. If introduced, give it a versioned adapter ID and commit it in the composition
 parameters.
 
-**Compatibility.** Start with same-chain, address-keyed, allocation-valued TrustGraph sources of a
+**Compatibility.** Start with same-chain, address-keyed, allocation-valued trustgraphs sources of a
 declared compatible scope. Broader source types require explicit adapters, not duck typing based on
 leaf length.
 
@@ -330,7 +330,7 @@ silently turn B into an introducer. OpenPGP's surrounding certification framewor
 precedent: Trust Signatures encode amount and propagation depth, while separate mechanisms add
 User-ID regular-expression constraints and certification revocation
 ([RFC 9580 §§5.2.3.20–22](https://www.rfc-editor.org/rfc/rfc9580.html#section-5.2.3.20)). Those
-regular expressions scope identity certification, not arbitrary application semantics; TrustGraph
+regular expressions scope identity certification, not arbitrary application semantics; trustgraphs
 still needs its own `scopeHash` vocabulary.
 Score similarity may be displayed as evidence, but it must not create a vouch edge automatically;
 copies would otherwise endorse one another by construction.
@@ -446,11 +446,11 @@ policy chooses how each matters.
 Topic-Sensitive PageRank is direct precedent for precomputing biased PageRank vectors and combining
 them for a particular context
 ([Haveliwala](https://www.cs.cmu.edu/~christos/courses/826-resources/PAPERS+BOOK/Haveliwala_www2003.pdf)).
-TrustGraph's [graph-seeding report](GRAPH_SEEDING.md) develops the analogous idea in this codebase:
+Trustgraphs' [graph-seeding report](GRAPH_SEEDING.md) develops the analogous idea in this codebase:
 mix source distributions into the destination's teleport vector.
 
 The standard personalized-PageRank linearity result should not be applied mechanically to the
-current TrustGraph algorithm. Today, seed attesters receive a multiplier outside the outgoing-edge
+current trustgraphs algorithm. Today, seed attesters receive a multiplier outside the outgoing-edge
 normalization and a BFS-derived `trust_decay` modifies propagation
 ([pagerank.rs](../packages/pagerank-core/src/pagerank.rs)). Those additions make the recurrence
 different from a stochastic PageRank transition. The graph-seeding report therefore proposes
@@ -463,7 +463,7 @@ parameters make effective source influence harder to bound and explain.
 
 ### 5.2 Edge union and multiplex networks
 
-Concatenating raw edge logs loses source identity and applies TrustGraph's last-write-wins rule to
+Concatenating raw edge logs loses source identity and applies trustgraphs' last-write-wins rule to
 cross-source duplicates. If source layers matter, preserve them explicitly as a multiplex network.
 Kivelä et al. provide the general multilayer terminology and framework
 ([Multilayer Networks](https://arxiv.org/abs/1309.7233)); De Domenico et al. show directly that a
@@ -500,13 +500,13 @@ behind the weighted-blend UI.
 
 ### 5.4 Subjective opinions and evidence fusion
 
-If TrustGraph later represents explicit belief, disbelief, and uncertainty rather than a relative
+If trustgraphs later represents explicit belief, disbelief, and uncertainty rather than a relative
 point allocation, subjective logic offers distinct operators for trust discounting and evidence
 fusion ([Jøsang, Marsh, and Pope](https://www.mn.uio.no/ifi/english/people/aca/josang/publications/jpm2006-itrust.pdf)).
 Its most important lesson for this project is not a formula but a precondition: combining
 independent observations is different from combining dependent or copied observations.
 
-Current TrustGraph outputs do not carry calibrated uncertainty, evidence counts, or correlation
+Current trustgraphs outputs do not carry calibrated uncertainty, evidence counts, or correlation
 lineage. Applying a Bayesian or subjective-logic label to them would create false precision. That
 work should wait for a richer output type.
 
@@ -619,7 +619,7 @@ requires a delay after publication, the source state needs an `acceptedAtBlock` 
 equivalent authenticated adapter.
 
 Source entries must be canonically ordered. Reject duplicate snapshots and any source outside the
-admitted base TrustGraph program set. Composite sources are excluded initially, so transitive
+admitted base trustgraphs program set. Composite sources are excluded initially, so transitive
 composition cycles cannot arise and the guest should not pretend to prove them without an ancestry
 registry. A later nesting design needs a committed atomic-ancestry manifest before it can reject
 duplicates and cycles.
@@ -914,7 +914,7 @@ complete source score distributions → normalized convex blend
 ```
 
 Ship the bottom path first. It directly implements “A, B, and C all count,” gives governance clear
-control, preserves TrustGraph's proven output interface, and bounds each source's influence. Build
+control, preserves trustgraphs' proven output interface, and bounds each source's influence. Build
 the upper path as an optional, personalized policy for finding and weighting sources. That retains
 the exciting possibility of a trust graph for trust graphs without making circular social
 reputation a hidden prerequisite for ordinary composition.
@@ -950,7 +950,7 @@ Primary external references used in this report:
 
 Repository references most relevant to an implementation:
 
-- [TrustGraph architecture](../docs/concepts/architecture.md)
+- [trustgraphs architecture](../docs/concepts/architecture.md)
 - [Networks and programs](../docs/concepts/networks-and-programs.md)
 - [PageRank computation](../packages/pagerank-core/src/pagerank.rs)
 - [Point distribution](../packages/pagerank-core/src/distribute.rs)

@@ -49,7 +49,7 @@ pub trait ChainReader {
     /// `MerkleSnapshot.paramsHash()`.
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error>;
 
-    /// `TrustGraphFactory.EAS()`.
+    /// `TrustgraphsFactory.EAS()`.
     fn factory_eas(&self, factory: Address) -> Result<Address, Self::Error>;
 }
 

@@ -7,10 +7,10 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
 import {Common} from "script/Common.s.sol";
-import {GovernedTrustGraphFactory} from "contracts/factory/GovernedTrustGraphFactory.sol";
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {GovernedTrustgraphsFactory} from "contracts/factory/GovernedTrustgraphsFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 
-contract DeployGovernedTrustGraphFactory is Common {
+contract DeployGovernedTrustgraphsFactory is Common {
     using stdJson for string;
 
     string public root = vm.projectRoot();
@@ -23,8 +23,8 @@ contract DeployGovernedTrustGraphFactory is Common {
         vm.startBroadcast(_privateKey);
         GnosisSafe singleton = new GnosisSafe();
         GnosisSafeProxyFactory proxyFactory = new GnosisSafeProxyFactory();
-        GovernedTrustGraphFactory governed = new GovernedTrustGraphFactory(
-            TrustGraphFactory(vm.parseAddress(factoryAddr)), proxyFactory, address(singleton)
+        GovernedTrustgraphsFactory governed = new GovernedTrustgraphsFactory(
+            TrustgraphsFactory(vm.parseAddress(factoryAddr)), proxyFactory, address(singleton)
         );
         vm.stopBroadcast();
 

@@ -13,7 +13,7 @@ const ALL_NETWORKS = networks as AnyNetwork[]
 // Filter by the program tag: any program-tagged instance (hypercerts, contributions) has its own
 // page and contract surface and must never enter the vouching code paths.
 //
-// SEED, NOT CATALOG. Trust-graph networks are created by `TrustGraphFactory` at any moment, so the
+// SEED, NOT CATALOG. Trust-graph networks are created by `TrustgraphsFactory` at any moment, so the
 // live list is read at runtime from the indexer — `lib/catalog.ts` (isomorphic),
 // `lib/catalog.server.ts` (server components) and `contexts/CatalogContext.tsx` (`useNetworks()`).
 // What is left here is the seed: the curated presentation the chain does not carry (URL slug,

@@ -9,6 +9,15 @@
 //! node's out-edges drop (`DROPPED`). In-edges from live nodes are untouched — reputation
 //! *received* survives; reputation *given* requires showing up. Every deviation from
 //! newest-head consumption lands in `skippedDigest`; a prover cannot silently pick.
+//!
+//! H-5 (2026-08-13 audit): "newest" is ranked by the head's SIGNED count, not by anchor
+//! order. Each anchor carries the count its owner co-signed with the head (ingress-verified
+//! by `AnchorRegistry` for address nodes, and re-verified in-guest because the head
+//! signature covers `(head, count)`). Any anchored head whose count is below the node's max
+//! anchored count is NEVER consumable — so a third party re-anchoring a victim's stale
+//! pre-revocation head (whose signature is still valid) can no longer make it "newest":
+//! revoked edges stay dead, and if the true newest head's data is withheld the node fails
+//! closed to a recorded `DROPPED` skip rather than resurrecting the old set.
 
 use crate::{skip_reason, Lane2Witness, Params, RawEdge};
 use alloy_primitives::B256;
@@ -41,7 +50,14 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Lane2Result {
     for a in &witness.anchors {
         acc = fold(
             acc,
-            anchor_leaf(a.node_id, a.envelope_kind, a.head, a.data_commitment, a.block_timestamp),
+            anchor_leaf(
+                a.node_id,
+                a.envelope_kind,
+                a.head,
+                a.count,
+                a.data_commitment,
+                a.block_timestamp,
+            ),
         );
     }
     let anchor_count = witness.anchors.len() as u64;
@@ -71,19 +87,33 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Lane2Result {
 
     // 4. Rule Φ per node (BTreeMap iteration = deterministic node order).
     for (node_id, anchors) in &per_node {
-        let newest_ts = anchors.last().map(|a| a.block_timestamp).unwrap_or(0);
+        // H-5: only heads at the node's MAX signed count are consumable. A re-anchored stale
+        // head carries a lower count (counts are co-signed and the log is append-only), so it
+        // can never outrank the newest — regardless of anchor order.
+        let max_count = anchors.iter().map(|a| a.count).max().unwrap_or(0);
+        // Skip bookkeeping is relative to the newest max-count anchor (the head an honest
+        // prover is expected to consume), not to whatever was anchored last.
+        let newest_ts = anchors
+            .iter()
+            .filter(|a| a.count == max_count)
+            .map(|a| a.block_timestamp)
+            .max()
+            .unwrap_or(0);
         let mut consumed: Option<u64> = None; // timestamp of the head actually used
 
-        // Newest → oldest: first head that is in-window, witnessed, and verifies.
+        // Newest → oldest: first max-count head that is in-window, witnessed, and verifies.
         for a in anchors.iter().rev() {
             if now.saturating_sub(a.block_timestamp) > params.lane2_max_head_age {
                 break; // older anchors are staler still
+            }
+            if a.count < max_count {
+                continue; // H-5: a below-max head is a replayed/stale claim, never consumable
             }
             if a.envelope_kind != ENVELOPE_EAS_OFFCHAIN {
                 continue; // unknown envelope: unusable head, try older
             }
             let Some(env) = envs.get(node_id) else { continue };
-            match eas_offchain::verify(*node_id, a.head, now, &config, env) {
+            match eas_offchain::verify(*node_id, a.head, a.count, now, &config, env) {
                 Ok(authed) => {
                     for e in authed {
                         edges.push(RawEdge {
@@ -148,6 +178,7 @@ mod tests {
                 node_id: B256::from([0x11; 32]),
                 envelope_kind: ENVELOPE_EAS_OFFCHAIN,
                 head: B256::from([0x22; 32]),
+                count: 0,
                 data_commitment: B256::ZERO,
                 block_timestamp: 500,
             }],
@@ -175,6 +206,7 @@ mod tests {
                     node_id: B256::from([0xAA; 32]),
                     envelope_kind: ENVELOPE_EAS_OFFCHAIN,
                     head: B256::from([0x01; 32]),
+                    count: 0,
                     data_commitment: B256::ZERO,
                     block_timestamp: 100,
                 },
@@ -182,6 +214,7 @@ mod tests {
                     node_id: B256::from([0xBB; 32]),
                     envelope_kind: ENVELOPE_EAS_OFFCHAIN,
                     head: B256::from([0x02; 32]),
+                    count: 0,
                     data_commitment: B256::ZERO,
                     block_timestamp: 500,
                 },

@@ -22,7 +22,7 @@ program index in [`networks-and-programs.md`](../../concepts/networks-and-progra
 | `src/contracts/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
 | `src/contracts/merkle/MerkleSnapshot.sol`                                         | `submitProof` write-gate + two-tier timelock authority.                                                                                                    |
 | `src/contracts/merkle/SP1JournalVerifier.sol`                                     | `IZkVerifier` → SP1 gateway adapter (journal-agnostic; one instance per program vkey).                                                                     |
-| `test/golden/trust-graph.json` + `test/unit/golden/TrustGraphGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors).                                                                                           |
+| `test/golden/trust-graph.json` + `test/unit/golden/TrustgraphsGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors).                                                                                           |
 
 ## Toolchain
 
@@ -49,7 +49,7 @@ cargo test -p pagerank-core
 # 2. Regenerate this program's golden vectors and cross-check against Solidity
 task zk:vectors PROGRAM=trust-graph
 #   ≡ cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json
-forge test --match-path 'test/unit/golden/TrustGraphGoldenVectors.t.sol'
+forge test --match-path 'test/unit/golden/TrustgraphsGoldenVectors.t.sol'
 
 # 3. Full Solidity suite (accumulator, submitProof flow, existing consumers)
 forge test
@@ -81,7 +81,7 @@ cargo run --release -- trust-graph vkey        # -> 0x....   (programVKey)
 
 The canonical `paramsHash` is **not** a manual deploy input — `DeployNetwork` computes it on-chain from
 `params.json` after registering the schema (`ParamsCodec.hash`, byte-identical to the guest's
-`params_hash`, locked by `TrustGraphGoldenVectors.t.sol`). The CLI still computes it for
+`params_hash`, locked by `TrustgraphsGoldenVectors.t.sol`). The CLI still computes it for
 verification/CI; `paramshash` reads a full `GuestInput` (`{edges, params}`) by default, so pass a bare
 params file with `--params`:
 
@@ -92,7 +92,7 @@ cargo run --release -- trust-graph paramshash --params params.json   # -> 0x....
 `params.json` is a serialized `pagerank_core::Params` (the governance-pinned PageRank parameters).
 
 For a factory-created or migrated network, `params.json` is no longer an
-operational source of truth. `TrustGraphParamsController.getCurrentParams()`
+operational source of truth. `TrustgraphsParamsController.getCurrentParams()`
 stores the complete current tuple on-chain, and the operator reconstructs its
 transient file from that call on every catalog refresh. A local file remains a
 deployment input for the legacy `DeployNetwork` path and a useful independent
@@ -101,7 +101,7 @@ hash check; it must never shadow a controller-backed registry entry.
 > **params schema v2.** `Params` carries two domain separators at the end — `accumulator` (the
 > instance's `EASIndexerResolver`) and `chain_id` — so two identically-configured instances cannot
 > accept each other's proofs ([`../create-a-network.md`](../create-a-network.md) §1.1). They are properties of an _instance_, not of the
-> governance file: `DeployNetwork` / `TrustGraphFactory` supply them at creation, and
+> governance file: `DeployNetwork` / `TrustgraphsFactory` supply them at creation, and
 > `input-exporter` fills them from the connection it is reading, erroring if `params.json` names a
 > different instance. A hand-computed `paramshash` over a `params.json` whose `accumulator` /
 > `chain_id` are still zero will NOT match the deployed snapshot — read the value off the chain
@@ -124,17 +124,17 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
 1. **SP1 verifier** — `script/DeployZkVerifier.s.sol` with the SP1 verifier-gateway address for the
    target chain and the `programVKey` from `trust-graph vkey`. (`DeployZkVerifier` deploys the shared
    `SP1JournalVerifier` bytecode; each program is a separate labeled instance with its own vkey.)
-2. **Network** — use `GovernedTrustGraphFactory.createGovernedInstance` for a new community (the app
-   creation wizard does). It calls the canonical `TrustGraphFactory` through a newly created Safe,
-   deploys the resolver, snapshot, distributor and `TrustGraphParamsController`, publishes version
+2. **Network** — use `GovernedTrustgraphsFactory.createGovernedInstance` for a new community (the app
+   creation wizard does). It calls the canonical `TrustgraphsFactory` through a newly created Safe,
+   deploys the resolver, snapshot, distributor and `TrustgraphsParamsController`, publishes version
    1, and enables the snapshot-specific Merkle governance module. The Safe is the community admin
-   and controller owner from that transaction. Direct `TrustGraphFactory.createInstance` remains a
+   and controller owner from that transaction. Direct `TrustgraphsFactory.createInstance` remains a
    lower-level seam for scripted/legacy bring-up where governance is attached and authority handed
    off separately; `DeployNetwork.s.sol` is the non-factory legacy path.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s. On a controller-backed trust graph, transfer
    the snapshot's `CONSTITUTIONAL_ROLE` to the constitutional timelock and transfer ownership of
-   `TrustGraphParamsController` to the operational timelock through its two-step ownership flow.
+   `TrustgraphsParamsController` to the operational timelock through its two-step ownership flow.
    The controller—not the timelock directly—remains the snapshot's sole `OPERATIONAL_ROLE` holder.
 
 ## Produce a root (the permissionless loop)
@@ -265,9 +265,9 @@ forge build
 forge test
 ```
 
-Then invoke `script/MigrateTrustGraphParamsController.s.sol` with the existing
+Then invoke `script/MigrateTrustgraphsParamsController.s.sol` with the existing
 `instanceId`, snapshot, registry, deployed
-`TrustGraphParamsControllerDeployer`, exact `params.json`, schema UID,
+`TrustgraphsParamsControllerDeployer`, exact `params.json`, schema UID,
 accumulator, chain ID, intended EOA/Safe/timelock owner, and a complete array of
 legacy `OPERATIONAL_ROLE` holders. For an EOA-administered development instance:
 
@@ -275,7 +275,7 @@ legacy `OPERATIONAL_ROLE` holders. For an EOA-administered development instance:
 export RPC_URL=http://127.0.0.1:8545
 export FUNDED_KEY=0x... # current registry + snapshot administrator
 
-forge script script/MigrateTrustGraphParamsController.s.sol:MigrateTrustGraphParamsController \
+forge script script/MigrateTrustgraphsParamsController.s.sol:MigrateTrustgraphsParamsController \
   --rpc-url "$RPC_URL" --broadcast \
   --sig 'run(bytes32,address,address,address,string,bytes32,address,uint64,address,address[])' \
   "$INSTANCE_ID" "$SNAPSHOT" "$INSTANCE_REGISTRY" "$PARAMS_CONTROLLER_DEPLOYER" \
@@ -334,6 +334,28 @@ cd ../..
 The signer program's deploy constants (`SP1_SIGNER_PROGRAM_VKEY`, `SELECTION_PARAMS_HASH`) are in
 [`../signer-sync/runbook.md`](../signer-sync/runbook.md).
 
+### Rotating the trust-graph vkey (guest change runbook)
+
+Any change to the trust-graph guest — including `pagerank-core`, `zk-core`, or `envelopes` code it
+compiles in — rotates the trust-graph program vkey. The 2026-08-13 audit batch (H-5 anchored-count
+head-replay fix + M-12 CAR bounds-checks) is such a rotation, and it ALSO changes `AnchorRegistry`
+(the anchor leaf gains the head's signed `count` word and `anchor()` verifies the owner's
+co-signature for address nodes), so lane-2 instances redeploy the registry alongside the verifier.
+Per the batching rule, group every guest-affecting change into one rotation:
+
+1. Land the guest edits in one batch; regenerate golden vectors
+   (`cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json` — and the
+   hypercerts feed if `zk-core` encodings changed) in the same commit; confirm guest==native,
+   Solidity goldens, and the frontend TS golden test are green.
+2. `cargo run -q --release -- trust-graph vkey` → the new `SP1_PROGRAM_VKEY`.
+3. Deploy a new `SP1JournalVerifier(gateway, newVkey)`; point `MerkleSnapshot` at it via its
+   governance (`setZkVerifier`, constitutional timelock). Old proofs stop verifying at that instant.
+4. If the anchor encoding changed (as in the H-5 rotation): deploy the new `AnchorRegistry`,
+   re-register nodes, and re-anchor current heads (owners co-sign `(head, count)`); the old
+   registry's log does not migrate — its acc is a different encoding.
+5. Re-export inputs and prove with the new guest; record the new vkey in
+   [`networks-and-programs.md`](../../concepts/networks-and-programs.md).
+
 ### Deploy + loop
 
 ```bash
@@ -363,7 +385,7 @@ MerkleSnapshot and the typed trust-graph controller:
 - **Constitutional** (long timelock): `setZkVerifier`, `setAccumulator`. Changing the guest = deploy a
   new `SP1JournalVerifier(gateway, newVkey)` and `setZkVerifier` through this timelock.
 - **Operational** (direct owner, Safe, or short timelock):
-  `TrustGraphParamsController.updateParams(fullTuple, evidenceURI)`. The
+  `TrustgraphsParamsController.updateParams(fullTuple, evidenceURI)`. The
   controller validates the shared safety envelope, writes snapshot + registry
   atomically, publishes the complete version, and holds the snapshot's raw-hash
   role. An operational compromise can change a computationally valid scoring

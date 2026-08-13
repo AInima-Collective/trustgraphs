@@ -7,6 +7,7 @@ import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract MerkleFundDistributorTest is Test {
     MerkleFundDistributor public distributor;
@@ -191,14 +192,100 @@ contract MerkleFundDistributorTest is Test {
         distributor.setFeeRecipient(address(0));
     }
 
-    function test_SetFeePercentage_UpdatesValue() public {
+    function test_SetFeePercentage_IncreaseIsScheduledThenApplied() public {
+        // M-7: an INCREASE is scheduled, not immediate — the owner cannot front-run a funder.
         uint256 newFee = 5e16; // 5%
+        uint64 delay = distributor.FEE_INCREASE_DELAY();
         vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit IMerkleFundDistributor.FeePercentageIncreaseScheduled(newFee, uint64(block.timestamp) + delay);
+        distributor.setFeePercentage(newFee);
+        assertEq(distributor.feePercentage(), DEFAULT_FEE_PERCENTAGE, "increase must not be immediate");
+        assertEq(distributor.pendingFeePercentage(), newFee);
+
+        // Not yet effective.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.FeeIncreaseNotYetEffective.selector, uint64(block.timestamp) + delay
+            )
+        );
+        distributor.applyFeePercentageIncrease();
+
+        // After the delay anyone can apply it.
+        vm.warp(block.timestamp + delay);
         vm.expectEmit(true, true, false, false);
         emit IMerkleFundDistributor.FeePercentageSet(DEFAULT_FEE_PERCENTAGE, newFee);
-        distributor.setFeePercentage(newFee);
-
+        distributor.applyFeePercentageIncrease();
         assertEq(distributor.feePercentage(), newFee);
+        assertEq(distributor.pendingFeeEffectiveAt(), 0, "schedule consumed");
+    }
+
+    function test_SetFeePercentage_DecreaseIsImmediateAndCancelsPending() public {
+        // M-7: a decrease cannot take a funder's money, so it applies at once — and it cancels
+        // any scheduled increase (the owner picked a lower fee).
+        vm.startPrank(owner);
+        distributor.setFeePercentage(5e16); // scheduled increase
+        assertEq(distributor.pendingFeePercentage(), 5e16);
+
+        uint256 lower = 5e15; // 0.5% < current 1%
+        vm.expectEmit(true, true, false, false);
+        emit IMerkleFundDistributor.FeePercentageSet(DEFAULT_FEE_PERCENTAGE, lower);
+        distributor.setFeePercentage(lower);
+        vm.stopPrank();
+        assertEq(distributor.feePercentage(), lower);
+        assertEq(distributor.pendingFeePercentage(), 0, "pending increase cancelled");
+        assertEq(distributor.pendingFeeEffectiveAt(), 0);
+
+        vm.expectRevert(IMerkleFundDistributor.NoScheduledFeeIncrease.selector);
+        distributor.applyFeePercentageIncrease();
+    }
+
+    /// M-7 regression: the exact audit exploit — owner sets 100% fee in front of a funder's
+    /// distribute. The increase is only scheduled, so the round pays the OLD fee.
+    function test_M7_OwnerCannotFrontRunDistributeWithFeeHike() public {
+        vm.prank(owner);
+        distributor.setFeePercentage(FEE_RANGE); // "100%" — front-running attempt
+
+        uint256 amount = 100 ether;
+        _createERC20Distribution(alice, amount);
+
+        IMerkleFundDistributor.DistributionState memory dist = distributor.getDistribution(0);
+        assertEq(
+            dist.feeAmount,
+            Math.mulDiv(amount, DEFAULT_FEE_PERCENTAGE, FEE_RANGE),
+            "REGRESSION: the scheduled hike must not touch this round"
+        );
+    }
+
+    /// M-7: the funder-guarded overload rejects a fee above the funder's cap or an unexpected
+    /// recipient, and passes when the terms are as agreed.
+    function test_M7_FunderGuardedDistribute() public {
+        uint256 amount = 100 ether;
+        uint256 expectedFee = Math.mulDiv(amount, DEFAULT_FEE_PERCENTAGE, FEE_RANGE);
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 3 * amount);
+
+        // Fee above the funder's cap.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.FeeExceedsFunderCap.selector, expectedFee, expectedFee - 1
+            )
+        );
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee - 1, feeRecipient);
+
+        // Wrong fee recipient.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0xD00D), feeRecipient
+            )
+        );
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, address(0xD00D));
+
+        // As agreed: passes and books the expected fee.
+        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, feeRecipient);
+        vm.stopPrank();
+        assertEq(distributor.getDistribution(0).feeAmount, expectedFee);
     }
 
     function test_SetFeePercentage_RevertsIfNotOwner() public {
@@ -216,6 +303,8 @@ contract MerkleFundDistributorTest is Test {
     function test_SetFeePercentage_AllowsMaxFee() public {
         vm.prank(owner);
         distributor.setFeePercentage(FEE_RANGE);
+        vm.warp(block.timestamp + distributor.FEE_INCREASE_DELAY());
+        distributor.applyFeePercentageIncrease();
         assertEq(distributor.feePercentage(), FEE_RANGE);
     }
 
@@ -646,7 +735,9 @@ contract MerkleFundDistributorTest is Test {
 
     function test_Distribute_MaxFeePercentage() public {
         vm.prank(owner);
-        distributor.setFeePercentage(FEE_RANGE); // 100%
+        distributor.setFeePercentage(FEE_RANGE); // 100% — scheduled (M-7), applied after the delay
+        vm.warp(block.timestamp + distributor.FEE_INCREASE_DELAY());
+        distributor.applyFeePercentageIncrease();
 
         uint256 amount = 100 ether;
 
@@ -1420,6 +1511,50 @@ contract MerkleFundDistributorTest is Test {
     function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
         return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
     }
+
+    /// H-1: a fee-on-transfer token must book the amount RECEIVED (balance delta), not the amount
+    /// requested. Otherwise a distribution over-books its share of the shared per-token balance and
+    /// drains sibling distributions. This also verifies the fee is taken on the received amount so
+    /// the contract stays exactly solvent: retained == amountFunded - feeAmount.
+    function test_Distribute_FeeOnTransfer_BooksReceivedNotRequested() public {
+        FeeOnTransferToken fot = new FeeOnTransferToken(1000); // 10% fee
+        fot.mint(alice, 1000 ether);
+
+        vm.startPrank(alice);
+        fot.approve(address(distributor), type(uint256).max);
+        uint256 idx = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, 0);
+        vm.stopPrank();
+
+        IMerkleFundDistributor.DistributionState memory d = distributor.getDistribution(idx);
+        // 10% burned in transit → only 900 arrived, and that is what gets booked.
+        assertEq(d.amountFunded, 900 ether, "books received, not requested");
+        // Fee is 1% of the RECEIVED amount (9), not 1% of the requested amount (10).
+        assertEq(d.feeAmount, 9 ether, "fee computed on received");
+        // Contract retains received - fee = the exact distributable; no phantom liability.
+        assertEq(fot.balanceOf(address(distributor)), 891 ether, "distributor solvent for this pool");
+    }
+
+    /// H-1 (solvency across siblings): two fee-on-transfer distributions of the same token must not
+    /// let one distribution's booked total exceed what actually arrived, so the shared balance always
+    /// covers the sum of distributable amounts.
+    function test_Distribute_FeeOnTransfer_SiblingsStaySolvent() public {
+        FeeOnTransferToken fot = new FeeOnTransferToken(1000); // 10% fee
+        fot.mint(alice, 5000 ether);
+
+        vm.startPrank(alice);
+        fot.approve(address(distributor), type(uint256).max);
+        uint256 a = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, 0);
+        uint256 b = distributor.distribute(address(fot), 2000 ether, TEST_ROOT, 0);
+        vm.stopPrank();
+
+        IMerkleFundDistributor.DistributionState memory da = distributor.getDistribution(a);
+        IMerkleFundDistributor.DistributionState memory db = distributor.getDistribution(b);
+
+        uint256 distributableA = da.amountFunded - da.feeAmount;
+        uint256 distributableB = db.amountFunded - db.feeAmount;
+        // The shared balance must cover the sum of both distributions' distributable amounts.
+        assertGe(fot.balanceOf(address(distributor)), distributableA + distributableB, "pool covers all claims");
+    }
 }
 
 /* ========== MOCK CONTRACTS ========== */
@@ -1441,6 +1576,30 @@ contract MockERC20 is ERC20 {
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+}
+
+/// @notice A fee-on-transfer token that burns `feeBps` of every transfer, like PAXG or an
+///         activated-fee USDT. Used to prove the distributor books received, not requested, amounts.
+contract FeeOnTransferToken is ERC20 {
+    uint256 public immutable feeBps; // out of 10_000
+
+    constructor(uint256 _feeBps) ERC20("Fee Token", "FEE") {
+        feeBps = _feeBps;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0) && feeBps > 0) {
+            uint256 fee = (value * feeBps) / 10_000;
+            super._update(from, address(0xdead), fee); // burn the fee
+            super._update(from, to, value - fee);
+        } else {
+            super._update(from, to, value);
+        }
     }
 }
 

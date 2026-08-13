@@ -1,5 +1,5 @@
 //! Exact byte encodings shared with Solidity. Every function here is golden-tested against
-//! `abi.encode` / `keccak256` / `sha256` in `test/unit/golden/TrustGraphGoldenVectors.t.sol` (PLAN.md §1, WP2).
+//! `abi.encode` / `keccak256` / `sha256` in `test/unit/golden/TrustgraphsGoldenVectors.t.sol` (PLAN.md §1, WP2).
 //!
 //! All tuples we encode are composed of STATIC ABI types (uintN, address, bytes32), so
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather
@@ -141,15 +141,20 @@ pub fn selection_params_hash(sp: &SelectionParams) -> B256 {
 
 /// The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
 /// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
-///             bytes32 signerSetRoot, uint256 targetThreshold)`.
+///             bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
+///
+/// `instanceDomain` is a pass-through the guest copies from its witness, made binding by
+/// `SignerSyncZkModule.submitSignerProof`, which rebuilds the digest with a domain derived from
+/// `address(this)` + `block.chainid` (audit M-3).
 pub fn signer_journal_encoded(j: &SignerJournal) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(32 * 6);
+    let mut buf = Vec::with_capacity(32 * 7);
     buf.extend_from_slice(j.acc.as_slice());
     buf.extend_from_slice(&word_u64(j.leaf_count));
     buf.extend_from_slice(j.params_hash.as_slice());
     buf.extend_from_slice(j.selection_params_hash.as_slice());
     buf.extend_from_slice(j.signer_set_root.as_slice());
     buf.extend_from_slice(&word_u256(j.target_threshold));
+    buf.extend_from_slice(j.instance_domain.as_slice());
     buf
 }
 

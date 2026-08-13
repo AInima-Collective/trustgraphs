@@ -8,7 +8,7 @@ import { useAccount, useChainId, useReadContract, useSwitchChain } from 'wagmi'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
-import { trustGraphFactoryAbi } from '@/lib/contract-abis'
+import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
 import { cn } from '@/lib/utils'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
@@ -63,7 +63,7 @@ export const CreateNetworkWizard = () => {
 
   const { data: epochFloorRead } = useReadContract({
     address: FACTORY_ADDRESS,
-    abi: trustGraphFactoryAbi,
+    abi: trustgraphsFactoryAbi,
     functionName: 'EPOCH_FLOOR',
     query: { enabled: isFactoryAvailable() },
   })
@@ -83,7 +83,7 @@ export const CreateNetworkWizard = () => {
       buildCreateArgs({
         data,
         metadataURI: metadataUri,
-        // GovernedTrustGraphFactory replaces this with the new DAO Safe. Keeping zero here makes
+        // GovernedTrustgraphsFactory replaces this with the new DAO Safe. Keeping zero here makes
         // it impossible for review copy or a future caller to mistake the connected EOA for the
         // lasting network authority.
         admin: zeroAddress as Hex,

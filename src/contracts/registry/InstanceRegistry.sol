@@ -18,7 +18,7 @@ contract InstanceRegistry is IInstanceRegistry, AccessControl {
     /// @notice May UPDATE (rewrite) an existing instance record; held by the operational timelock.
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
 
-    /// @notice May REGISTER new instances only. Held by `TrustGraphFactory`, so that creating a
+    /// @notice May REGISTER new instances only. Held by `TrustgraphsFactory`, so that creating a
     ///         network is permissionless through the factory while rewriting history is not.
     /// @dev    Split out from `OPERATOR_ROLE` because the two are not the same privilege and the
     ///         difference is the factory's entire blast radius. A single role would mean granting

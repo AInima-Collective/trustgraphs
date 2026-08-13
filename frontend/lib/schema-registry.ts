@@ -14,7 +14,7 @@ import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_SEED_NETWORKS } from './config'
 import { NetworkSchema } from './types'
 
 // It used to be a `const` built from the static network list at import time, which meant a network
-// created through `TrustGraphFactory` could not be attested to until somebody rebuilt the app. It
+// created through `TrustgraphsFactory` could not be attested to until somebody rebuilt the app. It
 // is a registry the runtime catalog writes into:
 //   - `contexts/CatalogContext` registers every catalog network's schema on load and refresh;
 //   - `contexts/NetworkContext` registers the schemas of the network it is rendering, so a page

@@ -67,14 +67,16 @@ cd ../..
 Build the signer input, validate, then run the loop:
 
 ```bash
-# Reconstruct the SignerInput (GuestInput + selection) from chain:
+# Reconstruct the SignerInput (GuestInput + selection + instanceDomain) from chain:
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
   --checkpoint $CHECKPOINT_ID --params params.json \
-  --signer --selection selection.json
+  --signer --selection selection.json --module $SIGNER_SYNC_MODULE
 # (writes .trustgraph/signer-sync/signer_input.json; override with --out)
-# No --snapshot here: a SignerInput carries no journal-v3 bindings. SignerSyncZkModule pays no
-# bounty and there is one module per trust instance, so neither word has anything to separate.
+# --module is REQUIRED (audit M-3): it is half of the instanceDomain journal word that
+# submitSignerProof rebuilds from address(this) + block.chainid, so an input exported without it
+# proves nothing any module will accept. No --snapshot / --recipient here: the signer journal
+# carries no bounty word (SignerSyncZkModule pays none).
 
 cd zk/prover
 SP1_PROVER=cpu cargo run --release -- signer execute ../../.trustgraph/signer-sync/signer_input.json   # guest == native (no proof)
@@ -93,7 +95,10 @@ cast send $SIGNER_SYNC_MODULE \
 ```
 
 `submitSignerProof` rebuilds the signer journal digest from the chain-pinned checkpoint + stored
-`paramsHash`/`selectionParamsHash` + the submitted `signerSetRoot`/`targetThreshold`, verifies, then
+`paramsHash`/`selectionParamsHash` + the submitted `signerSetRoot`/`targetThreshold` + an
+`instanceDomain = keccak256(abi.encode(address(this), block.chainid))` it derives itself (audit
+M-3 — a proof made for one module cannot be replayed against a same-params sibling or a mirrored
+deployment on another chain), verifies, then
 diffs the proven set against the Safe's **live** owner linked list on-chain (correct `prevOwner`
 pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/remove/swap). Signer guest
 cost ≈ **1.85M cycles**.
@@ -101,6 +106,23 @@ cost ≈ **1.85M cycles**.
 The selection rule (`topN` / `minThreshold` / `targetThresholdBps`) is governance-pinned as
 `selectionParamsHash` — set it at deploy (`SELECTION_PARAMS_HASH`) or later via the module owner's
 `setSelectionParamsHash`.
+
+## Rotating the signer vkey (guest change runbook)
+
+Any change to the signer guest — including a change to `pagerank-core` it compiles in — rotates the
+signer program vkey. The 2026-08-13 M-3 fix (instanceDomain journal word) is such a rotation. The
+sequence, per the batching rule (one rotation per program, all guest edits grouped):
+
+1. Land every signer-guest-affecting change in one batch; regenerate the golden vectors
+   (`cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json`) in the
+   same commit and confirm guest==native (`signer execute`), Solidity
+   (`SignerGoldenVectors.t.sol`), and the frontend TS golden test are all green.
+2. `cargo run --release -- signer vkey` → the new `SP1_SIGNER_PROGRAM_VKEY`.
+3. Deploy a new signer verifier: `SP1JournalVerifier(gateway, newSignerVkey)`.
+4. Point the module at it: `setZkVerifier(newVerifier)` (module owner — the timelock in
+   production). Old proofs (old journal shape / old vkey) stop verifying at that instant.
+5. Re-export inputs (`input-exporter --signer --module …`) and prove with the new guest; record
+   the new vkey in [`networks-and-programs.md`](../../concepts/networks-and-programs.md).
 
 ## Governance
 

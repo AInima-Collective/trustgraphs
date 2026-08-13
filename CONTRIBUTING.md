@@ -6,7 +6,7 @@ System tools + toolchains (Docker, go-task, Node 21+/pnpm, Foundry, Rust, SP1) a
 [`docs/build/setup.md`](./docs/build/setup.md). Then:
 
 ```bash
-task -y setup       # pnpm install + forge install
+task setup          # pnpm install + forge install
 task build:forge
 task zk:build       # the SP1 guest ELFs + the prover host — a separate one-time step
 ```
@@ -52,9 +52,8 @@ Two hard rules inherited from the codebase:
 
 For anything a user reads — the site, UI strings, and the `docs/learn/` pages:
 
-- The brand is **trustgraphs**, lowercase in copy. The unit is **a trustgraph**. Leading
-  cap only in the wordmark and page titles, and wherever it opens a sentence — grammar
-  wins over brand styling there.
+- **trustgraphs** is a generic term, not a brand. Keep it lowercase unless it opens a
+  sentence or title. The singular unit is **a trustgraph**.
 - Short declaratives. No em-dashes.
 - Say "vouch" to a newcomer, "attestation" once you've defined it. Never lead with
   PageRank, merkle roots, SP1, or epochs. Those belong in the developer docs.

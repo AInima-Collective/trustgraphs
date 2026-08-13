@@ -31,7 +31,8 @@ use zk_core::words::{word_addr, word_u256, word_u64, word_u8};
 use crate::ecdsa::{eip191_digest32, recover_address};
 use crate::{AuthedEdge, EnvelopeError};
 
-/// Domain tag for the head signature: `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")`.
+/// Frozen v1 domain tag for head signatures. The pre-rename bytes remain part of the protocol:
+/// `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")`.
 pub fn head_domain_tag() -> B256 {
     keccak256(b"TRUSTGRAPH_ENVELOPE0_HEAD_V1")
 }
@@ -180,11 +181,15 @@ pub fn address_node_id(owner: Address) -> B256 {
 /// Verify one anchored envelope-0 head: either the COMPLETE authenticated live edge set
 /// behind `head`, or an error (which the program crate converts into a rule-Φ skip).
 ///
-/// `now` is the head's anchor block timestamp (witnessed on-chain data, pinned by
-/// `anchorAcc`) — used only for the deterministic expiration rule.
+/// `count` is the ANCHORED count (pinned by `anchorAcc`); the witnessed log must have exactly
+/// that length and the owner's head signature must cover `(head, count)` — so a lied-about
+/// anchored count can never verify (H-5). `now` is the head's anchor block timestamp
+/// (witnessed on-chain data, pinned by `anchorAcc`) — used only for the deterministic
+/// expiration rule.
 pub fn verify(
     node_id: B256,
     head: B256,
+    count: u64,
     now: u64,
     config: &Envelope0Config,
     witness: &Envelope0Witness,
@@ -194,13 +199,17 @@ pub fn verify(
         return Err(EnvelopeError::Malformed);
     }
 
-    // 2. Completeness: the witnessed log must re-fold to the anchored head.
+    // 2. Completeness: the witnessed log must re-fold to the anchored head, at exactly the
+    //    anchored count (H-5: the count is part of the anchored claim, not prover-chosen).
+    if witness.entries.len() as u64 != count {
+        return Err(EnvelopeError::CountMismatch);
+    }
     if log_head(&witness.entries) != head {
         return Err(EnvelopeError::HeadMismatch);
     }
 
     // 3. The owner authorized exactly this head at exactly this length.
-    let payload = head_payload(head, witness.entries.len() as u64);
+    let payload = head_payload(head, count);
     let signer = recover_address(&eip191_digest32(&payload), &witness.head_signature)
         .map_err(|_| EnvelopeError::BadHeadSignature)?;
     if signer != witness.owner {
@@ -394,7 +403,7 @@ mod tests {
             LogEntry { kind: ENTRY_REVOKE, uid: u1 },
         ];
         let (head, w) = witness_for(&sk, owner, entries, vec![a1, a2]);
-        let edges = verify(address_node_id(owner), head, 2000, &cfg, &w).unwrap();
+        let edges = verify(address_node_id(owner), head, 3, 2000, &cfg, &w).unwrap();
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].uid, u2);
         assert_eq!(edges[0].attester, owner);
@@ -409,7 +418,7 @@ mod tests {
         let (head, mut w) = witness_for(&sk, owner, entries, vec![a1]);
         w.entries[0].uid = B256::from([0xEE; 32]); // withhold the real entry
         assert_eq!(
-            verify(address_node_id(owner), head, 0, &cfg, &w),
+            verify(address_node_id(owner), head, w.entries.len() as u64, 0, &cfg, &w),
             Err(EnvelopeError::HeadMismatch)
         );
     }
@@ -422,7 +431,7 @@ mod tests {
         let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid: u1 }];
         let (head, w) = witness_for(&sk, owner, entries, vec![a1]);
         assert_eq!(
-            verify(address_node_id(owner), head, 0, &cfg, &w),
+            verify(address_node_id(owner), head, w.entries.len() as u64, 0, &cfg, &w),
             Err(EnvelopeError::BadEdgeSignature)
         );
     }
@@ -442,7 +451,7 @@ mod tests {
             head_signature: sign_prehash(&intruder, &eip191_digest32(&payload)),
         };
         assert_eq!(
-            verify(address_node_id(owner), head, 0, &cfg, &w),
+            verify(address_node_id(owner), head, w.entries.len() as u64, 0, &cfg, &w),
             Err(EnvelopeError::BadHeadSignature)
         );
     }
@@ -458,9 +467,31 @@ mod tests {
         let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid: u1 }];
         let (head, w) = witness_for(&sk, owner, entries, vec![a1]);
         // now past expiry: excluded
-        assert!(verify(address_node_id(owner), head, 1600, &cfg, &w).unwrap().is_empty());
+        assert!(verify(address_node_id(owner), head, 1, 1600, &cfg, &w).unwrap().is_empty());
         // now before expiry: included
-        assert_eq!(verify(address_node_id(owner), head, 1400, &cfg, &w).unwrap().len(), 1);
+        assert_eq!(verify(address_node_id(owner), head, 1, 1400, &cfg, &w).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn anchored_count_mismatch_rejected() {
+        // H-5: a head can only verify at the exact length its owner co-signed. An anchored
+        // count that differs from the witnessed log length is rejected BEFORE any signature
+        // work — a lied-about ingress count can never validate.
+        let (sk, owner, ds, cfg) = setup();
+        let (a1, u1) = make_att(&sk, ds, cfg.schema_uid, 2, 50, 1);
+        let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid: u1 }];
+        let (head, w) = witness_for(&sk, owner, entries, vec![a1]);
+        // True count is 1; both a higher and a zero anchored count must fail.
+        assert_eq!(
+            verify(address_node_id(owner), head, 2, 0, &cfg, &w),
+            Err(EnvelopeError::CountMismatch)
+        );
+        assert_eq!(
+            verify(address_node_id(owner), head, 0, 0, &cfg, &w),
+            Err(EnvelopeError::CountMismatch)
+        );
+        // At the exact signed count it verifies.
+        assert_eq!(verify(address_node_id(owner), head, 1, 0, &cfg, &w).unwrap().len(), 1);
     }
 
     #[test]
@@ -469,7 +500,7 @@ mod tests {
         let entries = vec![LogEntry { kind: ENTRY_REVOKE, uid: B256::from([0x99; 32]) }];
         let (head, w) = witness_for(&sk, owner, entries, vec![]);
         assert_eq!(
-            verify(address_node_id(owner), head, 0, &cfg, &w),
+            verify(address_node_id(owner), head, w.entries.len() as u64, 0, &cfg, &w),
             Err(EnvelopeError::RevokeUnknownUid)
         );
     }

@@ -48,7 +48,7 @@ contract EASIndexerResolver is SchemaResolver, AttestationAccumulator {
     ///      owner would be one more thing to lose. Until it is bound the resolver accepts
     ///      everything, exactly as before, so the deployment sequence
     ///      (deploy resolver → register schema → bind) is unchanged apart from the last step.
-    ///      `TrustGraphFactory` does all three in one transaction, leaving no unbound window.
+    ///      `TrustgraphsFactory` does all three in one transaction, leaving no unbound window.
     function bindSchema(bytes32 schemaUid) external {
         if (boundSchema != bytes32(0) || schemaUid == bytes32(0)) revert SchemaAlreadyBound();
         boundSchema = schemaUid;

@@ -1,13 +1,13 @@
-# Private TrustGraph — A Privacy Architecture
+# Private trustgraphs — A Privacy Architecture
 
-**Status:** ⏸️ **Deferred (was Phase E of the offchain-attestations build plan).** Design proposal / research synthesis, highly experimental like the rest of TrustGraph.
-**Scope:** How to take TrustGraph from "transparent by construction" to "private by construction" without throwing away the WAVS + EAS + Merkle architecture that already works.
+**Status:** ⏸️ **Deferred (was Phase E of the offchain-attestations build plan).** Design proposal / research synthesis, highly experimental like the rest of trustgraphs.
+**Scope:** How to take trustgraphs from "transparent by construction" to "private by construction" without throwing away the WAVS + EAS + Merkle architecture that already works.
 
 ---
 
 ## 1. Executive summary
 
-TrustGraph today has a strong **integrity** boundary and **no confidentiality** boundary. Operator staking and an on-chain Merkle root guarantee that scores were computed correctly, but every input and output is public: who vouched for whom, the confidence weight on each vouch, the free-text comment, every per-account reputation score, and every governance vote. The frontend even ships the entire weighted graph to the browser to recompute PageRank client-side.
+Trustgraphs today has a strong **integrity** boundary and **no confidentiality** boundary. Operator staking and an on-chain Merkle root guarantee that scores were computed correctly, but every input and output is public: who vouched for whom, the confidence weight on each vouch, the free-text comment, every per-account reputation score, and every governance vote. The frontend even ships the entire weighted graph to the browser to recompute PageRank client-side.
 
 The hard constraint is structural: **Trust-Aware PageRank is a global function of the entire edge set.** It needs the whole weighted adjacency matrix in cleartext to run. But that graph — who trusts whom, and how much — is exactly the asset we want to protect. So the only real design lever is: *who is allowed to see the plaintext graph during computation, and for how long?*
 
@@ -18,13 +18,13 @@ This document proposes a layered architecture that:
 3. **Keeps every output verifiable** (Merkle root + correctness proof) so privacy does not cost us integrity.
 4. **Makes consumption private**: prove "my reputation ≥ threshold" without revealing identity or score, and vote anonymously with reputation-weighted, coercion-resistant ballots.
 
-The proposal leans on a capability TrustGraph's WAVS branch already has: **commonware threshold cryptography** (BLS12-381 DKG, threshold decryption, secret resharing) wired into an authenticated operator network with BFT consensus. That turns the historically hardest part of a private design — standing up and rotating a decryption committee — into an integration job rather than a from-scratch build.
+The proposal leans on a capability trustgraphs' WAVS branch already has: **commonware threshold cryptography** (BLS12-381 DKG, threshold decryption, secret resharing) wired into an authenticated operator network with BFT consensus. That turns the historically hardest part of a private design — standing up and rotating a decryption committee — into an integration job rather than a from-scratch build.
 
 This work is phased so that the **highest-value, lowest-risk fixes ship first** (close the public-graph leak; private reputation proofs) and the **research-grade pieces** (fully secret-shared PageRank) are scoped as spikes, not blockers.
 
 ---
 
-## 2. Background: how TrustGraph works today
+## 2. Background: how trustgraphs works today
 
 | Stage | Where | What happens |
 |---|---|---|
@@ -237,7 +237,7 @@ PageRank propagates rank along a node's **outgoing** edges, so the **attester id
 
 Build the baseline as **encrypted attestations → quorum-gated confidential compute → verifiable Merkle/Poseidon commitment → ZK private consumption**, using **commonware threshold cryptography** as the committee/decryption backbone and the **existing WAVS + EAS + Merkle pipeline** as the skeleton.
 
-Sequence it so the cheap, high-impact work lands first: **Phase 0 (close the public-graph leak) and Phase 1 (private reputation proofs + private voting)** give TrustGraph genuine privacy with off-the-shelf tooling and no change to PageRank. Layer in the **commonware threshold committee (Phase 2)** to distribute confidentiality and unlock Interfold-style private tallies, then **TEE/zkVM (Phase 3)** for confidential, trustless computation. Treat **end-to-end secret-shared PageRank (Phase 4)** as a research spike that the commonware substrate now makes investigable for the first time.
+Sequence it so the cheap, high-impact work lands first: **Phase 0 (close the public-graph leak) and Phase 1 (private reputation proofs + private voting)** give trustgraphs genuine privacy with off-the-shelf tooling and no change to PageRank. Layer in the **commonware threshold committee (Phase 2)** to distribute confidentiality and unlock Interfold-style private tallies, then **TEE/zkVM (Phase 3)** for confidential, trustless computation. Treat **end-to-end secret-shared PageRank (Phase 4)** as a research spike that the commonware substrate now makes investigable for the first time.
 
 ---
 

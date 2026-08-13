@@ -283,6 +283,8 @@ mod lane2_compute {
                     node_id: eas_offchain::address_node_id(owner),
                     envelope_kind: 0,
                     head,
+                    // H-5: the anchored count must equal the log length the owner co-signed.
+                    count: 1,
                     data_commitment: B256::ZERO,
                     block_timestamp: 1000,
                 }],
@@ -319,6 +321,7 @@ mod lane2_compute {
                     node_id: node,
                     envelope_kind: 0,
                     head: B256::from([0x44; 32]),
+                    count: 0,
                     data_commitment: B256::ZERO,
                     block_timestamp: 1000,
                 }],
@@ -342,5 +345,141 @@ mod lane2_compute {
         // And the digest is reproducible from first principles (fold of one skip leaf).
         let leaf = skip_leaf(&SkipEntry { node_id: node, reason: 2, epoch_observed: 1000 });
         assert_eq!(r.journal.skipped_digest, fold(B256::ZERO, leaf));
+    }
+
+    /// Build a signed envelope-0 witness for an arbitrary entry list (each ATTEST gets a real
+    /// EIP-712-signed attestation; the head signature covers the exact log length).
+    fn signed_log(
+        sk: &SigningKey,
+        ds: B256,
+        schema: B256,
+        specs: &[(u8, u8, u64)], // (kind, recipient-or-attest-index, confidence)
+    ) -> (Envelope0Witness, B256, u64) {
+        use envelopes::eas_offchain::ENTRY_REVOKE;
+        let mut entries: Vec<LogEntry> = Vec::new();
+        let mut attestations: Vec<OffchainAttestation> = Vec::new();
+        let mut uids: Vec<B256> = Vec::new();
+        for (i, (kind, arg, conf)) in specs.iter().enumerate() {
+            if *kind == ENTRY_ATTEST {
+                let mut data = vec![0u8; 64];
+                data[32..].copy_from_slice(&U256::from(*conf).to_be_bytes::<32>());
+                let mut a = OffchainAttestation {
+                    version: 2,
+                    schema,
+                    recipient: addr(*arg),
+                    time: 500 + i as u64,
+                    expiration_time: 0,
+                    revocable: true,
+                    ref_uid: B256::ZERO,
+                    data,
+                    salt: B256::from([i as u8 + 1; 32]),
+                    signature: vec![],
+                };
+                a.signature = sign_prehash(sk, &eip712_digest(ds, attest_struct_hash(&a)));
+                let uid = offchain_uid_v2(&a);
+                entries.push(LogEntry { kind: ENTRY_ATTEST, uid });
+                uids.push(uid);
+                attestations.push(a);
+            } else {
+                entries.push(LogEntry { kind: ENTRY_REVOKE, uid: uids[*arg as usize] });
+            }
+        }
+        let head = eas_offchain::log_head(&entries);
+        let count = entries.len() as u64;
+        let head_signature = sign_prehash(sk, &eip191_digest32(&head_payload(head, count)));
+        (Envelope0Witness { owner: eth_addr(sk), entries, attestations, head_signature }, head, count)
+    }
+
+    /// H-5 regression: a third party re-anchors the victim's STALE pre-revocation head (whose
+    /// signature is still valid) AFTER the post-revocation head. Pre-fix, rule Φ ranked by
+    /// anchor order and the stale head became "newest" — resurrecting the revoked edge with no
+    /// skip recorded. Post-fix, heads rank by their owner-signed count: the stale head is never
+    /// consumable, the revoked edge stays dead, and a prover withholding the newest head's data
+    /// fails closed to a DROPPED skip.
+    #[test]
+    fn h5_reanchored_stale_head_cannot_resurrect_revoked_edges() {
+        use envelopes::eas_offchain::ENTRY_REVOKE;
+        let ds = keccak256(b"test-domain");
+        let params = lane2_params(ds);
+        let sk = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
+        let owner = eth_addr(&sk);
+        let node_id = eas_offchain::address_node_id(owner);
+
+        // The owner's real history: attest → attest → revoke the first. The pre-revocation
+        // prefix (count 2) is a head the owner genuinely signed earlier.
+        let (w_stale, head_stale, count_stale) =
+            signed_log(&sk, ds, params.schema_uid, &[(ENTRY_ATTEST, 8, 50), (ENTRY_ATTEST, 9, 60)]);
+        let (w_current, head_current, count_current) = signed_log(
+            &sk,
+            ds,
+            params.schema_uid,
+            &[(ENTRY_ATTEST, 8, 50), (ENTRY_ATTEST, 9, 60), (ENTRY_REVOKE, 0, 0)],
+        );
+        assert_eq!(count_stale, 2);
+        assert_eq!(count_current, 3);
+
+        // Anchor log: the current head first, then the ATTACKER re-anchors the stale head
+        // LATER (higher fold index + newer timestamp = pre-fix "newest").
+        let anchors = vec![
+            AnchorRecord {
+                node_id,
+                envelope_kind: 0,
+                head: head_current,
+                count: count_current,
+                data_commitment: B256::ZERO,
+                block_timestamp: 1000,
+            },
+            AnchorRecord {
+                node_id,
+                envelope_kind: 0,
+                head: head_stale,
+                count: count_stale,
+                data_commitment: B256::ZERO,
+                block_timestamp: 2000,
+            },
+        ];
+
+        // Case 1: honest prover supplies the CURRENT head's witness. The stale re-anchor is
+        // ignored (below-max count), the current head is consumed with no skip, and the
+        // revoked edge (owner -> 0x08) stays dead.
+        let r = compute(&GuestInput {
+            edges: vec![edge(1, 2, 1, 100, 50)],
+            params: params.clone(),
+            lane2: Some(Lane2Witness {
+                anchors: anchors.clone(),
+                envelopes: vec![w_current],
+            }),
+            binding: Default::default(),
+        });
+        let scored: Vec<Address> = r.scores.iter().map(|(a, _)| *a).collect();
+        assert!(scored.contains(&addr(9)), "surviving lane-2 edge must score its recipient");
+        assert!(
+            !scored.contains(&addr(8)),
+            "REGRESSION: revoked edge resurrected by a re-anchored stale head"
+        );
+        assert_eq!(r.journal.skipped_digest, B256::ZERO, "newest-by-count consumed: no skip");
+
+        // Case 2: adversarial prover supplies ONLY the stale head's witness (withholding the
+        // current one). The stale head is still not consumable — the node fails closed to a
+        // DROPPED skip instead of resurrecting the pre-revocation set.
+        let r2 = compute(&GuestInput {
+            edges: vec![edge(1, 2, 1, 100, 50)],
+            params,
+            lane2: Some(Lane2Witness { anchors, envelopes: vec![w_stale] }),
+            binding: Default::default(),
+        });
+        let scored2: Vec<Address> = r2.scores.iter().map(|(a, _)| *a).collect();
+        assert!(
+            !scored2.contains(&addr(8)) && !scored2.contains(&addr(9)),
+            "REGRESSION: stale head consumed under withholding"
+        );
+        let expected = skipped_digest(&[SkipEntry {
+            node_id,
+            reason: skip_reason::DROPPED,
+            // Bookkept at the newest MAX-COUNT anchor's timestamp (the head that should have
+            // been consumed), not the attacker's re-anchor timestamp.
+            epoch_observed: 1000,
+        }]);
+        assert_eq!(r2.journal.skipped_digest, expected, "withheld newest must be a DROPPED skip");
     }
 }

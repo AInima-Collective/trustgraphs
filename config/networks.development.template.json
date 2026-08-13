@@ -5,10 +5,10 @@
     "link": {
       "prefix": "Learn more:",
       "label": "trustgraphs demo guide",
-      "href": "https://github.com/JakeHartnell/ZkTrustGraph/blob/main/docs/build/quickstart.md"
+      "href": "https://github.com/JakeHartnell/trustgraphs/blob/main/docs/build/quickstart.md"
     },
     "about": "Demo Co-op is a fictional member-owned collective that shows the complete trustgraphs workflow in one place. Members build a trust network from first-hand collaboration, use their resulting scores to govern a shared Safe, distribute funds, and evaluate contributions in a dedicated funding round.",
-    "applicationUrl": "https://github.com/JakeHartnell/ZkTrustGraph/issues/new?title=Demo%20Co-op%20application",
+    "applicationUrl": "https://github.com/JakeHartnell/trustgraphs/issues/new?title=Demo%20Co-op%20application",
     "criteria": "A vouch in Demo Co-op means you have worked directly with the recipient and trust them to help steward a shared community. Attest only when you can stand behind all of the following:\n\n- **First-hand experience**: you have collaborated with this person or seen their work up close.\n- **Reliable contribution**: they follow through, communicate clearly, and add useful work to the co-op.\n- **Cooperative judgment**: you trust them to make decisions and handle shared resources in the community's interest.\n- **Accountability**: they respond constructively to feedback and take responsibility when something goes wrong.\n\nThe confidence score expresses how strongly your direct experience supports the vouch. Do not attest from reputation alone, and revoke your attestation if it no longer reflects your judgment.",
     "contracts": {
       "merkleSnapshot": "",

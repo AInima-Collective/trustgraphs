@@ -6,15 +6,15 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
-import {TrustGraphParamsValidator} from "contracts/params/TrustGraphParamsValidator.sol";
-import {ITrustGraphParamsController} from "interfaces/factory/ITrustGraphParamsController.sol";
+import {TrustgraphsParamsValidator} from "contracts/params/TrustgraphsParamsValidator.sol";
+import {ITrustgraphsParamsController} from "interfaces/factory/ITrustgraphsParamsController.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
-/// @title TrustGraphParamsController
+/// @title TrustgraphsParamsController
 /// @notice Publishes complete, validated parameter versions and coordinates their live hash.
 /// @dev The snapshot remains program-agnostic. This typed controller is its sole operational-role
 ///      holder for factory-created trust graphs, while an EOA, Safe, or timelock owns this contract.
-contract TrustGraphParamsController is ITrustGraphParamsController, Ownable2Step {
+contract TrustgraphsParamsController is ITrustgraphsParamsController, Ownable2Step {
     bytes32 public immutable instanceId;
     address public immutable snapshot;
     IInstanceRegistry public immutable registry;
@@ -48,7 +48,7 @@ contract TrustGraphParamsController is ITrustGraphParamsController, Ownable2Step
     ) Ownable(initialOwner) {
         if (snapshot_ == address(0) || address(registry_) == address(0) || initialPublisher_ == address(0)) revert ZeroAddress();
 
-        TrustGraphParamsValidator.validateFinal(initialParams);
+        TrustgraphsParamsValidator.validateFinal(initialParams);
         bytes32 encoded = ParamsCodec.hash(initialParams);
         bytes32 live = MerkleSnapshot(snapshot_).paramsHash();
         if (encoded != live) revert InitialHashMismatch(encoded, live);
@@ -84,7 +84,7 @@ contract TrustGraphParamsController is ITrustGraphParamsController, Ownable2Step
     {
         if (!versionOnePublished) revert InitialVersionNotPublished();
         ParamsCodec.Params memory nextMemory = next;
-        TrustGraphParamsValidator.validateUpdate(nextMemory, _initialParams);
+        TrustgraphsParamsValidator.validateUpdate(nextMemory, _initialParams);
 
         bytes32 previousHash = currentParamsHash;
         newHash = ParamsCodec.hash(nextMemory);

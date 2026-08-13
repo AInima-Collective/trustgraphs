@@ -18,7 +18,7 @@ the existing frontend golden suites pass. The mainnet CCIP-Read integration case
 
 ## Outcome
 
-TrustGraph should ship ENS support, but it should finish and replace parts of the existing ENS
+Trustgraphs should ship ENS support, but it should finish and replace parts of the existing ENS
 path rather than add another resolver.
 
 The central design rule is:
@@ -48,7 +48,7 @@ compatibility, so the installed viem version already has the required protocol s
 
 ### Milestone 1
 
-1. Display a verified OP Mainnet primary name, when one exists, anywhere TrustGraph displays an
+1. Display a verified OP Mainnet primary name, when one exists, anywhere trustgraphs displays an
    account.
 2. Accept an address or ENS name in account-identity fields:
    - attestation recipients;
@@ -70,9 +70,9 @@ represent them.
 
 - Storing names in EAS data, contracts, the Ponder schema, PageRank inputs, or ZK journals.
 - Treating ownership of a name as proof of personhood, uniqueness, or trust.
-- ENS avatars or profile text records. No current TrustGraph screen consumes the avatar data it
+- ENS avatars or profile text records. No current trustgraphs screen consumes the avatar data it
   requests.
-- Registering names, setting reverse records, or issuing TrustGraph subnames.
+- Registering names, setting reverse records, or issuing trustgraphs subnames.
 - Other naming systems. The API below can be generalized later, but the first implementation is
   ENS-specific and should say so.
 
@@ -80,7 +80,7 @@ represent them.
 
 ### Resolution starts on Ethereum mainnet, even for an L2 account
 
-TrustGraph runs on OP Mainnet. ENS resolution must use an Ethereum-mainnet public client, but both
+Trustgraphs runs on OP Mainnet. ENS resolution must use an Ethereum-mainnet public client, but both
 forward and reverse lookups must ask for OP Mainnet's ENSIP-11 coin type:
 
 ```ts
@@ -91,7 +91,7 @@ const accountCoinType = toCoinType(10) // 2147483658n, OP Mainnet
 ```
 
 Passing only wagmi's `chainId: 1` selects where resolution starts; it does **not** select the
-address record TrustGraph wants. The `coinType` selects that record. The Universal Resolver also
+address record trustgraphs wants. The `coinType` selects that record. The Universal Resolver also
 supports the default reverse record as a fallback when a chain-specific primary name is absent.
 
 For local/review fixtures, keep ENS network calls disabled as they are today. If a developer
@@ -123,7 +123,7 @@ Universal Resolver is the canonical entry point and viem 2.38 handles both CCIP 
 batch-gateway protocol. Do not replace this with direct calls to the ENS registry or Public
 Resolver; doing so would silently break valid names and make ENSv2 migration harder.
 
-When resolution runs on a TrustGraph server, do not let arbitrary resolver-supplied URLs become a
+When resolution runs on a trustgraphs server, do not let arbitrary resolver-supplied URLs become a
 general server-side fetch primitive. Use the Universal Resolver's ENS-operated batch gateway (the
 response remains cryptographically verified) or apply an explicit outbound policy. Client-side
 resolution does not create server SSRF, but it does reveal lookups to RPC and CCIP gateway
@@ -385,7 +385,7 @@ With a fake delayed transport and 1,000 graph accounts, assert that:
 
 The changes are frontend-only and can be rolled out behind the existing address fallback. A
 resolver outage therefore degrades read-only pages to the current address UI without affecting
-TrustGraph's protocol or score availability.
+Trustgraphs' protocol or score availability.
 
 ## Sources
 

@@ -10,21 +10,21 @@ import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contr
 import {SchemaRecord} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {EASIndexerResolver} from "contracts/eas/resolvers/EASIndexerResolver.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
-import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
+import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
-/// @title TrustGraphFactoryReviewTest
+/// @title TrustgraphsFactoryReviewTest
 /// @notice Regression suite for the M6 security review. Every test here began as a working proof of
 ///         concept against the pre-fix code; each now asserts that the hole is closed. The attack
 ///         setup is kept verbatim on purpose — these are the exact transactions an attacker sends,
 ///         and they must keep failing, for the stated reason.
-contract TrustGraphFactoryReviewTest is TrustGraphFactoryBase {
+contract TrustgraphsFactoryReviewTest is TrustgraphsFactoryBase {
     address internal attacker = address(0xBAD);
     address internal member = address(0x11);
     address internal peer = address(0x22);

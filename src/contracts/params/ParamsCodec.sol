@@ -4,7 +4,7 @@ pragma solidity ^0.8.22;
 /// @title ParamsCodec
 /// @notice On-chain encoder for the governance-pinned PageRank `paramsHash`, byte-identical to
 ///         `pagerank-core::encode::params_hash` (Rust) and `frontend/lib/pagerank` (TS). The three
-///         encodings are locked together by `test/unit/golden/TrustGraphGoldenVectors.t.sol`, which asserts this
+///         encodings are locked together by `test/unit/golden/TrustgraphsGoldenVectors.t.sol`, which asserts this
 ///         library reproduces the golden vector exported from `pagerank-core`.
 /// @dev    `paramsHash` is `keccak256(abi.encode(...17 static fields...))`. Because every field is a
 ///         static ABI type, `abi.encode` is just the concatenation of 32-byte words — the same bytes

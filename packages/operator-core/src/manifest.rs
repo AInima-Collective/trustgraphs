@@ -75,7 +75,7 @@ impl ManifestEntry {
         if self.program == Program::Signer && self.selection.is_none() {
             return Err(ManifestError::SignerNeedsSelection);
         }
-        if matches!(self.program, Program::TrustGraph | Program::Contributions)
+        if matches!(self.program, Program::Trustgraphs | Program::Contributions)
             && self.eas.is_none()
         {
             return Err(ManifestError::NeedsEas(self.program));

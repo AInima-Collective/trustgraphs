@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Program {
-    TrustGraph,
+    // This is a deployed program id and a persisted manifest value. Renaming the Rust variant must
+    // not change the wire string.
+    #[serde(rename = "trust-graph")]
+    Trustgraphs,
     Contributions,
     Hypercerts,
     Signer,
@@ -26,7 +29,7 @@ impl Program {
 
     pub fn name(self) -> &'static str {
         match self {
-            Program::TrustGraph => "trust-graph",
+            Program::Trustgraphs => "trust-graph",
             Program::Contributions => "contributions",
             Program::Hypercerts => "hypercerts",
             Program::Signer => "signer-sync",
@@ -34,7 +37,7 @@ impl Program {
     }
 
     pub fn from_id(id: B256) -> Option<Self> {
-        [Program::TrustGraph, Program::Contributions, Program::Hypercerts, Program::Signer]
+        [Program::Trustgraphs, Program::Contributions, Program::Hypercerts, Program::Signer]
             .into_iter()
             .find(|p| p.id() == id)
     }
@@ -49,13 +52,27 @@ impl Program {
         match self {
             // Lane 2 only matters when an anchor registry is wired; when it is not, the
             // checkpoint's lane-2 slot is the constant zero pair and comparing it is harmless.
-            Program::TrustGraph => Lanes { lane1: true, lane2: true },
+            Program::Trustgraphs => Lanes { lane1: true, lane2: true },
             // Slot A = trust (mirrored), slot B = contributions. Both move independently.
             Program::Contributions => Lanes { lane1: true, lane2: true },
             // Lane 1 is the EmptyLaneAccumulator: constant (0, 0) forever.
             Program::Hypercerts => Lanes { lane1: false, lane2: true },
             Program::Signer => Lanes { lane1: true, lane2: false },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Program;
+
+    #[test]
+    fn trustgraphs_variant_keeps_the_deployed_program_name() {
+        assert_eq!(serde_json::to_string(&Program::Trustgraphs).unwrap(), r#""trust-graph""#);
+        assert_eq!(
+            serde_json::from_str::<Program>(r#""trust-graph""#).unwrap(),
+            Program::Trustgraphs
+        );
     }
 }
 

@@ -30,7 +30,7 @@ export async function generateMetadata({
   return {
     title,
     ...socialCard({
-      title: `${title} | Trustgraphs`,
+      title: `${title} | trustgraphs`,
       description: 'See your settled share and claim the money you earned.',
       path: `/networks/${id}/claim`,
     }),

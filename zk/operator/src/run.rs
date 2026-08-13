@@ -24,7 +24,7 @@ use crate::handlers;
 use crate::ops::{
     alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
 };
-use crate::tx::{await_receipt, Sender};
+use crate::tx::Sender;
 
 /// What one proof of this instance is expected to cost us, in cents.
 ///
@@ -42,7 +42,7 @@ fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
 
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
 fn supported() -> BTreeSet<Program> {
-    BTreeSet::from([Program::TrustGraph, Program::Contributions, Program::Signer])
+    BTreeSet::from([Program::Trustgraphs, Program::Contributions, Program::Signer])
 }
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
@@ -114,6 +114,16 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // tick: three identical full scans a minute, for a list that grows by a row a week.
     let mut scan = RegistryScan::default();
 
+    // M-9 (2026-08-13 audit): reorg detection needs a memory. `seen_anchors` records the block
+    // hash each checkpoint was FIRST observed at, so a later tick can compare the canonical
+    // chain against that observation instead of against itself. `pending_settles` holds
+    // successful submits until their block has N confirmations — only then is `Settled{Landed}`
+    // journaled, so a reorged-out submit re-plans (the proof is still held) instead of wedging
+    // the journal behind manual surgery. Both are per-run: a restart re-reads the live chain,
+    // which is a fresh observation.
+    let mut seen_anchors: BTreeMap<(B256, u64), Anchor> = BTreeMap::new();
+    let mut pending_settles: BTreeMap<WorkKey, Anchor> = BTreeMap::new();
+
     let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
@@ -129,8 +139,18 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     }
 
     loop {
-        match tick(&cfg, &rpc, chain_id, sender.as_ref(), &mut journal, &mut scan, &logger, dry_run)
-        {
+        match tick(
+            &cfg,
+            &rpc,
+            chain_id,
+            sender.as_ref(),
+            &mut journal,
+            &mut scan,
+            &mut seen_anchors,
+            &mut pending_settles,
+            &logger,
+            dry_run,
+        ) {
             Ok(()) => {}
             Err(e) => {
                 // A failed tick is not a failed daemon: the next one re-reads everything from
@@ -154,12 +174,51 @@ fn tick(
     sender: Option<&Sender>,
     journal: &mut Journal,
     scan: &mut RegistryScan,
+    seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
+    pending_settles: &mut BTreeMap<WorkKey, Anchor>,
     logger: &Logger,
     dry_run: bool,
 ) -> Result<()> {
     let head = rpc.block_number()?;
     let basefee = rpc.basefee()?;
     let manifest = cfg.manifest_struct();
+
+    // M-9: judge each unconfirmed submit against the canonical chain. Final → journal
+    // `Settled{Landed}` now (and only now). Reorged → drop it, alert, and let `plan` re-submit
+    // the held proof. Pending → keep waiting.
+    let mut resolved: Vec<WorkKey> = Vec::new();
+    for (key, anchor) in pending_settles.iter() {
+        let live = rpc.block_hash(anchor.block_number).ok().flatten();
+        match anchor.finality(head, cfg.finality.confirmations, live) {
+            Finality::Final => {
+                journal.append(Record::Settled { key: *key, outcome: Outcome::Landed, at: now() })?;
+                logger.event(
+                    "submit_confirmed",
+                    json!({
+                        "instance": format!("{:#x}", key.instance_id),
+                        "checkpoint": key.checkpoint_id,
+                        "block": anchor.block_number,
+                        "confirmations": cfg.finality.confirmations,
+                    }),
+                );
+                resolved.push(*key);
+            }
+            Finality::Reorged { expected, canonical } => {
+                let text = format!(
+                    "submit for checkpoint {} of {:#x} was REORGED OUT (block {} was {expected:#x}, \
+                     chain now has {canonical:#x}); the held proof will be resubmitted",
+                    key.checkpoint_id, key.instance_id, anchor.block_number
+                );
+                logger.event("submit_reorged", json!({ "detail": text }));
+                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                resolved.push(*key);
+            }
+            Finality::Pending { .. } => {}
+        }
+    }
+    for key in resolved {
+        pending_settles.remove(&key);
+    }
 
     // Once per tick, not once per program.
     scan.refresh(rpc, cfg.registry, cfg.registry_from_block, head)?;
@@ -202,7 +261,7 @@ fn tick(
             // being copied from the chain read.
             let ours = vkeys.get(&program).copied();
             let state = match build_state(
-                rpc, cfg, chain_id, program, entry, head, basefee, journal, ours,
+                rpc, cfg, chain_id, program, entry, head, basefee, journal, ours, seen_anchors,
             ) {
                 Ok(s) => s,
                 Err(e) => {
@@ -213,6 +272,36 @@ fn tick(
                     continue;
                 }
             };
+
+            // H-4 (2026-08-13 audit): the accumulator only ever grows — attestations AND
+            // revocations both append a leaf, anchors append forever, and the chained hash
+            // cannot be trimmed. Past MAX_PRICED_INPUTS the root is unprovable (cycle refusal)
+            // and unpaid (vault band 0) PERMANENTLY, so approaching the cliff must be a loud
+            // operational event long before it is a fact. 80% is the alarm line.
+            let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
+            let ceiling = operator_core::policy::MAX_PRICED_INPUTS;
+            if inputs >= ceiling.saturating_mul(8) / 10 {
+                let text = format!(
+                    "{} ({}): {inputs} of {ceiling} accumulator inputs ({}%) — the H-4 ceiling \
+                     is PERMANENT (leaves cannot be trimmed; past it the root is unprovable and \
+                     unpaid). Act now: gate/price ingress, or plan the constitutional \
+                     setAccumulator re-seed (docs/build/production.md, 'The accumulator \
+                     ceiling').",
+                    entry.name,
+                    program.name(),
+                    inputs.saturating_mul(100) / ceiling
+                );
+                logger.event(
+                    "input_ceiling_approaching",
+                    json!({
+                        "instance": format!("{:#x}", entry.instance_id),
+                        "inputs": inputs,
+                        "ceiling": ceiling,
+                    }),
+                );
+                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                alerts_raised.push(text);
+            }
 
             let policy = cfg.policy_for(entry.instance_id, supported());
             // Rolling spend, from the journal. This is what makes `LossBudget` reachable at all:
@@ -237,9 +326,18 @@ fn tick(
             }
 
             if !dry_run && in_flight_now <= cfg.cadence.max_concurrent {
-                if let Err(e) =
-                    act(cfg, rpc, chain_id, sender, journal, logger, entry, &state, &action)
-                {
+                if let Err(e) = act(
+                    cfg,
+                    rpc,
+                    chain_id,
+                    sender,
+                    journal,
+                    pending_settles,
+                    logger,
+                    entry,
+                    &state,
+                    &action,
+                ) {
                     logger.event(
                         "action_failed",
                         json!({
@@ -323,6 +421,7 @@ fn build_state(
     basefee: u128,
     journal: &Journal,
     our_vkey: Option<B256>,
+    seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
 ) -> Result<InstanceState> {
     let view = read_snapshot(rpc, entry.snapshot)?;
 
@@ -341,19 +440,30 @@ fn build_state(
     // Reorg safety. `plan` does the depth arithmetic; what it cannot do is notice that the block
     // it counted from was replaced. An equal-depth reorg leaves the NUMBER intact and swaps the
     // contents, so a confirmations-only check would call a vanished checkpoint final.
+    //
+    // M-9 (2026-08-13 audit): the anchor hash must be the one recorded when the checkpoint was
+    // FIRST observed — the pre-fix code built the anchor from the live hash and then compared it
+    // to itself, so `Reorged` could never fire. `seen_anchors` is that first observation.
     let mut checkpoints = view.checkpoints.clone();
     if cfg.finality.track_block_hash {
         for c in &mut checkpoints {
             let live = rpc.block_hash(c.block_number)?;
-            let anchor =
-                Anchor { block_number: c.block_number, block_hash: live.unwrap_or(B256::ZERO) };
-            if matches!(
-                anchor.finality(head, cfg.finality.confirmations, live),
-                Finality::Reorged { .. }
-            ) {
+            let anchor = *seen_anchors
+                .entry((entry.instance_id, c.id))
+                .or_insert(Anchor { block_number: c.block_number, block_hash: live.unwrap_or(B256::ZERO) });
+            // A checkpoint that moved to a different block, or whose observed block hash no
+            // longer matches the canonical chain, was reorged.
+            let reorged = anchor.block_number != c.block_number
+                || matches!(
+                    anchor.finality(head, cfg.finality.confirmations, live),
+                    Finality::Reorged { .. }
+                );
+            if reorged {
                 // The block we would prove against no longer exists. Drop the checkpoint from
-                // this tick's view rather than spending on it; the next tick re-reads the chain.
+                // this tick's view rather than spending on it, and forget the stale observation
+                // so the next tick re-anchors against the new canonical block.
                 c.pinned_params_hash = None;
+                seen_anchors.remove(&(entry.instance_id, c.id));
             }
         }
     }
@@ -437,6 +547,7 @@ fn act(
     chain_id: u64,
     sender: Option<&Sender>,
     journal: &mut Journal,
+    pending_settles: &mut BTreeMap<WorkKey, Anchor>,
     logger: &Logger,
     entry: &CatalogEntry,
     state: &InstanceState,
@@ -447,15 +558,16 @@ fn act(
 
     match action {
         Action::Trigger => {
-            let tx = sender.send(
+            let (tx, r) = sender.send_watched(
                 rpc,
                 entry.snapshot,
                 crate::chain::trigger_calldata(),
                 400_000,
                 max_fee,
                 cfg.gas.simulate_before_send,
+                cfg.gas.replacement_after_s,
+                600,
             )?;
-            let r = await_receipt(rpc, tx, cfg.gas.replacement_after_s, 2)?;
             if !r.success {
                 bail!("trigger {tx:#x} reverted on chain at block {}", r.block_number);
             }
@@ -537,6 +649,21 @@ fn act(
         Action::Submit { checkpoint_id } => {
             let key =
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
+
+            // H-3 circuit breaker: a submit that keeps reverting re-plans every tick forever —
+            // each attempt burning its full gas — because a failed submit never journals
+            // `Settled`. Three on-chain reverts for one WorkKey is a human problem (paused
+            // instance? rotated verifier the preflight missed? malformed proof?), not a retry
+            // problem. The hold stands until someone appends a `Resolved` record for the key.
+            let strikes = journal.submit_strikes(&key);
+            if strikes >= 3 {
+                bail!(
+                    "submit for checkpoint {} has reverted on-chain {strikes} times; held for a \
+                     human (append a Resolved record for this key to clear the strikes)",
+                    checkpoint_id
+                );
+            }
+
             let held = handlers::load_proof(entry, *checkpoint_id)?;
 
             // The claim policy. A curated instance is proven on us and lands through plain
@@ -566,8 +693,7 @@ fn act(
                 // Ask for at least what the quote promised. `plan` already refused to prove an
                 // ineligible instance, so a zero here would mean the terms changed underneath us
                 // — exactly the case that must revert rather than hand over a free root.
-                let min_payout =
-                    state.vault.map(|v| U256::from(v.payable_usd.min(1))).unwrap_or(U256::ZERO);
+                let min_payout = state.vault.map(|v| min_payout_usd(v.payable_usd)).unwrap_or(U256::ZERO);
                 (
                     vault,
                     crate::chain::submit_and_claim_calldata(
@@ -585,16 +711,48 @@ fn act(
                 )
             };
 
-            match sender.send(rpc, target, data, 1_500_000, max_fee, cfg.gas.simulate_before_send) {
-                Ok(tx) => {
-                    // A broadcast is not a landed root. A timeout here is UNKNOWN, never
-                    // "did not happen" — the transaction may still be mined — so the journal is
-                    // left showing the request in flight and the next tick re-reads the chain.
-                    let r = await_receipt(rpc, tx, cfg.prover.timeout_s.min(600), 2)?;
+            match sender.send_watched(
+                rpc,
+                target,
+                data,
+                1_500_000,
+                max_fee,
+                cfg.gas.simulate_before_send,
+                cfg.gas.replacement_after_s,
+                cfg.prover.timeout_s.min(600),
+            ) {
+                Ok((tx, r)) => {
+                    // H-3: whatever the outcome, the gas is spent — book it into the same
+                    // rolling budget as proving cost, and a revert counts a strike.
+                    journal.append(Record::SubmitGas {
+                        key,
+                        reverted: !r.success,
+                        cost_cents: crate::tx::gas_cost_cents(
+                            r.gas_used,
+                            r.effective_gas_price,
+                            cfg.budget.eth_usd,
+                        ),
+                    at: now(),
+                    })?;
                     if !r.success {
-                        bail!("submit {tx:#x} reverted on chain at block {}", r.block_number);
+                        bail!(
+                            "submit {tx:#x} reverted on chain at block {} (strike {} of 3)",
+                            r.block_number,
+                            journal.submit_strikes(&key)
+                        );
                     }
-                    journal.append(Record::Settled { key, outcome: Outcome::Landed, at: now() })?;
+                    // M-9: `Settled{Landed}` is journaled only after N confirmations (the
+                    // pending-settle pass at the top of `tick`), so a reorged-out submit
+                    // re-plans instead of wedging the journal.
+                    pending_settles.insert(
+                        key,
+                        Anchor {
+                            block_number: r.block_number,
+                            block_hash: rpc
+                                .block_hash(r.block_number)?
+                                .unwrap_or(B256::ZERO),
+                        },
+                    );
                     logger.event(
                         "submitted",
                         json!({
@@ -603,6 +761,7 @@ fn act(
                             "tx": format!("{tx:#x}"),
                             "block": r.block_number,
                             "gas_used": r.gas_used,
+                            "confirmations_required": cfg.finality.confirmations,
                         }),
                     );
                 }
@@ -632,6 +791,15 @@ fn act(
     Ok(())
 }
 
+/// The `minPayoutUsd` guard for a funded submit: demand the FULL quoted payout, floored at 1.
+///
+/// M-6 (2026-08-13 audit): this was `.min(1)`, which CAPS the guard at 1 — a vault that slashed
+/// its policy between quote and submit still collected a valid root for ~nothing. `.max(1)`
+/// makes `submitAndClaim` revert unless it pays what the quote promised.
+fn min_payout_usd(payable_usd: u128) -> U256 {
+    U256::from(payable_usd.max(1))
+}
+
 /// A `StaleCheckpoint` revert, however the node phrased it.
 fn is_stale_checkpoint(e: &anyhow::Error) -> bool {
     let s = e.to_string();
@@ -646,12 +814,27 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// M-6 regression: an underpaying vault is REJECTED, not accepted. The pre-fix `.min(1)`
+    /// turned a $500 quote into a `minPayoutUsd` of 1.
+    #[test]
+    fn m6_min_payout_demands_the_full_quote() {
+        assert_eq!(min_payout_usd(500), U256::from(500u64), "the full quote, not 1");
+        assert_eq!(min_payout_usd(1), U256::from(1u64));
+        // Zero would disable the guard entirely; the floor keeps it armed.
+        assert_eq!(min_payout_usd(0), U256::from(1u64));
+    }
+}
+
 /// The vkey each of this binary's guests produces. Derived once per run: it is a function of the
 /// ELF, which cannot change while the process is alive.
 fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
     let mut out = BTreeMap::new();
     for (program, vk) in [
-        (Program::TrustGraph, trustgraph_prover::programs::trust_graph::elf()),
+        (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
         (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {

@@ -22,8 +22,8 @@ costs only a transaction."
 
 ## 1. The create call
 
-`TrustGraphFactory.createInstance` is the canonical deployment and catalog seam
-(`src/contracts/factory/TrustGraphFactory.sol`). It is permissionless and payable:
+`TrustgraphsFactory.createInstance` is the canonical deployment and catalog seam
+(`src/contracts/factory/TrustgraphsFactory.sol`). It is permissionless and payable:
 
 ```solidity
 function createInstance(CreateArgs calldata args)
@@ -115,7 +115,7 @@ new EASIndexerResolver(EAS)                                  ← the instance's 
   → new MerkleSnapshot(VERIFIER, paramsHash, resolver, factory, factory)
   → resolver.bindSnapshot(snapshot)                          ← trigger() is the only checkpoint minter
   → snapshot.setEpochLength(max(requested, EPOCH_FLOOR))
-  → new TrustGraphParamsController(instanceId, snapshot, registry, params, admin)
+  → new TrustgraphsParamsController(instanceId, snapshot, registry, params, admin)
   → snapshot.grantRole(OPERATIONAL_ROLE, controller)          ← typed path only
   → snapshot.renounceRole(OPERATIONAL_ROLE, factory)
   → snapshot.grantRole(CONSTITUTIONAL_ROLE, admin)           ← GRANT
@@ -345,12 +345,12 @@ native-gnark`) is the real thing.
 ## 6. Safe-owned networks: the governed factory
 
 For a DAO the right owner of a network is the DAO, not a deployer wallet, and it should be the
-owner from the first block. That is what `GovernedTrustGraphFactory.createGovernedInstance` does
-(`src/contracts/factory/GovernedTrustGraphFactory.sol`), and it is the path the create wizard in the
+owner from the first block. That is what `GovernedTrustgraphsFactory.createGovernedInstance` does
+(`src/contracts/factory/GovernedTrustgraphsFactory.sol`), and it is the path the create wizard in the
 app uses:
 
 ```solidity
-function createGovernedInstance(TrustGraphFactory.CreateArgs calldata requested)
+function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested)
     external
     payable
     returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot);
@@ -432,7 +432,7 @@ forge script script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry --sig 'r
 forge script script/DeployFactory.s.sol:DeployFactory \
   --sig 'run(string,string,string,string,uint64)' \
   <eas> <schemaRegistrar> <zkVerifier> <instanceRegistry> <epochFloorBlocks> …
-forge script script/DeployGovernedTrustGraphFactory.s.sol:DeployGovernedTrustGraphFactory \
+forge script script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory \
   --sig 'run(string)' <factory> …
 ```
 

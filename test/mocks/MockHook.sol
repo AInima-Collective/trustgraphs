@@ -14,3 +14,26 @@ contract MockHook is IMerkleSnapshotHook {
         lastRoot = state.root;
     }
 }
+
+/// @notice A hook that always reverts, to prove a misbehaving consumer cannot block proof submission.
+contract RevertingHook is IMerkleSnapshotHook {
+    error HookReverted();
+
+    function onMerkleUpdate(IMerkleSnapshot.MerkleState memory) external pure {
+        revert HookReverted();
+    }
+}
+
+/// @notice A hook that burns all forwarded gas, to prove the per-hook stipend bounds a griefer.
+contract GasGuzzlerHook is IMerkleSnapshotHook {
+    function onMerkleUpdate(IMerkleSnapshot.MerkleState memory) external pure {
+        uint256 i;
+        while (true) {
+            unchecked {
+                i++;
+            }
+            // keccak in a loop to consume gas quickly; will hit the stipend and be caught.
+            keccak256(abi.encode(i));
+        }
+    }
+}

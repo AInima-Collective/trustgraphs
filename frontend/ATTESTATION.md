@@ -1,6 +1,6 @@
 # Attestation UI Implementation
 
-This document describes the functional attestation UI implementation for the TrustGraph EAS project.
+This document describes the functional attestation UI implementation for the trustgraphs EAS project.
 
 ## Features Implemented
 

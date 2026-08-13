@@ -105,6 +105,10 @@ pub struct AnchorRecord {
     pub node_id: B256,
     pub envelope_kind: u8,
     pub head: B256,
+    /// The head's signed monotonic position (envelope 0: the log length co-signed with the
+    /// head, ingress-verified by `AnchorRegistry` for address nodes). H-5: rule Φ rejects any
+    /// anchored head whose count is below the node's max anchored count.
+    pub count: u64,
     pub data_commitment: B256,
     pub block_timestamp: u64,
 }
@@ -219,15 +223,24 @@ pub struct SelectionParams {
 }
 
 /// The input the signer-sync guest receives: the same folded edges + params as the root producer,
-/// plus the selection parameters.
+/// plus the selection parameters and the instance binding.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignerInput {
     pub edges: Vec<RawEdge>,
     pub params: Params,
     pub selection: SelectionParams,
+    /// `keccak256(abi.encode(module, chainId))` — see [`zk_core::journal::instance_domain`], with
+    /// the `SignerSyncZkModule` address in the snapshot slot. Committed verbatim by the guest and
+    /// made binding by `submitSignerProof`, which REBUILDS it from `address(this)` and
+    /// `block.chainid` (audit M-3: without it, two same-params modules sharing an accumulator, or
+    /// mirrored at one CREATE2 address cross-chain, would accept each other's owner-rotation
+    /// proofs). A zero value is never legitimate on-chain (the rebuild is a keccak), so a
+    /// forgotten binding fails at `submitSignerProof` rather than landing somewhere wrong.
+    #[serde(default)]
+    pub instance_domain: B256,
 }
 
-/// The 6 public fields the signer-sync guest commits. `keccak256(abi.encode(..))` is the digest the
+/// The 7 public fields the signer-sync guest commits. `keccak256(abi.encode(..))` is the digest the
 /// on-chain `SignerSyncZkModule` binds. Field order is FROZEN — see [`encode::signer_journal_encoded`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignerJournal {
@@ -239,6 +252,8 @@ pub struct SignerJournal {
     /// `keccak256(abi.encode(address))`), identical to `seedSetRoot`.
     pub signer_set_root: B256,
     pub target_threshold: U256,
+    /// The instance this proof is for, committed verbatim from [`SignerInput::instance_domain`].
+    pub instance_domain: B256,
 }
 
 /// Full result of a signer-sync computation: the journal plus the selected owner set and threshold.

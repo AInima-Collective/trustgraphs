@@ -33,11 +33,9 @@ export const Footer = () => {
     <footer className="mt-12 flex flex-col gap-1 border-t border-border py-2 text-xs text-text-subtle sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-h-11 items-center gap-2.5">
         <BrandMark size="xs" className="text-text-subtle" />
-        {/* Tracked, not uppercased. The brand has exactly two cases:
-         * `trustgraphs` in copy and `Trustgraphs` in the wordmark and titles.
-         * This sits directly next to the mark, so it is the wordmark lockup,
-         * not prose — it takes the capitalized case. */}
-        <span className="tracking-wider">Trustgraphs</span>
+        {/* `trustgraphs` is a generic term rather than a brand, so this
+         * mid-line label stays lowercase. */}
+        <span className="tracking-wider">trustgraphs</span>
         <span aria-hidden="true">·</span>
         <span>Trust, made legible</span>
       </div>

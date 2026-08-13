@@ -22,7 +22,7 @@ const app = new Hono()
  *
  * Two sources, in order: the build-time config (hand-deployed networks, and the program-tagged
  * entries this route deliberately ignores), then the `instance` table — the catalog of everything
- * `TrustGraphFactory` created. Without the second lookup a factory network 404s here, which is not
+ * `TrustgraphsFactory` created. Without the second lookup a factory network 404s here, which is not
  * a cosmetic failure: it is exactly the endpoint the network page reads its member list and
  * attestation feed from, so a freshly created community would render its name and a vouch button
  * over a permanently empty roster.

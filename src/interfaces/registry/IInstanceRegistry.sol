@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 /// @title IInstanceRegistry
-/// @notice On-chain directory of TrustGraph deployments (MULTI_PROGRAM_PLATFORM §4): one per chain,
+/// @notice On-chain directory of trustgraphs deployments (MULTI_PROGRAM_PLATFORM §4): one per chain,
 ///         mapping an instance id to its contract set so any frontend/indexer discovers deployments
 ///         on-chain instead of via `deployment_summary.json`.
 interface IInstanceRegistry {
@@ -64,7 +64,7 @@ interface IInstanceRegistry {
 
     /// @notice Register a new instance. Open to `REGISTRAR_ROLE` or `OPERATOR_ROLE`; reverts if
     ///         the id already exists.
-    /// @dev Declared here so `TrustGraphFactory` (a registrar) can register through the interface.
+    /// @dev Declared here so `TrustgraphsFactory` (a registrar) can register through the interface.
     function register(bytes32 instanceId, Instance calldata record) external;
 
     /// @notice Register a row and its per-instance parameter authority atomically.

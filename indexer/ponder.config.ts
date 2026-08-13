@@ -7,16 +7,16 @@ import { Hex, getAbiItem } from 'viem'
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
 import { provingVaultAbi } from './abis/provingVault'
-import { trustGraphFactoryAbi } from './abis/trustGraphFactory'
+import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
   instanceRegistryParamsAbi,
-  trustGraphParamsControllerAbi,
-} from './abis/trustGraphParamsController'
+  trustgraphsParamsControllerAbi,
+} from './abis/trustgraphsParamsController'
 import {
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
-  governedTrustGraphFactoryAbi,
+  governedTrustgraphsFactoryAbi,
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
@@ -119,7 +119,7 @@ const CORE_START_BLOCK = IS_PRODUCTION ? PROD_START_BLOCK : DEV_START_BLOCK
 const PROVING_VAULT = (deploymentSummary as { provingVault?: string })
   .provingVault as Hex | undefined
 
-const TRUST_GRAPH_FACTORY = deploymentSummary.factory?.factory as
+const TRUSTGRAPHS_FACTORY = deploymentSummary.factory?.factory as
   | Hex
   | undefined
 const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
@@ -135,15 +135,15 @@ const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
  * A box whose deploy chain never ran `DeployFactory` (for example a lane-2-only hypercerts box)
  * still falls back to the static lists.
  */
-const FACTORY_DISCOVERY = TRUST_GRAPH_FACTORY !== undefined
+const FACTORY_DISCOVERY = TRUSTGRAPHS_FACTORY !== undefined
 
 /** The frozen discovery event. Every child address below is one of its arguments. */
 const INSTANCE_CREATED = getAbiItem({
-  abi: trustGraphFactoryAbi,
+  abi: trustgraphsFactoryAbi,
   name: 'InstanceCreated',
 })
 const PARAMS_CONTROLLER_CREATED = getAbiItem({
-  abi: trustGraphFactoryAbi,
+  abi: trustgraphsFactoryAbi,
   name: 'ParamsControllerCreated',
 })
 const PARAMS_AUTHORITY_UPDATED = getAbiItem({
@@ -151,7 +151,7 @@ const PARAMS_AUTHORITY_UPDATED = getAbiItem({
   name: 'ParamsAuthorityUpdated',
 })
 const GOVERNED_INSTANCE_CREATED = getAbiItem({
-  abi: governedTrustGraphFactoryAbi,
+  abi: governedTrustgraphsFactoryAbi,
   name: 'GovernedInstanceCreated',
 })
 
@@ -164,7 +164,7 @@ const GOVERNED_INSTANCE_CREATED = getAbiItem({
  */
 const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
   factory({
-    address: TRUST_GRAPH_FACTORY!,
+    address: TRUSTGRAPHS_FACTORY!,
     event: INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -172,7 +172,7 @@ const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
 
 const paramsControllers = () =>
   factory({
-    address: TRUST_GRAPH_FACTORY!,
+    address: TRUSTGRAPHS_FACTORY!,
     event: PARAMS_CONTROLLER_CREATED,
     parameter: 'controller',
     startBlock: CORE_START_BLOCK,
@@ -195,7 +195,7 @@ const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
   })
 
 /** Is this summary entry a trust-graph (vouching) network? Absent `program` means yes. */
-const isTrustGraph = (network: DeployedNetwork) =>
+const isTrustgraphs = (network: DeployedNetwork) =>
   (network.program ?? 'trust-graph') === 'trust-graph'
 
 /**
@@ -217,7 +217,7 @@ const deployedAddresses = (
  * the trust-graph factory in v1 — so they keep static sources. Empty (and their sources disabled)
  * when factory discovery is off, because then the main sources already list every address.
  */
-const otherProgram = (network: DeployedNetwork) => !isTrustGraph(network)
+const otherProgram = (network: DeployedNetwork) => !isTrustgraphs(network)
 const programSnapshots = FACTORY_DISCOVERY
   ? deployedAddresses('merkleSnapshot', otherProgram)
   : []
@@ -250,29 +250,29 @@ export default createConfig({
     // The instance directory itself: `InstanceCreated` is both the catalog row (src/factory.ts →
     // the `instance` table, which replaces config/networks.json for trust-graph networks) and the
     // address source for the three child contracts below.
-    trustGraphFactory: {
-      abi: trustGraphFactoryAbi,
+    trustgraphsFactory: {
+      abi: trustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
-        ? { [CORE_CHAIN]: { address: TRUST_GRAPH_FACTORY! } }
+        ? { [CORE_CHAIN]: { address: TRUSTGRAPHS_FACTORY! } }
         : {},
     },
-    governedTrustGraphFactory: {
-      abi: governedTrustGraphFactoryAbi,
+    governedTrustgraphsFactory: {
+      abi: governedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
       chain: GOVERNED_FACTORY
         ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
         : {},
     },
-    trustGraphParamsController: {
-      abi: trustGraphParamsControllerAbi,
+    trustgraphsParamsController: {
+      abi: trustgraphsParamsControllerAbi,
       startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: paramsControllers() } }
         : {},
     },
-    migratedTrustGraphParamsController: {
-      abi: trustGraphParamsControllerAbi,
+    migratedTrustgraphsParamsController: {
+      abi: trustgraphsParamsControllerAbi,
       startBlock: CORE_START_BLOCK,
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }

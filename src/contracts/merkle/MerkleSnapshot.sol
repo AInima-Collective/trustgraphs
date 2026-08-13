@@ -10,7 +10,7 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 
 /// @title MerkleSnapshot
-/// @notice Merkle-root snapshotter for TrustGraph. The `{account => score}` root is produced by a
+/// @notice Merkle-root snapshotter for trustgraphs. The `{account => score}` root is produced by a
 ///         permissionless zero-knowledge proof of correct fixed-point Trust-Aware PageRank
 ///         (`submitProof`) instead of a WAVS operator quorum. A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint, and
@@ -100,6 +100,10 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @notice The number of hooks.
     uint64 public hookCount;
 
+    /// @notice Per-hook gas budget for `onMerkleUpdate`. Ample for a legitimate consumer's state
+    ///         writes while bounding a griefing hook; a hook that exceeds it is skipped, not fatal.
+    uint256 public constant HOOK_GAS_STIPEND = 500_000;
+
     /// @param _zkVerifier The initial proof verifier.
     /// @param _paramsHash The initial canonical params hash.
     /// @param _accumulator The attestation accumulator that produces checkpoints.
@@ -176,6 +180,10 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Emitted with every trigger's lane-2 snapshot.
     event AnchorsCheckpointed(uint256 indexed checkpointId, bytes32 anchorAcc, uint64 anchorCount);
+
+    /// @notice Emitted when a consumer hook reverts during a root update. The root is still recorded;
+    ///         the hook is skipped so a misbehaving consumer can never block proof submission.
+    event HookFailed(uint256 indexed hookIndex, address indexed hook);
 
     /// @notice Trigger fired before the contract-fixed epoch boundary.
     error EpochNotElapsed(uint64 lastTriggerBlock, uint64 epochLength);
@@ -374,12 +382,19 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
             totalValue: totalValue
         });
 
-        // Call the hooks.
+        // Call the hooks. A hook is a consumer-installed side effect (governance, signer-sync, ...);
+        // it must never be able to block the core job of landing a proven root. We isolate each call
+        // in try/catch with a fixed gas stipend so a reverting or gas-guzzling hook is skipped (and
+        // surfaced via HookFailed) rather than reverting the whole submitProof for every consumer.
         for (uint256 i = 1; i < nextHookIndex; i++) {
-            if (address(hooks[i]) == address(0)) {
+            IMerkleSnapshotHook hook = hooks[i];
+            if (address(hook) == address(0)) {
                 continue;
             }
-            hooks[i].onMerkleUpdate(states[stateIndex]);
+            try hook.onMerkleUpdate{gas: HOOK_GAS_STIPEND}(states[stateIndex]) {}
+            catch {
+                emit HookFailed(i, address(hook));
+            }
         }
     }
 

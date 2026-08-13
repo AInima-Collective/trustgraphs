@@ -1,4 +1,4 @@
-//! TrustGraph prover host.
+//! Trustgraphs prover host.
 //!
 //! Programs are grouped as clap subcommands, one group per SP1 program:
 //!
@@ -38,7 +38,7 @@ struct Cli {
 enum Program {
     /// Trust-graph root producer (fixed-point Trust-Aware PageRank -> merkle root).
     #[command(name = "trust-graph")]
-    TrustGraph {
+    Trustgraphs {
         #[command(subcommand)]
         cmd: programs::trust_graph::Command,
     },
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     sp1_sdk::utils::setup_logger();
     let cli = Cli::parse();
     match cli.program {
-        Program::TrustGraph { cmd } => programs::trust_graph::run(cmd),
+        Program::Trustgraphs { cmd } => programs::trust_graph::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
         Program::Contributions { cmd } => programs::contributions::run(cmd),

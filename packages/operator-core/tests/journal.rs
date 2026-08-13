@@ -326,3 +326,84 @@ fn in_flight_and_unknown_refusals_say_what_they_are() {
     assert!(in_flight.contains("pay twice"), "{in_flight}");
     assert!(!in_flight.contains("DIFFERENT chain"), "{in_flight}");
 }
+
+// ---------------------------------------------------------------------------
+// H-3 (2026-08-13 audit): submit gas is budgeted spend, and a revert loop is
+// strikes toward a human hold — not a free retry.
+// ---------------------------------------------------------------------------
+
+fn submit_gas(k: WorkKey, reverted: bool, cost_cents: u64, at: u64) -> Record {
+    Record::SubmitGas { key: k, reverted, cost_cents, at }
+}
+
+/// A persistently reverting submit registers a strike per on-chain revert; three strikes is the
+/// breaker the daemon holds on. A human `Resolved` line clears them.
+#[test]
+fn h3_three_reverted_submits_trip_the_breaker_until_a_human_resolves() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+
+    assert_eq!(j.submit_strikes(&key(0)), 0);
+    for n in 1..=3u32 {
+        j.append(submit_gas(key(0), true, 250, 1_000 + n as u64)).unwrap();
+        assert_eq!(j.submit_strikes(&key(0)), n);
+    }
+    // Strikes are per-key: another checkpoint is unaffected.
+    assert_eq!(j.submit_strikes(&key(1)), 0);
+    // A successful (non-reverted) submit is not a strike.
+    j.append(submit_gas(key(1), false, 250, 2_000)).unwrap();
+    assert_eq!(j.submit_strikes(&key(1)), 0);
+
+    // The hold stands until a human appends a Resolved record for the key.
+    j.append(Record::Resolved { key: key(0), request_id: None, at: 3_000 }).unwrap();
+    assert_eq!(j.submit_strikes(&key(0)), 0, "a human Resolved line clears the strikes");
+}
+
+/// On-chain gas — landed or reverted — lands in the SAME rolling budget as proving cost, so a
+/// revert loop eventually breaches `LossBudget` instead of draining the wallet invisibly.
+#[test]
+fn h3_submit_gas_counts_into_the_rolling_spend_window() {
+    use operator_core::policy::LossBudget;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    let instance = key(0).instance_id;
+
+    j.append(priced_intent(key(0), 1_000, 400)).unwrap();
+    j.append(submit_gas(key(0), true, 300, 1_100)).unwrap();
+    j.append(submit_gas(key(0), true, 300, 1_200)).unwrap();
+    // Gas on another instance counts globally, not against this one.
+    let other = WorkKey { chain_id: 31337, instance_id: B256::from([0x02; 32]), checkpoint_id: 0 };
+    j.append(submit_gas(other, false, 500, 1_300)).unwrap();
+
+    let s = j.spend(instance, 2_000, 10_000);
+    assert_eq!(s.instance_cents_today, 400 + 300 + 300);
+    assert_eq!(s.global_cents_today, 400 + 300 + 300 + 500);
+
+    // The window still applies: old gas ages out.
+    let aged = j.spend(instance, 20_000, 1_000);
+    assert_eq!(aged.instance_cents_today, 0);
+
+    // And the budget the daemon consults actually fires on gas alone.
+    let budget = LossBudget { per_instance_cents_per_day: 500, global_cents_per_day: 10_000 };
+    assert!(budget.exceeded_by(s).is_some(), "gas spend must be able to breach the budget");
+
+    // SubmitGas is bookkeeping only: it never changes the key's request status.
+    assert_eq!(j.status(&other), Status::Untouched);
+}
+
+/// A journal written before SubmitGas existed still replays (forward-compat mirror of the
+/// cost_cents serde(default) guarantee).
+#[test]
+fn h3_submit_gas_round_trips_through_replay() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    {
+        let mut j = Journal::open(&path).unwrap();
+        j.append(submit_gas(key(0), true, 123, 1_000)).unwrap();
+        j.append(submit_gas(key(0), true, 456, 1_001)).unwrap();
+    }
+    let j = Journal::open(&path).unwrap();
+    assert_eq!(j.submit_strikes(&key(0)), 2, "strikes survive a restart");
+    assert_eq!(j.spend(key(0).instance_id, 1_500, 10_000).instance_cents_today, 579);
+}

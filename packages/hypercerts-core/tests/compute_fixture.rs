@@ -93,6 +93,7 @@ fn fixture_input() -> (GuestInput, B256) {
             node_id,
             envelope_kind: ENVELOPE_ATPROTO,
             head,
+            count: 0,
             data_commitment: B256::ZERO,
             block_timestamp: 1_000,
         }],
@@ -135,6 +136,25 @@ fn full_pipeline_over_the_seeded_fixture() {
     let r2 = compute(&input);
     assert_eq!(r.journal, r2.journal);
     assert_eq!(r.blob, r2.blob);
+}
+
+/// M-12 regression: a TRUNCATED CAR in the witness must not panic the guest — the node is
+/// skipped (rule Φ, publicly committed) and the epoch still proves. Pre-fix, `Car::parse`
+/// panicked on out-of-range LEB128 lengths, aborting the whole proof.
+#[test]
+fn truncated_car_skips_node_and_epoch_still_proves() {
+    let (input, _) = fixture_input();
+    // Truncate the CAR at every 1/8th boundary — none may panic, all must degrade.
+    let full = input.witnesses[0].car.clone();
+    for frac in 1..8 {
+        let mut cut = input.clone();
+        cut.witnesses[0].car = full[..full.len() * frac / 8].to_vec();
+        let r = compute(&cut);
+        assert_eq!(r.journal.anchor_count, 1, "anchor log still committed");
+        assert!(r.scores.is_empty(), "truncated CAR must yield no edges");
+        assert_ne!(r.journal.skipped_digest, B256::ZERO, "the skip is publicly committed");
+        assert_eq!(r.journal.output_root, B256::ZERO, "empty epoch is a valid outcome");
+    }
 }
 
 #[test]

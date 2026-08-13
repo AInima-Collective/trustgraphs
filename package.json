@@ -1,12 +1,12 @@
 {
-  "name": "trust-graph",
+  "name": "trustgraphs",
   "version": "0.4.0",
   "license": "MIT",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "postinstall": "SYMLINK_TARGET=$(pwd)/node_modules/@morpho-org/universal-rewards-distributor/lib/openzeppelin-contracts bash -c 'mkdir -p $(dirname $SYMLINK_TARGET) && if ! test -e $SYMLINK_TARGET; then rm -f $SYMLINK_TARGET && ln -s $(pwd)/node_modules/@openzeppelin $SYMLINK_TARGET; fi'",
-    "frontend": "pnpm --filter trust-graph-frontend",
-    "indexer": "pnpm --filter trust-graph-indexer",
+    "frontend": "pnpm --filter trustgraphs-frontend",
+    "indexer": "pnpm --filter trustgraphs-indexer",
     "deploy:full": "pnpm deploy:create-deployer && pnpm deploy:contracts",
     "deploy:contracts": "tsx deploy/deploy-contracts.ts",
     "deploy:create-deployer": "tsx deploy/create-deployer.ts",

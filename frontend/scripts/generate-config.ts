@@ -85,8 +85,8 @@ try {
 
     // One per chain: the base factory is the catalog source; the wizard writes through the
     // governed wrapper so the resulting instance is Safe-owned from creation.
-    TrustGraphFactory: factoryAddress,
-    GovernedTrustGraphFactory: governedFactoryAddress,
+    TrustgraphsFactory: factoryAddress,
+    GovernedTrustgraphsFactory: governedFactoryAddress,
   }
 
   // Make sure ABIs exist for all contracts, and copy them to the frontend.

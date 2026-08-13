@@ -1,15 +1,15 @@
-# TrustGraph × Gitcoin: Two Integration Paths
+# Trustgraphs × Gitcoin: Two Integration Paths
 
-*Prepared by the TrustGraph team for discussion with Gitcoin, July 2026.*
+*Prepared by the trustgraphs team for discussion with Gitcoin, July 2026.*
 
 ## Executive summary
 
-We propose two ways to bring TrustGraph's sybil-resistant reputation scores into Gitcoin
+We propose two ways to bring trustgraphs' sybil-resistant reputation scores into Gitcoin
 governance. Both work with the new `GitcoinGovernorWithGuardian` exactly as deployed, requiring
 zero changes to the governor, and both can be fully unwound by Gitcoin governance in a single
 transaction.
 
-1. **TrustGraph SubDAO.** A separate Safe governed directly by trust scores, holding only the
+1. **Trustgraphs SubDAO.** A separate Safe governed directly by trust scores, holding only the
    funds and powers Gitcoin chooses to grant it. Every scored community member votes, one
    proof-backed vote at a time, on how that scoped budget is used.
 2. **TrustPool.** A pool of treasury GTC whose voting power is cast in the main governor by
@@ -22,9 +22,9 @@ The paths answer different questions. The SubDAO gives the community's trust gra
 scoped decision space; TrustPool gives it weight inside Gitcoin's main decision space. They are
 not mutually exclusive, and they share all of their underlying infrastructure.
 
-## TrustGraph in brief
+## Trustgraphs in brief
 
-TrustGraph turns community attestations into governance-grade reputation:
+Trustgraphs turns community attestations into governance-grade reputation:
 
 - Community members make trust attestations to one another through the Ethereum Attestation
   Service (EAS). Creating or revoking an attestation is an ordinary, cheap transaction.
@@ -57,12 +57,12 @@ score integrity rests on a public proof system, not on any operator, committee, 
 - **Cost scales with participants, never with the graph.** On-chain cost is per voter (Path 1)
   or per delegate vote (Path 2). Attestation volume and community size are free.
 
-## Path 1: TrustGraph SubDAO
+## Path 1: trustgraphs SubDAO
 
 ### Mechanism
 
 A dedicated Safe holds the SubDAO's budget. A Zodiac governance module (already built and
-running in the TrustGraph stack) turns proven scores into direct voting power over that Safe:
+running in the trustgraphs stack) turns proven scores into direct voting power over that Safe:
 
 - **Propose.** Any scored account may propose actions, submitting a merkle proof of membership
   alongside the transaction payload.
@@ -91,9 +91,9 @@ address, and nothing else:
 
 Every scored account participates directly: no delegates, no token custody anywhere in the
 path. A vote costs roughly 50k to 80k gas (one merkle proof, built automatically in the
-browser from the published tree). Participation happens in the TrustGraph app, which indexes and
+browser from the published tree). Participation happens in the trustgraphs app, which indexes and
 displays proposals, votes, scores, and the attestation graph. The honest tradeoff: SubDAO
-votes live in TrustGraph tooling rather than Tally, though the SubDAO itself is fully legible
+votes live in trustgraphs tooling rather than Tally, though the SubDAO itself is fully legible
 to Gitcoin governance as a budget line.
 
 ### Maturity
@@ -101,7 +101,7 @@ to Gitcoin governance as a budget line.
 The module and its full stack (attestations, prover, indexer, frontend) run end-to-end today.
 Before carrying real funds it will complete a scheduled hardening pass (proposal-threshold
 gating, quorum edge cases, config authority) and an external audit alongside the rest of the
-TrustGraph contract suite. It is the fastest credible pilot of trust-weighted governance
+Trustgraphs contract suite. It is the fastest credible pilot of trust-weighted governance
 running a real budget.
 
 ## Path 2: TrustPool
@@ -159,7 +159,7 @@ imports, and verified end to end:
 
 ### Voter experience
 
-Joining is a single opt-in. Voting is one click in the TrustGraph app (score proofs are
+Joining is a single opt-in. Voting is one click in the trustgraphs app (score proofs are
 constructed automatically in the browser), or gasless via a signed message that anyone may
 relay. Votes appear on-chain per participant through the pool's events, with full attribution
 of who voted, how, and with what weight; personal GTC held by participants continues to work
@@ -186,14 +186,14 @@ computed rather than parked.
 
 ## Side by side
 
-| | **TrustGraph SubDAO** | **TrustPool** |
+| | **trustgraphs SubDAO** | **TrustPool** |
 | --- | --- | --- |
 | Decision space | its own scoped domain | all of Gitcoin governance |
 | Power source | funds and roles granted to a Safe | pooled treasury GTC, cast fractionally |
 | Who participates | every scored account, directly | opted-in participants above a score floor |
 | Staleness | impossible (proofs per vote) | impossible (proofs per vote) |
 | Standing infrastructure | prover per epoch (permissionless) | prover per epoch (permissionless) |
-| Voting venue | TrustGraph app | TrustGraph app; votes land in the main governor and are visible in Tally as pool casts |
+| Voting venue | trustgraphs app | trustgraphs app; votes land in the main governor and are visible in Tally as pool casts |
 | Gas | ~50k–80k per voter per proposal | ~61k–102k per voter per proposal |
 | Token movement | none | pool funding and withdrawal only |
 | Blast radius | the granted budget | the pool's voting weight |

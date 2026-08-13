@@ -1,6 +1,6 @@
-# Hypercerts × TrustGraph — Partner Brief (asks & flags)
+# Hypercerts × trustgraphs — Partner Brief (asks & flags)
 
-**To:** the Hypercerts team · **From:** the TrustGraph pilot team · **Date:** 2026-07-15
+**To:** the Hypercerts team · **From:** the trustgraphs pilot team · **Date:** 2026-07-15
 **Context:** [`HYPERCERTS_ATPROTO_PLAN.md`](./HYPERCERTS_ATPROTO_PLAN.md) §9. The
 system this brief supports is **built and tested end-to-end**: your
 AT Protocol records (all seven v1.1.0 collections) are verified inside an SP1 zero-knowledge

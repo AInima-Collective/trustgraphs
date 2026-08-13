@@ -157,6 +157,12 @@ pub struct Budget {
     /// The rolling window the caps are measured over, in seconds.
     #[serde(default = "d_budget_window")]
     pub window_seconds: u64,
+    /// Crude ETH/USD used to convert on-chain gas burn into the budget's cents (H-3). The same
+    /// philosophy as `cents_per_billion_cycles`: a stop-the-runaway constant, not a price feed.
+    /// Being 2x wrong moves the halt point by 2x; leaving gas out of the budget entirely — the
+    /// pre-audit behavior — moved it to never.
+    #[serde(default = "d_eth_usd")]
+    pub eth_usd: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +222,9 @@ fn d_cents_per_gcycle() -> u64 {
 fn d_budget_window() -> u64 {
     86_400
 }
+fn d_eth_usd() -> u64 {
+    5_000
+}
 fn d_journal_path() -> String {
     "./.trustgraph/operator/journal.jsonl".into()
 }
@@ -263,6 +272,7 @@ impl Default for Budget {
             global_usd_per_day: d_global_usd(),
             cents_per_billion_cycles: d_cents_per_gcycle(),
             window_seconds: d_budget_window(),
+            eth_usd: d_eth_usd(),
         }
     }
 }

@@ -1,6 +1,6 @@
 # Architecture
 
-trustgraphs turns a community's vouches into provable reputation scores. Members vouch for each
+Trustgraphs turns a community's vouches into provable reputation scores. Members vouch for each
 other on-chain, anyone can compute the scores, and a zero-knowledge proof guarantees the scores
 were computed correctly over the complete vouch history. This page walks the pipeline end to end
 for a technical reader.
@@ -45,7 +45,7 @@ runs today on local and test deployments.
 
 A vouch is an attestation: a signed on-chain statement "account A vouches for account B". Users
 create and revoke vouches directly against [EAS](https://attest.org) (Ethereum Attestation
-Service), a public attestation contract. trustgraphs does not sit between you and your vouch;
+Service), a public attestation contract. Trustgraphs does not sit between you and your vouch;
 there is no operator who can censor or reorder them.
 
 ### 2. Every edge is committed as it happens

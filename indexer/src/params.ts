@@ -7,8 +7,8 @@ import { revalidateNetwork } from './utils'
 import { merkleSnapshotAbi } from '../../frontend/lib/contract-abis'
 import {
   instanceRegistryParamsAbi,
-  trustGraphParamsControllerAbi,
-} from '../abis/trustGraphParamsController'
+  trustgraphsParamsControllerAbi,
+} from '../abis/trustgraphsParamsController'
 
 const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
@@ -23,32 +23,32 @@ const readLiveController = async (context: any, controller: Hex) => {
       await Promise.all([
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'instanceId',
         }),
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'snapshot',
         }),
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'registry',
         }),
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'version',
         }),
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'currentParamsHash',
         }),
         context.client.readContract({
           address: controller,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'getCurrentParams',
         }),
       ])
@@ -194,13 +194,13 @@ const onParamsUpdated = async ({ event, context }: any) => {
   }
 }
 
-ponder.on('trustGraphParamsController:ParamsUpdated', onParamsUpdated)
-ponder.on('migratedTrustGraphParamsController:ParamsUpdated', onParamsUpdated)
+ponder.on('trustgraphsParamsController:ParamsUpdated', onParamsUpdated)
+ponder.on('migratedTrustgraphsParamsController:ParamsUpdated', onParamsUpdated)
 
 // The discovery event follows InstanceCreated and precedes the controller's explicit version-1
 // publication, so ordered indexers know both the catalog row and child address before history lands.
 ponder.on(
-  'trustGraphFactory:ParamsControllerCreated',
+  'trustgraphsFactory:ParamsControllerCreated',
   async ({ event, context }) => {
     const { instanceId, controller } = event.args
     const live = await readLiveController(context, controller)

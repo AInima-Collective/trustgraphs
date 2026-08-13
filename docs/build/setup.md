@@ -119,7 +119,7 @@ Budget several minutes: the `succinct` toolchain unpacks to over a gigabyte unde
 **One command, once per checkout, and nothing else does it for you:**
 
 ```bash
-task -y setup      # pnpm install + forge install
+task setup         # pnpm install + forge install
 task zk:build      # compile the five SP1 guest ELFs + the prover host
 ```
 

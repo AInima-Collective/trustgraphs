@@ -233,7 +233,7 @@ function GraphPanel({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="block aspect-[9/5] min-h-64 w-full"
         role="img"
-        aria-label={`${stage} simulated TrustGraph`}
+        aria-label={`${stage} simulated trustgraphs`}
         style={{ background: tokens.canvas }}
       >
         <defs>

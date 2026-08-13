@@ -412,7 +412,7 @@ export class DevEnv extends EnvBase {
         {
           name: 'Governed Factory',
           script:
-            'script/DeployGovernedTrustGraphFactory.s.sol:DeployGovernedTrustGraphFactory',
+            'script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [readJsonKey('.docker/factory_deploy.json', 'factory')],
         },

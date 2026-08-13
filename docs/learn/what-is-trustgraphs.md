@@ -1,6 +1,6 @@
 # What is trustgraphs?
 
-trustgraphs is a reputation system where people publicly vouch for each other, and math
+Trustgraphs is a reputation system where people publicly vouch for each other, and math
 that anyone can check turns those vouches into scores that fake accounts can't inflate.
 This page is the plain-language starting point: no jargon, no code.
 
@@ -10,7 +10,7 @@ The internet has a fake-account problem. Anywhere reputation matters, someone wi
 manufacture it: a thousand bot accounts all vouching for each other until they look like a
 crowd of real people. If reputation decides who gets votes or rewards, faking it pays.
 
-trustgraphs is built to resist that. It gives every account a score based on who vouches
+Trustgraphs is built to resist that. It gives every account a score based on who vouches
 for whom, in a way that fake accounts can't inflate, and it publishes those scores so that
 anyone can check the math.
 
@@ -35,7 +35,7 @@ move nothing. [How scoring works](./how-scoring-works.md) tells this story prope
 
 ## In one paragraph
 
-trustgraphs turns public vouches into spam-resistant reputation scores using
+Trustgraphs turns public vouches into spam-resistant reputation scores using
 trust-weighted PageRank, lets anyone compute the scores and prove them correct with a
 zero-knowledge receipt instead of trusting an operator, publishes a compact fingerprint of
 the scoreboard on-chain every epoch, and feeds those proven scores into voting and reward

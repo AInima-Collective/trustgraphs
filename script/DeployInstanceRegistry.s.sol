@@ -11,7 +11,7 @@ import {Common} from "script/Common.s.sol";
 
 /// @title DeployInstanceRegistry
 /// @notice Deploys the one-per-chain `InstanceRegistry` (MULTI_PROGRAM_PLATFORM §4): the on-chain
-///         directory of TrustGraph deployments that frontends/indexers discover instances from.
+///         directory of trustgraphs deployments that frontends/indexers discover instances from.
 ///
 /// The registry's admin (OPERATOR_ROLE + DEFAULT_ADMIN_ROLE) is the operational timelock. Like the
 /// other deploy scripts it bootstraps to the deployer when no admin is supplied; a later governance

@@ -56,6 +56,46 @@ Three things to get right before the first tick:
    #20). Every proof in CI wraps at a mock gateway. Prove one checkpoint for real, submit it, watch
    it land, and only then start the daemon.
 
+### The accumulator ceiling (audit H-4) — document, monitor, and the recovery path
+
+**The fact.** Both lane-1 accumulator leaves (every attestation AND every revocation appends
+one) and lane-2 anchors grow monotonically, and a chained hash cannot be trimmed. Proving cost
+scales linearly with `leafCount + anchorCount`, and above **`MAX_PRICED_INPUTS = 200,000`**
+(`ProvingVault.bandOf` band 0 = no prover paid; the same number is the operator's cycle-refusal
+boundary) the instance's root becomes **permanently unprovable and unpaid**. There is no
+pruning: recovery means re-seeding the accumulator, which without preparation means a new
+resolver and the loss of all vouch history.
+
+**Attacker cost (order of magnitude, mainnet).** Each lane-1 leaf is one EAS attestation or
+revocation through the resolver (~120–180k gas). Filling the ceiling from scratch is therefore
+~200k transactions ≈ 25–35B gas — roughly **25–350 ETH** across the 1–10 gwei range: expensive
+as vandalism, cheap as a targeted attack on a high-value instance, and *rate-limitable only by
+ingress pricing*. Lane-2 anchors are cheaper per entry (~80–120k gas) but gated: address-kind
+nodes must self-register and every anchor needs the node owner's co-signature over a strictly
+increasing count (H-5 fix), so anchor bloat costs an attacker one funded address per stream,
+and each stream's growth is bounded by its own signing activity.
+
+**What this means for the first experiments.** A closed-set / allowlisted instance (curated
+schema access, PayableEASIndexerResolver pricing, or social-layer gating) cannot be pushed to
+the cliff by outsiders and is safe to run with monitoring alone. An instance whose attestation
+ingress is open to adversaries must NOT rely on monitoring: price or stake the ingress (the
+payable resolver exists for exactly this) before real value depends on the scores.
+
+**Monitoring (in place).** The proof scheduler alerts (webhook + `input_ceiling_approaching`
+log event + status page) as soon as any instance's `leafCount + anchorCount` crosses **80%**
+of the ceiling, on every tick until addressed. Do not silence it without acting: past 100%
+there is nothing left to operate.
+
+**Recovery path (prepare BEFORE launch).** `MerkleSnapshot.setAccumulator` is constitutional
+(the slow timelock). The runbook step for a re-seed is: deploy a fresh
+`EASIndexerResolver`/accumulator, snapshot the final proven root of the old one (the score
+history is preserved by the last landed root + its IPFS blob, which is content-addressed and
+pinned), point the instance at the new accumulator through the constitutional queue, and have
+members re-attest their live edges against the new resolver. Budget the timelock delay into
+the response: at current growth rate, the 80% alert must fire earlier than
+`timelock delay + re-attestation window` before the cliff. If the instance is open-set, do not
+wait for the alert — price the ingress now (outstanding report D2).
+
 ### Run the indexer
 
 The indexer has two production processes: a versioned writer and a stable read server. Set:

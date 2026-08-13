@@ -152,10 +152,15 @@ const GOLDEN = {
     signerSetRoot:
       '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
     targetThreshold: 2n,
+    // M-3 instance/chain binding (matches export_golden.rs: module addr(0x5B) / chain 31337).
+    instanceDomainModule: '0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b',
+    instanceDomainChainId: 31337n,
+    instanceDomain:
+      '0x22c5deaa03c018b95ed96ec7c4920aa51e3ed68cfa011c336d43c3d165061fae',
     journalEncoded:
-      '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d15100000000000000000000000000000000000000000000000000000000000000034c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac30000000000000000000000000000000000000000000000000000000000000002',
+      '0x827b99d32b30d230c48dd0af36bf8d906c1b813a100092e4c40d81a1dde3d15100000000000000000000000000000000000000000000000000000000000000034c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3000000000000000000000000000000000000000000000000000000000000000222c5deaa03c018b95ed96ec7c4920aa51e3ed68cfa011c336d43c3d165061fae',
     journalDigest:
-      '0xfdc70ed2d32f22064bcbe84812a5b0539fbc6cdfc026978dce12cbbeb081631f',
+      '0x2cb07f3c865ac75a36abe8162e453f7a77b684e7eb093fdc37b195a7ce3aadcc',
   },
 }
 
@@ -262,7 +267,21 @@ check(
   GOLDEN.signer.signerSetRoot
 )
 
-const signerResult = computeSigners({ edges: input.edges, params, selection })
+check(
+  'signer instanceDomain derivation',
+  instanceDomain(
+    GOLDEN.signer.instanceDomainModule as Hex,
+    GOLDEN.signer.instanceDomainChainId
+  ),
+  GOLDEN.signer.instanceDomain
+)
+
+const signerResult = computeSigners({
+  edges: input.edges,
+  params,
+  selection,
+  instanceDomain: GOLDEN.signer.instanceDomain as Hex,
+})
 check(
   'computeSigners signers',
   signerResult.signers.map((a) => a.toLowerCase()),
@@ -282,6 +301,11 @@ check(
   'signer journal selectionParamsHash',
   signerResult.journal.selectionParamsHash.toLowerCase(),
   GOLDEN.signer.selectionParamsHash
+)
+check(
+  'signer journal instanceDomain',
+  signerResult.journal.instanceDomain.toLowerCase(),
+  GOLDEN.signer.instanceDomain
 )
 check(
   'signerJournalEncoded',

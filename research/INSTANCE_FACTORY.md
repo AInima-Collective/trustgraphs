@@ -1,8 +1,8 @@
-# INSTANCE_FACTORY — permissionless community instances via a TrustGraphFactory
+# INSTANCE_FACTORY — permissionless community instances via a TrustgraphsFactory
 
 Status: **BUILD DECIDED 2026-07-24** — the execution spec is
 `GOAL.md` (retired; see git history); all §8 questions are answered in place below.
-Tracked as [issue #6](https://github.com/JakeHartnell/ZkTrustGraph/issues/6). **The repo cleanup
+Tracked as [issue #6](https://github.com/JakeHartnell/trustgraphs/issues/6). **The repo cleanup
 program this was sequenced after closed 2026-07-24** (all six milestones landed; see
 `research/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
 code is gone, generated artifacts live under `.trustgraph/`, and there is no live
@@ -11,7 +11,7 @@ and never migrates — `docs/concepts/networks-and-programs.md` is the canonical
 
 ## 0. Product shape (decided up front)
 
-A community that thinks TrustGraph is cool opens the app, fills in a
+A community that thinks trustgraphs is cool opens the app, fills in a
 create-a-network wizard (name, description, membership criteria copy,
 trusted seeds, a few tuning knobs, optional add-ons), signs **one
 transaction**, and gets a working instance: members can vouch
@@ -51,7 +51,7 @@ platform doc (`research/MULTI_PROGRAM_PLATFORM.md` §4):
    resolver address (`getUID(schema, resolver, revocable)`)
 3. `MerkleSnapshot` — ctor takes `(verifier, paramsHash, accumulator,
    constitutionalAdmin, operationalAdmin)` (`MerkleSnapshot.sol:91-110`)
-4. `TrustGraphParamsController` — stores and publishes every complete parameter
+4. `TrustgraphsParamsController` — stores and publishes every complete parameter
    version, owns the snapshot's operational role, and is itself owned by the
    community's EOA, Safe, or operational timelock
 5. Optional: `MerkleFundDistributor`, Safe + `MerkleGovModule` +
@@ -94,7 +94,7 @@ on-chain — the scripts already prove each step is EVM-expressible):
    already invoked on-chain by the deploy script; the factory just moves the
    params source from a JSON file (`vm.readFile`) to calldata
 4. Deploy the snapshot with factory-held roles only for the duration of this
-   transaction, then deploy `TrustGraphParamsController` with the complete
+   transaction, then deploy `TrustgraphsParamsController` with the complete
    version-1 tuple and community admin as owner
 5. Grant the controller the snapshot's sole operational role; grant the admin
    the constitutional role; verify and renounce both transient factory roles
@@ -143,7 +143,7 @@ raw `bytes32 paramsHash` accepts anything (`UPGRADE_GOVERNANCE.md:91-93`):
   **Correction 2026-07-27:** it does *not* bound hosted-proving cost.
   The admin holds `CONSTITUTIONAL_ROLE` from the creating transaction
   and `setEpochLength` is constitutional, so a creator can lower their
-  own epoch immediately afterwards (`TrustGraphFactory.sol:317-319`).
+  own epoch immediately afterwards (`TrustgraphsFactory.sol:317-319`).
   The floor binds creation, nothing after it; ongoing cost is bounded by
   operator policy (curated subsidy) and the vault's on-chain paid
   cadence — `research/PROOF_SCHEDULER.md` §4.2 banner and §10.1.
@@ -347,7 +347,7 @@ Sustainable posture given "hosted by us initially":
    (a)-(c), not the same-chain clone story this section told.
 2. **Post-creation scoring rotation is typed and versioned.** New factory
    instances give the raw snapshot operational role only to
-   `TrustGraphParamsController`. Its `updateParams(fullTuple, evidenceURI)`
+   `TrustgraphsParamsController`. Its `updateParams(fullTuple, evidenceURI)`
    reuses the creation validator, locks instance identity, updates controller,
    snapshot, and directory atomically, and publishes append-only history.
    The generic raw `setParamsHash(bytes32)` remains only as a legacy/other-
@@ -360,7 +360,7 @@ Sustainable posture given "hosted by us initially":
    large-scale factory adoption.
 4. **Spam/abuse surface:** instances are self-funded gas; the registry
    grows unboundedly but is append-only enumeration (indexer paginates);
-   impersonation ("Optimism Official Trust Graph") is handled at the
+   impersonation ("Official Optimism trustgraph") is handled at the
    curation/featured layer plus name-in-instanceId provenance
    (creator address is part of the id and shown in the UI).
 5. **Factory holds no instance roles ever** (§2.3) — a compromised
@@ -370,7 +370,7 @@ Sustainable posture given "hosted by us initially":
 
 ## 7. Phasing
 
-- **Phase A — contracts.** `TrustGraphFactory` + `ParamsCodec` calldata
+- **Phase A — contracts.** `TrustgraphsFactory` + `ParamsCodec` calldata
   path + registry/controller wiring (`DeployInstanceRegistry` into `deploy/env.ts`,
   factory granted `REGISTRAR_ROLE`). No live-network backfill needed —
   there is no production deployment; dev-seed networks are recreated

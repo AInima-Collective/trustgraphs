@@ -3,9 +3,9 @@ pragma solidity ^0.8.22;
 
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 
-/// @title ITrustGraphParamsController
+/// @title ITrustgraphsParamsController
 /// @notice Self-describing, versioned control plane for one trust-graph instance.
-interface ITrustGraphParamsController {
+interface ITrustgraphsParamsController {
     event ParamsUpdated(
         bytes32 indexed instanceId,
         uint64 indexed version,

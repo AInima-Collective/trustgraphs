@@ -8,7 +8,7 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockAnchorRegistry} from "../mocks/MockAnchorRegistry.sol";
-import {MockHook} from "../mocks/MockHook.sol";
+import {MockHook, RevertingHook, GasGuzzlerHook} from "../mocks/MockHook.sol";
 
 contract MerkleSnapshotTest is Test {
     MerkleSnapshot ms;
@@ -178,6 +178,37 @@ contract MerkleSnapshotTest is Test {
         _submit(id);
         assertEq(hook.calls(), 1);
         assertEq(hook.lastRoot(), ROOT);
+    }
+
+    /// M-2: a reverting hook must NOT block proof submission — it is caught, HookFailed is emitted,
+    /// the root still lands, and any well-behaved sibling hook still fires.
+    function test_RevertingHookDoesNotBlockSubmit() public {
+        RevertingHook bad = new RevertingHook();
+        MockHook good = new MockHook();
+        vm.startPrank(constitutional);
+        ms.addHook(bad); // index 1
+        ms.addHook(good); // index 2
+        vm.stopPrank();
+
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
+        vm.expectEmit(true, true, false, false);
+        emit MerkleSnapshot.HookFailed(1, address(bad));
+        _submit(id);
+
+        // Root landed despite the reverting hook, and the good hook still ran.
+        assertEq(ms.getLatestState().root, ROOT);
+        assertEq(good.calls(), 1);
+    }
+
+    /// M-2: a gas-guzzling hook is bounded by the stipend and caught, so it cannot grief submission.
+    function test_GasGuzzlerHookIsBoundedAndCaught() public {
+        GasGuzzlerHook guzzler = new GasGuzzlerHook();
+        vm.prank(constitutional);
+        ms.addHook(guzzler);
+
+        uint256 id = _mint(bytes32(uint256(1)), 1, 10);
+        _submit(id); // must not revert; the stipend caps the guzzler
+        assertEq(ms.getLatestState().root, ROOT);
     }
 
     function test_OnlyConstitutionalCanSetVerifier() public {

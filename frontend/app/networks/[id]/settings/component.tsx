@@ -54,7 +54,7 @@ import {
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
-  trustGraphFactoryAbi,
+  trustgraphsFactoryAbi,
 } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { contributionsRoundsFor } from '@/lib/network-nav'
@@ -75,7 +75,7 @@ import { ponderQueries } from '@/queries/ponder'
 import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
 
-const TRUST_GRAPH_PROGRAM = keccak256(stringToBytes('trust-graph'))
+const TRUSTGRAPH_PROGRAM = keccak256(stringToBytes('trust-graph'))
 const CONSTITUTIONAL_ROLE = keccak256(stringToBytes('CONSTITUTIONAL_ROLE'))
 const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 
@@ -631,11 +631,11 @@ export const SettingsPage = ({
   const governanceAddress = realAddress(network.contracts.merkleGovModule)
   const factoryAddress =
     realAddress(instance?.factory) ||
-    realAddress(CONTRACT_CONFIG.TrustGraphFactory as string)
+    realAddress(CONTRACT_CONFIG.TrustgraphsFactory as string)
 
   const { data: factoryVault } = useReadContract({
     address: factoryAddress as Hex,
-    abi: trustGraphFactoryAbi,
+    abi: trustgraphsFactoryAbi,
     functionName: 'VAULT',
     query: { enabled: !!factoryAddress },
   })
@@ -820,7 +820,7 @@ export const SettingsPage = ({
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'bandOf',
-              args: [TRUST_GRAPH_PROGRAM, leafCount, anchorCount],
+              args: [TRUSTGRAPH_PROGRAM, leafCount, anchorCount],
             },
             {
               address: vaultAddress,
@@ -900,7 +900,7 @@ export const SettingsPage = ({
     address: vaultAddress as Hex,
     abi: provingVaultReadAbi,
     functionName: 'feePerRootUsd',
-    args: [TRUST_GRAPH_PROGRAM, sizeBand ?? 0],
+    args: [TRUSTGRAPH_PROGRAM, sizeBand ?? 0],
     query: { enabled: !!vaultAddress && sizeBand !== undefined },
   })
   const feePerRoot = feeRead as bigint | undefined

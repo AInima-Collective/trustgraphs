@@ -124,8 +124,13 @@ max_per_instance    = 1         # in-flight proofs per instance. Do not raise th
 max_basefee_gwei    = 40        # above this, hold. A root that lands six hours late still files
                                 # at its input-freeze block, so waiting costs correctness nothing.
 priority_fee_gwei   = 0.1
-replacement_after_s = 300       # bump a stuck submit
-simulate_before_send = true     # eth_call first; a revert is a hold, not a broadcast
+replacement_after_s = 300       # a tx with no receipt after this long is re-signed at the SAME
+                                # nonce with fees bumped ≥12.5%, up to twice (audit M-11)
+simulate_before_send = true     # eth_call AT THE INTENDED GAS LIMIT first; a revert is a hold,
+                                # not a broadcast. The limit itself comes from eth_estimateGas
+                                # plus 25% margin, refused above the per-call cap; a submit that
+                                # reverts on-chain 3x for one checkpoint is held for a human
+                                # (clear it with a `Resolved` journal record) — audit H-3
 
 # ── finality ────────────────────────────────────────────────────────────────
 [finality]
@@ -149,6 +154,9 @@ per_instance_usd_per_day = 25
 global_usd_per_day       = 250
 cents_per_billion_cycles = 100   # what turns a cycle estimate into the budget's units
 window_seconds           = 86400 # the rolling window the caps are measured over
+eth_usd                  = 5000  # crude ETH/USD used to book on-chain gas burn (landed OR
+                                 # reverted) into the same rolling budget — a stop-the-runaway
+                                 # constant, not a price feed (audit H-3)
 
 # ── publishing the scores ───────────────────────────────────────────────────
 # The chain carries the ROOT, the sha256 and the CID. It does not carry the scores. Everything
@@ -189,6 +197,7 @@ log_format   = "json"
 | `budget.*_usd_per_day` | halt thresholds | 25 / 250 |
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
+| `budget.eth_usd` | crude ETH/USD for booking gas into the budget (H-3) | 5000 |
 | `ipfs.api` | kubo RPC the score blob is published to | unset (nothing published) |
 | `ipfs.gateway` | read the pin back through a reader's gateway before calling it published | unset (no read-back) |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |

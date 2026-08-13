@@ -217,19 +217,19 @@ export function ScoreFigure({ className }: { className?: string }) {
 }
 
 /**
- * 3 · Use. A ranked scoreboard on the left, and three things reading it on the
- * right.
+ * 3 · Use. A ranked scoreboard on the left, and three concrete uses reading it
+ * on the right: voting power, incentive distribution, and gated chat access.
  *
- * The bars are ordered and unequal because a scoreboard is: the point of the
- * third panel is that what comes out the far end is a list with an order to it,
- * and that more than one contract can read the same list.
+ * The bars are ordered and unequal because a scoreboard is. The endpoints are
+ * named as well as drawn because three anonymous contract boxes only showed
+ * that scores were composable, not what that composition was for.
  */
 export function UseFigure({ className }: { className?: string }) {
   const rows: Array<[number, number]> = [
-    [16, 58],
-    [32, 45],
-    [48, 34],
-    [64, 25],
+    [18, 43],
+    [32, 35],
+    [46, 27],
+    [60, 20],
   ]
 
   return (
@@ -238,9 +238,9 @@ export function UseFigure({ className }: { className?: string }) {
        * because the order is the whole output. */}
       {rows.map(([y, width], index) => (
         <g key={`row-${y}`} opacity={1 - index * 0.16}>
-          <circle cx="10.6" cy={y} r="2.6" fill="currentColor" />
+          <circle cx="7.6" cy={y} r="2.6" fill="currentColor" />
           <rect
-            x="18"
+            x="14"
             y={y - 2.5}
             width={width}
             height="5"
@@ -251,16 +251,56 @@ export function UseFigure({ className }: { className?: string }) {
 
       {/* Committed once, read by anyone, so the edge fans rather than ending. */}
       <g stroke="currentColor" strokeWidth="1" opacity="0.7">
-        <path d="M84 40 H94 M94 16 V64 M94 16 H102 M94 40 H102 M94 64 H102" />
-        <path d="M98 13 L102 16 L98 19 M98 37 L102 40 L98 43 M98 61 L102 64 L98 67" />
+        <path d="M60 42 H70 M70 16 V68 M70 16 H81 M70 42 H81 M70 68 H81" />
+        <path d="M77 13 L81 16 L77 19 M77 39 L81 42 L77 45 M77 65 L81 68 L77 71" />
       </g>
 
-      {/* Three contracts reading the same list. Squares, because a contract is
-       * not an account, and the panel's claim is that more than one can read it. */}
-      <g stroke="currentColor" strokeWidth="1.1" opacity="0.85">
-        <rect x="104" y="9" width="34" height="14" />
-        <rect x="104" y="33" width="34" height="14" />
-        <rect x="104" y="57" width="34" height="14" />
+      {/* Three applications reading the same scores. Each box gets both a
+       * distinct glyph and a short label: the meaning survives at a glance,
+       * while the labels keep it from turning into icon guesswork. */}
+      <g stroke="currentColor" strokeWidth="1" opacity="0.85">
+        <rect x="83" y="7" width="61" height="18" />
+        <rect x="83" y="33" width="61" height="18" />
+        <rect x="83" y="59" width="61" height="18" />
+      </g>
+
+      {/* Voting: a marked ballot. */}
+      <g stroke="currentColor" strokeWidth="1" opacity="0.9">
+        <rect x="88" y="12" width="8" height="8" />
+        <path d="M89.5 15.5 L91.5 17.5 L95.5 12.5" />
+      </g>
+
+      {/* Incentives: a small distribution from one pool to two recipients. */}
+      <g stroke="currentColor" strokeWidth="0.9" opacity="0.9">
+        <circle cx="92" cy="38.5" r="2" />
+        <circle cx="88.5" cy="46.5" r="2" />
+        <circle cx="95.5" cy="46.5" r="2" />
+        <path d="M92 40.5 V43 M92 43 H88.5 V44.5 M92 43 H95.5 V44.5" />
+      </g>
+
+      {/* Gated chat: a speech bubble closed with a small keyhole. */}
+      <g stroke="currentColor" strokeWidth="0.9" opacity="0.9">
+        <path d="M87.5 64 H96.5 V70 H92 L89 72 V70 H87.5 Z" />
+        <circle cx="92" cy="66.5" r="0.8" />
+        <path d="M92 67.3 V68.5" />
+      </g>
+
+      <g
+        fill="currentColor"
+        fontFamily="var(--mono-family)"
+        fontSize="4.4"
+        letterSpacing="0.15"
+        opacity="0.85"
+      >
+        <text x="101" y="17.6">
+          VOTING POWER
+        </text>
+        <text x="101" y="43.6">
+          INCENTIVES
+        </text>
+        <text x="101" y="69.6">
+          GATED CHAT
+        </text>
       </g>
     </Frame>
   )

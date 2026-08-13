@@ -18,6 +18,13 @@ export const anchorRegistryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'HEAD_DOMAIN_TAG',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'NODE_KIND_ADDRESS',
     outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
     stateMutability: 'view',
@@ -35,7 +42,9 @@ export const anchorRegistryAbi = [
       { name: 'nodeId', internalType: 'bytes32', type: 'bytes32' },
       { name: 'envelopeKind', internalType: 'uint8', type: 'uint8' },
       { name: 'head', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'count', internalType: 'uint64', type: 'uint64' },
       { name: 'dataCommitment', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'headSignature', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'anchor',
     outputs: [],
@@ -85,8 +94,22 @@ export const anchorRegistryAbi = [
   {
     type: 'function',
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'lastCount',
+    outputs: [{ name: 'count', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'nodeKind',
     outputs: [{ name: 'kind', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'ownerOf',
+    outputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -168,6 +191,7 @@ export const anchorRegistryAbi = [
         type: 'bytes32',
         indexed: false,
       },
+      { name: 'count', internalType: 'uint64', type: 'uint64', indexed: false },
       {
         name: 'dataCommitment',
         internalType: 'bytes32',
@@ -281,7 +305,32 @@ export const anchorRegistryAbi = [
   {
     type: 'error',
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'BadHeadSignature',
+  },
+  { type: 'error', inputs: [], name: 'ECDSAInvalidSignature' },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'ECDSAInvalidSignatureLength',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 's', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'ECDSAInvalidSignatureS',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'NotRegistered',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'nodeId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'count', internalType: 'uint64', type: 'uint64' },
+      { name: 'lastAnchored', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'StaleHeadCount',
   },
   {
     type: 'error',
@@ -2227,16 +2276,16 @@ export const gnosisSafeAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// GovernedTrustGraphFactory
+// GovernedTrustgraphsFactory
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const governedTrustGraphFactoryAbi = [
+export const governedTrustgraphsFactoryAbi = [
   {
     type: 'constructor',
     inputs: [
       {
         name: 'factory_',
-        internalType: 'contract TrustGraphFactory',
+        internalType: 'contract TrustgraphsFactory',
         type: 'address',
       },
       {
@@ -2253,7 +2302,11 @@ export const governedTrustGraphFactoryAbi = [
     inputs: [],
     name: 'FACTORY',
     outputs: [
-      { name: '', internalType: 'contract TrustGraphFactory', type: 'address' },
+      {
+        name: '',
+        internalType: 'contract TrustgraphsFactory',
+        type: 'address',
+      },
     ],
     stateMutability: 'view',
   },
@@ -2282,7 +2335,7 @@ export const governedTrustGraphFactoryAbi = [
     inputs: [
       {
         name: 'requested',
-        internalType: 'struct TrustGraphFactory.CreateArgs',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
         type: 'tuple',
         components: [
           { name: 'name', internalType: 'string', type: 'string' },
@@ -2432,6 +2485,13 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'FEE_INCREASE_DELAY',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'FEE_RANGE',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
@@ -2449,6 +2509,13 @@ export const merkleFundDistributorAbi = [
     name: 'allowlistEnabled',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'applyFeePercentageIncrease',
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -2473,6 +2540,26 @@ export const merkleFundDistributorAbi = [
     name: 'claimed',
     outputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'token', internalType: 'address', type: 'address' },
+      { name: 'amount', internalType: 'uint256', type: 'uint256' },
+      { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
+      { name: 'maxFeeAmount', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'expectedFeeRecipient',
+        internalType: 'address',
+        type: 'address',
+      },
+    ],
+    name: 'distribute',
+    outputs: [
+      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -2692,6 +2779,20 @@ export const merkleFundDistributorAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'pendingFeeEffectiveAt',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'pendingFeePercentage',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'pendingOwner',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
@@ -2877,6 +2978,25 @@ export const merkleFundDistributorAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'newFeePercentage',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'effectiveAt',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'FeePercentageIncreaseScheduled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'previousFeePercentage',
         internalType: 'uint256',
         type: 'uint256',
@@ -3025,6 +3145,19 @@ export const merkleFundDistributorAbi = [
     inputs: [{ name: 'data', internalType: 'bytes', type: 'bytes' }],
     name: 'FailedToTransferTokens',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'feeAmount', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxFeeAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'FeeExceedsFunderCap',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'effectiveAt', internalType: 'uint64', type: 'uint64' }],
+    name: 'FeeIncreaseNotYetEffective',
+  },
   { type: 'error', inputs: [], name: 'FeePercentageTooHigh' },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
   { type: 'error', inputs: [], name: 'InvalidClaimDeadline' },
@@ -3034,6 +3167,7 @@ export const merkleFundDistributorAbi = [
   { type: 'error', inputs: [], name: 'InvalidNativeTokenTransferAmount' },
   { type: 'error', inputs: [], name: 'NoClaimDeadline' },
   { type: 'error', inputs: [], name: 'NoFundsToClaim' },
+  { type: 'error', inputs: [], name: 'NoScheduledFeeIncrease' },
   { type: 'error', inputs: [], name: 'NotOwner' },
   { type: 'error', inputs: [], name: 'NotPendingOwner' },
   { type: 'error', inputs: [], name: 'NothingToSweep' },
@@ -3042,6 +3176,14 @@ export const merkleFundDistributorAbi = [
     type: 'error',
     inputs: [{ name: 'token', internalType: 'address', type: 'address' }],
     name: 'SafeERC20FailedOperation',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expected', internalType: 'address', type: 'address' },
+      { name: 'actual', internalType: 'address', type: 'address' },
+    ],
+    name: 'UnexpectedFeeRecipient',
   },
   {
     type: 'error',
@@ -3114,10 +3256,24 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
+    name: 'delegateCallAllowlist',
+    outputs: [{ name: 'allowed', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'proposalId', internalType: 'uint256', type: 'uint256' }],
     name: 'execute',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'executionDelay',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -3166,6 +3322,7 @@ export const merkleGovModuleAbi = [
             internalType: 'uint256',
             type: 'uint256',
           },
+          { name: 'quorumFraction', internalType: 'uint256', type: 'uint256' },
         ],
       },
       {
@@ -3288,6 +3445,7 @@ export const merkleGovModuleAbi = [
       { name: 'cancelled', internalType: 'bool', type: 'bool' },
       { name: 'merkleRoot', internalType: 'bytes32', type: 'bytes32' },
       { name: 'totalVotingPower', internalType: 'uint256', type: 'uint256' },
+      { name: 'quorumFraction', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'view',
   },
@@ -3356,6 +3514,23 @@ export const merkleGovModuleAbi = [
     type: 'function',
     inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
     name: 'setAvatar',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'target_', internalType: 'address', type: 'address' },
+      { name: 'allowed', internalType: 'bool', type: 'bool' },
+    ],
+    name: 'setDelegateCallTarget',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newDelay', internalType: 'uint256', type: 'uint256' }],
+    name: 'setExecutionDelay',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -3485,6 +3660,33 @@ export const merkleGovModuleAbi = [
       },
     ],
     name: 'AvatarSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'target',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'allowed', internalType: 'bool', type: 'bool', indexed: false },
+    ],
+    name: 'DelegateCallTargetSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'newDelay',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ExecutionDelayUpdated',
   },
   {
     type: 'event',
@@ -3728,14 +3930,30 @@ export const merkleGovModuleAbi = [
     ],
     name: 'VotingPeriodUpdated',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'ActionFailed',
+  },
   { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'AlreadyVoted' },
+  {
+    type: 'error',
+    inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
+    name: 'DelegateCallNotAllowed',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'executableAtBlock', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ExecutionDelayNotElapsed',
+  },
   { type: 'error', inputs: [], name: 'InvalidAddress' },
   { type: 'error', inputs: [], name: 'InvalidInitialization' },
   { type: 'error', inputs: [], name: 'InvalidMerkleProof' },
   { type: 'error', inputs: [], name: 'InvalidProposalData' },
   { type: 'error', inputs: [], name: 'InvalidQuorum' },
-  { type: 'error', inputs: [], name: 'InvalidTotalVotingPower' },
   { type: 'error', inputs: [], name: 'InvalidVotingPeriod' },
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },
@@ -5999,10 +6217,10 @@ export const trustAccumulatorMirrorAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TrustGraphFactory
+// TrustgraphsFactory
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-export const trustGraphFactoryAbi = [
+export const trustgraphsFactoryAbi = [
   {
     type: 'constructor',
     inputs: [
@@ -6034,7 +6252,7 @@ export const trustGraphFactoryAbi = [
       },
       {
         name: 'paramsControllerDeployer',
-        internalType: 'contract TrustGraphParamsControllerDeployer',
+        internalType: 'contract TrustgraphsParamsControllerDeployer',
         type: 'address',
       },
       { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
@@ -6138,7 +6356,7 @@ export const trustGraphFactoryAbi = [
     outputs: [
       {
         name: '',
-        internalType: 'contract TrustGraphParamsControllerDeployer',
+        internalType: 'contract TrustgraphsParamsControllerDeployer',
         type: 'address',
       },
     ],
@@ -6228,7 +6446,7 @@ export const trustGraphFactoryAbi = [
     inputs: [
       {
         name: 'args',
-        internalType: 'struct TrustGraphFactory.CreateArgs',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
         type: 'tuple',
         components: [
           { name: 'name', internalType: 'string', type: 'string' },

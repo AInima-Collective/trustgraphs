@@ -6,31 +6,31 @@ import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.s
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
-import {TrustGraphFactory} from "contracts/factory/TrustGraphFactory.sol";
-import {TrustGraphParamsController} from "contracts/factory/TrustGraphParamsController.sol";
+import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
-    TrustGraphParamsControllerDeployer
+    TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
-import {TrustGraphParamsValidator} from "contracts/params/TrustGraphParamsValidator.sol";
-import {ITrustGraphParamsController} from "interfaces/factory/ITrustGraphParamsController.sol";
+import {TrustgraphsParamsValidator} from "contracts/params/TrustgraphsParamsValidator.sol";
+import {ITrustgraphsParamsController} from "interfaces/factory/ITrustgraphsParamsController.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
-import {TrustGraphFactoryBase} from "./TrustGraphFactoryBase.sol";
+import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
-/// @title TrustGraphFactoryTest
+/// @title TrustgraphsFactoryTest
 /// @notice M1's core battery: the properties that make one transaction a whole, safe instance —
 ///         the factory keeps nothing (ground rule 3), the `paramsHash` it computes is the golden
 ///         encoding, the event reconstructs the instance, the id cannot be squatted, and the epoch
-///         floor is a raise rather than a rejection. Bounds live in `TrustGraphFactoryBounds.t.sol`,
-///         real-EAS wiring and domain separation in `TrustGraphFactoryInstance.t.sol`.
-contract TrustGraphFactoryTest is TrustGraphFactoryBase {
+///         floor is a raise rather than a rejection. Bounds live in `TrustgraphsFactoryBounds.t.sol`,
+///         real-EAS wiring and domain separation in `TrustgraphsFactoryInstance.t.sol`.
+contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     using stdJson for string;
 
     address internal alice = address(0xA11CE);
@@ -69,7 +69,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// GROUND RULE 3, with-distributor path: the same, plus the distributor is owned outright by the
     /// admin with no pending handshake — the reason the constructor sets `owner` directly.
     function test_FactoryIsInertAfterCreateWithDistributor() public {
-        TrustGraphFactory.CreateArgs memory args = _args("inert-fund");
+        TrustgraphsFactory.CreateArgs memory args = _args("inert-fund");
         args.withDistributor = true;
         args.distributorToken = address(0xDEC1);
 
@@ -84,7 +84,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         // `address(factory)` is rejected outright — see test_FactoryRefusesToBeItsOwnAdmin.
         vm.assume(admin != address(factory));
 
-        TrustGraphFactory.CreateArgs memory args = _args("fuzzed");
+        TrustgraphsFactory.CreateArgs memory args = _args("fuzzed");
         args.admin = admin;
         args.salt = salt;
         args.withDistributor = withDistributor;
@@ -96,7 +96,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     /// A zero `admin` is the wizard's "use my wallet": it resolves to `msg.sender`, not to nobody.
     function test_ZeroAdminDefaultsToTheCreator() public {
-        TrustGraphFactory.CreateArgs memory args = _args("default-admin");
+        TrustgraphsFactory.CreateArgs memory args = _args("default-admin");
         args.admin = address(0);
         args.withDistributor = true;
 
@@ -114,7 +114,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     function test_AdminCanGovernAndFactoryCannot() public {
         Created memory c = _create(_args("handover"));
         MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory next = controller.getCurrentParams();
         next.dampingFp -= 1;
 
@@ -142,7 +142,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     function test_ControllerPublishesCompleteVersionOne() public {
         Created memory c = _create(_args("version-one"));
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory current = controller.getCurrentParams();
         bytes32 liveHash = MerkleSnapshot(c.snapshot).paramsHash();
 
@@ -168,13 +168,13 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         for (uint256 i = 0; i < c.logs.length; i++) {
             if (
                 c.logs[i].emitter == address(factory) && c.logs[i].topics.length > 0
-                    && c.logs[i].topics[0] == TrustGraphFactory.ParamsControllerCreated.selector
+                    && c.logs[i].topics[0] == TrustgraphsFactory.ParamsControllerCreated.selector
             ) {
                 discovery = i;
             }
             if (
                 c.logs[i].emitter == c.controller && c.logs[i].topics.length > 0
-                    && c.logs[i].topics[0] == ITrustGraphParamsController.ParamsUpdated.selector
+                    && c.logs[i].topics[0] == ITrustgraphsParamsController.ParamsUpdated.selector
             ) {
                 publication = i;
             }
@@ -187,7 +187,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     function test_RollbackPublishesANewVersionInsteadOfRewritingHistory() public {
         Created memory c = _create(_args("rollback"));
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory versionOne = controller.getCurrentParams();
         bytes32 versionOneHash = controller.currentParamsHash();
 
@@ -207,12 +207,12 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     function test_ControllerRejectsNoopInvalidGrowthAndIdentityChanges() public {
         Created memory c = _create(_args("validation"));
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory next = controller.getCurrentParams();
         bytes32 beforeHash = controller.currentParamsHash();
 
         vm.prank(c.admin);
-        vm.expectRevert(abi.encodeWithSelector(TrustGraphParamsController.NoopUpdate.selector, beforeHash));
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsParamsController.NoopUpdate.selector, beforeHash));
         controller.updateParams(next, "");
 
         next.dampingFp -= 1;
@@ -226,14 +226,14 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         next.maxIterations = 500;
         vm.prank(c.admin);
         vm.expectRevert(
-            abi.encodeWithSelector(TrustGraphParamsValidator.RankGrowthUnbounded.selector, uint256(90e18), uint32(500))
+            abi.encodeWithSelector(TrustgraphsParamsValidator.RankGrowthUnbounded.selector, uint256(90e18), uint32(500))
         );
         controller.updateParams(next, "");
 
         next = controller.getCurrentParams();
         next.chainId += 1;
         vm.prank(c.admin);
-        vm.expectRevert(TrustGraphParamsValidator.IdentityFieldChanged.selector);
+        vm.expectRevert(TrustgraphsParamsValidator.IdentityFieldChanged.selector);
         controller.updateParams(next, "");
 
         assertEq(controller.version(), 1);
@@ -244,7 +244,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     function test_ControllerUpdateIsAtomicWhenRegistryLegReverts() public {
         Created memory c = _create(_args("atomic"));
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory next = controller.getCurrentParams();
         next.dampingFp -= 1;
         bytes32 nextHash = ParamsCodec.hash(next);
@@ -268,7 +268,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     function test_ControllerOwnershipUsesTwoStepTransfer() public {
         Created memory c = _create(_args("two-step"));
-        TrustGraphParamsController controller = TrustGraphParamsController(c.controller);
+        TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         address nextOwner = address(0xA770);
 
         vm.prank(c.admin);
@@ -290,11 +290,11 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// `OPERATIONAL_ROLE` and owning the distributor (ground rule 3 broken from public input), while
     /// the grant-then-renounce pair left the instance with no constitutional holder at all.
     function test_FactoryRefusesToBeItsOwnAdmin() public {
-        TrustGraphFactory.CreateArgs memory args = _args("self-admin");
+        TrustgraphsFactory.CreateArgs memory args = _args("self-admin");
         args.admin = address(factory);
         args.withDistributor = true;
 
-        vm.expectRevert(TrustGraphFactory.InvalidAdmin.selector);
+        vm.expectRevert(TrustgraphsFactory.InvalidAdmin.selector);
         factory.createInstance(args);
     }
 
@@ -320,7 +320,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         assertEq(stored, ParamsCodec.hash(expected), "factory hash must equal the codec's");
 
         // Backward: the emitted params, put back into the golden domain, must hash to the vector.
-        // This is `TrustGraphGoldenVectors.t.sol:test_ParamsHashEncoding` reached through the
+        // This is `TrustgraphsGoldenVectors.t.sol:test_ParamsHashEncoding` reached through the
         // factory — if the factory silently altered any governance field, this fails.
         ParamsCodec.Params memory emitted = c.evt.params;
         emitted.schemaUid = goldenJson.readBytes32(".params.schemaUid");
@@ -384,7 +384,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// `InstanceCreated` alone hashes to the `paramsHash` its snapshot enforces. If this can ever
     /// fail, a prover that trusts the event produces proofs that no snapshot will accept.
     function test_EventParamsHashToTheSnapshotsParamsHash() public {
-        TrustGraphFactory.CreateArgs memory args = _args("event-truth");
+        TrustgraphsFactory.CreateArgs memory args = _args("event-truth");
         args.withDistributor = true;
         Created memory c = _create(args);
 
@@ -398,7 +398,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// ...and every other field of the event is the real thing too, so the reconstruction needs no
     /// side channel: addresses, the effective epoch, the presentation strings, the token pick.
     function test_EventCarriesTheRealAddressesAndPresentation() public {
-        TrustGraphFactory.CreateArgs memory args = _args("event-fields");
+        TrustgraphsFactory.CreateArgs memory args = _args("event-fields");
         args.metadataURI = "ipfs://bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         args.admin = bob;
         args.epochLength = EPOCH_FLOOR + 11;
@@ -459,7 +459,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         vm.startPrank(alice);
         Created memory c = _create(_args("commons"));
 
-        TrustGraphFactory.CreateArgs memory again = _args("commons");
+        TrustgraphsFactory.CreateArgs memory again = _args("commons");
         vm.expectRevert(abi.encodeWithSelector(IInstanceRegistry.InstanceAlreadyExists.selector, c.instanceId));
         factory.createInstance(again);
         vm.stopPrank();
@@ -483,7 +483,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         vm.startPrank(alice);
         Created memory a = _create(_args("commons"));
 
-        TrustGraphFactory.CreateArgs memory second = _args("commons");
+        TrustgraphsFactory.CreateArgs memory second = _args("commons");
         second.salt = bytes32(uint256(1));
         Created memory b = _create(second);
         vm.stopPrank();
@@ -536,7 +536,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// A too-short request is RAISED to the floor, not rejected — a wizard should never fail on a
     /// number the user has no way to reason about.
     function test_EpochBelowFloorIsRaised() public {
-        TrustGraphFactory.CreateArgs memory args = _args("fast");
+        TrustgraphsFactory.CreateArgs memory args = _args("fast");
         args.epochLength = 1;
 
         Created memory c = _create(args);
@@ -546,7 +546,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     /// Zero — "no schedule at all" — is raised too, so no factory instance is ever unscheduled.
     function test_ZeroEpochIsRaisedToTheFloor() public {
-        TrustGraphFactory.CreateArgs memory args = _args("unscheduled");
+        TrustgraphsFactory.CreateArgs memory args = _args("unscheduled");
         args.epochLength = 0;
 
         Created memory c = _create(args);
@@ -555,7 +555,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     /// A longer cadence is honoured verbatim: the floor is a minimum, not a setting.
     function test_EpochAboveFloorIsHonoured() public {
-        TrustGraphFactory.CreateArgs memory args = _args("slow");
+        TrustgraphsFactory.CreateArgs memory args = _args("slow");
         args.epochLength = 216_000;
 
         Created memory c = _create(args);
@@ -564,7 +564,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     }
 
     function testFuzz_EffectiveEpochIsTheMaxOfRequestAndFloor(uint64 requested) public {
-        TrustGraphFactory.CreateArgs memory args = _args("epoch-fuzz");
+        TrustgraphsFactory.CreateArgs memory args = _args("epoch-fuzz");
         args.epochLength = requested;
 
         Created memory c = _create(args);
@@ -594,15 +594,15 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
             ];
             holes[i] = address(0);
 
-            vm.expectRevert(TrustGraphFactory.ZeroAddress.selector);
-            new TrustGraphFactory(
+            vm.expectRevert(TrustgraphsFactory.ZeroAddress.selector);
+            new TrustgraphsFactory(
                 IEAS(holes[0]),
                 SchemaRegistrar(holes[1]),
                 IZkVerifier(holes[2]),
                 IInstanceRegistry(holes[3]),
                 MerkleSnapshotDeployer(holes[4]),
                 MerkleFundDistributorDeployer(holes[5]),
-                TrustGraphParamsControllerDeployer(holes[6]),
+                TrustgraphsParamsControllerDeployer(holes[6]),
                 EPOCH_FLOOR,
                 vault
             );
@@ -612,8 +612,8 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// A zero floor would mean `epochLength == 0` on every instance, i.e. no schedule at all and
     /// prover-chosen epoch boundaries. Rejected at deployment rather than discovered later.
     function test_ConstructorRejectsZeroEpochFloor() public {
-        vm.expectRevert(TrustGraphFactory.ZeroEpochFloor.selector);
-        new TrustGraphFactory(
+        vm.expectRevert(TrustgraphsFactory.ZeroEpochFloor.selector);
+        new TrustgraphsFactory(
             IEAS(address(eas)),
             registrar,
             IZkVerifier(address(verifier)),
@@ -633,7 +633,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         vm.prank(registryAdmin);
         registry.revokeRole(registrarRole, address(factory));
 
-        TrustGraphFactory.CreateArgs memory args = _args("unlisted");
+        TrustgraphsFactory.CreateArgs memory args = _args("unlisted");
         vm.expectRevert(abi.encodeWithSelector(IInstanceRegistry.NotRegistrar.selector, address(factory)));
         factory.createInstance(args);
         assertEq(registry.instanceCount(), 0, "a failed create leaves no directory row");
@@ -667,12 +667,12 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// Deploy your network endowed with a year of roots, in one transaction. The alternative is
     /// discovering the funding step after the first epoch goes unproven.
     function test_CreateForwardsMsgValueIntoTheInstancesTank() public {
-        TrustGraphFactory.CreateArgs memory args = _args("paid");
+        TrustgraphsFactory.CreateArgs memory args = _args("paid");
         vm.deal(address(this), 5 ether);
 
         bytes32 id = factory.computeInstanceId(address(this), args.name, args.salt);
         vm.expectEmit(true, true, true, true);
-        emit TrustGraphFactory.InstancePrepaid(id, address(this), 5 ether);
+        emit TrustgraphsFactory.InstancePrepaid(id, address(this), 5 ether);
         factory.createInstance{value: 5 ether}(args);
 
         IProvingVault.Account memory a = vault.accountOf(id);
@@ -689,7 +689,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
 
     /// A factory deployed without a vault must reject value rather than silently keeping it.
     function test_AFactoryWithNoVaultRejectsValue() public {
-        TrustGraphFactory factory2 = new TrustGraphFactory(
+        TrustgraphsFactory factory2 = new TrustgraphsFactory(
             IEAS(address(eas)),
             registrar,
             IZkVerifier(address(verifier)),
@@ -707,7 +707,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
         registry.grantRole(registrar, address(factory2));
 
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(TrustGraphFactory.NoVaultConfigured.selector);
+        vm.expectRevert(TrustgraphsFactory.NoVaultConfigured.selector);
         factory2.createInstance{value: 1 ether}(_args("novault"));
 
         // ...and the same call succeeds with none, so the rejection is the value, not the shape.
@@ -734,7 +734,7 @@ contract TrustGraphFactoryTest is TrustGraphFactoryBase {
     /// consumer hard-codes, and a field added, moved or retyped changes it.
     function test_InstanceCreatedSignatureIsFrozen() public pure {
         assertEq(
-            TrustGraphFactory.InstanceCreated.selector,
+            TrustgraphsFactory.InstanceCreated.selector,
             keccak256(
                 "InstanceCreated(bytes32,address,address,string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))"
             ),

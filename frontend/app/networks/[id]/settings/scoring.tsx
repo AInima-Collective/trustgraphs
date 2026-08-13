@@ -71,7 +71,7 @@ import {
   safeReadAbi,
   signerParamsAbi,
   timelockAbi,
-  trustGraphParamsControllerAbi,
+  trustgraphsParamsControllerAbi,
   validateParamsUpdate,
 } from '@/lib/scoring-params'
 import { previewScoringChange } from '@/lib/scoring-preview'
@@ -337,7 +337,7 @@ const useControllerState = ({
   liveParamsHash?: Hex
 }) => {
   const knownController = realAddress(
-    instance?.contracts.trustGraphParamsController
+    instance?.contracts.trustgraphsParamsController
   )
   const { data: factoryRegistry } = useReadContract({
     address: factoryAddress,
@@ -370,42 +370,42 @@ const useControllerState = ({
       ? [
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'getCurrentParams' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'currentParamsHash' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'version' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'owner' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'pendingOwner' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'instanceId' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'snapshot' as const,
           },
           {
             address: controllerAddress,
-            abi: trustGraphParamsControllerAbi,
+            abi: trustgraphsParamsControllerAbi,
             functionName: 'registry' as const,
           },
         ]
@@ -928,7 +928,7 @@ const safeBundleDownload = (
     createdAt: Date.now(),
     meta: {
       name,
-      description: 'TrustGraph scoring parameter update',
+      description: 'Trustgraphs scoring parameter update',
       txBuilderVersion: '1.18.0',
       createdFromSafeAddress: safe,
       createdFromOwnerAddress: '',
@@ -1320,7 +1320,7 @@ const LiveScoringSettings = ({
       }
       await publicClient.simulateContract({
         address: controller.controllerAddress,
-        abi: trustGraphParamsControllerAbi,
+        abi: trustgraphsParamsControllerAbi,
         functionName: 'updateParams',
         args: [paramsToContract(proposed), evidenceURI],
         account: controller.owner,
@@ -1475,7 +1475,7 @@ const LiveScoringSettings = ({
       await txToast({
         tx: {
           address: controller.controllerAddress,
-          abi: trustGraphParamsControllerAbi,
+          abi: trustgraphsParamsControllerAbi,
           functionName: 'updateParams',
           args: [paramsToContract(proposed), evidenceURI],
         },
@@ -2616,7 +2616,7 @@ const ScoringReviewFixture = () => {
                 </span>
               </div>
               <p className="mt-3 break-words font-mono text-sm font-medium">
-                TrustGraphParamsController.
+                TrustgraphsParamsController.
                 <wbr />
                 updateParams(Params,string)
               </p>

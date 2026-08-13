@@ -251,14 +251,17 @@ fn badge_accept_reject_and_allowlist() {
         .map_or(true, |o| !o.contains_key(&did_node_id(BOB))));
 
     // allowedIssuers miss: definition witnessed, alice not listed -> skip, no edge.
+    // The definition must be keyed by its real content-addressed CID (C-1): the guest only
+    // honors a strongRef target whose bytes hash to the badge CID.
     let def = enc(&m(vec![
         ("$type", st("app.certified.badge.definition")),
         ("allowedIssuers", Ipld::List(vec![st(CAROL)])),
     ]));
+    let def_cid = zk_core::cid::cid_v1_dagcbor(&zk_core::cid::sha256(&def));
     let mut targets = BTreeMap::new();
-    targets.insert("bafydef".to_string(), def);
+    targets.insert(def_cid.clone(), def);
     let g3 = semantics::derive(
-        &[repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, "bafydef"))])],
+        &[repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &def_cid))])],
         &targets,
         &params(),
     );
@@ -267,6 +270,18 @@ fn badge_accept_reject_and_allowlist() {
         .get(&did_node_id(ALICE))
         .map_or(true, |o| !o.contains_key(&did_node_id(BOB))));
     assert!(g3.skips.iter().any(|sk| sk.reason == skip_reason::ALLOWED_ISSUERS_MISS));
+
+    // C-1 forgery guard: same award, but the prover supplies a block that does NOT hash to
+    // the CID (a forged restriction). It must be ignored, not honored -> award stands, so no
+    // ALLOWED_ISSUERS_MISS skip is produced by a fabricated definition.
+    let mut forged = BTreeMap::new();
+    forged.insert(def_cid.clone(), enc(&m(vec![("$type", st("totally.different.record"))])));
+    let g4 = semantics::derive(
+        &[repo(ALICE, 0, vec![("app.certified.badge.award/aw", award(BOB, &def_cid))])],
+        &forged,
+        &params(),
+    );
+    assert!(!g4.skips.iter().any(|sk| sk.reason == skip_reason::ALLOWED_ISSUERS_MISS));
 }
 
 #[test]

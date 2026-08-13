@@ -11,7 +11,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 ///         the on-chain Solidity encoding ever diverge, this test fails.
 /// @dev    The `trust-graph` and `signer` programs share the same golden feed
 ///         (`test/golden/trust-graph.json`); the root-producer sections are asserted in
-///         TrustGraphGoldenVectors.t.sol.
+///         TrustgraphsGoldenVectors.t.sol.
 contract SignerGoldenVectorsTest is Test {
     using stdJson for string;
 
@@ -41,8 +41,9 @@ contract SignerGoldenVectorsTest is Test {
         assertEq(_ozRoot(leaves), json.readBytes32(".signer.signerSetRoot"), "signerSetRoot mismatch");
     }
 
-    /// Signer journal: abi.encode(bytes32, uint64, bytes32, bytes32, bytes32, uint256) and its keccak.
-    /// This is the EXACT tuple `SignerSyncZkModule.submitSignerProof` rebuilds and verifies against.
+    /// Signer journal: abi.encode(bytes32, uint64, bytes32, bytes32, bytes32, uint256, bytes32)
+    /// and its keccak. This is the EXACT tuple `SignerSyncZkModule.submitSignerProof` rebuilds and
+    /// verifies against (the final word is the M-3 instance/chain binding).
     function test_SignerJournalEncodingAndDigest() public view {
         bytes memory encoded = abi.encode(
             json.readBytes32(".signer.journal.acc"),
@@ -50,10 +51,25 @@ contract SignerGoldenVectorsTest is Test {
             json.readBytes32(".signer.journal.paramsHash"),
             json.readBytes32(".signer.journal.selectionParamsHash"),
             json.readBytes32(".signer.journal.signerSetRoot"),
-            json.readUint(".signer.journal.targetThreshold")
+            json.readUint(".signer.journal.targetThreshold"),
+            json.readBytes32(".signer.journal.instanceDomain")
         );
         assertEq(encoded, json.readBytes(".signer.journal.encoded"), "signer journal encoding mismatch");
         assertEq(keccak256(encoded), json.readBytes32(".signer.journal.digest"), "signer journal digest mismatch");
+    }
+
+    /// The M-3 instance/chain binding: keccak256(abi.encode(address module, uint256 chainId)),
+    /// rebuilt on-chain by `submitSignerProof` from `address(this)` + `block.chainid`.
+    function test_SignerInstanceDomainDerivation() public view {
+        bytes32 domain = keccak256(
+            abi.encode(
+                json.readAddress(".signer.instanceDomain.module"), json.readUint(".signer.instanceDomain.chainId")
+            )
+        );
+        assertEq(domain, json.readBytes32(".signer.instanceDomain.domain"), "signer instanceDomain mismatch");
+        assertEq(
+            domain, json.readBytes32(".signer.journal.instanceDomain"), "journal carries a different instanceDomain"
+        );
     }
 
     /// Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).

@@ -1,6 +1,6 @@
 # Honest limits
 
-trustgraphs makes strong guarantees about the math and deliberately makes none about
+Trustgraphs makes strong guarantees about the math and deliberately makes none about
 people. This page collects the limits worth knowing before you rely on a scoreboard: the
 things the system does not solve, stated plainly.
 

@@ -230,9 +230,9 @@ SNAP_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:MerkleS
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
 DIST_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:MerkleFundDistributorDeployer \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
-PARAMS_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:TrustGraphParamsControllerDeployer \
+PARAMS_DEPLOYER=$(forge create src/contracts/factory/InstanceDeployers.sol:TrustgraphsParamsControllerDeployer \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
-FACTORY=$(forge create src/contracts/factory/TrustGraphFactory.sol:TrustGraphFactory \
+FACTORY=$(forge create src/contracts/factory/TrustgraphsFactory.sol:TrustgraphsFactory \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
   --constructor-args "$EAS" "$SCHEMA_REGISTRAR" "$VERIFIER" "$REGISTRY" \
     "$SNAP_DEPLOYER" "$DIST_DEPLOYER" "$PARAMS_DEPLOYER" "$EPOCH" "$VAULT" | jq -r .deployedTo)

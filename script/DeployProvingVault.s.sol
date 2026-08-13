@@ -70,11 +70,16 @@ contract DeployProvingVault is Common {
         // The sanity band. `maxPerRootUsd` is denominated in oracle-USD and the ETH leg converts at
         // the same oracle, so a low-but-fresh price caps nothing: at $1/ETH a $50 claim withdraws
         // 50 ETH. An out-of-band answer is treated as no answer.
+        //
+        // Staleness default (ORCL-1, 2026-08-13 audit): mainnet Chainlink ETH/USD heartbeats
+        // hourly, so accepting a 24h-old answer would price claims off a day-old market. Default
+        // to heartbeat + 50% grace off-devnet; the 24h default survives only for dev, whose mock
+        // feed is stamped once at deploy and would otherwise go stale mid-session.
         ProvingVault vault = new ProvingVault(
             IInstanceRegistry(instanceRegistry),
             IERC20(usdc),
             IEthUsdFeed(feed),
-            uint64(vm.envOr("FEED_MAX_STALENESS", uint256(86_400))),
+            uint64(vm.envOr("FEED_MAX_STALENESS", dev ? uint256(86_400) : uint256(5_400))),
             vm.envOr("MIN_ETH_USD", uint256(100e8)),
             vm.envOr("MAX_ETH_USD", uint256(100_000e8)),
             deployer, // FEE_SETTER_ROLE

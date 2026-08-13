@@ -1,7 +1,7 @@
 /**
  * Trust-graph instance catalog (GOAL.md M2; research/INSTANCE_FACTORY.md §3).
  *
- * Serves the `instance` table — one row per network created through `TrustGraphFactory`, built from
+ * Serves the `instance` table — one row per network created through `TrustgraphsFactory`, built from
  * the frozen `InstanceCreated` event (src/factory.ts). This is what REPLACES `config/networks.json`
  * for trust-graph networks: the app asks the chain (via this route) which networks exist instead of
  * shipping a list, so a community that signed `createInstance` a minute ago is browsable with no
@@ -47,7 +47,7 @@ type GovernanceRow = Pick<
 
 /**
  * The canonical vouch schema's presentation labels. Every factory instance shares one schema
- * (`TrustGraphFactory.VOUCH_SCHEMA`) precisely so these are uniform — a creator-customizable schema
+ * (`TrustgraphsFactory.VOUCH_SCHEMA`) precisely so these are uniform — a creator-customizable schema
  * would fork `weightFieldIndex` and multiply the surface every consumer has to handle.
  */
 const VOUCH_SCHEMA_KEY = 'vouching'
@@ -80,7 +80,7 @@ const serialize = (row: InstanceRow, governance?: GovernanceRow) => ({
     merkleSnapshot: row.snapshot,
     easIndexerResolver: row.resolver,
     merkleFundDistributor: row.distributor,
-    trustGraphParamsController: row.paramsController,
+    trustgraphsParamsController: row.paramsController,
     merkleGovModule: governance?.address ?? null,
     safe: governance ? { proxy: governance.target } : null,
   },

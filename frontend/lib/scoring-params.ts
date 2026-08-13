@@ -70,7 +70,7 @@ export const paramsComponents = [
   { name: 'chainId', internalType: 'uint64', type: 'uint64' },
 ] as const
 
-export const trustGraphParamsControllerAbi = [
+export const trustgraphsParamsControllerAbi = [
   {
     type: 'function',
     name: 'getCurrentParams',
@@ -468,7 +468,7 @@ const identityChanged = (next: Params, initial: Params) =>
   JSON.stringify(next.envelope0DomainSeparators ?? []) !==
     JSON.stringify(initial.envelope0DomainSeparators ?? [])
 
-/** Exact TypeScript mirror of TrustGraphParamsValidator's update envelope. */
+/** Exact TypeScript mirror of TrustgraphsParamsValidator's update envelope. */
 export const validateParamsUpdate = (
   next: Params,
   initial: Params,
@@ -637,7 +637,7 @@ export type ParameterAction = {
   data: Hex
   operation: 0
   description: string
-  contractName: 'SignerSyncZkModule' | 'TrustGraphParamsController'
+  contractName: 'SignerSyncZkModule' | 'TrustgraphsParamsController'
   functionSignature: 'setParamsHash(bytes32)' | 'updateParams(Params,string)'
 }
 
@@ -674,13 +674,13 @@ export const buildParameterActions = ({
     target: controller,
     value: '0',
     data: encodeFunctionData({
-      abi: trustGraphParamsControllerAbi,
+      abi: trustgraphsParamsControllerAbi,
       functionName: 'updateParams',
       args: [paramsToContract(proposed), evidenceURI],
     }),
     operation: 0,
     description: `Publish the complete scoring configuration as the next parameter version ${proposedHash}`,
-    contractName: 'TrustGraphParamsController',
+    contractName: 'TrustgraphsParamsController',
     functionSignature: 'updateParams(Params,string)',
   })
   return actions
@@ -693,7 +693,7 @@ export const decodeParameterUpdateAction = (
   if (!data.startsWith('0x')) return null
   try {
     const decoded = decodeFunctionData({
-      abi: trustGraphParamsControllerAbi,
+      abi: trustgraphsParamsControllerAbi,
       data: data as Hex,
     })
     if (decoded.functionName !== 'updateParams' || !decoded.args) return null

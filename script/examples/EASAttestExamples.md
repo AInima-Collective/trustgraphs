@@ -270,7 +270,7 @@ Tests cover:
 
 ## Architecture Integration
 
-This script integrates with the broader TrustGraph architecture:
+This script integrates with the broader trustgraphs architecture:
 
 1. **Direct EAS Integration**: Creates attestations directly against the EAS contract
 2. **Payment Support**: Enables economic models around attestations

@@ -31,7 +31,7 @@ import {
 } from '@/lib/contributions-view'
 import {
   contributionsTabs,
-  trustGraphTabs,
+  trustgraphsTabs,
   trustNetworkFor,
 } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
@@ -915,7 +915,7 @@ export const ContributionsNetworkPage = ({
           network={trustNetwork ?? network}
           tabs={
             trustNetwork
-              ? trustGraphTabs(trustNetwork)
+              ? trustgraphsTabs(trustNetwork)
               : contributionsTabs(network)
           }
           className="w-full"
