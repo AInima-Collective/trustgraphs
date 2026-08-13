@@ -22,14 +22,14 @@ will carry exactly the weight their standing gives it. That's a problem every co
 already has, and trustgraphs doesn't claim to fix it. What it removes is the cheap
 version of the attack: buying a crowd instead of earning one.
 
-## Bots still land on the scoreboard
+## Lower starting shares give every account a baseline
 
-Bot armies can't attract trust, but they aren't invisible either. Every network gives
-accounts a small "head start" of baseline trust, and any of it not reserved for the
-starting accounts is split equally among everyone else, bots included. So a large enough
-island of fake accounts can pool a real share of that baseline even though nobody vouched
-for them from outside. A network that reserves the full head start for its starting
-accounts closes that door, at the cost of newcomers starting from exactly zero.
+Bot armies can't attract trust. The create form also reserves the full starting share for
+the starting accounts by default, so a disconnected island starts at zero. A community can
+lower that advanced setting; any unreserved baseline is then split equally among
+everyone else, bots included. A large enough island of fake accounts can pool a real
+share of that baseline even though nobody vouched for them from outside. The create form
+warns about this tradeoff when the setting is below 100%.
 
 ## Nothing here is private
 

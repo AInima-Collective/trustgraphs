@@ -41,11 +41,11 @@ flowing in, because no trusted account points at the island. All those vouches m
 liquid. The only way to gain score is for trust to actually reach you from the real
 community.
 
-One honest detail. Every network gives its accounts a small "head start" of baseline
-trust, and any of it not reserved for the starting accounts is split equally among
-everyone else, so a large enough island of bots can still pool a real share of that
-baseline even with no vouches from outside. A network that reserves the full head start
-for its starting accounts closes that door. [Honest limits](./limits.md) has more.
+One honest detail. The create form reserves all baseline trust for the starting accounts
+by default, so a disconnected account starts at zero. A community can lower that advanced
+setting. If it does, the remainder is split equally among everyone else, and a large
+enough island of bots can pool a real share of that baseline even with no vouches from
+outside. [Honest limits](./limits.md) has more.
 
 ## The scoreboard and its fingerprint
 

@@ -112,6 +112,12 @@ Initial_PR(i) = {
 }
 ```
 
+Exact isolation of a component that is unreachable from the trusted seeds requires
+`trust_share = 1`: then its teleport term is zero as well as its incoming trust flow. At
+any lower value, non-seed accounts divide `1 - trust_share` and therefore keep a positive
+baseline even when they are unreachable. The create form defaults to `1` and warns before
+a community chooses a lower value.
+
 ## Implementation Architecture
 
 ### System Components

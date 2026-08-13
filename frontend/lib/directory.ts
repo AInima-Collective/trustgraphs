@@ -28,7 +28,7 @@ export type DirectoryProgram = (typeof PROGRAM_ORDER)[number]
  * is lying twice.
  */
 export type ScoreboardSummary = {
-  /** Accounts (or claims, or repos) carrying a score at the latest proven root. */
+  /** Entries (or claims, or repos) carrying a score greater than zero at the latest root. */
   scored: number | null
   /** Vouches counted into that root. Only meaningful for the vouching program. */
   attestations: number | null
@@ -76,13 +76,9 @@ export const SECTION_META: Record<
     title: 'Vouching networks',
     standfirst: 'Members vouch for each other, and the vouches become a score.',
     nameLabel: 'Network',
-    // NOT "Members". The number is `numAccounts` off the last proven root, which
-    // the indexer writes as every entry in the tree, zero-scored accounts and
-    // all. That is the same number a bot island inflates: this page cannot boast
-    // about isolating an island in one section and count it as members in
-    // another. The roster on the network's own page uses a different
-    // denominator (value > 0), so the two disagreed on purpose-built data.
-    scoredLabel: 'Accounts',
+    // The canonical blob contains only value > 0 entries, so `numAccounts` uses
+    // the same set as both the network roster and the live vouch count.
+    scoredLabel: 'Scored accounts',
   },
   contributions: {
     title: 'Funding rounds',
