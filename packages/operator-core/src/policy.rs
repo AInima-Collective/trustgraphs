@@ -130,6 +130,7 @@ impl Default for Policy {
             supported_programs: BTreeSet::from([
                 Program::Trustgraphs,
                 Program::Contributions,
+                Program::Weighted,
                 Program::Signer,
             ]),
             loss_budget: LossBudget::default(),

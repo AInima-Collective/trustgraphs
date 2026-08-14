@@ -136,4 +136,22 @@ mod tests {
         let err = reconstruct(&leaves, &edges, bogus, n).unwrap_err();
         assert!(err.to_string().contains("self-check FAILED"));
     }
+
+    #[test]
+    fn weighted_lane_one_uses_the_identical_fold_leaf_bytes() {
+        let binary = edge(0, 1, 2, 3, 123, 77);
+        let weighted = weighted_prior_core::RawEdge {
+            kind: binary.kind,
+            attester: binary.attester,
+            recipient: binary.recipient,
+            uid: binary.uid,
+            block_timestamp: binary.block_timestamp,
+            data: binary.data.clone(),
+        };
+        assert_eq!(
+            edge_leaf_of(&binary),
+            weighted_prior_core::encode::edge_leaf(&weighted),
+            "operator reconstruction must be byte-identical to the isolated weighted guest"
+        );
+    }
 }

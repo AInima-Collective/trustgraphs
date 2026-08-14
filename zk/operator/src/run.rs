@@ -5,8 +5,8 @@
 //! CI can test it against a fake chain.
 
 use alloy_primitives::{Address, B256, U256};
-use anyhow::{Context, Result, bail};
-use operator_core::catalog::{CatalogEntry, SkipCause, scan as catalog_scan};
+use anyhow::{bail, Context, Result};
+use operator_core::catalog::{scan as catalog_scan, CatalogEntry, SkipCause};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
@@ -17,13 +17,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::chain::{
-    RegistryScan, Rpc, RpcCatalog, entry_at_params_hash, expected_instance_domain, read_checkpoint,
-    read_landed_publication, read_signer_view, read_snapshot, verifier_vkey,
+    entry_at_params_hash, expected_instance_domain, read_checkpoint, read_landed_publication,
+    read_signer_view, read_snapshot, verifier_vkey, weighted_pending_entry, RegistryScan, Rpc,
+    RpcCatalog,
 };
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{
-    InstanceStatus, Logger, PublicSettings, Status as OpsStatus, alert, write_status,
+    alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
 };
 use crate::tx::Sender;
 
@@ -43,7 +44,12 @@ fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
 
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
 fn supported() -> BTreeSet<Program> {
-    BTreeSet::from([Program::Trustgraphs, Program::Contributions, Program::Signer])
+    BTreeSet::from([
+        Program::Trustgraphs,
+        Program::Contributions,
+        Program::Weighted,
+        Program::Signer,
+    ])
 }
 
 #[derive(Clone, Copy)]
@@ -383,6 +389,61 @@ fn tick(
         }
 
         for entry in &catalog.entries {
+            // Weighted prior bytes are checkpoint-critical data. Keep the active version warm on
+            // every tick and prefetch a pending proposal before its timelock can activate. A
+            // failure is loud but per-instance; proving still re-runs the same fail-closed
+            // recovery, so no substitute data can slip through after this advisory pass.
+            if *program == Program::Weighted {
+                let mut warm = vec![("active", entry.clone())];
+                match weighted_pending_entry(rpc, entry) {
+                    Ok(Some(pending)) => warm.push(("pending", pending)),
+                    Ok(None) => {}
+                    Err(error) => {
+                        let text =
+                            format!("{}: pending prior discovery failed: {error}", entry.name);
+                        alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                        alerts_raised.push(text);
+                    }
+                }
+                for (status, version) in warm {
+                    match crate::weighted::recover_for_entry(cfg, rpc, &version) {
+                        Ok(recovered) => {
+                            logger.event(
+                                "weighted_manifest_pinned",
+                                json!({
+                                    "instance": format!("{:#x}", entry.instance_id),
+                                    "version": version.params_version,
+                                    "status": status,
+                                    "bytes": recovered.bytes.len(),
+                                    "source": recovered.source.to_string(),
+                                    "degraded_sources": crate::weighted::degraded_source_count(&recovered),
+                                }),
+                            );
+                            let degraded = crate::weighted::degraded_source_count(&recovered);
+                            if degraded > 0 {
+                                let text = format!(
+                                    "{}: {status} weighted manifest recovered from {} but {} earlier source(s) are degraded; retry interval {}s",
+                                    entry.name,
+                                    recovered.source,
+                                    degraded,
+                                    cfg.weighted_manifests.retry_seconds
+                                );
+                                alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                                alerts_raised.push(text);
+                            }
+                        }
+                        Err(error) => {
+                            let text = format!(
+                                "{}: {status} weighted manifest unavailable; proving is disabled until recovery succeeds: {error}",
+                                entry.name
+                            );
+                            alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
+                            alerts_raised.push(text);
+                        }
+                    }
+                }
+            }
+
             // The vkey check, per instance. `expected_zk_verifier` in the state is what makes
             // `plan` produce a `VerifierRotated` hold, so it has to reflect reality rather than
             // being copied from the chain read.
@@ -550,6 +611,10 @@ fn tick(
                 publication_target_count: cfg.ipfs.resolved_targets().len(),
                 publication_min_success: cfg.ipfs.required_successes(),
                 publication_retry_seconds: cfg.ipfs.retry_seconds,
+                weighted_manifest_mirror_count: cfg.weighted_manifests.mirrors.len(),
+                weighted_manifest_cache_max_versions: cfg.weighted_manifests.max_versions,
+                weighted_manifest_cache_max_bytes: cfg.weighted_manifests.max_bytes,
+                weighted_manifest_retry_seconds: cfg.weighted_manifests.retry_seconds,
                 submit_failure_threshold: cfg.ops.submit_failure_threshold,
                 signer_sync_enabled: cfg.signer_sync.enabled,
                 signer_confirmations: cfg.signer_sync.confirmations,
@@ -1246,6 +1311,7 @@ fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
     for (program, vk) in [
         (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
         (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
+        (Program::Weighted, trustgraph_prover::programs::weighted::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {
         let s = trustgraph_prover::common::vkey(vk)?;

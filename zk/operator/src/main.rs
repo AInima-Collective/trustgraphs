@@ -8,6 +8,7 @@ mod handlers;
 mod ops;
 mod run;
 mod tx;
+mod weighted;
 
 use alloy_primitives::B256;
 use anyhow::{Context, Result};

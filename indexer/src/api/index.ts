@@ -12,6 +12,7 @@ import instances from './instances'
 import merkle from './merkle'
 import network from './network'
 import vault from './vault'
+import weightedPriors from './weighted-priors'
 
 const app = new Hono()
 
@@ -28,5 +29,6 @@ app.route('/instances', instances)
 app.route('/merkle', merkle)
 app.route('/network', network)
 app.route('/vault', vault)
+app.route('/weighted-priors', weightedPriors)
 
 export default app

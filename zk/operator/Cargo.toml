@@ -26,6 +26,8 @@ operator-core = { path = "../../packages/operator-core" }
 trustgraph-prover = { path = "../prover" }
 pagerank-core = { path = "../../packages/pagerank-core" }
 contributions-core = { path = "../../packages/contributions-core" }
+weighted-prior-core = { path = "../../packages/weighted-prior-core" }
+zk-core = { path = "../../packages/zk-core" }
 
 alloy-primitives = { version = "1", features = ["serde"] }
 alloy-sol-types = { version = "1", features = ["json"] }
@@ -40,3 +42,6 @@ toml = "0.8"
 alloy-consensus = "1"
 alloy-signer = "1"
 alloy-signer-local = "1"
+
+[dev-dependencies]
+tempfile = "3"

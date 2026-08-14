@@ -50,9 +50,16 @@ struct Args {
     /// The checkpoint id to reconstruct.
     #[arg(long)]
     checkpoint: u64,
-    /// Path to the governance-pinned params (serialized `pagerank_core::Params`).
+    /// Path to the governance-pinned params (binary params by default; weighted params with
+    /// `--weighted`).
     #[arg(long)]
     params: String,
+    /// Emit the isolated `weighted_prior_core::GuestInput` shape.
+    #[arg(long, conflicts_with = "signer")]
+    weighted: bool,
+    /// Exact canonical TGWP bytes; required with `--weighted`.
+    #[arg(long, requires = "weighted")]
+    prior_manifest: Option<String>,
     /// Output path (default: `<repo root>/.trustgraph/trust-graph/input.json`, or
     /// `.trustgraph/signer-sync/signer_input.json` with --signer).
     #[arg(long)]
@@ -103,8 +110,23 @@ async fn main() -> Result<()> {
     let accumulator = parse_addr(&args.accumulator)?;
     let eas = parse_addr(&args.eas)?;
 
-    let mut params: Params = serde_json::from_str(&std::fs::read_to_string(&args.params)?)
-        .context("failed to parse --params as pagerank_core::Params")?;
+    let params_json = std::fs::read_to_string(&args.params)?;
+    let mut params: Option<Params> = if args.weighted {
+        None
+    } else {
+        Some(
+            serde_json::from_str(&params_json)
+                .context("failed to parse --params as pagerank_core::Params")?,
+        )
+    };
+    let mut weighted_params: Option<weighted_prior_core::Params> = if args.weighted {
+        Some(
+            serde_json::from_str(&params_json)
+                .context("failed to parse --params as weighted_prior_core::Params")?,
+        )
+    } else {
+        None
+    };
 
     // Params-schema v2 domain separation (INSTANCE_FACTORY §6.1): the accumulator address and the
     // chain id are properties of the instance being exported, not of the governance file, so they
@@ -112,18 +134,34 @@ async fn main() -> Result<()> {
     // a misconfiguration (it would silently produce a proof for someone else's snapshot), so it is
     // an error rather than an override.
     let chain_id = rpc.eth_chain_id().await.context("eth_chainId failed")?;
-    if params.accumulator != Address::ZERO && params.accumulator != accumulator {
+    let configured_accumulator = params
+        .as_ref()
+        .map(|params| params.accumulator)
+        .or_else(|| weighted_params.as_ref().map(|params| params.accumulator))
+        .expect("one params shape");
+    let configured_chain = params
+        .as_ref()
+        .map(|params| params.chain_id)
+        .or_else(|| weighted_params.as_ref().map(|params| params.chain_id))
+        .expect("one params shape");
+    if configured_accumulator != Address::ZERO && configured_accumulator != accumulator {
         bail!(
             "--params names accumulator {:#x} but --accumulator is {:#x}",
-            params.accumulator,
+            configured_accumulator,
             accumulator
         );
     }
-    if params.chain_id != 0 && params.chain_id != chain_id {
-        bail!("--params names chain {} but --rpc is chain {}", params.chain_id, chain_id);
+    if configured_chain != 0 && configured_chain != chain_id {
+        bail!("--params names chain {} but --rpc is chain {}", configured_chain, chain_id);
     }
-    params.accumulator = accumulator;
-    params.chain_id = chain_id;
+    if let Some(params) = params.as_mut() {
+        params.accumulator = accumulator;
+        params.chain_id = chain_id;
+    }
+    if let Some(params) = weighted_params.as_mut() {
+        params.accumulator = accumulator;
+        params.chain_id = chain_id;
+    }
     eprintln!("domain separators: accumulator={accumulator:#x} chainId={chain_id}");
 
     let selection: Option<SelectionParams> = match (args.signer, &args.selection) {
@@ -228,7 +266,18 @@ async fn main() -> Result<()> {
     let attested = rpc
         .get_logs(
             eas,
-            &[Some(Attested::SIGNATURE_HASH), None, None, Some(params.schema_uid)],
+            &[
+                Some(Attested::SIGNATURE_HASH),
+                None,
+                None,
+                Some(
+                    params
+                        .as_ref()
+                        .map(|params| params.schema_uid)
+                        .or_else(|| weighted_params.as_ref().map(|params| params.schema_uid))
+                        .expect("one params shape"),
+                ),
+            ],
             args.from_block,
             to_block,
             args.chunk,
@@ -280,6 +329,9 @@ async fn main() -> Result<()> {
     eprintln!("reconstruction self-check OK: re-folded acc == checkpoint acc ✓");
 
     // 4b. Lane 2: anchor log + envelope witnesses.
+    if args.weighted && args.anchor_registry.is_some() {
+        bail!("--weighted is lane-one-only and cannot accept --anchor-registry");
+    }
     let lane2: Option<Lane2Witness> = if let Some(reg) = &args.anchor_registry {
         let registry = parse_addr(reg)?;
         let anchor_logs = rpc
@@ -372,6 +424,8 @@ async fn main() -> Result<()> {
             let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
             if args.signer {
                 root.join(".trustgraph/signer-sync/signer_input.json")
+            } else if args.weighted {
+                root.join(".trustgraph/trust-graph-weighted/input.json")
             } else {
                 root.join(".trustgraph/trust-graph/input.json")
             }
@@ -380,13 +434,53 @@ async fn main() -> Result<()> {
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let out_json = if let Some(selection) = selection {
+    let out_json = if args.weighted {
+        let manifest_path = args
+            .prior_manifest
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("--weighted requires --prior-manifest <file>"))?;
+        let manifest = std::fs::read(manifest_path)
+            .with_context(|| format!("read exact TGWP manifest {manifest_path}"))?;
+        let params = weighted_params.expect("--weighted parsed weighted params");
+        weighted_prior_core::manifest::validate_manifest(&manifest, &params)
+            .context("TGWP manifest does not match weighted params")?;
+        let edges = edges
+            .into_iter()
+            .map(|edge| weighted_prior_core::RawEdge {
+                kind: edge.kind,
+                attester: edge.attester,
+                recipient: edge.recipient,
+                uid: edge.uid,
+                block_timestamp: edge.block_timestamp,
+                data: edge.data,
+            })
+            .collect();
+        serde_json::to_string_pretty(&weighted_prior_core::GuestInput {
+            edges,
+            params,
+            manifest,
+            binding: weighted_prior_core::Binding {
+                recipient: binding.recipient,
+                instance_domain: binding.instance_domain,
+            },
+        })?
+    } else if let Some(selection) = selection {
         // The signer journal carries no bounty recipient (`SignerSyncZkModule` pays none) but DOES
         // bind the module's instance domain (audit M-3), derived above from --module + chainId.
         let instance_domain = signer_domain.expect("--signer guarantees signer_domain");
-        serde_json::to_string_pretty(&SignerInput { edges, params, selection, instance_domain })?
+        serde_json::to_string_pretty(&SignerInput {
+            edges,
+            params: params.expect("binary params parsed"),
+            selection,
+            instance_domain,
+        })?
     } else {
-        serde_json::to_string_pretty(&GuestInput { edges, params, lane2, binding })?
+        serde_json::to_string_pretty(&GuestInput {
+            edges,
+            params: params.expect("binary params parsed"),
+            lane2,
+            binding,
+        })?
     };
     std::fs::write(&out_path, out_json)?;
     eprintln!("wrote {} ({} edges)", out_path.display(), cp.leafCount);

@@ -18,6 +18,8 @@ pub enum Program {
     #[serde(rename = "trust-graph")]
     Trustgraphs,
     Contributions,
+    #[serde(rename = "trust-graph-weighted")]
+    Weighted,
     Hypercerts,
     Signer,
 }
@@ -32,15 +34,22 @@ impl Program {
         match self {
             Program::Trustgraphs => "trust-graph",
             Program::Contributions => "contributions",
+            Program::Weighted => "trust-graph-weighted",
             Program::Hypercerts => "hypercerts",
             Program::Signer => "signer-sync",
         }
     }
 
     pub fn from_id(id: B256) -> Option<Self> {
-        [Program::Trustgraphs, Program::Contributions, Program::Hypercerts, Program::Signer]
-            .into_iter()
-            .find(|p| p.id() == id)
+        [
+            Program::Trustgraphs,
+            Program::Contributions,
+            Program::Weighted,
+            Program::Hypercerts,
+            Program::Signer,
+        ]
+        .into_iter()
+        .find(|p| p.id() == id)
     }
 
     /// Which journal slots this program's guest actually consumes.
@@ -56,6 +65,9 @@ impl Program {
             Program::Trustgraphs => Lanes { lane1: true, lane2: true },
             // Slot A = trust (mirrored), slot B = contributions. Both move independently.
             Program::Contributions => Lanes { lane1: true, lane2: true },
+            // The personalized prior program consumes the EAS accumulator only. Its common
+            // journal-v3 lane-two words are constitutionally zero.
+            Program::Weighted => Lanes { lane1: true, lane2: false },
             // Lane 1 is the EmptyLaneAccumulator: constant (0, 0) forever.
             Program::Hypercerts => Lanes { lane1: false, lane2: true },
             Program::Signer => Lanes { lane1: true, lane2: false },
@@ -74,6 +86,17 @@ mod tests {
             serde_json::from_str::<Program>(r#""trust-graph""#).unwrap(),
             Program::Trustgraphs
         );
+    }
+
+    #[test]
+    fn weighted_variant_uses_the_isolated_deployed_program_name() {
+        assert_eq!(Program::Weighted.name(), "trust-graph-weighted");
+        assert_eq!(
+            serde_json::from_str::<Program>(r#""trust-graph-weighted""#).unwrap(),
+            Program::Weighted
+        );
+        assert_eq!(Program::from_id(Program::Weighted.id()), Some(Program::Weighted));
+        assert_eq!(Program::Weighted.consumes(), super::Lanes { lane1: true, lane2: false });
     }
 }
 

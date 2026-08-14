@@ -76,6 +76,8 @@ registry_from_block = 21000000  # the block `registry` was deployed at. SET THIS
 # per-instance config. The daemon reconstructs the score instance from the registry/creation
 # receipt, then derives signer work from SignerSyncModuleConfigured in that same receipt. New
 # typed-controller Contributions rounds are registry-described too.
+# `trust-graph-weighted` instances are likewise registry-described. Their exact TGWP bytes are
+# recovered under the separate bounded policy below; they never use a hand-written manifest row.
 #
 # Legacy deployments still need a manifest entry when the chain does not describe them:
 #   - old contributions instances predate their registry/controller publication
@@ -187,6 +189,19 @@ name = "backup"
 api = "https://kubo-api.backup.example"
 gateway = "https://gateway.backup.example/ipfs/"
 
+# ── weighted-prior input availability ──────────────────────────────────────
+# These are checkpoint INPUT bytes, separate from the score blobs above. Recovery order is local
+# cache, each raw-CID mirror, then the creation/proposal transaction input from the configured RPC.
+[weighted_manifests]
+cache_dir = "./.trustgraph/operator/weighted-manifests"
+mirrors = [
+  "https://gateway.primary.example/ipfs/",
+  "https://gateway.backup.example/ipfs/",
+]
+max_versions = 128               # bounded across instances; must hold at least active + pending
+max_bytes = 16777216             # must hold two constitutional max-size TGWP manifests
+retry_seconds = 300              # degraded mirrors are retried and alerted on this cadence
+
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
 journal_path = "./.trustgraph/operator/journal.jsonl"
@@ -229,6 +244,10 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `ipfs.min_success` | targets that must add and serve the exact bytes before submit | all configured targets |
 | `ipfs.retry_seconds` | durable failed-publication retry cadence | 300 |
 | `ipfs.api` / `ipfs.gateway` | legacy single target; both required, cannot mix with `targets` | unset |
+| `weighted_manifests.cache_dir` | durable exact-byte TGWP cache | `.trustgraph/operator/weighted-manifests` |
+| `weighted_manifests.mirrors[]` | raw-CID readers tried before archival calldata | empty |
+| `weighted_manifests.max_versions` / `max_bytes` | deterministic cache ceilings | 128 / 16 MiB |
+| `weighted_manifests.retry_seconds` | retry/alert cadence for degraded mirrors | 300 |
 | `ops.submit_failure_threshold` | deterministic submit reverts before advancing past a checkpoint | 3 |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
