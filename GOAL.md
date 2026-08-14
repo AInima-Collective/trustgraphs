@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 22 issues closed, 17 remain.**
+> **Status (2026-08-14): 23 issues closed, 16 remain.**
 >
-> Closed after auditing `main` through `1608411` and rerunning the focused regressions:
+> Closed after auditing `main` through `b725c32` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -56,13 +56,15 @@
 > - **#59** — hashed pinned-policy ERC-8004 experiment, independent exact replay, complete
 >   exclusion/coverage/sensitivity evidence, adversarial ring/Sybil/rotation fixtures, isolated UI,
 >   and a bounded no-go for production or proof integration (`1608411`, PR #84)
+> - **#61** — registry-authenticated immutable score-program/output-domain bindings, explicit
+>   decoder/table/API routing, fail-closed provenance validation, and audited restart/backfill and
+>   rolling-deploy paths (`b725c32`, PR #85)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
-> ERC-8004 reputation chain: **#58 and #59 closed**; #60 and #61 are parallel gates that both block
-> #62.
-> Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
+> ERC-8004 reputation chain: **#58, #59, and #61 closed**; #60 is the remaining gate blocking #62.
+> Trust-composition chain: **#63 → #64 → #65 → #66**; the shared #61 gate is closed; graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
@@ -113,13 +115,13 @@ can proceed concurrently:
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed   | Core/guest, commitment lifecycle, operator/indexer, then UX      | complete in #34 ADR order                   |
-| I · ERC-8004 reputation           | #58/#59 closed; #60/#61 → #62   | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #60 and #61                  |
-| J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
+| I · ERC-8004 reputation           | #58/#59/#61 closed; #60 → #62   | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #60                          |
+| J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
-internally, while I shares program-aware ingestion issue #61 with J. None blocks the core public
-repository release.
+internally; the program-aware ingestion gate shared by I and J is closed in #61. None blocks the
+core public repository release.
 
 ---
 
@@ -644,6 +646,27 @@ hosted jobs were billing-blocked before runner allocation.
 adversarial-fixture, comparison, recommendation, UI-labeling, and isolation criterion in #59 pass.
 Complete.
 
+### M5.5 · #61 — authenticated score-program ingestion and APIs
+
+**Closed in `b725c32` (PR #85).** A single canonical registry now assigns stable program and
+semantic output-domain identifiers to address-keyed TrustGraph, weighted TrustGraph,
+Contributions recipients and claim UIDs, Hypercerts nodes, composition, and reserved ERC-8004
+agent subjects. Ponder folds only the configured governed `InstanceRegistry`, makes the first
+snapshot/program/domain/instance identity immutable, follows verifier/params rotations with exact
+event provenance, checks the live snapshot verifier before reading IPFS, and rejects unknown,
+conflicting, mismatched, or not-yet-enabled declarations. Ingestion, schema rows, APIs, directory,
+and frontend page dispatch use that authenticated declaration; key width is validation only and
+never selects a decoder. The nullable migration, dry-run-first transactional backfill, idempotent
+restart repair, and indexer-first rolling deployment are documented and tested. Fixtures cover a
+20-byte address and identical-looking Contributions claim, Hypercerts node, and future agent
+bytes32 subjects with isolated table/API routes. All 61 indexer tests, frontend tests and
+byte-identical goldens, focused lint, code generation, migration generation, and the production
+frontend build pass; hosted jobs were billing-blocked before runner allocation.
+
+**Close when:** every authenticated-source, collision, fail-closed routing, compatibility,
+provenance, restart/backfill, rolling-deploy, golden-parity, and operator-documentation acceptance
+criterion in #61 passes. Complete.
+
 ---
 
 ## Release gates and issue-count target
@@ -670,12 +693,12 @@ Complete.
   graph-native delegation research continues separately in #77.
 - **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
   reviewable trust-boundary order.
-- **ERC-8004 reputation track:** #58 and #59 closed; #60/#61 are parallel design/platform gates;
-  #62 remains blocked until both close compatibly.
+- **ERC-8004 reputation track:** #58, #59, and #61 closed; #60 is the remaining design gate and
+  #62 remains blocked until it closes compatibly.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
-  advisory graph reputation. #65 also waits for shared program-aware ingestion issue #61.
+  advisory graph reputation. The shared program-aware ingestion gate #61 is closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 17 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 16 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
