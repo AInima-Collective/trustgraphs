@@ -164,6 +164,178 @@ export const erc8004AgentEvent = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+        ERC-8004 REPUTATION — raw event provenance only
+//////////////////////////////////////////////////////////////*/
+
+/** Reputation proxy provenance and its immutable Identity Registry binding. */
+export const erc8004ReputationRegistry = onchainTable(
+  'erc8004_reputation_registry',
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.text().notNull(),
+    proxy: t.hex().notNull(),
+    identityRegistry: t.hex(),
+    implementation: t.hex().notNull(),
+    version: t.text().notNull(),
+    owner: t.hex(),
+    sourceBlock: t.bigint().notNull(),
+    observedBlock: t.bigint().notNull(),
+    observedTimestamp: t.bigint().notNull(),
+    observedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    chainProxyIdx: index().on(t.chainId, t.proxy),
+    identityIdx: index().on(t.chainId, t.identityRegistry),
+    implementationIdx: index().on(t.implementation),
+  })
+)
+
+/** Append-only upgrade and ownership history for the Reputation Registry proxy. */
+export const erc8004ReputationRegistryEvent = onchainTable(
+  'erc8004_reputation_registry_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    registryId: t.text().notNull(),
+    kind: t.text().notNull(),
+    implementation: t.hex(),
+    version: t.text(),
+    identityRegistry: t.hex(),
+    previousOwner: t.hex(),
+    newOwner: t.hex(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    registryIdx: index().on(t.registryId),
+    orderIdx: index().on(
+      t.registryId,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+  })
+)
+
+/** One immutable feedback payload plus its current revocation flag and event-block attribution. */
+export const erc8004Feedback = onchainTable(
+  'erc8004_feedback',
+  (t) => ({
+    id: t.text().primaryKey(),
+    chainId: t.text().notNull(),
+    reputationRegistry: t.hex().notNull(),
+    identityRegistry: t.hex().notNull(),
+    targetAgentKey: t.text().notNull(),
+    agentId: t.bigint().notNull(),
+    reviewer: t.hex().notNull(),
+    feedbackIndex: t.bigint().notNull(),
+    value: t.bigint().notNull(), // signed int128, serialized losslessly by the API
+    valueDecimals: t.integer().notNull(),
+    tag: t.text().notNull(), // official ABI `tag1`
+    unit: t.text().notNull(), // official ABI `tag2`; kept exact, never normalized
+    endpoint: t.text().notNull(),
+    feedbackURI: t.text().notNull(),
+    feedbackHash: t.hex().notNull(),
+    reviewerAttribution: t.text().notNull(),
+    reviewerAgentKey: t.text(),
+    reviewerCandidates: t.text().array().notNull(),
+    reviewerAttributionEvidence: t.json().notNull(),
+    revoked: t.boolean().notNull(),
+    revokedBlock: t.bigint(),
+    revokedTransactionIndex: t.integer(),
+    revokedLogIndex: t.integer(),
+    revokedTimestamp: t.bigint(),
+    revokedTxHash: t.hex(),
+    responseCount: t.integer().notNull(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    blockHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    targetOrderIdx: index().on(
+      t.targetAgentKey,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+    reviewerOrderIdx: index().on(
+      t.reviewer,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+    tagUnitIdx: index().on(t.tag, t.unit),
+    revokedIdx: index().on(t.revoked),
+    agentReviewerIndexIdx: index().on(
+      t.reputationRegistry,
+      t.agentId,
+      t.reviewer,
+      t.feedbackIndex
+    ),
+  })
+)
+
+/** Append-only revocation/response timeline; feedback creation remains in `erc8004_feedback`. */
+export const erc8004FeedbackEvent = onchainTable(
+  'erc8004_feedback_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    feedbackId: t.text().notNull(),
+    kind: t.text().notNull(), // `revoked` | `response`
+    actor: t.hex().notNull(),
+    uri: t.text(),
+    contentHash: t.hex(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    blockHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    feedbackOrderIdx: index().on(
+      t.feedbackId,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+    actorIdx: index().on(t.actor),
+  })
+)
+
+/** Raw response pointers. A row is never interpreted as validating or erasing its feedback. */
+export const erc8004FeedbackResponse = onchainTable(
+  'erc8004_feedback_response',
+  (t) => ({
+    id: t.text().primaryKey(),
+    feedbackId: t.text().notNull(),
+    responder: t.hex().notNull(),
+    responseURI: t.text().notNull(),
+    responseHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    blockHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    feedbackOrderIdx: index().on(
+      t.feedbackId,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+    responderIdx: index().on(t.responder),
+  })
+)
+
 export const easAttestation = onchainTable(
   'eas_attestation',
   (t) => ({

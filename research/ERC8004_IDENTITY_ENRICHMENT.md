@@ -3,6 +3,9 @@
 This is a presentation-only vertical slice. ERC-8004 owner, verified-wallet, URI, document, and
 endpoint data never enter the vouch fold, PageRank inputs, Merkle tree, proof, or journal.
 
+The raw Reputation Registry follow-up has its own provenance, API, descriptor, and recovery
+runbook: [`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md).
+
 ## Pinned Optimism provenance
 
 - Official source: `erc-8004/erc-8004-contracts` commit

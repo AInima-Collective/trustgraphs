@@ -57,6 +57,39 @@ export const erc8004EndpointObservation = offchainSchema.table(
   ]
 )
 
+/** Append-only feedback/response descriptor observations from the asynchronous safe fetcher. */
+export const erc8004ReputationDocument = offchainSchema.table(
+  'erc8004_reputation_document',
+  (t) => ({
+    id: t.text().primaryKey(),
+    subjectId: t.text().notNull(), // feedback id or response event id
+    feedbackId: t.text().notNull(),
+    kind: t.text().notNull(), // `feedback` | `response`
+    uri: t.text().notNull(),
+    finalUri: t.text(),
+    expectedHash: t.text().notNull(),
+    contentHash: t.text(), // keccak256 of exact fetched bytes, matching the ERC field
+    hashStatus: t.text().notNull(),
+    parsedJson: t.jsonb().$type<Record<string, unknown> | null>(),
+    fetchedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    fetchStatus: t.text().notNull(),
+    error: t.text(),
+    httpStatus: t.integer(),
+    contentType: t.text(),
+    byteLength: t.integer(),
+    mutable: t.boolean().notNull(),
+    sourceBlock: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceTransactionIndex: t.integer().notNull(),
+    sourceLogIndex: t.integer().notNull(),
+  }),
+  (t) => [
+    index().on(t.subjectId, t.fetchedAt),
+    index().on(t.feedbackId, t.kind),
+    index().on(t.fetchStatus),
+    index().on(t.hashStatus),
+  ]
+)
+
 export const merkleMetadata = offchainSchema.table(
   'merkle_metadata',
   (t) => ({

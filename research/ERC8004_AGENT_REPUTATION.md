@@ -397,6 +397,11 @@ No Rust, guest, contract, Merkle, or score changes are needed in this phase.
 
 ### Phase 2 — raw feedback explorer and experimental graph
 
+The raw explorer portion shipped in issue #58; see
+[`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md). The experimental graph and
+reviewer-policy work remain separately scoped in #59 and must consume this raw stream without
+changing its provenance semantics.
+
 Index `NewFeedback`, `FeedbackRevoked`, and `ResponseAppended` from the configured Reputation
 Registry. Keep the full event payload because endpoint/URI/hash are not in storage. Bind the
 Reputation Registry to its Identity Registry using `getIdentityRegistry()` and configuration.
