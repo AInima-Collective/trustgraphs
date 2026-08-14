@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 18 issues closed, 21 remain.**
+> **Status (2026-08-14): 19 issues closed, 20 remain.**
 >
 > Closed after auditing `main` through `5526d6a` and rerunning the focused regressions:
 >
@@ -44,10 +44,13 @@
 > - **#53** — isolated weighted factory/controller, exact compact-manifest validation and calldata
 >   recovery, O(1) commitment history, timelocked prior rotation, checkpoint pinning, max-row gas
 >   gates, and stateful atomicity invariants (`f47173d`, PR #80)
+> - **#54** — isolated weighted operator routing, exact cache/mirror/calldata recovery, active and
+>   pending pinning, historical checkpoint replay, reorg-safe prior indexing, and additive
+>   commitment/entry APIs (`281cb68`, PR #81)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
-> Weighted-prior implementation chain: **#52 and #53 closed → #54 → #55**.
+> Weighted-prior implementation chain: **#52, #53, and #54 closed → #55**.
 > ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
@@ -99,7 +102,7 @@ can proceed concurrently:
 | E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
-| H · weighted-prior implementation | #52 and #53 closed → #54 → #55  | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
+| H · weighted-prior implementation | #52, #53, and #54 closed → #55  | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
 | I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
@@ -455,7 +458,8 @@ manifest/binding failure. The 2,048-entry, degree-16, 40-iteration release fixtu
 and Hypercerts ELF hashes exactly match the branch point, proving their vkeys did not rotate.
 Hosted Actions were billing-blocked before runner allocation; the Rust workspace, frontend, 575
 Forge tests, prover builds/checks, guest gates, formatting, lint, regeneration, and secret scan ran
-locally. Operator recovery and indexer integration continue in dependency child #54.
+locally. Operator recovery and indexer integration are complete in dependency child #54; UX
+continues in #55.
 
 ### M4.2b · #53 — weighted-prior commitment and rotation lifecycle
 
@@ -472,7 +476,22 @@ input reconstruct every exact manifest, with a fail-closed recovery runbook. The
 A 128,000-call stateful invariant, max-size creation, malformed/fuzz/replay tests, full Forge suite,
 weighted Rust/TypeScript parity, lint, and size build pass; the weighted factory retains 12,145
 bytes of EIP-170 margin and the existing governed factory retains 2,598. Hosted Actions were again
-billing-blocked before runner allocation. Operator/indexer integration continues in #54.
+billing-blocked before runner allocation. Operator/indexer integration is complete in #54; UX
+continues in #55.
+
+### M4.2c · #54 — weighted-prior operator recovery and indexer APIs
+
+**Closed in `281cb68` (PR #81).** The operator discovers the isolated weighted program from the
+registry, reconstructs checkpoint-pinned current or historical tuples, and routes only through the
+weighted core and guest. Exact TGWP bytes recover in cache, raw-CID mirror, then archival calldata
+order; every source is revalidated against chain/version/count/root/SHA commitments. Active and
+pending versions are retained under bounded cache policy, degraded mirrors retry and alert, and
+unavailable data disables proving. The indexer independently decodes and validates creation and
+proposal calldata into reorg-safe instance/version/entry history, keeping chain lifecycle separate
+from byte availability, and exposes additive paginated weighted APIs without changing binary
+instance responses. Full Rust and Forge suites, the actual operator/SP1 parity gate, Ponder
+codegen, 42 indexer tests, focused lint, formatting, and diff checks passed locally. Hosted Actions
+were billing-blocked before runner allocation. Weighted UX continues in #55.
 
 ### M4.3 · #36 — composition and graph-reputation specification
 
@@ -583,7 +602,7 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** complete — #35 identity enrichment and #38 delegated actions are closed;
   graph-native delegation research continues separately in #77.
-- **Weighted-prior track:** #52 and #53 closed → #54 → #55 — implement the accepted #34 ADR in reviewable
+- **Weighted-prior track:** #52, #53, and #54 closed → #55 — finish the accepted #34 ADR in reviewable
   trust-boundary order.
 - **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
   remains blocked until all four close compatibly.
@@ -592,5 +611,5 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 21 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 20 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
