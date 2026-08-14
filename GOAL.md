@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 19 issues closed, 20 remain.**
+> **Status (2026-08-14): 20 issues closed, 19 remain.**
 >
-> Closed after auditing `main` through `5526d6a` and rerunning the focused regressions:
+> Closed after auditing `main` through `339adc3` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -47,10 +47,13 @@
 > - **#54** — isolated weighted operator routing, exact cache/mirror/calldata recovery, active and
 >   pending pinning, historical checkpoint replay, reorg-safe prior indexing, and additive
 >   commitment/entry APIs (`281cb68`, PR #81)
+> - **#55** — exact CSV/JSON/TGWP import and export, finalized-block ENS receipts and signing
+>   freshness, asynchronous day-zero/concentration preview, weighted create/rotation/activation,
+>   and explicit new-instance binary prefill (`339adc3`, PR #82)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
-> Weighted-prior implementation chain: **#52, #53, and #54 closed → #55**.
+> Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
@@ -102,7 +105,7 @@ can proceed concurrently:
 | E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
-| H · weighted-prior implementation | #52, #53, and #54 closed → #55  | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
+| H · weighted-prior implementation | #52, #53, #54, and #55 closed   | Core/guest, commitment lifecycle, operator/indexer, then UX      | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
@@ -458,8 +461,8 @@ manifest/binding failure. The 2,048-entry, degree-16, 40-iteration release fixtu
 and Hypercerts ELF hashes exactly match the branch point, proving their vkeys did not rotate.
 Hosted Actions were billing-blocked before runner allocation; the Rust workspace, frontend, 575
 Forge tests, prover builds/checks, guest gates, formatting, lint, regeneration, and secret scan ran
-locally. Operator recovery and indexer integration are complete in dependency child #54; UX
-continues in #55.
+locally. Operator recovery and indexer integration are complete in dependency child #54, and the
+user-facing workflow is complete in #55.
 
 ### M4.2b · #53 — weighted-prior commitment and rotation lifecycle
 
@@ -477,7 +480,7 @@ A 128,000-call stateful invariant, max-size creation, malformed/fuzz/replay test
 weighted Rust/TypeScript parity, lint, and size build pass; the weighted factory retains 12,145
 bytes of EIP-170 margin and the existing governed factory retains 2,598. Hosted Actions were again
 billing-blocked before runner allocation. Operator/indexer integration is complete in #54; UX
-continues in #55.
+is complete in #55.
 
 ### M4.2c · #54 — weighted-prior operator recovery and indexer APIs
 
@@ -491,7 +494,24 @@ proposal calldata into reorg-safe instance/version/entry history, keeping chain 
 from byte availability, and exposes additive paginated weighted APIs without changing binary
 instance responses. Full Rust and Forge suites, the actual operator/SP1 parity gate, Ponder
 codegen, 42 indexer tests, focused lint, formatting, and diff checks passed locally. Hosted Actions
-were billing-blocked before runner allocation. Weighted UX continues in #55.
+were billing-blocked before runner allocation. Weighted UX is complete in #55.
+
+### M4.2d · #55 — weighted-prior import, preview, creation, and redeployment UX
+
+**Closed in `339adc3` (PR #82).** `/create/weighted` accepts bounded human CSV/JSON and emits
+byte-tested canonical CSV/JSON, normalized TGWP, root, SHA-256, deterministic provenance, exports,
+and exact #53 calldata. Invalid decimals, duplicates after resolution, wrong chain, over-cap and
+oversized inputs retain editable state with field errors. ENS names resolve only at a recorded
+finalized Ethereum block, never enter consensus bytes, and are re-resolved immediately before
+simulation and signing; any change rebuilds all artifacts and clears approval. The asynchronous,
+cancellable preview shows normalized/day-zero shares, largest/top-10 concentration, HHI, roots,
+bytes and gas. Weighted creation, address-level timelocked rotation review/activation, unavailable
+manifest refusal, wrong-chain safeguards, and explicit equal-weight binary prefill all fail closed.
+The production #52 frontend golden, canonical/import/ENS tests, 2,048-entry worker benchmark,
+headless end-to-end workflow, accessibility/recovery guard, optimized Next build, and 15 weighted
+factory/controller tests passed locally. Hosted Actions again failed before runner allocation due
+account billing. No factory deployment is implied: absent `weightedFactory`, import/preview/export
+remain available and signing stays disabled.
 
 ### M4.3 · #36 — composition and graph-reputation specification
 
@@ -602,8 +622,8 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** complete — #35 identity enrichment and #38 delegated actions are closed;
   graph-native delegation research continues separately in #77.
-- **Weighted-prior track:** #52, #53, and #54 closed → #55 — finish the accepted #34 ADR in reviewable
-  trust-boundary order.
+- **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
+  reviewable trust-boundary order.
 - **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
   remains blocked until all four close compatibly.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
@@ -611,5 +631,5 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 20 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 19 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
