@@ -3,6 +3,61 @@
 This is the administrator procedure for an already-created `trust-graph-weighted` instance. It
 does not apply to binary-seed `trust-graph` controllers.
 
+## Import, preview, and create in the app
+
+Open `/create/weighted`. The workspace remains useful for import, exact preview, and export even
+when the current deployment has no weighted factory address; transaction buttons stay disabled in
+that state. A configured `weightedFactory` comes from
+`deployment_summary.weightedFactory.weighted_factory` or `WEIGHTED_FACTORY_ADDRESS` during frontend
+config generation.
+
+The importer accepts at most 2 MiB and 1–2,048 entries:
+
+- CSV starts with exactly `account,weight` (a UTF-8 BOM, CRLF, and quoted human fields are accepted
+  on input).
+- JSON uses `trustgraph-weighted-prior-input-v1`, a canonical decimal-string `chainId`, and
+  `{ "account": string, "weight": string }` entries.
+- Weights are positive canonical decimal strings with at most 18 fractional digits. Signs,
+  exponents, leading integer zeroes, trailing fractional zeroes, numeric JSON values, and zero are
+  rejected with row/field errors.
+- Accounts are addresses or ENS names. Duplicates are checked after name resolution; the zero
+  address, a wrong chain, a normalized-zero row, and over-cap input fail closed.
+
+Canonical CSV is lowercase-address sorted, has no BOM, uses LF, and ends in one LF. Canonical JSON
+is minified in `schema`, `chainId`, `entries` property order, uses the same address/entry order, and
+has no terminal LF. The exact Hamilton normalization, TGWP manifest, sorted-pair Merkle root, and
+SHA-256 are the production TypeScript implementation from the #52 fixture gate. Export CSV, JSON,
+TGWP, and provenance together; the provenance digest submitted on chain is the SHA-256 of that
+exact provenance JSON.
+
+ENS is import-only. The browser resolves names on Ethereum mainnet at one finalized block using the
+target chain's ENSIP-11 coin type, records the block number/hash and resolved address in provenance,
+and puts only the address in canonical/consensus bytes. Immediately before simulation and again
+before signing, it resolves every imported name at a fresh finalized block. Any changed address
+rebuilds every derived artifact, clears the gas/simulation approval, and requires a new review.
+An address-only import does not depend on mainnet RPC availability.
+
+The review shows every on-chain commitment, exact calldata, normalized shares, largest/top-10
+share, HHI, prior-only day-zero root, and wallet gas estimate. The maximum-size path always runs in
+a cancellable Web Worker with live phases. The 2026-08-14 repository Node/V8 CI-class run took
+233.448 ms for 2,048-entry canonicalization, Merkle construction, and 40 exact iterations—above
+the 100 ms synchronous target—so supported Chrome and Firefox deliberately use the asynchronous
+path regardless of local speed. The reproducible record is
+[`../../../research/weighted-priors/frontend-benchmarks.csv`](../../../research/weighted-priors/frontend-benchmarks.csv).
+
+For rotation, load the weighted instance first. The app shows the active/pending versions,
+availability diagnosis, activation time, and added/removed/changed rows. It refuses review/signing
+when the indexer cannot recover the active exact bytes. Proposal signing only starts the timelock;
+activation is a separate simulated transaction after `readyAt`.
+
+The binary prefill assistant reads the old instance's starting accounts and assigns each weight
+`1`. It always creates a **new** `trust-graph-weighted` instance. It never changes the binary
+instance in place and does not preserve its checkpoint history or semantics.
+
+Recovery is non-destructive: editing source/provenance clears all derived state; a rejected file
+keeps the editable input and lists field errors; cancelling preview leaves the import available for
+a rebuild; unavailable indexer bytes leave history/diagnostics visible but disable rotation.
+
 ## Propose
 
 Before signing, retain the exact canonical TGWP bytes and the provenance document whose digest is

@@ -1,0 +1,100 @@
+import type { Hex } from 'viem'
+
+export interface WeightedApiAvailability {
+  status: 'available' | 'degraded' | 'unavailable'
+  provenance: 'cache' | 'mirror' | 'transaction' | 'unavailable'
+  sourceTxHash: Hex
+  error: string | null
+  verifiedAt: string | null
+}
+
+export interface WeightedApiVersion {
+  instanceId: Hex
+  controller: Hex
+  version: string
+  status: 'pending' | 'active' | 'superseded' | 'cancelled' | 'inconsistent'
+  commitments: {
+    paramsHash: Hex
+    previousParamsHash: Hex | null
+    priorRoot: Hex
+    priorCount: number
+    manifestSha256: Hex
+    manifestCid: string
+    metadataDigest: Hex
+  }
+  readyAt: string | null
+  availability: WeightedApiAvailability
+}
+
+export interface WeightedApiEntry {
+  position: number
+  account: Hex
+  normalizedWeight: string
+}
+
+const responseJson = async <T>(response: Response): Promise<T> => {
+  const body = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(
+      body?.error || `Indexer request failed (${response.status}).`
+    )
+  }
+  return body as T
+}
+
+export const fetchWeightedVersions = async (
+  api: string,
+  instanceId: Hex,
+  signal?: AbortSignal
+): Promise<WeightedApiVersion[]> => {
+  const response = await fetch(
+    `${api}/weighted-priors/${instanceId}/versions?limit=200`,
+    { signal }
+  )
+  return (await responseJson<{ versions: WeightedApiVersion[] }>(response))
+    .versions
+}
+
+export const fetchWeightedEntries = async (
+  api: string,
+  instanceId: Hex,
+  version: string,
+  signal?: AbortSignal
+): Promise<WeightedApiEntry[]> => {
+  const entries: WeightedApiEntry[] = []
+  for (let offset = 0; ; offset += 500) {
+    const response = await fetch(
+      `${api}/weighted-priors/${instanceId}/versions/${version}/entries?limit=500&offset=${offset}`,
+      { signal }
+    )
+    const page = await responseJson<{
+      entries: WeightedApiEntry[]
+      page: { total: number }
+    }>(response)
+    entries.push(...page.entries)
+    if (entries.length >= page.page.total || page.entries.length === 0) break
+  }
+  return entries
+}
+
+export const fetchBinarySeeds = async (
+  api: string,
+  instanceId: Hex,
+  signal?: AbortSignal
+): Promise<Hex[]> => {
+  const response = await fetch(`${api}/instances/${instanceId}`, { signal })
+  const body = await responseJson<{
+    instance: { params?: { trustedSeeds?: Hex[] }; trustedSeeds?: Hex[] }
+  }>(response)
+  return body.instance.params?.trustedSeeds ?? body.instance.trustedSeeds ?? []
+}
+
+export const availabilityDiagnosis = (
+  availability: WeightedApiAvailability
+): string | null => {
+  if (availability.status === 'available') return null
+  if (availability.status === 'degraded') {
+    return `The exact manifest is available from ${availability.provenance}, but another configured source is degraded${availability.error ? `: ${availability.error}` : '.'}`
+  }
+  return `The indexer cannot recover the exact committed manifest from transaction ${availability.sourceTxHash}${availability.error ? `: ${availability.error}` : '.'} Rotation review is disabled until those bytes are available.`
+}
