@@ -7475,6 +7475,7 @@ dependencies = [
  "sha2 0.10.9",
  "sp1-build",
  "sp1-sdk",
+ "weighted-prior-research",
  "zk-core",
 ]
 
@@ -7801,6 +7802,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "weighted-prior-research"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "hex",
+ "serde",
+ "sha2 0.10.9",
 ]
 
 [[package]]

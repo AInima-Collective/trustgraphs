@@ -3220,6 +3220,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weighted-prior-research"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
