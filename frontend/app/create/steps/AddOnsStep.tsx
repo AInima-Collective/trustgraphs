@@ -9,17 +9,25 @@ import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
 import { cn } from '@/lib/utils'
 
-import { WizardData, fundTokenProblem, prepayProblem } from '../model'
+import {
+  WizardData,
+  describeBlocks,
+  effectiveBlocks,
+  fundTokenProblem,
+  prepayProblem,
+} from '../model'
 import { Field, Note, StepHeader } from '../ui'
 
 export const AddOnsStep = ({
   data,
   onChange,
   showErrors,
+  epochFloor,
 }: {
   data: WizardData
   onChange: (patch: Partial<WizardData>) => void
   showErrors: boolean
+  epochFloor: bigint
 }) => {
   const tokenAddress = data.fundTokenAddress.trim()
   const tokenLooksValid = isAddress(tokenAddress, { strict: false })
@@ -50,6 +58,7 @@ export const AddOnsStep = ({
 
   const tokenError = showErrors ? fundTokenProblem(data) : null
   const prepayError = showErrors ? prepayProblem(data) : null
+  const paidCadence = effectiveBlocks(data.tuning.cadence, epochFloor)
 
   return (
     <div className="space-y-6">
@@ -84,17 +93,62 @@ export const AddOnsStep = ({
           hint="Scores only refresh if somebody does the work, and that costs gas and proving time. Put ETH in during creation to fund the first refreshes; you can top up later in network settings. Withdrawing unused ETH is not available in this app; a constitutional administrator must request and execute it directly through ProvingVault, separated by the vault's withdrawal notice period."
           error={prepayError}
         >
-          <div className="flex items-center gap-2">
-            <input
-              className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
-              inputMode="decimal"
-              placeholder="0.5"
-              value={data.prepayEth}
-              onChange={(e) => onChange({ prepayEth: e.target.value })}
-            />
-            <span className="text-sm opacity-60">ETH (optional)</span>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                inputMode="decimal"
+                placeholder="0.5"
+                value={data.prepayEth}
+                onChange={(e) => onChange({ prepayEth: e.target.value })}
+              />
+              <span className="text-sm opacity-60">ETH (optional)</span>
+            </div>
+
+            {data.prepayEth.trim() && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">
+                    Maximum per refresh
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm opacity-60">$</span>
+                    <input
+                      className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                      inputMode="decimal"
+                      value={data.maxPerRootUsd}
+                      onChange={(e) =>
+                        onChange({ maxPerRootUsd: e.target.value })
+                      }
+                    />
+                    <span className="text-sm opacity-60">USD</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Covers the proving fee and gas together; creation is capped
+                    at $10,000.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-muted-foreground">
+                    Paid no more often than
+                  </div>
+                  <div className="text-sm">{describeBlocks(paidCadence)}</div>
+                  <p className="text-xs text-muted-foreground">
+                    This starts equal to the score schedule. Your DAO Safe can
+                    change it later.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </Field>
+        {data.prepayEth.trim() && (
+          <Note>
+            Before signing, the app checks that this chain has priced its
+            initial proving band and that your cap covers that fee. Creation is
+            atomic: the ETH and payable policy either both land or neither does.
+          </Note>
+        )}
       </Card>
 
       {data.withFund && (

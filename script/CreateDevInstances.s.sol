@@ -51,7 +51,10 @@ contract CreateDevInstances is Common {
         TrustgraphsFactory factory = TrustgraphsFactory(vm.parseAddress(factoryAddr));
         address deployer = vm.addr(_privateKey);
         string memory template = vm.readFile(templatePath);
-        require(maxPerRootUsd == 0 || prepayWei > 0, "CreateDevInstances: policy needs a funded tank");
+        require(
+            (maxPerRootUsd == 0) == (prepayWei == 0),
+            "CreateDevInstances: prepay and policy must both be zero or nonzero"
+        );
 
         // The governance knobs, with every derived (instance-identity) field left at zero — the
         // factory rejects anything else, and fills them itself.
@@ -86,7 +89,7 @@ contract CreateDevInstances is Common {
             // This must happen before DeployTimelocks renounces the deployer's constitutional
             // role. A post-deploy demo task cannot set policy without waiting out that timelock.
             if (maxPerRootUsd > 0) {
-                factory.VAULT().setPolicy(instanceId, 0, maxPerRootUsd);
+                factory.VAULT().setPolicy(instanceId, factory.EPOCH_FLOOR(), maxPerRootUsd);
             }
 
             console.log("instance", i, name);

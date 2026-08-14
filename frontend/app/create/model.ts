@@ -2,6 +2,10 @@ import { Hex, isAddress, zeroAddress } from 'viem'
 
 import { CHAIN, CONTRACT_CONFIG } from '@/lib/config'
 import { parseAccountIdentifier } from '@/lib/ens'
+import {
+  DEFAULT_MAX_PER_ROOT_USD,
+  initialPolicyProblem,
+} from '@/lib/proving-prepay'
 import { FULL_SEED_TRUST_SHARE_PCT } from '@/lib/trust-share'
 
 /**
@@ -121,6 +125,8 @@ export type WizardData = {
    * the work rather than being paid for it.
    */
   prepayEth: string
+  /** Maximum combined proving fee and gas reimbursement paid for one root, in oracle USD. */
+  maxPerRootUsd: string
 }
 
 export const EMPTY_WIZARD_DATA: WizardData = {
@@ -136,6 +142,7 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   fundToken: 'eth',
   fundTokenAddress: '',
   prepayEth: '',
+  maxPerRootUsd: DEFAULT_MAX_PER_ROOT_USD,
 }
 
 /** The presentation blob the on-chain `metadataURI` points at. Nothing here affects scores. */
@@ -309,7 +316,7 @@ export const prepayProblem = (data: WizardData): string | null => {
   if (Number(trimmed) === 0) {
     return 'Leave it blank rather than entering zero.'
   }
-  return null
+  return initialPolicyProblem(data.prepayEth, data.maxPerRootUsd)
 }
 
 export const fundTokenProblem = (data: WizardData): string | null => {
@@ -451,6 +458,34 @@ const FACTORY_ERROR_COPY: [string, string][] = [
   [
     'InstanceAlreadyExists',
     'You already created a network with this exact name. Change the name and try again.',
+  ],
+  [
+    'InitialFeeUnpriced',
+    'This deployment has not priced its initial proving band yet. Do not prepay until the operator configures the global fee schedule.',
+  ],
+  [
+    'InitialCapBelowFee',
+    'Your per-refresh maximum is below this deployment’s initial proving fee. Raise the cap or create an unpaid network.',
+  ],
+  [
+    'PrepayUnavailable',
+    'This deployment has no proving vault, so it cannot accept a refresh prepayment.',
+  ],
+  [
+    'PrepayRequiresPolicy',
+    'A refresh prepayment needs a nonzero per-refresh policy.',
+  ],
+  [
+    'PolicyRequiresPrepay',
+    'Remove the paid policy or add ETH for score refreshes.',
+  ],
+  [
+    'InitialPaidIntervalTooShort',
+    'Paid refreshes cannot start more often than scores can be published.',
+  ],
+  [
+    'InitialCapTooHigh',
+    'The creation-time maximum cannot exceed $10,000 per refresh.',
   ],
 ]
 

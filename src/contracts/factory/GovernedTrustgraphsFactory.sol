@@ -10,6 +10,7 @@ import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
+import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title GovernedTrustgraphsFactory
 /// @notice Creates a factory trust graph and its DAO Safe + Merkle governance module as one
@@ -22,6 +23,15 @@ import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 ///      version one onward.
 contract GovernedTrustgraphsFactory {
     address internal constant SENTINEL_OWNERS = address(0x1);
+    /// @notice Creation-time guardrail. The DAO may deliberately raise its cap later through the
+    ///         vault, but the one-click wizard may not accidentally authorize more than $10,000
+    ///         (8-decimal oracle USD) for one root.
+    uint96 public constant MAX_INITIAL_MAX_PER_ROOT_USD = 10_000e8;
+
+    struct InitialPolicy {
+        uint64 minPaidIntervalBlocks;
+        uint96 maxPerRootUsd;
+    }
 
     TrustgraphsFactory public immutable FACTORY;
     GnosisSafeProxyFactory public immutable SAFE_FACTORY;
@@ -31,6 +41,13 @@ contract GovernedTrustgraphsFactory {
     error SafeFundingFailed();
     error SafeExecutionFailed(address target, bytes data);
     error InstanceDiscoveryFailed(bytes32 instanceId);
+    error PrepayRequiresPolicy();
+    error PolicyRequiresPrepay();
+    error PrepayUnavailable();
+    error InitialPaidIntervalTooShort(uint64 supplied, uint64 minimum);
+    error InitialCapTooHigh(uint96 supplied, uint96 maximum);
+    error InitialFeeUnpriced(bytes32 program, uint8 band);
+    error InitialCapBelowFee(uint96 supplied, uint256 feeUsd);
 
     event GovernedInstanceCreated(
         bytes32 indexed instanceId,
@@ -51,11 +68,35 @@ contract GovernedTrustgraphsFactory {
 
     /// @notice Create one DAO-governed trust graph. `requested.admin` is deliberately ignored:
     ///         the newly-created Safe is the instance admin, controller owner and fund owner.
-    function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested)
+    /// @param requested The canonical factory arguments; its effective epoch bounds paid cadence.
+    /// @param policy Initial vault terms. Must be zero/zero without value and fully enabled with it.
+    function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested, InitialPolicy calldata policy)
         external
         payable
         returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot)
     {
+        IProvingVault vault = FACTORY.VAULT();
+        if (msg.value == 0) {
+            if (policy.minPaidIntervalBlocks != 0 || policy.maxPerRootUsd != 0) revert PolicyRequiresPrepay();
+        } else {
+            if (address(vault) == address(0)) revert PrepayUnavailable();
+            if (policy.maxPerRootUsd == 0) revert PrepayRequiresPolicy();
+            uint64 floor = FACTORY.EPOCH_FLOOR();
+            uint64 effectiveEpoch = requested.epochLength < floor ? floor : requested.epochLength;
+            if (policy.minPaidIntervalBlocks < effectiveEpoch) {
+                revert InitialPaidIntervalTooShort(policy.minPaidIntervalBlocks, effectiveEpoch);
+            }
+            if (policy.maxPerRootUsd > MAX_INITIAL_MAX_PER_ROOT_USD) {
+                revert InitialCapTooHigh(policy.maxPerRootUsd, MAX_INITIAL_MAX_PER_ROOT_USD);
+            }
+            bytes32 program = FACTORY.PROGRAM();
+            uint256 initialFeeUsd = vault.feePerRootUsd(program, 1);
+            if (initialFeeUsd == 0) revert InitialFeeUnpriced(program, 1);
+            if (policy.maxPerRootUsd < initialFeeUsd) {
+                revert InitialCapBelowFee(policy.maxPerRootUsd, initialFeeUsd);
+            }
+        }
+
         GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
         safeAddress = address(safe);
 
@@ -74,6 +115,21 @@ contract GovernedTrustgraphsFactory {
         IInstanceRegistry.Instance memory record = FACTORY.INSTANCE_REGISTRY().getInstance(instanceId);
         snapshot = record.snapshot;
         if (snapshot == address(0)) revert InstanceDiscoveryFailed(instanceId);
+
+        // The base factory's deposit bound the vault account to `snapshot`, and the Safe has held
+        // that snapshot's constitutional role since `createInstance` returned. Install the paid
+        // policy through the Safe before replacing this wrapper as its bootstrap owner. Thus one
+        // transaction either creates a funded, payable instance or creates nothing at all.
+        if (msg.value != 0) {
+            _execSafe(
+                safe,
+                address(vault),
+                0,
+                abi.encodeCall(
+                    IProvingVault.setPolicy, (instanceId, policy.minPaidIntervalBlocks, policy.maxPerRootUsd)
+                )
+            );
+        }
 
         MerkleGovModule module = new MerkleGovModule(safeAddress, safeAddress, safeAddress, snapshot);
         merkleGovModule = address(module);

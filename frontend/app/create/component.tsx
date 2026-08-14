@@ -22,6 +22,7 @@ import {
   metadataFingerprint,
   metadataFrom,
   nameProblem,
+  prepayProblem,
   randomSalt,
   urlProblem,
 } from './model'
@@ -106,7 +107,7 @@ export const CreateNetworkWizard = () => {
       return data.seeds.length ? null : 'Add at least one starting account.'
     }
     if (index === 3) {
-      return fundTokenProblem(data)
+      return fundTokenProblem(data) || prepayProblem(data)
     }
     return null
   }
@@ -241,7 +242,12 @@ export const CreateNetworkWizard = () => {
         <TuningStep data={data} onChange={onChange} epochFloor={epochFloor} />
       )}
       {step === 3 && (
-        <AddOnsStep data={data} onChange={onChange} showErrors={showErrors} />
+        <AddOnsStep
+          data={data}
+          onChange={onChange}
+          showErrors={showErrors}
+          epochFloor={epochFloor}
+        />
       )}
       {step === 4 && (
         <ReviewStep

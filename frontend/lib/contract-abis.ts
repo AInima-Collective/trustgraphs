@@ -2313,6 +2313,13 @@ export const governedTrustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'MAX_INITIAL_MAX_PER_ROOT_USD',
+    outputs: [{ name: '', internalType: 'uint96', type: 'uint96' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'SAFE_FACTORY',
     outputs: [
       {
@@ -2407,6 +2414,19 @@ export const governedTrustgraphsFactoryAbi = [
           { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
         ],
       },
+      {
+        name: 'policy',
+        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        type: 'tuple',
+        components: [
+          {
+            name: 'minPaidIntervalBlocks',
+            internalType: 'uint64',
+            type: 'uint64',
+          },
+          { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
+        ],
+      },
     ],
     name: 'createGovernedInstance',
     outputs: [
@@ -2451,9 +2471,44 @@ export const governedTrustgraphsFactoryAbi = [
   },
   {
     type: 'error',
+    inputs: [
+      { name: 'supplied', internalType: 'uint96', type: 'uint96' },
+      { name: 'feeUsd', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InitialCapBelowFee',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'supplied', internalType: 'uint96', type: 'uint96' },
+      { name: 'maximum', internalType: 'uint96', type: 'uint96' },
+    ],
+    name: 'InitialCapTooHigh',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'program', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'band', internalType: 'uint8', type: 'uint8' },
+    ],
+    name: 'InitialFeeUnpriced',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'supplied', internalType: 'uint64', type: 'uint64' },
+      { name: 'minimum', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'InitialPaidIntervalTooShort',
+  },
+  {
+    type: 'error',
     inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'InstanceDiscoveryFailed',
   },
+  { type: 'error', inputs: [], name: 'PolicyRequiresPrepay' },
+  { type: 'error', inputs: [], name: 'PrepayRequiresPolicy' },
+  { type: 'error', inputs: [], name: 'PrepayUnavailable' },
   {
     type: 'error',
     inputs: [
