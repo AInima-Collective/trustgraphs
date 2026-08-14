@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 5 issues closed, 12 remain.**
+> **Status (2026-08-13): 6 issues closed, 11 remain.**
 >
 > Closed after auditing `main` at `c7ee5ec` and rerunning the focused regressions:
 >
@@ -11,9 +11,10 @@
 >   (`362e547`; empty-root/hook precursor in `a6f89c5`)
 > - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
 >   repair (`131ecfd`)
+> - **#22** — atomic governed prepayment and payable initial policy (`f1ef43f`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#12, #14, #20, #22, #27**.
+> Remaining launch-risk issues: **#12, #14, #20, #27**.
 > Remaining reproducibility and self-service issues: **#21, #28**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -57,7 +58,7 @@ can proceed concurrently:
 | --- | --- | --- | --- |
 | A · operator availability | #16 closed | Repair score-blob availability | `131ecfd` |
 | B · snapshot/vault hardening | #12, #14 | Bound hostile input growth and finish snapshot invariants | coordinate accumulator migration semantics |
-| C · self-serve economics | #22 | Make app prepayment activate a payable proving policy | fee schedule deployed |
+| C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
 | D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
 | E · program self-service | #21, #28 | Factory signer-sync and reproducible Contributions params | none; separate PRs |
 | F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
@@ -133,6 +134,20 @@ repair path, and one Kubo node is not durable storage.
 longer relies on one storage target.
 
 ### M1.3 · #22 — a prepayment must create a payable policy
+
+**Closed in `f1ef43f`.** Governed creation now takes explicit initial paid cadence and 8-decimal
+USD cap terms, rejects every funded/disabled or unfunded/enabled mismatch, requires a priced
+initial band, and bounds the initial cadence and cap before deploying anything. The bootstrap Safe
+installs that policy after the deposit binds the vault account and before the wrapper removes itself
+as owner, so the one transaction is atomic.
+
+The wizard passes zero/zero for an unpaid network and, for prepayment, shows the effective cadence,
+combined fee/gas cap, current band-1 fee, conservative refresh estimate, and withdrawal notice
+before signing. Its exact USD parsing and estimate math have a focused regression. The governed
+factory regression exercises a real Safe and vault, verifies the installed policy, triggers the
+first checkpoint, and proves its quote is eligible rather than `PolicyDisabled`. All 97 factory
+tests, the full frontend test suite, the generated-ABI production build, focused lint, and Solidity
+build pass.
 
 The wizard and factory can deposit ETH, but a new vault account still has `maxPerRootUsd == 0`, so
 quotes return `PolicyDisabled` forever until an administrator uses an out-of-band script.
@@ -214,7 +229,7 @@ proving tank, or bypass member-approved execution on a graduated network.
 ### M2.3 · #27 — deploy the production creation path
 
 This is external-state work, not a code-only closure. It follows #20 and the production-relevant
-parts of #12, #14, and #22.
+parts of #12 and #14; #22's creation-time paid policy closed in `f1ef43f`.
 
 - Deploy and verify the registry, vault/oracle configuration, base factory, governed factory,
   deployer helpers, Safe dependencies, verifier, and timelocks/guards on the selected chain.
@@ -366,16 +381,16 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Production-with-value
 
-- #12, #14, #20, and #22 are closed.
+- #12, #14, and #20 are closed.
 - #16's configured publication durability policy is live.
 - #27's deployment ceremony and end-to-end smoke test pass.
 
 ### Honest closure target
 
-- **Near term:** #14, #22, #28, and #37 — four independently closable issues.
+- **Near term:** #14, #28, and #37 — three independently closable issues.
 - **Production track:** #12, #20, and then #27 — three security/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 12 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 11 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.

@@ -154,11 +154,20 @@ ProvingVault(registry, usdc, ethUsdFeed, feedMaxStaleness, minEthUsd, maxEthUsd,
   at $1/ETH a $50 claim withdraws 50 ETH. An out-of-band answer is treated as no answer.
 - **Price the bands before anyone creates an instance** (`setFeePerRootUsd(program, band, usd)`),
   or the first roots land and pay nothing. Band 0 is reserved for "we do not price this" and
-  refuses to be set.
+  refuses to be set. `GovernedTrustgraphsFactory` rejects a prepaid creation while trust-graph band
+  1 is zero; the app also shows the current band-1 price before signing.
 - **The factory's `vault` constructor argument** is what makes `createInstance` payable, so a
-  community can deploy its network endowed with a year of roots in one transaction. Passing zero
-  means "no prepay path", and sending value to such a factory reverts rather than being kept.
+  community can fund its network during creation. Passing zero means "no prepay path", and sending
+  value to such a factory reverts rather than being kept.
 
-Communities then set their own limits with `setPolicy(instanceId, minPaidIntervalBlocks,
-maxPerRootUsd)`. That is the only enforceable cadence: `EPOCH_FLOOR` binds at creation only, since
-`setEpochLength` is constitutional and any creator can lower their own epoch afterwards.
+The app's governed path takes an explicit initial `minPaidIntervalBlocks` and `maxPerRootUsd`, routes
+the ETH through its bootstrap Safe, and has that Safe call `setPolicy` before handing bootstrap
+ownership to the creator. A nonzero deposit with a zero policy, a policy without a deposit, a paid
+interval shorter than the initial score epoch, an initial cap below band 1 or above $10,000, and an
+unpriced band 1 all revert atomically. Zero/zero means unpaid or curated and opens no vault account.
+
+Communities can later change their limits with `setPolicy(instanceId, minPaidIntervalBlocks,
+maxPerRootUsd)`. That remains the only enforceable paid cadence: `EPOCH_FLOOR` binds at creation
+only, since `setEpochLength` is constitutional and a community can change its own epoch afterwards.
+Unused funds are not app-withdrawable: the constitutional Safe must request a withdrawal and wait
+the vault's advertised notice before executing it.

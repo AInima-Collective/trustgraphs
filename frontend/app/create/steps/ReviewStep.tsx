@@ -6,14 +6,23 @@ import {
   type Address,
   Hex,
   decodeEventLog,
+  formatUnits,
+  keccak256,
   parseEther,
+  toBytes,
   zeroAddress,
 } from 'viem'
-import { usePublicClient, useSimulateContract } from 'wagmi'
+import {
+  usePublicClient,
+  useReadContract,
+  useReadContracts,
+  useSimulateContract,
+} from 'wagmi'
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { useEnsResolver } from '@/hooks/useEns'
+import { PROVING_VAULT } from '@/lib/config'
 import {
   governedTrustgraphsFactoryAbi,
   trustgraphsFactoryAbi,
@@ -22,6 +31,11 @@ import {
   EnsResolutionChangedError,
   getAccountIdentifierErrorMessage,
 } from '@/lib/ens-query'
+import {
+  conservativeRefreshEstimate,
+  initialPolicyForCreation,
+} from '@/lib/proving-prepay'
+import { priceFeedReadAbi, provingVaultReadAbi } from '@/lib/settings-contracts'
 import {
   hasUnreservedTrustShare,
   unreservedTrustSharePct,
@@ -78,6 +92,54 @@ export const ReviewStep = ({
   // The optional prepay rides along as `msg.value`; the governed wrapper forwards it through the
   // Safe and into the new instance's proving tank. Blank means none, which is the default.
   const prepay = data.prepayEth.trim() ? parseEther(data.prepayEth.trim()) : 0n
+  const effective = effectiveBlocks(data.tuning.cadence, epochFloor)
+  const initialPolicy = initialPolicyForCreation(
+    prepay,
+    effective,
+    data.maxPerRootUsd
+  )
+
+  const program = keccak256(toBytes('trust-graph'))
+  const { data: vaultPreview } = useReadContracts({
+    contracts:
+      prepay > 0n && PROVING_VAULT
+        ? [
+            {
+              address: PROVING_VAULT,
+              abi: provingVaultReadAbi,
+              functionName: 'feePerRootUsd',
+              args: [program, 1],
+            },
+            {
+              address: PROVING_VAULT,
+              abi: provingVaultReadAbi,
+              functionName: 'withdrawalNotice',
+            },
+            {
+              address: PROVING_VAULT,
+              abi: provingVaultReadAbi,
+              functionName: 'ETH_USD_FEED',
+            },
+          ]
+        : [],
+    query: { enabled: prepay > 0n && !!PROVING_VAULT },
+  })
+  const initialBandFee = (vaultPreview?.[0]?.result as bigint | undefined) ?? 0n
+  const withdrawalNotice =
+    (vaultPreview?.[1]?.result as bigint | undefined) ?? 0n
+  const priceFeed = vaultPreview?.[2]?.result as Address | undefined
+  const { data: priceRound } = useReadContract({
+    address: priceFeed ?? zeroAddress,
+    abi: priceFeedReadAbi,
+    functionName: 'latestRoundData',
+    query: { enabled: prepay > 0n && !!priceFeed },
+  })
+  const ethUsd = priceRound?.[1] && priceRound[1] > 0n ? priceRound[1] : 0n
+  const refreshEstimate = conservativeRefreshEstimate(
+    prepay,
+    ethUsd,
+    initialPolicy.maxPerRootUsd
+  )
 
   // Simulation runs the same validation before the wallet asks for a signature.
   const {
@@ -88,12 +150,10 @@ export const ReviewStep = ({
     address: GOVERNED_FACTORY_ADDRESS,
     abi: governedTrustgraphsFactoryAbi,
     functionName: 'createGovernedInstance',
-    args: [args] as any,
+    args: [args, initialPolicy] as any,
     ...(prepay > 0n ? { value: prepay } : {}),
     query: { enabled: !!GOVERNED_FACTORY_ADDRESS && !!args.name },
   })
-
-  const effective = effectiveBlocks(data.tuning.cadence, epochFloor)
 
   const create = async () => {
     setFailure(null)
@@ -142,7 +202,7 @@ export const ReviewStep = ({
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
-          args: [args] as any,
+          args: [args, initialPolicy] as any,
           ...(prepay > 0n ? { value: prepay } : {}),
         })
         gas = estimate ? (estimate * 125n) / 100n : undefined
@@ -155,7 +215,7 @@ export const ReviewStep = ({
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
-          args: [args],
+          args: [args, initialPolicy],
           ...(gas ? { gas } : {}),
           ...(prepay > 0n ? { value: prepay } : {}),
         } as any,
@@ -264,6 +324,46 @@ export const ReviewStep = ({
           {data.tuning.headStartPct}%
         </SummaryRow>
         <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
+        <SummaryRow label="Refresh prepayment">
+          {prepay > 0n
+            ? `${data.prepayEth.trim()} ETH`
+            : 'None — unpaid/curated policy'}
+        </SummaryRow>
+        {prepay > 0n && (
+          <>
+            <SummaryRow label="Paid refresh cadence">
+              {describeBlocks(initialPolicy.minPaidIntervalBlocks)}
+            </SummaryRow>
+            <SummaryRow label="Maximum per refresh">
+              ${formatUnits(initialPolicy.maxPerRootUsd, 8)} USD, including the
+              proving fee and gas reimbursement
+            </SummaryRow>
+            <SummaryRow label="Initial fee band">
+              {initialBandFee > 0n ? (
+                `$${formatUnits(initialBandFee, 8)} per root while the graph has at most 1,000 inputs`
+              ) : (
+                <span className="text-destructive">
+                  Not priced on this deployment. Creation will be blocked until
+                  the global fee schedule is configured.
+                </span>
+              )}
+            </SummaryRow>
+            <SummaryRow label="Estimated refreshes">
+              {refreshEstimate === null
+                ? 'Waiting for the deployment’s ETH/USD feed'
+                : refreshEstimate === 0n
+                  ? 'Less than one at the current ETH price and full per-refresh cap'
+                  : `At least ${refreshEstimate.toLocaleString()} at the current ETH price if every refresh spends the full cap`}
+            </SummaryRow>
+            <SummaryRow label="Unused prepayment">
+              The DAO Safe may request a withdrawal, then execute it after{' '}
+              {withdrawalNotice > 0n
+                ? `${Number(withdrawalNotice) / 86_400} days`
+                : 'the vault’s configured notice period'}
+              . The app does not bypass that delay.
+            </SummaryRow>
+          </>
+        )}
         <SummaryRow label="In charge afterwards">
           DAO Safe with Merkle voting; your connected wallet is its initial
           signer.

@@ -34,6 +34,10 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
     address internal creator = address(0xA11CE);
 
+    function _unpaidPolicy() internal pure returns (GovernedTrustgraphsFactory.InitialPolicy memory) {
+        return GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
+    }
+
     function setUp() public override {
         super.setUp();
         safeSingleton = new GnosisSafe();
@@ -51,7 +55,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         vm.recordLogs();
         vm.prank(creator);
         (bytes32 instanceId, address safe, address module, address snapshot) =
-            governedFactory.createGovernedInstance(args);
+            governedFactory.createGovernedInstance(args, _unpaidPolicy());
         Vm.Log[] memory logs = vm.getRecordedLogs();
         CreatedEvent memory created = _decodeCreated(logs);
         address controller = _decodeController(logs, instanceId);
@@ -84,18 +88,102 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertFalse(GnosisSafe(payable(safe)).isOwner(address(governedFactory)), "wrapper retained Safe ownership");
     }
 
-    function test_CreateGovernedInstanceForwardsPrepayThroughSafe() public {
+    function test_CreateGovernedInstanceForwardsPrepayAndInstallsPayablePolicyThroughSafe() public {
         TrustgraphsFactory.CreateArgs memory args = _args("member-funded");
+        uint96 cap = 25e8;
+        vault.setFeePerRootUsd(factory.PROGRAM(), 1, 5e8);
         vm.deal(creator, 3 ether);
 
         vm.prank(creator);
-        (bytes32 instanceId, address safe,,) = governedFactory.createGovernedInstance{value: 3 ether}(args);
+        (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedInstance{value: 3 ether}(
+            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap})
+        );
 
         IProvingVault.Account memory account = vault.accountOf(instanceId);
         assertEq(account.ethBalance, 3 ether, "the instance tank must receive the full prepay");
+        IProvingVault.Policy memory policy = vault.policyOf(instanceId);
+        assertEq(policy.minPaidIntervalBlocks, EPOCH_FLOOR, "paid cadence must be installed atomically");
+        assertEq(policy.maxPerRootUsd, cap, "per-root cap must be installed atomically");
         assertEq(address(vault).balance, 3 ether, "the governed wrapper must retain nothing");
         assertEq(safe.balance, 0, "the bootstrap Safe must retain nothing");
         assertEq(address(governedFactory).balance, 0, "the wrapper must retain nothing");
+
+        vm.roll(EPOCH_FLOOR);
+        MerkleSnapshot(snapshot).trigger();
+        IProvingVault.Quote memory quote = vault.quote(instanceId, 0);
+        assertTrue(quote.eligible, "the first valid checkpoint must be payable");
+        assertTrue(
+            quote.reason != uint8(IProvingVault.IneligibleReason.PolicyDisabled),
+            "a prepaid instance must never start policy-disabled"
+        );
+    }
+
+    function test_CreateGovernedInstanceRejectsPrepayWithoutPolicy() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("disabled-prepay");
+        vm.deal(creator, 1 ether);
+
+        vm.prank(creator);
+        vm.expectRevert(GovernedTrustgraphsFactory.PrepayRequiresPolicy.selector);
+        governedFactory.createGovernedInstance{value: 1 ether}(args, _unpaidPolicy());
+        assertEq(registry.instanceCount(), 0, "invalid prepay must create nothing");
+    }
+
+    function test_CreateGovernedInstanceRejectsPolicyWithoutPrepay() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("unfunded-policy");
+
+        vm.prank(creator);
+        vm.expectRevert(GovernedTrustgraphsFactory.PolicyRequiresPrepay.selector);
+        governedFactory.createGovernedInstance(
+            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8})
+        );
+        assertEq(registry.instanceCount(), 0, "unfunded policy must create nothing");
+    }
+
+    function test_CreateGovernedInstanceRequiresAPricedInitialBand() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("unpriced-prepay");
+        vm.deal(creator, 1 ether);
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(GovernedTrustgraphsFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1))
+        );
+        governedFactory.createGovernedInstance{value: 1 ether}(
+            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8})
+        );
+    }
+
+    function test_CreateGovernedInstanceBoundsInitialPaidTerms() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("unsafe-policy");
+        vault.setFeePerRootUsd(factory.PROGRAM(), 1, 5e8);
+        vm.deal(creator, 2 ether);
+
+        vm.startPrank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                GovernedTrustgraphsFactory.InitialPaidIntervalTooShort.selector, EPOCH_FLOOR - 1, EPOCH_FLOOR
+            )
+        );
+        governedFactory.createGovernedInstance{value: 1 ether}(
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8})
+        );
+
+        uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
+        vm.expectRevert(
+            abi.encodeWithSelector(GovernedTrustgraphsFactory.InitialCapTooHigh.selector, maximum + 1, maximum)
+        );
+        governedFactory.createGovernedInstance{value: 1 ether}(
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1})
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(GovernedTrustgraphsFactory.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
+        );
+        governedFactory.createGovernedInstance{value: 1 ether}(
+            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8})
+        );
+        vm.stopPrank();
     }
 
     function test_DemoHandoffMakesSafeTheScoringAuthority() public {

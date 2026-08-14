@@ -128,9 +128,12 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
    creation wizard does). It calls the canonical `TrustgraphsFactory` through a newly created Safe,
    deploys the resolver, snapshot, distributor and `TrustgraphsParamsController`, publishes version
    1, and enables the snapshot-specific Merkle governance module. The Safe is the community admin
-   and controller owner from that transaction. Direct `TrustgraphsFactory.createInstance` remains a
-   lower-level seam for scripted/legacy bring-up where governance is attached and authority handed
-   off separately; `DeployNetwork.s.sol` is the non-factory legacy path.
+   and controller owner from that transaction. When prepaying, pass a nonzero initial policy whose
+   paid interval is at least the effective score epoch and whose cap covers the priced band-1 fee;
+   the Safe installs it before bootstrap handoff. Zero value must use the zero/zero unpaid policy.
+   Direct `TrustgraphsFactory.createInstance` remains a lower-level seam for scripted/legacy
+   bring-up where governance, any paid policy, and authority handoff are coordinated separately;
+   `DeployNetwork.s.sol` is the non-factory legacy path.
    That legacy script requires a nonzero `epochLength` argument and applies it before returning;
    zero is rejected because it disables the schedule and hands checkpoint timing to callers.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and

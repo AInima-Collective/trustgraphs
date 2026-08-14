@@ -33,10 +33,12 @@ function createInstance(CreateArgs calldata args)
 ```
 
 `msg.value` is optional prepay: it is forwarded into the new instance's account in the
-`ProvingVault`, so a community can deploy its network already endowed with proving bounties in the
-same transaction (the factory emits `InstancePrepaid`). Sending nothing is the normal case. On a
-factory deployed without a vault, a non-zero `msg.value` reverts `NoVaultConfigured` rather than
-being silently kept.
+`ProvingVault` (the factory emits `InstancePrepaid`). A balance alone is deliberately not a bounty:
+the constitutional holder must also install a nonzero paid policy. The app uses the governed
+factory in §6, which makes the deposit and that policy atomic. A direct base-factory caller must
+call `setPolicy` itself and should not send value unless it can complete that setup. Sending nothing
+is the normal unpaid/curated case. On a factory deployed without a vault, a non-zero `msg.value`
+reverts `NoVaultConfigured` rather than being silently kept.
 
 ### 1.1 `CreateArgs`
 
@@ -350,7 +352,15 @@ owner from the first block. That is what `GovernedTrustgraphsFactory.createGover
 app uses:
 
 ```solidity
-function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested)
+struct InitialPolicy {
+    uint64 minPaidIntervalBlocks;
+    uint96 maxPerRootUsd; // 8-decimal oracle USD; fee + gas combined
+}
+
+function createGovernedInstance(
+    TrustgraphsFactory.CreateArgs calldata requested,
+    InitialPolicy calldata policy
+)
     external
     payable
     returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot);
@@ -362,7 +372,22 @@ enabled module and snapshot hook, then removes itself as Safe owner. The creator
 Safe's initial break-glass signer, but the Safe — not that wallet — owns the params controller,
 snapshot authority, distributor, and governance settings from the creation transaction. Because the
 Safe is the actual factory caller, it is also the `creator` inside `instanceId`. Any `msg.value` is
-routed through the Safe into the base factory, so the prepay path works identically.
+routed through the Safe into the base factory. Before the wrapper removes itself as bootstrap
+owner, it has that same Safe call `ProvingVault.setPolicy`, so a funded network is payable from the
+first valid checkpoint and a partially configured creation reverts in full.
+
+The creation guardrails are intentionally stricter than later DAO governance:
+
+- no ETH means the exact zero/zero unpaid policy; a nonzero policy without funds reverts;
+- ETH requires a nonzero policy, and the minimum paid interval cannot be shorter than the
+  factory-clamped score epoch;
+- the initial cap must cover the deployment's band-1 fee and may not exceed $10,000 per root;
+- band 1 must already be priced by the global fee setter. The wizard displays that fee as a
+  deployment prerequisite rather than accepting money into an unpriced service.
+
+The wizard also shows the effective cadence, combined fee/gas cap, initial size band, a conservative
+refresh count at the current ETH/USD answer, and the vault withdrawal notice before asking for the
+single signature. The DAO Safe may change its policy later through the normal constitutional path.
 
 Governed instances emit `GovernedInstanceCreated` alongside the base factory's `InstanceCreated`,
 which is how the indexer discovers the Safe and module with no file edit or restart.
