@@ -6,6 +6,10 @@ import { useEffect, useRef } from 'react'
 
 import { APIS } from '@/lib/config'
 import {
+  type ScoreProgramProvenance,
+  parseScoreProgramProvenance,
+} from '@/lib/score-program'
+import {
   PENDING_ECHO_TTL_MS,
   clearPendingEchoesAtom,
   pendingEchoesAtom,
@@ -17,6 +21,7 @@ import {
  * rows), so it is the same for every viewer regardless of whose operator does the proving.
  */
 export type ScoreUpdateStatus = {
+  scoreProgram: ScoreProgramProvenance
   /** The last landed update, or null before a network's first root. */
   lastUpdate: {
     root: string
@@ -41,7 +46,17 @@ export const scoreUpdatesQuery = (snapshot: string) =>
           `Failed to fetch score update status: ${response.status}`
         )
       }
-      return response.json()
+      const data = (await response.json()) as ScoreUpdateStatus
+      const scoreProgram = parseScoreProgramProvenance(data.scoreProgram)
+      if (
+        scoreProgram.programName !== 'trust-graph' &&
+        scoreProgram.programName !== 'trust-graph-weighted'
+      ) {
+        throw new Error(
+          `${scoreProgram.programName} is not a vouch-network status response`
+        )
+      }
+      return { ...data, scoreProgram }
     },
     // The whole point is watching a roughly-90-second pipeline move; the page's 10s data cadence
     // would let the chip skip straight past "recounting".

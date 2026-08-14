@@ -1,6 +1,77 @@
 import { index, onchainTable, primaryKey } from 'ponder'
 
 /*///////////////////////////////////////////////////////////////
+       AUTHENTICATED SCORE-PROGRAM / OUTPUT-DOMAIN BINDINGS
+//////////////////////////////////////////////////////////////*/
+
+/**
+ * One fail-closed binding per (chain, snapshot), sourced only from the configured on-chain
+ * InstanceRegistry. The first accepted program/domain owns the snapshot forever; a later registry
+ * rewrite that tries to reinterpret the same snapshot marks the binding conflicted instead.
+ */
+export const scoreProgramBinding = onchainTable(
+  'score_program_binding',
+  (t) => ({
+    id: t.text().primaryKey(), // `<chainId>:<lowercase snapshot>`
+    chainId: t.text().notNull(),
+    snapshot: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    programId: t.hex().notNull(),
+    outputDomain: t.hex(), // null for an unknown program; ingestion then fails closed
+    programName: t.text(),
+    keyEncoding: t.text(),
+    ingestion: t.text(),
+    verifier: t.hex().notNull(),
+    registryOrAccumulator: t.hex().notNull(),
+    paramsHash: t.hex().notNull(),
+    sourceRegistry: t.hex().notNull(),
+    sourceKind: t.text().notNull(), // registration, replacement, or governed params rotation
+    sourceBlock: t.bigint().notNull(),
+    sourceLogIndex: t.integer().notNull(),
+    sourceTxHash: t.hex().notNull(),
+    conflict: t.boolean().notNull(),
+    conflictReason: t.text(),
+  }),
+  (t) => ({
+    snapshotIdx: index().on(t.chainId, t.snapshot),
+    instanceIdx: index().on(t.instanceId),
+    programIdx: index().on(t.programId),
+    conflictIdx: index().on(t.conflict),
+  })
+)
+
+/** Append-only audit trail of accepted, unknown, duplicate, and conflicting registry events. */
+export const scoreProgramBindingEvent = onchainTable(
+  'score_program_binding_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    bindingId: t.text().notNull(),
+    chainId: t.text().notNull(),
+    snapshot: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    programId: t.hex().notNull(),
+    outputDomain: t.hex(),
+    verifier: t.hex().notNull(),
+    registryOrAccumulator: t.hex().notNull(),
+    paramsHash: t.hex().notNull(),
+    sourceRegistry: t.hex().notNull(),
+    sourceKind: t.text().notNull(),
+    accepted: t.boolean().notNull(),
+    reason: t.text(),
+    blockNumber: t.bigint().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    bindingIdx: index().on(t.bindingId),
+    instanceIdx: index().on(t.instanceId),
+    programIdx: index().on(t.programId),
+    blockIdx: index().on(t.blockNumber),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
         ERC-8004 IDENTITY — event-sourced enrichment only
 //////////////////////////////////////////////////////////////*/
 

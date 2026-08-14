@@ -138,6 +138,20 @@ records a finalized block hash in Postgres. A later production identity mismatch
 automatically—verify the RPC/database and deploy to a new versioned schema. Use
 `pnpm --dir indexer preflight` for the same checks without starting Ponder.
 
+When upgrading a database that predates authenticated score-program columns, apply the offchain
+Drizzle migration before the writer starts. Let the writer replay the configured
+`InstanceRegistry`, then audit and apply the historical repair:
+
+```bash
+PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir indexer programs:backfill
+PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir indexer programs:backfill --apply
+```
+
+The command obtains every binding from `/score-programs/:snapshot`, plans table families before
+writing anything, and refuses unknown, conflicted, or not-yet-enabled programs. Deploy the
+frontend after this pass; the new frontend deliberately rejects legacy responses without
+provenance. Ordinary event replay also repairs rows root by root, so restarts are idempotent.
+
 ### Run the proving vault
 
 Optional, and only if you intend to pay for roots or let communities pay for their own.

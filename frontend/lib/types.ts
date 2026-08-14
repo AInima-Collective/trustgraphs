@@ -1,6 +1,7 @@
 import { Hex } from 'viem'
 
 import { type Erc8004AgentCompact } from './erc8004'
+import type { ScoreProgramProvenance } from './score-program'
 
 export type Network = {
   /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
@@ -103,6 +104,8 @@ export type Network = {
     lastThreshold?: string | null
   }
   validatedThreshold: number
+  /** Authenticated InstanceRegistry provenance; absent only on a static fallback catalog row. */
+  scoreProgram?: ScoreProgramProvenance
 }
 
 /**
@@ -134,6 +137,7 @@ export type HypercertsNetwork = {
     merkleSnapshot: Hex
     anchorRegistry?: Hex
   }
+  scoreProgram?: ScoreProgramProvenance
 }
 
 /**
@@ -176,6 +180,7 @@ export type ContributionsNetwork = {
   }
   /** The three contribution schemas (claim / response / valuation), from the deployment. */
   schemas: NetworkSchema[]
+  scoreProgram?: ScoreProgramProvenance
 }
 
 export type AnyNetwork = Network | HypercertsNetwork | ContributionsNetwork

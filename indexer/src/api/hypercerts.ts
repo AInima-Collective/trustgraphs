@@ -27,8 +27,14 @@
 import { Hono } from 'hono'
 import { type Hex } from 'viem'
 
+import type { ScoreProgramProvenance } from '../score-program'
 import { offchainDb } from './db'
 import { type ScoreRow, buildScoreBundle } from './hypercerts-tree'
+import {
+  ScoreProgramApiError,
+  requireRowScoreProgram,
+  requireSnapshotScoreProgram,
+} from './score-programs'
 import { lower } from './utils'
 
 declare global {
@@ -73,16 +79,35 @@ const resolveRoot = async (snapshot: string, root: string): Promise<string> => {
 /** Load the full score set for a (snapshot, root) as the tree-builder's row shape. */
 const loadScores = async (
   snapshot: string,
-  root: string
+  root: string,
+  scoreProgram: ScoreProgramProvenance
 ): Promise<ScoreRow[]> => {
   const rows = await offchainDb.query.hypercertsScore.findMany({
-    columns: { nodeId: true, value: true, boundAddress: true },
+    columns: {
+      nodeId: true,
+      value: true,
+      boundAddress: true,
+      programId: true,
+      outputDomain: true,
+    },
     where: (t, { eq, and }) =>
       and(
         eq(lower(t.merkleSnapshotContract), snapshot.toLowerCase()),
         eq(lower(t.root), root.toLowerCase())
       ),
   })
+  for (const row of rows) {
+    if (
+      !row.programId ||
+      !row.outputDomain ||
+      row.programId.toLowerCase() !== scoreProgram.programId.toLowerCase() ||
+      row.outputDomain.toLowerCase() !== scoreProgram.outputDomain.toLowerCase()
+    ) {
+      throw new ScoreProgramApiError(
+        'hypercerts score row has an unknown or mismatched program/output domain'
+      )
+    }
+  }
   return rows.map((r) => ({
     nodeId: r.nodeId as Hex,
     value: r.value,
@@ -106,7 +131,26 @@ const serveBundle = async (
   if (!meta)
     return { status: 404, body: { error: 'Hypercerts root not found' } }
 
-  const scores = await loadScores(snapshot, root)
+  let scoreProgram
+  try {
+    const current = await requireSnapshotScoreProgram(snapshot, 'hypercerts')
+    scoreProgram = requireRowScoreProgram(meta, current, 'hypercerts')
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409, body: { error: error.message } }
+    }
+    throw error
+  }
+
+  let scores
+  try {
+    scores = await loadScores(snapshot, root, scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409, body: { error: error.message } }
+    }
+    throw error
+  }
   if (scores.length === 0) {
     return { status: 404, body: { error: 'No scores indexed for this root' } }
   }
@@ -145,6 +189,7 @@ const serveBundle = async (
       anchorAcc: meta.anchorAcc,
       anchorCount: meta.anchorCount,
       snapshot: meta.merkleSnapshotContract,
+      scoreProgram,
     },
   }
 }
@@ -159,7 +204,26 @@ hypercertsApp.get('/roots', async (c) => {
       : undefined,
     orderBy: (t, { desc }) => desc(t.timestamp),
   })
-  return c.json({ roots: rows })
+  try {
+    const scorePrograms = new Map<string, unknown>()
+    for (const row of rows) {
+      const current = await requireSnapshotScoreProgram(
+        row.merkleSnapshotContract,
+        'hypercerts'
+      )
+      requireRowScoreProgram(row, current, 'hypercerts')
+      scorePrograms.set(row.merkleSnapshotContract.toLowerCase(), current)
+    }
+    return c.json({
+      roots: rows,
+      scorePrograms: Object.fromEntries(scorePrograms),
+    })
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
+    throw error
+  }
 })
 
 /** The full score set at a snapshot's root (value-descending), plus the root's journal metadata. */
@@ -172,6 +236,16 @@ const serveScoreList = async (snapshot: string, root: string) => {
       ),
   })
   if (!meta) return { status: 404, body: { error: 'Root not indexed' } }
+  let scoreProgram
+  try {
+    const current = await requireSnapshotScoreProgram(snapshot, 'hypercerts')
+    scoreProgram = requireRowScoreProgram(meta, current, 'hypercerts')
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409, body: { error: error.message } }
+    }
+    throw error
+  }
   const rows = await offchainDb.query.hypercertsScore.findMany({
     where: (t, { and, eq }) =>
       and(
@@ -180,6 +254,22 @@ const serveScoreList = async (snapshot: string, root: string) => {
       ),
     orderBy: (t, { desc }) => desc(t.value),
   })
+  for (const row of rows) {
+    if (
+      !row.programId ||
+      !row.outputDomain ||
+      row.programId.toLowerCase() !== scoreProgram.programId.toLowerCase() ||
+      row.outputDomain.toLowerCase() !== scoreProgram.outputDomain.toLowerCase()
+    ) {
+      return {
+        status: 409,
+        body: {
+          error:
+            'hypercerts score row has an unknown or mismatched program/output domain',
+        },
+      }
+    }
+  }
   return {
     status: 200,
     body: {
@@ -193,6 +283,7 @@ const serveScoreList = async (snapshot: string, root: string) => {
       anchorAcc: meta.anchorAcc,
       anchorCount: meta.anchorCount,
       timestamp: meta.timestamp,
+      scoreProgram,
       scores: rows.map((r) => ({
         nodeId: r.nodeId,
         did: r.did,
@@ -221,7 +312,7 @@ hypercertsApp.get('/scores', async (c) => {
     return c.json({ error: e.message }, 404)
   }
   const res = await serveScoreList(snapshot, root)
-  return c.json(res.body as object, res.status as 200 | 404)
+  return c.json(res.body as object, res.status as 200 | 404 | 409)
 })
 
 // GET /hypercerts/:snapshot/scores — the full score set at that snapshot's current root.
@@ -234,7 +325,7 @@ hypercertsApp.get('/:snapshot/scores', async (c) => {
     return c.json({ error: e.message }, 404)
   }
   const res = await serveScoreList(snapshot, root)
-  return c.json(res.body as object, res.status as 200 | 404)
+  return c.json(res.body as object, res.status as 200 | 404 | 409)
 })
 
 // GET /hypercerts/score/:nodeId — §10.3 shape: current root of the single instance (?snapshot= / ?root= override).

@@ -304,8 +304,9 @@ pnpm frontend dev        # → http://localhost:3000/networks/hypercerts
 > chain?) → fetch the cid through the local gateway (blob pinned?) → the indexer console
 > (ingestion logs IPFS failures and root-mismatch skips explicitly).
 
-On the `MerkleRootUpdated` event the indexer detects the nodeId-keyed blob, rebuilds the guest's
-exact output tree (including bound nodes' address leaves from the sidecar), asserts it reproduces
+On the `MerkleRootUpdated` event the indexer authenticates the Hypercerts program/output domain
+through the configured `InstanceRegistry`, validates the nodeId encoding, and rebuilds the guest's
+exact output tree (including bound nodes' address leaves from the sidecar), asserting it reproduces
 the on-chain root, and fills the `/hypercerts` score API the page reads. DID labels are
 integrity-checked (`keccak256(did)` must equal the nodeId), so the unauthenticated sidecar can
 label nodes but never mislabel them.

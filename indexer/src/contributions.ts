@@ -22,6 +22,8 @@ import {
   parseParamsSnapshot,
   rowsToRawEdges,
 } from './contributions-shared'
+import type { ScoreProgramProvenance } from './score-program'
+import { SCORE_OUTPUT_DOMAIN_IDS } from './score-program'
 import {
   easAbi,
   merkleSnapshotAbi,
@@ -478,11 +480,16 @@ export async function ingestContributionsScores(
   root: string,
   ipfsHash: string,
   ipfsHashCid: string,
-  totalValue: bigint
+  totalValue: bigint,
+  provenance: ScoreProgramProvenance
 ): Promise<void> {
   const snapshot = event.log.address as Hex
   const instance = contributionsInstanceForSnapshot(snapshot)
-  if (!instance) return
+  if (!instance) {
+    throw new Error(
+      `contributions ingestion refused: authenticated snapshot ${snapshot} has no input-contract configuration`
+    )
+  }
 
   const base = {
     merkleSnapshotContract: snapshot.toLowerCase(),
@@ -492,6 +499,9 @@ export async function ingestContributionsScores(
     totalValue,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
+    programId: provenance.programId,
+    outputDomain: provenance.outputDomain,
+    programProvenance: provenance,
   }
 
   const refuse = async (
@@ -728,6 +738,8 @@ export async function ingestContributionsScores(
           contributors: r.contributors,
           blockNumber: event.block.number,
           timestamp: event.block.timestamp,
+          programId: provenance.programId,
+          outputDomain: SCORE_OUTPUT_DOMAIN_IDS['contributions-claim-v1'],
         }))
       )
       .onConflictDoUpdate({
@@ -749,6 +761,12 @@ export async function ingestContributionsScores(
           timestamp: sql.raw(
             `excluded."${offchainSchema.contributionScore.timestamp.name}"`
           ),
+          programId: sql.raw(
+            `excluded."${offchainSchema.contributionScore.programId.name}"`
+          ),
+          outputDomain: sql.raw(
+            `excluded."${offchainSchema.contributionScore.outputDomain.name}"`
+          ),
         },
       })
   }
@@ -769,6 +787,8 @@ export async function ingestContributionsScores(
           discountFp: r.discountFp,
           raterRepFp: r.raterRepFp,
           updatedAt: event.block.timestamp,
+          programId: provenance.programId,
+          outputDomain: SCORE_OUTPUT_DOMAIN_IDS['contributions-claim-v1'],
         }))
       )
       .onConflictDoUpdate({
@@ -796,6 +816,12 @@ export async function ingestContributionsScores(
           ),
           updatedAt: sql.raw(
             `excluded."${offchainSchema.contributionValuationAudit.updatedAt.name}"`
+          ),
+          programId: sql.raw(
+            `excluded."${offchainSchema.contributionValuationAudit.programId.name}"`
+          ),
+          outputDomain: sql.raw(
+            `excluded."${offchainSchema.contributionValuationAudit.outputDomain.name}"`
           ),
         },
       })

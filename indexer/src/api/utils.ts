@@ -35,7 +35,7 @@ export type MerkleTreeWithEntries = {
   tree: typeof offchainSchema.merkleMetadata.$inferSelect
   entries: Pick<
     typeof offchainSchema.merkleEntry.$inferSelect,
-    'account' | 'value' | 'proof'
+    'account' | 'value' | 'proof' | 'programId' | 'outputDomain'
   >[]
 }
 
@@ -69,6 +69,8 @@ export const getMerkleTreeWithEntries = async (
       account: true,
       value: true,
       proof: true,
+      programId: true,
+      outputDomain: true,
     },
     where: (t, { eq, and }) =>
       and(

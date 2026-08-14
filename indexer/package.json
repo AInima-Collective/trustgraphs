@@ -22,6 +22,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts' 'scripts/**/*.test.mjs'",
     "metadata:erc8004": "tsx scripts/refresh-erc8004-metadata.ts",
     "metadata:erc8004:watch": "tsx scripts/refresh-erc8004-metadata.ts --watch",
+    "programs:backfill": "tsx scripts/backfill-score-programs.ts",
     "typecheck": "tsc"
   },
   "dependencies": {

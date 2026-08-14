@@ -22,6 +22,11 @@ import {
   REVIEW_FIXTURES_ENABLED,
   withReviewFixture,
 } from '@/lib/review-fixture-query'
+import {
+  type ScoreProgramProvenance,
+  parseScoreProgramProvenance,
+  requireScoreApi,
+} from '@/lib/score-program'
 import { easAttestation } from '@/ponder.schema'
 
 // Query keys for consistent caching
@@ -89,6 +94,7 @@ export type HypercertsScoreList = {
   anchorCount: string
   timestamp: string
   scores: HypercertsScore[]
+  scoreProgram: ScoreProgramProvenance
 }
 
 export type FollowerCount = {
@@ -187,6 +193,7 @@ export type ProvingTankResponse =
 export type MerkleTreeResponse = {
   tree: MerkleMetadata
   entries: MerkleEntry[]
+  scoreProgram: ScoreProgramProvenance
 }
 
 export type MerkleTreeEntryResponse = {
@@ -195,6 +202,7 @@ export type MerkleTreeEntryResponse = {
     value: string
     proof: string[]
   }
+  scoreProgram: ScoreProgramProvenance
 }
 
 export type AttestationUID = {
@@ -211,6 +219,7 @@ export type NetworkData = {
     agents: Erc8004AgentCompact[]
   }[]
   attestations: AttestationData[]
+  scoreProgram: ScoreProgramProvenance
 }
 
 export type CheckpointInputsResponse = {
@@ -234,6 +243,13 @@ export type CheckpointInputsResponse = {
     logIndex: number
     txHash: Hex
   }>
+  scoreProgram: ScoreProgramProvenance
+}
+
+const parseMerkleScoreProgram = (value: unknown) => {
+  const scoreProgram = parseScoreProgramProvenance(value)
+  requireScoreApi(scoreProgram.programId, scoreProgram.outputDomain, 'merkle')
+  return scoreProgram
 }
 
 export type ParameterVersionState =
@@ -270,6 +286,7 @@ export type ParameterHistoryResponse = {
 }
 
 export type NetworkProfile = {
+  scoreProgram: ScoreProgramProvenance
   /** The chain ID of the merkle snapshot contract. */
   chainId: string
   /** The address of the merkle snapshot contract. */
@@ -351,7 +368,17 @@ export const ponderQueries = {
             `Checkpoint inputs unavailable: ${response.status} ${response.statusText}`
           )
         }
-        return (await response.json()) as CheckpointInputsResponse
+        const data = (await response.json()) as CheckpointInputsResponse
+        const scoreProgram = parseScoreProgramProvenance(data.scoreProgram)
+        if (
+          scoreProgram.programName !== 'trust-graph' &&
+          scoreProgram.programName !== 'trust-graph-weighted'
+        ) {
+          throw new Error(
+            `${scoreProgram.programName} is not a vouch-network checkpoint response`
+          )
+        }
+        return { ...data, scoreProgram }
       },
       enabled: !!APIS.ponder && !!snapshot && !!checkpointId,
       staleTime: Infinity,
@@ -365,7 +392,12 @@ export const ponderQueries = {
         )
 
         if (response.ok) {
-          return (await response.json()) as HypercertsScoreList
+          const data = (await response.json()) as HypercertsScoreList
+          data.scoreProgram = parseScoreProgramProvenance(
+            data.scoreProgram,
+            'hypercerts'
+          )
+          return data
         } else {
           if (response.status === 404) {
             // No root indexed yet for this instance.
@@ -424,6 +456,7 @@ export const ponderQueries = {
           return {
             tree: data.tree,
             entries: sortedEntries,
+            scoreProgram: parseMerkleScoreProgram(data.scoreProgram),
           }
         } else {
           if (response.status === 404) {
@@ -464,6 +497,7 @@ export const ponderQueries = {
           return {
             tree: data.tree,
             entries: sortedEntries,
+            scoreProgram: parseMerkleScoreProgram(data.scoreProgram),
           }
         } else {
           if (response.status === 404) {
@@ -503,7 +537,9 @@ export const ponderQueries = {
         )
 
         if (response.ok) {
-          const { entry } = (await response.json()) as MerkleTreeEntryResponse
+          const { entry, scoreProgram } =
+            (await response.json()) as MerkleTreeEntryResponse
+          parseMerkleScoreProgram(scoreProgram)
           return entry
         } else {
           if (response.status === 404) {
@@ -544,6 +580,20 @@ export const ponderQueries = {
             attestations: intoAttestationsData(
               data.attestations as (typeof easAttestation.$inferSelect)[]
             ),
+            scoreProgram: (() => {
+              const scoreProgram = parseScoreProgramProvenance(
+                data.scoreProgram
+              )
+              if (
+                scoreProgram.programName !== 'trust-graph' &&
+                scoreProgram.programName !== 'trust-graph-weighted'
+              ) {
+                throw new Error(
+                  `${scoreProgram.programName} is not a vouch-network response`
+                )
+              }
+              return scoreProgram
+            })(),
           }
         } else {
           if (response.status === 404) {
@@ -570,8 +620,10 @@ export const ponderQueries = {
           const { networks } = (await response.json()) as {
             networks: NetworkProfile[]
           }
-
-          return networks
+          return networks.map((network) => ({
+            ...network,
+            scoreProgram: parseMerkleScoreProgram(network.scoreProgram),
+          }))
         } else {
           throw new Error(
             `Failed to fetch account network profiles: ${response.status} ${response.statusText} (${await response.text()})`
@@ -591,8 +643,10 @@ export const ponderQueries = {
           const { network } = (await response.json()) as {
             network: NetworkProfile
           }
-
-          return network
+          return {
+            ...network,
+            scoreProgram: parseMerkleScoreProgram(network.scoreProgram),
+          }
         } else {
           throw new Error(
             `Failed to fetch account network profile: ${response.status} ${response.statusText} (${await response.text()})`

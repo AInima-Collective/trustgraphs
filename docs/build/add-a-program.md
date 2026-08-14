@@ -45,3 +45,49 @@ instance (same bytecode, its own immutable vkey) against the same SP1 gateway, r
 on journal v3, and adds a `ParamsCodec` twin golden-locked to its crate's `params_hash`. Standing up
 another *instance* of an existing program costs only a deployment (a new contract set + params +
 indexer/frontend view) — no Rust, no guest, no vectors.
+
+## Registering the score program and output domain
+
+Score-blob dispatch is consensus-facing. Before a program can publish a root, add one reviewed row
+to `frontend/lib/score-program.ts` containing all of the following:
+
+- the exact `programId` written to `InstanceRegistry` (`keccak256("foo")` by convention);
+- a new, versioned `outputDomain` (`keccak256("trustgraphs.output.foo-subject.v1")`);
+- the canonical key encoding (`eip155-address` or `bytes32`);
+- its one ingestion decoder, table family, and allowed HTTP namespace.
+
+Never reuse an output domain merely because two subjects have the same byte width. Hypercerts node
+IDs and ERC-8004 agent keys are both 32 bytes and deliberately have different domains. Likewise,
+TrustGraph accounts, Contributions recipients, and composition outputs may all be EVM addresses
+while retaining different semantic domains. Changing a shipped domain is a versioned program
+migration, not a refactor.
+
+The deployer/factory must register `(program, snapshot, verifier, registryOrAccumulator,
+paramsHash)` in the configured on-chain `InstanceRegistry` before the snapshot can emit a root. The
+indexer consumes only `InstanceRegistered`/`InstanceUpdated` and governed
+`InstanceParamsHashUpdated` events from that configured registry, checks the snapshot's live
+`zkVerifier()` against the record, and stores the source block/log/transaction in API provenance.
+A catalog name, deployment-summary `program` string, contract name, score-key
+length, or first blob entry is never an admissible discriminator. Unknown programs, reused
+snapshots, program/domain mismatches, wrong API namespaces, and registered-but-not-enabled decoders
+all fail closed.
+
+Indexer additions are therefore explicit:
+
+1. Add the stable registry row, decoder/table/API declarations, and colliding-key fixtures.
+2. Add nullable discriminator/provenance columns plus a Drizzle migration.
+3. Enable the decoder only after its schema and API exist.
+4. Expose and runtime-validate `scoreProgram` on every score response.
+5. Add the frontend page type only after the authenticated response can dispatch it.
+
+For an existing database, deploy in this order: apply the nullable migration; deploy/replay the new
+indexer so `score_program_binding` is rebuilt from registry events; run
+`pnpm --dir indexer programs:backfill` (dry-run) and then
+`pnpm --dir indexer programs:backfill --apply`; deploy the new frontend last. Old frontends ignore
+additive provenance fields. A new frontend against an old
+indexer refuses the response rather than guessing its type. Keep the dry-run output with the
+release evidence and audit all `409` responses before publishing the frontend.
+
+A legacy snapshot with no registry event must first be registered through the registry's governed
+operator path with its historical verifier/accumulator/params tuple. The backfill intentionally
+refuses it until that event exists; a hand-edited catalog label is not a migration.

@@ -25,6 +25,10 @@ import {
   getReviewScore,
 } from './contributions-review-fixtures'
 import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
+import {
+  parseScoreKeyDomainProvenance,
+  parseScoreProgramProvenance,
+} from './score-program'
 
 /** Skip reasons the indexer derives (mirrors `lib/contributions/eligibility.SkipReason`). */
 export type ContributionsSkipReason = 'selfValuation' | 'belowMinRep'
@@ -101,10 +105,22 @@ export type ContributionsPayout = {
   proof: string[]
 }
 
-const get = async <T>(path: string): Promise<T | null> => {
+const get = async <T>(
+  path: string,
+  keyDomain?: 'contributions-claim-v1'
+): Promise<T | null> => {
   const response = await fetch(`${APIS.ponder}${path}`)
   if (response.ok) {
-    return (await response.json()) as T
+    const body = (await response.json()) as T & { scoreProgram?: unknown }
+    parseScoreProgramProvenance(body.scoreProgram, 'contributions')
+    if (keyDomain) {
+      parseScoreKeyDomainProvenance(
+        (body as T & { scoreKeyDomain?: unknown }).scoreKeyDomain,
+        'contributions',
+        keyDomain
+      )
+    }
+    return body
   }
   if (response.status === 404) {
     // Route not wired / nothing indexed yet.
@@ -271,7 +287,10 @@ export const fetchContributionsClaims = async (
   snapshot: string
 ): Promise<ContributionsClaimsResponse | null> => {
   if (REVIEW_FIXTURES_ENABLED) return getReviewClaims()
-  const raw = await get<RawClaimsResponse>(`/contributions/${snapshot}/claims`)
+  const raw = await get<RawClaimsResponse>(
+    `/contributions/${snapshot}/claims`,
+    'contributions-claim-v1'
+  )
   if (!raw) return null
   return {
     snapshot: raw.snapshot,
@@ -285,7 +304,8 @@ export const fetchContributionsScore = async (
 ): Promise<ContributionsScoreDetail | null> => {
   if (REVIEW_FIXTURES_ENABLED) return getReviewScore(claimUid)
   const raw = await get<RawScoreDetail>(
-    `/contributions/${snapshot}/score/${claimUid}`
+    `/contributions/${snapshot}/score/${claimUid}`,
+    'contributions-claim-v1'
   )
   return raw ? normalizeScore(raw) : null
 }

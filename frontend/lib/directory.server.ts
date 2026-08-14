@@ -25,6 +25,7 @@ import {
   toSections,
 } from './directory'
 import { activeFixture, fixtureDirectory } from './directory.fixtures'
+import { parseScoreProgramProvenance } from './score-program'
 
 /** Same window as the pages' `revalidate`. See CATALOG_REVALIDATE_SECONDS in catalog.server.ts. */
 const SUMMARY_REVALIDATE_SECONDS = 10
@@ -71,6 +72,16 @@ const readJson = async <T>(path: string): Promise<T | null> => {
 
 type MerkleTreeList = {
   trees: Array<{ root: string; numAccounts: number; timestamp: string }>
+  scoreProgram: unknown
+}
+type HypercertsRootList = {
+  roots: Array<{
+    root: string
+    numNodes: number
+    timestamp: string
+    merkleSnapshotContract: string
+  }>
+  scorePrograms: Record<string, unknown>
 }
 type NetworkPayload = { attestations: unknown[] }
 
@@ -82,13 +93,26 @@ type NetworkPayload = { attestations: unknown[] }
  */
 const readSummary = async (
   snapshot: string,
-  { withAttestations }: { withAttestations: boolean }
+  { program }: { program: DirectoryProgram }
 ): Promise<ScoreboardSummary> => {
   let summary: ScoreboardSummary
   try {
-    const list = await readJson<MerkleTreeList>(`/merkle/${snapshot}/all`)
-    const latest = list?.trees?.[0]
+    const list =
+      program === 'hypercerts'
+        ? await readJson<HypercertsRootList>(
+            `/hypercerts/roots?snapshot=${encodeURIComponent(snapshot)}`
+          )
+        : await readJson<MerkleTreeList>(`/merkle/${snapshot}/all`)
+    const latest =
+      program === 'hypercerts'
+        ? (list as HypercertsRootList | null)?.roots?.[0]
+        : (list as MerkleTreeList | null)?.trees?.[0]
     if (!latest) return NEVER_PROVEN
+    const provenance =
+      program === 'hypercerts'
+        ? (list as HypercertsRootList).scorePrograms[snapshot.toLowerCase()]
+        : (list as MerkleTreeList).scoreProgram
+    parseScoreProgramProvenance(provenance, program)
 
     // Guarded, not trusted. A missing or non-numeric `timestamp` yields NaN, which passes
     // the `provenAt === null` test in `freshnessLabel` and falls through every branch of
@@ -96,7 +120,9 @@ const readSummary = async (
     // the string "NaN" in a figure cell. A fourth, silently wrong state is worse than the
     // three this type is careful to keep apart, so unparseable means unreadable.
     const provenAt = Number(latest.timestamp)
-    const scored = Number(latest.numAccounts)
+    const scored = Number(
+      'numAccounts' in latest ? latest.numAccounts : latest.numNodes
+    )
     if (!Number.isFinite(provenAt) || !Number.isFinite(scored)) {
       console.error(
         `[directory] ${snapshot} returned an unparseable scoreboard summary`
@@ -118,7 +144,7 @@ const readSummary = async (
     return UNREADABLE
   }
 
-  if (!withAttestations) return summary
+  if (program !== 'trust-graph') return summary
 
   // Only the vouching program has vouches to count, and this is the expensive read, so it is gated
   // on there being a root to count them against.
@@ -179,7 +205,7 @@ export const loadDirectory = async (): Promise<Directory> => {
   const summaries = await Promise.all(
     sources.map((source) =>
       readSummary(source.snapshot, {
-        withAttestations: source.program === 'trust-graph',
+        program: source.program,
       })
     )
   )
