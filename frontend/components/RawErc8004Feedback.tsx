@@ -139,7 +139,15 @@ export function RawErc8004Feedback({
   return (
     <section className="space-y-5" aria-label="Raw ERC-8004 feedback">
       <div>
-        <SectionHeading>Raw ERC-8004 feedback</SectionHeading>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionHeading>Raw ERC-8004 feedback</SectionHeading>
+          <Link
+            href="/experiments/erc8004-reputation"
+            className="text-[10px] uppercase tracking-wider text-text-muted underline decoration-border underline-offset-4 hover:text-text"
+          >
+            View pinned experiment
+          </Link>
+        </div>
         <p className="mt-2 max-w-3xl text-xs leading-relaxed text-text-muted">
           These are unaggregated on-chain signals. Tags and units are not
           comparable across policies; nothing here is a global score, a truth

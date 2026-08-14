@@ -1,0 +1,352 @@
+{
+  "generatedFrom": {
+    "policySha256": "0x6940174185c73adf5aefca9bc4a6ed968ff908fca4c2a7265c6e97f905d516a1",
+    "inputSha256": "0xeede605460e4e49fdf8a925a94c5c37fd510a34964ae60582ed018bbad7dad2c",
+    "resultSha256": "0xac1d3c8b0d2372e1c09cf309f5f2d973fb7c1697e168cc0c71011648c5514661"
+  },
+  "policy": {
+    "experimentId": "erc8004-optimism-quality-points-v1",
+    "registry": {
+      "namespace": "eip155",
+      "chainId": 10,
+      "reputationRegistry": "0x8004baa17c55a88189ae136b182e5fda19de9b63",
+      "identityRegistry": "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+      "implementation": "0x16e0fa7f7c56b9a767e34b192b51f921be31da34",
+      "version": "2.0.0",
+      "sourceBlock": "147514948",
+      "blockCutoff": "155551592"
+    },
+    "tag": "quality",
+    "unit": "points/100",
+    "valueDecimals": 0,
+    "interpretation": "signed integer points on a closed 0..100 scale; zero is observed non-positive evidence",
+    "reviewerSourceId": "fixture:qualified-agent-reviewer-trust:v1",
+    "reviewerEpoch": "42",
+    "reviewerRoot": "0x57583f4552126e9264409bbe7ef36954c56d9b83038e15d7d88a71efec32f010",
+    "pairRule": "latest active feedback by ascending blockNumber, transactionIndex, logIndex, id",
+    "responseRule": "preserve for reporting but do not alter value or validity",
+    "revocationRule": "exclude the revoked record without deleting history; reconcile remaining active records",
+    "outputIdentityDomain": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:<uint256>"
+  },
+  "metrics": {
+    "suppliedRecords": 22,
+    "policyRecordDenominator": 20,
+    "includedRecords": 9,
+    "excludedRecords": 13,
+    "excludedByReason": {
+      "registry_mismatch": 1,
+      "after_cutoff": 1,
+      "target_not_in_universe": 1,
+      "tag_mismatch": 1,
+      "unit_mismatch": 1,
+      "decimals_mismatch": 1,
+      "reviewer_unattributed": 1,
+      "reviewer_ambiguous": 1,
+      "reviewer_not_eligible": 1,
+      "self_feedback": 1,
+      "value_out_of_range": 1,
+      "revoked": 1,
+      "superseded": 1
+    },
+    "attribution": {
+      "denominator": 17,
+      "attributed": 15,
+      "unattributed": 1,
+      "ambiguous": 1,
+      "successMicros": "882352"
+    },
+    "coverage": {
+      "possiblePairs": 28,
+      "observedPairs": 9,
+      "missingPairs": 19,
+      "observedZeroPairs": 1,
+      "pairCoverageMicros": "321428"
+    },
+    "concentration": {
+      "includedWeightAcrossPairs": "24000",
+      "largestReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+      "largestReviewerShareMicros": "500000",
+      "includedPairsByReviewer": [
+        {
+          "reviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+          "pairs": 3,
+          "weightedPairMass": "12000"
+        },
+        {
+          "reviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:2",
+          "pairs": 3,
+          "weightedPairMass": "9000"
+        },
+        {
+          "reviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:3",
+          "pairs": 1,
+          "weightedPairMass": "2000"
+        },
+        {
+          "reviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+          "pairs": 1,
+          "weightedPairMass": "500"
+        },
+        {
+          "reviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+          "pairs": 1,
+          "weightedPairMass": "500"
+        }
+      ]
+    },
+    "pairReconciliation": {
+      "supersededRecords": 1,
+      "revokedRecords": 1,
+      "includedRecordsWithResponses": 1,
+      "preservedResponseCount": 2
+    }
+  },
+  "direct": [
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "scoreNumerator": "540000",
+      "scoreDenominator": "7000",
+      "scoreMicros": "77142857",
+      "observedWeightBps": "7000",
+      "reviewerCount": 2,
+      "rank": 1,
+      "label": "Agent #4"
+    },
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "scoreNumerator": "430000",
+      "scoreDenominator": "6000",
+      "scoreMicros": "71666666",
+      "observedWeightBps": "6000",
+      "reviewerCount": 2,
+      "rank": 2,
+      "label": "Agent #5"
+    },
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "scoreNumerator": "110000",
+      "scoreDenominator": "3500",
+      "scoreMicros": "31428571",
+      "observedWeightBps": "3500",
+      "reviewerCount": 2,
+      "rank": 3,
+      "label": "Agent #9"
+    },
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "scoreNumerator": "130000",
+      "scoreDenominator": "4500",
+      "scoreMicros": "28888888",
+      "observedWeightBps": "4500",
+      "reviewerCount": 2,
+      "rank": 4,
+      "label": "Agent #8"
+    },
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6",
+      "scoreNumerator": "0",
+      "scoreDenominator": "3000",
+      "scoreMicros": "0",
+      "observedWeightBps": "3000",
+      "reviewerCount": 1,
+      "rank": 5,
+      "label": "Agent #6"
+    },
+    {
+      "targetAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:7",
+      "scoreNumerator": null,
+      "scoreDenominator": null,
+      "scoreMicros": null,
+      "observedWeightBps": "0",
+      "reviewerCount": 0,
+      "rank": null,
+      "label": "Agent #7"
+    }
+  ],
+  "propagation": [
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "mass": "233496829763",
+      "rank": 1,
+      "label": "Agent #9"
+    },
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "mass": "228671311384",
+      "rank": 2,
+      "label": "Agent #8"
+    },
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "mass": "124269400304",
+      "rank": 4,
+      "label": "Agent #4"
+    },
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "mass": "103963942739",
+      "rank": 5,
+      "label": "Agent #5"
+    },
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6",
+      "mass": "0",
+      "rank": 8,
+      "label": "Agent #6"
+    },
+    {
+      "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:7",
+      "mass": "0",
+      "rank": 9,
+      "label": "Agent #7"
+    }
+  ],
+  "edges": [
+    {
+      "recordId": "feedback-02-repeat-new-with-response",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+      "fromLabel": "Agent #1",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "toLabel": "Agent #4",
+      "value": "90",
+      "reviewerWeightBps": "4000"
+    },
+    {
+      "recordId": "feedback-03-second-reviewer",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:2",
+      "fromLabel": "Agent #2",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "toLabel": "Agent #4",
+      "value": "60",
+      "reviewerWeightBps": "3000"
+    },
+    {
+      "recordId": "feedback-04-before-wallet-rotation",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+      "fromLabel": "Agent #1",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "toLabel": "Agent #5",
+      "value": "70",
+      "reviewerWeightBps": "4000"
+    },
+    {
+      "recordId": "feedback-06-after-wallet-rotation",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:3",
+      "fromLabel": "Agent #3",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "toLabel": "Agent #5",
+      "value": "75",
+      "reviewerWeightBps": "2000"
+    },
+    {
+      "recordId": "feedback-08-ring-a-to-b",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "fromLabel": "Agent #8",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "toLabel": "Agent #9",
+      "value": "100",
+      "reviewerWeightBps": "500"
+    },
+    {
+      "recordId": "feedback-09-ring-b-to-a",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "fromLabel": "Agent #9",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "toLabel": "Agent #8",
+      "value": "100",
+      "reviewerWeightBps": "500"
+    },
+    {
+      "recordId": "feedback-10-ring-anchor-a",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+      "fromLabel": "Agent #1",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "toLabel": "Agent #8",
+      "value": "20",
+      "reviewerWeightBps": "4000"
+    },
+    {
+      "recordId": "feedback-11-ring-anchor-b",
+      "from": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:2",
+      "fromLabel": "Agent #2",
+      "to": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "toLabel": "Agent #9",
+      "value": "20",
+      "reviewerWeightBps": "3000"
+    }
+  ],
+  "comparison": {
+    "directTargetOrder": [
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6"
+    ],
+    "propagationTargetOrder": [
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:7"
+    ],
+    "largestRankShift": 2,
+    "largestRankShiftAgentKeys": [
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8"
+    ],
+    "reciprocalRingTargetShareMicros": "669419"
+  },
+  "sensitivity": [
+    {
+      "omittedReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+      "omittedReviewerLabel": "Agent #1",
+      "targetsLosingAllDirectEvidence": [],
+      "maxDirectScoreDeltaMicros": "71111112",
+      "maxPropagationTargetMassDelta": "54816227310"
+    },
+    {
+      "omittedReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:2",
+      "omittedReviewerLabel": "Agent #2",
+      "targetsLosingAllDirectEvidence": [
+        "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6"
+      ],
+      "maxDirectScoreDeltaMicros": "68571429",
+      "maxPropagationTargetMassDelta": "47850007917"
+    },
+    {
+      "omittedReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:3",
+      "omittedReviewerLabel": "Agent #3",
+      "targetsLosingAllDirectEvidence": [],
+      "maxDirectScoreDeltaMicros": "1666666",
+      "maxPropagationTargetMassDelta": "51846203420"
+    },
+    {
+      "omittedReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+      "omittedReviewerLabel": "Agent #8",
+      "targetsLosingAllDirectEvidence": [],
+      "maxDirectScoreDeltaMicros": "11428571",
+      "maxPropagationTargetMassDelta": "170710064806"
+    },
+    {
+      "omittedReviewerAgentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+      "omittedReviewerLabel": "Agent #9",
+      "targetsLosingAllDirectEvidence": [],
+      "maxDirectScoreDeltaMicros": "8888888",
+      "maxPropagationTargetMassDelta": "179622788657"
+    }
+  ],
+  "recommendation": {
+    "decision": "no-go-for-production-or-proof",
+    "boundedUse": "Continue only as a policy-specific offline comparison and data-quality diagnostic.",
+    "reasons": [
+      "The declared reviewer-target pair coverage is sparse and missing evidence cannot be interpreted as zero.",
+      "A small reciprocal ring changes the propagated ordering despite low reviewer-prior weight.",
+      "Leave-one-reviewer-out runs remove evidence or materially move at least one target.",
+      "The policy depends on a curated reviewer root and one exact tag/unit interpretation."
+    ]
+  }
+}

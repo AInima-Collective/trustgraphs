@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "experimentId": "erc8004-optimism-quality-points-v1",
+  "registry": {
+    "namespace": "eip155",
+    "chainId": 10,
+    "reputationRegistry": "0x8004baa17c55a88189ae136b182e5fda19de9b63",
+    "identityRegistry": "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    "implementation": "0x16e0fa7f7c56b9a767e34b192b51f921be31da34",
+    "version": "2.0.0",
+    "sourceBlock": "147514948",
+    "blockCutoff": "155551592"
+  },
+  "feedback": {
+    "tag": "quality",
+    "unit": "points/100",
+    "valueDecimals": 0,
+    "interpretation": "signed integer points on a closed 0..100 scale; zero is observed non-positive evidence",
+    "minimum": "0",
+    "maximum": "100"
+  },
+  "reviewerTrust": {
+    "sourceId": "fixture:qualified-agent-reviewer-trust:v1",
+    "epoch": "42",
+    "rootAlgorithm": "sha256-canonical-json",
+    "root": "0x57583f4552126e9264409bbe7ef36954c56d9b83038e15d7d88a71efec32f010",
+    "weightScaleBps": "10000",
+    "reviewers": [
+      {
+        "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:1",
+        "weightBps": "4000"
+      },
+      {
+        "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:2",
+        "weightBps": "3000"
+      },
+      {
+        "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:3",
+        "weightBps": "2000"
+      },
+      {
+        "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+        "weightBps": "500"
+      },
+      {
+        "agentKey": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9",
+        "weightBps": "500"
+      }
+    ]
+  },
+  "historicalAttribution": {
+    "source": "verified-wallet relation history strictly before the feedback event position",
+    "acceptedStatus": "attributed",
+    "ambiguousAndUnattributed": "exclude",
+    "currentWalletSubstitution": "forbidden"
+  },
+  "pairReconciliation": {
+    "key": ["historicalReviewerAgentKey", "targetAgentKey"],
+    "rule": "latest active feedback by ascending blockNumber, transactionIndex, logIndex, id",
+    "responses": "preserve for reporting but do not alter value or validity",
+    "revocations": "exclude the revoked record without deleting history; reconcile remaining active records"
+  },
+  "coverage": {
+    "recordDenominator": "all supplied feedback records",
+    "policyRecordDenominator": "records from the pinned registry at or before the cutoff",
+    "attributionDenominator": "pinned-registry records at or before the cutoff with the exact tag, unit, and decimals, before target, value, reviewer-eligibility, revocation, or pair filters",
+    "pairDenominator": "eligible reviewer count multiplied by declared target count, excluding reviewer-target self pairs",
+    "missingness": "an absent reconciled pair is missing evidence, never zero or negative evidence"
+  },
+  "arithmetic": {
+    "direct": "reviewer-trust-weighted mean over reconciled pairs with floor at 1e6 score scale",
+    "propagation": "positive edges only; personalized fixed-mass iteration with 0.85 damping, Hamilton apportionment, 64 iterations",
+    "massScale": "1000000000000",
+    "scoreScale": "1000000",
+    "dampingNumerator": "85",
+    "dampingDenominator": "100",
+    "iterations": 64,
+    "tieOrder": "descending value then ascending qualified agent key"
+  },
+  "outputIdentityDomain": "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:<uint256>",
+  "targetUniverse": [
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:4",
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:5",
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:6",
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:7",
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:8",
+    "agent:eip155:10:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:9"
+  ]
+}
