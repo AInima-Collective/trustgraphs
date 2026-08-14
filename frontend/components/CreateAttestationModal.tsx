@@ -162,6 +162,7 @@ export const CreateAttestationModal = ({
     isRevoking,
     error,
     hash,
+    isRelayEnabled,
   } = useAttestation()
 
   const noteText =
@@ -535,6 +536,14 @@ export const CreateAttestationModal = ({
                     getRowKey={(row) => row.uid}
                   />
                 </Card>
+              )}
+
+              {isRelayEnabled && (
+                <div className="border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  Gasless mode: review this draft, then sign the EAS typed
+                  message. The configured agent relay pays gas; it cannot alter
+                  the recipient, schema, rating, or comment you sign.
+                </div>
               )}
 
               {selectedSchemaInfo ? (

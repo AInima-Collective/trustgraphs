@@ -2,7 +2,7 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
-import { Hex } from 'viem'
+import { Hex, isAddress, isAddressEqual, zeroAddress } from 'viem'
 import { useAccount, useBalance, usePublicClient } from 'wagmi'
 
 import { useNetwork } from '@/contexts/NetworkContext'
@@ -41,6 +41,7 @@ export interface ProposalCore {
   cancelled: boolean
   merkleRoot: string
   totalVotingPower: bigint
+  quorumFraction: bigint
   state: number // ProposalState enum
   blockNumber: bigint
   timestamp: bigint
@@ -83,7 +84,6 @@ type VoteRow = typeof merkleGovModuleVote.$inferSelect
 function computeProposalState(
   proposal: ProposalRow,
   currentBlockNumber: bigint,
-  quorum: bigint,
   quorumRange: bigint = BigInt(1e18)
 ): ProposalState {
   if (proposal.cancelled) return ProposalState.Cancelled
@@ -93,9 +93,11 @@ function computeProposalState(
   if (currentBlockNumber <= proposal.endBlock) return ProposalState.Active
 
   // Voting has ended - check if passed
-  const totalVotes =
-    proposal.yesVotes + proposal.noVotes + proposal.abstainVotes
-  const quorumThreshold = (proposal.totalVotingPower * quorum) / quorumRange
+  // Contract quorum is decisive participation only. Abstentions remain visible but cannot make a
+  // proposal with sub-quorum Yes/No turnout executable.
+  const totalVotes = proposal.yesVotes + proposal.noVotes
+  const quorumThreshold =
+    (proposal.totalVotingPower * proposal.quorumFraction) / quorumRange
 
   if (totalVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
     return ProposalState.Passed
@@ -114,6 +116,7 @@ export function useGovernance() {
   // Local state
   const [isCreatingProposal, setIsCreatingProposal] = useState(false)
   const [isCastingVote, setIsCastingVote] = useState(false)
+  const [isSettingVoteDelegate, setIsSettingVoteDelegate] = useState(false)
   const [isExecutingProposal, setIsExecutingProposal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -122,6 +125,29 @@ export function useGovernance() {
   const merkleGovModuleAddress = (realAddress(
     network.contracts.merkleGovModule
   ) ?? '') as Hex
+
+  // Read the authoritative assignment from the contract. The indexer separately retains its
+  // append-only receipt history, but a just-mined revocation must take effect in this UI without
+  // waiting for finality.
+  const {
+    data: currentVoteDelegate = zeroAddress,
+    isLoading: isLoadingVoteDelegate,
+    refetch: refetchVoteDelegate,
+  } = useQuery({
+    queryKey: ['voteDelegate', merkleGovModuleAddress, address],
+    queryFn: async () => {
+      if (!publicClient || !merkleGovModuleAddress || !address) {
+        return zeroAddress
+      }
+      return publicClient.readContract({
+        address: merkleGovModuleAddress,
+        abi: merkleGovModuleAbi,
+        functionName: 'voteDelegate',
+        args: [address],
+      })
+    },
+    enabled: !!publicClient && !!merkleGovModuleAddress && !!address,
+  })
 
   // Query module state from ponder
   const { data: moduleState, isLoading: isLoadingModule } = usePonderQuery({
@@ -226,10 +252,8 @@ export function useGovernance() {
   // Transform proposals to include computed state
 
   const proposalsWithState = useMemo(() => {
-    const quorum = moduleState?.quorum ?? 4n * BigInt(1e16) // Default 4%
-
     return proposals.map((proposal) => {
-      const state = computeProposalState(proposal, currentBlockNumber, quorum)
+      const state = computeProposalState(proposal, currentBlockNumber)
       const actions = (proposal.actions as ProposalAction[]) || []
 
       const core: ProposalCore = {
@@ -246,6 +270,7 @@ export function useGovernance() {
         cancelled: proposal.cancelled,
         merkleRoot: proposal.merkleRoot,
         totalVotingPower: proposal.totalVotingPower,
+        quorumFraction: proposal.quorumFraction,
         state,
         blockNumber: proposal.blockNumber,
         timestamp: proposal.timestamp,
@@ -253,7 +278,7 @@ export function useGovernance() {
 
       return { core, actions }
     })
-  }, [proposals, currentBlockNumber, moduleState?.quorum])
+  }, [proposals, currentBlockNumber])
 
   // Get a single proposal by ID
   const getProposal = useCallback(
@@ -583,7 +608,81 @@ export function useGovernance() {
         setIsCastingVote(false)
       }
     },
-    [isConnected, address, publicClient, getProposal, userEntriesByRoot]
+    [
+      isConnected,
+      address,
+      publicClient,
+      merkleGovModuleAddress,
+      getProposal,
+      userEntriesByRoot,
+    ]
+  )
+
+  const setVoteDelegate = useCallback(
+    async (delegate: Hex): Promise<string | null> => {
+      if (!isConnected || !address) {
+        setError('Wallet not connected')
+        return null
+      }
+      if (!publicClient || !merkleGovModuleAddress) {
+        setError('MerkleGovModule contract not found')
+        return null
+      }
+      if (!isAddress(delegate)) {
+        setError('Enter a valid delegate address')
+        return null
+      }
+      if (isAddressEqual(delegate, address)) {
+        setError('You cannot delegate voting to yourself')
+        return null
+      }
+
+      try {
+        setError(null)
+        setIsSettingVoteDelegate(true)
+        const transaction = {
+          address: merkleGovModuleAddress,
+          abi: merkleGovModuleAbi,
+          functionName: 'setVoteDelegate' as const,
+          args: [delegate] as const,
+          account: address,
+        }
+        const gasEstimate = await publicClient.estimateContractGas(transaction)
+        const gasPrice = await publicClient.getGasPrice()
+        const nonce = await publicClient.getTransactionCount({
+          address,
+          blockTag: 'pending',
+        })
+        const [receipt] = await txToast({
+          tx: {
+            ...transaction,
+            gas: (gasEstimate * 120n) / 100n,
+            gasPrice,
+            nonce,
+            type: 'legacy',
+          },
+          successMessage:
+            delegate === zeroAddress
+              ? 'Vote delegation revoked.'
+              : 'Vote delegate configured.',
+        })
+        await refetchVoteDelegate()
+        return receipt.transactionHash
+      } catch (err: any) {
+        console.error('Error setting vote delegate:', err)
+        setError(`Failed to set vote delegate: ${parseErrorMessage(err)}`)
+        return null
+      } finally {
+        setIsSettingVoteDelegate(false)
+      }
+    },
+    [
+      address,
+      isConnected,
+      merkleGovModuleAddress,
+      publicClient,
+      refetchVoteDelegate,
+    ]
   )
 
   // Execute proposal
@@ -684,12 +783,16 @@ export function useGovernance() {
   }, [moduleState?.currentMerkleRoot, userVotingPower])
 
   const isAnyActionLoading =
-    isCreatingProposal || isCastingVote || isExecutingProposal
+    isCreatingProposal ||
+    isCastingVote ||
+    isExecutingProposal ||
+    isSettingVoteDelegate
 
   return {
     // Loading states
     isCreatingProposal,
     isCastingVote,
+    isSettingVoteDelegate,
     isExecutingProposal,
     isAnyActionLoading,
     isLoadingModule,
@@ -697,6 +800,7 @@ export function useGovernance() {
     isLoadingUserVotes,
     isLoadingUserVotingPower,
     isLoadingSafeBalance,
+    isLoadingVoteDelegate,
     error,
 
     // Governance parameters (from indexer)
@@ -730,6 +834,7 @@ export function useGovernance() {
     userVotes,
     userVotesByProposal,
     userEntriesByRoot,
+    currentVoteDelegate,
 
     // Proposals data (from indexer)
     proposals: proposalsWithState,
@@ -737,6 +842,7 @@ export function useGovernance() {
     // Actions
     createProposal,
     castVote,
+    setVoteDelegate,
     executeProposal,
 
     // Query helpers

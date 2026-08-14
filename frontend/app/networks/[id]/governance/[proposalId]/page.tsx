@@ -21,9 +21,8 @@ export default function ProposalPage() {
     isLoadingProposals,
     isLoadingModule,
     error,
-    quorum,
     currentBlockNumber,
-    userVotingPower,
+    userEntriesByRoot,
     castVote,
     executeProposal,
     getProposal,
@@ -34,6 +33,9 @@ export default function ProposalPage() {
 
   const proposal = getProposal(proposalId)
   const userVote = getUserVote(proposalId)
+  const proposalVotingPower = proposal
+    ? userEntriesByRoot.get(proposal.core.merkleRoot)
+    : undefined
 
   // Everyone who voted on this proposal, newest first (already indexed).
   const { data: votes = [] } = usePonderQuery({
@@ -74,10 +76,14 @@ export default function ProposalPage() {
           proposal={proposal.core}
           actions={proposal.actions}
           votes={votes}
-          quorum={quorum}
+          quorum={Number(proposal.core.quorumFraction) / 1e18}
           currentBlockNumber={currentBlockNumber}
-          userVotingPower={userVotingPower?.value}
+          userVotingPower={proposalVotingPower?.value}
           userVote={userVote?.voteType as VoteType | undefined}
+          userVoteDelegated={userVote?.delegated}
+          userVoteDelegate={userVote?.delegate}
+          userVoteReason={userVote?.reason}
+          userVoteOverridden={userVote?.overridden}
           onVote={castVote}
           onExecute={executeProposal}
           isLoading={isAnyActionLoading}

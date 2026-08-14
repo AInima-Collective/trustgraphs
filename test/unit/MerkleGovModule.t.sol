@@ -56,6 +56,23 @@ contract MerkleGovModuleTest is Test {
     event VoteCast(
         address indexed voter, uint256 indexed proposalId, MerkleGovModule.VoteType voteType, uint256 votingPower
     );
+    event VoteDelegateSet(address indexed principal, address indexed previousDelegate, address indexed newDelegate);
+    event DelegateVoteCast(
+        address indexed principal,
+        uint256 indexed proposalId,
+        address indexed delegate,
+        MerkleGovModule.VoteType voteType,
+        uint256 votingPower,
+        string reason
+    );
+    event VoteOverridden(
+        address indexed principal,
+        uint256 indexed proposalId,
+        address indexed delegate,
+        MerkleGovModule.VoteType previousVoteType,
+        MerkleGovModule.VoteType newVoteType,
+        uint256 votingPower
+    );
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalCancelled(uint256 indexed proposalId);
 
@@ -1235,10 +1252,7 @@ contract MerkleGovModuleTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// Helper: a one-action proposal from `alice` targeting `target_` with `data` and `op`.
-    function _proposeAction(address target_, bytes memory data, Operation op)
-        internal
-        returns (uint256 proposalId)
-    {
+    function _proposeAction(address target_, bytes memory data, Operation op) internal returns (uint256 proposalId) {
         address[] memory targets = new address[](1);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
@@ -1386,8 +1400,266 @@ contract MerkleGovModuleTest is Test {
         assertTrue(flaky.done());
         assertEq(uint256(govModule.state(pid)), uint256(MerkleGovModule.ProposalState.Executed));
     }
-}
 
+    /*//////////////////////////////////////////////////////////////
+              AGENT DELEGATION + PRINCIPAL OVERRIDE (ISSUE 38)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_VoteDelegateSetChangeRevokeAndRejectSelf() public {
+        vm.expectEmit(true, true, true, true);
+        emit VoteDelegateSet(alice, address(0), bob);
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        assertEq(govModule.voteDelegate(alice), bob);
+
+        vm.expectEmit(true, true, true, true);
+        emit VoteDelegateSet(alice, bob, charlie);
+        vm.prank(alice);
+        govModule.setVoteDelegate(charlie);
+        assertEq(govModule.voteDelegate(alice), charlie);
+
+        vm.expectEmit(true, true, true, true);
+        emit VoteDelegateSet(alice, charlie, address(0));
+        vm.prank(alice);
+        govModule.setVoteDelegate(address(0));
+        assertEq(govModule.voteDelegate(alice), address(0));
+
+        vm.prank(alice);
+        vm.expectRevert(MerkleGovModule.SelfDelegation.selector);
+        govModule.setVoteDelegate(alice);
+    }
+
+    function test_DelegateVoteRecordsPrincipalPowerAndReasonReceipt() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+
+        vm.expectEmit(true, true, false, true);
+        emit VoteCast(alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice]);
+        vm.expectEmit(true, true, true, true);
+        emit DelegateVoteCast(
+            alice, pid, bob, MerkleGovModule.VoteType.Yes, votingPowers[alice], "meets the published budget"
+        );
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "meets the published budget"
+        );
+
+        assertTrue(govModule.hasVoted(pid, alice));
+        assertTrue(govModule.votedByDelegate(pid, alice));
+        assertEq(govModule.delegateVoter(pid, alice), bob);
+        assertEq(govModule.votePower(pid, alice), votingPowers[alice]);
+        assertEq(uint256(govModule.votes(pid, alice)), uint256(MerkleGovModule.VoteType.Yes));
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        assertEq(yesVotes, votingPowers[alice]);
+        assertEq(noVotes, 0);
+        assertEq(abstainVotes, 0);
+        assertFalse(govModule.hasVoted(pid, bob), "delegate must not spend its own vote");
+    }
+
+    function test_OnlyCurrentDelegateCanVoteAndRevocationPreempts() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        vm.prank(alice);
+        govModule.setVoteDelegate(charlie);
+        _rollToActive(pid);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.NotVoteDelegate.selector, alice, bob));
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "stale delegate"
+        );
+
+        vm.prank(alice);
+        govModule.setVoteDelegate(address(0));
+        vm.prank(charlie);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.NotVoteDelegate.selector, alice, charlie));
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "revoked"
+        );
+    }
+
+    function test_PrincipalPreemptionIsFinalAndDelegateCannotOverwrite() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+
+        vm.prank(alice);
+        govModule.castVote(pid, MerkleGovModule.VoteType.No, votingPowers[alice], proofs[alice]);
+
+        vm.prank(bob);
+        vm.expectRevert(MerkleGovModule.AlreadyVoted.selector);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "too late"
+        );
+        assertFalse(govModule.votedByDelegate(pid, alice));
+        assertEq(uint256(govModule.votes(pid, alice)), uint256(MerkleGovModule.VoteType.No));
+    }
+
+    function test_DelegateCannotVoteTwiceOrChangeItsVote() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "first"
+        );
+
+        vm.prank(bob);
+        vm.expectRevert(MerkleGovModule.AlreadyVoted.selector);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.No, votingPowers[alice], proofs[alice], "overwrite"
+        );
+    }
+
+    function test_DelegateReasonIsBoundedForIndexerSafety() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+        string memory oversized = new string(govModule.MAX_DELEGATE_REASON_BYTES() + 1);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(MerkleGovModule.DelegateReasonTooLong.selector, bytes(oversized).length));
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], oversized
+        );
+        assertFalse(govModule.hasVoted(pid, alice));
+    }
+
+    function test_DelegateMustUsePrincipalsProposalPinnedProof() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(charlie);
+        govModule.setVoteDelegate(bob);
+
+        // A later graph update does not change the root pinned into this proposal.
+        _updateMerkleRoot(bytes32(uint256(0xfeed)), bytes32(uint256(0xbeef)), 1);
+        _rollToActive(pid);
+
+        vm.prank(bob);
+        vm.expectRevert(MerkleGovModule.InvalidMerkleProof.selector);
+        govModule.castVoteAsDelegate(
+            charlie, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "wrong principal"
+        );
+
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(
+            charlie, pid, MerkleGovModule.VoteType.Yes, votingPowers[charlie], proofs[charlie], "old root is pinned"
+        );
+        assertEq(govModule.votePower(pid, charlie), votingPowers[charlie]);
+    }
+
+    function test_DelegateVoteRespectsVotingWindow() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+
+        vm.prank(bob);
+        vm.expectRevert(MerkleGovModule.VotingClosed.selector);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "too early"
+        );
+
+        _rollPastEnd(pid);
+        vm.prank(bob);
+        vm.expectRevert(MerkleGovModule.VotingClosed.selector);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "too late"
+        );
+    }
+
+    function test_RevokingAfterDelegateVoteDoesNotEraseItAndPrincipalCanOverride() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "provisional"
+        );
+
+        vm.prank(alice);
+        govModule.setVoteDelegate(address(0));
+        (,,,,,, uint256 yesBefore,,,,,,,) = govModule.proposals(pid);
+        assertEq(yesBefore, votingPowers[alice]);
+
+        vm.expectEmit(true, true, true, true);
+        emit VoteOverridden(
+            alice, pid, bob, MerkleGovModule.VoteType.Yes, MerkleGovModule.VoteType.Abstain, votingPowers[alice]
+        );
+        vm.prank(alice);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Abstain, votingPowers[alice], proofs[alice]);
+
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        assertEq(yesVotes, 0);
+        assertEq(noVotes, 0);
+        assertEq(abstainVotes, votingPowers[alice]);
+        assertFalse(govModule.votedByDelegate(pid, alice));
+        assertEq(govModule.delegateVoter(pid, alice), bob, "original delegate remains auditable");
+
+        vm.prank(alice);
+        vm.expectRevert(MerkleGovModule.AlreadyVoted.selector);
+        govModule.castVote(pid, MerkleGovModule.VoteType.No, votingPowers[alice], proofs[alice]);
+    }
+
+    function testFuzz_PrincipalOverridePreservesExactlyOneVotesPower(uint8 delegatedRaw, uint8 principalRaw) public {
+        MerkleGovModule.VoteType delegatedVote =
+            MerkleGovModule.VoteType(bound(uint256(delegatedRaw), 0, uint256(MerkleGovModule.VoteType.Abstain)));
+        MerkleGovModule.VoteType principalVote =
+            MerkleGovModule.VoteType(bound(uint256(principalRaw), 0, uint256(MerkleGovModule.VoteType.Abstain)));
+
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(alice, pid, delegatedVote, votingPowers[alice], proofs[alice], "provisional");
+        vm.prank(alice);
+        govModule.castVote(pid, principalVote, votingPowers[alice], proofs[alice]);
+
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        assertEq(yesVotes + noVotes + abstainVotes, votingPowers[alice], "override changed turnout");
+        assertEq(yesVotes, principalVote == MerkleGovModule.VoteType.Yes ? votingPowers[alice] : 0);
+        assertEq(noVotes, principalVote == MerkleGovModule.VoteType.No ? votingPowers[alice] : 0);
+        assertEq(abstainVotes, principalVote == MerkleGovModule.VoteType.Abstain ? votingPowers[alice] : 0);
+        assertEq(uint256(govModule.votes(pid, alice)), uint256(principalVote));
+        assertFalse(govModule.votedByDelegate(pid, alice));
+    }
+
+    function test_DelegatedVotesCountIdenticallyForQuorumAndOverrideRecomputesIt() public {
+        vm.prank(owner);
+        govModule.setQuorum(5e17); // 287.5e18 decisive power required
+        uint256 pid = _proposeEmpty();
+        vm.prank(bob);
+        govModule.setVoteDelegate(eve);
+        _rollToActive(pid);
+
+        vm.prank(eve);
+        govModule.castVoteAsDelegate(bob, pid, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob], "yes");
+        vm.prank(charlie);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Yes, votingPowers[charlie], proofs[charlie]);
+        _rollPastEnd(pid);
+        assertEq(uint256(govModule.state(pid)), uint256(MerkleGovModule.ProposalState.Passed));
+
+        // Control on another active proposal: replacing the same 200 power with No changes the
+        // majority, not turnout or quorum participation.
+        uint256 pid2 = _proposeEmpty();
+        _rollToActive(pid2);
+        vm.prank(eve);
+        govModule.castVoteAsDelegate(bob, pid2, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob], "yes");
+        vm.prank(charlie);
+        govModule.castVote(pid2, MerkleGovModule.VoteType.Yes, votingPowers[charlie], proofs[charlie]);
+        vm.prank(bob);
+        govModule.castVote(pid2, MerkleGovModule.VoteType.No, votingPowers[bob], proofs[bob]);
+        _rollPastEnd(pid2);
+        assertEq(uint256(govModule.state(pid2)), uint256(MerkleGovModule.ProposalState.Rejected));
+    }
+}
 
 contract MockMerkleSnapshot is IMerkleSnapshot {
     IMerkleSnapshot.MerkleState private _latest;

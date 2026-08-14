@@ -3548,6 +3548,13 @@ export const merkleGovModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'MAX_DELEGATE_REASON_BYTES',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'QUORUM_RANGE',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
@@ -3584,6 +3591,24 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'principal', internalType: 'address', type: 'address' },
+      { name: 'proposalId', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'voteType',
+        internalType: 'enum MerkleGovModule.VoteType',
+        type: 'uint8',
+      },
+      { name: 'votingPower', internalType: 'uint256', type: 'uint256' },
+      { name: 'proof', internalType: 'bytes32[]', type: 'bytes32[]' },
+      { name: 'reason', internalType: 'string', type: 'string' },
+    ],
+    name: 'castVoteAsDelegate',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'currentMerkleRoot',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
@@ -3594,6 +3619,16 @@ export const merkleGovModuleAbi = [
     inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
     name: 'delegateCallAllowlist',
     outputs: [{ name: 'allowed', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'proposalId', internalType: 'uint256', type: 'uint256' },
+      { name: 'principal', internalType: 'address', type: 'address' },
+    ],
+    name: 'delegateVoter',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -3901,6 +3936,13 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'delegate', internalType: 'address', type: 'address' }],
+    name: 'setVoteDelegate',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'newDelay', internalType: 'uint256', type: 'uint256' }],
     name: 'setVotingDelay',
     outputs: [],
@@ -3946,6 +3988,33 @@ export const merkleGovModuleAbi = [
     name: 'transferOwnership',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'principal', internalType: 'address', type: 'address' }],
+    name: 'voteDelegate',
+    outputs: [{ name: 'delegate', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'proposalId', internalType: 'uint256', type: 'uint256' },
+      { name: 'principal', internalType: 'address', type: 'address' },
+    ],
+    name: 'votePower',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'proposalId', internalType: 'uint256', type: 'uint256' },
+      { name: 'principal', internalType: 'address', type: 'address' },
+    ],
+    name: 'votedByDelegate',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -4009,6 +4078,49 @@ export const merkleGovModuleAbi = [
       { name: 'allowed', internalType: 'bool', type: 'bool', indexed: false },
     ],
     name: 'DelegateCallTargetSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'principal',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'proposalId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'delegate',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'voteType',
+        internalType: 'enum MerkleGovModule.VoteType',
+        type: 'uint8',
+        indexed: false,
+      },
+      {
+        name: 'votingPower',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'reason',
+        internalType: 'string',
+        type: 'string',
+        indexed: false,
+      },
+    ],
+    name: 'DelegateVoteCast',
   },
   {
     type: 'event',
@@ -4244,6 +4356,74 @@ export const merkleGovModuleAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'principal',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'previousDelegate',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newDelegate',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'VoteDelegateSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'principal',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'proposalId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'delegate',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'previousVoteType',
+        internalType: 'enum MerkleGovModule.VoteType',
+        type: 'uint8',
+        indexed: false,
+      },
+      {
+        name: 'newVoteType',
+        internalType: 'enum MerkleGovModule.VoteType',
+        type: 'uint8',
+        indexed: false,
+      },
+      {
+        name: 'votingPower',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'VoteOverridden',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'newDelay',
         internalType: 'uint256',
         type: 'uint256',
@@ -4279,6 +4459,11 @@ export const merkleGovModuleAbi = [
   },
   {
     type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'DelegateReasonTooLong',
+  },
+  {
+    type: 'error',
     inputs: [
       { name: 'executableAtBlock', internalType: 'uint256', type: 'uint256' },
     ],
@@ -4293,6 +4478,14 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },
   { type: 'error', inputs: [], name: 'NotInitializing' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'principal', internalType: 'address', type: 'address' },
+      { name: 'caller', internalType: 'address', type: 'address' },
+    ],
+    name: 'NotVoteDelegate',
+  },
   { type: 'error', inputs: [], name: 'OnlyMerkleSnapshot' },
   {
     type: 'error',
@@ -4308,7 +4501,16 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'ProposalAlreadyExecuted' },
   { type: 'error', inputs: [], name: 'ProposalNotFound' },
   { type: 'error', inputs: [], name: 'ProposalNotPassed' },
+  { type: 'error', inputs: [], name: 'SelfDelegation' },
   { type: 'error', inputs: [], name: 'VotingClosed' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'recorded', internalType: 'uint256', type: 'uint256' },
+      { name: 'provided', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'VotingPowerMismatch',
+  },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

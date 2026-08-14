@@ -2,12 +2,29 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import toast from 'react-hot-toast'
 import { Hex, WaitForTransactionReceiptReturnType, isAddressEqual } from 'viem'
-import { useAccount, usePublicClient } from 'wagmi'
+import {
+  useAccount,
+  useChainId,
+  usePublicClient,
+  useSignTypedData,
+} from 'wagmi'
 
 import { intoAttestationData, intoAttestationsData } from '@/lib/attestation'
 import { easAbi } from '@/lib/contract-abis'
 import { easAddress } from '@/lib/contracts'
+import {
+  EAS_DELEGATION_TTL_SECONDS,
+  EAS_DELEGATION_VERSION,
+  type EasRelayAttestationData,
+  type EasRelayAttestationGroup,
+  MAX_RELAY_ATTESTATIONS,
+  easDelegatedAttestMessage,
+  easDelegatedAttestTypes,
+  easDelegationDomain,
+  splitEasRelaySignature,
+} from '@/lib/eas-delegation'
 import { parseErrorMessage, shouldRetryTxError } from '@/lib/error'
 import { SchemaManager } from '@/lib/schemas'
 import { txToast } from '@/lib/tx'
@@ -24,6 +41,7 @@ export interface NewAttestationData {
 
 const EMPTY_UID =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex
+const EAS_RELAY_ENABLED = process.env.NEXT_PUBLIC_EAS_RELAY_ENABLED === 'true'
 
 const intoAttestationRequestData = (attestationData: NewAttestationData) => {
   if (
@@ -56,6 +74,8 @@ const intoAttestationRequestData = (attestationData: NewAttestationData) => {
 export function useAttestation(uid?: Hex) {
   const { address: connectedAddress, isConnected } = useAccount()
   const publicClient = usePublicClient()
+  const chainId = useChainId()
+  const { signTypedDataAsync } = useSignTypedData()
   const queryClient = useQueryClient()
 
   const [isCreating, setIsCreating] = useState(false)
@@ -64,6 +84,117 @@ export function useAttestation(uid?: Hex) {
   const [isRevoked, setIsRevoked] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hash, setHash] = useState<`0x${string}` | null>(null)
+
+  const relayAttestations = async (
+    attestationsData: NewAttestationData[]
+  ): Promise<WaitForTransactionReceiptReturnType> => {
+    if (!publicClient || !connectedAddress) {
+      throw new Error('Wallet client is not ready')
+    }
+    if (attestationsData.length > MAX_RELAY_ATTESTATIONS) {
+      throw new Error(
+        `The gasless relay supports at most ${MAX_RELAY_ATTESTATIONS} attestations per batch`
+      )
+    }
+
+    const version = await publicClient.readContract({
+      address: easAddress,
+      abi: easAbi,
+      functionName: 'version',
+    })
+    if (version !== EAS_DELEGATION_VERSION) {
+      throw new Error(`Unsupported EAS delegation version ${version}`)
+    }
+
+    const bySchema = new Map<Hex, EasRelayAttestationData[]>()
+    for (const attestation of attestationsData) {
+      const request = intoAttestationRequestData(attestation)
+      const rows = bySchema.get(attestation.schema) ?? []
+      rows.push({
+        recipient: request.recipient,
+        expirationTime: request.expirationTime.toString(),
+        revocable: request.revocable,
+        refUID: request.refUID,
+        data: request.data,
+        value: request.value.toString(),
+      })
+      bySchema.set(attestation.schema, rows)
+    }
+
+    let nonce = await publicClient.readContract({
+      address: easAddress,
+      abi: easAbi,
+      functionName: 'getNonce',
+      args: [connectedAddress],
+    })
+    const deadline =
+      BigInt(Math.floor(Date.now() / 1000)) + EAS_DELEGATION_TTL_SECONDS
+    const requests: EasRelayAttestationGroup[] = []
+
+    // Sign in the exact schema-grouped order EAS will execute, so nonces are contiguous even when
+    // the original batch alternated schemas.
+    for (const [schema, data] of bySchema) {
+      const signatures = []
+      const nonces = []
+      for (const row of data) {
+        const rowNonce = nonce
+        const signature = await signTypedDataAsync({
+          domain: easDelegationDomain(chainId, easAddress, version),
+          types: easDelegatedAttestTypes,
+          primaryType: 'Attest',
+          message: easDelegatedAttestMessage({
+            attester: connectedAddress,
+            schema,
+            data: row,
+            nonce: rowNonce,
+            deadline,
+          }),
+        })
+        signatures.push(splitEasRelaySignature(signature))
+        nonces.push(rowNonce.toString())
+        nonce += 1n
+      }
+      requests.push({
+        schema,
+        data,
+        signatures,
+        nonces,
+        attester: connectedAddress,
+        deadline: deadline.toString(),
+      })
+    }
+
+    const relay = async () => {
+      const response = await fetch('/api/eas-relay', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'attest',
+          chainId,
+          eas: easAddress,
+          requests,
+        }),
+      })
+      const body = (await response.json()) as { hash?: Hex; error?: string }
+      if (!response.ok || !body.hash) {
+        throw new Error(body.error || 'The EAS relay rejected the request')
+      }
+      setHash(body.hash)
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: body.hash,
+      })
+      if (receipt.status !== 'success') {
+        throw new Error('The relayed EAS transaction reverted')
+      }
+      return receipt
+    }
+
+    return toast.promise(relay(), {
+      loading: 'Agent is relaying your signed attestation…',
+      success: 'Attestation relayed. It counts toward the next score update.',
+      error: (relayError) => parseErrorMessage(relayError),
+    })
+  }
 
   const createAttestation = async (attestationData: NewAttestationData) => {
     if (!isConnected || !connectedAddress) {
@@ -76,6 +207,13 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
+      if (EAS_RELAY_ENABLED) {
+        const receipt = await relayAttestations([attestationData])
+        setIsCreated(true)
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+        return receipt
+      }
+
       const requestData = intoAttestationRequestData(attestationData)
 
       // Helper function to execute transaction with fresh nonce
@@ -176,6 +314,13 @@ export function useAttestation(uid?: Hex) {
     setHash(null)
 
     try {
+      if (EAS_RELAY_ENABLED) {
+        await relayAttestations(attestationsData)
+        setIsCreated(true)
+        queryClient.invalidateQueries({ queryKey: attestationKeys.all })
+        return
+      }
+
       const bySchema = new Map<
         Hex,
         ReturnType<typeof intoAttestationRequestData>[]
@@ -375,6 +520,7 @@ export function useAttestation(uid?: Hex) {
     error,
     hash,
     isConnected,
+    isRelayEnabled: EAS_RELAY_ENABLED,
     userAddress: connectedAddress,
     query,
     canRevoke,

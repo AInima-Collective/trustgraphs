@@ -35,6 +35,10 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     error ExecutionDelayNotElapsed(uint256 executableAtBlock);
     error DelegateCallNotAllowed(address target);
     error ActionFailed(uint256 index);
+    error SelfDelegation();
+    error NotVoteDelegate(address principal, address caller);
+    error VotingPowerMismatch(uint256 recorded, uint256 provided);
+    error DelegateReasonTooLong(uint256 length);
 
     /*///////////////////////////////////////////////////////////////
                                 TYPES
@@ -97,6 +101,32 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     event VoteCast(address indexed voter, uint256 indexed proposalId, VoteType voteType, uint256 votingPower);
 
+    /// @notice A principal changed the one account allowed to cast provisional votes for them.
+    /// @dev `newDelegate == address(0)` is revocation. Changing this mapping never erases a vote
+    ///      already cast; only the principal can replace that vote through `castVote`.
+    event VoteDelegateSet(address indexed principal, address indexed previousDelegate, address indexed newDelegate);
+
+    /// @notice A delegate cast a provisional vote using the principal's snapshotted voting power.
+    /// @dev `reason` is deliberately event-only: it is an auditable receipt, not contract state.
+    event DelegateVoteCast(
+        address indexed principal,
+        uint256 indexed proposalId,
+        address indexed delegate,
+        VoteType voteType,
+        uint256 votingPower,
+        string reason
+    );
+
+    /// @notice The principal replaced a delegate-cast vote, making their own vote final.
+    event VoteOverridden(
+        address indexed principal,
+        uint256 indexed proposalId,
+        address indexed delegate,
+        VoteType previousVoteType,
+        VoteType newVoteType,
+        uint256 votingPower
+    );
+
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalCancelled(uint256 indexed proposalId);
     event QuorumUpdated(uint256 newQuorum);
@@ -140,6 +170,18 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Tracks the vote type for each voter on a proposal
     mapping(uint256 proposalId => mapping(address voter => VoteType)) public votes;
 
+    /// @notice The single account allowed to cast provisional votes for each principal.
+    mapping(address principal => address delegate) public voteDelegate;
+
+    /// @notice Whether the recorded vote is provisional because a delegate cast it.
+    mapping(uint256 proposalId => mapping(address principal => bool)) public votedByDelegate;
+
+    /// @notice Voting power recorded with a vote, needed for exact tally replacement.
+    mapping(uint256 proposalId => mapping(address principal => uint256)) public votePower;
+
+    /// @notice The delegate that cast a proposal's provisional vote (retained after override).
+    mapping(uint256 proposalId => mapping(address principal => address)) public delegateVoter;
+
     /// @notice Governance parameters
     uint256 public votingDelay = 1; // blocks
     uint256 public votingPeriod = 50400; // ~1 week at 12s blocks
@@ -159,6 +201,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice The divisor for quorum calculations (quorum = QUORUM_RANGE = 100% quorum)
     uint256 public constant QUORUM_RANGE = 1e18;
+
+    /// @notice Maximum UTF-8 byte length of the event-only delegate rationale.
+    uint256 public constant MAX_DELEGATE_REASON_BYTES = 512;
 
     /// @notice Whether the module is initialized
     bool private _initialized;
@@ -261,12 +306,60 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     function castVote(uint256 proposalId, VoteType voteType, uint256 votingPower, bytes32[] calldata proof) external {
         Proposal storage proposal = proposals[proposalId];
         if (state(proposalId) != ProposalState.Active) revert VotingClosed();
-        if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted();
+
+        bool alreadyVoted = hasVoted[proposalId][msg.sender];
+        if (alreadyVoted && !votedByDelegate[proposalId][msg.sender]) revert AlreadyVoted();
 
         // Verify voter is in merkle tree (using proposal's snapshot)
         _verifyMerkleProof(msg.sender, votingPower, proposal.merkleRoot, proof);
 
-        _castVote(proposalId, msg.sender, voteType, votingPower);
+        if (!alreadyVoted) {
+            _castVote(proposalId, msg.sender, voteType, votingPower);
+            return;
+        }
+
+        // Human votes are final. The sole exception is a principal replacing their own
+        // delegate's provisional vote; that replacement can happen exactly once.
+        _overrideDelegateVote(proposalId, msg.sender, voteType, votingPower);
+    }
+
+    /// @notice Set or revoke the one account allowed to cast provisional votes for the caller.
+    /// @param delegate The delegate, or address(0) to revoke the current delegation.
+    function setVoteDelegate(address delegate) external {
+        if (delegate == msg.sender) revert SelfDelegation();
+
+        address previousDelegate = voteDelegate[msg.sender];
+        voteDelegate[msg.sender] = delegate;
+        emit VoteDelegateSet(msg.sender, previousDelegate, delegate);
+    }
+
+    /// @notice Cast a provisional vote for a principal who delegated to the caller.
+    /// @param principal The member whose merkle leaf supplies voting power.
+    /// @param proposalId The proposal to vote on.
+    /// @param voteType The provisional vote.
+    /// @param votingPower The principal's power in the proposal-pinned root.
+    /// @param proof The principal's proof against the proposal-pinned root.
+    /// @param reason Human-readable analysis or rationale, emitted only in the receipt event.
+    function castVoteAsDelegate(
+        address principal,
+        uint256 proposalId,
+        VoteType voteType,
+        uint256 votingPower,
+        bytes32[] calldata proof,
+        string calldata reason
+    ) external {
+        Proposal storage proposal = proposals[proposalId];
+        if (state(proposalId) != ProposalState.Active) revert VotingClosed();
+        if (voteDelegate[principal] != msg.sender) revert NotVoteDelegate(principal, msg.sender);
+        if (hasVoted[proposalId][principal]) revert AlreadyVoted();
+        if (bytes(reason).length > MAX_DELEGATE_REASON_BYTES) revert DelegateReasonTooLong(bytes(reason).length);
+
+        _verifyMerkleProof(principal, votingPower, proposal.merkleRoot, proof);
+
+        _castVote(proposalId, principal, voteType, votingPower);
+        votedByDelegate[proposalId][principal] = true;
+        delegateVoter[proposalId][principal] = msg.sender;
+        emit DelegateVoteCast(principal, proposalId, msg.sender, voteType, votingPower, reason);
     }
 
     /// @notice Execute a successful proposal
@@ -535,7 +628,36 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
         hasVoted[proposalId][voter] = true;
         votes[proposalId][voter] = voteType;
+        votePower[proposalId][voter] = votingPower;
 
+        _addToTally(proposal, voteType, votingPower);
+
+        emit VoteCast(voter, proposalId, voteType, votingPower);
+    }
+
+    /// @dev Replace one provisional vote without minting or burning voting power. The power must
+    ///      equal the amount recorded from the same proposal-pinned root; rejecting an anomalous
+    ///      duplicate leaf is safer than letting a replacement change total turnout.
+    function _overrideDelegateVote(uint256 proposalId, address principal, VoteType newVoteType, uint256 votingPower)
+        internal
+    {
+        uint256 recordedPower = votePower[proposalId][principal];
+        if (recordedPower != votingPower) revert VotingPowerMismatch(recordedPower, votingPower);
+
+        Proposal storage proposal = proposals[proposalId];
+        VoteType previousVoteType = votes[proposalId][principal];
+        address delegate = delegateVoter[proposalId][principal];
+
+        _subtractFromTally(proposal, previousVoteType, recordedPower);
+        _addToTally(proposal, newVoteType, recordedPower);
+
+        votes[proposalId][principal] = newVoteType;
+        votedByDelegate[proposalId][principal] = false;
+
+        emit VoteOverridden(principal, proposalId, delegate, previousVoteType, newVoteType, recordedPower);
+    }
+
+    function _addToTally(Proposal storage proposal, VoteType voteType, uint256 votingPower) internal {
         if (voteType == VoteType.Yes) {
             proposal.yesVotes += votingPower;
         } else if (voteType == VoteType.No) {
@@ -543,8 +665,16 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         } else {
             proposal.abstainVotes += votingPower;
         }
+    }
 
-        emit VoteCast(voter, proposalId, voteType, votingPower);
+    function _subtractFromTally(Proposal storage proposal, VoteType voteType, uint256 votingPower) internal {
+        if (voteType == VoteType.Yes) {
+            proposal.yesVotes -= votingPower;
+        } else if (voteType == VoteType.No) {
+            proposal.noVotes -= votingPower;
+        } else {
+            proposal.abstainVotes -= votingPower;
+        }
     }
 
     /// @notice Verifies a merkle proof for an account's voting power

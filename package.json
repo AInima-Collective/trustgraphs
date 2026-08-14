@@ -33,6 +33,7 @@
     "viem": "^2.39.0"
   },
   "devDependencies": {
+    "@types/node": "22.15.3",
     "@typescript-eslint/eslint-plugin": "^8.39.1",
     "@typescript-eslint/parser": "^8.39.1",
     "eslint": "^8.57.1",

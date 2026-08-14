@@ -1,12 +1,13 @@
 # Agent delegation: governance, vouching, and the operations in between
 
-**Status:** research complete; recommended build path defined
+**Status:** accepted and implemented (Stages 1–4); graph-native research split to #77
 
-**Date:** 2026-08-13
+**Date:** 2026-08-13; implementation decision recorded 2026-08-14
 
 **Scope:** how a user delegates trustgraphs operations (voting, vouching, contribution flows,
-protocol upkeep) to an AI agent, with the user able to overrule the agent. This document does
-not change any contract, score, or proof claim. Agent *identity and reputation* is a separate
+protocol upkeep) to an AI agent, with the user able to overrule the agent. This document now
+records the shipped v1 contract/frontend/operator decision; it does not change a score or proof
+claim. Agent *identity and reputation* is a separate
 track, covered in [`ERC8004_AGENT_REPUTATION.md`](./ERC8004_AGENT_REPUTATION.md); this document
 is about agents *acting on a user's behalf*.
 
@@ -17,26 +18,26 @@ The driving user story:
 > As a user, I want to delegate DAO governance operations to my agent, and I want to overrule
 > it if I disagree. Maybe I even want to delegate vouching or other operations.
 
-Four findings shape the design:
+Four findings shaped the design (the first and fourth describe the pre-implementation state):
 
-1. **Every user action today is authorized by `msg.sender` on a plain transaction.** There is no
-   signature-based path live anywhere: no `signTypedData` in the frontend, no `bySig` variants
-   in governance, no session keys, no ERC-4337 or EIP-7702 integration. Identity, scores,
-   voting power, and payouts are all keyed by the sending address.
+1. **Every user action was authorized by `msg.sender` on a plain transaction.** The shipped EAS
+   relay is now the one signature path: the frontend signs EAS 1.3.0 typed data and the constrained
+   server relays it. Identity, scores, voting power, and payouts remain keyed by the signer/principal.
 2. **A large class of operations is already delegable by design.** Proposal execution, payout
    claims, epoch triggers, proof submission, and prover funding are all deliberately
    permissionless or anyone-can-relay. An agent with its own key can do all of them today with
    zero protocol changes.
-3. **EAS ships a dormant delegation seam.** `attestByDelegation` / `multiAttestByDelegation` /
-   `revokeByDelegation` are in the deployed EAS contract and in our generated ABI, unused. EAS
+3. **EAS shipped a dormant delegation seam.** `attestByDelegation` / `multiAttestByDelegation` /
+   `revokeByDelegation` are in the deployed EAS contract and in our generated ABI. The v1 build
+   uses `multiAttestByDelegation` for both singleton and batch creation. EAS
    sets `attestation.attester` to the EIP-712 *signer*, and `EASIndexerResolver` folds
    `attestation.attester` into the accumulator, so a relayed vouch scores identically to a
    direct one with zero Solidity changes. This gives "agent drafts, human signs, agent relays"
    for every EAS-shaped operation (vouch, rate, respond) as a frontend-only build.
-4. **Voting with human override needs one small contract change.** `MerkleGovModule` enforces
-   one vote per address with no re-voting (`hasVoted`), so "agent votes, human overrules" is
-   impossible in the current module. The recommended fix is a delegate-votes-provisionally,
-   principal-vote-is-final rule: roughly 60 lines, specified below.
+4. **Voting with human override needed one small contract change.** `MerkleGovModule` previously
+   enforced one immutable vote per address. It now implements the recommended
+   delegate-votes-provisionally, principal-vote-is-final rule, with exact stored-power tally
+   replacement and indexed receipts.
 
 The recommended policy line, argued in the threat model: **autonomous voting under policy is
 acceptable; autonomous vouching is not.** Vouches are the security root of the whole system,
@@ -51,9 +52,9 @@ to the repo root.
 
 | Operation | Where | Authorization |
 |---|---|---|
-| Vouch / revoke a vouch | direct EAS `attest`/`revoke`, called from `frontend/hooks/useAttestation.ts` | `attestation.attester = msg.sender` inside EAS; raw tx |
-| Rate, submit, respond (contributions) | same hook, three EAS schemas behind `ContributionResolver` | `msg.sender`; raw tx |
-| Propose / vote | `MerkleGovModule.propose` / `castVote` | `msg.sender` plus a merkle proof of score against the proposal-pinned root; one vote per address (`hasVoted`), no re-voting, no `bySig` variant |
+| Vouch / create EAS records | direct EAS or human-signed `multiAttestByDelegation`, called from `frontend/hooks/useAttestation.ts` | EAS recovers the signer as `attester`; relay is chain/contract/schema allowlisted and zero-value only |
+| Rate, submit, respond (contributions) | same hook, three EAS schemas behind `ContributionResolver` | same draft-review-sign-relay path when enabled |
+| Propose / vote | `MerkleGovModule.propose` / `castVote` / `castVoteAsDelegate` | principal merkle proof against the proposal-pinned root; one provisional delegate vote, then at most one final principal vote |
 | Execute a passed proposal | `MerkleGovModule.execute` | **permissionless** |
 | Claim a payout | `MerkleFundDistributor.claim(distributionIndex, account, value, proof)` | **anyone can claim on behalf of an account**; funds go to `account`, not `msg.sender` |
 | Epoch trigger / proof submission / prover bounty | `MerkleSnapshot.trigger` / `submitProof`, `ProvingVault.submitAndClaim` / `claim` | **permissionless**; the bounty `recipient` is bound into the journal digest so proofs cannot be replayed for a different payee |
@@ -123,7 +124,7 @@ only; a user who changes their mind after the agent votes is stuck; if the agent
 the deadline the vote silently does not happen. Design A is the right interim mode and its
 notification loop is required infrastructure for Design B anyway.
 
-### Design B: principal-overrides-delegate in the module (recommended)
+### Design B: principal-overrides-delegate in the module (shipped)
 
 One precedence rule: **a delegate's vote is provisional; the principal's own vote is final.**
 
@@ -134,7 +135,8 @@ mapping(uint256 proposalId => mapping(address voter => bool)) public hasVoted;
 mapping(uint256 proposalId => mapping(address voter => VoteType)) public votes;
 ```
 
-Proposed delta:
+Shipped delta (the implementation also stores power and original delegate for defensive exactness
+and durable attribution):
 
 ```solidity
 /// principal => delegate; address(0) = none. One delegate per principal.
@@ -142,6 +144,8 @@ mapping(address => address) public voteDelegate;
 
 /// true when the recorded vote for (proposalId, principal) was cast by the delegate
 mapping(uint256 => mapping(address => bool)) public votedByDelegate;
+mapping(uint256 => mapping(address => uint256)) public votePower;
+mapping(uint256 => mapping(address => address)) public delegateVoter;
 
 function setVoteDelegate(address delegate) external;   // revoke with address(0)
 
@@ -153,7 +157,7 @@ function castVoteAsDelegate(
     bytes32[] calldata proof,
     string calldata reason
 ) external {
-    if (voteDelegate[principal] != msg.sender) revert NotDelegate();
+    if (voteDelegate[principal] != msg.sender) revert NotVoteDelegate(principal, msg.sender);
     if (hasVoted[proposalId][principal]) revert AlreadyVoted(); // delegate never overwrites
     // verify principal's merkle proof against the proposal-pinned root (existing helper),
     // then _castVote(proposalId, principal, voteType, votingPower)
@@ -188,8 +192,9 @@ Why this is cheap in this specific architecture:
   itself an interesting signal, and a candidate future input to the graph (see the
   "extra reputation for voting" item in `ROADMAP.md`).
 
-Costs: it is a change to a governance contract (audit-sensitive; the module is
-Zodiac-attached to the Safe), plus indexer events and the receipt/override UI. Prior art for
+The shipped contract, indexer and UI keep this audit-sensitive change narrow. The Solidity battery
+covers all nine old/new vote-type combinations, stale/revoked/malicious delegates, replay and
+double voting, pinned-root proofs, boundaries, quorum, and turnout conservation. Prior art for
 principal-overrides-delegate tally accounting exists in the Governor ecosystem (ScopeLift's
 Flexible Voting family and the L2 "override delegation" designs built on it) and is worth
 cribbing test cases from.
@@ -212,9 +217,10 @@ EAS delegated-attestation functions that are already deployed and already in
   timing, retrying. EAS records the *signer* as `attester`, so the resolver fold, the
   accumulator, and the proven scores are all unchanged.
 
-This is a frontend-and-agent build only: an EIP-712 signing helper (the first in the
-frontend), a review/sign UX, and relay plumbing. It also improves the non-agent product
-(vouching becomes gasless for the user; a community can run a relayer).
+The shipped frontend builds the EAS 1.3.0 typed message, signs in exact grouped nonce order, and
+uses a server route constrained to one configured chain/EAS address, an explicit schema allowlist,
+zero value, 15-minute deadlines, signature/nonce validation, simulation, and a 20-item batch cap.
+The existing draft forms are the review surface for vouching, claims, ratings, and responses.
 
 If fully autonomous vouching is ever wanted despite the threat model, constrain it: cap
 confidence well below the human maximum, rate-limit edge creation, always allow autonomous
@@ -241,47 +247,41 @@ primary voting design because:
 
 ## Staged build path
 
-1. **Now (no code): the upkeep agent.** An agent with its own funded key executes passed
+1. **Done: upkeep agent runbook.** An agent with its own funded key executes passed
    proposals, claims payouts to the user's address, triggers epochs, and keeps the
    ProvingVault topped up. Product/docs work only; pairs naturally with an ERC-8004 identity
    registration for the agent.
-2. **Frontend build: delegated EAS actions.** Wire `attestByDelegation` /
-   `multiAttestByDelegation`: EIP-712 signing helper, draft-review-sign UX, relay. Ships
+2. **Done: delegated EAS actions.** The EIP-712 signing helper, draft-review-sign UX, and
+   constrained relay use `multiAttestByDelegation` for singleton and batch creation. This ships
    human-signed delegated vouching, rating, and responding with zero Solidity changes.
-3. **Agent loop + Design A voting.** Watch proposals, analyze, notify with a recommendation,
-   vote late in the window unless preempted. Needs the notification channel and (until step
-   4) a 7702 session key scoped to `castVote`.
-4. **Contract build: Design B.** `setVoteDelegate` + `castVoteAsDelegate` +
+3. **Done: agent loop and preemption.** The runner watches proposals, loads agent-authored
+   analysis, sends a digest-bearing intended-vote notification, and votes late in the window
+   unless the principal preempts it. It uses the agent's own key through
+   `castVoteAsDelegate`, and writes an observable receipt for every terminal outcome.
+4. **Done: contract Design B.** `setVoteDelegate` + `castVoteAsDelegate` +
    principal-override in `MerkleGovModule`, indexer events, receipt/override UI. The step-3
    loop switches to `castVoteAsDelegate` under its own key and gains true after-the-fact
    override.
-5. **Research track: delegation as part of the graph.** Delegation edges as attestations;
+5. **Split to #77: delegation as part of the graph.** Delegation edges as attestations;
    agents as first-class reputation-bearing nodes per
    [`ERC8004_AGENT_REPUTATION.md`](./ERC8004_AGENT_REPUTATION.md); bonded agents (accountable
    delegates that stake a slashable bond). Differentiator: no other governance system's
    delegation graph is itself a ZK-proven trust graph.
 
-## Open questions
+## V1 decisions
 
-1. Should autonomous agents ever *create* vouches, or only relay human-signed ones? This
-   document recommends the latter; it is a values call as much as a security call.
-2. One delegate per principal, or per-scope delegates (voting vs claiming vs future ops)?
-   The v1 mapping assumes one; a `mapping(address => mapping(bytes32 scope => address))`
-   spelling is the obvious generalization if needed.
-3. Should delegate votes count toward quorum identically to human votes, or should the
-   module expose the distinction so instances can discount them? V1 counts them identically;
-   the `votedByDelegate` flag preserves the data either way.
-4. Does the delegate's `reason` string belong in calldata (costly, permanent) or as an
-   event-only field (recommended above) or an IPFS pointer? Event-only is the v1 answer.
-5. When Design B ships, should the frontend require a configured notification channel before
-   allowing `setVoteDelegate`? An override right the user never hears about is not a real
-   override right.
+1. Agents only relay human-signed vouches/ratings/responses; there is no autonomous-vouch mode.
+2. One vote delegate per principal. Upkeep remains permissionless and needs no delegated scope.
+3. Delegate votes count identically toward decisive quorum; the flag preserves attribution.
+4. `reason` is calldata consumed into `DelegateVoteCast`, not contract storage.
+5. The frontend requires confirmation of a tested notification channel before it calls
+   `setVoteDelegate`. This is an explicit UI safety rail, not an on-chain invariant.
 
 ## References
 
-- EAS delegated attestations: `attestByDelegation` and `DelegatedAttestationRequest` in the
-  deployed EAS contract, present in `frontend/lib/contracts.ts` (generated ABI), unused by
-  any current call site.
+- EAS delegated attestations: `multiAttestByDelegation` and `DelegatedAttestationRequest` in the
+  deployed EAS contract, called through `frontend/hooks/useAttestation.ts` and
+  `frontend/app/api/eas-relay/route.ts`.
 - `MerkleGovModule` voting internals: `castVote`, `_castVote`, `hasVoted`, `votes`,
   `_verifyMerkleProof` (proposal-pinned root).
 - Anyone-can-relay precedents in this repo: `MerkleFundDistributor.claim`,

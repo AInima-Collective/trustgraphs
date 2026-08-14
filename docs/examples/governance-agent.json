@@ -1,0 +1,13 @@
+{
+  "rpcUrl": "http://127.0.0.1:8545",
+  "indexerUrl": "http://127.0.0.1:42069",
+  "module": "0x0000000000000000000000000000000000000000",
+  "principal": "0x0000000000000000000000000000000000000000",
+  "decisionsPath": "./governance-decisions.json",
+  "statePath": "./private/governance-agent-state.json",
+  "receiptsPath": "./private/governance-agent-receipts.jsonl",
+  "notificationWebhook": "http://127.0.0.1:8787/intended-votes",
+  "castLeadBlocks": 20,
+  "minNoticeBlocks": 100,
+  "pollSeconds": 12
+}

@@ -3,6 +3,8 @@ import {
   merkleGovModule,
   merkleGovModuleProposal,
   merkleGovModuleVote,
+  merkleGovVoteDelegate,
+  merkleGovVoteDelegationEvent,
 } from 'ponder:schema'
 
 import { merkleGovModuleAbi } from '../../frontend/lib/contract-abis'
@@ -14,6 +16,14 @@ type ProposalAction = {
   data: string
   operation: number
 }
+
+const eventPosition = (event: any) => ({
+  blockNumber: event.block.number,
+  transactionIndex: event.transaction.transactionIndex,
+  logIndex: event.log.logIndex,
+  timestamp: event.block.timestamp,
+  txHash: event.transaction.hash,
+})
 
 // Setup: Initialize the module state from the contract
 ponder.on('merkleGovModule:setup', async ({ context }) => {
@@ -138,6 +148,7 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           cancelled: proposal.cancelled,
           merkleRoot: proposal.merkleRoot,
           totalVotingPower: proposal.totalVotingPower,
+          quorumFraction: proposal.quorumFraction,
           actions: formattedActions,
           // Use current block for setup (we don't have the original block)
           blockNumber: 0n,
@@ -193,6 +204,7 @@ const proposalCreated = async ({ event, context }: any) => {
     cancelled: proposal.cancelled,
     merkleRoot: proposal.merkleRoot,
     totalVotingPower: proposal.totalVotingPower,
+    quorumFraction: proposal.quorumFraction,
     actions: formattedActions,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
@@ -218,8 +230,17 @@ const voteCast = async ({ event, context }: any) => {
     voter,
     voteType,
     votingPower,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
+    castBy: voter,
+    delegated: false,
+    delegate: null,
+    reason: null,
+    overridden: false,
+    ...eventPosition(event),
+    overrideBlockNumber: null,
+    overrideTransactionIndex: null,
+    overrideLogIndex: null,
+    overrideTimestamp: null,
+    overrideTxHash: null,
   })
 
   // Get current proposal state
@@ -245,6 +266,101 @@ const voteCast = async ({ event, context }: any) => {
 
 ponder.on('merkleGovModule:VoteCast', voteCast)
 ponder.on('governedMerkleGovModule:VoteCast', voteCast)
+
+// VoteDelegateSet: keep both the current assignment and the append-only receipt history.
+const voteDelegateSet = async ({ event, context }: any) => {
+  const { principal, previousDelegate, newDelegate } = event.args
+  const position = eventPosition(event)
+
+  await context.db
+    .insert(merkleGovVoteDelegate)
+    .values({
+      module: event.log.address,
+      principal,
+      delegate: newDelegate,
+      ...position,
+    })
+    .onConflictDoUpdate({ delegate: newDelegate, ...position })
+
+  await context.db.insert(merkleGovVoteDelegationEvent).values({
+    id: event.id,
+    module: event.log.address,
+    principal,
+    previousDelegate,
+    delegate: newDelegate,
+    ...position,
+  })
+}
+
+ponder.on('merkleGovModule:VoteDelegateSet', voteDelegateSet)
+ponder.on('governedMerkleGovModule:VoteDelegateSet', voteDelegateSet)
+
+// DelegateVoteCast follows VoteCast in the same transaction and decorates that principal's row
+// with the actual actor and event-only rationale. The vote stays provisional until an override.
+const delegateVoteCast = async ({ event, context }: any) => {
+  const { principal, proposalId, delegate, reason } = event.args
+
+  await context.db
+    .update(merkleGovModuleVote, {
+      module: event.log.address,
+      proposalId,
+      voter: principal,
+    })
+    .set({
+      castBy: delegate,
+      delegated: true,
+      delegate,
+      reason,
+    })
+}
+
+ponder.on('merkleGovModule:DelegateVoteCast', delegateVoteCast)
+ponder.on('governedMerkleGovModule:DelegateVoteCast', delegateVoteCast)
+
+// VoteOverridden is the one legal replacement. Preserve the original delegate/reason receipt,
+// mark the principal as the final actor, and refresh all three tallies from contract state.
+const voteOverridden = async ({ event, context }: any) => {
+  const { principal, proposalId, newVoteType, votingPower } = event.args
+
+  await context.db
+    .update(merkleGovModuleVote, {
+      module: event.log.address,
+      proposalId,
+      voter: principal,
+    })
+    .set({
+      voteType: newVoteType,
+      votingPower,
+      castBy: principal,
+      delegated: false,
+      overridden: true,
+      overrideBlockNumber: event.block.number,
+      overrideTransactionIndex: event.transaction.transactionIndex,
+      overrideLogIndex: event.log.logIndex,
+      overrideTimestamp: event.block.timestamp,
+      overrideTxHash: event.transaction.hash,
+    })
+
+  const [proposal] = await context.client.readContract({
+    address: event.log.address,
+    abi: merkleGovModuleAbi,
+    functionName: 'getProposal',
+    args: [proposalId],
+  })
+  await context.db
+    .update(merkleGovModuleProposal, {
+      module: event.log.address,
+      id: proposalId,
+    })
+    .set({
+      yesVotes: proposal.yesVotes,
+      noVotes: proposal.noVotes,
+      abstainVotes: proposal.abstainVotes,
+    })
+}
+
+ponder.on('merkleGovModule:VoteOverridden', voteOverridden)
+ponder.on('governedMerkleGovModule:VoteOverridden', voteOverridden)
 
 // ProposalExecuted: Mark proposal as executed
 const proposalExecuted = async ({ event, context }: any) => {
