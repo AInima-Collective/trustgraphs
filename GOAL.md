@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 9 issues closed, 8 remain.**
+> **Status (2026-08-13): 10 issues closed, 7 remain.**
 >
-> Closed after auditing `main` through `ff5ca64` and rerunning the focused regressions:
+> Closed after auditing `main` through `89ca749` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -15,12 +15,14 @@
 >   (`362e547`; empty-root/hook precursor in `a6f89c5`)
 > - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
 >   repair (`131ecfd`)
+> - **#20** — atomic module-only Safe graduation, sealed owner execution, delayed member/recovery
+>   routes, and live authority disclosure (`820b6f3`)
 > - **#22** — atomic governed prepayment and payable initial policy (`f1ef43f`)
 > - **#28** — versioned canonical Contributions tuples, registry discovery, hard commitment checks,
 >   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#20, #27**.
+> Remaining launch-risk issue: **#27**.
 > Remaining reproducibility and self-service issue: **#21**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -65,7 +67,7 @@ can proceed concurrently:
 | A · operator availability | #16 closed | Repair score-blob availability | `131ecfd` |
 | B · snapshot/vault hardening | #12 and #14 closed | Bound hostile input growth and finish snapshot invariants | `f5d826a`, `aa8e2b5` |
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
-| D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 prerequisites closed |
+| D · authority and production | #20 closed → #27 | Creator bypass removed; deploy and smoke-test production | `820b6f3`; #12/#14/#22 prerequisites closed |
 | E · program self-service | #21; #28 closed | Factory signer-sync and reproducible Contributions params | `3de8943` for #28 |
 | F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
 | G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
@@ -245,8 +247,32 @@ permanently exhaust its accepted input capacity.
 
 ### M2.2 · #20 — factory governance must not have a 1-of-1 bypass
 
-The governed factory now creates a Safe and a working Merkle governance module, but it finishes as a
-1-of-1 creator-owned Safe. That signer can bypass graph voting and execution delay.
+**Closed in `820b6f3`.** Factory creation now enables exactly two delay-enforcing Safe modules,
+installs the owner-execution guard, swaps the bootstrap owner, and irreversibly seals the guard in
+one outer transaction. A valid creator signature cannot change snapshot settings, move Safe funds,
+remove the guard, enable a bypass module, delegatecall, or MultiSend. Member governance retains its
+1-block voting delay, 50,400-block vote, and 7,200-block execution delay; the initial recovery
+proposer can only queue an exact action for an immutable 14-day public delay, which the proposer or
+member-governed Safe may cancel and anyone may execute after maturity.
+
+[`GOVERNED_SAFE_AUTHORITY`](./research/GOVERNED_SAFE_AUTHORITY.md) records the guard, direct
+timelock, and staged-bootstrap comparison plus emergency/liveness rules and the accepted recovery
+risk. The create review refuses an older configured factory without this authority profile and
+shows owners, threshold, graduation, and both delays before signature. Network settings verify the
+live guard storage slot/sealed state, exact two-module set, Safe bindings, owners, threshold,
+proposer, and delays before displaying “Graduated.” The focused 13-test factory battery covers
+direct execution, value withdrawal, settings, Safe self-calls, guard removal, module addition,
+delegatecall, batching, module delay/cancellation, and the 14-day minimum. All 547 Forge regressions,
+the Rust workspace, frontend tests/lint/build, indexer tests, secret scan,
+sizes, and the root/signer/two-lane/Hypercerts rehearsal pass.
+
+Accepted risk: the recovery proposer may queue arbitrary Safe calls or delegatecalls after 14 days;
+that disclosed constitutional route is necessary before the first score root and remains observable
+and cancellable. Production deployment must confirm the 57,601-block member veto path normally fits
+inside that window or increase the compiled recovery delay.
+
+Prior state: the governed factory created a Safe and a working Merkle governance module, but
+finished as a 1-of-1 creator-owned Safe. That signer could bypass graph voting and execution delay.
 
 - Write a decision record comparing at least: Safe guard/modifier enforcement, timelock-owned
   authority, and a staged bootstrap/graduation model. State emergency recovery and liveness rules.
@@ -432,9 +458,9 @@ override, and tally-conservation tests; graph-level delegation research has its 
 ### Honest closure target
 
 - **Near term:** #37 — the remaining independently closable research decision.
-- **Production track:** #20 and then #27 — two authority/deployment issues.
+- **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 8 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 7 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
