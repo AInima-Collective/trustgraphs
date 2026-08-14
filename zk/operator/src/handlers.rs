@@ -15,13 +15,13 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall};
 use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::CatalogEntry;
-use operator_core::types::{InstanceState, Program, VaultView};
+use operator_core::types::{Program, VaultView};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 
 use crate::chain::Rpc;
-use crate::config::Config;
+use crate::config::{Config, PinTarget};
 
 sol! {
     struct Quote {
@@ -48,7 +48,7 @@ pub struct Built {
     pub recipient: Address,
     /// The canonical score blob the guest committed to (`ipfs_hash` is its sha256, `cid` its
     /// CIDv1). The ROOT is the proof; this is the data the root is about, and nothing can read a
-    /// score without it — see [`pin`].
+    /// score without it — see [`publish`].
     pub blob: Vec<u8>,
 }
 
@@ -60,7 +60,7 @@ pub struct Proved {
 }
 
 /// What a held proof needs to be submitted, reloaded after a restart.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct HeldProof {
     pub output_root: B256,
     pub ipfs_hash: B256,
@@ -68,6 +68,11 @@ pub struct HeldProof {
     pub total_value: U256,
     pub skipped_digest: B256,
     pub recipient: Address,
+    /// The canonical score bytes committed by `ipfs_hash` and `cid`. Older held files predate
+    /// this field; they are repaired deterministically from the retained `input.json` on load.
+    #[serde(default, with = "hex_bytes")]
+    pub score_blob: Vec<u8>,
+    /// The Groth16 proof submitted on chain.
     #[serde(with = "hex_bytes")]
     pub blob: Vec<u8>,
 }
@@ -94,8 +99,8 @@ pub fn build_input(
     cfg: &Config,
     rpc: &Rpc,
     entry: &CatalogEntry,
-    _state: &InstanceState,
     checkpoint_id: u64,
+    recipient: Address,
 ) -> Result<Built> {
     // The snapshot's OWN answer, not the registry row's: `setAccumulator` is constitutional and
     // the directory copy may lag it. Reconstructing against the wrong lane produces an input that
@@ -117,7 +122,6 @@ pub fn build_input(
     // as if it were this checkpoint's.
     let _ = std::fs::remove_file(&input_path);
 
-    let recipient = cfg.recipient();
     let params_path = params_path(entry)?;
 
     match entry.program {
@@ -240,6 +244,33 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicationFailure {
+    pub target: String,
+    pub error: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicationReport {
+    pub cid: String,
+    pub successes: Vec<String>,
+    pub failures: Vec<PublicationFailure>,
+    pub required: usize,
+}
+
+impl PublicationReport {
+    pub fn satisfied(&self) -> bool {
+        self.successes.len() >= self.required
+    }
+
+    pub fn failure_strings(&self) -> Vec<String> {
+        self.failures
+            .iter()
+            .map(|failure| format!("{}: {}", failure.target, failure.error))
+            .collect()
+    }
+}
+
 /// Publish the score blob so the root means something to a reader.
 ///
 /// The chain carries the root, the sha256 and the CID — not the scores. Everything that renders a
@@ -251,36 +282,47 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
 /// The manual loop always did this by hand (`ipfs add --cid-version=1 --raw-leaves`, both in
 /// `test/e2e/run.sh` and `taskfile/instances.sh`); the daemon replaced the loop and not that step.
 ///
-/// Best-effort by design. A failed pin must NOT stop a root from landing: the proof is still valid
-/// and someone else can publish the same bytes later (the CID is content-addressed, so anyone
-/// re-deriving the blob reproduces it exactly). It alerts instead.
-pub fn pin(cfg: &Config, built: &Built) -> Result<String> {
-    let api = cfg.ipfs.api.as_deref().ok_or_else(|| anyhow::anyhow!("no [ipfs] api configured"))?;
-    let url =
-        format!("{}/api/v0/add?cid-version=1&raw-leaves=true&pin=true", api.trim_end_matches('/'));
+/// Every configured target is attempted so one outage does not hide the health of the others.
+/// The caller persists the report and refuses submission unless `satisfied()` is true.
+pub fn publish(cfg: &Config, cid: &str, blob: &[u8]) -> PublicationReport {
+    let targets = cfg.ipfs.resolved_targets();
+    let required = cfg.ipfs.required_successes();
+    let mut report = PublicationReport {
+        cid: cid.to_string(),
+        successes: Vec::new(),
+        failures: Vec::new(),
+        required,
+    };
+    for target in targets {
+        match pin_target(&target, cid, blob) {
+            Ok(()) => report.successes.push(target.name),
+            Err(error) => report
+                .failures
+                .push(PublicationFailure { target: target.name, error: error.to_string() }),
+        }
+    }
+    report
+}
+
+fn pin_target(target: &PinTarget, cid: &str, blob: &[u8]) -> Result<()> {
+    let url = format!(
+        "{}/api/v0/add?cid-version=1&raw-leaves=true&pin=true",
+        target.api.trim_end_matches('/')
+    );
 
     // Multipart by hand rather than pulling in a client: one field, known bytes.
     let boundary = "----trustgraph-operator-blob";
     let mut body = Vec::new();
     body.extend_from_slice(
         format!(
-            "--{boundary}
-Content-Disposition: form-data; name=\"file\"; filename=\"blob.json\"
-Content-Type: application/json
-
-"
+            "--{boundary}\r\n\
+             Content-Disposition: form-data; name=\"file\"; filename=\"blob.json\"\r\n\
+             Content-Type: application/json\r\n\r\n"
         )
         .as_bytes(),
     );
-    body.extend_from_slice(&built.blob);
-    body.extend_from_slice(
-        format!(
-            "
---{boundary}--
-"
-        )
-        .as_bytes(),
-    );
+    body.extend_from_slice(blob);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
     let resp = reqwest::blocking::Client::new()
         .post(&url)
@@ -294,17 +336,13 @@ Content-Type: application/json
     // The guest computed the CID in-circuit from these exact bytes. A mismatch means we just
     // published something the root does not commit to, which is worse than publishing nothing.
     anyhow::ensure!(
-        got == built.cid,
-        "ipfs returned CID {got}, the guest committed {} — refusing to call this published",
-        built.cid
+        got == cid,
+        "ipfs returned CID {got}, the guest committed {cid} — refusing to call target {:?} published",
+        target.name
     );
 
-    // "The API accepted it" and "a reader can fetch it" are different claims, and only the second
-    // one is the reason we pin at all. Check the one we actually mean when we can.
-    if let Some(gateway) = cfg.ipfs.gateway.as_deref() {
-        readable(gateway, &got)?;
-    }
-    Ok(got)
+    // "The API accepted it" and "a reader can fetch these exact bytes" are different claims.
+    readable(&target.gateway, &got, blob)
 }
 
 /// Fetch the CID back through a reader's gateway, so a pin means what it says.
@@ -314,7 +352,7 @@ Content-Type: application/json
 /// node. The root then lands pointing at bytes nobody can get, and the first symptom is an indexer
 /// stuck retrying one event forever while every network page renders empty. Reading it back turns
 /// that into a failed pin at the moment it happens, next to the thing that caused it.
-fn readable(gateway: &str, cid: &str) -> Result<()> {
+fn readable(gateway: &str, cid: &str, expected: &[u8]) -> Result<()> {
     // Concatenated and localhost-rewritten exactly as `indexer/src/merkle.ts` does it, from the
     // same string (`IPFS_GATEWAY`, which ends in `/ipfs/`). If this built the URL its own way the
     // check could pass against a URL no reader ever requests.
@@ -331,6 +369,13 @@ fn readable(gateway: &str, cid: &str) -> Result<()> {
          Check that `[ipfs] api` and `[ipfs] gateway` are the same kubo (compare \
          `/api/v0/id` against the gateway's host).",
         resp.status()
+    );
+    let got = resp.bytes()?;
+    anyhow::ensure!(
+        got.as_ref() == expected,
+        "gateway {gateway} served {} bytes for {cid}, but the canonical blob is {} bytes and the bytes differ",
+        got.len(),
+        expected.len()
     );
     Ok(())
 }
@@ -392,6 +437,7 @@ pub fn save_held(
         total_value: built.total_value,
         skipped_digest: built.skipped_digest,
         recipient: built.recipient,
+        score_blob: built.blob.clone(),
         blob: proved.blob.clone(),
     };
     std::fs::write(dir.join("held.json"), serde_json::to_string_pretty(&held)?)?;
@@ -408,6 +454,42 @@ pub fn load_proof(entry: &CatalogEntry, checkpoint_id: u64) -> Result<HeldProof>
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("no held proof at {}", path.display()))?;
     Ok(serde_json::from_str(&text)?)
+}
+
+/// Load and self-check the canonical bytes needed for publication.
+///
+/// `held.json` and `input.json` are both crash-recovery artifacts, not authorities. Recomputing
+/// the native journal ties the bytes back to the checkpoint input and catches a stale, truncated,
+/// or hand-edited held file before it can be called published. Legacy held files without
+/// `score_blob` are transparently reconstructed from the retained input.
+pub fn load_publication_blob(
+    entry: &CatalogEntry,
+    checkpoint_id: u64,
+) -> Result<(HeldProof, Vec<u8>)> {
+    let held = load_proof(entry, checkpoint_id)?;
+    let rebuilt = native_journal(
+        entry.program,
+        &out_dir(entry, checkpoint_id).join("input.json"),
+        held.recipient,
+    )
+    .with_context(|| format!("rebuilding canonical blob for checkpoint {checkpoint_id}"))?;
+
+    anyhow::ensure!(
+        rebuilt.output_root == held.output_root
+            && rebuilt.ipfs_hash == held.ipfs_hash
+            && rebuilt.cid == held.cid
+            && rebuilt.total_value == held.total_value
+            && rebuilt.skipped_digest == held.skipped_digest
+            && rebuilt.recipient == held.recipient,
+        "held proof metadata does not match the checkpoint input; refusing publication"
+    );
+    if !held.score_blob.is_empty() {
+        anyhow::ensure!(
+            held.score_blob == rebuilt.blob,
+            "held score blob differs from the canonical checkpoint computation"
+        );
+    }
+    Ok((held, rebuilt.blob))
 }
 
 /// What the vault would pay right now. Read BEFORE proving, so a prover never discovers mid-flight
@@ -466,7 +548,8 @@ fn parse_b256(s: &str) -> Result<B256> {
 
 #[cfg(test)]
 mod readback_tests {
-    use super::readable;
+    use super::{publish, readable};
+    use crate::config::Config;
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
@@ -492,8 +575,9 @@ mod readback_tests {
 
     #[test]
     fn a_gateway_that_serves_the_blob_is_readable() {
-        let gw = serve_once("200 OK", "{\"0xabc\":\"1\"}");
-        readable(&gw, "bafkreitest").expect("a 200 is the whole point of pinning");
+        let body = b"{\"0xabc\":\"1\"}";
+        let gw = serve_once("200 OK", std::str::from_utf8(body).unwrap());
+        readable(&gw, "bafkreitest", body).expect("the exact bytes are readable");
     }
 
     /// The failure this check exists for. `add` succeeded and returned the right CID, so the
@@ -503,7 +587,7 @@ mod readback_tests {
     #[test]
     fn a_gateway_that_times_out_is_not_published() {
         let gw = serve_once("504 Gateway Timeout", "");
-        let err = readable(&gw, "bafkreitest").unwrap_err().to_string();
+        let err = readable(&gw, "bafkreitest", b"expected").unwrap_err().to_string();
         assert!(err.contains("504"), "{err}");
         assert!(err.contains("DIFFERENT nodes"), "the message must name the cause: {err}");
     }
@@ -512,7 +596,14 @@ mod readback_tests {
     #[test]
     fn a_gateway_missing_the_block_is_not_published() {
         let gw = serve_once("404 Not Found", "");
-        assert!(readable(&gw, "bafkreitest").is_err());
+        assert!(readable(&gw, "bafkreitest", b"expected").is_err());
+    }
+
+    #[test]
+    fn a_gateway_serving_different_bytes_is_not_published() {
+        let gw = serve_once("200 OK", "wrong");
+        let err = readable(&gw, "bafkreitest", b"right").unwrap_err().to_string();
+        assert!(err.contains("bytes differ"), "{err}");
     }
 
     /// The URL is built by plain concatenation, exactly as `indexer/src/merkle.ts` does it, so the
@@ -532,8 +623,93 @@ mod readback_tests {
         });
         // `localhost` is rewritten to 127.0.0.1 the way the indexer does, to dodge kubo's
         // subdomain-gateway redirect.
-        let _ = readable(&format!("http://localhost:{port}/ipfs/"), "bafkreicid");
+        let _ = readable(&format!("http://localhost:{port}/ipfs/"), "bafkreicid", b"");
         let request = rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
         assert!(request.starts_with("GET /ipfs/bafkreicid "), "{request}");
+    }
+
+    /// A minimal kubo-compatible target: one `add` response followed by gateway readback.
+    fn serve_target(cid: &'static str, blob: &'static [u8], add_ok: bool) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let requests = if add_ok { 2 } else { 1 };
+            for _ in 0..requests {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 8192];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                if request.starts_with("POST ") {
+                    if add_ok {
+                        let body = format!("{{\"Hash\":\"{cid}\"}}");
+                        let _ = stream.write_all(
+                            format!(
+                                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                                body.len()
+                            )
+                            .as_bytes(),
+                        );
+                    } else {
+                        let _ = stream.write_all(
+                            b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        );
+                    }
+                } else {
+                    let _ = stream.write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            blob.len()
+                        )
+                        .as_bytes(),
+                    );
+                    let _ = stream.write_all(blob);
+                }
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    fn publication_config(primary: &str, backup: &str, minimum: usize) -> Config {
+        toml::from_str(&format!(
+            r#"
+rpc = "http://127.0.0.1:8545"
+registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
+[ipfs]
+min_success = {minimum}
+[[ipfs.targets]]
+name = "primary"
+api = "{primary}"
+gateway = "{primary}/ipfs/"
+[[ipfs.targets]]
+name = "backup"
+api = "{backup}"
+gateway = "{backup}/ipfs/"
+"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn publication_succeeds_when_the_configured_minimum_is_met() {
+        const CID: &str = "bafkreipolicy";
+        const BLOB: &[u8] = b"canonical score bytes";
+        let primary = serve_target(CID, BLOB, true);
+        let backup = serve_target(CID, BLOB, false);
+        let report = publish(&publication_config(&primary, &backup, 1), CID, BLOB);
+        assert!(report.satisfied());
+        assert_eq!(report.successes, vec!["primary"]);
+        assert_eq!(report.failures.len(), 1);
+    }
+
+    #[test]
+    fn publication_blocks_when_the_minimum_is_not_met() {
+        const CID: &str = "bafkreipolicytwo";
+        const BLOB: &[u8] = b"canonical score bytes";
+        let primary = serve_target(CID, BLOB, true);
+        let backup = serve_target(CID, BLOB, false);
+        let report = publish(&publication_config(&primary, &backup, 2), CID, BLOB);
+        assert!(!report.satisfied());
+        assert_eq!(report.successes.len(), 1);
+        assert_eq!(report.required, 2);
     }
 }

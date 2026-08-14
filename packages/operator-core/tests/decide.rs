@@ -89,6 +89,35 @@ fn a_ready_proof_is_submitted() {
 }
 
 #[test]
+fn a_held_proof_waiting_for_publication_is_published_before_submit() {
+    let mut s = healthy();
+    s.in_flight = Some(InFlight {
+        checkpoint_id: 0,
+        request_id: Some(B256::from([0xAA; 32])),
+        state: InFlightState::AwaitingPublication,
+    });
+    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Publish { checkpoint_id: 0 });
+}
+
+#[test]
+fn a_failed_publication_waits_for_its_persisted_retry_time() {
+    let mut s = healthy();
+    s.in_flight = Some(InFlight {
+        checkpoint_id: 0,
+        request_id: Some(B256::from([0xAA; 32])),
+        state: InFlightState::PublicationBackoff { attempts: 3, retry_at: 1_234 },
+    });
+    assert_eq!(
+        plan(&s, &curated(), Spend::default()),
+        Action::Idle(IdleReason::PublicationBackoff {
+            checkpoint_id: 0,
+            attempts: 3,
+            retry_at: 1_234,
+        })
+    );
+}
+
+#[test]
 fn an_abandoned_ready_checkpoint_advances_without_resurrecting_its_proof() {
     let mut s = healthy();
     let request_id = B256::from([0xAA; 32]);

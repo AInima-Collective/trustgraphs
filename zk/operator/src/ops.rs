@@ -78,6 +78,9 @@ pub struct PublicSettings {
     pub budget_window_seconds: u64,
     pub publishes_scores: bool,
     pub verifies_score_readback: bool,
+    pub publication_target_count: usize,
+    pub publication_min_success: usize,
+    pub publication_retry_seconds: u64,
     pub submit_failure_threshold: u32,
 }
 

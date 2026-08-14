@@ -6,6 +6,7 @@ export type PublicOperatorAction = {
     | 'trigger'
     | 'await_finality'
     | 'prove'
+    | 'publish'
     | 'submit'
     | 'hold'
     | 'skip'
@@ -14,6 +15,8 @@ export type PublicOperatorAction = {
   confirmations: number | null
   requiredConfirmations: number | null
   boundaryBlock: number | null
+  attempts: number | null
+  retryAt: number | null
 }
 
 export type PublicOperatorSettings = {
@@ -38,6 +41,9 @@ export type PublicOperatorSettings = {
   budgetWindowSeconds: number | null
   publishesScores: boolean | null
   verifiesScoreReadback: boolean | null
+  publicationTargetCount: number | null
+  publicationMinimum: number | null
+  publicationRetrySeconds: number | null
 }
 
 export type PublicOperatorStatus =

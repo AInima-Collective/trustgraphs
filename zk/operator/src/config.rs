@@ -4,12 +4,12 @@
 //! be a recorded decision, not a stall (GOAL ground rule 12). What is NOT configurable is also
 //! deliberate — anything absent from here, the operator does not do.
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{keccak256, Address, B256};
 use anyhow::{Context, Result};
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::policy::{LossBudget, Policy};
 use operator_core::types::Program;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -59,20 +59,33 @@ pub struct Config {
 /// nobody can read: the indexer fetches the blob by CID to build its member list, and a network
 /// page over an unpublished root renders empty. Unset means "we are not publishing", which is
 /// legitimate only if something else does.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Ipfs {
-    /// A kubo RPC API, e.g. `http://127.0.0.1:5001`.
+    /// Legacy single-target kubo RPC API. Kept so existing self-hosted configs continue to load;
+    /// production should use `targets` with `min_success >= 2`.
     #[serde(default)]
     pub api: Option<String>,
-    /// The gateway a READER will use, e.g. `http://127.0.0.1:8080/ipfs/`. Optional, and worth
-    /// setting: a successful `add` only proves the API node accepted the bytes, which is not the
-    /// same claim as "anyone can fetch them". When the API and the gateway turn out to be
-    /// different nodes — two kubos on one box, a container whose ports are not published where
-    /// they look published, a gateway pointed at a remote pinning service — `add` succeeds, the
-    /// root lands, and the indexer then dies on a 504 for a CID the operator believes it
-    /// published. Setting this makes `pin` verify the claim it is making.
+    /// Legacy reader gateway paired with `api`. Both or neither must be present: accepting bytes
+    /// without reading them back is no longer enough to satisfy a publication policy.
     #[serde(default)]
     pub gateway: Option<String>,
+    /// Independent kubo/pinning targets. Every target is verified through its reader gateway.
+    #[serde(default)]
+    pub targets: Vec<PinTarget>,
+    /// How many independent targets must accept and serve the exact CID before a proof may submit.
+    /// Defaults to all configured targets. Zero is valid only when no publication target exists.
+    #[serde(default)]
+    pub min_success: Option<usize>,
+    /// Persistent retry cadence after a failed publication policy, in seconds.
+    #[serde(default = "d_publication_retry")]
+    pub retry_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PinTarget {
+    pub name: String,
+    pub api: String,
+    pub gateway: String,
 }
 
 /// The free tier, and the whole of it. There is no unconditional one: a permissionless factory
@@ -229,6 +242,9 @@ fn d_budget_window() -> u64 {
 fn d_eth_usd() -> u64 {
     5_000
 }
+fn d_publication_retry() -> u64 {
+    300
+}
 fn d_journal_path() -> String {
     "./.trustgraph/operator/journal.jsonl".into()
 }
@@ -280,6 +296,17 @@ impl Default for Budget {
             cents_per_billion_cycles: d_cents_per_gcycle(),
             window_seconds: d_budget_window(),
             eth_usd: d_eth_usd(),
+        }
+    }
+}
+impl Default for Ipfs {
+    fn default() -> Self {
+        Self {
+            api: None,
+            gateway: None,
+            targets: Vec::new(),
+            min_success: None,
+            retry_seconds: d_publication_retry(),
         }
     }
 }
@@ -351,6 +378,7 @@ impl Config {
             self.ops.submit_failure_threshold > 0,
             "ops.submit_failure_threshold must be at least 1"
         );
+        self.ipfs.validate()?;
         Ok(())
     }
 
@@ -389,6 +417,93 @@ impl Config {
         } else {
             Address::ZERO
         }
+    }
+}
+
+impl Ipfs {
+    pub fn resolved_targets(&self) -> Vec<PinTarget> {
+        if let (Some(api), Some(gateway)) = (&self.api, &self.gateway) {
+            vec![PinTarget {
+                name: "legacy".to_string(),
+                api: api.clone(),
+                gateway: gateway.clone(),
+            }]
+        } else {
+            self.targets.clone()
+        }
+    }
+
+    pub fn required_successes(&self) -> usize {
+        let count = self.resolved_targets().len();
+        self.min_success.unwrap_or(count)
+    }
+
+    /// Stable identity of the durability contract. A stricter or redirected config invalidates
+    /// an old `Published` journal record and forces the held blob through the new policy.
+    pub fn policy_hash(&self) -> B256 {
+        let policy = serde_json::json!({
+            "targets": self.resolved_targets(),
+            "min_success": self.required_successes(),
+        });
+        keccak256(serde_json::to_vec(&policy).expect("publication policy is serializable"))
+    }
+
+    fn validate(&self) -> Result<()> {
+        let legacy_any = self.api.is_some() || self.gateway.is_some();
+        anyhow::ensure!(
+            !legacy_any || self.targets.is_empty(),
+            "[ipfs] legacy `api`/`gateway` cannot be mixed with [[ipfs.targets]]"
+        );
+        anyhow::ensure!(
+            self.api.is_some() == self.gateway.is_some(),
+            "[ipfs] legacy `api` and `gateway` must be configured together so every pin is read back"
+        );
+
+        let targets = self.resolved_targets();
+        let required = self.required_successes();
+        if targets.is_empty() {
+            anyhow::ensure!(
+                required == 0,
+                "[ipfs] min_success is {required}, but no publication targets are configured"
+            );
+            return Ok(());
+        }
+        anyhow::ensure!(
+            required > 0 && required <= targets.len(),
+            "[ipfs] min_success must be between 1 and the {} configured targets, got {required}",
+            targets.len()
+        );
+        anyhow::ensure!(self.retry_seconds > 0, "[ipfs] retry_seconds must be at least 1");
+
+        let mut names = BTreeSet::new();
+        let mut apis = BTreeSet::new();
+        let mut gateways = BTreeSet::new();
+        for target in &targets {
+            anyhow::ensure!(!target.name.trim().is_empty(), "[ipfs] target name cannot be empty");
+            anyhow::ensure!(
+                names.insert(target.name.clone()),
+                "[ipfs] target name {:?} is duplicated",
+                target.name
+            );
+            anyhow::ensure!(
+                apis.insert(target.api.clone()),
+                "[ipfs] target API {:?} is duplicated; duplicate URLs are not independent durability",
+                target.api
+            );
+            anyhow::ensure!(
+                gateways.insert(target.gateway.clone()),
+                "[ipfs] target gateway {:?} is duplicated; duplicate read paths are not independent durability",
+                target.gateway
+            );
+            for (field, value) in [("api", &target.api), ("gateway", &target.gateway)] {
+                anyhow::ensure!(
+                    value.starts_with("http://") || value.starts_with("https://"),
+                    "[ipfs] target {:?} {field} must be an absolute http(s) URL",
+                    target.name
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -463,5 +578,44 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         );
         let err = parse(&src).unwrap_err();
         assert!(err.contains("vault"), "{err}");
+    }
+
+    #[test]
+    fn multiple_publication_targets_and_a_minimum_are_accepted() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\nmin_success = 2\nretry_seconds = 60\n\
+             [[ipfs.targets]]\nname = \"primary\"\napi = \"http://one:5001\"\ngateway = \"http://one:8080/ipfs/\"\n\
+             [[ipfs.targets]]\nname = \"backup\"\napi = \"https://two.example\"\ngateway = \"https://two.example/ipfs/\"\n"
+        );
+        let cfg = parse(&src).unwrap();
+        assert_eq!(cfg.ipfs.resolved_targets().len(), 2);
+        assert_eq!(cfg.ipfs.required_successes(), 2);
+    }
+
+    #[test]
+    fn publication_minimum_cannot_exceed_the_target_count() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\nmin_success = 2\n\
+             [[ipfs.targets]]\nname = \"only\"\napi = \"http://one:5001\"\ngateway = \"http://one:8080/ipfs/\"\n"
+        );
+        let err = parse(&src).unwrap_err();
+        assert!(err.contains("between 1 and the 1 configured targets"), "{err}");
+    }
+
+    #[test]
+    fn duplicate_publication_apis_are_not_counted_as_independent() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\n\
+             [[ipfs.targets]]\nname = \"one\"\napi = \"http://same:5001\"\ngateway = \"http://same:8080/ipfs/\"\n\
+             [[ipfs.targets]]\nname = \"two\"\napi = \"http://same:5001\"\ngateway = \"http://other:8080/ipfs/\"\n"
+        );
+        let err = parse(&src).unwrap_err();
+        assert!(err.contains("not independent durability"), "{err}");
+    }
+
+    #[test]
+    fn legacy_ipfs_requires_api_and_gateway_together() {
+        let err = parse(&format!("{GOOD}\n[ipfs]\napi = \"http://one:5001\"\n")).unwrap_err();
+        assert!(err.contains("configured together"), "{err}");
     }
 }

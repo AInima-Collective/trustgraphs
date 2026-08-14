@@ -177,6 +177,9 @@ const actionLabel = (action: PublicOperatorAction | null | undefined) => {
     action.checkpointId === null ? '' : ` checkpoint ${action.checkpointId}`
   switch (action.action) {
     case 'idle':
+      if (action.reason === 'publication_backoff') {
+        return `Publication retry queued for${checkpoint} · attempt ${action.attempts ?? '—'} · ${timestamp(action.retryAt)}`
+      }
       return action.reason
         ? `Idle — ${action.reason.replaceAll('_', ' ')}`
         : 'Idle'
@@ -186,6 +189,8 @@ const actionLabel = (action: PublicOperatorAction | null | undefined) => {
       return `Waiting for checkpoint finality${checkpoint}`
     case 'prove':
       return `Requesting proof for${checkpoint}`
+    case 'publish':
+      return `Publishing scores for${checkpoint}`
     case 'submit':
       return `Submitting proof for${checkpoint}`
     case 'hold':
@@ -1531,6 +1536,19 @@ export const SettingsPage = ({
                   <SettingRow label="Verifies score readback">
                     {operatorStatus?.available
                       ? yesNo(operatorStatus.settings?.verifiesScoreReadback)
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Publication durability">
+                    {operatorStatus?.available && operatorStatus.settings
+                      ? `${comma(operatorStatus.settings.publicationMinimum ?? undefined)} of ${comma(operatorStatus.settings.publicationTargetCount ?? undefined)} targets`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Publication retry interval">
+                    {operatorStatus?.available
+                      ? duration(
+                          operatorStatus.settings?.publicationRetrySeconds ??
+                            undefined
+                        )
                       : '—'}
                   </SettingRow>
                 </SettingsCard>
