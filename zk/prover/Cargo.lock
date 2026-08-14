@@ -7460,6 +7460,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "anyhow",
+ "bincode",
  "chrono",
  "clap",
  "contributions-core",
@@ -7474,7 +7475,9 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sp1-build",
+ "sp1-core-executor",
  "sp1-sdk",
+ "weighted-prior-core",
  "weighted-prior-research",
  "zk-core",
 ]
@@ -7802,6 +7805,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "weighted-prior-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "serde",
+ "serde_bytes",
+ "zk-core",
 ]
 
 [[package]]

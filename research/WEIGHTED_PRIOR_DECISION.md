@@ -264,6 +264,12 @@ claim that its rounding should ship. The final mass-conserving implementation mu
 spike. If it cannot, the child implementation must reduce its iteration/edge envelope or return to
 design review; it may not silently weaken exact arithmetic.
 
+The issue #52 production implementation subsequently passed that gate at **923,463,928 exact guest
+cycles** for 2,048 entries, degree 16, and 40 iterations. It retains Hamilton apportionment and exact
+`1e18` mass conservation. The reproducible command, ELF/vkey, parity scenarios, rejection matrix,
+and raw release rows are recorded in the weighted-priors evidence README and
+`production-benchmarks.csv`; the older figures above remain labeled research measurements.
+
 The decision is **2,048, not tens of thousands**. At that bound, calldata remains below 58 KiB,
 validation remains below 4M L1-style gas, client preview is interactive, and representative proving
 is within the existing sub-billion class. Ten-thousand-entry calldata/validation and the exact

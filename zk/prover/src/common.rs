@@ -8,6 +8,7 @@ use serde::Serialize;
 use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
 use sp1_sdk::{Elf, HashableKey, ProvingKey, SP1Stdin};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Repo root, resolved from this crate's manifest dir (`zk/prover`) so generated-output paths
 /// are stable regardless of the CWD the prover is invoked from.
@@ -81,6 +82,59 @@ pub struct Execution {
     /// function returned an error.
     pub public_values: Vec<u8>,
     pub cycles: u64,
+}
+
+/// Run the same SP1 VM without constructing proving/gas trace chunks. This returns the VM's exact
+/// global instruction clock and public values, and is the reproducible path used by the weighted
+/// 2,048-node cycle gate. Proof generation still uses the SDK's full traced path below.
+pub fn execute_values_untraced<T: Serialize>(
+    elf: Elf,
+    input: &T,
+    native_pub: &[u8],
+) -> Result<Execution> {
+    use sp1_core_executor::{MinimalExecutorEnum, Program};
+
+    let program = Arc::new(Program::from(&*elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
+    let mut executor = MinimalExecutorEnum::new(program, false, None);
+    executor.with_input(&bincode::serialize(input)?);
+    while executor
+        .try_execute_chunk()
+        .map_err(|error| anyhow!("execute failed: {error:?}"))?
+        .is_some()
+    {}
+    if executor.exit_code() != 0 {
+        return Err(anyhow!("guest exited with status {}", executor.exit_code()));
+    }
+    let cycles = executor.global_clk();
+    let guest_pub = executor.into_public_values_stream();
+    if guest_pub != native_pub {
+        return Err(anyhow!(
+            "MISMATCH guest vs native public values\n guest:  0x{}\n native: 0x{}",
+            hex::encode(&guest_pub),
+            hex::encode(native_pub)
+        ));
+    }
+    Ok(Execution { public_values: guest_pub, cycles })
+}
+
+/// Execute an invalid witness and require the guest to halt with a nonzero status. This is kept
+/// separate from [`execute_values_untraced`] so rejection tests cannot accidentally accept an
+/// empty public-values stream as a successful computation.
+pub fn execute_values_untraced_rejected<T: Serialize>(elf: Elf, input: &T) -> Result<u64> {
+    use sp1_core_executor::{MinimalExecutorEnum, Program};
+
+    let program = Arc::new(Program::from(&*elf).map_err(|error| anyhow!("decode ELF: {error}"))?);
+    let mut executor = MinimalExecutorEnum::new(program, false, None);
+    executor.with_input(&bincode::serialize(input)?);
+    while executor
+        .try_execute_chunk()
+        .map_err(|error| anyhow!("execute failed: {error:?}"))?
+        .is_some()
+    {}
+    if executor.exit_code() == 0 {
+        return Err(anyhow!("invalid witness was accepted by the guest"));
+    }
+    Ok(executor.global_clk())
 }
 
 /// Run the guest and byte-assert it against `native_pub`, returning the result instead of printing

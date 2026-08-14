@@ -1,0 +1,3 @@
+measured_at,program,shape,count,degree,iterations,json_witness_bytes,native_micros,sp1_cycles,cycle_limit,guest_native_public_values_match
+2026-08-14,trust-graph-weighted-v1,ring,128,16,40,617073,2537,56466410,1000000000,true
+2026-08-14,trust-graph-weighted-v1,ring,2048,16,40,9901923,37267,923463928,1000000000,true
