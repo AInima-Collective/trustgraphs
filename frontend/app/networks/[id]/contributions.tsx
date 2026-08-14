@@ -31,8 +31,8 @@ import {
 } from '@/lib/contributions-view'
 import {
   contributionsTabs,
-  trustgraphsTabs,
   trustNetworkFor,
+  trustgraphsTabs,
 } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
 

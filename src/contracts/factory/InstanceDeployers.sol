@@ -8,6 +8,8 @@ import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol"
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
+import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
 
 /// @title MerkleSnapshotDeployer
 /// @notice A one-per-chain singleton whose only job is to hold `MerkleSnapshot`'s creation code so
@@ -73,5 +75,20 @@ contract TrustgraphsParamsControllerDeployer {
         address owner
     ) external returns (TrustgraphsParamsController) {
         return new TrustgraphsParamsController(instanceId, snapshot, registry, initialParams, owner, msg.sender);
+    }
+}
+
+/// @title GovernedAuthorityDeployer
+/// @notice Holds the guard and delayed-recovery creation code outside
+///         `GovernedTrustgraphsFactory`, preserving that public factory's EIP-170 margin.
+/// @dev Both children take every authority explicitly. This permissionless helper retains no Safe
+///      privilege and cannot alter a deployment after construction.
+contract GovernedAuthorityDeployer {
+    function deploy(address safe, address bootstrapper, address recoveryProposer, uint48 recoveryDelay)
+        external
+        returns (SafeExecutionGuard guard, DelayedRecoveryModule recovery)
+    {
+        guard = new SafeExecutionGuard(safe, bootstrapper);
+        recovery = new DelayedRecoveryModule(safe, recoveryProposer, recoveryDelay);
     }
 }

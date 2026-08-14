@@ -41,8 +41,7 @@ export async function POST(
     // remains explicitly configured and never depends on public capacity.
     const rpcUrls = configuredRpcUrl
       ? [configuredRpcUrl]
-      : process.env.NODE_ENV !== 'production' &&
-          chainId === String(mainnet.id)
+      : process.env.NODE_ENV !== 'production' && chainId === String(mainnet.id)
         ? DEVELOPMENT_MAINNET_RPC_URLS
         : []
 

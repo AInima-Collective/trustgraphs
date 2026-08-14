@@ -2408,8 +2408,26 @@ export const governedTrustgraphsFactoryAbi = [
         type: 'address',
       },
       { name: 'safeSingleton_', internalType: 'address', type: 'address' },
+      {
+        name: 'authorityDeployer_',
+        internalType: 'contract GovernedAuthorityDeployer',
+        type: 'address',
+      },
     ],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'AUTHORITY_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract GovernedAuthorityDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -2434,6 +2452,34 @@ export const governedTrustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'MEMBER_EXECUTION_DELAY',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MEMBER_VOTING_DELAY',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MEMBER_VOTING_PERIOD',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'RECOVERY_DELAY',
+    outputs: [{ name: '', internalType: 'uint48', type: 'uint48' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'SAFE_FACTORY',
     outputs: [
       {
@@ -2449,6 +2495,35 @@ export const governedTrustgraphsFactoryAbi = [
     inputs: [],
     name: 'SAFE_SINGLETON',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'authorityOf',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct GovernedTrustgraphsFactory.Authority',
+        type: 'tuple',
+        components: [
+          { name: 'safe', internalType: 'address', type: 'address' },
+          {
+            name: 'governanceModule',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'recoveryModule', internalType: 'address', type: 'address' },
+          { name: 'executionGuard', internalType: 'address', type: 'address' },
+          {
+            name: 'initialRecoveryProposer',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'recoveryDelay', internalType: 'uint48', type: 'uint48' },
+        ],
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -2561,6 +2636,50 @@ export const governedTrustgraphsFactoryAbi = [
         type: 'bytes32',
         indexed: true,
       },
+      { name: 'safe', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'executionGuard',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'governanceModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'recoveryModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'recoveryProposer',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'recoveryDelay',
+        internalType: 'uint48',
+        type: 'uint48',
+        indexed: false,
+      },
+    ],
+    name: 'GovernedAuthorityInstalled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
       {
         name: 'creator',
         internalType: 'address',
@@ -2583,6 +2702,7 @@ export const governedTrustgraphsFactoryAbi = [
     ],
     name: 'GovernedInstanceCreated',
   },
+  { type: 'error', inputs: [], name: 'GovernanceDefaultsMismatch' },
   {
     type: 'error',
     inputs: [

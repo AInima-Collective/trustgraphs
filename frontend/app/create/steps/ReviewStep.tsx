@@ -62,6 +62,9 @@ export type CreatedNetwork = {
   name: string
   safe: Hex
   merkleGovModule: Hex
+  executionGuard: Hex
+  recoveryModule: Hex
+  recoveryDelay: bigint
 }
 
 const shortAddress = (address: string) =>
@@ -141,6 +144,52 @@ export const ReviewStep = ({
     initialPolicy.maxPerRootUsd
   )
 
+  const { data: authorityPreview, isLoading: authorityLoading } =
+    useReadContracts({
+      contracts: GOVERNED_FACTORY_ADDRESS
+        ? [
+            {
+              address: GOVERNED_FACTORY_ADDRESS,
+              abi: governedTrustgraphsFactoryAbi,
+              functionName: 'MEMBER_VOTING_DELAY',
+            },
+            {
+              address: GOVERNED_FACTORY_ADDRESS,
+              abi: governedTrustgraphsFactoryAbi,
+              functionName: 'MEMBER_VOTING_PERIOD',
+            },
+            {
+              address: GOVERNED_FACTORY_ADDRESS,
+              abi: governedTrustgraphsFactoryAbi,
+              functionName: 'MEMBER_EXECUTION_DELAY',
+            },
+            {
+              address: GOVERNED_FACTORY_ADDRESS,
+              abi: governedTrustgraphsFactoryAbi,
+              functionName: 'RECOVERY_DELAY',
+            },
+          ]
+        : [],
+      query: { enabled: !!GOVERNED_FACTORY_ADDRESS },
+    })
+  const memberVotingDelay = authorityPreview?.[0]?.result as bigint | undefined
+  const memberVotingPeriod = authorityPreview?.[1]?.result as bigint | undefined
+  const memberExecutionDelay = authorityPreview?.[2]?.result as
+    | bigint
+    | undefined
+  const recoveryDelay = authorityPreview?.[3]?.result as bigint | undefined
+  const authorityProfileValid =
+    authorityPreview?.length === 4 &&
+    authorityPreview.every((read) => read.status === 'success') &&
+    memberVotingDelay !== undefined &&
+    memberVotingDelay > 0n &&
+    memberVotingPeriod !== undefined &&
+    memberVotingPeriod > 0n &&
+    memberExecutionDelay !== undefined &&
+    memberExecutionDelay > 0n &&
+    recoveryDelay !== undefined &&
+    recoveryDelay >= 14n * 86_400n
+
   // Simulation runs the same validation before the wallet asks for a signature.
   const {
     error: preflightError,
@@ -152,13 +201,22 @@ export const ReviewStep = ({
     functionName: 'createGovernedInstance',
     args: [args, initialPolicy] as any,
     ...(prepay > 0n ? { value: prepay } : {}),
-    query: { enabled: !!GOVERNED_FACTORY_ADDRESS && !!args.name },
+    query: {
+      enabled:
+        !!GOVERNED_FACTORY_ADDRESS && !!args.name && authorityProfileValid,
+    },
   })
 
   const create = async () => {
     setFailure(null)
     setCreating(true)
     try {
+      if (!authorityProfileValid) {
+        setFailure(
+          'Creation is disabled because the configured governed factory does not expose the sealed authority profile. Redeploy or select the current factory before creating a network.'
+        )
+        return
+      }
       for (const [preview, name] of Object.entries(data.seedNames)) {
         if (!data.seeds.some((seed) => seed.toLowerCase() === preview)) continue
 
@@ -224,6 +282,7 @@ export const ReviewStep = ({
 
       let createdEvent: Record<string, unknown> | undefined
       let governedEvent: Record<string, unknown> | undefined
+      let authorityEvent: Record<string, unknown> | undefined
       for (const log of receipt.logs) {
         try {
           if (log.address.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
@@ -245,6 +304,8 @@ export const ReviewStep = ({
             })
             if (decoded.eventName === 'GovernedInstanceCreated') {
               governedEvent = decoded.args as Record<string, unknown>
+            } else if (decoded.eventName === 'GovernedAuthorityInstalled') {
+              authorityEvent = decoded.args as Record<string, unknown>
             }
           }
         } catch {
@@ -252,7 +313,7 @@ export const ReviewStep = ({
         }
       }
 
-      if (createdEvent && governedEvent) {
+      if (createdEvent && governedEvent && authorityEvent) {
         onCreated({
           instanceId: createdEvent.instanceId as Hex,
           snapshot: createdEvent.snapshot as Hex,
@@ -263,6 +324,10 @@ export const ReviewStep = ({
           name: (createdEvent.name as string) || args.name,
           safe: governedEvent.safe as Hex,
           merkleGovModule: governedEvent.merkleGovModule as Hex,
+          executionGuard: authorityEvent.executionGuard as Hex,
+          recoveryModule: authorityEvent.recoveryModule as Hex,
+          recoveryDelay:
+            (authorityEvent.recoveryDelay as bigint | undefined) ?? 0n,
         })
         return
       }
@@ -287,7 +352,7 @@ export const ReviewStep = ({
     <div className="space-y-6">
       <StepHeader
         title="Check it over, then sign once"
-        lead="One transaction creates the vouch registry, scoreboard, DAO Safe, and voting module. The Safe owns every network authority from the first block."
+        lead="One transaction creates the vouch registry, scoreboard, DAO Safe, voting, and delayed recovery. The Safe graduates to module-only execution before the transaction returns."
       />
 
       <Card type="outline" size="md">
@@ -365,8 +430,28 @@ export const ReviewStep = ({
           </>
         )}
         <SummaryRow label="In charge afterwards">
-          DAO Safe with Merkle voting; your connected wallet is its initial
-          signer.
+          Members through delayed Merkle voting. Your connected wallet is the
+          visible recovery proposer, not an immediate administrator.
+        </SummaryRow>
+        <SummaryRow label="Graduation">
+          Atomic at creation. A permanently sealed guard disables every
+          owner-signed Safe transaction, including settings, withdrawals,
+          upgrades, delegatecalls, and batches.
+        </SummaryRow>
+        <SummaryRow label="Safe owners and threshold">
+          Your connected wallet starts as the only recorded owner (1 of 1), but
+          the owner execution route is disabled. Owners cannot remove the guard
+          or add a bypass module directly.
+        </SummaryRow>
+        <SummaryRow label="Member governance delay">
+          {authorityProfileValid
+            ? `${describeBlocks(memberVotingDelay)} before voting, then ${describeBlocks(memberVotingPeriod)} to vote and ${describeBlocks(memberExecutionDelay)} before execution.`
+            : 'Unavailable — creation is disabled.'}
+        </SummaryRow>
+        <SummaryRow label="Recovery delay">
+          {authorityProfileValid
+            ? `${Number(recoveryDelay) / 86_400} days. Your wallet may publish one exact Safe action, but cannot execute it early; anyone may execute after the deadline and the member-governed Safe may cancel or rotate the proposer.`
+            : 'Unavailable — creation is disabled.'}
         </SummaryRow>
         <SummaryRow label="Description saved at">
           {metadataUri ? (
@@ -421,6 +506,17 @@ export const ReviewStep = ({
         </div>
       )}
 
+      {!authorityLoading && !authorityProfileValid && (
+        <Card type="outline" size="md" className="border-destructive space-y-2">
+          <div className="text-sm text-destructive">
+            The configured governed factory does not expose the required sealed
+            guard, member-delay, and 14-day recovery profile. Creation is
+            disabled so this app cannot create or market an ungraduated 1-of-1
+            network.
+          </div>
+        </Card>
+      )}
+
       {preflightError && (
         <Card type="outline" size="md" className="border-destructive space-y-2">
           <div className="text-sm text-destructive">
@@ -450,7 +546,7 @@ export const ReviewStep = ({
         <Button
           type="button"
           onClick={create}
-          disabled={creating || !!preflightError}
+          disabled={creating || !!preflightError || !authorityProfileValid}
         >
           {creating && <LoaderCircle className="h-4 w-4 animate-spin" />}
           {creating ? 'Creating your network...' : 'Create network'}

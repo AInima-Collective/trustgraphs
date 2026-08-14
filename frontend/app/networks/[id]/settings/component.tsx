@@ -51,6 +51,7 @@ import { CONTRACT_CONFIG, PROVING_VAULT } from '@/lib/config'
 import {
   anchorRegistryAbi,
   easIndexerResolverAbi,
+  governedTrustgraphsFactoryAbi,
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
@@ -63,9 +64,12 @@ import {
   operatorStatusQuery,
 } from '@/lib/operator-status'
 import {
+  delayedRecoveryModuleReadAbi,
   erc20MetadataReadAbi,
+  gnosisSafeAuthorityReadAbi,
   priceFeedReadAbi,
   provingVaultReadAbi,
+  safeExecutionGuardReadAbi,
 } from '@/lib/settings-contracts'
 import { txToast } from '@/lib/tx'
 import { cn, realAddress } from '@/lib/utils'
@@ -78,6 +82,9 @@ import { SETTINGS_TABS, type SettingsTab } from './tabs'
 const TRUSTGRAPH_PROGRAM = keccak256(stringToBytes('trust-graph'))
 const CONSTITUTIONAL_ROLE = keccak256(stringToBytes('CONSTITUTIONAL_ROLE'))
 const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
+const SAFE_GUARD_STORAGE_SLOT =
+  0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
+const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
 
 type ReadResult = { status?: string; result?: unknown }
 
@@ -156,6 +163,12 @@ const yesNo = (value: boolean | null | undefined) =>
 
 const sameHex = (a: string | undefined, b: string | undefined) =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase()
+
+const storageAddress = (value: unknown) => {
+  const encoded = asString(value)
+  if (!encoded || encoded.length < 42) return undefined
+  return realAddress(`0x${encoded.slice(-40)}`)
+}
 
 const quoteReasons = [
   'Eligible',
@@ -639,6 +652,139 @@ export const SettingsPage = ({
   const factoryAddress =
     realAddress(instance?.factory) ||
     realAddress(CONTRACT_CONFIG.TrustgraphsFactory as string)
+  const governedFactoryAddress = realAddress(
+    CONTRACT_CONFIG.GovernedTrustgraphsFactory as string
+  )
+
+  const { data: recordedAuthority } = useReadContract({
+    address: governedFactoryAddress as Hex,
+    abi: governedTrustgraphsFactoryAbi,
+    functionName: 'authorityOf',
+    args: [instanceId as Hex],
+    query: { enabled: !!governedFactoryAddress && !!instanceId },
+  })
+  const authoritySafe = realAddress(
+    asString(tupleValue(recordedAuthority, 'safe', 0))
+  )
+  const authorityGovernance = realAddress(
+    asString(tupleValue(recordedAuthority, 'governanceModule', 1))
+  )
+  const authorityRecovery = realAddress(
+    asString(tupleValue(recordedAuthority, 'recoveryModule', 2))
+  )
+  const authorityGuard = realAddress(
+    asString(tupleValue(recordedAuthority, 'executionGuard', 3))
+  )
+  const recordedRecoveryProposer = realAddress(
+    asString(tupleValue(recordedAuthority, 'initialRecoveryProposer', 4))
+  )
+  const recordedRecoveryDelay = asBigInt(
+    tupleValue(recordedAuthority, 'recoveryDelay', 5)
+  )
+  const hasRecordedAuthority =
+    !!authoritySafe &&
+    !!authorityGovernance &&
+    !!authorityRecovery &&
+    !!authorityGuard
+
+  const { data: authorityReads } = useReadContracts({
+    contracts: hasRecordedAuthority
+      ? [
+          {
+            address: authorityGuard,
+            abi: safeExecutionGuardReadAbi,
+            functionName: 'safe',
+          },
+          {
+            address: authorityGuard,
+            abi: safeExecutionGuardReadAbi,
+            functionName: 'isSealed',
+          },
+          {
+            address: authorityRecovery,
+            abi: delayedRecoveryModuleReadAbi,
+            functionName: 'safe',
+          },
+          {
+            address: authorityRecovery,
+            abi: delayedRecoveryModuleReadAbi,
+            functionName: 'proposer',
+          },
+          {
+            address: authorityRecovery,
+            abi: delayedRecoveryModuleReadAbi,
+            functionName: 'delay',
+          },
+          {
+            address: authoritySafe,
+            abi: gnosisSafeAuthorityReadAbi,
+            functionName: 'isModuleEnabled',
+            args: [authorityGovernance],
+          },
+          {
+            address: authoritySafe,
+            abi: gnosisSafeAuthorityReadAbi,
+            functionName: 'isModuleEnabled',
+            args: [authorityRecovery],
+          },
+          {
+            address: authoritySafe,
+            abi: gnosisSafeAuthorityReadAbi,
+            functionName: 'getStorageAt',
+            args: [SAFE_GUARD_STORAGE_SLOT, 1n],
+          },
+          {
+            address: authoritySafe,
+            abi: gnosisSafeAuthorityReadAbi,
+            functionName: 'getModulesPaginated',
+            args: [SAFE_SENTINEL, 10n],
+          },
+        ]
+      : [],
+    query: { enabled: hasRecordedAuthority, refetchInterval: 30_000 },
+  })
+  const liveGuardSafe = realAddress(asString(readResult(authorityReads, 0)))
+  const guardSealed = asBoolean(readResult(authorityReads, 1))
+  const liveRecoverySafe = realAddress(asString(readResult(authorityReads, 2)))
+  const liveRecoveryProposer = realAddress(
+    asString(readResult(authorityReads, 3))
+  )
+  const liveRecoveryDelay = asBigInt(readResult(authorityReads, 4))
+  const governanceModuleEnabled = asBoolean(readResult(authorityReads, 5))
+  const recoveryModuleEnabled = asBoolean(readResult(authorityReads, 6))
+  const installedGuard = storageAddress(readResult(authorityReads, 7))
+  const enabledModulePage = readResult(authorityReads, 8)
+  const enabledModules =
+    (tupleValue(enabledModulePage, 'array', 0) as string[] | undefined) ?? []
+  const nextModule = realAddress(
+    asString(tupleValue(enabledModulePage, 'next', 1))
+  )
+  const exactAuthorityModules =
+    enabledModules.length === 2 &&
+    enabledModules.some((module) => sameHex(module, authorityGovernance)) &&
+    enabledModules.some((module) => sameHex(module, authorityRecovery)) &&
+    sameHex(nextModule, SAFE_SENTINEL)
+  const authorityReadsComplete =
+    guardSealed !== undefined &&
+    governanceModuleEnabled !== undefined &&
+    recoveryModuleEnabled !== undefined &&
+    enabledModulePage !== undefined &&
+    !!liveGuardSafe &&
+    !!liveRecoverySafe &&
+    !!installedGuard
+  const authorityGraduated =
+    hasRecordedAuthority &&
+    authorityReadsComplete &&
+    guardSealed === true &&
+    governanceModuleEnabled === true &&
+    recoveryModuleEnabled === true &&
+    exactAuthorityModules &&
+    sameHex(liveGuardSafe, authoritySafe) &&
+    sameHex(liveRecoverySafe, authoritySafe) &&
+    sameHex(installedGuard, authorityGuard) &&
+    (!governanceAddress || sameHex(authorityGovernance, governanceAddress)) &&
+    (!network.contracts.safe?.proxy ||
+      sameHex(authoritySafe, network.contracts.safe.proxy))
 
   const { data: factoryVault } = useReadContract({
     address: factoryAddress as Hex,
@@ -1141,6 +1287,11 @@ export const SettingsPage = ({
             address: governanceAddress,
             abi: merkleGovModuleAbi,
             functionName: 'quorum',
+          },
+          {
+            address: governanceAddress,
+            abi: merkleGovModuleAbi,
+            functionName: 'executionDelay',
           },
         ]
       : [],
@@ -2128,6 +2279,9 @@ export const SettingsPage = ({
                     <SettingRow label="Voting period">
                       {comma(asBigInt(readResult(governanceReads, 5)))} blocks
                     </SettingRow>
+                    <SettingRow label="Execution delay">
+                      {comma(asBigInt(readResult(governanceReads, 7)))} blocks
+                    </SettingRow>
                     <SettingRow label="Quorum">
                       {(() => {
                         const value = asBigInt(readResult(governanceReads, 6))
@@ -2240,6 +2394,11 @@ export const SettingsPage = ({
                       ? `${comma(asBigInt(readResult(governanceReads, 5)))} blocks`
                       : '—'}
                   </SettingRow>
+                  <SettingRow label="Execution delay">
+                    {governanceAddress
+                      ? `${comma(asBigInt(readResult(governanceReads, 7)))} blocks`
+                      : '—'}
+                  </SettingRow>
                   <SettingRow label="Quorum">
                     {(() => {
                       const value = asBigInt(readResult(governanceReads, 6))
@@ -2278,6 +2437,100 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                <SettingsCard
+                  title="Governed authority boundary"
+                  description="Live Safe, guard, and module reads—not a decentralization label."
+                >
+                  <SettingRow label="Graduation state">
+                    {!hasRecordedAuthority ? (
+                      <StatusPill tone="muted">
+                        Legacy / not recorded by this governed factory
+                      </StatusPill>
+                    ) : !authorityReadsComplete ? (
+                      <StatusPill tone="muted">
+                        Checking live authority…
+                      </StatusPill>
+                    ) : authorityGraduated ? (
+                      <StatusPill tone="good">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Graduated
+                      </StatusPill>
+                    ) : (
+                      <StatusPill tone="warn">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Authority
+                        mismatch — not graduated
+                      </StatusPill>
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Safe">
+                    <ContractAddress value={authoritySafe} />
+                  </SettingRow>
+                  <SettingRow label="Owners">
+                    {gnosisSafe?.owners.length
+                      ? gnosisSafe.owners.map((owner) => (
+                          <div key={owner}>
+                            <Address address={owner} displayMode="auto" />
+                          </div>
+                        ))
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Threshold">
+                    {gnosisSafe
+                      ? `${gnosisSafe.threshold} of ${gnosisSafe.owners.length}`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Owner execution">
+                    {guardSealed === undefined
+                      ? '—'
+                      : guardSealed
+                        ? 'Disabled by sealed guard'
+                        : 'OPEN — not graduated'}
+                  </SettingRow>
+                  <SettingRow label="Execution guard">
+                    <ContractAddress value={authorityGuard} />
+                  </SettingRow>
+                  <SettingRow label="Installed on Safe">
+                    {yesNo(
+                      !!installedGuard &&
+                        sameHex(installedGuard, authorityGuard)
+                    )}
+                  </SettingRow>
+                  <SettingRow label="Member module">
+                    <ContractAddress value={authorityGovernance} />
+                  </SettingRow>
+                  <SettingRow label="Member module enabled">
+                    {yesNo(governanceModuleEnabled)}
+                  </SettingRow>
+                  <SettingRow label="Member vote / execution delays">
+                    {comma(asBigInt(readResult(governanceReads, 4)))} +{' '}
+                    {comma(asBigInt(readResult(governanceReads, 5)))} +{' '}
+                    {comma(asBigInt(readResult(governanceReads, 7)))} blocks
+                  </SettingRow>
+                  <SettingRow label="Recovery module">
+                    <ContractAddress value={authorityRecovery} />
+                  </SettingRow>
+                  <SettingRow label="Recovery module enabled">
+                    {yesNo(recoveryModuleEnabled)}
+                  </SettingRow>
+                  <SettingRow label="Only recorded modules enabled">
+                    {enabledModulePage === undefined
+                      ? '—'
+                      : yesNo(exactAuthorityModules)}
+                  </SettingRow>
+                  <SettingRow label="Recovery proposer">
+                    <ContractAddress
+                      value={liveRecoveryProposer ?? recordedRecoveryProposer}
+                    />
+                  </SettingRow>
+                  <SettingRow label="Recovery delay">
+                    {duration(liveRecoveryDelay ?? recordedRecoveryDelay)}
+                  </SettingRow>
+                  <SettingRow label="Protected Safe paths">
+                    Settings, upgrades, withdrawals, arbitrary calls,
+                    delegatecalls, batches, module changes, and guard removal
+                    all require a delayed module route.
+                  </SettingRow>
+                </SettingsCard>
+
                 <SettingsCard
                   title="Your access"
                   description="Roles held directly by the connected wallet on the network snapshot."

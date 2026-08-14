@@ -207,8 +207,9 @@ export const CreateNetworkWizard = () => {
         <Card type="outline" size="md" className="space-y-3">
           <p className="text-sm">
             Connect the wallet that will create this network and become the DAO
-            Safe&apos;s initial signer. The Safe—not this wallet—will own the
-            network contracts.
+            Safe&apos;s visible owner and delayed recovery proposer. A sealed
+            guard disables owner-signed execution; members govern the Safe, and
+            the Safe—not this wallet—owns the network contracts.
           </p>
           <WalletConnectionButton />
         </Card>
