@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 17 issues closed, 22 remain.**
+> **Status (2026-08-14): 18 issues closed, 21 remain.**
 >
 > Closed after auditing `main` through `5526d6a` and rerunning the focused regressions:
 >
@@ -41,10 +41,13 @@
 > - **#52** — isolated weighted-prior core and SP1 guest, exact Hamilton/dangling-to-prior scoring,
 >   TGWP validation, Rust/TypeScript/Solidity production goldens, actual guest rejection/parity
 >   gates, sub-billion max benchmark, and byte-identical legacy guests (`6530bf5`, PR #79)
+> - **#53** — isolated weighted factory/controller, exact compact-manifest validation and calldata
+>   recovery, O(1) commitment history, timelocked prior rotation, checkpoint pinning, max-row gas
+>   gates, and stateful atomicity invariants (`f47173d`, PR #80)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
-> Weighted-prior implementation chain: **#52 closed → #53 → #54 → #55**.
+> Weighted-prior implementation chain: **#52 and #53 closed → #54 → #55**.
 > ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
@@ -96,7 +99,7 @@ can proceed concurrently:
 | E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
-| H · weighted-prior implementation | #52 closed → #53 → #54 → #55     | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
+| H · weighted-prior implementation | #52 and #53 closed → #54 → #55  | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
 | I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
@@ -452,7 +455,24 @@ manifest/binding failure. The 2,048-entry, degree-16, 40-iteration release fixtu
 and Hypercerts ELF hashes exactly match the branch point, proving their vkeys did not rotate.
 Hosted Actions were billing-blocked before runner allocation; the Rust workspace, frontend, 575
 Forge tests, prover builds/checks, guest gates, formatting, lint, regeneration, and secret scan ran
-locally. Commitment lifecycle work continues in dependency child #53.
+locally. Operator recovery and indexer integration continue in dependency child #54.
+
+### M4.2b · #53 — weighted-prior commitment and rotation lifecycle
+
+**Closed in `f47173d` (PR #80).** A separate `trust-graph-weighted` factory, frozen 13-field params
+codec, compact TGWP validator, and typed controller create weighted instances without changing any
+binary-seed factory or controller. Creation and rotation validate the exact manifest chain,
+version, length, count, ordering, uniqueness, positivity, mass, root, and SHA-256 through the
+constitutional 2,048-row boundary, while contracts retain only O(1) commitments and versioned
+provenance metadata. Owner proposals and cancellations feed a factory-fixed delay; activation is
+permissionless, replay/version guarded, and atomically updates controller, snapshot, and registry.
+Already-triggered checkpoints keep their pinned hash. Events plus creation/proposal transaction
+input reconstruct every exact manifest, with a fail-closed recovery runbook. The real max-row
+`proposePrior` path measures 3,579,477 execution gas and 4,048,961 total L1 gas under the ADR method.
+A 128,000-call stateful invariant, max-size creation, malformed/fuzz/replay tests, full Forge suite,
+weighted Rust/TypeScript parity, lint, and size build pass; the weighted factory retains 12,145
+bytes of EIP-170 margin and the existing governed factory retains 2,598. Hosted Actions were again
+billing-blocked before runner allocation. Operator/indexer integration continues in #54.
 
 ### M4.3 · #36 — composition and graph-reputation specification
 
@@ -563,7 +583,7 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** complete — #35 identity enrichment and #38 delegated actions are closed;
   graph-native delegation research continues separately in #77.
-- **Weighted-prior track:** #52 closed → #53 → #54 → #55 — implement the accepted #34 ADR in reviewable
+- **Weighted-prior track:** #52 and #53 closed → #54 → #55 — implement the accepted #34 ADR in reviewable
   trust-boundary order.
 - **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
   remains blocked until all four close compatibly.
@@ -572,5 +592,5 @@ override, and tally-conservation tests; graph-level delegation research has its 
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 22 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 21 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
