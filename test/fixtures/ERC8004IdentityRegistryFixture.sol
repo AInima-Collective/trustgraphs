@@ -19,6 +19,10 @@ contract ERC8004IdentityRegistryFixture {
         return "fixture-2.0.0";
     }
 
+    function isAuthorizedOrOwner(address spender, uint256 agentId) external view returns (bool) {
+        return ownerOf[agentId] == spender;
+    }
+
     function register(string calldata agentURI) external returns (uint256 agentId) {
         agentId = nextId++;
         ownerOf[agentId] = msg.sender;

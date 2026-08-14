@@ -11,6 +11,10 @@ import {
   OPTIMISM_ERC8004_IDENTITY_REGISTRY,
   erc8004IdentityRegistryAbi,
 } from './abis/erc8004IdentityRegistry'
+import {
+  OPTIMISM_ERC8004_REPUTATION_REGISTRY,
+  erc8004ReputationRegistryAbi,
+} from './abis/erc8004ReputationRegistry'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
@@ -130,6 +134,17 @@ const ERC8004_IDENTITY_REGISTRY = IS_PRODUCTION
 const ERC8004_START_BLOCK = IS_PRODUCTION
   ? OPTIMISM_ERC8004_IDENTITY_REGISTRY.sourceBlock
   : DEV_START_BLOCK
+const ERC8004_REPUTATION_REGISTRY = IS_PRODUCTION
+  ? (OPTIMISM_ERC8004_REPUTATION_REGISTRY.proxy as Hex)
+  : (process.env.ERC8004_REPUTATION_REGISTRY_ADDRESS_31337 as Hex | undefined)
+const ERC8004_REPUTATION_START_BLOCK = IS_PRODUCTION
+  ? OPTIMISM_ERC8004_REPUTATION_REGISTRY.sourceBlock
+  : DEV_START_BLOCK
+if (ERC8004_REPUTATION_REGISTRY && !ERC8004_IDENTITY_REGISTRY) {
+  throw new Error(
+    'ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 is required when the local Reputation Registry is enabled'
+  )
+}
 
 /**
  * The permissionless instance factory (research/INSTANCE_FACTORY.md §3). When it is deployed, the
@@ -323,6 +338,13 @@ export default createConfig({
       startBlock: ERC8004_START_BLOCK,
       chain: ERC8004_IDENTITY_REGISTRY
         ? { [CORE_CHAIN]: { address: ERC8004_IDENTITY_REGISTRY } }
+        : {},
+    },
+    erc8004ReputationRegistry: {
+      abi: erc8004ReputationRegistryAbi,
+      startBlock: ERC8004_REPUTATION_START_BLOCK,
+      chain: ERC8004_REPUTATION_REGISTRY
+        ? { [CORE_CHAIN]: { address: ERC8004_REPUTATION_REGISTRY } }
         : {},
     },
     // The instance directory itself: `InstanceCreated` is both the catalog row (src/factory.ts →

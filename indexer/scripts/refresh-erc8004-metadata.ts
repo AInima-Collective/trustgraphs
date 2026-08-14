@@ -1,12 +1,19 @@
 import { createHash } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
 
+import { type Hex } from 'viem'
+
 import {
   erc8004EndpointObservation,
   erc8004RegistrationDocument,
+  erc8004ReputationDocument,
 } from '../offchain.schema'
 import { offchainDb, offchainPool } from '../src/api/db'
-import { fetchRegistrationDocument } from '../src/erc8004-metadata'
+import {
+  type ReputationDocumentContext,
+  fetchRegistrationDocument,
+  fetchReputationDocument,
+} from '../src/erc8004-metadata'
 
 type Task = {
   agentKey: string
@@ -18,9 +25,37 @@ type Task = {
   sourceLogIndex: number
 }
 
-const apiUrl =
+type ReputationTask = {
+  subjectId: string
+  feedbackId: string
+  kind: 'feedback' | 'response'
+  uri: string
+  expectedHash: Hex
+  sourceBlock: string
+  sourceTransactionIndex: number
+  sourceLogIndex: number
+  context:
+    | {
+        kind: 'feedback'
+        chainId: number
+        identityRegistry: string
+        agentId: string
+        reviewer: Hex
+        value: string
+        valueDecimals: number
+        tag: string
+        unit: string
+        endpoint: string
+      }
+    | { kind: 'response' }
+}
+
+const registrationTasksUrl =
   process.env.ERC8004_METADATA_TASKS_URL ??
   'http://127.0.0.1:42069/erc8004/metadata-tasks'
+const reputationTasksUrl =
+  process.env.ERC8004_FEEDBACK_METADATA_TASKS_URL ??
+  'http://127.0.0.1:42069/erc8004/feedback-metadata-tasks'
 const limit = Math.max(
   1,
   Math.min(500, Number(process.env.ERC8004_METADATA_BATCH_SIZE ?? 100))
@@ -38,15 +73,26 @@ const intervalMs = Math.max(
 const observationId = (...parts: string[]) =>
   createHash('sha256').update(parts.join('\0')).digest('hex')
 
-const fetchTasks = async (): Promise<Task[]> => {
+const fetchTasks = async <T>(apiUrl: string): Promise<T[]> => {
   const url = new URL(apiUrl)
   url.searchParams.set('limit', String(limit))
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   if (!response.ok)
     throw new Error(`metadata task API returned HTTP ${response.status}`)
-  const body = (await response.json()) as { tasks?: Task[] }
+  const body = (await response.json()) as { tasks?: T[] }
   return body.tasks ?? []
 }
+
+const reputationContext = (
+  context: ReputationTask['context']
+): ReputationDocumentContext =>
+  context.kind === 'response'
+    ? context
+    : {
+        ...context,
+        agentId: BigInt(context.agentId),
+        value: BigInt(context.value),
+      }
 
 const processTask = async (task: Task) => {
   const result = await fetchRegistrationDocument({
@@ -102,6 +148,46 @@ const processTask = async (task: Task) => {
   return result.status
 }
 
+const processReputationTask = async (task: ReputationTask) => {
+  const result = await fetchReputationDocument({
+    uri: task.uri,
+    expectedHash: task.expectedHash,
+    context: reputationContext(task.context),
+  })
+  const documentId = observationId(
+    task.subjectId,
+    task.uri,
+    result.fetchedAt.toString(),
+    result.contentHash ?? result.status
+  )
+  await offchainDb
+    .insert(erc8004ReputationDocument)
+    .values({
+      id: documentId,
+      subjectId: task.subjectId,
+      feedbackId: task.feedbackId,
+      kind: task.kind,
+      uri: task.uri,
+      finalUri: result.finalUri,
+      expectedHash: task.expectedHash,
+      contentHash: result.contentHash,
+      hashStatus: result.hashStatus,
+      parsedJson: result.document,
+      fetchedAt: result.fetchedAt,
+      fetchStatus: result.status,
+      error: result.error,
+      httpStatus: result.httpStatus,
+      contentType: result.contentType,
+      byteLength: result.byteLength,
+      mutable: result.mutable,
+      sourceBlock: BigInt(task.sourceBlock),
+      sourceTransactionIndex: task.sourceTransactionIndex,
+      sourceLogIndex: task.sourceLogIndex,
+    })
+    .onConflictDoNothing()
+  return result.status
+}
+
 const mapBounded = async <T>(
   values: T[],
   fn: (value: T) => Promise<unknown>
@@ -119,10 +205,23 @@ const mapBounded = async <T>(
 }
 
 const run = async () => {
-  const tasks = await fetchTasks()
+  const [registrationTasks, reputationTasks] = await Promise.all([
+    fetchTasks<Task>(registrationTasksUrl),
+    fetchTasks<ReputationTask>(reputationTasksUrl),
+  ])
+  const tasks = [
+    ...registrationTasks.map((task) => ({
+      type: 'registration' as const,
+      task,
+    })),
+    ...reputationTasks.map((task) => ({ type: 'reputation' as const, task })),
+  ]
   const counts = new Map<string, number>()
-  await mapBounded(tasks, async (task) => {
-    const status = await processTask(task)
+  await mapBounded(tasks, async (work) => {
+    const status =
+      work.type === 'registration'
+        ? await processTask(work.task)
+        : await processReputationTask(work.task)
     counts.set(status, (counts.get(status) ?? 0) + 1)
   })
   console.log(

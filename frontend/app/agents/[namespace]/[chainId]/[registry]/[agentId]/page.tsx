@@ -4,6 +4,11 @@ import { notFound, redirect } from 'next/navigation'
 import { isAddress } from 'viem'
 
 import { Address } from '@/components/Address'
+import {
+  type FeedbackFilters,
+  RawErc8004Feedback,
+  type RawFeedbackResponse,
+} from '@/components/RawErc8004Feedback'
 import { SectionHeading } from '@/components/SectionHeading'
 import { APIS } from '@/lib/config'
 
@@ -106,8 +111,27 @@ const fetchAgent = async (
   return response.json()
 }
 
+const fetchFeedback = async (
+  agentKey: string,
+  filters: FeedbackFilters
+): Promise<RawFeedbackResponse> => {
+  const query = new URLSearchParams({ agent: agentKey, limit: '20' })
+  if (filters.tag) query.set('tag', filters.tag)
+  if (filters.unit) query.set('unit', filters.unit)
+  if (filters.reviewer) query.set('reviewer', filters.reviewer)
+  if (filters.revoked) query.set('revoked', filters.revoked)
+  if (filters.cursor) query.set('cursor', filters.cursor)
+  const response = await fetch(`${APIS.ponder}/erc8004/feedback?${query}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok)
+    throw new Error(`Raw feedback index returned HTTP ${response.status}`)
+  return response.json()
+}
+
 export default async function AgentIdentityPage({
   params,
+  searchParams,
 }: {
   params: Promise<{
     namespace: string
@@ -115,8 +139,16 @@ export default async function AgentIdentityPage({
     registry: string
     agentId: string
   }>
+  searchParams: Promise<{
+    feedbackTag?: string
+    feedbackUnit?: string
+    feedbackReviewer?: string
+    feedbackRevoked?: string
+    feedbackCursor?: string
+  }>
 }) {
   const values = await params
+  const query = await searchParams
   if (
     values.namespace !== 'eip155' ||
     !/^\d+$/.test(values.chainId) ||
@@ -141,12 +173,23 @@ export default async function AgentIdentityPage({
     redirect(canonicalPath)
   }
 
-  const data = await fetchAgent(
-    canonical.namespace,
-    canonical.chainId,
-    canonical.registry,
-    canonical.agentId
-  )
+  const filters: FeedbackFilters = {
+    tag: query.feedbackTag,
+    unit: query.feedbackUnit,
+    reviewer: query.feedbackReviewer,
+    revoked: query.feedbackRevoked,
+    cursor: query.feedbackCursor,
+  }
+  const agentKey = `agent:${canonical.namespace}:${canonical.chainId}:${canonical.registry}:${canonical.agentId}`
+  const [data, feedback] = await Promise.all([
+    fetchAgent(
+      canonical.namespace,
+      canonical.chainId,
+      canonical.registry,
+      canonical.agentId
+    ),
+    fetchFeedback(agentKey, filters),
+  ])
   const registration = data.registration?.parsedJson
   const currentHash = data.registration?.contentHash
   const contentChanged = data.registrationHistory.some(
@@ -338,6 +381,12 @@ export default async function AgentIdentityPage({
           </div>
         )}
       </section>
+
+      <RawErc8004Feedback
+        data={feedback}
+        filters={filters}
+        canonicalPath={canonicalPath}
+      />
 
       <section className="space-y-4">
         <SectionHeading>Identity history</SectionHeading>

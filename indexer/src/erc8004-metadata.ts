@@ -4,6 +4,8 @@ import * as http from 'node:http'
 import * as https from 'node:https'
 import { isIP } from 'node:net'
 
+import { type Hex, keccak256, toHex, zeroHash } from 'viem'
+
 import { ERC8004_REGISTRATION_TYPE, erc8004RegistryKey } from './erc8004-shared'
 
 export const ERC8004_METADATA_LIMITS = {
@@ -53,6 +55,29 @@ export type RegistrationFetchResult = {
   error: string | null
   document: SanitizedRegistration | null
   endpointObservations: EndpointObservation[]
+}
+
+export type ReputationDocumentContext =
+  | {
+      kind: 'feedback'
+      chainId: number
+      identityRegistry: string
+      agentId: bigint
+      reviewer: Hex
+      value: bigint
+      valueDecimals: number
+      tag: string
+      unit: string
+      endpoint: string
+    }
+  | { kind: 'response' }
+
+export type ReputationDocumentFetchResult = Omit<
+  RegistrationFetchResult,
+  'document' | 'endpointObservations'
+> & {
+  document: Record<string, unknown> | null
+  hashStatus: 'match' | 'omitted' | 'mismatch' | 'unverified'
 }
 
 class MetadataFetchError extends Error {
@@ -428,6 +453,229 @@ const contentTypeIsJson = (value: string | string[] | undefined) => {
     mime === 'application/json' ||
     /^application\/[a-z0-9.+-]+\+json$/.test(mime)
   )
+}
+
+const decimalString = (value: unknown): string | null => {
+  if (typeof value === 'bigint') return value.toString()
+  if (typeof value === 'number' && Number.isSafeInteger(value))
+    return value.toString()
+  if (typeof value === 'string' && /^-?\d+$/.test(value))
+    return BigInt(value).toString()
+  return null
+}
+
+const sanitizeReputationDocument = (
+  input: unknown,
+  context: ReputationDocumentContext
+): Record<string, unknown> => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new MetadataFetchError(
+      'invalid',
+      'descriptor document must be an object'
+    )
+  }
+  const document = input as Record<string, unknown>
+  if (context.kind === 'response') return document
+
+  const expectedRegistry = erc8004RegistryKey(
+    context.chainId,
+    context.identityRegistry
+  )
+  const expectedReviewer = `eip155:${context.chainId}:${context.reviewer.toLowerCase()}`
+  const registry = cleanText(document.agentRegistry, 256)
+  const id = decimalString(document.agentId)
+  const reviewer = cleanText(document.clientAddress, 256)
+  const createdAt = cleanText(document.createdAt, 128)
+  const value = decimalString(document.value)
+  const valueDecimals = decimalString(document.valueDecimals)
+  if (!registry || !id || !reviewer || !createdAt || !value || !valueDecimals) {
+    throw new MetadataFetchError(
+      'invalid',
+      'feedback descriptor is missing a required backreference field'
+    )
+  }
+  if (Number.isNaN(Date.parse(createdAt))) {
+    throw new MetadataFetchError(
+      'invalid',
+      'feedback createdAt is not a timestamp'
+    )
+  }
+  if (
+    registry.toLowerCase() !== expectedRegistry ||
+    id !== context.agentId.toString() ||
+    reviewer.toLowerCase() !== expectedReviewer ||
+    value !== context.value.toString() ||
+    valueDecimals !== context.valueDecimals.toString()
+  ) {
+    throw new MetadataFetchError(
+      'invalid',
+      'feedback descriptor backreference does not match the on-chain event'
+    )
+  }
+  const optionalMatches: Array<[string, string]> = [
+    ['tag1', context.tag],
+    ['tag2', context.unit],
+    ['endpoint', context.endpoint],
+  ]
+  for (const [field, expected] of optionalMatches) {
+    if (field in document && document[field] !== expected) {
+      throw new MetadataFetchError(
+        'invalid',
+        `feedback descriptor ${field} does not match the on-chain event`
+      )
+    }
+  }
+  return document
+}
+
+/**
+ * Fetch a feedback/response descriptor through the same SSRF-safe boundary as registrations.
+ * Feedback documents must bind back to every required on-chain field; response documents have no
+ * normative ERC-8004 schema, so their exact bytes/hash and JSON object are preserved without
+ * granting them semantic authority.
+ */
+export const fetchReputationDocument = async ({
+  uri,
+  expectedHash,
+  context,
+  ipfsGateway = process.env.ERC8004_IPFS_GATEWAY ?? 'https://ipfs.io/ipfs/',
+  resolver = defaultResolver,
+}: {
+  uri: string
+  expectedHash: Hex
+  context: ReputationDocumentContext
+  ipfsGateway?: string
+  resolver?: DnsResolver
+}): Promise<ReputationDocumentFetchResult> => {
+  const fetchedAt = BigInt(Math.floor(Date.now() / 1_000))
+  const mutable = uri.startsWith('https://')
+  let finalUri: string | null = null
+  let contentType: string | null = null
+  let httpStatus: number | null = null
+  let bytes: Buffer | null = null
+  let contentHash: Hex | null = null
+
+  try {
+    if (!uri) throw new MetadataFetchError('blocked', 'descriptor URI is empty')
+    if (uri.startsWith('data:')) {
+      bytes = decodeDataUri(uri)
+      finalUri = uri
+      contentType = 'application/json'
+    } else {
+      let url: URL
+      if (uri.startsWith('ipfs://')) {
+        const path = uri.slice('ipfs://'.length)
+        if (
+          !/^[a-zA-Z0-9]+(?:\/[a-zA-Z0-9._~!$&'()*+,;=:@%/-]*)?$/.test(path)
+        ) {
+          throw new MetadataFetchError('blocked', 'invalid IPFS URI')
+        }
+        if (
+          path
+            .split('/')
+            .slice(1)
+            .some((segment) => {
+              try {
+                const decoded = decodeURIComponent(segment)
+                return decoded === '.' || decoded === '..'
+              } catch {
+                return true
+              }
+            })
+        ) {
+          throw new MetadataFetchError(
+            'blocked',
+            'IPFS path traversal is not allowed'
+          )
+        }
+        url = new URL(
+          path,
+          ipfsGateway.endsWith('/') ? ipfsGateway : `${ipfsGateway}/`
+        )
+      } else {
+        url = new URL(uri)
+      }
+      const response = await requestPublic(url, resolver)
+      finalUri = response.finalUrl
+      httpStatus = response.status
+      contentType = Array.isArray(response.headers['content-type'])
+        ? (response.headers['content-type'][0] ?? null)
+        : (response.headers['content-type'] ?? null)
+      if (response.status < 200 || response.status >= 300) {
+        throw new MetadataFetchError('unavailable', `HTTP ${response.status}`)
+      }
+      if (!contentTypeIsJson(response.headers['content-type'])) {
+        throw new MetadataFetchError(
+          'invalid',
+          'response Content-Type is not JSON'
+        )
+      }
+      bytes = response.bytes
+    }
+
+    contentHash = keccak256(toHex(bytes))
+    if (
+      expectedHash !== zeroHash &&
+      contentHash.toLowerCase() !== expectedHash.toLowerCase()
+    ) {
+      throw new MetadataFetchError(
+        'invalid',
+        'on-chain content hash does not match fetched bytes',
+        { contentHash, byteLength: bytes.length }
+      )
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(bytes.toString('utf8'))
+    } catch {
+      throw new MetadataFetchError('invalid', 'response is not valid JSON', {
+        contentHash,
+        byteLength: bytes.length,
+      })
+    }
+    const document = sanitizeReputationDocument(parsed, context)
+    return {
+      status: 'ok',
+      uri,
+      finalUri,
+      contentHash,
+      hashStatus: expectedHash === zeroHash ? 'omitted' : 'match',
+      contentType,
+      byteLength: bytes.length,
+      httpStatus,
+      mutable,
+      fetchedAt,
+      error: null,
+      document,
+    }
+  } catch (error) {
+    const typed =
+      error instanceof MetadataFetchError
+        ? error
+        : new MetadataFetchError(
+            'unavailable',
+            error instanceof Error ? error.message : String(error)
+          )
+    const mismatch = /content hash does not match/.test(typed.message)
+    return {
+      status: typed.status,
+      uri,
+      finalUri: typed.details.finalUri ?? finalUri,
+      contentHash: typed.details.contentHash ?? contentHash,
+      hashStatus: mismatch
+        ? 'mismatch'
+        : expectedHash === zeroHash
+          ? 'omitted'
+          : 'unverified',
+      contentType: typed.details.contentType ?? contentType,
+      byteLength: typed.details.byteLength ?? bytes?.length ?? null,
+      httpStatus: typed.details.httpStatus ?? httpStatus,
+      mutable,
+      fetchedAt,
+      error: typed.message,
+      document: null,
+    }
+  }
 }
 
 export const observeEndpoint = async (
