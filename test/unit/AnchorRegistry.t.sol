@@ -7,6 +7,24 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AnchorRegistry} from "contracts/registry/AnchorRegistry.sol";
 
+contract AnchorRegistryAccumulatorMock {
+    uint64 public leafCount;
+
+    function setLeafCount(uint64 count) external {
+        leafCount = count;
+    }
+}
+
+contract AnchorRegistrySnapshotMock {
+    address public accumulator;
+    address public anchorRegistry;
+
+    constructor(address accumulator_, address anchorRegistry_) {
+        accumulator = accumulator_;
+        anchorRegistry = anchorRegistry_;
+    }
+}
+
 /// @title AnchorRegistryTest
 /// @notice Lane-2 anchor log (OFFCHAIN_ATTESTATIONS_ZK §4.1): fold parity against the frozen golden
 ///         leaf, registration gates, role gating, unregistered reverts, fold-index monotonicity, the
@@ -18,6 +36,8 @@ contract AnchorRegistryTest is Test {
     using stdJson for string;
 
     AnchorRegistry reg;
+    AnchorRegistryAccumulatorMock lane1;
+    AnchorRegistrySnapshotMock snapshot;
     address admin = address(0xA11CE);
 
     // An address-kind node owner with a known key (for head co-signatures).
@@ -48,7 +68,13 @@ contract AnchorRegistryTest is Test {
     event NodeRegistered(bytes32 indexed nodeId, uint8 kind, address registrant);
 
     function setUp() public {
-        reg = new AnchorRegistry(admin);
+        reg = new AnchorRegistry(admin, 200_000);
+        lane1 = new AnchorRegistryAccumulatorMock();
+        snapshot = new AnchorRegistrySnapshotMock(address(lane1), address(reg));
+        reg.bindSnapshot(address(snapshot));
+        bytes32 anchorerRole = reg.ANCHORER_ROLE();
+        vm.prank(admin);
+        reg.grantRole(anchorerRole, address(this));
         owner = vm.addr(ownerKey);
 
         json = vm.readFile("test/golden/trust-graph.json");
@@ -127,6 +153,57 @@ contract AnchorRegistryTest is Test {
     /*//////////////////////////////////////////////////////////////
                         REGISTRATION GATES
     //////////////////////////////////////////////////////////////*/
+
+    function test_ConstructorRejectsZeroAdminOrInvalidCapacity() public {
+        uint64 absoluteMaximum = reg.ABSOLUTE_MAX_TOTAL_INPUTS();
+        vm.expectRevert(AnchorRegistry.ZeroAddress.selector);
+        new AnchorRegistry(address(0), 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InvalidInputCapacity.selector, uint64(0), absoluteMaximum)
+        );
+        new AnchorRegistry(admin, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InvalidInputCapacity.selector, absoluteMaximum + 1, absoluteMaximum)
+        );
+        new AnchorRegistry(admin, absoluteMaximum + 1);
+    }
+
+    function test_SnapshotBindingIsReciprocalAndOneShot() public {
+        AnchorRegistry unbound = new AnchorRegistry(admin, 10);
+        AnchorRegistrySnapshotMock wrong = new AnchorRegistrySnapshotMock(address(lane1), address(reg));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AnchorRegistry.SnapshotRegistryMismatch.selector, address(wrong), address(unbound), address(reg)
+            )
+        );
+        unbound.bindSnapshot(address(wrong));
+
+        AnchorRegistrySnapshotMock right = new AnchorRegistrySnapshotMock(address(lane1), address(unbound));
+        unbound.bindSnapshot(address(right));
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.SnapshotAlreadyBound.selector, address(right)));
+        unbound.bindSnapshot(address(right));
+    }
+
+    function test_OnlyDeployerCanBindAndAnchoringRequiresTheBinding() public {
+        AnchorRegistry unbound = new AnchorRegistry(admin, 10);
+        AnchorRegistrySnapshotMock right = new AnchorRegistrySnapshotMock(address(lane1), address(unbound));
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.NotBinder.selector, admin));
+        unbound.bindSnapshot(address(right));
+
+        vm.startPrank(admin);
+        unbound.registerNode(goldenNodeId, 1);
+        vm.expectRevert(AnchorRegistry.SnapshotNotBound.selector);
+        unbound.anchor(goldenNodeId, goldenKind, goldenHead, goldenCount, goldenDataCommitment, "");
+        vm.stopPrank();
+
+        unbound.bindSnapshot(address(right));
+        assertEq(address(unbound.snapshot()), address(right));
+    }
 
     /// Self-registration derives the nodeId from msg.sender itself — a caller cannot bind an id that
     /// does not match their address derivation (register() takes no id argument).
@@ -216,13 +293,96 @@ contract AnchorRegistryTest is Test {
         assertEq(reg.anchorCount(), 4);
     }
 
-    /// Anchoring is permissionless for a registered node (any address may relay).
-    function test_AnchorPermissionlessForRegistered() public {
+    /// Registration is not admission to the proving input log. Governance must grant the relayer.
+    function test_AnchorRequiresGovernanceAdmittedRelayer() public {
         vm.prank(admin);
         reg.registerNode(goldenNodeId, 1);
-        vm.prank(address(0xD00D));
+
+        address relayer = address(0xD00D);
+        bytes32 anchorerRole = reg.ANCHORER_ROLE();
+        vm.prank(relayer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, relayer, anchorerRole)
+        );
+        reg.anchor(goldenNodeId, goldenKind, bytes32(uint256(7)), 1, bytes32(uint256(8)), "");
+
+        vm.prank(admin);
+        reg.grantRole(anchorerRole, relayer);
+        vm.prank(relayer);
         reg.anchor(goldenNodeId, goldenKind, bytes32(uint256(7)), 1, bytes32(uint256(8)), "");
         assertEq(reg.anchorCount(), 1);
+    }
+
+    function test_AdmittedRelayerCannotReplayANonAddressHead() public {
+        vm.prank(admin);
+        reg.registerNode(goldenNodeId, 1);
+        reg.anchor(goldenNodeId, goldenKind, bytes32(uint256(7)), 3, bytes32(uint256(8)), "");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, goldenNodeId, uint64(3), uint64(3))
+        );
+        reg.anchor(goldenNodeId, goldenKind, bytes32(uint256(7)), 3, bytes32(uint256(8)), "");
+        assertEq(reg.anchorCount(), 1);
+    }
+
+    function test_ManyAttackerControlledAddressRegistrationsCannotChangeTheFeeInput() public {
+        bytes32 anchorerRole = reg.ANCHORER_ROLE();
+        for (uint256 i = 1; i <= 32; i++) {
+            // `i <= 32`, so this synthetic test address cannot truncate.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            address attacker = address(uint160(0xA000 + i));
+            bytes32 nodeId = keccak256(abi.encode(attacker));
+            vm.startPrank(attacker);
+            reg.register();
+            vm.expectRevert(
+                abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, attacker, anchorerRole)
+            );
+            reg.anchor(nodeId, 0, bytes32(i), 1, bytes32(0), "");
+            vm.stopPrank();
+        }
+        assertEq(reg.anchorCount(), 0, "self-registration never consumes proving capacity");
+        assertEq(reg.anchorAcc(), bytes32(0));
+    }
+
+    function test_TotalInputCapacityIsEnforcedBeforeTheFold() public {
+        AnchorRegistry bounded = new AnchorRegistry(admin, 3);
+        AnchorRegistrySnapshotMock boundedSnapshot = new AnchorRegistrySnapshotMock(address(lane1), address(bounded));
+        bounded.bindSnapshot(address(boundedSnapshot));
+        bytes32 anchorerRole = bounded.ANCHORER_ROLE();
+        vm.startPrank(admin);
+        bounded.registerNode(goldenNodeId, 1);
+        bounded.grantRole(anchorerRole, address(this));
+        vm.stopPrank();
+
+        for (uint64 i = 1; i <= 3; i++) {
+            bounded.anchor(goldenNodeId, goldenKind, bytes32(uint256(i)), i, bytes32(0), "");
+        }
+        bytes32 fullAcc = bounded.anchorAcc();
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InputCapacityExceeded.selector, uint64(0), uint64(3), uint64(3))
+        );
+        bounded.anchor(goldenNodeId, goldenKind, bytes32(uint256(4)), 4, bytes32(0), "");
+        assertEq(bounded.anchorCount(), 3);
+        assertEq(bounded.anchorAcc(), fullAcc, "rejected ingress cannot mutate the fold");
+    }
+
+    function test_LiveLaneOneCountConsumesTheSameTotalCapacity() public {
+        AnchorRegistry bounded = new AnchorRegistry(admin, 3);
+        AnchorRegistrySnapshotMock boundedSnapshot = new AnchorRegistrySnapshotMock(address(lane1), address(bounded));
+        bounded.bindSnapshot(address(boundedSnapshot));
+        bytes32 anchorerRole = bounded.ANCHORER_ROLE();
+        vm.startPrank(admin);
+        bounded.registerNode(goldenNodeId, 1);
+        bounded.grantRole(anchorerRole, address(this));
+        vm.stopPrank();
+        lane1.setLeafCount(2);
+
+        bounded.anchor(goldenNodeId, goldenKind, bytes32(uint256(1)), 1, bytes32(0), "");
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InputCapacityExceeded.selector, uint64(2), uint64(1), uint64(3))
+        );
+        bounded.anchor(goldenNodeId, goldenKind, bytes32(uint256(2)), 2, bytes32(0), "");
+        assertEq(bounded.anchorCount(), 1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -235,12 +395,10 @@ contract AnchorRegistryTest is Test {
         reg.register();
     }
 
-    /// A third party can RELAY the owner's co-signed head (permissionless force-inclusion), and
-    /// lastCount advances.
-    function test_H5_RelayWithOwnerSignatureWorks() public {
+    /// An admitted relayer can submit the owner's co-signed head, and lastCount advances.
+    function test_H5_AdmittedRelayWithOwnerSignatureWorks() public {
         bytes32 nodeId = _registerOwnerNode();
         bytes32 head = keccak256("head-3");
-        vm.prank(address(0xD00D));
         reg.anchor(nodeId, 0, head, 3, bytes32(0), _headSig(ownerKey, head, 3));
         assertEq(reg.anchorCount(), 1);
         assertEq(reg.lastCount(nodeId), 3);
@@ -256,12 +414,7 @@ contract AnchorRegistryTest is Test {
 
         reg.anchor(nodeId, 0, headNew, 5, bytes32(0), _headSig(ownerKey, headNew, 5));
 
-        // Re-anchoring the old head (count 3 <= lastCount 5) reverts for anyone — including the owner.
-        vm.prank(address(0xD00D));
-        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(3), uint64(5)));
-        reg.anchor(nodeId, 0, headOld, 3, bytes32(0), sigOld);
-
-        vm.prank(owner);
+        // Re-anchoring the old head (count 3 <= lastCount 5) reverts for an admitted relayer.
         vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(3), uint64(5)));
         reg.anchor(nodeId, 0, headOld, 3, bytes32(0), sigOld);
 

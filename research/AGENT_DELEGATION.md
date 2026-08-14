@@ -58,7 +58,7 @@ to the repo root.
 | Claim a payout | `MerkleFundDistributor.claim(distributionIndex, account, value, proof)` | **anyone can claim on behalf of an account**; funds go to `account`, not `msg.sender` |
 | Epoch trigger / proof submission / prover bounty | `MerkleSnapshot.trigger` / `submitProof`, `ProvingVault.submitAndClaim` / `claim` | **permissionless**; the bounty `recipient` is bound into the journal digest so proofs cannot be replayed for a different payee |
 | Fund the prover | `ProvingVault.depositETH` / `depositUSDC` | permissionless |
-| Anchor an offchain attestation log | `AnchorRegistry.anchor` | **explicitly permissionless relay** ("anyone may anchor anyone's head") |
+| Anchor an offchain attestation log | `AnchorRegistry.anchor` | governance-admitted `ANCHORER_ROLE`; head semantics remain owner/guest authenticated |
 | Parameter changes, cancel, admin | `onlyOwner` / role-gated (`CONSTITUTIONAL_ROLE`, `OPERATIONAL_ROLE`, timelock) | out of scope for user-level delegation |
 
 Identity is the address. `nodeId = keccak256(abi.encode(address))` everywhere; ENS is
@@ -219,8 +219,8 @@ frontend), a review/sign UX, and relay plumbing. It also improves the non-agent 
 If fully autonomous vouching is ever wanted despite the threat model, constrain it: cap
 confidence well below the human maximum, rate-limit edge creation, always allow autonomous
 *revocation* (defensive direction), and require the delegation to be publicly visible. The
-envelope-0 offchain path (`packages/envelopes/`, `AnchorRegistry.anchor` as permissionless
-relay) is the natural gasless endgame for agent-maintained attestation logs, but it is
+envelope-0 offchain path (`packages/envelopes/`, `AnchorRegistry.anchor` through an admitted
+relayer) is the natural gasless endgame for agent-maintained attestation logs, but it is
 dormant today (no factory deployment, empty `envelope0DomainSeparators` in the create
 wizard) and should not gate any of the above.
 

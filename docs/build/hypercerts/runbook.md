@@ -24,7 +24,8 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 > **One-script deploy:** the whole battery below is also available as a single labeled script —
 > `forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance --sig "run(string)" <label>`
 > (env: `SP1_VERIFIER_GATEWAY`, `HYPERCERTS_VKEY`, `HYPERCERTS_PARAMS_HASH`,
-> `HYPERCERTS_EPOCH_LENGTH`, optional `INSTANCE_REGISTRY` + admin overrides); it writes
+> `HYPERCERTS_EPOCH_LENGTH`, `HYPERCERTS_MAX_TOTAL_INPUTS`, optional `INSTANCE_REGISTRY` + admin
+> overrides); it writes
 > `.docker/hypercerts_instance_<label>_deploy.json`. Third-party epoch reproduction is
 > documented in [`reproduce-an-epoch.md`](../../verify/reproduce-an-epoch.md).
 
@@ -37,7 +38,7 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 | `zk/program` (bin `trustgraph-hypercerts-program`) | The hypercerts guest `[[bin]]`. |
 | `zk/prover` (`trustgraph-prover hypercerts …`) | Host CLI group: `hypercerts {vkey \| paramshash \| execute \| prove \| buildinput}`. `buildinput` and witness assembly (the shared `witness fetch` group) need `--features witness-atproto`. |
 | `src/contracts/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). Bound one-shot to its `MerkleSnapshot` at deploy, so only `trigger()` may mint — on a lane-2-only instance the checkpoint id is the only thing separating one epoch's inputs from another's. |
-| `src/contracts/registry/AnchorRegistry.sol` | Lane-2 input commitment: chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` gates DID-node registration (the PDS-allowlist gate). |
+| `src/contracts/registry/AnchorRegistry.sol` | Lane-2 input commitment: bounded chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` admits DID nodes; `ANCHORER_ROLE` admits relayers. |
 | `src/contracts/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v3) + two-tier authority + `epochLength` schedule. |
 | `src/contracts/merkle/SP1JournalVerifier.sol` | The SP1 gateway adapter, one labeled instance pinned to the **hypercerts vkey**. |
 | `src/contracts/registry/InstanceRegistry.sol` | Per-chain directory: frontends/indexers discover the contract set on-chain. |
@@ -112,9 +113,12 @@ real chain where a script exists; the `forge create` lines are the exact constru
 HC_EMPTY_ACC=$(forge create src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
 
-# 2. AnchorRegistry (lane-2 head-anchor log). admin = the operational timelock (holds REGISTRAR_ROLE).
+# 2. AnchorRegistry (lane-2 head log). Choose an immutable cap from the combined lifetime budget.
+#    Hypercerts has an empty lane 1; other programs must separately control their lane-1 ingress.
+HC_MAX_TOTAL_INPUTS=50000
 HC_REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
-  --rpc-url "$RPC" --private-key "$PK" --broadcast --json --constructor-args "$OPERATIONAL_TIMELOCK" | jq -r .deployedTo)
+  --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+  --constructor-args "$OPERATIONAL_TIMELOCK" "$HC_MAX_TOTAL_INPUTS" | jq -r .deployedTo)
 
 # 3. SP1JournalVerifier pinned to the hypercerts vkey (one labeled instance; same bytecode as the others).
 HC_VERIFIER=$(forge create src/contracts/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
@@ -129,10 +133,13 @@ HC_SNAPSHOT=$(forge create src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapsho
 # 5. Wire the anchor registry into the snapshot (constitutional — it changes which inputs are committed).
 cast send "$HC_SNAPSHOT" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK"
 
-# 6. Set the weekly epoch schedule (constitutional). 302,400 blocks @ 2s = 1 week (§6.1).
+# 6. Complete the registry's reciprocal one-shot binding from the deployer/binder account.
+cast send "$HC_REGISTRY" "bindSnapshot(address)" "$HC_SNAPSHOT" --rpc-url "$RPC" --private-key "$PK"
+
+# 7. Set the weekly epoch schedule (constitutional). 302,400 blocks @ 2s = 1 week (§6.1).
 cast send "$HC_SNAPSHOT" "setEpochLength(uint64)" 302400 --rpc-url "$RPC" --private-key "$PK"
 
-# 7. Register the instance so frontends/indexers discover the set on-chain.
+# 8. Register the instance so frontends/indexers discover the set on-chain.
 HC_ID=$(cast keccak "hypercerts")
 cast send "$INSTANCE_REGISTRY" "register(bytes32,(bytes32,address,address,address,bytes32))" \
   "$HC_ID" "($(cast keccak "hypercerts"),$HC_SNAPSHOT,$HC_VERIFIER,$HC_REGISTRY,$HC_PARAMS_HASH)" \
@@ -146,10 +153,11 @@ merkle proofs in their own contracts/apps (and the [bundle API](#score-bundle-ap
 
 | Role | Held by | Knobs | Meaning |
 |---|---|---|---|
-| **CONSTITUTIONAL_ROLE** (MerkleSnapshot) | long-delay `TimelockController` | `setZkVerifier`, pre-checkpoint `setAccumulator`, `setAnchorRegistry`, `setEpochLength`, hooks, two-step authority handoff | The truth-defining tier. The final holder cannot revoke/renounce itself. After checkpoint 0, changing an input lane requires a new snapshot plus explicit migration, preventing checkpoint-id/history reuse. |
+| **CONSTITUTIONAL_ROLE** (MerkleSnapshot) | long-delay `TimelockController` | `setZkVerifier`, pre-checkpoint `setAccumulator`/`setAnchorRegistry`, `setEpochLength`, hooks, two-step authority handoff | The truth-defining tier. The final holder cannot revoke/renounce itself. After checkpoint 0, changing an input lane requires a new snapshot plus explicit migration, preventing checkpoint-id/history reuse. |
 | **OPERATIONAL_ROLE** (MerkleSnapshot) | short-delay `TimelockController` | `setParamsHash` | Tuning: rotate the seed set, adjust weights/damping. Moves a new `paramsHash` with no guest change. |
 | **REGISTRAR_ROLE** (AnchorRegistry) | operational timelock (or a PDS-allowlist steward it delegates to) | `registerNode(nodeId, kind)` | The registration gate. At launch it admits DID nodes on the **PDS allowlist** (Hypercerts' PDSes). Address nodes self-register via `register()` and are **not** registrar-mintable. |
-| — (permissionless) | anyone | `AnchorRegistry.anchor(...)`, `MerkleSnapshot.trigger()`, `MerkleSnapshot.submitProof(...)` | Force-inclusion + the permissionless prove loop. Heads are self-certifying; a relayer can only relay, never forge. |
+| **ANCHORER_ROLE** (AnchorRegistry) | at least two independent relayers | `anchor(...)` | Admission to finite proving capacity. Every node count must increase; address heads remain owner-signed. A relayer can censor but cannot forge semantics. |
+| — (permissionless) | anyone | `MerkleSnapshot.trigger()`, `MerkleSnapshot.submitProof(...)` | The permissionless prove loop; neither call can enlarge the input set. |
 
 ---
 
@@ -178,10 +186,11 @@ publishable proof of PDS misbehavior). `takendown/suspended/deactivated` repos s
 hit rule Φ like any withheld head; the archived CAR still proves the last anchored state within the
 k-epoch window.
 
-### 2. Anchor the heads (permissionless relay)
+### 2. Anchor the heads (admitted relay)
 
-DID nodes must be registered first (registrar gate); then anyone may anchor a registered node's head —
-the operator relays for the pilot, but it is a force-inclusion hatch open to all.
+DID nodes must be registered first. A holder of `ANCHORER_ROLE` then relays the head. Use multiple
+independent relayers because v1 deliberately trades permissionless force inclusion for Sybil-safe
+capacity; the signature/guest checks preserve correctness, while the relayer set controls inclusion.
 
 ```bash
 # One-time per DID node (REGISTRAR_ROLE): kind 1 = DID.
@@ -193,7 +202,8 @@ cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$NODE_ID" 1 --rpc-url "$
 # availability proof). `count` is the head's monotonic revision ordinal (H-5 leaf word; increment it
 # per anchored head). Non-address node kinds need no head signature — pass 0x.
 cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" "$NODE_ID" 1 "$HEAD_SHA256" 1 \
-  0x0000000000000000000000000000000000000000000000000000000000000000 0x --rpc-url "$RPC" --private-key "$PK"
+  0x0000000000000000000000000000000000000000000000000000000000000000 0x \
+  --rpc-url "$RPC" --private-key "$ANCHORER_PK"
 ```
 
 ### 3. Trigger the checkpoint (weekly cadence)

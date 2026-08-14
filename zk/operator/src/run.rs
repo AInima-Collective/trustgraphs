@@ -385,20 +385,17 @@ fn tick(
                 }
             };
 
-            // H-4 (2026-08-13 audit): the accumulator only ever grows — attestations AND
-            // revocations both append a leaf, anchors append forever, and the chained hash
-            // cannot be trimmed. Past MAX_PRICED_INPUTS the root is unprovable (cycle refusal)
-            // and unpaid (vault band 0) PERMANENTLY, so approaching the cliff must be a loud
-            // operational event long before it is a fact. 80% is the alarm line.
+            // Monotonic inputs cannot be trimmed. A bounded AnchorRegistry publishes the lower
+            // instance-selected ingress capacity; other lanes use MAX_PRICED_INPUTS. Approaching
+            // either cliff must be loud while a replacement-snapshot migration is still orderly.
             let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
-            let ceiling = operator_core::policy::MAX_PRICED_INPUTS;
+            let ceiling = state.input_capacity.max(1).min(operator_core::policy::MAX_PRICED_INPUTS);
             if inputs >= ceiling.saturating_mul(8) / 10 {
                 let text = format!(
-                    "{} ({}): {inputs} of {ceiling} accumulator inputs ({}%) — the H-4 ceiling \
-                     is PERMANENT (leaves cannot be trimmed; past it the root is unprovable and \
-                     unpaid). Act now: gate/price ingress, or plan the constitutional \
-                     setAccumulator re-seed (docs/build/production.md, 'The accumulator \
-                     ceiling').",
+                    "{} ({}): {inputs} of {ceiling} admitted inputs ({}%) — inputs cannot be \
+                     trimmed. Revoke unexpected ingress authority and plan the constitutional \
+                     replacement-snapshot migration before capacity is exhausted \
+                     (docs/build/production.md, 'The accumulator ceiling').",
                     entry.name,
                     program.name(),
                     inputs.saturating_mul(100) / ceiling
@@ -689,6 +686,7 @@ fn build_state(
             leaf_count: view.live.leaf_count,
             anchor_count: view.live.anchor_count,
         },
+        input_capacity: view.input_capacity.unwrap_or(operator_core::policy::MAX_PRICED_INPUTS),
         in_flight,
         vault,
     })

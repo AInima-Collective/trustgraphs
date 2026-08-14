@@ -358,10 +358,14 @@ Per the batching rule, group every guest-affecting change into one rotation:
 2. `cargo run -q --release -- trust-graph vkey` → the new `SP1_PROGRAM_VKEY`.
 3. Deploy a new `SP1JournalVerifier(gateway, newVkey)`; point `MerkleSnapshot` at it via its
    governance (`setZkVerifier`, constitutional timelock). Old proofs stop verifying at that instant.
-4. If the anchor encoding changed (as in the H-5 rotation): deploy the new `AnchorRegistry`,
-   re-register nodes, and re-anchor current heads (owners co-sign `(head, count)`); the old
-   registry's log does not migrate — its acc is a different encoding.
-5. Re-export inputs and prove with the new guest; record the new vkey in
+4. If the anchor encoding or ingress contract changed (including the bounded/admitted #12
+   registry), do **not** point a checkpointed snapshot at a new registry. Deploy a new accumulator,
+   bounded `AnchorRegistry`, verifier, and snapshot; bind both lanes before checkpoint 0;
+   re-register nodes and re-anchor current heads. Preserve the old final root/blob and contract
+   addresses, update the same directory row, and have the old snapshot's constitutional authority
+   call `ProvingVault.migrate`. The directory event sequence is the generation link; the old
+   registry remains queryable.
+5. Re-export inputs and prove checkpoint 0 with the new guest; record the new vkey in
    [`networks-and-programs.md`](../../concepts/networks-and-programs.md).
 
 ### Deploy + loop

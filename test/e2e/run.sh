@@ -75,6 +75,17 @@ echo "   RESOLVER=$RESOLVER"
 echo "   SCHEMA=$SCHEMA"
 echo "   SNAPSHOT=$SNAPSHOT (accumulator bound; trigger() is the only checkpoint mint)"
 
+# Wire lane 2 before checkpoint 0. Input-lane rotation is intentionally locked once history exists.
+DEPLOYER=$(cast wallet address --private-key "$PK")
+REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
+  --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
+  --constructor-args "$DEPLOYER" 200000 | jq -r .deployedTo)
+cast send "$SNAPSHOT" "setAnchorRegistry(address)" "$REGISTRY" \
+  --rpc-url "$RPC" --private-key "$PK" >/dev/null
+cast send "$REGISTRY" "bindSnapshot(address)" "$SNAPSHOT" \
+  --rpc-url "$RPC" --private-key "$PK" >/dev/null
+echo "   REGISTRY=$REGISTRY (bounded, snapshot-bound, deployer admitted as relayer)"
+
 # --- attest ------------------------------------------------------------------
 echo "== attest ring (3) =="
 forge script script/E2eAttest.s.sol:E2eAttest --sig "run(address,bytes32)" "$EAS" "$SCHEMA" \
@@ -126,7 +137,8 @@ echo "== export SignerInput =="
 cargo run -q -p input-exporter -- \
   --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
   --checkpoint 0 --params "$WORK/params.json" \
-  --signer --selection test/e2e/selection.json --out "$WORK/signer_input.json"
+  --signer --selection test/e2e/selection.json \
+  --module 0x0000000000000000000000000000000000000001 --out "$WORK/signer_input.json"
 
 # --- prove-execute cross-check ----------------------------------------------
 echo "== prover execute (guest == native) =="
@@ -145,11 +157,8 @@ echo "$SIGNER_EXEC_OUT"
 # For a REAL proof, run with SP1_PROVER=network (or cpu on a 16-32 GiB box + --features native-gnark)
 # and deploy against the canonical gateway instead.
 if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
-  DEPLOYER=$(cast wallet address --private-key "$PK")
-
-  echo "== prove (mock) both programs via the CLI =="
+  echo "== prove (mock) the root program via the CLI =="
   ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph prove "$WORK/input.json" --groth16 )
-  ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer prove "$WORK/signer_input.json" --groth16 )
 
   echo "== derive vkeys + params hashes via the CLI =="
   VKEY=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph vkey )
@@ -208,6 +217,20 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >/dev/null
   SIGNER_MODULE=$(jq -r '.safe.signer_sync_module' .docker/zodiac_safes_deploy.json)
   SAFE=$(jq -r '.safe.address' .docker/zodiac_safes_deploy.json)
+
+  # Rebuild the signer journal for the real module domain, then execute/prove that exact input.
+  cargo run -q -p input-exporter -- \
+    --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
+    --checkpoint 0 --params "$WORK/params.json" \
+    --signer --selection test/e2e/selection.json \
+    --module "$SIGNER_MODULE" --out "$WORK/signer_input.json"
+  SIGNER_EXEC_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer execute "$WORK/signer_input.json" )
+  echo "$SIGNER_EXEC_OUT"
+  LIVE_SELECTION_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer selectionparamshash "$WORK/signer_input.json" )
+  [ "$LIVE_SELECTION_PARAMS_HASH" = "$SELECTION_PARAMS_HASH" ] || {
+    echo "FATAL: signer selection hash moved with the module domain"; exit 1; }
+  ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer prove "$WORK/signer_input.json" --groth16 )
+
   TARGET_THRESHOLD=$(echo "$SIGNER_EXEC_OUT" | awk '/^targetThreshold:/{print $2}')
   SIGNERS=$(echo "$SIGNER_EXEC_OUT" | awk '/^  0x/{print $1}' | paste -sd, -)
   cast send "$SIGNER_MODULE" "submitSignerProof(uint256,address[],uint256,bytes)" \
@@ -223,12 +246,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
 
   # --- TWO-LANE stage (M2 exit): lane-1 EAS edges + lane-2 envelope-0 in ONE journal ---------
   echo
-  echo "== two-lane: deploy AnchorRegistry, wire it into MerkleSnapshot =="
-  REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
-    --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-    --constructor-args "$DEPLOYER" | jq -r .deployedTo)
-  cast send "$SNAPSHOT" "setAnchorRegistry(address)" "$REGISTRY" \
-    --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  echo "== two-lane: use the AnchorRegistry wired before checkpoint 0 =="
   echo "   registry=$REGISTRY"
 
   echo "== two-lane: attester builds + anchors a signed envelope-0 log =="
@@ -241,17 +259,24 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "$GEN_OUT"
   NODE_ID=$(echo "$GEN_OUT" | awk '/^nodeId:/{print $2}')
   HEAD=$(echo "$GEN_OUT" | awk '/^head:/{print $2}')
+  HEAD_COUNT=$(echo "$GEN_OUT" | awk '/^count:/{print $2}')
+  HEAD_SIG=$(echo "$GEN_OUT" | awk '/^headSig:/{print $2}')
   cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$ATTESTER_KEY" >/dev/null
-  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$NODE_ID" 0 "$HEAD" "$ZERO32" \
-    --rpc-url "$RPC" --private-key "$PK" >/dev/null   # third-party relay: permissionless anchor
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" \
+    "$NODE_ID" 0 "$HEAD" "$HEAD_COUNT" "$ZERO32" "$HEAD_SIG" \
+    --rpc-url "$RPC" --private-key "$PK" >/dev/null   # admitted third-party relay
 
   echo "== two-lane: a second node anchors a head and WITHHOLDS the data (rule Φ) =="
   WITHHELD_KEY=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a  # anvil key 2
   WITHHELD_ADDR=$(cast wallet address --private-key "$WITHHELD_KEY")
   WITHHELD_NODE=$(cast keccak "$(cast abi-encode "f(address)" "$WITHHELD_ADDR")")
+  WITHHELD_HEAD=0x00000000000000000000000000000000000000000000000000000000deadbeef
+  HEAD_DOMAIN_TAG=$(cast call "$REGISTRY" "HEAD_DOMAIN_TAG()(bytes32)" --rpc-url "$RPC")
+  WITHHELD_PAYLOAD=$(cast keccak "$(cast abi-encode "f(bytes32,bytes32,uint64)" "$HEAD_DOMAIN_TAG" "$WITHHELD_HEAD" 1)")
+  WITHHELD_SIG=$(cast wallet sign "$WITHHELD_PAYLOAD" --private-key "$WITHHELD_KEY")
   cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$WITHHELD_KEY" >/dev/null
-  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" \
-    "$WITHHELD_NODE" 0 0x00000000000000000000000000000000000000000000000000000000deadbeef "$ZERO32" \
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" \
+    "$WITHHELD_NODE" 0 "$WITHHELD_HEAD" 1 "$ZERO32" "$WITHHELD_SIG" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
 
   # Enabling lane 2 changes the params, and params take effect at the NEXT boundary: every
@@ -328,7 +353,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
   HC_REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-    --constructor-args "$DEPLOYER" | jq -r .deployedTo)
+    --constructor-args "$DEPLOYER" 200000 | jq -r .deployedTo)
   HC_GATEWAY=$(forge create test/mocks/MockSP1Gateway.sol:MockSP1Gateway \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
   cast send "$HC_GATEWAY" "setExpectedVKey(bytes32)" "$HC_VKEY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
@@ -339,6 +364,7 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
     --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
     --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$DEPLOYER" "$DEPLOYER" | jq -r .deployedTo)
   cast send "$HC_SNAPSHOT" "setAnchorRegistry(address)" "$HC_REGISTRY" --rpc-url "$RPC" --private-key "$PK" >/dev/null
+  cast send "$HC_REGISTRY" "bindSnapshot(address)" "$HC_SNAPSHOT" --rpc-url "$RPC" --private-key "$PK" >/dev/null
   # Bind the lane-1 seam to this snapshot: on a lane-2-only instance lane 1 is constant (0, 0), so
   # the checkpoint id is the ONLY thing separating one epoch's inputs from another's.
   cast send "$HC_EMPTY_ACC" "bindSnapshot(address)" "$HC_SNAPSHOT" --rpc-url "$RPC" --private-key "$PK" >/dev/null
@@ -349,10 +375,10 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "== hypercerts: register DID nodes (REGISTRAR gate = PDS-allowlist stand-in) + anchor heads =="
   cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$HC_NODE_A" 1 --rpc-url "$RPC" --private-key "$PK" >/dev/null
   cast send "$HC_REGISTRY" "registerNode(bytes32,uint8)" "$HC_NODE_B" 1 --rpc-url "$RPC" --private-key "$PK" >/dev/null
-  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$HC_NODE_A" 1 "$HC_HEAD_A" "$ZERO32" \
+  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" "$HC_NODE_A" 1 "$HC_HEAD_A" 1 "$ZERO32" 0x \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   TS_A=$(cast block latest --field timestamp --rpc-url "$RPC")
-  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32)" "$HC_NODE_B" 1 "$HC_HEAD_B" "$ZERO32" \
+  cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" "$HC_NODE_B" 1 "$HC_HEAD_B" 1 "$ZERO32" 0x \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   TS_B=$(cast block latest --field timestamp --rpc-url "$RPC")
   # The witness anchors must carry the REAL chain timestamps so the guest re-fold matches
@@ -360,15 +386,19 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   # ...and the journal-v3 bindings must name THIS snapshot, or submitProof rebuilds a different
   # digest. `emit_fixture_input` cannot know the address, so it is filled here.
   jq --argjson a "$TS_A" --argjson b "$TS_B" --arg d "$HC_DOMAIN" --arg r "$RECIPIENT" \
-    '.anchors[0].block_timestamp = $a | .anchors[1].block_timestamp = $b
+    '.anchors[0].count = 1 | .anchors[0].block_timestamp = $a
+     | .anchors[1].count = 1 | .anchors[1].block_timestamp = $b
      | .binding = {recipient: $r, instance_domain: $d}' \
     "$WORK/hc_input.json" > "$WORK/hc_input_chain.json"
 
   echo "== hypercerts: trigger checkpoints both lanes (lane 1 = the empty accumulator) =="
   cast send "$HC_SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK" >/dev/null
-  echo "   anchorCheckpoints(0): $(cast call "$HC_SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" 0 --rpc-url "$RPC")"
+  HC_ANCHOR_CHECKPOINT=$(cast call "$HC_SNAPSHOT" "anchorCheckpoints(uint256)(bytes32,uint64)" 0 --rpc-url "$RPC")
+  HC_ANCHOR_ACC=$(echo "$HC_ANCHOR_CHECKPOINT" | sed -n 1p)
+  HC_ANCHOR_COUNT=$(echo "$HC_ANCHOR_CHECKPOINT" | sed -n 2p)
+  echo "   anchorCheckpoints(0): $HC_ANCHOR_ACC ($HC_ANCHOR_COUNT anchors)"
 
-  echo "== hypercerts: prove via the CLI and land the journal-v2 proof =="
+  echo "== hypercerts: prove via the CLI and land the journal-v3 proof =="
   HC_EXEC=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts execute "$WORK/hc_input_chain.json" )
   echo "$HC_EXEC"
   ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- hypercerts prove "$WORK/hc_input_chain.json" --groth16 >/dev/null )
@@ -377,9 +407,12 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   HC_CID=$(echo "$HC_EXEC" | awk '/^cid:/{print $2}')
   HC_TOTAL=$(echo "$HC_EXEC" | awk '/^totalValue:/{print $2}')
   HC_SKIPPED=$(echo "$HC_EXEC" | awk '/^skippedDigest:/{print $2}')
+  HC_PROVEN_ANCHOR_ACC=$(echo "$HC_EXEC" | awk '/^anchorAcc:/{print $2}')
   HC_RECIPIENT=$(echo "$HC_EXEC" | awk '/^recipient:/{print $2}')
   HC_PROVEN_DOMAIN=$(echo "$HC_EXEC" | awk '/^instanceDomain:/{print $2}')
   [ "$HC_SKIPPED" != "$ZERO32" ] || { echo "FATAL: fixture self-edge did not land in skippedDigest"; exit 1; }
+  [ "$(lower "$HC_PROVEN_ANCHOR_ACC")" = "$(lower "$HC_ANCHOR_ACC")" ] || {
+    echo "FATAL: guest anchorAcc $HC_PROVEN_ANCHOR_ACC != checkpoint $HC_ANCHOR_ACC"; exit 1; }
   [ "$(lower "$HC_PROVEN_DOMAIN")" = "$(lower "$HC_DOMAIN")" ] || {
     echo "FATAL: guest committed domain $HC_PROVEN_DOMAIN != this instance's $HC_DOMAIN"; exit 1; }
   cast send "$HC_SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \

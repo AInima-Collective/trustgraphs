@@ -1,6 +1,9 @@
 # Offchain Attestations, ZK-Proven — Extending the Trustless Seam Beyond the Chain
 
-**Status:** 📐 **Normative, realized** — the architecture this document specifies is built (lane 2, envelopes 0/1, journal v2; see [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md)). Grounded in four source dossiers (see Appendix A); numbers marked *(soft)* died at the Phase-A spike (the build plan's M1) or became measured facts — the spike ran 2026-07-14; measured values in [`offchain/05-spike-results.md`](./offchain/05-spike-results.md) (headline: patched ecrecover is 8× cheaper than assumed; PGU ≈ 1.8–3.4× cycles for precompiled ops).
+**Status:** 📐 **Normative, realized** — the architecture this document specifies is built (lane 2, envelopes 0/1, journal v3; see [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md)). Grounded in four source dossiers (see Appendix A); numbers marked *(soft)* died at the Phase-A spike (the build plan's M1) or became measured facts — the spike ran 2026-07-14; measured values in [`offchain/05-spike-results.md`](./offchain/05-spike-results.md) (headline: patched ecrecover is 8× cheaper than assumed; PGU ≈ 1.8–3.4× cycles for precompiled ops).
+**Ingress amendment (2026-08-13):** [`ANCHOR_INGRESS.md`](./ANCHOR_INGRESS.md) supersedes this
+document's original permissionless force-inclusion choice with admitted relayers and an immutable
+both-lane capacity. The envelope and proof semantics remain unchanged.
 **Scope:** How trustgraphs' attestations can live in decentralized offchain stores — AT Protocol (Bluesky) repos first among them — while the `{account → score}` merkle root stays a permissionless SP1 zero-knowledge proof, soundness intact.
 **Relationship to [`ZK_ARCHITECTURE.md`](./ZK_ARCHITECTURE.md):** v1 built the guest → journal → `submitProof` seam for *on-chain* inputs, with `AttestationAccumulator` supplying input completeness. This document changes exactly one load-bearing thing: **who commits to input completeness, and how**. The guest pipeline, journal discipline, verifier gate, `MerkleSnapshot` write path, and consumer contracts all survive.
 **Relationship to [`PRIVACY_ARCHITECTURE.md`](./archive/PRIVACY_ARCHITECTURE.md):** this is a two-track document. Track 1 (the bulk) is the *public* offchain lane. Track 2 (§9) shows exactly which pieces change under encryption, mapping onto the privacy roadmap's Layer 1 — and confirms the offchain move is a *prerequisite improvement* for privacy, not a detour.
@@ -73,7 +76,7 @@ Two ecosystem facts worth internalizing: EAS remains tokenless, actively maintai
 │   attester signs edges into a self-committed set:                            │
 │     • EAS-offchain envelope: EIP-712 attestations + signed chained log head  │
 │     • atproto envelope:      vouch records in repo, PDS-signed commit head   │
-│   anyone posts the head:  AnchorRegistry.anchor(nodeId, head, dataCommitment)│
+│   admitted relayer posts: AnchorRegistry.anchor(nodeId, head, dataCommitment)│
 │     → anchorAcc' = keccak(anchorAcc, anchorLeaf)      (same fold as v1)      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      │
@@ -127,12 +130,21 @@ contract AnchorRegistry {
 }
 ```
 
-Anchor semantics, distilled from the censorship analysis (dossier 4 §1/§3):
+Anchor semantics, as hardened by the accepted v1 ingress decision in
+[`ANCHOR_INGRESS.md`](./ANCHOR_INGRESS.md):
 
-- **Anyone may anchor anyone's head.** Heads are self-certifying (signed by the attester's log key or the DID's PDS), so a third-party anchorer can only *relay*, never forge. An aggregator/PDS batch-anchoring for its users is the cheap default; **permissionless direct anchoring is the force-inclusion hatch** — and because anchors are unordered set-inserts, no delay machinery is needed. Censoring a self-anchoring user means censoring their L1 transaction.
+- **Governance admits relayers.** Heads remain self-certifying, so a relayer cannot forge semantics,
+  but `ANCHORER_ROLE` controls inclusion and finite proving capacity. Multiple independent relayers
+  mitigate censorship. Permissionless force inclusion is deferred until it has a Sybil-resistant
+  price, bond, or membership credential.
+- **Ingress is bounded before the fold.** A reciprocally bound registry checks the snapshot's live
+  `leafCount + anchorCount + 1` against an immutable deployment cap no higher than 200,000. Identity
+  registration alone never consumes capacity, and every node's count must increase.
 - **Epoch boundaries are contract-fixed** (block-height schedule), never prover-chosen — otherwise the proof submitter picks the boundary that excludes late anchors. `trigger()` checkpoints both accumulators at the boundary, exactly as it checkpoints `acc` today.
 - **Equivocation is resolved by the chain.** If a user (or their PDS) signs two competing heads, the registry's fold order + max-`rev` rule pick one canonically. The chain becomes the fork-choice rule for user repos — a feature, since atproto itself has none.
-- Cost: one fold per anchor (~8–12k gas, the v1 number) — sub-cent on an L2, pennies on mainnet at 2026 fee levels *(soft)*. EIP-7702/4337 sponsorship makes user self-anchoring gasless from the user's perspective.
+- Cost: current Forge traces are about 67–72k execution gas for a first admitted append (roughly
+  88–93k including transaction intrinsic gas); repeated nonzero-slot updates are cheaper. Relayers
+  may sponsor users, but users do not bypass admission in v1.
 
 ### 4.2 The envelope abstraction
 
@@ -216,7 +228,7 @@ On-chain inputs cannot be withheld from a prover. An anchored head can be — th
 | Element | Controlled by | Risk | Mitigation |
 |---|---|---|---|
 | `anchorAcc` fold | nobody (deterministic) | none | — |
-| Anchor inclusion | permissionless | L1 censorship only | self-anchor hatch; sponsored anchors |
+| Anchor inclusion | governed `ANCHORER_ROLE` relayer set | relayer censorship/role compromise | multiple independent relayers; role/head-latency alerts; immutable total-input cap |
 | Head authenticity | attester key / PDS key | PDS forges satellite edges | user-signed class for bound nodes; `pdsAttestedWeightFp`; PDS forgery is publicly provable (two signed heads) and socially catastrophic for the PDS |
 | did:plc → key binding | plc.directory (availability/ordering only; ops are self-certifying) | stale/omitted log view | run a PLC mirror (streaming API live since Jan 2026); commit mirror head; 72h-provisional rule; Swiss-association transfer reduces this over time |
 | Data availability | whoever published per `dataCommitment` | epoch staleness for that node only | §7: availability-gated anchors + rule Φ + archival mirrors |

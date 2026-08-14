@@ -57,6 +57,7 @@ fn healthy() -> InstanceState {
         rotation_pending: false,
         live_commitments: commitments(3),
         size: InstanceSize { leaf_count: 3, anchor_count: 0 },
+        input_capacity: operator_core::policy::MAX_PRICED_INPUTS,
         in_flight: None,
         vault: None,
     }

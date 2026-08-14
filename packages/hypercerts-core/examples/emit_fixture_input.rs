@@ -1,8 +1,8 @@
 //! Emit the TWO-REPO fixture `GuestInput` as JSON for the e2e harness (test/e2e/run.sh):
-//! both seeded repos (alice + bob) as anchored envelope-1 witnesses. The anchor records'
-//! heads/timestamps here are placeholders — the harness REPLACES the anchors with the ones
-//! reconstructed from the chain (HeadAnchored events) so the guest re-fold matches the
-//! checkpointed anchorAcc; only the witnesses/params matter from this file.
+//! both seeded repos (alice + bob) as anchored envelope-1 witnesses. The anchor records' sequence
+//! counts/timestamps here are placeholders — the harness REPLACES them with the values admitted on
+//! chain so the guest re-fold matches the checkpointed anchorAcc; only the witnesses/params and
+//! deterministic heads matter from this file.
 //!
 //! Run: cargo run -p hypercerts-core --example emit_fixture_input [--] [out.json]
 

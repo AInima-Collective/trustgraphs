@@ -788,12 +788,18 @@ export const SettingsPage = ({
             abi: anchorRegistryAbi,
             functionName: 'anchorCount',
           },
+          {
+            address: anchorRegistry,
+            abi: anchorRegistryAbi,
+            functionName: 'maxTotalInputs',
+          },
         ]
       : [],
     query: { enabled: !!anchorRegistry, refetchInterval: 30_000 },
   })
   const anchorAcc = asString(readResult(anchorReads, 0))
   const anchorCount = asBigInt(readResult(anchorReads, 1)) ?? 0n
+  const anchorCapacity = asBigInt(readResult(anchorReads, 2))
 
   const {
     data: vaultReads,
@@ -1179,6 +1185,7 @@ export const SettingsPage = ({
       ? policyLastPaidBlock + policyMinInterval
       : undefined
   const inputCount = leafCount + anchorCount
+  const inputCapacity = anchorCapacity ?? maxPricedInputs
   const distributorPaused = asBoolean(readResult(distributorReads, 5))
   const fundingRestricted = asBoolean(readResult(distributorReads, 4))
   const distributorFee = asBigInt(readResult(distributorReads, 3))
@@ -1192,6 +1199,9 @@ export const SettingsPage = ({
     distributorPaused ? 'Reward funding and claims are paused.' : null,
     paramsMatch === false
       ? 'The live scoring parameter hash differs from the creation tuple.'
+      : null,
+    inputCapacity !== undefined && inputCount * 5n >= inputCapacity * 4n
+      ? `Proof inputs have reached at least 80% of the ${comma(inputCapacity)}-input capacity.`
       : null,
     accountSnapshot &&
     accountSnapshot !== zeroAddress &&
@@ -1877,6 +1887,18 @@ export const SettingsPage = ({
                   </SettingRow>
                   <SettingRow label="Combined proof inputs">
                     {comma(inputCount)}
+                  </SettingRow>
+                  <SettingRow label="Anchor-ingress capacity">
+                    {comma(inputCapacity)}
+                  </SettingRow>
+                  <SettingRow label="Anchor-ingress headroom">
+                    {inputCapacity === undefined
+                      ? '—'
+                      : comma(
+                          inputCount >= inputCapacity
+                            ? 0n
+                            : inputCapacity - inputCount
+                        )}
                   </SettingRow>
                 </SettingsCard>
 
