@@ -1,6 +1,6 @@
 # ERC-8004 agent identity and reputation spike
 
-**Status:** research complete; recommended thin slice defined
+**Status:** research complete; identity/raw slices and bounded graph experiment shipped
 
 **Date:** 2026-08-12
 
@@ -397,10 +397,12 @@ No Rust, guest, contract, Merkle, or score changes are needed in this phase.
 
 ### Phase 2 — raw feedback explorer and experimental graph
 
-The raw explorer portion shipped in issue #58; see
-[`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md). The experimental graph and
-reviewer-policy work remain separately scoped in #59 and must consume this raw stream without
-changing its provenance semantics.
+The raw explorer shipped in issue #58; see
+[`ERC8004_REPUTATION_EXPLORER.md`](./ERC8004_REPUTATION_EXPLORER.md). The pinned-policy experiment
+shipped in issue #59; see
+[`erc8004-reputation/REPORT.md`](./erc8004-reputation/REPORT.md). It consumes the raw projection
+without changing its provenance semantics and records a bounded no-go for production/proof use
+after sparse coverage, reviewer sensitivity, and reciprocal-ring amplification.
 
 Index `NewFeedback`, `FeedbackRevoked`, and `ResponseAppended` from the configured Reputation
 Registry. Keep the full event payload because endpoint/URI/hash are not in storage. Bind the
