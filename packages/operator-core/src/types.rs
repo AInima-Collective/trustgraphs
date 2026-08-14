@@ -218,6 +218,10 @@ pub struct InstanceState {
     /// The live input commitments, for the quiet check.
     pub live_commitments: Commitments,
     pub size: InstanceSize,
+    /// The earliest authenticated input ceiling the operator must alert against. New bounded
+    /// anchor registries publish their immutable cap; legacy/no-lane-2 instances use the global
+    /// vault/operator ceiling.
+    pub input_capacity: u64,
 
     pub in_flight: Option<InFlight>,
     pub vault: Option<VaultView>,

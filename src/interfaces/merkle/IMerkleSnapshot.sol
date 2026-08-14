@@ -22,6 +22,9 @@ interface IMerkleSnapshot {
     /// @notice Accumulator replacement is only safe before either lane has checkpoint history.
     error AccumulatorRotationLocked(uint256 currentCheckpointCount, uint256 candidateCheckpointCount);
 
+    /// @notice Lane-2 replacement is safe only before this snapshot freezes checkpoint history.
+    error AnchorRegistryRotationLocked(uint256 checkpointCount);
+
     /// @notice An accumulator must return dense checkpoint ids beginning at zero.
     error UnexpectedCheckpointId(uint256 expected, uint256 actual);
 

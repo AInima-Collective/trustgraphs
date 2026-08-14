@@ -63,6 +63,15 @@ fn sign_prehash(sk: &SigningKey, prehash: &B256) -> Result<Vec<u8>> {
     bail!("no recovery id matched (unreachable)")
 }
 
+fn ethereum_wire_signature(mut signature: Vec<u8>) -> Vec<u8> {
+    if let Some(v) = signature.last_mut() {
+        if *v < 27 {
+            *v += 27;
+        }
+    }
+    signature
+}
+
 fn parse_b256(s: &str) -> Result<B256> {
     let b = hex::decode(s.trim_start_matches("0x"))?;
     if b.len() != 32 {
@@ -135,7 +144,31 @@ fn main() -> Result<()> {
     println!("count:   {}", witness.entries.len());
     // The head co-signature doubles as the on-chain ingress proof (H-5):
     // anchor(bytes32 nodeId, uint8 0, bytes32 head, uint64 count, bytes32 dataCommitment, bytes headSig)
-    println!("headSig: 0x{}", hex::encode(&witness.head_signature));
+    // The guest's k256 recovery accepts parity 0/1, while OpenZeppelin ECDSA uses the Ethereum
+    // wire convention 27/28. Normalize only the printed transaction argument; keep the witness
+    // bytes exactly as signed for guest/native parity.
+    let onchain_head_signature = ethereum_wire_signature(witness.head_signature.clone());
+    println!("headSig: 0x{}", hex::encode(onchain_head_signature));
     println!("wrote {}", args.out);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ethereum_wire_signature;
+
+    #[test]
+    fn printed_signature_uses_openzeppelin_recovery_ids() {
+        let mut parity_zero = vec![0u8; 65];
+        let mut parity_one = vec![0u8; 65];
+        parity_one[64] = 1;
+        let mut already_wire = vec![0u8; 65];
+        already_wire[64] = 28;
+
+        assert_eq!(ethereum_wire_signature(parity_zero.clone())[64], 27);
+        assert_eq!(ethereum_wire_signature(parity_one)[64], 28);
+        assert_eq!(ethereum_wire_signature(already_wire.clone()), already_wire);
+        parity_zero.clear();
+        assert!(ethereum_wire_signature(parity_zero).is_empty());
+    }
 }

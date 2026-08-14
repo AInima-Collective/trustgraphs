@@ -11,6 +11,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IEthUsdFeed} from "interfaces/vault/IEthUsdFeed.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
+import {InputCapacity} from "contracts/limits/InputCapacity.sol";
 
 /// @title ProvingVault
 /// @notice A per-instance tank a community tops up so somebody keeps proving its scores.
@@ -69,7 +70,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     ///      is priced here that cannot be proven there. The agreement is asserted on both sides
     ///      (`test/unit/vault/ProvingVault.t.sol` and `packages/operator-core/tests/decide.rs`);
     ///      changing one without the other is a test failure, not a silent mispricing.
-    uint64 public constant MAX_PRICED_INPUTS = 200_000;
+    uint64 public constant MAX_PRICED_INPUTS = InputCapacity.MAX_TOTAL_INPUTS;
 
     IInstanceRegistry public immutable REGISTRY;
     IERC20 public immutable USDC;

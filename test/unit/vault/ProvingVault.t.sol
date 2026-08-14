@@ -2,10 +2,13 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {ProvingVault} from "contracts/vault/ProvingVault.sol";
+import {AnchorRegistry} from "contracts/registry/AnchorRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
@@ -614,6 +617,36 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(PROGRAM, 900, 400_000), 0, "and past the top band it is unpriced");
         // A lane-2-only program still has a permanently zero lane 1; the sum handles it.
         assertEq(vault.bandOf(keccak256("hypercerts"), 0, 500), 1);
+    }
+
+    function test_OnlyAdmittedAnchorIngressCanMoveTheFeeBand() public {
+        AnchorRegistry anchors = new AnchorRegistry(address(this), vault.MAX_PRICED_INPUTS());
+        vm.prank(constitutional);
+        snapshot.setAnchorRegistry(IAnchorRegistry(address(anchors)));
+        anchors.bindSnapshot(address(snapshot));
+
+        address attacker = address(0xA77AC);
+        bytes32 attackerNode = keccak256(abi.encode(attacker));
+        vm.prank(attacker);
+        anchors.register();
+        bytes32 anchorerRole = anchors.ANCHORER_ROLE();
+        vm.prank(attacker);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, attacker, anchorerRole)
+        );
+        anchors.anchor(attackerNode, 0, bytes32(uint256(1)), 1, bytes32(0), "");
+        assertEq(anchors.anchorCount(), 0);
+        assertEq(vault.bandOf(PROGRAM, 0, anchors.anchorCount()), 1, "outsider cannot inflate the band");
+
+        bytes32 admittedNode = keccak256("admitted-did");
+        anchors.registerNode(admittedNode, 1);
+        for (uint256 i = 1; i <= 1_001; i++) {
+            // The loop bound proves the monotonic revision fits uint64.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            anchors.anchor(admittedNode, 1, bytes32(i), uint64(i), bytes32(0), "");
+        }
+        assertEq(anchors.anchorCount(), 1_001);
+        assertEq(vault.bandOf(PROGRAM, 0, anchors.anchorCount()), 2, "admitted work is priced honestly");
     }
 
     /// The operator's refusal boundary and this vault's top band must be the SAME number, or we

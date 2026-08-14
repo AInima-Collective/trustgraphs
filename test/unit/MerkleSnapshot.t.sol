@@ -905,6 +905,22 @@ contract MerkleSnapshotTest is Test {
         assertEq(address(ms.anchorRegistry()), address(areg));
     }
 
+    function test_AnchorRegistryRotationLocksAfterFirstCheckpoint() public {
+        MockAnchorRegistry first = new MockAnchorRegistry();
+        MockAnchorRegistry replacement = new MockAnchorRegistry();
+        vm.prank(constitutional);
+        ms.setAnchorRegistry(first);
+        _mint(bytes32(uint256(1)), 1, 10);
+
+        vm.prank(constitutional);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.AnchorRegistryRotationLocked.selector, uint256(1)));
+        ms.setAnchorRegistry(replacement);
+
+        vm.prank(constitutional);
+        ms.setAnchorRegistry(first); // a semantic no-op remains safe
+        assertEq(address(ms.anchorRegistry()), address(first));
+    }
+
     function test_OnlyConstitutionalCanSetEpochLength() public {
         vm.prank(operational);
         vm.expectRevert();

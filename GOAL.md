@@ -1,11 +1,13 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 8 issues closed, 9 remain.**
+> **Status (2026-08-13): 9 issues closed, 8 remain.**
 >
-> Closed after auditing `main` through `238a770` and rerunning the focused regressions:
+> Closed after auditing `main` through `ff5ca64` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
+> - **#12** — admitted anchor relayers, immutable combined-count ingress capacity, shared
+>   vault/operator limits, and auditable replacement-snapshot recovery (`f5d826a`)
 > - **#13** — snapshot-scoped claims and quote/settlement parity (`2d46090`)
 > - **#14** — constitutional authority floor and handoff, fail-closed accumulator history,
 >   total pagination, and fixed epoch phase (`aa8e2b5`)
@@ -18,7 +20,7 @@
 >   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#12, #20, #27**.
+> Remaining launch-risk issues: **#20, #27**.
 > Remaining reproducibility and self-service issue: **#21**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -61,9 +63,9 @@ can proceed concurrently:
 | Lane | Issues | Purpose | Dependencies |
 | --- | --- | --- | --- |
 | A · operator availability | #16 closed | Repair score-blob availability | `131ecfd` |
-| B · snapshot/vault hardening | #12; #14 closed | Bound hostile input growth and finish snapshot invariants | `aa8e2b5` fixes the fail-closed migration boundary |
+| B · snapshot/vault hardening | #12 and #14 closed | Bound hostile input growth and finish snapshot invariants | `f5d826a`, `aa8e2b5` |
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
-| D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
+| D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 prerequisites closed |
 | E · program self-service | #21; #28 closed | Factory signer-sync and reproducible Contributions params | `3de8943` for #28 |
 | F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
 | G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
@@ -205,6 +207,25 @@ semantics do not conflict with the input-ceiling recovery chosen for #12.
 These are the security design gates for production deployment. Do not rush them for issue count.
 
 ### M2.1 · #12 — make anchor ingress economically or administratively bounded
+
+**Closed in `f5d826a`.** `AnchorRegistry` now separates identity registration from finite proving
+capacity: only governance-admitted `ANCHORER_ROLE` relayers may append, every node count must
+increase, and address heads retain their owner signature. A one-shot reciprocal snapshot binding
+lets each append authenticate the current lane-1 count and reject, before mutation, when the next
+combined input would exceed an immutable deployment cap no higher than the shared 200,000
+vault/operator boundary. The operator reads the lower instance cap for 80% alerts, and the settings
+page shows its live headroom.
+
+[`research/ANCHOR_INGRESS.md`](research/ANCHOR_INGRESS.md) records the accepted censorship/liveness
+tradeoff, mainnet attacker cost, the fact that mutable lane-1 ingress still needs its own gate or
+price, and the replacement-snapshot/directory/vault migration ceremony that composes with #14.
+Outsider Sybil registration, band inflation, admitted legitimate growth, exact exhaustion, live
+lane-1 consumption, binding, replay, and post-checkpoint rotation regressions pass. The complete
+541-test Forge suite, 86 operator-core tests, 32 operator tests, Hypercert/input-exporter tests,
+frontend tests/lint/production build, contract-size build, and the full root/signer/two-lane/
+Hypercert Anvil E2E pass. Accepted risk: admitted relayers control inclusion, and a compromised
+relayer can spend the configured finite capacity; multiple operators, role monitoring, revocation,
+and early migration are required.
 
 Today an untrusted node can grow `anchorCount`, move a funded instance into a more expensive band,
 and eventually push it past the operator's 200,000-input ceiling. Saturating `bandOf` alone is not a
@@ -404,16 +425,16 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Production-with-value
 
-- #12, #14, and #20 are closed.
+- #20 is closed (#12 and #14 are complete prerequisites).
 - #16's configured publication durability policy is live.
 - #27's deployment ceremony and end-to-end smoke test pass.
 
 ### Honest closure target
 
 - **Near term:** #37 — the remaining independently closable research decision.
-- **Production track:** #12, #20, and then #27 — three security/deployment issues.
+- **Production track:** #20 and then #27 — two authority/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 9 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 8 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.

@@ -165,15 +165,17 @@ FUNDED_KEY=$PK \
 SP1_VERIFIER_GATEWAY=$GW \
 HYPERCERTS_VKEY=$($PROVER hypercerts vkey) \
 HYPERCERTS_PARAMS_HASH=$($PROVER hypercerts paramshash $HC/hypercerts_input.json) \
+HYPERCERTS_MAX_TOTAL_INPUTS=1000 \
 forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance \
   --sig "run(string)" local --rpc-url $RPC --private-key $PK --broadcast --skip-simulation
 export HC_REGISTRY=$(jq -r .anchor_registry .docker/hypercerts_instance_local_deploy.json)
 export HC_SNAPSHOT=$(jq -r .merkle_snapshot .docker/hypercerts_instance_local_deploy.json)
 ```
 
-`HYPERCERTS_EPOCH_LENGTH` defaults to 0 (unscheduled — `trigger()` works immediately); the
-weekly pilot value is in the runbook. The deployer holds all three roles, so the registrar
-gate below is just `$PK`.
+`HYPERCERTS_EPOCH_LENGTH` defaults to 0 (unscheduled — `trigger()` works immediately); the weekly
+pilot value is in the runbook. The local deployer holds the registrar and admitted-relayer roles,
+so both gated calls below use `$PK`. Production grants `ANCHORER_ROLE` to multiple independent
+relayers and selects capacity from its lifetime budget.
 
 ### 4. Register + anchor the real heads
 
@@ -191,7 +193,8 @@ while read -r _ node head; do
   cast send $HC_REGISTRY "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" $NODE 1 $HEAD 1 $ZERO32 0x \
     --rpc-url $RPC --private-key $PK
   TS=$(cast block latest --field timestamp --rpc-url $RPC)
-  jq --argjson i $i --argjson ts $TS '.anchors[$i].block_timestamp = $ts' \
+  jq --argjson i $i --argjson ts $TS \
+    '.anchors[$i].count = 1 | .anchors[$i].block_timestamp = $ts' \
     $HC/hypercerts_input.json > tmp.json && mv tmp.json $HC/hypercerts_input.json
   i=$((i+1))
 done < $HC/anchors.txt

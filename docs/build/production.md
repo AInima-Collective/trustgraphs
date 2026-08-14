@@ -67,47 +67,48 @@ Four things to get right before the first tick:
    `operator republish --instance <id> --checkpoint <id>` before launch. Two endpoints backed by
    the same storage failure domain do not count as independent.
 
-### The accumulator ceiling (audit H-4) — document, monitor, and the recovery path
+### The accumulator ceiling — enforce, monitor, and recover
 
-**The fact.** Both lane-1 accumulator leaves (every attestation AND every revocation appends
-one) and lane-2 anchors grow monotonically, and a chained hash cannot be trimmed. Proving cost
-scales linearly with `leafCount + anchorCount`, and above **`MAX_PRICED_INPUTS = 200,000`**
-(`ProvingVault.bandOf` band 0 = no prover paid; the same number is the operator's cycle-refusal
-boundary) the instance's root becomes **permanently unprovable and unpaid**. There is no
-pruning: recovery means re-seeding the accumulator, which without preparation means a new
-resolver and the loss of all vouch history.
+**The fact.** Both lane-1 accumulator leaves (every attestation and revocation appends one) and
+lane-2 anchors grow monotonically; a chained hash cannot be trimmed. Proving cost scales with
+`leafCount + anchorCount`. `ProvingVault`, bounded `AnchorRegistry`, and the operator share the
+absolute **`MAX_PRICED_INPUTS = 200,000`** boundary. A new anchor is rejected before the fold when it
+would exceed the registry's lower immutable `maxTotalInputs`; choose that cap below 200,000 on a
+two-lane instance to reserve the planned lane-1 budget. Separately gate or price lane-1 EAS ingress.
 
 **Attacker cost (order of magnitude, mainnet).** Each lane-1 leaf is one EAS attestation or
 revocation through the resolver (~120–180k gas). Filling the ceiling from scratch is therefore
-~200k transactions ≈ 25–35B gas — roughly **25–350 ETH** across the 1–10 gwei range: expensive
-as vandalism, cheap as a targeted attack on a high-value instance, and *rate-limitable only by
-ingress pricing*. Lane-2 anchors are cheaper per entry (~80–120k gas) but gated: address-kind
-nodes must self-register and every anchor needs the node owner's co-signature over a strictly
-increasing count (H-5 fix), so anchor bloat costs an attacker one funded address per stream,
-and each stream's growth is bounded by its own signing activity.
+~200k transactions ≈ 25–35B gas — roughly **25–350 ETH** across the 1–10 gwei range: expensive as
+vandalism, cheap as a targeted attack on a high-value instance, and rate-limitable only by ingress
+pricing. Lane-2 `anchor()` is not permissionless: only governance-admitted `ANCHORER_ROLE` relayers
+may append, all node kinds require increasing counts, and address heads also require the owner's
+signature. Forge traces put a first admitted append at ~88–93k transaction gas, with repeated
+updates to nonzero slots cheaper. An unaffiliated caller always reverts before changing the count; mass
+self-registration changes no proving input. A compromised admitted relayer can still consume the
+configured finite capacity, so use independent relayers, monitor role changes, and set a cap from
+the expected lifetime budget. Full analysis: [`research/ANCHOR_INGRESS.md`](../../research/ANCHOR_INGRESS.md).
 
-**What this means for the first experiments.** A closed-set / allowlisted instance (curated
-schema access, PayableEASIndexerResolver pricing, or social-layer gating) cannot be pushed to
-the cliff by outsiders and is safe to run with monitoring alone. An instance whose attestation
-ingress is open to adversaries must NOT rely on monitoring: price or stake the ingress (the
-payable resolver exists for exactly this) before real value depends on the scores.
+**What this means for the first experiments.** A bounded lane-2 instance cannot have its fee band
+moved by an unaffiliated address. It does trust admitted relayers for inclusion/liveness, so grant at
+least two independent operators and alert on role changes. An instance whose lane-1 attestation
+ingress is open to adversaries must still price or stake that ingress (the payable resolver exists
+for this) before real value depends on the scores.
 
-**Monitoring (in place).** The proof scheduler alerts (webhook + `input_ceiling_approaching`
-log event + status page) as soon as any instance's `leafCount + anchorCount` crosses **80%**
-of the ceiling, on every tick until addressed. Do not silence it without acting: past 100%
-there is nothing left to operate.
+**Monitoring (in place).** The proof scheduler reads a bounded registry's `maxTotalInputs` and
+alerts (webhook + `input_ceiling_approaching` log event + status page) when
+`leafCount + anchorCount` crosses **80%** of that cap. Legacy/no-lane-2 implementations fall back to
+200,000. Do not silence the alert: revoke unexpected ingress and start migration while an orderly
+final checkpoint still fits.
 
-**Recovery path (prepare BEFORE launch).** `MerkleSnapshot.setAccumulator` is available only before
-checkpoint 0. After history exists, in-place re-pointing is deliberately locked because a fresh
-accumulator can restart checkpoint ids and freeze blocks, corrupting pinned commitments and
-historical search. Re-seed by deploying a fresh resolver/accumulator **and snapshot**, preserving the
-old instance's final proven root and score blob as migration evidence (retain the CID bytes on
-independent targets and an offline backup), updating the instance-directory row, then authorizing
-`ProvingVault.migrate` from the old snapshot's constitutional authority. Members re-attest their
-live edges against the replacement resolver. Budget the timelock delay into the response: at the
-current growth rate, the 80% alert must fire earlier than `timelock delay + deployment +
-re-attestation window` before the cliff. This is operationally heavier than generation-aware
-in-place migration; #12 must resolve that design before open adversarial ingress carries value.
+**Recovery path (prepare BEFORE launch).** Both input-lane setters are available only before
+checkpoint 0. Re-seed by deploying a fresh resolver/accumulator, bounded registry, verifier, and
+snapshot; preserve the old final root, CID bytes, params, checkpoint block, and addresses as
+migration evidence; update the same instance-directory row; then have the old snapshot's
+constitutional authority call `ProvingVault.migrate`. Directory events preserve the generation
+link and the old contracts remain queryable. Re-register identities and re-anchor/re-attest only
+live inputs. Budget `timelock delay + deployment + re-ingress + first proof` before the 100% point.
+The exact ceremony and rollback checks are in
+[`research/ANCHOR_INGRESS.md`](../../research/ANCHOR_INGRESS.md).
 
 ### Run the indexer
 

@@ -22,7 +22,7 @@ import {Common} from "script/Common.s.sol";
 /// @notice One labeled script for the WHOLE lane-2-only hypercerts instance battery
 ///         (docs/build/hypercerts/runbook.md): EmptyLaneAccumulator → AnchorRegistry →
 ///         SP1JournalVerifier (hypercerts vkey, canonical gateway) → MerkleSnapshot
-///         (journal v2) → setAnchorRegistry → setEpochLength → optional InstanceRegistry
+///         (journal v3) → setAnchorRegistry → setEpochLength → optional InstanceRegistry
 ///         entry. Inputs via env so the OP Sepolia rehearsal and the Optimism pilot run
 ///         the same script with different .env files.
 ///
@@ -31,6 +31,7 @@ import {Common} from "script/Common.s.sol";
 ///      HYPERCERTS_PARAMS_HASH (`prover hypercerts paramshash params.json`),
 ///      HYPERCERTS_EPOCH_LENGTH (blocks; 302400 = 1 week @ 2s; 0 = unscheduled rehearsal),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN / REGISTRAR_ADMIN (default: deployer),
+///      HYPERCERTS_MAX_TOTAL_INPUTS (combined-count anchor-ingress ceiling; default/max: 200000),
 ///      INSTANCE_REGISTRY (optional; register the instance if set).
 contract DeployHypercertsInstance is Common {
     using stdJson for string;
@@ -46,12 +47,16 @@ contract DeployHypercertsInstance is Common {
         address constitutional = vm.envOr("CONSTITUTIONAL_ADMIN", deployer);
         address operational = vm.envOr("OPERATIONAL_ADMIN", deployer);
         address registrar = vm.envOr("REGISTRAR_ADMIN", deployer);
+        uint256 maxTotalInputsRaw = vm.envOr("HYPERCERTS_MAX_TOTAL_INPUTS", uint256(200_000));
         require(gateway != address(0) && vkey != bytes32(0), "gateway/vkey required");
+        require(maxTotalInputsRaw <= type(uint64).max, "input capacity too large");
 
         vm.startBroadcast(_privateKey);
 
         EmptyLaneAccumulator emptyAcc = new EmptyLaneAccumulator();
-        AnchorRegistry anchorRegistry = new AnchorRegistry(registrar);
+        // The require above proves this deployment parameter fits without truncation.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        AnchorRegistry anchorRegistry = new AnchorRegistry(registrar, uint64(maxTotalInputsRaw));
         SP1JournalVerifier verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
         MerkleSnapshot snapshot = new MerkleSnapshot(
             IZkVerifier(address(verifier)),
@@ -63,6 +68,7 @@ contract DeployHypercertsInstance is Common {
             operational
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(anchorRegistry)));
+        anchorRegistry.bindSnapshot(address(snapshot));
         // Only this snapshot's trigger() may mint checkpoints (issue #10). It matters more on a
         // lane-2-only instance than anywhere else: lane 1 is constant (0, 0), so the checkpoint id
         // is the ONLY thing separating one epoch's inputs from another's.
@@ -94,12 +100,14 @@ contract DeployHypercertsInstance is Common {
 
         console.log("EmptyLaneAccumulator:", address(emptyAcc));
         console.log("AnchorRegistry:      ", address(anchorRegistry));
+        console.log("Max total inputs:    ", maxTotalInputsRaw);
         console.log("SP1JournalVerifier:  ", address(verifier));
         console.log("MerkleSnapshot:      ", address(snapshot));
 
         string memory _json = "json";
         _json.serialize("empty_lane_accumulator", Strings.toChecksumHexString(address(emptyAcc)));
         _json.serialize("anchor_registry", Strings.toChecksumHexString(address(anchorRegistry)));
+        _json.serialize("max_total_inputs", maxTotalInputsRaw);
         _json.serialize("zk_verifier", Strings.toChecksumHexString(address(verifier)));
         string memory out = _json.serialize("merkle_snapshot", Strings.toChecksumHexString(address(snapshot)));
         vm.writeFile(string.concat(root, "/.docker/hypercerts_instance_", outLabel, "_deploy.json"), out);

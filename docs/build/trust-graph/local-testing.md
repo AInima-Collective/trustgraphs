@@ -46,7 +46,7 @@ What it does (`test/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
    `SP1JournalVerifier` + `MerkleSnapshot` behind a `MockSP1Gateway`, and lands `submitProof` /
    `submitSignerProof` (the Safe's owners actually rotate). Only the SNARK check itself is mocked;
    journal binding, vkey pinning, and the write paths are production code.
-3. **Two-lane (journal v2)** — deploys `AnchorRegistry`, an attester builds + anchors a signed
+3. **Two-lane (journal v3)** — deploys `AnchorRegistry`, an attester builds + anchors a signed
    envelope-0 chained log, a second node anchors and **withholds** its data, `trigger()`
    checkpoints both lanes, and one proof lands lane-1 EAS edges + lane-2 offchain edges in a
    single journal — with the withheld head degraded via rule Φ and committed in `skippedDigest`.

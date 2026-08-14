@@ -5,8 +5,25 @@
 export const anchorRegistryAbi = [
   {
     type: 'constructor',
-    inputs: [{ name: 'admin', internalType: 'address', type: 'address' }],
+    inputs: [
+      { name: 'admin', internalType: 'address', type: 'address' },
+      { name: '_maxTotalInputs', internalType: 'uint64', type: 'uint64' },
+    ],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'ABSOLUTE_MAX_TOTAL_INPUTS',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'ANCHORER_ROLE',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -66,6 +83,20 @@ export const anchorRegistryAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '_snapshot', internalType: 'address', type: 'address' }],
+    name: 'bindSnapshot',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'binder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'role', internalType: 'bytes32', type: 'bytes32' }],
     name: 'getRoleAdmin',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
@@ -96,6 +127,13 @@ export const anchorRegistryAbi = [
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'lastCount',
     outputs: [{ name: 'count', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'maxTotalInputs',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -155,6 +193,19 @@ export const anchorRegistryAbi = [
     name: 'revokeRole',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'snapshot',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract IAnchorRegistrySnapshotView',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -287,6 +338,31 @@ export const anchorRegistryAbi = [
     ],
     name: 'RoleRevoked',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'snapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'accumulator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'maxTotalInputs',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'SnapshotBound',
+  },
   { type: 'error', inputs: [], name: 'AccessControlBadConfirmation' },
   {
     type: 'error',
@@ -320,8 +396,45 @@ export const anchorRegistryAbi = [
   },
   {
     type: 'error',
+    inputs: [
+      { name: 'leafCount', internalType: 'uint64', type: 'uint64' },
+      { name: 'anchorCount', internalType: 'uint64', type: 'uint64' },
+      { name: 'maxTotalInputs', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'InputCapacityExceeded',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'proposed', internalType: 'uint64', type: 'uint64' },
+      { name: 'absoluteMaximum', internalType: 'uint64', type: 'uint64' },
+    ],
+    name: 'InvalidInputCapacity',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotBinder',
+  },
+  {
+    type: 'error',
     inputs: [{ name: 'nodeId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'NotRegistered',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'snapshot', internalType: 'address', type: 'address' }],
+    name: 'SnapshotAlreadyBound',
+  },
+  { type: 'error', inputs: [], name: 'SnapshotNotBound' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+      { name: 'expected', internalType: 'address', type: 'address' },
+      { name: 'actual', internalType: 'address', type: 'address' },
+    ],
+    name: 'SnapshotRegistryMismatch',
   },
   {
     type: 'error',
@@ -340,6 +453,7 @@ export const anchorRegistryAbi = [
     ],
     name: 'WrongNodeId',
   },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5009,6 +5123,13 @@ export const merkleSnapshotAbi = [
       },
     ],
     name: 'AccumulatorRotationLocked',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointCount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'AnchorRegistryRotationLocked',
   },
   {
     type: 'error',

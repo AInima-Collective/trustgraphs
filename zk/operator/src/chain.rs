@@ -110,6 +110,7 @@ sol! {
     /// `AnchorRegistry`.
     function anchorAcc() external view returns (bytes32);
     function anchorCount() external view returns (uint64);
+    function maxTotalInputs() external view returns (uint64);
 
     /// `TrustgraphsFactory`.
     function EAS() external view returns (address);
@@ -676,6 +677,9 @@ pub struct SnapshotView {
     pub instance_domain: B256,
     pub checkpoints: Vec<CheckpointRef>,
     pub live: Commitments,
+    /// Present on capacity-bounded AnchorRegistry deployments. A legacy lane-2 implementation may
+    /// expose only `anchorAcc`/`anchorCount`, in which case the operator uses its global ceiling.
+    pub input_capacity: Option<u64>,
 }
 
 /// The chain facts that bind one landed checkpoint to the bytes a repair command reconstructs.
@@ -801,6 +805,17 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
         let n = rpc.eth_call(anchor_registry, anchorCountCall {}.abi_encode())?;
         (word32(&a, "anchorAcc")?, word_u64(&n, "anchorCount")?)
     };
+    let input_capacity = if anchor_registry == Address::ZERO {
+        None
+    } else {
+        // Legacy registries and ContributionResolver expose the checkpoint words but not the new
+        // immutable ingress ceiling. Keep them operable at the global limit; a malformed response
+        // likewise cannot kill every scheduler tick.
+        rpc.eth_call(anchor_registry, maxTotalInputsCall {}.abi_encode())
+            .ok()
+            .and_then(|ret| word_u64(&ret, "maxTotalInputs").ok())
+            .filter(|capacity| *capacity > 0)
+    };
 
     Ok(SnapshotView {
         params_hash,
@@ -818,6 +833,7 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
             anchor_acc: live_anchor_acc,
             anchor_count: live_anchor_count,
         },
+        input_capacity,
     })
 }
 

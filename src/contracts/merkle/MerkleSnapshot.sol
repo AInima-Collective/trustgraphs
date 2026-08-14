@@ -264,6 +264,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
     ///         inputs "the graph" means, exactly like the accumulator knob).
     function setAnchorRegistry(IAnchorRegistry _anchorRegistry) external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (_anchorRegistry == anchorRegistry) {
+            emit AnchorRegistryUpdated(address(_anchorRegistry));
+            return;
+        }
+        if (hasCheckpoints()) revert AnchorRegistryRotationLocked(nextCheckpointId);
         anchorRegistry = _anchorRegistry;
         emit AnchorRegistryUpdated(address(_anchorRegistry));
     }
