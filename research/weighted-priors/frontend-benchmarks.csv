@@ -1,0 +1,2 @@
+measured_at,runtime,host_class,count,iterations,scope,elapsed_ms,synchronous_target_ms,ux_policy
+2026-08-14,Node 22.23.1 V8,Linux aarch64 repository container,2048,40,parse+canonicalize+normalize+merkle+exact_day_zero_preview,233.448,100,async_worker_progress_cancel

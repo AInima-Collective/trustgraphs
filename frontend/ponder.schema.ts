@@ -345,6 +345,102 @@ export const contributionsParameterVersion = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+       ISOLATED WEIGHTED-PRIOR CATALOG AND VERSION HISTORY
+//////////////////////////////////////////////////////////////*/
+
+export const weightedPriorInstance = onchainTable(
+  'weighted_prior_instance',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    chainId: t.text().notNull(),
+    factory: t.hex().notNull(),
+    controller: t.hex(),
+    creator: t.hex().notNull(),
+    admin: t.hex().notNull(),
+    name: t.text().notNull(),
+    metadataURI: t.text().notNull(),
+    resolver: t.hex().notNull(),
+    schemaUid: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    distributor: t.hex(),
+    distributorToken: t.hex(),
+    epochLength: t.bigint().notNull(),
+    currentVersion: t.bigint().notNull(),
+    currentParamsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    metadataDigest: t.hex().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    factoryIdx: index().on(t.factory),
+    controllerIdx: index().on(t.controller),
+    snapshotIdx: index().on(t.snapshot),
+    resolverIdx: index().on(t.resolver),
+  })
+)
+
+export const weightedPriorVersion = onchainTable(
+  'weighted_prior_version',
+  (t) => ({
+    id: t.text().primaryKey(), // `${instanceId}-${version}`
+    instanceId: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    status: t.text().notNull(), // pending | active | superseded | cancelled | inconsistent
+    paramsHash: t.hex().notNull(),
+    previousParamsHash: t.hex(),
+    params: t.json().notNull(),
+    proposalId: t.hex(),
+    priorRoot: t.hex().notNull(),
+    priorCount: t.integer().notNull(),
+    manifestSha256: t.hex().notNull(),
+    manifestCid: t.text().notNull(),
+    metadataDigest: t.hex().notNull(),
+    readyAt: t.bigint(),
+    proposedBlock: t.bigint().notNull(),
+    proposedTimestamp: t.bigint().notNull(),
+    proposedTxHash: t.hex().notNull(),
+    activatedBlock: t.bigint(),
+    activatedTimestamp: t.bigint(),
+    activatedTxHash: t.hex(),
+    firstCheckpoint: t.bigint(),
+    firstCheckpointBlock: t.bigint(),
+    firstCheckpointTimestamp: t.bigint(),
+    firstCheckpointTxHash: t.hex(),
+    availability: t.text().notNull(), // available | degraded | unavailable
+    provenance: t.text().notNull(), // cache | mirror | transaction | unavailable
+    sourceTxHash: t.hex().notNull(),
+    manifestBytes: t.hex(),
+    availabilityError: t.text(),
+    verifiedAt: t.bigint(),
+  }),
+  (t) => ({
+    instanceVersionIdx: index().on(t.instanceId, t.version),
+    instanceStatusIdx: index().on(t.instanceId, t.status),
+    paramsHashIdx: index().on(t.instanceId, t.paramsHash),
+    availabilityIdx: index().on(t.availability),
+  })
+)
+
+export const weightedPriorEntry = onchainTable(
+  'weighted_prior_entry',
+  (t) => ({
+    id: t.text().primaryKey(), // `${instanceId}-${version}-${position}`
+    instanceId: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    position: t.integer().notNull(),
+    account: t.hex().notNull(),
+    normalizedWeight: t.bigint().notNull(),
+  }),
+  (t) => ({
+    versionPositionIdx: index().on(t.instanceId, t.version, t.position),
+    accountIdx: index().on(t.account),
+  })
+)
+
 export const merkleSnapshot = onchainTable(
   'merkle_snapshot',
   (t) => ({

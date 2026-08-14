@@ -19,6 +19,7 @@ cd ../../.. && cargo run --release --manifest-path zk/prover/Cargo.toml \
 forge script script/research/WeightedPriorGas.s.sol:WeightedPriorGas \
   --sig 'run(uint256)' 2048 -vv
 pnpm exec tsx research/weighted-priors/benchmark-client.ts
+cd frontend && pnpm test
 ```
 
 The research script above preserves the original architecture spike. The promoted production
@@ -31,6 +32,13 @@ forge test --match-path test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
 forge test --match-path test/unit/factory/WeightedTrustgraphsFactory.t.sol
 forge build --sizes
 ```
+
+The frontend production importer runs the #52 fixture plus its CSV/JSON, ENS, error-boundary, and
+2,048-entry preview gates inside `pnpm test`. Its current CI-class measurement is recorded in
+[`frontend-benchmarks.csv`](./frontend-benchmarks.csv). Because the exact production path exceeds
+the 100 ms synchronous target on that host, the UI always uses a Web Worker with progress and
+cancel controls in supported Chrome and Firefox; correctness and usability do not depend on a
+browser-specific timing pass.
 
 On 2026-08-14, the production 2,048-row `proposePrior` path measured 3,579,477 execution gas and
 448,484 calldata gas. Adding 21,000 intrinsic gas gives a 4,048,961-gas L1 upper bound. This is the

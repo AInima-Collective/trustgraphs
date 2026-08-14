@@ -66,6 +66,13 @@ try {
     verifier: signerVerifierDeployment.zk_verifier ?? '',
     programVKey: signerVerifierDeployment.program_vkey ?? '',
   }
+  // The weighted lane uses an isolated hand-audited ABI in its workspace. Keeping this address
+  // outside the generated binary contract map also lets older deployments offer import/export
+  // without pretending that weighted signing is available.
+  configOutput.weightedFactory =
+    deployment.weightedFactory?.weighted_factory ||
+    process.env.WEIGHTED_FACTORY_ADDRESS ||
+    ''
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {

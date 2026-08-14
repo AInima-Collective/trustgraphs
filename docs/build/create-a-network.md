@@ -20,6 +20,12 @@ Program context: [`../concepts/networks-and-programs.md`](../concepts/networks-a
 the factory is what turns "adding an instance costs only a deployment" into "adding an instance
 costs only a transaction."
 
+For explicit, non-uniform starting shares, use the separate
+[`/create/weighted`](/create/weighted) workspace and the
+[weighted-prior runbook](./weighted-prior/runbook.md). That path creates a
+`trust-graph-weighted` instance with different consensus semantics; it does not mutate or migrate a
+binary-seed instance in place.
+
 ## 1. The create call
 
 `TrustgraphsFactory.createInstance` is the canonical deployment and catalog seam

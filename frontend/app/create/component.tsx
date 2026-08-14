@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { Hex, zeroAddress } from 'viem'
 import { useAccount, useChainId, useReadContract, useSwitchChain } from 'wagmi'
 
-import { Button } from '@/components/Button'
+import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
@@ -156,6 +156,24 @@ export const CreateNetworkWizard = () => {
     setStep(1)
   }
 
+  const weightedWorkspaceCard = (
+    <Card type="accent" size="md" className="space-y-3">
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium">
+          Need exact weighted starting shares?
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Use the weighted-prior workspace to import CSV or JSON, preview
+          concentration and day-zero scores, create a separate weighted
+          instance, or review a timelocked rotation.
+        </p>
+      </div>
+      <ButtonLink href="/create/weighted" variant="outline" size="sm">
+        Open weighted-prior workspace
+      </ButtonLink>
+    </Card>
+  )
+
   if (created) {
     return <SuccessStep created={created} />
   }
@@ -164,6 +182,7 @@ export const CreateNetworkWizard = () => {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl">Create a network</h1>
+        {weightedWorkspaceCard}
         <Card type="outline" size="md">
           <p className="text-sm">
             Networks cannot be created on {getTargetChainConfig().name} yet.
@@ -179,6 +198,8 @@ export const CreateNetworkWizard = () => {
     <div className="space-y-8 max-w-3xl">
       <div className="space-y-4">
         <h1 className="text-2xl">Create a network</h1>
+
+        {weightedWorkspaceCard}
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
           {STEPS.map((label, index) => (
