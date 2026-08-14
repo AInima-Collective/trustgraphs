@@ -766,6 +766,16 @@ export const ponderQueryFns = {
         orderBy: (t, { desc }) => desc(t.timestamp),
         limit: options.limit ?? 100,
       }),
+  getGovVoteDelegate:
+    (options: { address: Hex; principal: Hex }) =>
+    (db: Client<ResolvedSchema>['db']) =>
+      db.query.merkleGovVoteDelegate.findFirst({
+        where: (t, { and, eq }) =>
+          and(
+            eq(t.module, options.address),
+            eq(t.principal, options.principal)
+          ),
+      }),
   getProofSubmission:
     (options: { snapshot: Hex; root: Hex }) =>
     (db: Client<ResolvedSchema>['db']) =>

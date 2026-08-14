@@ -17,8 +17,9 @@ measurements) also live in `research/` — they are not product documentation.
   [algorithm spec](./concepts/algorithm.md).
 - [`build/`](./build/) — for developers. Leads with [creating a network](./build/create-a-network.md)
   and [integrating scores](./build/integrate-scores.md); the advanced pages
-  ([run a prover](./build/run-a-prover.md), [production](./build/production.md),
-  [add a program](./build/add-a-program.md)) and the per-program directories
+  ([run a prover](./build/run-a-prover.md), [run an agent](./build/run-an-agent.md),
+  [production](./build/production.md), [add a program](./build/add-a-program.md)) and the
+  per-program directories
   (`trust-graph/`, `signer-sync/`, `hypercerts/`, `contributions/`) cover operating the
   machinery yourself.
 - [`verify/`](./verify/) — check the work: [reproduce an epoch from public data](./verify/reproduce-an-epoch.md),
@@ -35,6 +36,7 @@ measurements) also live in `research/` — they are not product documentation.
 | read scores from my app or contract | [`build/integrate-scores.md`](./build/integrate-scores.md) |
 | run everything locally, end to end | [`build/setup.md`](./build/setup.md) → [`build/quickstart.md`](./build/quickstart.md) |
 | run the proving daemon | [`build/run-a-prover.md`](./build/run-a-prover.md) |
+| delegate upkeep, voting, or human-signed EAS relay | [`build/run-an-agent.md`](./build/run-an-agent.md) |
 | deploy to a real chain | [`build/production.md`](./build/production.md) |
 | check the system's claims for myself | [`verify/`](./verify/) |
 

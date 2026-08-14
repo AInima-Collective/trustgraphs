@@ -802,6 +802,7 @@ export const merkleGovModuleProposal = onchainTable(
     cancelled: t.boolean().notNull(),
     merkleRoot: t.hex().notNull(),
     totalVotingPower: t.bigint().notNull(),
+    quorumFraction: t.bigint().notNull(),
     // Actions stored as JSON array: [{target, value, data, operation}]
     actions: t.json().notNull(),
     blockNumber: t.bigint().notNull(),
@@ -829,8 +830,21 @@ export const merkleGovModuleVote = onchainTable(
     voter: t.hex().notNull(),
     voteType: t.integer().notNull(), // 0 = No, 1 = Yes, 2 = Abstain
     votingPower: t.bigint().notNull(),
+    castBy: t.hex().notNull(), // principal for a direct/final vote, agent for a delegated vote
+    delegated: t.boolean().notNull(), // true only while the delegate's vote remains provisional
+    delegate: t.hex(), // original delegate, retained after the principal overrides
+    reason: t.text(), // event-only delegate rationale
+    overridden: t.boolean().notNull(),
     blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
     timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    overrideBlockNumber: t.bigint(),
+    overrideTransactionIndex: t.integer(),
+    overrideLogIndex: t.integer(),
+    overrideTimestamp: t.bigint(),
+    overrideTxHash: t.hex(),
   }),
   (t) => ({
     pk: primaryKey({ columns: [t.module, t.proposalId, t.voter] }),
@@ -840,6 +854,56 @@ export const merkleGovModuleVote = onchainTable(
     voteTypeIdx: index().on(t.voteType),
     blockNumberIdx: index().on(t.blockNumber),
     timestampIdx: index().on(t.timestamp),
+  })
+)
+
+/** Current one-delegate-per-principal assignment. Zero address means explicitly revoked. */
+export const merkleGovVoteDelegate = onchainTable(
+  'merkle_gov_vote_delegate',
+  (t) => ({
+    module: t.hex().notNull(),
+    principal: t.hex().notNull(),
+    delegate: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.module, t.principal] }),
+    moduleIdx: index().on(t.module),
+    principalIdx: index().on(t.principal),
+    delegateIdx: index().on(t.delegate),
+  })
+)
+
+/** Append-only delegation history used as the assignment/revocation receipt timeline. */
+export const merkleGovVoteDelegationEvent = onchainTable(
+  'merkle_gov_vote_delegation_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    module: t.hex().notNull(),
+    principal: t.hex().notNull(),
+    previousDelegate: t.hex().notNull(),
+    delegate: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    moduleIdx: index().on(t.module),
+    principalIdx: index().on(t.principal),
+    delegateIdx: index().on(t.delegate),
+    orderIdx: index().on(
+      t.module,
+      t.principal,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
   })
 )
 

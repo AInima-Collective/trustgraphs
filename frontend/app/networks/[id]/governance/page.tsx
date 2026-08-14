@@ -12,6 +12,7 @@ import { CreateProposalForm } from '@/components/CreateProposalForm'
 import { Modal } from '@/components/Modal'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
+import { VoteDelegationPanel } from '@/components/VoteDelegationPanel'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   ProposalAction,
@@ -106,7 +107,7 @@ const ResultBar = ({ core }: { core: ProposalCore }) => {
 
 function GovernancePageContent() {
   const router = useRouter()
-  const { isConnected } = useAccount()
+  const { address, isConnected } = useAccount()
   const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
   const createModal = useRouteModal('new')
@@ -136,6 +137,11 @@ function GovernancePageContent() {
     safeBalance,
     quorum,
     votingPeriod,
+    currentVoteDelegate,
+    isLoadingVoteDelegate,
+    isSettingVoteDelegate,
+    setVoteDelegate,
+    merkleGovAddress,
   } = useGovernance()
 
   const proposals = getAllProposals()
@@ -265,6 +271,17 @@ function GovernancePageContent() {
           Voting rules and contracts
         </Link>
       </div>
+
+      {merkleGovAddress && (
+        <VoteDelegationPanel
+          networkId={network.id}
+          module={merkleGovAddress}
+          principal={address}
+          currentDelegate={currentVoteDelegate}
+          isLoading={isLoadingVoteDelegate || isSettingVoteDelegate}
+          onSetDelegate={setVoteDelegate}
+        />
+      )}
 
       {error && (
         <div className="border border-destructive/50 bg-destructive/10 p-3 rounded-md">

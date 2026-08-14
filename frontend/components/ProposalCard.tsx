@@ -25,6 +25,11 @@ export interface ProposalVoteRow {
   voter: string
   voteType: number
   votingPower: bigint
+  castBy?: string
+  delegated?: boolean
+  delegate?: string | null
+  reason?: string | null
+  overridden?: boolean
 }
 
 interface ProposalCardProps {
@@ -36,6 +41,10 @@ interface ProposalCardProps {
   currentBlockNumber?: bigint
   userVotingPower?: string
   userVote?: VoteType | null
+  userVoteDelegated?: boolean
+  userVoteDelegate?: string | null
+  userVoteReason?: string | null
+  userVoteOverridden?: boolean
   onVote?: (proposalId: number, support: VoteType) => Promise<string | null>
   onExecute?: (proposalId: number) => Promise<string | null>
   isLoading?: boolean
@@ -74,6 +83,10 @@ export function ProposalCard({
   currentBlockNumber,
   userVotingPower,
   userVote,
+  userVoteDelegated = false,
+  userVoteDelegate,
+  userVoteReason,
+  userVoteOverridden = false,
   onVote,
   onExecute,
   isLoading = false,
@@ -89,7 +102,10 @@ export function ProposalCard({
   const isPassed = state === ProposalState.Passed
   const hasVoted = userVote !== undefined && userVote !== null
   const canVote =
-    isActive && userVotingPower && Number(userVotingPower) > 0 && !hasVoted
+    isActive &&
+    userVotingPower &&
+    Number(userVotingPower) > 0 &&
+    (!hasVoted || userVoteDelegated)
 
   const totalVotes =
     Number(proposal.yesVotes) +
@@ -105,9 +121,10 @@ export function ProposalCard({
   // Quorum: participation measured against the network's total voting power
   // at the proposal's snapshot, not against votes cast.
   const quorumNeeded = quorum * Number(proposal.totalVotingPower)
+  const decisiveVotes = Number(proposal.yesVotes) + Number(proposal.noVotes)
   const quorumProgress =
-    quorumNeeded > 0 ? Math.min((totalVotes / quorumNeeded) * 100, 100) : 0
-  const quorumReached = quorumNeeded > 0 && totalVotes >= quorumNeeded
+    quorumNeeded > 0 ? Math.min((decisiveVotes / quorumNeeded) * 100, 100) : 0
+  const quorumReached = quorumNeeded > 0 && decisiveVotes >= quorumNeeded
   const majorityFor = Number(proposal.yesVotes) > Number(proposal.noVotes)
 
   const timing =
@@ -266,7 +283,7 @@ export function ProposalCard({
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">
-                Quorum: {formatBigNumber(totalVotes / 1e18)} of{' '}
+                Quorum: {formatBigNumber(decisiveVotes / 1e18)} of{' '}
                 {formatBigNumber(quorumNeeded / 1e18)} voting power needed
               </span>
               <span
@@ -308,9 +325,26 @@ export function ProposalCard({
             {votes.map((vote) => (
               <div
                 key={vote.voter}
-                className="flex items-center justify-between gap-3 text-xs"
+                className="flex items-start justify-between gap-3 text-xs"
               >
-                <Address textClassName="text-xs" address={vote.voter} />
+                <div className="space-y-1">
+                  <Address textClassName="text-xs" address={vote.voter} />
+                  {vote.delegate && (
+                    <div className="text-muted-foreground">
+                      {vote.overridden ? 'Originally cast' : 'Cast'} by agent{' '}
+                      <Address
+                        textClassName="text-xs"
+                        address={vote.delegate}
+                      />
+                      {vote.overridden ? ' · overruled by principal' : ''}
+                    </div>
+                  )}
+                  {vote.reason && (
+                    <div className="max-w-lg text-muted-foreground">
+                      “{vote.reason}”
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-3">
                   <span className="text-muted-foreground tabular-nums">
                     {formatBigNumber(vote.votingPower, 18)}
@@ -336,7 +370,10 @@ export function ProposalCard({
               className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md border font-medium ${voteTypeStyles(userVote)}`}
             >
               <Check className="w-4 h-4" />
-              <span>Voted {voteTypeText(userVote)}</span>
+              <span>
+                {userVoteDelegated ? 'Agent intends' : 'Voted'}{' '}
+                {voteTypeText(userVote)}
+              </span>
             </div>
             {userVotingPower && (
               <span className="text-xs text-muted-foreground">
@@ -344,14 +381,34 @@ export function ProposalCard({
               </span>
             )}
           </div>
+          {userVoteDelegated && userVoteDelegate && (
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div>
+                This vote is provisional. Agent{' '}
+                <Address textClassName="text-xs" address={userVoteDelegate} />{' '}
+                cast it; your own vote below replaces it and becomes final.
+              </div>
+              {userVoteReason && <div>Agent rationale: “{userVoteReason}”</div>}
+            </div>
+          )}
+          {userVoteOverridden && (
+            <div className="text-xs text-muted-foreground">
+              You overruled the agent. This vote is final.
+            </div>
+          )}
         </div>
       )}
 
       {/* Cast a vote */}
       {canVote && (
         <div className="border-t border-border pt-6 space-y-4">
-          <h3 className="text-sm font-bold text-foreground">Cast your vote</h3>
+          <h3 className="text-sm font-bold text-foreground">
+            {userVoteDelegated ? 'Overrule your agent' : 'Cast your vote'}
+          </h3>
           <div className="text-xs text-muted-foreground">
+            {userVoteDelegated
+              ? 'Your choice replaces the provisional agent vote. '
+              : ''}
             Your voting power: {formatBigNumber(BigInt(userVotingPower!), 18)}
           </div>
           <VoteButtons
