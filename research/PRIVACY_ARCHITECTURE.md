@@ -1,9 +1,75 @@
 # Private trustgraphs Architecture
 
-- **Status:** Research recommendation
-- **Date:** 2026-08-12
+- **Status:** Accepted V1 research decision; implementation remains in owned child issues
+- **Date:** 2026-08-14
 - **Scope:** Private vouches, private scores, private membership, and coercion minimization
 - **Supersedes:** [`research/archive/PRIVACY_ARCHITECTURE.md`](archive/PRIVACY_ARCHITECTURE.md)
+
+## Accepted decision record
+
+This section resolves the product and architecture questions in issue #37. The machine-readable
+test oracle is [`privacy/pilot-policy.json`](privacy/pilot-policy.json). The decisions below are
+normative; changing one requires a new private-profile version and a coordinated update to that
+artifact. This is an architecture selection, not a production privacy or security assertion.
+
+| Boundary                        | Accepted V1 research decision                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Profile and claim               | A separate `private-epoch-tee-pilot-v1` profile. Claim only coercion minimization and receipt ambiguity against public observers, ordinary members, and remote bribers without endpoint access. Do not claim anonymity, receipt-freeness, coercion resistance, or that no party can see the graph.                                                                                                                                                                 |
+| Membership and issuer knowledge | A governance-appointed eligibility issuer may know that a person enrolled and must enforce one credential per eligible member. Blind issuance must prevent it from learning the member secret, hidden graph node, later presentations, vouches, band, or ballots. Pilot membership is therefore hidden from the public, not from the issuer.                                                                                                                       |
+| Private target resolution       | The target privately supplies an authenticated, randomized, one-epoch target card. It proves current membership and contains an opaque handle that only confidential state resolves to the persistent hidden node. V1 has no public wallet or commitment directory and no public lookup.                                                                                                                                                                           |
+| Vouch state and comments        | The target must already be a member. One positive `1..1,000,000` record per voucher/target pair may be replaced or explicitly revoked; zero and negative values are invalid. Free text is absent from the V1 protocol and scoring state, not merely encrypted beside it.                                                                                                                                                                                           |
+| Member output                   | Publish no exact score or plaintext score list and never show an exact score to the member. Deliver one encrypted epoch-scoped band credential: `ineligible/member/established/steward`, with consumer weights `0/1/2/4`. Proof statements and thresholds are fixed by policy and purpose-bound; arbitrary score queries are forbidden.                                                                                                                            |
+| Private scoring                 | A separate fixed-point PageRank program runs exactly 100 iterations at damping `0.85`, never early-stops, and disables seed-distance BFS and `trust_decay`. This is not numerically interchangeable with the public profile. Membership admission, not hidden distance decay, is the pilot's explicit Sybil boundary.                                                                                                                                              |
+| Pilot compute                   | TEE first: two reproducibly built, non-debug AWS Nitro Enclave scorers in distinct accounts/regions, with 2-of-3 attestation-gated epoch-key guardians and mandatory two-replica root agreement. The finalized onchain prior-state commitment and monotonic epoch prevent rollback; divergence halts. AWS, Nitro PKI/hardware, the measured application, and threshold guardians remain trusted.                                                                   |
+| MPC target                      | Four-party malicious-secure honest-majority MPC, secure only for at most one corrupted party and requiring at least three online parties. Two-party collusion is outside the claim. There are **zero confirmed independent operator candidates today**, so MPC is not pilot-eligible; #72 requires four written, conflict-disclosed commitments before a proceed decision.                                                                                         |
+| Public metadata                 | Reveal the profile/network, epoch and fixed cadence, padded capacity class, fixed-size batch/DA commitments, membership/prior/blinded-output roots, attestation/proof identity, abort/recovery/version events, fixed ballot-slot count, and final governance aggregate or `insufficient cohort`. Hide exact membership/activity/turnout, endpoints, values, status, bands, retrieval links, real-versus-mask classification, and cross-purpose links.              |
+| Capacity/padding                | Select one paired member/update class: `64/256`, `256/1,024`, or `1,024/4,096`. Every epoch uses fixed-width ciphertexts and pads to both selected ceilings. Overflow fails before admission or queues for the next epoch; it is never silently omitted. Exact byte width and fixed block cadence are versioned implementation parameters selected by #70, not discretion to vary per message.                                                                     |
+| First consumer                  | A non-binding local/testnet unlinkable score-band governance poll, not rewards or access control. Use weights `0/1/2/4`, one proposal-scoped nullifier enforced inside private tally state, fixed indistinguishable ballot/mask slots, no intermediate tally, and a public final per-option aggregate. Public state exposes only the nullifier root. Below 16 real ballots publish only `insufficient cohort`. Binding/value-bearing use requires external review. |
+
+### Public-trace failure oracle
+
+The privacy claim fails if any ordinary public trace or supported API reveals a forbidden field,
+even when the ciphertext and score arithmetic remain secure. #70 must capture and machine-check the
+trace across these boundaries:
+
+| Boundary         | Allowed observation                                                                   | A failing observation                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Enrollment       | Padded membership-root transition, capacity class, epoch                              | Wallet/member link, hidden node, exact member count, reusable presentation handle               |
+| Update admission | Fixed-width opaque slots, fixed padded count, batch/DA roots, forced-inclusion timing | Voucher or target, value/status/comment, real update count, real-versus-cover marker            |
+| Computation      | Program/measurement, checkpoint, prior/output commitments, agreement/abort            | Plaintext logs/witness, unblinded leaf, convergence timing, score or member-specific error      |
+| Package delivery | Fixed padded store and fixed retrieval protocol                                       | Member-to-package/IP/fetch link, exact band or score in public telemetry                        |
+| Governance use   | Fixed slot schedule, opaque proposal tags, final aggregate or `insufficient cohort`   | Exact real turnout, ballot/mask distinction, identity/band/choice, cross-purpose nullifier link |
+| Recovery         | Versioned key/committee/measurement event and bounded outage                          | Old-epoch replay, plaintext backup, silent rollback, recovery that changes an accepted result   |
+
+The threat model excludes supervised or compromised endpoints, voluntary secret/randomness
+disclosure, a malicious measured application or TEE platform, threshold-guardian collusion, and a
+relay/padding deployment that violates policy. Those are displayed non-guarantees, not test
+exceptions that permit stronger marketing language.
+
+### Owned and ordered implementation split
+
+All selected spikes have measurable exit gates and are assigned to `@JakeHartnell`; assignment is
+the recorded owner acceptance for this research phase.
+
+1. **#70 — local protocol and leakage oracle.** Shared fixture, mock blind admission, private target
+   cards, encrypted/padded update capture, fixed scorer, band proof, recovery, and public-trace test.
+2. **#71 — replicated TEE scorer.** Exact #70 fixture under attestation, threshold key release,
+   rollback protection, replica agreement, recovery, and capacity measurements; depends on #70.
+3. **#72 — four-party active-MPC benchmark and operator recruitment.** Exact reference parity,
+   malicious/offline cases, communication/cost ceilings, and four independent written candidate
+   commitments; depends on #70 and may conclude no-go.
+4. **#73 — Commonware committee shell.** Four-node ordering, encrypted recovery, DKG/resharing,
+   attributable votes/certificate, and a dummy MPC adapter without a second canonical chain;
+   depends on #70's epoch context.
+5. **#74 — Interfold governance/CRISP experiment.** Bounded band-weighted two-option tally,
+   credential authorization, zero masks, finalization/abort behavior, and leakage/cost measurement;
+   depends on #70's proof statement and oracle, not on private PageRank.
+6. **#75 — first private consumer.** Non-binding unlinkable band-weighted governance using #70,
+   #71, and #74, with cohort suppression, red-team cases, and informed-consent UI.
+
+#71 is the selected pilot path. #72 and #73 evaluate the stronger target in parallel; they do not
+delay the local policy fixture. #74 tests a consumer component and must not be presented as the
+persistent private graph implementation.
 
 ## Executive decision
 
@@ -11,7 +77,7 @@ Trustgraphs should add a **separate private network profile**, not attempt to ma
 
 The recommended design is a **Private Epoch Rollup** with four independently replaceable layers:
 
-1. **Anonymous admission and encrypted ingestion.** Members submit fixed-size, encrypted state updates through relayers. A public accumulator commits to every admitted ciphertext batch without exposing voucher, target, weight, comment, or member address.
+1. **Unlinkable credential admission and encrypted ingestion.** Members submit fixed-size, encrypted state updates through relayers. A public accumulator commits to every admitted ciphertext batch without exposing voucher, target, weight, comment, or member address.
 2. **Confidential epoch computation.** A confidential scorer consumes exactly the checkpointed inputs, maintains the hidden graph, runs a fixed-schedule scoring program, and commits to blinded score records. A TEE-backed implementation is the practical pilot; an actively secure MPC committee is the stronger target.
 3. **Private score presentation.** The public output is only a commitment root and minimal epoch metadata. Members receive private openings or anonymous credentials and prove policy predicates such as `score >= threshold` without disclosing identity or exact score.
 4. **Privacy-compatible consumers.** Governance and rewards must consume anonymous score proofs. The current voting, distribution, and signer-sync contracts re-publish identity or score and therefore cannot be attached unchanged.
@@ -52,14 +118,14 @@ The archived privacy proposal was written for the removed WAVS/Commonware operat
 
 Privacy is not one Boolean property. Product and protocol documentation should state which cells in this matrix are protected.
 
-| Data or property | Public observer / indexer | Another member or target | One compute operator | Sub-threshold committee | Threshold collusion or compromised endpoint |
-|---|---:|---:|---:|---:|---:|
-| Voucher identity and target | Hide | Hide | TEE: sees; MPC: hides | Hide in MPC | Not guaranteed |
-| Voucher value and status | Hide | Hide | TEE: sees; MPC: hides | Hide in MPC | Not guaranteed |
-| Exact score | Hide | Hide by default | TEE: sees; MPC: shared | Hide in MPC | Not guaranteed |
-| Membership-to-wallet link | Hide | Hide | May be avoidable | Hide if issuance is blind | Endpoint/issuer may disclose |
-| Network size and activity | Pad/coarsen | Pad/coarsen | Sees or infers | Committee infers bounded metadata | Not guaranteed |
-| Transferable proof of a vouch | Minimize | Minimize | Protocol-dependent | Protocol-dependent | Strong receipt-freeness not claimed |
+| Data or property              | Public observer / indexer | Another member or target |   One compute operator |           Sub-threshold committee | Threshold collusion or compromised endpoint |
+| ----------------------------- | ------------------------: | -----------------------: | ---------------------: | --------------------------------: | ------------------------------------------: |
+| Voucher identity and target   |                      Hide |                     Hide |  TEE: sees; MPC: hides |                       Hide in MPC |                              Not guaranteed |
+| Voucher value and status      |                      Hide |                     Hide |  TEE: sees; MPC: hides |                       Hide in MPC |                              Not guaranteed |
+| Exact score                   |                      Hide |                     Hide | TEE: sees; MPC: shared |                       Hide in MPC |                              Not guaranteed |
+| Membership-to-wallet link     |                      Hide |                     Hide |                   Hide |         Hide if issuance is blind |                Endpoint/issuer may disclose |
+| Network size and activity     |               Pad/coarsen |              Pad/coarsen |         Sees or infers | Committee infers bounded metadata |                              Not guaranteed |
+| Transferable proof of a vouch |                  Minimize |                 Minimize |     Protocol-dependent |                Protocol-dependent |         Strong receipt-freeness not claimed |
 
 ### Mandatory first release
 
@@ -125,7 +191,10 @@ Suitable building blocks include anonymous group membership proofs such as [Sema
 Important design choices:
 
 - **Private member identifier:** derive an epoch- or network-scoped commitment from a secret; do not use an EVM address as the graph node key.
-- **Target selection:** the sender needs a way to resolve the intended recipient to a private network identifier. A public directory of identity commitments hides the wallet link only if issuance and lookup are unlinkable. An authenticated private directory or OPRF-based lookup may be necessary.
+- **Target selection:** V1 uses a recipient-supplied, randomized private target card over an
+  authenticated out-of-band channel. The card expires after one epoch and carries an opaque handle
+  resolved only inside confidential state. A private directory or OPRF lookup is a later discovery
+  option, not a V1 dependency.
 - **Rate limiting:** use credential counters or scoped nullifiers. A stable public nullifier per voucher-target pair would reveal update linkage, so pair uniqueness is better enforced inside the confidential state unless that leakage is deliberately accepted.
 - **Seeds:** if trusted seeds are private, commit to the seed set and include it in confidential input. Public seed addresses in `params.json` are incompatible with that goal.
 - **Revocation:** publish a versioned revocation accumulator or short-lived epoch credential. Do not make every use linkable to a long-lived revocation handle.
@@ -141,9 +210,8 @@ PrivateVouchUpdate {
   voucher_id       // hidden member commitment
   target_id        // hidden member commitment
   sequence         // monotonic inside private state
-  value            // bounded score/weight
+  value            // canonical integer in 1..1,000,000
   active           // update or revoke
-  optional_note    // preferably omitted from scoring state
   epoch/domain
 }
 ```
@@ -152,7 +220,7 @@ The client encrypts a fixed-size encoding to the epoch compute key and proves, w
 
 - it holds a valid, unrevoked membership credential;
 - the ciphertext encrypts a canonical, bounded update for this network and epoch;
-- the target identifier is well formed and, if policy requires, represents an admitted member;
+- the target identifier is well formed and represents an admitted member;
 - the update respects an anonymous rate limit; and
 - encryption and the public ciphertext commitment are consistent.
 
@@ -177,7 +245,10 @@ EAS supports offchain and private-data patterns, but its own documentation treat
 
 An offchain EAS signature may be retained as an inner authorization format if interoperability is valuable. It must not be the public envelope: a normal signature is a transferable receipt, and public attester/recipient metadata recreates the original problem.
 
-Free-text comments should be removed from global scoring input. If the product retains them, encrypt them separately to an intended reader, make disclosure opt-in, and do not include them in the persistent graph state. Comments are high-risk personal data and are not needed by the current score algorithm.
+Free-text comments are forbidden in the V1 private protocol, including recipient-encrypted sidecars.
+They are high-risk personal data, create a second retention/disclosure system, and are not needed by
+the score algorithm. A later messaging product needs a separate threat model and must not inherit
+private-score branding automatically.
 
 ### 3. Traffic and metadata privacy
 
@@ -213,7 +284,7 @@ Operational requirements are part of the security protocol:
 
 [AWS Nitro Enclaves](https://docs.aws.amazon.com/enclaves/latest/user/) illustrates the attestation model, but TEE trust includes hardware, firmware, vendor PKI, cloud control plane, and side-channel defenses. Recent confidential-computing failures such as AMD's [CVE-2025-54510 bulletin](https://www.amd.com/en/resources/product-security/bulletin/amd-sb-3034.html) and the [Fabricked attack](https://fabricked-attack.github.io/) are reminders not to make one TEE the permanent trust root.
 
-The pilot may generate an SP1 integrity proof *inside* the confidential domain if performance permits. That improves public correctness while preserving input confidentiality from a separate prover. It does not remove the TEE trust unless witness generation and proving are themselves distributed or otherwise confidential.
+The pilot may generate an SP1 integrity proof _inside_ the confidential domain if performance permits. That improves public correctness while preserving input confidentiality from a separate prover. It does not remove the TEE trust unless witness generation and proving are themselves distributed or otherwise confidential.
 
 #### Recommended target: actively secure MPC
 
@@ -239,16 +310,21 @@ Libraries such as [OpenFHE](https://openfhe.org/) are appropriate for workload e
 
 ### 5. Make the scoring program privacy-friendly
 
-The current Rust core is deterministic and fixed point, which is a good base. A private program should nevertheless change several behaviors:
+The current Rust core is deterministic and fixed point, which is a good base. The selected private
+program makes these changes:
 
-- Run a public fixed number of iterations. Data-dependent early stopping leaks convergence and complicates MPC/FHE.
-- Replace or isolate seed-distance BFS and `trust_decay`. Benchmark a fixed-depth propagation or polynomial weighting that has a regular execution schedule.
-- Publish maximum graph capacity, update capacity, and outdegree bounds, then pad within a coarse class.
+- Run exactly 100 iterations at damping `0.85`; data-dependent early stopping is disabled.
+- Disable seed-distance BFS and `trust_decay`. A regular private replacement is future research, not
+  hidden discretion in the pilot.
+- Select one `64/256`, `256/1,024`, or `1,024/4,096` member/update capacity pair and pad to it.
 - Enforce last-write-wins and pair uniqueness inside confidential state.
 - Use hidden node commitments or field elements throughout; do not convert them back to public addresses.
 - Separate scoring from ranking. A public ordering of all members defeats score and membership privacy.
 
-An algorithm-change decision deserves governance review because privacy-friendly scoring may not be numerically identical to the current public profile. Both profiles can coexist under different program/version identifiers.
+This algorithm is deliberately not numerically interchangeable with the public profile. It has a
+separate program/version identity, and membership admission replaces seed-distance decay as the
+pilot's stated Sybil boundary. Reintroducing private decay requires a new algorithm decision and
+cross-profile comparison.
 
 ### 6. Private score output
 
@@ -261,7 +337,7 @@ leaf = Poseidon(
   network_domain,
   epoch,
   member_secret_commitment,
-  score_or_band,
+  score_band,
   policy_version,
   random_blinding
 )
@@ -269,11 +345,9 @@ leaf = Poseidon(
 
 It publishes only the score root, padded capacity class, epoch, program identity, and state-transition proof or attestation. High-entropy identity commitments and per-record blinding prevent dictionary attacks on the root.
 
-Each member privately receives one of:
-
-1. an encrypted Merkle opening and exact score;
-2. an encrypted opening for a coarse score band; or
-3. shares of an anonymous credential issued by the compute committee.
+Each member privately receives one encrypted, epoch-scoped credential/opening for the selected
+coarse band. Neither the public nor the member receives the exact score. The initial bands are
+`ineligible`, `member`, `established`, and `steward`, with consumer weights `0`, `1`, `2`, and `4`.
 
 The member then creates a local proof bound to `(verifier, network, epoch, purpose, challenge, expiry)` that establishes an approved statement:
 
@@ -384,15 +458,15 @@ Commonware is a modular Rust library for specialized distributed systems. Its do
 
 Those capabilities map well to the operational shell around an MPC scorer:
 
-| Private trustgraphs need | Potential Commonware role |
-|---|---|
-| One canonical encrypted input history | BFT consensus over ciphertext-batch commitments and an append-only encrypted journal |
-| Committee communication | Authenticated encrypted peer channels and message dissemination |
-| Dynamic operator set | DKG bootstrap, proactive resharing, and epoch-bound committee reconfiguration |
-| Input/state availability | Storage, coding, resolver, and synchronization primitives for encrypted data |
-| Public epoch certificate | Threshold or attributable committee signature over the exact input checkpoint, program version, prior state, and blinded result root |
-| Reproducible failure testing | Deterministic runtime, simulations, invariants, conformance checks, and deployment tooling |
-| Admission-proof verification | Potential use of its ZK circuit/Bulletproof primitives, subject to a dedicated maturity and performance review |
+| Private trustgraphs need              | Potential Commonware role                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| One canonical encrypted input history | BFT consensus over ciphertext-batch commitments and an append-only encrypted journal                                                 |
+| Committee communication               | Authenticated encrypted peer channels and message dissemination                                                                      |
+| Dynamic operator set                  | DKG bootstrap, proactive resharing, and epoch-bound committee reconfiguration                                                        |
+| Input/state availability              | Storage, coding, resolver, and synchronization primitives for encrypted data                                                         |
+| Public epoch certificate              | Threshold or attributable committee signature over the exact input checkpoint, program version, prior state, and blinded result root |
+| Reproducible failure testing          | Deterministic runtime, simulations, invariants, conformance checks, and deployment tooling                                           |
+| Admission-proof verification          | Potential use of its ZK circuit/Bulletproof primitives, subject to a dedicated maturity and performance review                       |
 
 This could remove a large amount of bespoke distributed-systems engineering from the MPC target. It does not require launching a new sovereign blockchain initially. A Commonware-based committee service can consume Ethereum-finalized private-inbox checkpoints and return a committee certificate or proof to an Ethereum snapshot contract.
 
@@ -453,16 +527,16 @@ Exit gate: Commonware demonstrably reduces committee engineering without weakeni
 
 ## Options considered
 
-| Option | Vouches hidden from public | Hidden from one compute party | Private score delivery | Persistent PageRank fit | Coercion story | Recommendation |
-|---|---:|---:|---:|---:|---:|---|
-| Encrypted/offchain EAS only | Yes, content only; metadata varies | No | No | Poor | Receipt remains | Inner envelope at most |
-| ZK proof with private witness | Yes from verifier | No, prover sees witness | Possible with extra protocol | Integrity fit, not confidentiality | Public proof may be a receipt | Keep for binding/presentation |
-| Single hardened TEE | Yes | No | Yes | Strong pilot fit | Needs separate mechanisms | Pilot |
-| Replicated/threshold-key TEEs | Yes | Partially | Yes | Strong pilot fit | Needs separate mechanisms | Preferred pilot hardening |
-| Active MPC committee | Yes | Yes below threshold | Yes | Plausible with custom implementation | Needs separate mechanisms | Target architecture |
-| Threshold FHE / Interfold E3 | Yes | Yes below threshold | Not in standard public-output flow | Weak current fit | CRISP masking is promising | Bounded experiments |
-| Local credentials only | No global edge computation | Yes | Excellent | Cannot reproduce global PageRank | Better local deniability | Alternative product model |
-| PSI/PIR/ORAM | Specialized only | Specialized | Retrieval only | Not a scorer | None by itself | Components, not architecture |
+| Option                        |         Vouches hidden from public | Hidden from one compute party |             Private score delivery |              Persistent PageRank fit |                Coercion story | Recommendation                |
+| ----------------------------- | ---------------------------------: | ----------------------------: | ---------------------------------: | -----------------------------------: | ----------------------------: | ----------------------------- |
+| Encrypted/offchain EAS only   | Yes, content only; metadata varies |                            No |                                 No |                                 Poor |               Receipt remains | Inner envelope at most        |
+| ZK proof with private witness |                  Yes from verifier |       No, prover sees witness |       Possible with extra protocol |   Integrity fit, not confidentiality | Public proof may be a receipt | Keep for binding/presentation |
+| Single hardened TEE           |                                Yes |                            No |                                Yes |                     Strong pilot fit |     Needs separate mechanisms | Pilot                         |
+| Replicated/threshold-key TEEs |                                Yes |                     Partially |                                Yes |                     Strong pilot fit |     Needs separate mechanisms | Preferred pilot hardening     |
+| Active MPC committee          |                                Yes |           Yes below threshold |                                Yes | Plausible with custom implementation |     Needs separate mechanisms | Target architecture           |
+| Threshold FHE / Interfold E3  |                                Yes |           Yes below threshold | Not in standard public-output flow |                     Weak current fit |    CRISP masking is promising | Bounded experiments           |
+| Local credentials only        |         No global edge computation |                           Yes |                          Excellent |     Cannot reproduce global PageRank |      Better local deniability | Alternative product model     |
+| PSI/PIR/ORAM                  |                   Specialized only |                   Specialized |                     Retrieval only |                         Not a scorer |                None by itself | Components, not architecture  |
 
 ### A simpler alternative worth preserving
 
@@ -472,21 +546,21 @@ If research shows that global confidential PageRank is too costly or fragile, ch
 
 The private profile can reuse concepts, but should have new contracts and program identities.
 
-| Current component | Privacy conflict | Private-profile change |
-|---|---|---|
-| `EASIndexerResolver` | Receives and emits public attester/recipient; only data is hashed in accumulator | Replace with fixed-size encrypted batch inbox and anonymous admission verifier |
-| `AttestationAccumulator` | Fold includes public addresses, UID, time, and data hash | Add ciphertext-batch accumulator over batch root/count/domain/DA commitment |
-| `AnchorRegistry` / lane 2 | Public node, activity, and envelope data; standard factory currently disables lane 2 | Reuse only the idea of an alternate input lane; define a new private schema/profile |
-| `pagerank-core::RawEdge` | Contains address endpoints and raw EAS data | Add hidden field-element node IDs and `PrivateVouchUpdate`; fixed schedule |
-| `reconcile` | Global LWW is correct but over public endpoints | Enforce LWW and uniqueness inside confidential state |
-| `pagerank` | Data-dependent early stop and BFS trust decay | Fixed iteration count; benchmark a regular trust-decay replacement |
-| SP1 host/guest | Host receives the full witness; guest emits all score records for public blob | Run inside confidential domain for pilot or replace state transition with MPC; new journal |
-| `MerkleSnapshot` journal | Binds a public score CID/root and current program semantics | Add `PrivateEpochSnapshot` binding encrypted input checkpoint, prior state, blinded output root, capacity and privacy policy |
-| Score JSON/IPFS | Plaintext account/value list | Publish no plaintext list; store padded per-member encrypted packages |
-| `MerkleGovModule` | Public voter, choice, and exact voting power | Anonymous nullifier + private tally module |
-| `MerkleFundDistributor` | Public account/value proof and transfer | Shielded tier claim and private payout route |
-| Signer sync | Safe owner list is public | Exclude or require explicit public-role consent |
-| Indexer/API | Materializes and serves all scores and events | Index only public epoch commitments, capacity classes, nullifiers, and aggregate outcomes |
+| Current component         | Privacy conflict                                                                     | Private-profile change                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `EASIndexerResolver`      | Receives and emits public attester/recipient; only data is hashed in accumulator     | Replace with fixed-size encrypted batch inbox and anonymous admission verifier                                               |
+| `AttestationAccumulator`  | Fold includes public addresses, UID, time, and data hash                             | Add ciphertext-batch accumulator over batch root/count/domain/DA commitment                                                  |
+| `AnchorRegistry` / lane 2 | Public node, activity, and envelope data; standard factory currently disables lane 2 | Reuse only the idea of an alternate input lane; define a new private schema/profile                                          |
+| `pagerank-core::RawEdge`  | Contains address endpoints and raw EAS data                                          | Add hidden field-element node IDs and `PrivateVouchUpdate`; fixed schedule                                                   |
+| `reconcile`               | Global LWW is correct but over public endpoints                                      | Enforce LWW and uniqueness inside confidential state                                                                         |
+| `pagerank`                | Data-dependent early stop and BFS trust decay                                        | Exactly 100 iterations; disable BFS and trust decay                                                                          |
+| SP1 host/guest            | Host receives the full witness; guest emits all score records for public blob        | Run inside confidential domain for pilot or replace state transition with MPC; new journal                                   |
+| `MerkleSnapshot` journal  | Binds a public score CID/root and current program semantics                          | Add `PrivateEpochSnapshot` binding encrypted input checkpoint, prior state, blinded output root, capacity and privacy policy |
+| Score JSON/IPFS           | Plaintext account/value list                                                         | Publish no plaintext list; store padded per-member encrypted packages                                                        |
+| `MerkleGovModule`         | Public voter, choice, and exact voting power                                         | Anonymous nullifier + private tally module                                                                                   |
+| `MerkleFundDistributor`   | Public account/value proof and transfer                                              | Shielded tier claim and private payout route                                                                                 |
+| Signer sync               | Safe owner list is public                                                            | Exclude or require explicit public-role consent                                                                              |
+| Indexer/API               | Materializes and serves all scores and events                                        | Index only public epoch commitments, capacity classes, opaque fixed slots, and aggregate outcomes                            |
 
 The existing `MerkleSnapshot` proof journal cannot merely be relabeled. Its current guest output, score blob, leaf semantics, and downstream consumers define public behavior. A separate private program, verification key or attested measurement, snapshot contract, params validator, and factory profile make the privacy boundary auditable and prevent accidental connection to public consumers.
 
@@ -505,9 +579,9 @@ Backups should contain only threshold-protected or sealed state. Disaster recove
 
 ## Delivery roadmap
 
-### Phase 0 — resolve product policy before cryptography
+### Phase 0 — resolve product policy before cryptography (**complete**)
 
-Decide and document:
+The accepted decision record and machine-readable policy now fix:
 
 - who may become a member and whether the issuer may know membership;
 - whether a target must be an existing member;
@@ -519,9 +593,14 @@ Decide and document:
 - whether comments are removed or recipient-encrypted outside scoring; and
 - the concrete coercion adversary: remote briber, nearby observer, supervised device, or compromised endpoint.
 
-Deliverable: a testable privacy specification using the guarantee matrix in this report.
+The explicit outcome for MPC operators is a confirmed set of zero, not an invented partnership.
+That makes the four-party target ineligible for the pilot until #72 records four independent,
+conflict-disclosed written commitments. The public-trace oracle turns the guarantee matrix into a
+testable failure condition.
 
 ### Phase 1 — local protocol and leakage prototype
+
+Owned by #70.
 
 Build an end-to-end local prototype with:
 
@@ -530,14 +609,14 @@ Build an end-to-end local prototype with:
 - a ciphertext batch accumulator and forced-inclusion simulation;
 - a private fixed-schedule score computation;
 - blinded score root and encrypted member packages;
-- one `score >= threshold` proof with a purpose nullifier; and
+- one fixed band-predicate proof with a purpose nullifier; and
 - a leakage test that records every public event, size, time, and API response.
 
 Exit gate: no public artifact contains voucher endpoints/value/comment, member-wallet link, exact score, or unblinded score leaf.
 
 ### Phase 2 — parallel compute spikes
 
-Run the same bounded graph workload through:
+Run the same bounded graph workload through the selected pilot and target/component experiments:
 
 1. two independent confidential-VM/TEE deployments with threshold key release;
 2. an actively secure MPC prototype; and
@@ -546,11 +625,17 @@ Run the same bounded graph workload through:
 
 Measure update throughput, epoch latency, memory, communication, cost, abort recovery, state rotation, output delivery, and leakage. Red-team rollback, ciphertext omission, malformed inputs, direct-wallet linkage, committee dropout, and key compromise.
 
-Exit gate: select the pilot compute profile based on evidence and publish its trust assumptions.
+Exit gate: #71 either validates the selected TEE pilot within measured ceilings or records a no-go;
+#72–#74 independently decide whether the MPC shell and encrypted-governance components merit
+further work. None may silently change the accepted threat model.
 
 ### Phase 3 — privacy-compatible consumer
 
-Implement one narrow consumer, preferably anonymous score-band governance with a public aggregate. Do not connect the private root to the current governance or distributor contracts.
+Implement #75: one non-binding unlinkable score-band governance poll with weights `0/1/2/4`, a
+proposal nullifier enforced inside private tally state, fixed indistinguishable ballot/mask slots,
+no intermediate tally, a public nullifier root and final aggregate, and a 16-real-ballot
+suppression floor. Do not connect the private root to the current governance or distributor
+contracts.
 
 Exit gate: a user can enroll, vouch, replace/revoke, receive a private band, and vote without a public link across those actions; the tally remains auditable.
 
@@ -565,19 +650,31 @@ Exit gate: a user can enroll, vouch, replace/revoke, receive a private band, and
 
 Do not advertise “coercion resistant,” “anonymous,” or “no one can see the graph” more strongly than the audited deployment supports.
 
-## Research questions that can change the recommendation
+## Explicit deferrals and revisit gates
 
-1. Can the user experience support anonymous membership keys, backup, recovery, and private target lookup without reverting to public wallets?
-2. Is a private exact score genuinely necessary, or are a few policy bands sufficient? Bands are materially easier and safer to consume.
-3. Can seed-distance trust decay be replaced with a fixed-schedule formulation without harming Sybil resistance?
-4. What is the maximum graph/update capacity per epoch, and what padded capacity classes are affordable?
-5. Which organizations could operate an MPC committee with meaningfully independent failure and legal domains?
-6. Does the community prefer a TEE trust assumption now, or a slower launch after MPC matures?
-7. How is censorship detected when an anonymous user wants an inclusion receipt without creating a transferable vouch receipt?
-8. Can result packages be delivered without the fetch pattern linking a member to one leaf?
-9. What score-change inference remains after bands, batching, delay, and minimum cohorts?
-10. Which Interfold roadmap items have committed interfaces and audited implementations: persistent state, key switching, private output, committee recovery, and custom sparse compute?
-11. Can Commonware handle the committee's canonical encrypted log, reconfiguration, recovery, and result certification without becoming a second consensus domain or obscuring the MPC protocol's separate trust assumptions?
+These questions do not grant implementation discretion in V1. Each either has an owned spike or
+requires a new versioned decision:
+
+1. **Scalable discovery:** V1 uses private target cards. A wallet-free private directory or OPRF
+   lookup requires separate UX and correlation evidence.
+2. **Exact resource parameters:** #70 and #71 select one fixed ciphertext width, epoch cadence, and
+   supported subset of the three accepted capacity classes; they may lower ceilings, not raise
+   them without new leakage/performance evidence.
+3. **Private trust decay:** V1 disables it. #72 may compare a fixed-schedule replacement, but it
+   cannot change pilot semantics without a new program/version decision.
+4. **MPC operators:** #72 owns recruitment and conflict disclosure. With zero confirmed parties,
+   any MPC deployment claim is blocked.
+5. **Censorship receipts and package retrieval:** #70 must test forced inclusion and padded delivery
+   without a transferable vouch receipt or member/fetch link; PIR remains an optional later tool.
+6. **Residual score/turnout inference:** #70 and #75 measure it under fixed bands, delays, padding,
+   masking, and the cohort floor. Failing the oracle means redesign, not a caveat-only launch.
+7. **Interfold capabilities:** #74 is limited to the band-governance/CRISP experiment. Persistent
+   state, key switching, private output, recovery, or sparse kernels need committed supported
+   interfaces and review before a broader role.
+8. **Commonware role:** #73 must show that the committee shell preserves Ethereum as the canonical
+   input history and keeps MPC arithmetic/state security separate from signatures and DKG.
+9. **Production independence:** legal/operator/key-guardian independence and external review remain
+   deployment gates; repository ownership of a spike is not evidence of operational independence.
 
 ## Bottom line
 

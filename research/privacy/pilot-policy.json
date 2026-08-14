@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "status": "accepted-research-baseline",
+  "decisionDate": "2026-08-14",
+  "profileId": "private-epoch-tee-pilot-v1",
+  "claim": {
+    "label": "coercion minimization and receipt ambiguity",
+    "protectsAgainst": [
+      "public chain and indexer observers",
+      "public data-availability observers",
+      "other ordinary members",
+      "remote bribers without endpoint access"
+    ],
+    "doesNotProtectAgainst": [
+      "the pilot credential issuer learning enrollment membership",
+      "a compromised or malicious measured TEE application",
+      "AWS Nitro hardware, firmware, PKI, or cloud-control-plane compromise",
+      "a supervised or compromised member device",
+      "voluntary member disclosure",
+      "threshold key-guardian collusion",
+      "traffic-analysis failure when relay, padding, or cover assumptions fail"
+    ],
+    "forbiddenLabels": [
+      "coercion resistant",
+      "receipt free",
+      "anonymous",
+      "no one can see the graph"
+    ]
+  },
+  "admission": {
+    "issuer": "network-governance-appointed eligibility issuer",
+    "issuerMayKnowEnrollmentMembership": true,
+    "issuerMustNotLearn": [
+      "member secret",
+      "hidden graph node identifier",
+      "later credential presentations",
+      "vouches",
+      "score band",
+      "ballots"
+    ],
+    "sybilAssumption": "the issuer enforces one credential per policy-eligible member",
+    "publicMemberDirectory": false,
+    "publicWalletLink": false,
+    "credentialLifetime": "one network epoch"
+  },
+  "targetResolution": {
+    "mode": "recipient-supplied private target card",
+    "transport": "authenticated out-of-band private channel",
+    "publicWalletLookup": false,
+    "publicCommitmentLookup": false,
+    "properties": [
+      "network and epoch scoped",
+      "randomized presentation",
+      "expires after one epoch",
+      "contains an opaque handle resolved only inside confidential state",
+      "proves current membership without disclosing a wallet"
+    ]
+  },
+  "vouches": {
+    "targetMustBeMember": true,
+    "valueRange": {
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "zeroValue": "forbidden; use an explicit revoke operation",
+    "negativeValue": "forbidden",
+    "oneActiveRecordPerVoucherTarget": true,
+    "replacement": true,
+    "revocation": true,
+    "freeTextComments": "forbidden in the V1 protocol and scoring state"
+  },
+  "scoring": {
+    "algorithm": "fixed-point PageRank over hidden admitted state",
+    "iterations": 100,
+    "earlyStopping": false,
+    "damping": "0.85",
+    "seedDistanceBfs": false,
+    "trustDecay": "disabled",
+    "compatibility": "a separate program; not numerically interchangeable with the public TrustGraph profile"
+  },
+  "scoreDisclosure": {
+    "exactScorePublished": false,
+    "exactScoreShownToMember": false,
+    "memberArtifact": "one encrypted epoch-scoped score-band credential",
+    "bands": [
+      { "name": "ineligible", "consumerWeight": 0 },
+      { "name": "member", "consumerWeight": 1 },
+      { "name": "established", "consumerWeight": 2 },
+      { "name": "steward", "consumerWeight": 4 }
+    ],
+    "arbitraryThresholdQueries": false,
+    "proofDomain": [
+      "chain",
+      "network",
+      "epoch",
+      "program version",
+      "verifier",
+      "purpose or proposal",
+      "challenge",
+      "expiry"
+    ]
+  },
+  "capacityAndCadence": {
+    "memberCapacityClasses": [64, 256, 1024],
+    "updateCapacityClasses": [256, 1024, 4096],
+    "classMapping": "same array index",
+    "epochCadence": "fixed and public per network policy",
+    "batchTiming": "fixed schedule",
+    "ciphertextWidth": "one fixed byte width per program version",
+    "padding": "always to the selected member/update capacity classes",
+    "overflow": "reject before admission or queue for the next epoch; never silently omit"
+  },
+  "pilotCompute": {
+    "architecture": "two replicated AWS Nitro Enclave scorers",
+    "placement": "distinct AWS accounts and regions",
+    "keyReleaseGuardians": 3,
+    "keyReleaseThreshold": 2,
+    "requiredRootAgreement": 2,
+    "divergenceBehavior": "halt without publishing a result",
+    "rollbackAuthority": "last finalized onchain private-state commitment and monotonic epoch",
+    "debugMeasurementsAllowed": false,
+    "ordinaryRemoteProverReceivesPlaintextWitness": false,
+    "productionGate": "external confidential-compute, application, operations, and privacy review"
+  },
+  "mpcTarget": {
+    "parties": 4,
+    "securityModel": "malicious-secure honest majority",
+    "maximumCorruptPartiesWithinClaim": 1,
+    "minimumOnlinePartiesForService": 3,
+    "twoPartyCollusion": "outside the confidentiality and correctness claim",
+    "confirmedIndependentOperatorCandidates": [],
+    "selectionGate": "four written non-binding commitments from distinct legal, infrastructure, administrative, and failure domains; no project or technology-vendor coalition controls three seats",
+    "pilotEligible": false
+  },
+  "acceptedPublicLeakage": [
+    "chain, network, private-program version, and policy identity",
+    "epoch number and fixed cadence",
+    "selected padded member and update capacity classes",
+    "fixed-size batch commitments and data-availability commitments",
+    "membership, revocation, prior-state, and blinded score roots",
+    "attestation or proof identities and result-agreement status",
+    "epoch abort, recovery, and version-rotation events",
+    "proposal-scoped nullifier root",
+    "fixed number of opaque ballot or mask slots",
+    "final per-option aggregate for a released governance result",
+    "an insufficient-cohort outcome"
+  ],
+  "forbiddenPublicLeakage": [
+    "member wallet or real-world identity link",
+    "hidden graph node identifier or private target-card handle",
+    "voucher and target endpoint pair",
+    "vouch value, active state, replacement, or revocation",
+    "free-text comment",
+    "exact member count or exact real update count",
+    "exact score, exact member band, or unblinded score leaf",
+    "member package retrieval link",
+    "real ballot versus mask classification",
+    "exact real turnout or individual ballot choice",
+    "cross-purpose nullifier link"
+  ],
+  "firstConsumer": {
+    "type": "non-binding unlinkable score-band governance",
+    "network": "testnet or local only",
+    "publicResult": "final per-option aggregate",
+    "nullifierVisibility": "enforced inside private tally state; public sees only a proposal-scoped root and fixed opaque slots",
+    "minimumRealBallotCohort": 16,
+    "belowMinimum": "publish only an insufficient-cohort outcome",
+    "intermediateTally": false,
+    "bindingOrValueBearingUse": false
+  },
+  "implementationIssues": [70, 71, 72, 73, 74, 75]
+}
