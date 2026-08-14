@@ -53,6 +53,10 @@ pub struct Config {
     pub signer_sync: SignerSync,
     #[serde(default)]
     pub ipfs: Ipfs,
+    /// Recovery policy for checkpoint-critical TGWP prior manifests. These bytes are input data,
+    /// not score publication blobs, so their cache and mirrors have a separate failure budget.
+    #[serde(default)]
+    pub weighted_manifests: WeightedManifests,
     #[serde(default)]
     pub ops: Ops,
 }
@@ -82,6 +86,22 @@ pub struct Ipfs {
     pub min_success: Option<usize>,
     /// Persistent retry cadence after a failed publication policy, in seconds.
     #[serde(default = "d_publication_retry")]
+    pub retry_seconds: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WeightedManifests {
+    /// Durable local cache. Active and pending versions are protected from eviction by callers.
+    #[serde(default = "d_weighted_cache_dir")]
+    pub cache_dir: String,
+    /// Raw-CID gateways. The canonical CID is appended to each string verbatim.
+    #[serde(default)]
+    pub mirrors: Vec<String>,
+    #[serde(default = "d_weighted_cache_versions")]
+    pub max_versions: usize,
+    #[serde(default = "d_weighted_cache_bytes")]
+    pub max_bytes: u64,
+    #[serde(default = "d_weighted_retry")]
     pub retry_seconds: u64,
 }
 
@@ -274,6 +294,18 @@ fn d_eth_usd() -> u64 {
 fn d_publication_retry() -> u64 {
     300
 }
+fn d_weighted_cache_dir() -> String {
+    "./.trustgraph/operator/weighted-manifests".into()
+}
+fn d_weighted_cache_versions() -> usize {
+    128
+}
+fn d_weighted_cache_bytes() -> u64 {
+    16 * 1024 * 1024
+}
+fn d_weighted_retry() -> u64 {
+    300
+}
 fn d_journal_path() -> String {
     "./.trustgraph/operator/journal.jsonl".into()
 }
@@ -351,6 +383,17 @@ impl Default for Ipfs {
         }
     }
 }
+impl Default for WeightedManifests {
+    fn default() -> Self {
+        Self {
+            cache_dir: d_weighted_cache_dir(),
+            mirrors: Vec::new(),
+            max_versions: d_weighted_cache_versions(),
+            max_bytes: d_weighted_cache_bytes(),
+            retry_seconds: d_weighted_retry(),
+        }
+    }
+}
 impl Default for Ops {
     fn default() -> Self {
         Self {
@@ -424,6 +467,7 @@ impl Config {
             "signer_sync.budget_window_seconds must be at least 1"
         );
         self.ipfs.validate()?;
+        self.weighted_manifests.validate()?;
         Ok(())
     }
 
@@ -496,6 +540,33 @@ impl Config {
         } else {
             Address::ZERO
         }
+    }
+}
+
+impl WeightedManifests {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(!self.cache_dir.trim().is_empty(), "weighted_manifests.cache_dir is empty");
+        anyhow::ensure!(
+            self.max_versions >= 2,
+            "weighted_manifests.max_versions must hold active and pending versions (at least 2)"
+        );
+        anyhow::ensure!(
+            self.max_bytes >= 2 * (18 + 2_048 * 28),
+            "weighted_manifests.max_bytes must hold max-size active and pending TGWP manifests"
+        );
+        anyhow::ensure!(
+            self.retry_seconds > 0,
+            "weighted_manifests.retry_seconds must be at least 1"
+        );
+        let mut unique = BTreeSet::new();
+        for mirror in &self.mirrors {
+            anyhow::ensure!(
+                mirror.starts_with("http://") || mirror.starts_with("https://"),
+                "weighted manifest mirror must be an absolute http(s) raw-CID gateway, got {mirror:?}"
+            );
+            anyhow::ensure!(unique.insert(mirror), "duplicate weighted manifest mirror {mirror}");
+        }
+        Ok(())
     }
 }
 

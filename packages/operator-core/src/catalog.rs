@@ -19,6 +19,7 @@
 use alloy_primitives::{Address, B256};
 use contributions_core::Params as ContributionsParams;
 use pagerank_core::{encode, Params, SelectionParams};
+use weighted_prior_core::Params as WeightedParams;
 
 use crate::manifest::{Manifest, ManifestEntry};
 use crate::types::Program;
@@ -55,6 +56,20 @@ pub trait ChainReader {
         &self,
         controller: Address,
     ) -> Result<ContributionsControllerParams, Self::Error>;
+
+    /// Complete current weighted-prior tuple read from its isolated typed controller.
+    fn weighted_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<WeightedControllerParams, Self::Error>;
+
+    /// The isolated weighted factory's creation event. Unlike the legacy factory event, this
+    /// deliberately excludes the manifest bytes; those are recovered and validated from cache,
+    /// mirrors, or the creation transaction input immediately before proving.
+    fn weighted_created_params(
+        &self,
+        id: B256,
+    ) -> Result<Option<WeightedCreatedParams>, Self::Error>;
 
     /// `MerkleSnapshot.paramsHash()`.
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error>;
@@ -119,6 +134,24 @@ pub struct ContributionsControllerParams {
     pub params: ContributionsParams,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WeightedControllerParams {
+    pub instance_id: B256,
+    pub snapshot: Address,
+    pub version: u64,
+    pub current_params_hash: B256,
+    pub params: WeightedParams,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WeightedCreatedParams {
+    pub factory: Address,
+    pub name: String,
+    pub snapshot: Address,
+    pub resolver: Address,
+    pub created_block: u64,
+}
+
 /// A fully reconstructed, self-checked instance the operator can act on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -139,6 +172,8 @@ pub struct CatalogEntry {
     pub params: Option<Params>,
     /// Complete tuple for a chain-described contributions round.
     pub contributions_params: Option<ContributionsParams>,
+    /// Complete frozen V1 tuple for the isolated weighted-prior program.
+    pub weighted_params: Option<WeightedParams>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,
     /// Typed control metadata. Both are absent for legacy and manifest instances.
@@ -283,6 +318,7 @@ pub fn scan<R: ChainReader>(
             selection: None,
             params: None,
             contributions_params: None,
+            weighted_params: None,
             reconstructed_params_hash: on_chain,
             params_controller: None,
             params_version: None,
@@ -369,6 +405,7 @@ fn scan_signer<R: ChainReader>(reader: &R, id: B256) -> Result<Option<CatalogEnt
         selection: Some(descriptor.selection),
         params: base.params,
         contributions_params: None,
+        weighted_params: None,
         reconstructed_params_hash: base.reconstructed_params_hash,
         params_controller: base.params_controller,
         params_version: base.params_version,
@@ -486,12 +523,120 @@ fn scan_one<R: ChainReader>(
             selection: None,
             params: None,
             contributions_params: Some(current.params),
+            weighted_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
             eas: Some(current.eas),
             created_block,
             name: format!("contributions @ {id:#x}"),
+            manifest: None,
+        }));
+    }
+
+    if program == Program::Weighted {
+        if controller == Address::ZERO {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::Undescribable,
+            });
+        }
+        let created = reader.weighted_created_params(id).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        let Some(created) = created else {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::Undescribable,
+            });
+        };
+        let current = reader.weighted_controller_params(controller).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ControllerInconsistent(format!(
+                "weighted controller read failed: {e}"
+            )),
+        })?;
+        let reconstructed = weighted_prior_core::encode::params_hash(&current.params);
+        let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        let mut disagreements = Vec::new();
+        if created.snapshot != record.snapshot || created.resolver != record.registry_or_accumulator
+        {
+            disagreements.push(format!(
+                "weighted creation names snapshot {:#x}/resolver {:#x}, registry names {:#x}/{:#x}",
+                created.snapshot, created.resolver, record.snapshot, record.registry_or_accumulator
+            ));
+        }
+        if current.instance_id != id {
+            disagreements.push(format!(
+                "controller instance {:#x} != registry id {id:#x}",
+                current.instance_id
+            ));
+        }
+        if current.snapshot != record.snapshot {
+            disagreements.push(format!(
+                "controller snapshot {:#x} != registry snapshot {:#x}",
+                current.snapshot, record.snapshot
+            ));
+        }
+        if current.params.accumulator != record.registry_or_accumulator {
+            disagreements.push(format!(
+                "params accumulator {:#x} != registry accumulator {:#x}",
+                current.params.accumulator, record.registry_or_accumulator
+            ));
+        }
+        if reconstructed != current.current_params_hash {
+            disagreements.push(format!(
+                "weighted params tuple hashes to {reconstructed:#x}, controller names {:#x}",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != snapshot_hash
+            || current.current_params_hash != record.params_hash
+        {
+            disagreements.push(format!(
+                "controller hash {:#x}, snapshot hash {snapshot_hash:#x}, registry hash {:#x}",
+                current.current_params_hash, record.params_hash
+            ));
+        }
+        if !disagreements.is_empty() {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::ControllerInconsistent(disagreements.join("; ")),
+            });
+        }
+        return Ok(Some(CatalogEntry {
+            instance_id: id,
+            parent_instance_id: None,
+            program,
+            snapshot: record.snapshot,
+            submit_to: record.snapshot,
+            accumulator: record.registry_or_accumulator,
+            verifier: record.verifier,
+            program_vkey: None,
+            selection: None,
+            params: None,
+            contributions_params: None,
+            weighted_params: Some(current.params),
+            reconstructed_params_hash: reconstructed,
+            params_controller: Some(controller),
+            params_version: Some(current.version),
+            eas: Some(reader.factory_eas(created.factory).map_err(|e| Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::ReadFailed(e.to_string()),
+            })?),
+            created_block: created.created_block,
+            name: created.name,
             manifest: None,
         }));
     }
@@ -585,6 +730,7 @@ fn scan_one<R: ChainReader>(
             selection: None,
             params: Some(current.params),
             contributions_params: None,
+            weighted_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
@@ -626,6 +772,7 @@ fn scan_one<R: ChainReader>(
         selection: None,
         params: Some(created.params),
         contributions_params: None,
+        weighted_params: None,
         reconstructed_params_hash: reconstructed,
         params_controller: None,
         params_version: None,

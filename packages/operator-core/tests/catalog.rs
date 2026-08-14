@@ -4,7 +4,8 @@
 use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
     scan, Catalog, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord, SignerSyncDescriptor, SkipCause,
+    RegistryRecord, SignerSyncDescriptor, SkipCause, WeightedControllerParams,
+    WeightedCreatedParams,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
@@ -44,6 +45,8 @@ struct FakeChain {
     authorities: BTreeMap<B256, Address>,
     controllers: BTreeMap<Address, ControllerParams>,
     contributions_controllers: BTreeMap<Address, ContributionsControllerParams>,
+    weighted_controllers: BTreeMap<Address, WeightedControllerParams>,
+    weighted_created: BTreeMap<B256, WeightedCreatedParams>,
     registration_blocks: BTreeMap<B256, u64>,
     /// Instance ids whose reads blow up, to prove one flaky read does not stop the rest.
     poisoned: Vec<B256>,
@@ -96,6 +99,21 @@ impl ChainReader for FakeChain {
             .get(&controller)
             .cloned()
             .ok_or_else(|| FakeError("no contributions controller".into()))
+    }
+    fn weighted_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<WeightedControllerParams, Self::Error> {
+        self.weighted_controllers
+            .get(&controller)
+            .cloned()
+            .ok_or_else(|| FakeError("no weighted controller".into()))
+    }
+    fn weighted_created_params(
+        &self,
+        id: B256,
+    ) -> Result<Option<WeightedCreatedParams>, Self::Error> {
+        Ok(self.weighted_created.get(&id).cloned())
     }
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error> {
         self.snapshot_hashes.get(&snapshot).copied().ok_or_else(|| FakeError("no snapshot".into()))
@@ -256,6 +274,71 @@ fn add_contributions(chain: &mut FakeChain, seed: u8) -> B256 {
     id
 }
 
+fn weighted_params(seed: u8, resolver: Address) -> weighted_prior_core::Params {
+    use weighted_prior_core::{manifest, PriorEntry, PARAMS_VERSION, SCALE};
+    let entries = vec![PriorEntry { account: Address::from([seed; 20]), weight: SCALE }];
+    let bytes = manifest::canonical_manifest(31_337, &entries).unwrap();
+    weighted_prior_core::Params {
+        version: PARAMS_VERSION,
+        damping_fp: 850_000_000_000_000_000,
+        tolerance_fp: 1_000_000_000_000,
+        max_iterations: 40,
+        min_weight: 0,
+        max_weight: 100,
+        prior_root: manifest::prior_root(&entries).unwrap(),
+        prior_count: 1,
+        manifest_sha256: manifest::manifest_digest(&bytes),
+        schema_uid: B256::from([seed; 32]),
+        weight_field_index: 1,
+        accumulator: resolver,
+        chain_id: 31_337,
+    }
+}
+
+fn add_weighted(chain: &mut FakeChain, seed: u8) -> B256 {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let resolver = Address::from([seed.wrapping_add(0x20); 20]);
+    let controller = Address::from([seed.wrapping_add(0x40); 20]);
+    let params = weighted_params(seed, resolver);
+    let hash = weighted_prior_core::encode::params_hash(&params);
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::Weighted.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: resolver,
+            params_hash: hash,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, hash);
+    chain.authorities.insert(id, controller);
+    chain.factory_eas.insert(FACTORY, EAS);
+    chain.weighted_created.insert(
+        id,
+        WeightedCreatedParams {
+            factory: FACTORY,
+            name: format!("weighted-{seed}"),
+            snapshot,
+            resolver,
+            created_block: 88,
+        },
+    );
+    chain.weighted_controllers.insert(
+        controller,
+        WeightedControllerParams {
+            instance_id: id,
+            snapshot,
+            version: 1,
+            current_params_hash: hash,
+            params,
+        },
+    );
+    id
+}
+
 fn scan_all(chain: &FakeChain) -> Catalog {
     scan(chain, Program::Trustgraphs, &Manifest::default()).unwrap()
 }
@@ -309,6 +392,34 @@ fn contributions_are_reconstructed_from_the_registry_controller_without_a_manife
     let p = entry.contributions_params.as_ref().expect("complete contributions tuple");
     assert_eq!(contributions_core::params::params_hash(p), entry.reconstructed_params_hash);
     assert!(entry.manifest.is_none());
+}
+
+#[test]
+fn weighted_instances_use_only_the_isolated_controller_and_codec() {
+    let mut chain = FakeChain::default();
+    let id = add_weighted(&mut chain, 7);
+
+    let catalog = scan(&chain, Program::Weighted, &Manifest::default()).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("chain-described weighted instance");
+    assert_eq!(entry.program, Program::Weighted);
+    assert_eq!(entry.eas, Some(EAS));
+    assert_eq!(entry.created_block, 88);
+    assert!(entry.params.is_none(), "binary params must remain isolated");
+    let params = entry.weighted_params.as_ref().expect("weighted tuple");
+    assert_eq!(weighted_prior_core::encode::params_hash(params), entry.reconstructed_params_hash);
+}
+
+#[test]
+fn weighted_controller_disagreement_fails_closed() {
+    let mut chain = FakeChain::default();
+    let id = add_weighted(&mut chain, 8);
+    let controller = chain.authorities[&id];
+    chain.weighted_controllers.get_mut(&controller).unwrap().params.chain_id = 10;
+
+    let catalog = scan(&chain, Program::Weighted, &Manifest::default()).unwrap();
+    assert!(catalog.get(id).is_none());
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::ControllerInconsistent(_)));
 }
 
 #[test]

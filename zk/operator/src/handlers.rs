@@ -1,9 +1,10 @@
-//! The three programs, and the one thing that differs between them: how an input is built.
+//! The supported programs, and the one thing that differs between them: how an input is built.
 //!
 //! Proving is shared — `trustgraph_prover::common` does it for every program, in-process, through
 //! the library seam. Input reconstruction is not: trust-graph and signer read EAS attestations back
 //! from `input-exporter`, contributions reads two checkpointed accumulators through the prover's
-//! own `fetch`, and both of those are existing programs with their own re-fold self-checks.
+//! own `fetch`, while weighted recovery supplies exact TGWP bytes to the shared lane-one
+//! exporter. Every reconstruction path has its own re-fold/commitment self-check.
 //!
 //! **Those self-checks are why this shells out rather than reimplementing.** `input-exporter`
 //! refuses to emit an input whose edges do not re-fold to the checkpoint's `acc`; `contributions
@@ -11,9 +12,9 @@
 //! daemon would mean a second implementation of the one thing that must never be wrong, tested
 //! half as well. Reuse is the conservative choice here, not the lazy one.
 
-use alloy_primitives::{Address, B256, U256, keccak256};
-use alloy_sol_types::{SolCall, sol};
-use anyhow::{Context, Result, anyhow, bail};
+use alloy_primitives::{keccak256, Address, B256, U256};
+use alloy_sol_types::{sol, SolCall};
+use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::CatalogEntry;
 use operator_core::types::{Program, VaultView};
 use serde::{Deserialize, Serialize};
@@ -240,6 +241,44 @@ pub fn build_input(
                 ],
             )?;
         }
+        Program::Weighted => {
+            let eas = entry.eas.ok_or_else(|| anyhow!("no EAS address for {}", entry.name))?;
+            let manifest = crate::weighted::recover_for_entry(cfg, rpc, entry)
+                .with_context(|| format!("recovering exact prior manifest for {}", entry.name))?;
+            let manifest_path = dir.join("prior.tgwp");
+            std::fs::write(&manifest_path, manifest.bytes)?;
+            run_tool(
+                "cargo",
+                vec![
+                    "run",
+                    "-q",
+                    "-p",
+                    "input-exporter",
+                    "--",
+                    "--rpc",
+                    &cfg.rpc,
+                    "--accumulator",
+                    &format!("{:#x}", accumulator),
+                    "--eas",
+                    &format!("{eas:#x}"),
+                    "--checkpoint",
+                    &checkpoint_id.to_string(),
+                    "--params",
+                    &params_path,
+                    "--weighted",
+                    "--prior-manifest",
+                    &manifest_path.display().to_string(),
+                    "--snapshot",
+                    &format!("{:#x}", entry.snapshot),
+                    "--recipient",
+                    &format!("{recipient:#x}"),
+                    "--from-block",
+                    &entry.created_block.to_string(),
+                    "--out",
+                    &input_path.display().to_string(),
+                ],
+            )?;
+        }
         Program::Hypercerts => {
             bail!("hypercerts is out of scope for this operator (GOAL scope fence)")
         }
@@ -258,6 +297,33 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
         let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::signer::elf())?;
         return Ok(native_signer_journal(input_path, &input, parse_b256(&vk)?));
+    }
+    if program == Program::Weighted {
+        let input: weighted_prior_core::GuestInput = serde_json::from_str(&text)?;
+        let result = weighted_prior_core::compute::compute(&input)?;
+        if result.journal.recipient != recipient {
+            bail!(
+                "input names recipient {:#x}, config says {recipient:#x}",
+                result.journal.recipient
+            );
+        }
+        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::weighted::elf())?;
+        let encoded = weighted_prior_core::encode::journal_encoded(&result.journal);
+        return Ok(Built {
+            program,
+            input_path: input_path.clone(),
+            public_values_hash: keccak256(&encoded),
+            vk_hash: parse_b256(&vk)?,
+            output_root: result.journal.output_root,
+            ipfs_hash: result.journal.ipfs_hash,
+            cid: result.cid,
+            total_value: result.journal.total_value,
+            skipped_digest: result.journal.skipped_digest,
+            recipient: result.journal.recipient,
+            blob: result.blob,
+            signers: Vec::new(),
+            target_threshold: U256::ZERO,
+        });
     }
     let (j, cid, vk, blob) = match program {
         Program::Trustgraphs => {
@@ -483,6 +549,15 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
             (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
         }
+        Program::Weighted => {
+            let input: weighted_prior_core::GuestInput = serde_json::from_str(&text)?;
+            let native = weighted_prior_core::encode::journal_encoded(
+                &weighted_prior_core::compute::compute(&input)?.journal,
+            );
+            let elf = trustgraph_prover::programs::weighted::elf();
+            trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+            (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+        }
         Program::Signer => {
             let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
             let native = pagerank_core::encode::signer_journal_encoded(
@@ -617,6 +692,10 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
         serde_json::to_string_pretty(entry.contributions_params.as_ref().ok_or_else(|| {
             anyhow!("no contributions params for {} and no manifest entry", entry.name)
         })?)?
+    } else if entry.program == Program::Weighted {
+        serde_json::to_string_pretty(entry.weighted_params.as_ref().ok_or_else(|| {
+            anyhow!("no weighted params for {} and no manifest entry", entry.name)
+        })?)?
     } else {
         serde_json::to_string_pretty(
             entry
@@ -665,7 +744,7 @@ fn parse_b256(s: &str) -> Result<B256> {
 
 #[cfg(test)]
 mod readback_tests {
-    use super::{native_signer_journal, publish, readable};
+    use super::{native_journal, native_signer_journal, publish, readable};
     use crate::config::Config;
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolValue;
@@ -673,6 +752,32 @@ mod readback_tests {
     use pagerank_core::{Params, RawEdge, SelectionParams, SignerInput};
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    #[test]
+    #[ignore = "release gate: executes the real SP1 guest; run with --release --ignored"]
+    fn weighted_operator_native_journal_byte_matches_the_isolated_guest() {
+        // The one-iteration Hamilton tie fixture exercises the complete journal encoding while
+        // keeping this real SP1 execution practical in the ordinary operator test suite.
+        let input = trustgraph_prover::programs::weighted::parity_inputs().pop().unwrap().1;
+        let recipient = input.binding.recipient;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), serde_json::to_vec(&input).unwrap()).unwrap();
+        let path = file.path().to_path_buf();
+
+        let built = native_journal(Program::Weighted, &path, recipient).unwrap();
+        let expected = weighted_prior_core::compute::compute(&input).unwrap();
+        let native = weighted_prior_core::encode::journal_encoded(&expected.journal);
+        let execution = trustgraph_prover::common::execute_values(
+            trustgraph_prover::programs::weighted::elf(),
+            &input,
+            &native,
+        )
+        .unwrap();
+
+        assert_eq!(execution.public_values, native);
+        assert_eq!(built.public_values_hash, alloy_primitives::keccak256(&native));
+        assert_eq!(built.output_root, expected.journal.output_root);
+    }
 
     #[test]
     fn signer_native_journal_carries_the_complete_submit_receipt() {

@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 pagerank-core = { path = "../pagerank-core" }
 contributions-core = { path = "../contributions-core" }
+weighted-prior-core = { path = "../weighted-prior-core" }
 
 [dev-dependencies]
 tempfile = "3"

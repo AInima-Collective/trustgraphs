@@ -56,3 +56,47 @@ Fail closed when the transaction input cannot be fetched, the manifest is malfor
 is wrong, or any commitment differs. Mirror loss alone is recoverable from chain history; loss of
 both configured archival history and all exact-byte mirrors is an availability incident, not
 permission to reconstruct or renormalize a replacement list.
+
+## Operator behavior
+
+The proving daemon discovers `trust-graph-weighted` from the instance registry and routes it only
+to the isolated weighted core and guest. On every tick it validates and caches the active manifest,
+and also the pending manifest during the activation delay. Recovery order is:
+
+1. the bounded local cache;
+2. every configured raw-CID gateway; then
+3. archival creation/proposal calldata.
+
+Every source is untrusted until the shared core reproduces the checkpoint-pinned params version,
+chain ID, count, root, and SHA-256. A missing or mismatched manifest disables proving for that
+instance. Configured mirror failures are retained in `*.metrics.json`, retried after
+`weighted_manifests.retry_seconds`, emitted as `weighted_manifest_degraded`, and sent to the normal
+operator alert webhook. The cache refuses limits too small to retain constitutional max-size active
+and pending manifests. Its limits are global, but pruning always protects the newest two distinct
+versions for every instance; if that fleet-wide pinned set exceeds either ceiling, recovery alerts
+and fails instead of evicting active or pending data. Size both ceilings for the operated fleet.
+
+For a restart or old-checkpoint repair, the checkpoint's own `checkpointParamsHash` selects the
+full `InitialPriorPublished`/`PriorActivated` tuple, and that version selects the original
+manifest-bearing transaction. The current version is never substituted for a superseded one.
+
+## Indexer and API
+
+Set `WEIGHTED_FACTORY_ADDRESS_10` in production or
+`WEIGHTED_FACTORY_ADDRESS_31337` locally (a generated
+`deployment_summary.weightedFactory.weighted_factory` is also accepted). Ponder then discovers the
+factory's controller, resolver, and snapshot children and replays proposal, cancellation,
+activation, checkpoint, and normalized-entry history. Deterministic `(instance, version)` and
+`(instance, version, position)` keys make a reorg rollback/reapply duplicate-free.
+
+The HTTP surface is separate from the binary-seed `/instances` routes:
+
+- `GET /weighted-priors` — weighted instance catalog;
+- `GET /weighted-priors/:instanceId/versions` — paginated/filterable status history;
+- `GET /weighted-priors/:instanceId/versions/:version` — commitment and provenance metadata; and
+- `GET /weighted-priors/:instanceId/versions/:version/entries` — address-ordered normalized
+  entries with decimal-string weights.
+
+`availability.status` is `available`, `degraded`, or `unavailable`; an unavailable record remains
+visible with its source transaction and diagnosis but has no entries. This does not change any
+existing binary trust-graph response shape.

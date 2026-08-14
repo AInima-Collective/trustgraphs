@@ -2,16 +2,16 @@
 //!
 //! Everything here is mechanical. Every decision is in `operator-core`.
 
-use alloy_primitives::{Address, B256, U256, keccak256};
-use alloy_sol_types::{SolCall, SolEvent, SolValue, sol};
-use anyhow::{Context, Result, anyhow, bail};
+use alloy_primitives::{keccak256, Address, B256, U256};
+use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
+use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::{
     CatalogEntry, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord, SignerSyncDescriptor,
+    RegistryRecord, SignerSyncDescriptor, WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::{Params, SelectionParams};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -35,10 +35,25 @@ sol! {
         bytes32 claimSchemaUid; bytes32 responseSchemaUid; bytes32 valuationSchemaUid;
     }
 
+    /// Mirror of `WeightedPriorParamsCodec.Params` (isolated V1, 13 static fields, order FROZEN).
+    struct SolWeightedParams {
+        uint32 version; uint64 dampingFp; uint64 toleranceFp; uint32 maxIterations;
+        uint64 minWeight; uint64 maxWeight; bytes32 priorRoot; uint32 priorCount;
+        bytes32 manifestSha256; bytes32 schemaUid; uint32 weightFieldIndex;
+        address accumulator; uint64 chainId;
+    }
+
     event InstanceCreated(
         bytes32 indexed instanceId, address indexed creator, address indexed admin,
         string name, string metadataURI, address resolver, bytes32 schemaUid, address snapshot,
         address distributor, address distributorToken, uint64 epochLength, SolParams params
+    );
+
+    event WeightedInstanceCreated(
+        bytes32 indexed instanceId, address indexed creator, address indexed admin,
+        string name, string metadataURI, address resolver, bytes32 schemaUid, address snapshot,
+        address distributor, address distributorToken, uint64 epochLength,
+        bytes32 metadataDigest, SolWeightedParams params
     );
 
     /// `SignerSyncModuleDeployer`: emitted in the same governed creation receipt.
@@ -79,6 +94,38 @@ sol! {
         bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
         bytes32 previousParamsHash, SolContributionsParams params, string evidenceURI
     );
+
+    event InitialPriorPublished(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 metadataDigest, SolWeightedParams params
+    );
+    event PriorProposed(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed proposalId,
+        bytes32 priorRoot, uint32 priorCount, bytes32 manifestSha256, bytes32 metadataDigest,
+        bytes32 paramsHash, uint48 readyAt
+    );
+    event PriorActivated(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 previousParamsHash, bytes32 proposalId, bytes32 metadataDigest,
+        SolWeightedParams params
+    );
+    struct SolPendingPrior {
+        uint64 version; uint48 readyAt; bytes32 proposalId; bytes32 priorRoot;
+        uint32 priorCount; bytes32 manifestSha256; bytes32 metadataDigest; bytes32 paramsHash;
+    }
+    function getPendingPrior() external view returns (SolPendingPrior);
+
+    /// Transaction-input recovery selectors. Solidity names are intentionally unique here; the
+    /// encoded selectors are supplied explicitly where their return type would otherwise collide.
+    struct WeightedCreateArgs {
+        string name; string metadataURI; SolWeightedParams params; bytes manifest;
+        bytes32 metadataDigest; address admin; uint64 epochLength; bool withDistributor;
+        address distributorToken; bytes32 salt;
+    }
+    function createInstance(WeightedCreateArgs args)
+        external payable returns (bytes32, address, address, address, bytes32);
+    function proposePrior(bytes manifest, bytes32 metadataDigest)
+        external returns (uint64, bytes32, uint48);
 
     /// `MerkleSnapshot` — journal v3.
     function paramsHash() external view returns (bytes32);
@@ -337,6 +384,19 @@ impl Rpc {
             self.call("eth_getTransactionReceipt", json!([format!("0x{}", hex::encode(tx))]))?;
         let logs = r.get("logs").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         logs.iter().map(RawLog::parse).collect()
+    }
+
+    /// Exact input bytes retained by an archival JSON-RPC node. This is the last-resort recovery
+    /// source for weighted manifests and must therefore fail closed when the provider prunes it.
+    pub fn transaction_input(&self, tx: B256) -> Result<Vec<u8>> {
+        let value =
+            self.call("eth_getTransactionByHash", json!([format!("0x{}", hex::encode(tx))]))?;
+        anyhow::ensure!(!value.is_null(), "transaction {tx:#x} is unavailable from this RPC");
+        let input = value
+            .get("input")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("transaction {tx:#x} has no input field"))?;
+        Ok(hex::decode(input.trim_start_matches("0x"))?)
     }
 }
 
@@ -652,6 +712,49 @@ impl ChainReader for RpcCatalog<'_> {
         })
     }
 
+    fn weighted_controller_params(&self, controller: Address) -> Result<WeightedControllerParams> {
+        let call = |data: Vec<u8>| self.rpc.eth_call(controller, data);
+        let instance_id =
+            instanceIdCall::abi_decode_returns(&call(instanceIdCall {}.abi_encode())?)?;
+        let snapshot = snapshotCall::abi_decode_returns(&call(snapshotCall {}.abi_encode())?)?;
+        let version = versionCall::abi_decode_returns(&call(versionCall {}.abi_encode())?)?;
+        let current_params_hash = currentParamsHashCall::abi_decode_returns(&call(
+            currentParamsHashCall {}.abi_encode(),
+        )?)?;
+        // `getCurrentParams()` has the same selector as the binary controller method. The call
+        // encoding is reusable; its return is decoded against the isolated 13-field tuple.
+        let raw = call(getCurrentParamsCall {}.abi_encode())?;
+        let params = SolWeightedParams::abi_decode(&raw)?;
+        Ok(WeightedControllerParams {
+            instance_id,
+            snapshot,
+            version,
+            current_params_hash,
+            params: to_weighted_params(&params),
+        })
+    }
+
+    fn weighted_created_params(&self, id: B256) -> Result<Option<WeightedCreatedParams>> {
+        let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
+            return Ok(None);
+        };
+        let logs = self.rpc.receipt_logs(tx)?;
+        let Some(log) = logs.iter().find(|candidate| {
+            candidate.topics.first() == Some(&WeightedInstanceCreated::SIGNATURE_HASH)
+                && candidate.topics.get(1) == Some(&id)
+        }) else {
+            return Ok(None);
+        };
+        let event = WeightedInstanceCreated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+        Ok(Some(WeightedCreatedParams {
+            factory: log.address,
+            name: event.name,
+            snapshot: event.snapshot,
+            resolver: event.resolver,
+            created_block,
+        }))
+    }
+
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256> {
         let ret = self.rpc.eth_call(snapshot, paramsHashCall {}.abi_encode())?;
         Ok(paramsHashCall::abi_decode_returns(&ret)?)
@@ -713,6 +816,24 @@ fn to_contributions_params(p: &SolContributionsParams) -> contributions_core::Pa
         claim_schema_uid: p.claimSchemaUid,
         response_schema_uid: p.responseSchemaUid,
         valuation_schema_uid: p.valuationSchemaUid,
+    }
+}
+
+fn to_weighted_params(p: &SolWeightedParams) -> weighted_prior_core::Params {
+    weighted_prior_core::Params {
+        version: p.version,
+        damping_fp: p.dampingFp,
+        tolerance_fp: p.toleranceFp,
+        max_iterations: p.maxIterations,
+        min_weight: p.minWeight,
+        max_weight: p.maxWeight,
+        prior_root: p.priorRoot,
+        prior_count: p.priorCount,
+        manifest_sha256: p.manifestSha256,
+        schema_uid: p.schemaUid,
+        weight_field_index: p.weightFieldIndex,
+        accumulator: p.accumulator,
+        chain_id: p.chainId,
     }
 }
 
@@ -1102,6 +1223,58 @@ pub fn entry_at_params_hash(
             entry.name
         )
     })?;
+    if entry.program == operator_core::types::Program::Weighted {
+        for log in
+            rpc.logs(controller, PriorActivated::SIGNATURE_HASH, entry.created_block, head, 10_000)?
+        {
+            let event = PriorActivated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_weighted_params(&event.params);
+            let reconstructed = weighted_prior_core::encode::params_hash(&params);
+            anyhow::ensure!(
+                reconstructed == params_hash,
+                "weighted activation tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
+            );
+            let mut historical = entry.clone();
+            historical.params = None;
+            historical.contributions_params = None;
+            historical.weighted_params = Some(params);
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
+        }
+        // V1 is published rather than activated, and can be historical after the first rotation.
+        for log in rpc.logs(
+            controller,
+            InitialPriorPublished::SIGNATURE_HASH,
+            entry.created_block,
+            head,
+            10_000,
+        )? {
+            let event =
+                InitialPriorPublished::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_weighted_params(&event.params);
+            let reconstructed = weighted_prior_core::encode::params_hash(&params);
+            anyhow::ensure!(reconstructed == params_hash, "weighted V1 event tuple hash mismatch");
+            let mut historical = entry.clone();
+            historical.params = None;
+            historical.contributions_params = None;
+            historical.weighted_params = Some(params);
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
+        }
+        bail!(
+            "no weighted prior publication/activation event for instance {:#x} and pinned hash {params_hash:#x}",
+            entry.instance_id
+        );
+    }
+
     let event_signature = match entry.program {
         operator_core::types::Program::Contributions => ContributionsParamsUpdated::SIGNATURE_HASH,
         _ => ParamsUpdated::SIGNATURE_HASH,
@@ -1124,6 +1297,7 @@ pub fn entry_at_params_hash(
             let mut historical = entry.clone();
             historical.params = None;
             historical.contributions_params = Some(params);
+            historical.weighted_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
@@ -1141,6 +1315,7 @@ pub fn entry_at_params_hash(
             let mut historical = entry.clone();
             historical.params = Some(params);
             historical.contributions_params = None;
+            historical.weighted_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
@@ -1150,6 +1325,170 @@ pub fn entry_at_params_hash(
         "no ParamsUpdated event for instance {:#x} and pinned hash {params_hash:#x}",
         entry.instance_id
     )
+}
+
+/// Find the transaction whose calldata carries the exact TGWP bytes for one params version.
+/// Activation calldata carries only a version number, so version > 1 resolves through the earlier
+/// `PriorProposed` event, never through the activation transaction.
+pub fn weighted_manifest_source_tx(rpc: &Rpc, entry: &CatalogEntry, head: u64) -> Result<B256> {
+    anyhow::ensure!(
+        entry.program == operator_core::types::Program::Weighted,
+        "manifest source requested for non-weighted program {}",
+        entry.program.name()
+    );
+    let controller =
+        entry.params_controller.ok_or_else(|| anyhow!("weighted entry has no controller"))?;
+    let version =
+        entry.params_version.ok_or_else(|| anyhow!("weighted entry has no params version"))?;
+    let expected_hash = entry.reconstructed_params_hash;
+    if version == 1 {
+        for log in rpc.logs(
+            controller,
+            InitialPriorPublished::SIGNATURE_HASH,
+            entry.created_block,
+            head,
+            10_000,
+        )? {
+            let event =
+                InitialPriorPublished::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId == entry.instance_id
+                && event.version == version
+                && event.paramsHash == expected_hash
+            {
+                return Ok(log.transaction_hash);
+            }
+        }
+    } else {
+        for log in
+            rpc.logs(controller, PriorProposed::SIGNATURE_HASH, entry.created_block, head, 10_000)?
+        {
+            let event = PriorProposed::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId == entry.instance_id
+                && event.version == version
+                && event.paramsHash == expected_hash
+            {
+                return Ok(log.transaction_hash);
+            }
+        }
+    }
+    bail!(
+        "no manifest-bearing transaction for weighted instance {:#x} version {version} params {expected_hash:#x}",
+        entry.instance_id
+    )
+}
+
+/// Materialize the pending version's complete tuple from the live immutable envelope plus the
+/// controller's committed prior fields. This is used only to prefetch/pin bytes; checkpoints can
+/// never select it until activation atomically moves the snapshot hash.
+pub fn weighted_pending_entry(rpc: &Rpc, entry: &CatalogEntry) -> Result<Option<CatalogEntry>> {
+    anyhow::ensure!(
+        entry.program == operator_core::types::Program::Weighted,
+        "pending prior requested for non-weighted program"
+    );
+    let controller =
+        entry.params_controller.ok_or_else(|| anyhow!("weighted entry has no controller"))?;
+    let pending = getPendingPriorCall::abi_decode_returns(
+        &rpc.eth_call(controller, getPendingPriorCall {}.abi_encode())?,
+    )?;
+    if pending.version == 0 {
+        return Ok(None);
+    }
+    let mut params = entry
+        .weighted_params
+        .clone()
+        .ok_or_else(|| anyhow!("weighted entry has no params tuple"))?;
+    params.prior_root = pending.priorRoot;
+    params.prior_count = pending.priorCount;
+    params.manifest_sha256 = pending.manifestSha256;
+    let reconstructed = weighted_prior_core::encode::params_hash(&params);
+    anyhow::ensure!(
+        reconstructed == pending.paramsHash,
+        "pending weighted tuple encodes {reconstructed:#x}, controller names {:#x}",
+        pending.paramsHash
+    );
+    anyhow::ensure!(
+        pending.version == entry.params_version.unwrap_or_default() + 1,
+        "pending weighted version {} is stale relative to active {:?}",
+        pending.version,
+        entry.params_version
+    );
+    let mut pending_entry = entry.clone();
+    pending_entry.weighted_params = Some(params);
+    pending_entry.reconstructed_params_hash = reconstructed;
+    pending_entry.params_version = Some(pending.version);
+    Ok(Some(pending_entry))
+}
+
+/// Decode only the two authorized transaction-input shapes that can carry canonical TGWP bytes.
+pub fn weighted_manifest_from_calldata(input: &[u8]) -> Result<Vec<u8>> {
+    if input.starts_with(&createInstanceCall::SELECTOR) {
+        return Ok(createInstanceCall::abi_decode(input)?.args.manifest.to_vec());
+    }
+    if input.starts_with(&proposePriorCall::SELECTOR) {
+        return Ok(proposePriorCall::abi_decode(input)?.manifest.to_vec());
+    }
+    bail!(
+        "manifest source transaction selector 0x{} is neither weighted createInstance nor proposePrior",
+        hex::encode(input.get(..4).unwrap_or(input))
+    )
+}
+
+#[cfg(test)]
+mod weighted_calldata_tests {
+    use super::*;
+
+    fn params() -> SolWeightedParams {
+        SolWeightedParams {
+            version: 1,
+            dampingFp: 850_000_000_000_000_000,
+            toleranceFp: 0,
+            maxIterations: 40,
+            minWeight: 0,
+            maxWeight: 100,
+            priorRoot: B256::from([0x11; 32]),
+            priorCount: 1,
+            manifestSha256: B256::from([0x22; 32]),
+            schemaUid: B256::from([0x33; 32]),
+            weightFieldIndex: 1,
+            accumulator: Address::from([0x44; 20]),
+            chainId: 10,
+        }
+    }
+
+    #[test]
+    fn extracts_exact_bytes_from_creation_and_proposal_calldata() {
+        let manifest = b"TGWP exact bytes".to_vec();
+        let creation = createInstanceCall {
+            args: WeightedCreateArgs {
+                name: "weighted".into(),
+                metadataURI: String::new(),
+                params: params(),
+                manifest: manifest.clone().into(),
+                metadataDigest: B256::ZERO,
+                admin: Address::from([0x55; 20]),
+                epochLength: 10,
+                withDistributor: false,
+                distributorToken: Address::ZERO,
+                salt: B256::ZERO,
+            },
+        }
+        .abi_encode();
+        assert_eq!(weighted_manifest_from_calldata(&creation).unwrap(), manifest);
+
+        let proposal = proposePriorCall {
+            manifest: manifest.clone().into(),
+            metadataDigest: B256::from([0x66; 32]),
+        }
+        .abi_encode();
+        assert_eq!(weighted_manifest_from_calldata(&proposal).unwrap(), manifest);
+    }
+
+    #[test]
+    fn refuses_unrelated_transaction_input() {
+        let error =
+            weighted_manifest_from_calldata(&[0xde, 0xad, 0xbe, 0xef]).unwrap_err().to_string();
+        assert!(error.contains("neither weighted createInstance nor proposePrior"));
+    }
 }
 
 /// The vkey a deployed verifier is pinned to. Checked at startup against the guest this binary was

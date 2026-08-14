@@ -30,6 +30,7 @@ pub mod journal;
 pub mod manifest;
 pub mod policy;
 pub mod types;
+pub mod weighted_manifest;
 
 pub use decide::plan;
 pub use journal::SubmitFailureClass;

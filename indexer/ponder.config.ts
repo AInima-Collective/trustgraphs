@@ -18,6 +18,10 @@ import {
   trustgraphsParamsControllerAbi,
 } from './abis/trustgraphsParamsController'
 import {
+  weightedPriorParamsControllerAbi,
+  weightedTrustgraphsFactoryAbi,
+} from './abis/weightedPrior'
+import {
   contributionResolverAbi,
   easIndexerResolverAbi,
   gnosisSafeAbi,
@@ -56,6 +60,7 @@ const deploymentSummary = deploymentSummaryJson as {
     governed_factory?: string
     signer_sync_deployer?: string
   }
+  weightedFactory?: { weighted_factory?: string }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -152,6 +157,12 @@ const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | undefined
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
+const WEIGHTED_FACTORY =
+  ((IS_PRODUCTION
+    ? process.env.WEIGHTED_FACTORY_ADDRESS_10
+    : process.env.WEIGHTED_FACTORY_ADDRESS_31337
+  )?.trim() as Hex | undefined) ??
+  (deploymentSummary.weightedFactory?.weighted_factory as Hex | undefined)
 
 /**
  * Whether to discover trust-graph children from the factory. Discovery follows the deployment
@@ -181,6 +192,14 @@ const GOVERNED_INSTANCE_CREATED = getAbiItem({
 const SIGNER_SYNC_MODULE_CONFIGURED = getAbiItem({
   abi: signerSyncModuleDeployerAbi,
   name: 'SignerSyncModuleConfigured',
+})
+const WEIGHTED_PARAMS_CONTROLLER_CREATED = getAbiItem({
+  abi: weightedTrustgraphsFactoryAbi,
+  name: 'WeightedParamsControllerCreated',
+})
+const WEIGHTED_INSTANCE_CREATED = getAbiItem({
+  abi: weightedTrustgraphsFactoryAbi,
+  name: 'WeightedInstanceCreated',
 })
 
 /**
@@ -227,6 +246,22 @@ const governedSignerModules = () =>
     address: SIGNER_SYNC_DEPLOYER!,
     event: SIGNER_SYNC_MODULE_CONFIGURED,
     parameter: 'signerSyncModule',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const weightedParamsControllers = () =>
+  factory({
+    address: WEIGHTED_FACTORY!,
+    event: WEIGHTED_PARAMS_CONTROLLER_CREATED,
+    parameter: 'controller',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
+  factory({
+    address: WEIGHTED_FACTORY!,
+    event: WEIGHTED_INSTANCE_CREATED,
+    parameter,
     startBlock: CORE_START_BLOCK,
   })
 
@@ -298,6 +333,34 @@ export default createConfig({
       startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
         ? { [CORE_CHAIN]: { address: TRUSTGRAPHS_FACTORY! } }
+        : {},
+    },
+    weightedTrustgraphsFactory: {
+      abi: weightedTrustgraphsFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: WEIGHTED_FACTORY } }
+        : {},
+    },
+    weightedPriorParamsController: {
+      abi: weightedPriorParamsControllerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
+        : {},
+    },
+    weightedEasIndexerResolver: {
+      abi: easIndexerResolverAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: weightedChildren('resolver') } }
+        : {},
+    },
+    weightedMerkleSnapshot: {
+      abi: merkleSnapshotAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: weightedChildren('snapshot') } }
         : {},
     },
     governedTrustgraphsFactory: {

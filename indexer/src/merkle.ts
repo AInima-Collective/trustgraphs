@@ -151,6 +151,13 @@ ponder.on('programSnapshot:setup', async ({ context }) => {
   )
 })
 
+ponder.on('weightedMerkleSnapshot:setup', async ({ context }) => {
+  await backfillSnapshotStates(
+    context,
+    staticAddresses(context.contracts.weightedMerkleSnapshot.address)
+  )
+})
+
 const onMerkleRootUpdated = async ({
   event,
   context,
@@ -332,6 +339,7 @@ const onMerkleProofSubmitted = async ({
 
 ponder.on('merkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 ponder.on('programSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
+ponder.on('weightedMerkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 
 /** Attach a parameter version to the first checkpoint that actually pins it. */
 const onCheckpointParamsPinned = async ({
@@ -401,9 +409,11 @@ const onSnapshotTriggered = async ({
 
 ponder.on('merkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('programSnapshot:SnapshotTriggered', onSnapshotTriggered)
+ponder.on('weightedMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
+ponder.on('weightedMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 
 async function insertMerkleData(
   scores: ScoreBlob,
