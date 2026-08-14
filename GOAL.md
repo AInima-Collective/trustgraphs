@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 21 issues closed, 18 remain.**
+> **Status (2026-08-14): 22 issues closed, 17 remain.**
 >
-> Closed after auditing `main` through `62af08a` and rerunning the focused regressions:
+> Closed after auditing `main` through `1608411` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -53,11 +53,14 @@
 > - **#58** — pinned ERC-8004 Reputation Registry provenance, canonical raw feedback/revocation/
 >   response replay, event-block verified-wallet attribution, bulk APIs, hardened asynchronous
 >   descriptors, and a score/proof-isolated raw explorer (`62af08a`, PR #83)
+> - **#59** — hashed pinned-policy ERC-8004 experiment, independent exact replay, complete
+>   exclusion/coverage/sensitivity evidence, adversarial ring/Sybil/rotation fixtures, isolated UI,
+>   and a bounded no-go for production or proof integration (`1608411`, PR #84)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
-> ERC-8004 reputation chain: **#58 closed → #59**; #60 and #61 are parallel gates; all feed blocked
+> ERC-8004 reputation chain: **#58 and #59 closed**; #60 and #61 are parallel gates that both block
 > #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
@@ -110,7 +113,7 @@ can proceed concurrently:
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed   | Core/guest, commitment lifecycle, operator/indexer, then UX      | complete in #34 ADR order                   |
-| I · ERC-8004 reputation           | #58 closed → #59; #60/#61 → #62 | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #59–#61                      |
+| I · ERC-8004 reputation           | #58/#59 closed; #60/#61 → #62   | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #60 and #61                  |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
 
@@ -620,6 +623,27 @@ hosted jobs were billing-blocked before runner allocation.
 **Close when:** all raw-event, historical-attribution, bulk-query, metadata-boundary, fixture,
 operator-recovery, and no-score-coupling acceptance criteria in #58 pass. Complete.
 
+### M5.4 · #59 — pinned-policy ERC-8004 reputation experiment
+
+**Closed in `1608411` (PR #84).** One exact Optimism registry/cutoff, tag/unit/decimal policy,
+qualified-agent reviewer epoch/root, event-time wallet attribution rule, target universe, pair
+reconciliation, denominators, bounds, arithmetic, and ordering are canonically serialized and
+SHA-256 committed. The exact-BigInt simulator assigns one machine-readable reason to every excluded
+record and compares reviewer-weighted direct aggregation with Hamilton-apportioned, fixed-mass
+positive-edge propagation. A second implementation independently reproduces serialization,
+filtering, reconciliation, arithmetic, propagation, and ordering. The fixture covers repetition,
+responses, revocation, wallet rotation, self-feedback, an unadmitted Sybil clone, an admitted
+reciprocal ring, policy mismatch, explicit zero, and missing evidence. Only 9 of 28 declared pairs
+are observed, while the small #8/#9 ring captures 66.9419% of propagated target mass, so the report
+records a bounded no-go for production/proof integration. The dedicated experimental graph/table
+remains outside existing scores, vouch edges, roots, and proofs. Eleven experiment tests, strict
+research TypeScript, 52 indexer tests, frontend goldens/build/lint, and an HTTP route smoke pass;
+hosted jobs were billing-blocked before runner allocation.
+
+**Close when:** every policy, canonicalization, independent-golden, exclusion, coverage,
+adversarial-fixture, comparison, recommendation, UI-labeling, and isolation criterion in #59 pass.
+Complete.
+
 ---
 
 ## Release gates and issue-count target
@@ -646,12 +670,12 @@ operator-recovery, and no-score-coupling acceptance criteria in #58 pass. Comple
   graph-native delegation research continues separately in #77.
 - **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
   reviewable trust-boundary order.
-- **ERC-8004 reputation track:** #58 closed → #59, with #60/#61 as parallel design/platform gates;
-  #62 remains blocked until #59–#61 close compatibly.
+- **ERC-8004 reputation track:** #58 and #59 closed; #60/#61 are parallel design/platform gates;
+  #62 remains blocked until both close compatibly.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
   advisory graph reputation. #65 also waits for shared program-aware ingestion issue #61.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 18 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 17 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
