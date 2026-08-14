@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 12 issues closed, 9 remain.**
+> **Status (2026-08-14): 13 issues closed, 13 remain.**
 >
 > Closed after auditing `main` through `8bf7588` and rerunning the focused regressions:
 >
@@ -26,10 +26,14 @@
 > - **#34** — weighted-prior V1 semantics, exact normalization/commitment/availability model,
 >   2,048-entry benchmark cap, cross-language fixture, and ordered implementation split
 >   (`8bf7588`; children #52–#55)
+> - **#35** — allowlisted ERC-8004 identity/history indexing, hardened asynchronous registration
+>   metadata, qualified bulk APIs, agent identity UI/lens, and byte-identical score/proof behavior
+>   (`f6529a1`, PR #57; follow-ups #58–#62)
 >
 > Remaining launch-risk issue: **#27**.
-> Remaining research/product epics: **#35–#38**.
+> Remaining research/product epics: **#36–#38**.
 > Weighted-prior implementation chain: **#52 → #53 → #54 → #55**.
+> ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 
 Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
 met with code, tests, documentation, or a recorded design decision, while keeping deployment-only
@@ -75,8 +79,9 @@ can proceed concurrently:
 | D · authority and production | #20 closed → #27 | Creator bypass removed; deploy and smoke-test production | `820b6f3`; #12/#14/#22 prerequisites closed |
 | E · program self-service | #21 and #28 closed | Factory signer-sync and reproducible Contributions params | `56326fd`, `3de8943` |
 | F · decision closure | #34 closed; #37 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
-| G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
+| G · agent product | #35 closed; #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52 → #53 → #54 → #55 | Core/guest, commitment lifecycle, operator/indexer, then UX | ordered by #34 ADR |
+| I · ERC-8004 reputation | #58 → #59; #60 and #61 → #62 | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61 |
 
 The remaining D, F, and G lanes can proceed independently; H is sequential internally
 (#52 → #53 → #54 → #55) and does not block the core public repository release.
@@ -426,6 +431,17 @@ split in dependency order across #52–#55.
 
 ### M5.1 · #35 — ERC-8004 identity enrichment
 
+**Closed in `f6529a1` (PR #57).** The Optimism Identity Registry is allowlisted with pinned ABI,
+proxy implementation/version/owner provenance and monitored control-plane history. Ponder now
+reconstructs qualified owner, verified-wallet, URI, and event histories in canonical position order;
+a separate DNS/IP-pinned sidecar validates and sanitizes bounded HTTPS/IPFS/data registration
+documents without blocking chain ingestion. Bulk APIs decorate accounts and whole networks without
+N+1 reads, while the account page, member table, graph/inspector, induced agent-wallet lens, and
+durable agent route keep identity evidence distinct from existing scores. The two-agent Solidity
+fixture, 33 indexer tests, frontend production build and byte-identical PageRank/Hypercerts/
+Contributions vectors, Forge fixture/full-suite evidence, Rust workspace, Compose, and schema checks
+pass. Follow-up reputation work is dependency-ordered in #58–#62.
+
 Deliver one vertical slice without feeding external agent data into proven Trustgraph scores:
 
 - pinned official Identity Registry ABI and allowlisted Optimism/local deployments with proxy
@@ -481,9 +497,11 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 - **Near term:** #37, then #36 — the remaining independently closable research decisions.
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
-- **Feature track:** #35, #38 — substantial vertical slices.
+- **Feature track:** #38 — delegated actions after the #35 identity slice.
 - **Weighted-prior track:** #52 → #53 → #54 → #55 — implement the accepted #34 ADR in reviewable
   trust-boundary order.
+- **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
+  remains blocked until all four close compatibly.
 
-The target is all 9 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 13 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
