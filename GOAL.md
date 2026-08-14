@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 14 issues closed, 18 remain.**
+> **Status (2026-08-14): 15 issues closed, 23 remain.**
 >
-> Closed after auditing `main` through `860b257` and rerunning the focused regressions:
+> Closed after auditing `main` through `5526d6a` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -32,13 +32,18 @@
 > - **#36** — accepted normalized final-distribution composition, exact source-aware Hamilton
 >   arithmetic, bounded/fail-closed provenance policy, reproducible goldens and simulations, plus a
 >   separate advisory graph-reputation design (`860b257`, PR #69; children #63–#68)
+> - **#37** — accepted issuer-known/unlinkable private profile, band-only disclosure and leakage
+>   oracle, replicated attested-TEE pilot, bounded four-party MPC target, and first private consumer
+>   (`5526d6a`, PR #76; children #70–#75)
 >
 > Remaining launch-risk issue: **#27**.
-> Remaining research/product epics: **#37–#38**.
+> Remaining product epic: **#38**.
 > Weighted-prior implementation chain: **#52 → #53 → #54 → #55**.
 > ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
+> Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
+> consumer; #72 and #73 evaluate the MPC target in parallel.
 
 Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
 met with code, tests, documentation, or a recorded design decision, while keeping deployment-only
@@ -83,14 +88,16 @@ can proceed concurrently:
 | C · self-serve economics          | #22 closed                       | Make app prepayment activate a payable proving policy            | `f1ef43f`                                   |
 | D · authority and production      | #20 closed → #27                 | Creator bypass removed; deploy and smoke-test production         | `820b6f3`; #12/#14/#22 prerequisites closed |
 | E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
-| F · decision closure              | #34 and #36 closed; #37          | Close bounded research questions with evidence and child issues  | independent research tracks                 |
+| F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 closed; #38                  | ERC-8004 enrichment and delegated action/voting                  | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52 → #53 → #54 → #55            | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
 | I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
+| K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
 
-The remaining D, F, and G lanes can proceed independently; H and J are ordered internally, while I
-shares program-aware ingestion issue #61 with J. None blocks the core public repository release.
+The remaining D and G lanes can proceed independently; F is complete. H, J, and K are ordered
+internally, while I shares program-aware ingestion issue #61 with J. None blocks the core public
+repository release.
 
 ---
 
@@ -383,6 +390,15 @@ feature is implementation-ready.
 
 ### M4.1 · #37 — private Trustgraph decision sprint (first research closure)
 
+**Closed in `5526d6a` (PR #76).** The accepted ADR fixes issuer-known blind enrollment, private
+target cards, positive replace/revoke semantics without comments, band-only member disclosure, 100
+fixed PageRank iterations without BFS/trust decay, exact padded capacity/leakage policy, and a
+non-binding unlinkable score-band governance consumer. The selected pilot is two reproducibly
+built attested AWS Nitro scorers with two-root agreement and 2-of-3 key release. The stronger target
+is four-party active MPC at `t=1`, but its confirmed independent operator set is honestly recorded
+as empty, so it cannot become the pilot yet. The machine-readable policy and public-trace oracle
+gate #70–#75, all assigned with explicit dependencies and exit/no-go criteria.
+
 This is the smallest research closure. Convert `research/PRIVACY_ARCHITECTURE.md` into an approved
 ADR that fixes:
 
@@ -511,7 +527,7 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #37 — the remaining independently closable research decision.
+- **Decision track:** complete — #34, #36, and #37 have accepted ADRs and owned child splits.
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** #38 — delegated actions after the #35 identity slice.
 - **Weighted-prior track:** #52 → #53 → #54 → #55 — implement the accepted #34 ADR in reviewable
@@ -520,6 +536,8 @@ override, and tally-conservation tests; graph-level delegation research has its 
   remains blocked until all four close compatibly.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
   advisory graph reputation. #65 also waits for shared program-aware ingestion issue #61.
+- **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
+  consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 18 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 23 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
