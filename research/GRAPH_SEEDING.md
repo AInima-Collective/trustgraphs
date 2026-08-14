@@ -1,6 +1,9 @@
 # Graph Seeding: Initializing trustgraphs with Scores, Without Attestations
 
-**Status:** research report, 2026-07-22. Design-thinking output; no implementation decision yet.
+**Status:** superseded for weighted V1 by
+[`WEIGHTED_PRIOR_DECISION.md`](./WEIGHTED_PRIOR_DECISION.md), 2026-08-14. This report remains
+background; its global uniform floor, fade, DID-first, shared-vkey, and external-blob proposals were
+not adopted.
 **Question:** how do we initialize a trust graph with a pre-existing score distribution (cold-start bootstrap, imported standing) instead of, or ahead of, organic attestations?
 
 ---

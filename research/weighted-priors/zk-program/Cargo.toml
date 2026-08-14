@@ -1,0 +1,23 @@
+[package]
+name = "weighted-prior-research-program"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "trustgraph-weighted-prior-research"
+path = "src/main.rs"
+
+[dependencies]
+sp1-zkvm = "=6.3.1"
+weighted-prior-research = { path = "../../../packages/weighted-prior-research" }
+
+[workspace]
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
