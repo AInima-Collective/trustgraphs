@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 4 issues closed, 13 remain.**
+> **Status (2026-08-13): 5 issues closed, 12 remain.**
 >
 > Closed after auditing `main` at `c7ee5ec` and rerunning the focused regressions:
 >
@@ -9,9 +9,11 @@
 > - **#13** — snapshot-scoped claims and quote/settlement parity (`2d46090`)
 > - **#15** — persistent deterministic-submit abandonment and fresh-checkpoint recovery
 >   (`362e547`; empty-root/hook precursor in `a6f89c5`)
+> - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
+>   repair (`131ecfd`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#12, #14, #16, #20, #22, #27**.
+> Remaining launch-risk issues: **#12, #14, #20, #22, #27**.
 > Remaining reproducibility and self-service issues: **#21, #28**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -53,7 +55,7 @@ can proceed concurrently:
 
 | Lane | Issues | Purpose | Dependencies |
 | --- | --- | --- | --- |
-| A · operator availability | #16 | Repair score-blob availability | #15 closed in `362e547` |
+| A · operator availability | #16 closed | Repair score-blob availability | `131ecfd` |
 | B · snapshot/vault hardening | #12, #14 | Bound hostile input growth and finish snapshot invariants | coordinate accumulator migration semantics |
 | C · self-serve economics | #22 | Make app prepayment activate a payable proving policy | fee schedule deployed |
 | D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
@@ -97,6 +99,20 @@ do not become strikes.
 without a human, while transient failures and reorgs retain their safe retry behavior.
 
 ### M1.2 · #16 — repair and harden blob publication
+
+**Closed in `131ecfd`.** The operator now journals publication attempts and successes against the
+exact CID and durability-policy hash, retries failed work across restarts with bounded alerting,
+and refuses submission until the configured minimum of independent Kubo-compatible targets has
+stored and served the canonical bytes. `operator republish` reconstructs historical checkpoint
+inputs and parameters, verifies the resulting root, digest, CID, recipient, and total against the
+landed state, then repairs every configured target without requiring prover or submitter secrets.
+
+The end-to-end operator test deliberately lands an unreadable CID, repairs it through a fresh local
+Kubo target, and passes the repaired bytes through the indexer's production Merkle-row derivation.
+It also verifies restart idempotence and subsequent-checkpoint progress. The focused Rust, frontend,
+and indexer suites pass; production and operator documentation now cover independent backup targets,
+minimum-success policy, retention, recovery, and the distinction between content identity and an
+availability guarantee.
 
 Pin-before-submit and CID/readability checks are already on `main`; failed pinning still has no
 repair path, and one Kubo node is not durable storage.
@@ -356,10 +372,10 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #14, #16, #22, #28, and #37 — five independently closable issues.
+- **Near term:** #14, #22, #28, and #37 — four independently closable issues.
 - **Production track:** #12, #20, and then #27 — three security/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 13 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 12 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
