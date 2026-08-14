@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 20 issues closed, 19 remain.**
+> **Status (2026-08-14): 21 issues closed, 18 remain.**
 >
-> Closed after auditing `main` through `339adc3` and rerunning the focused regressions:
+> Closed after auditing `main` through `62af08a` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -50,11 +50,15 @@
 > - **#55** — exact CSV/JSON/TGWP import and export, finalized-block ENS receipts and signing
 >   freshness, asynchronous day-zero/concentration preview, weighted create/rotation/activation,
 >   and explicit new-instance binary prefill (`339adc3`, PR #82)
+> - **#58** — pinned ERC-8004 Reputation Registry provenance, canonical raw feedback/revocation/
+>   response replay, event-block verified-wallet attribution, bulk APIs, hardened asynchronous
+>   descriptors, and a score/proof-isolated raw explorer (`62af08a`, PR #83)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
-> ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
+> ERC-8004 reputation chain: **#58 closed → #59**; #60 and #61 are parallel gates; all feed blocked
+> #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
@@ -106,7 +110,7 @@ can proceed concurrently:
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
 | G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed   | Core/guest, commitment lifecycle, operator/indexer, then UX      | complete in #34 ADR order                   |
-| I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
+| I · ERC-8004 reputation           | #58 closed → #59; #60/#61 → #62 | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #59–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
 
@@ -598,6 +602,24 @@ quorum weight, event-only reason format, and notification requirements.
 **Close when:** stages 1–4 work end to end with malicious delegate, revocation, replay, double-vote,
 override, and tally-conservation tests; graph-level delegation research has its own issue.
 
+### M5.3 · #58 — raw ERC-8004 reputation evidence
+
+**Closed in `62af08a` (PR #83).** The official Optimism Reputation Registry proxy, implementation
+history, version, owner, identity binding, deployment block, ABI, and bytecode expectations are
+pinned and fail closed on drift. Ponder preserves the canonical feedback, revocation, and response
+stream with exact event provenance; reviewer attribution uses only verified-wallet history before
+the feedback position and explicitly represents unattributed or ambiguous evidence. A stable bulk
+API provides exact agent/reviewer/tag/unit/revocation/block filters and keyset pagination without
+N+1 reads. Optional descriptors remain asynchronous, bounded, hash-checked observations behind the
+#35 metadata boundary. The agent page exposes signed raw values, mutable external descriptors,
+responses, revocations, and attribution evidence without creating a global score or changing any
+TrustGraph edge, root, proof, or legacy golden. The rotation/revocation/response fixture, 598 Forge
+tests, 52 indexer tests, frontend tests/build, code generation, and focused lint/format checks pass;
+hosted jobs were billing-blocked before runner allocation.
+
+**Close when:** all raw-event, historical-attribution, bulk-query, metadata-boundary, fixture,
+operator-recovery, and no-score-coupling acceptance criteria in #58 pass. Complete.
+
 ---
 
 ## Release gates and issue-count target
@@ -624,12 +646,12 @@ override, and tally-conservation tests; graph-level delegation research has its 
   graph-native delegation research continues separately in #77.
 - **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
   reviewable trust-boundary order.
-- **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
-  remains blocked until all four close compatibly.
+- **ERC-8004 reputation track:** #58 closed → #59, with #60/#61 as parallel design/platform gates;
+  #62 remains blocked until #59–#61 close compatibly.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
   advisory graph reputation. #65 also waits for shared program-aware ingestion issue #61.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 19 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 18 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
