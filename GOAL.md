@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 11 issues closed, 6 remain.**
+> **Status (2026-08-14): 12 issues closed, 9 remain.**
 >
-> Closed after auditing `main` through `89ca749` and rerunning the focused regressions:
+> Closed after auditing `main` through `8bf7588` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -23,9 +23,13 @@
 > - **#28** — versioned canonical Contributions tuples, registry discovery, hard commitment checks,
 >   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
+> - **#34** — weighted-prior V1 semantics, exact normalization/commitment/availability model,
+>   2,048-entry benchmark cap, cross-language fixture, and ordered implementation split
+>   (`8bf7588`; children #52–#55)
 >
 > Remaining launch-risk issue: **#27**.
-> Remaining research/product epics: **#34–#38**.
+> Remaining research/product epics: **#35–#38**.
+> Weighted-prior implementation chain: **#52 → #53 → #54 → #55**.
 
 Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
 met with code, tests, documentation, or a recorded design decision, while keeping deployment-only
@@ -70,11 +74,12 @@ can proceed concurrently:
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
 | D · authority and production | #20 closed → #27 | Creator bypass removed; deploy and smoke-test production | `820b6f3`; #12/#14/#22 prerequisites closed |
 | E · program self-service | #21 and #28 closed | Factory signer-sync and reproducible Contributions params | `56326fd`, `3de8943` |
-| F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
+| F · decision closure | #34 closed; #37 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
 | G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
+| H · weighted-prior implementation | #52 → #53 → #54 → #55 | Core/guest, commitment lifecycle, operator/indexer, then UX | ordered by #34 ADR |
 
-The recommended merge order is A/C first, B next, D/E after their designs settle, and F/G in
-parallel without blocking the core public repository release.
+The remaining D, F, and G lanes can proceed independently; H is sequential internally
+(#52 → #53 → #54 → #55) and does not block the core public repository release.
 
 ---
 
@@ -382,6 +387,14 @@ discussion outcomes are checked. Implementation remains in the new spike issues.
 
 ### M4.2 · #34 — scalable weighted-prior specification
 
+**Closed in `8bf7588` (PR #56).** The accepted ADR fixes persistent personalized-prior semantics,
+prior-supported node/dangling behavior, exact decimal/Hamilton normalization, canonical CSV/JSON and
+`TGWP` bytes, compact calldata validation with chain-history recovery, timelocked rotation,
+governance/version/migration boundaries, and a constitutional 2,048-entry cap. Rust, TypeScript,
+and Solidity share a byte fixture; measured max-shape cost is 445,972,213 SP1 cycles and the compact
+2,048-entry EVM path is bounded at 3,694,644 gas under the documented method. Implementation is
+split in dependency order across #52–#55.
+
 - Lock the mathematical/product meaning, node universe, dangling behavior, normalization and exact
   remainder rule, canonical CSV/JSON bytes, commitment, availability, rotation, governance, and
   version/migration policy.
@@ -466,10 +479,11 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #37 — the remaining independently closable research decision.
+- **Near term:** #37, then #36 — the remaining independently closable research decisions.
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
 - **Feature track:** #35, #38 — substantial vertical slices.
-- **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
+- **Weighted-prior track:** #52 → #53 → #54 → #55 — implement the accepted #34 ADR in reviewable
+  trust-boundary order.
 
-The target is all 6 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 9 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
