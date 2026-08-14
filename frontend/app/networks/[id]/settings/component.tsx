@@ -1456,6 +1456,11 @@ export const SettingsPage = ({
                       ? yesNo(operatorStatus.settings?.simulateBeforeSend)
                       : '—'}
                   </SettingRow>
+                  <SettingRow label="Submit failure threshold">
+                    {operatorStatus?.available
+                      ? `${comma(operatorStatus.settings?.submitFailureThreshold ?? undefined)} deterministic reverts`
+                      : '—'}
+                  </SettingRow>
                   <SettingRow label="Proof concurrency">
                     {operatorStatus?.available
                       ? `${operatorStatus.settings?.maxConcurrent ?? '—'} global / ${operatorStatus.settings?.maxPerInstance ?? '—'} per network`

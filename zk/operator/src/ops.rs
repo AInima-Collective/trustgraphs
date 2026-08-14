@@ -78,6 +78,7 @@ pub struct PublicSettings {
     pub budget_window_seconds: u64,
     pub publishes_scores: bool,
     pub verifies_score_readback: bool,
+    pub submit_failure_threshold: u32,
 }
 
 #[derive(Serialize)]

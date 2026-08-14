@@ -27,6 +27,7 @@ export type PublicOperatorSettings = {
   maxBasefeeGwei: number | null
   replacementAfterSeconds: number | null
   simulateBeforeSend: boolean | null
+  submitFailureThreshold: number | null
   confirmations: number | null
   tracksBlockHash: boolean | null
   proverBackend: string | null

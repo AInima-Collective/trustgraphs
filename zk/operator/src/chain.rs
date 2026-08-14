@@ -4,13 +4,14 @@
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use operator_core::catalog::{ChainReader, ControllerParams, CreatedParams, RegistryRecord};
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::Params;
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fmt;
 
 sol! {
     /// Mirror of `ParamsCodec.Params` (params schema v2 — 17 fields, order FROZEN).
@@ -99,6 +100,48 @@ pub struct Rpc {
     eas_cache: RefCell<BTreeMap<Address, Address>>,
 }
 
+/// A JSON-RPC response error kept structured long enough for the transaction adapter to tell an
+/// EVM execution revert from a provider/transport failure. Most reads still treat both as an
+/// ordinary `anyhow::Error`; only submit preflight needs the distinction.
+#[derive(Debug)]
+pub(crate) struct RpcResponseError {
+    method: String,
+    code: Option<i64>,
+    message: String,
+    data: Value,
+}
+
+impl RpcResponseError {
+    pub(crate) fn is_execution_revert(&self) -> bool {
+        // Geth uses code 3 for execution errors, including custom-error reverts whose only useful
+        // detail is hex data. Other clients commonly use -32000/-32015 and a textual marker.
+        if self.code == Some(3) {
+            return true;
+        }
+        let text = format!("{} {}", self.message, self.data).to_ascii_lowercase();
+        text.contains("execution reverted")
+            || text.contains("execution error")
+            || text.contains("vm execution error")
+            || text.contains("revert reason")
+            || text.contains(" reverted")
+    }
+}
+
+impl fmt::Display for RpcResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} RPC error (code {}): {}{}",
+            self.method,
+            self.code.map_or_else(|| "unknown".to_string(), |c| c.to_string()),
+            self.message,
+            if self.data.is_null() { String::new() } else { format!("; data={}", self.data) }
+        )
+    }
+}
+
+impl std::error::Error for RpcResponseError {}
+
 impl Rpc {
     pub fn new(url: String) -> Self {
         Self {
@@ -120,7 +163,17 @@ impl Rpc {
             .json()
             .with_context(|| format!("{method}: response was not JSON"))?;
         if let Some(e) = resp.get("error").filter(|e| !e.is_null()) {
-            bail!("{method} RPC error: {e}");
+            return Err(RpcResponseError {
+                method: method.to_string(),
+                code: e.get("code").and_then(Value::as_i64),
+                message: e
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unspecified JSON-RPC error")
+                    .to_string(),
+                data: e.get("data").cloned().unwrap_or(Value::Null),
+            }
+            .into());
         }
         Ok(resp.get("result").cloned().unwrap_or(Value::Null))
     }
@@ -173,7 +226,13 @@ impl Rpc {
     /// `gas` is the limit the REAL transaction will carry (H-3): without it a node simulates at
     /// its own cap, so a call that only reverts because our limit is too small passes simulation
     /// and then burns the full limit on-chain.
-    pub fn simulate(&self, from: Address, to: Address, data: &[u8], gas: Option<u64>) -> Result<()> {
+    pub fn simulate(
+        &self,
+        from: Address,
+        to: Address,
+        data: &[u8],
+        gas: Option<u64>,
+    ) -> Result<()> {
         let mut obj = json!({ "from": from, "to": to, "data": format!("0x{}", hex::encode(data)) });
         if let Some(g) = gas {
             obj["gas"] = json!(format!("0x{g:x}"));
@@ -575,8 +634,11 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
         let ret = rpc.eth_call(snapshot, hasAppliedCheckpointCall {}.abi_encode())?;
         ret.last().is_some_and(|b| *b == 1)
     };
-    let last_applied =
-        if has_applied { Some(u64v(lastAppliedCheckpointCall {}.abi_encode(), "lastAppliedCheckpoint")?) } else { None };
+    let last_applied = if has_applied {
+        Some(u64v(lastAppliedCheckpointCall {}.abi_encode(), "lastAppliedCheckpoint")?)
+    } else {
+        None
+    };
 
     // Checkpoints, newest-window only.
     let count = {

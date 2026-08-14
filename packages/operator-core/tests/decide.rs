@@ -6,6 +6,7 @@
 //! crash-restart replay in all three journal states (the last in `tests/journal.rs`).
 
 use alloy_primitives::{address, b256, Address, B256};
+use operator_core::journal::{Journal, Record, Status, SubmitFailureClass, WorkKey};
 use operator_core::policy::{BudgetBreach, LossBudget};
 use operator_core::types::{
     Action, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight, InFlightState,
@@ -46,6 +47,7 @@ fn healthy() -> InstanceState {
         epoch_length: 100,
         last_trigger_block: 900,
         checkpoints: vec![checkpoint(0, 900, 3)],
+        abandoned_checkpoints: Default::default(),
         last_applied_checkpoint: None,
         params_hash: PARAMS,
         reconstructed_params_hash: PARAMS,
@@ -84,6 +86,80 @@ fn a_ready_proof_is_submitted() {
         state: InFlightState::Ready,
     });
     assert_eq!(plan(&s, &curated(), Spend::default()), Action::Submit { checkpoint_id: 0 });
+}
+
+#[test]
+fn an_abandoned_ready_checkpoint_advances_without_resurrecting_its_proof() {
+    let mut s = healthy();
+    let request_id = B256::from([0xAA; 32]);
+    s.in_flight = Some(InFlight {
+        checkpoint_id: 0,
+        request_id: Some(request_id),
+        state: InFlightState::Ready,
+    });
+    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Submit { checkpoint_id: 0 });
+
+    // Three deterministic preflight reverts terminally abandon this immutable checkpoint. The
+    // disposition survives the exact restart boundary that used to resurrect the held proof.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let key = WorkKey { chain_id: 31337, instance_id: s.instance_id, checkpoint_id: 0 };
+    {
+        let mut journal = Journal::open(&path).unwrap();
+        journal
+            .append(Record::Intent {
+                key,
+                public_values_hash: B256::from([0x77; 32]),
+                vk_hash: B256::from([0x88; 32]),
+                at: 1,
+                cost_cents: 100,
+            })
+            .unwrap();
+        journal.append(Record::Requested { key, request_id, at: 2 }).unwrap();
+        for at in 3..=5 {
+            journal
+                .append(Record::SubmitFailure {
+                    key,
+                    class: SubmitFailureClass::SimulationRevert,
+                    at,
+                })
+                .unwrap();
+        }
+        journal
+            .append(Record::Abandoned {
+                key,
+                class: SubmitFailureClass::SimulationRevert,
+                attempts: 3,
+                at: 5,
+            })
+            .unwrap();
+    }
+    let journal = Journal::open(&path).unwrap();
+    assert!(matches!(journal.status(&key), Status::Abandoned { attempts: 3, .. }));
+
+    // The restarted journal projection removes only checkpoint 0 from the actionable set. Its
+    // rejected proof is not changed into success, resubmitted, or asked for again.
+    s.in_flight = None;
+    if matches!(journal.status(&key), Status::Abandoned { .. }) {
+        s.abandoned_checkpoints.insert(0);
+    }
+    s.live_commitments = commitments(4);
+    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Trigger);
+
+    // Once the fresh checkpoint exists, normal coalescing selects it and never falls back to 0.
+    s.checkpoints.push(checkpoint(1, 1_001, 4));
+    s.head_block = 1_001 + curated().confirmations;
+    assert_eq!(plan(&s, &curated(), Spend::default()), Action::Prove { checkpoint_id: 1 });
+}
+
+#[test]
+fn an_abandoned_checkpoint_waits_for_input_movement_instead_of_trigger_looping() {
+    let mut s = healthy();
+    s.abandoned_checkpoints.insert(0);
+    assert_eq!(
+        plan(&s, &curated(), Spend::default()),
+        Action::Idle(IdleReason::AwaitingNewInputs { checkpoint_id: 0 })
+    );
 }
 
 // ---------------------------------------------------------------------------

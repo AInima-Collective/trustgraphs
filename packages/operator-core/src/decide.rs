@@ -130,6 +130,18 @@ fn prove_or_wait(state: &InstanceState, policy: &Policy, cp: &CheckpointRef) -> 
 }
 
 fn trigger_or_idle(state: &InstanceState, policy: &Policy) -> Action {
+    if let Some(cp) = state
+        .checkpoints
+        .iter()
+        .filter(|c| state.last_applied_checkpoint.is_none_or(|last| c.id > last))
+        .max_by_key(|c| c.id)
+        .filter(|c| state.abandoned_checkpoints.contains(&c.id))
+    {
+        if !state.live_commitments.differs_in(&cp.commitments, state.program.consumes()) {
+            return Action::Idle(IdleReason::AwaitingNewInputs { checkpoint_id: cp.id });
+        }
+    }
+
     // Quiet is free. An instance with no new edges costs nothing, forever.
     if state.is_quiet() {
         return Action::Idle(IdleReason::Quiet);

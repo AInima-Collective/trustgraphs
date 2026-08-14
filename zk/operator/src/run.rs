@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 use operator_core::catalog::{scan as catalog_scan, CatalogEntry, SkipCause};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
-use operator_core::journal::{Journal, Outcome, Record, Status, WorkKey};
+use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
 use operator_core::plan;
 use operator_core::types::{Action, InFlight, InFlightState, InstanceSize, InstanceState, Program};
 use serde_json::json;
@@ -191,7 +191,11 @@ fn tick(
         let live = rpc.block_hash(anchor.block_number).ok().flatten();
         match anchor.finality(head, cfg.finality.confirmations, live) {
             Finality::Final => {
-                journal.append(Record::Settled { key: *key, outcome: Outcome::Landed, at: now() })?;
+                journal.append(Record::Settled {
+                    key: *key,
+                    outcome: Outcome::Landed,
+                    at: now(),
+                })?;
                 logger.event(
                     "submit_confirmed",
                     json!({
@@ -261,7 +265,16 @@ fn tick(
             // being copied from the chain read.
             let ours = vkeys.get(&program).copied();
             let state = match build_state(
-                rpc, cfg, chain_id, program, entry, head, basefee, journal, ours, seen_anchors,
+                rpc,
+                cfg,
+                chain_id,
+                program,
+                entry,
+                head,
+                basefee,
+                journal,
+                ours,
+                seen_anchors,
             ) {
                 Ok(s) => s,
                 Err(e) => {
@@ -400,6 +413,7 @@ fn tick(
                 budget_window_seconds: cfg.budget.window_seconds,
                 publishes_scores: cfg.ipfs.api.is_some(),
                 verifies_score_readback: cfg.ipfs.gateway.is_some(),
+                submit_failure_threshold: cfg.ops.submit_failure_threshold,
             },
             unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
             alerts: alerts_raised,
@@ -448,9 +462,10 @@ fn build_state(
     if cfg.finality.track_block_hash {
         for c in &mut checkpoints {
             let live = rpc.block_hash(c.block_number)?;
-            let anchor = *seen_anchors
-                .entry((entry.instance_id, c.id))
-                .or_insert(Anchor { block_number: c.block_number, block_hash: live.unwrap_or(B256::ZERO) });
+            let anchor = *seen_anchors.entry((entry.instance_id, c.id)).or_insert(Anchor {
+                block_number: c.block_number,
+                block_hash: live.unwrap_or(B256::ZERO),
+            });
             // A checkpoint that moved to a different block, or whose observed block hash no
             // longer matches the canonical chain, was reorged.
             let reorged = anchor.block_number != c.block_number
@@ -475,10 +490,17 @@ fn build_state(
         .filter(|c| view.last_applied.is_none_or(|last| c.id > last))
         .map(|c| c.id)
         .max();
+    let abandoned_checkpoints = checkpoints
+        .iter()
+        .filter_map(|c| {
+            let key = WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: c.id };
+            matches!(journal.status(&key), Status::Abandoned { .. }).then_some(c.id)
+        })
+        .collect();
     let in_flight = newest.and_then(|id| {
         let key = WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: id };
         match journal.status(&key) {
-            Status::Untouched | Status::Settled(_) => None,
+            Status::Untouched | Status::Settled(_) | Status::Abandoned { .. } => None,
             Status::InFlight { request_id } => Some(InFlight {
                 checkpoint_id: id,
                 request_id: Some(request_id),
@@ -515,6 +537,7 @@ fn build_state(
         epoch_length: view.epoch_length,
         last_trigger_block: view.last_trigger_block,
         checkpoints,
+        abandoned_checkpoints,
         last_applied_checkpoint: view.last_applied,
         params_hash: view.params_hash,
         reconstructed_params_hash: entry.reconstructed_params_hash,
@@ -652,18 +675,22 @@ fn act(
             let key =
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
 
-            // H-3 circuit breaker: a submit that keeps reverting re-plans every tick forever —
-            // each attempt burning its full gas — because a failed submit never journals
-            // `Settled`. Three on-chain reverts for one WorkKey is a human problem (paused
-            // instance? rotated verifier the preflight missed? malformed proof?), not a retry
-            // problem. The hold stands until someone appends a `Resolved` record for the key.
-            let strikes = journal.submit_strikes(&key);
-            if strikes >= 3 {
-                bail!(
-                    "submit for checkpoint {} has reverted on-chain {strikes} times; held for a \
-                     human (append a Resolved record for this key to clear the strikes)",
-                    checkpoint_id
-                );
+            // Upgrade legacy three-strike journals (or a crash between the Nth failure and its
+            // Abandoned append) before attempting another submit. Abandonment is terminal for
+            // this immutable checkpoint, but not for the instance: next tick the planner can
+            // freeze a newer checkpoint after inputs move.
+            let (attempts, latest_class) = journal.submit_failures(&key);
+            if attempts >= cfg.ops.submit_failure_threshold {
+                abandon_checkpoint(
+                    cfg,
+                    journal,
+                    logger,
+                    entry,
+                    key,
+                    latest_class.unwrap_or(SubmitFailureClass::ReceiptRevert),
+                    attempts,
+                )?;
+                return Ok(());
             }
 
             let held = handlers::load_proof(entry, *checkpoint_id)?;
@@ -695,7 +722,8 @@ fn act(
                 // Ask for at least what the quote promised. `plan` already refused to prove an
                 // ineligible instance, so a zero here would mean the terms changed underneath us
                 // — exactly the case that must revert rather than hand over a free root.
-                let min_payout = state.vault.map(|v| min_payout_usd(v.payable_usd)).unwrap_or(U256::ZERO);
+                let min_payout =
+                    state.vault.map(|v| min_payout_usd(v.payable_usd)).unwrap_or(U256::ZERO);
                 (
                     vault,
                     crate::chain::submit_and_claim_calldata(
@@ -734,13 +762,28 @@ fn act(
                             r.effective_gas_price,
                             cfg.budget.eth_usd,
                         ),
-                    at: now(),
+                        at: now(),
                     })?;
                     if !r.success {
+                        let (attempts, _) = journal.submit_failures(&key);
+                        if attempts >= cfg.ops.submit_failure_threshold {
+                            abandon_checkpoint(
+                                cfg,
+                                journal,
+                                logger,
+                                entry,
+                                key,
+                                SubmitFailureClass::ReceiptRevert,
+                                attempts,
+                            )?;
+                            return Ok(());
+                        }
                         bail!(
-                            "submit {tx:#x} reverted on chain at block {} (strike {} of 3)",
+                            "submit {tx:#x} reverted on chain at block {} (deterministic attempt \
+                             {} of {})",
                             r.block_number,
-                            journal.submit_strikes(&key)
+                            attempts,
+                            cfg.ops.submit_failure_threshold
                         );
                     }
                     // M-9: `Settled{Landed}` is journaled only after N confirmations (the
@@ -750,9 +793,7 @@ fn act(
                         key,
                         Anchor {
                             block_number: r.block_number,
-                            block_hash: rpc
-                                .block_hash(r.block_number)?
-                                .unwrap_or(B256::ZERO),
+                            block_hash: rpc.block_hash(r.block_number)?.unwrap_or(B256::ZERO),
                         },
                     );
                     logger.event(
@@ -783,13 +824,71 @@ fn act(
                         }),
                     );
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    if let Some(class) = e.deterministic_class() {
+                        journal.append(Record::SubmitFailure { key, class, at: now() })?;
+                        let (attempts, _) = journal.submit_failures(&key);
+                        if attempts >= cfg.ops.submit_failure_threshold {
+                            abandon_checkpoint(cfg, journal, logger, entry, key, class, attempts)?;
+                            return Ok(());
+                        }
+                        bail!(
+                            "submit preflight deterministically reverted ({class:?}, attempt {} \
+                             of {}): {e}",
+                            attempts,
+                            cfg.ops.submit_failure_threshold
+                        );
+                    }
+                    // Provider transport, fee/nonce, broadcast, receipt timeout, and all other
+                    // non-execution failures stay retryable and consume no deterministic attempt.
+                    return Err(e.into());
+                }
             }
         }
 
         // Everything else is a decision not to act. `plan` already logged why.
         _ => {}
     }
+    Ok(())
+}
+
+/// Persist terminal abandonment and emit the one alert that explains both the failure and the
+/// automatic recovery. Repeated ticks cannot flood this alert because `build_state` projects the
+/// terminal status into `abandoned_checkpoints`, so this key is never planned as Submit again.
+fn abandon_checkpoint(
+    cfg: &Config,
+    journal: &mut Journal,
+    logger: &Logger,
+    entry: &CatalogEntry,
+    key: WorkKey,
+    class: SubmitFailureClass,
+    attempts: u32,
+) -> Result<()> {
+    if matches!(journal.status(&key), Status::Abandoned { .. }) {
+        return Ok(());
+    }
+    journal.append(Record::Abandoned { key, class, attempts, at: now() })?;
+    let recovery =
+        "exclude this immutable checkpoint and trigger/prove a newer checkpoint after inputs move";
+    logger.event(
+        "checkpoint_abandoned",
+        json!({
+            "instance": format!("{:#x}", entry.instance_id),
+            "checkpoint": key.checkpoint_id,
+            "failure_class": serde_json::to_value(class).unwrap_or(json!(null)),
+            "attempts": attempts,
+            "recovery": recovery,
+        }),
+    );
+    alert(
+        logger,
+        cfg.ops.alert_webhook.as_deref(),
+        &format!(
+            "{}: checkpoint {} abandoned after {} deterministic submit failures \
+             (failure_class={class:?}); recovery: {recovery}",
+            entry.name, key.checkpoint_id, attempts
+        ),
+    );
     Ok(())
 }
 
@@ -803,7 +902,7 @@ fn min_payout_usd(payable_usd: u128) -> U256 {
 }
 
 /// A `StaleCheckpoint` revert, however the node phrased it.
-fn is_stale_checkpoint(e: &anyhow::Error) -> bool {
+fn is_stale_checkpoint(e: &impl std::fmt::Display) -> bool {
     let s = e.to_string();
     // 0x2e1bc45f = keccak("StaleCheckpoint(uint256,uint256)")[0..4]
     s.contains("StaleCheckpoint") || s.contains("0x2e1bc45f")

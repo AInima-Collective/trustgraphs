@@ -175,6 +175,10 @@ pub struct Ops {
     pub alert_webhook: Option<String>,
     #[serde(default = "d_log_format")]
     pub log_format: String,
+    /// Consecutive deterministic submit reverts before one immutable checkpoint is terminally
+    /// abandoned. Transient/provider/fee/reorg failures do not consume attempts.
+    #[serde(default = "d_submit_failure_threshold")]
+    pub submit_failure_threshold: u32,
 }
 
 fn d_tick() -> u64 {
@@ -234,6 +238,9 @@ fn d_status_path() -> String {
 fn d_log_format() -> String {
     "json".into()
 }
+fn d_submit_failure_threshold() -> u32 {
+    3
+}
 
 impl Default for Cadence {
     fn default() -> Self {
@@ -283,6 +290,7 @@ impl Default for Ops {
             status_path: d_status_path(),
             alert_webhook: None,
             log_format: d_log_format(),
+            submit_failure_threshold: d_submit_failure_threshold(),
         }
     }
 }
@@ -338,6 +346,10 @@ impl Config {
             self.cadence.max_per_instance == 1,
             "cadence.max_per_instance must be 1: more than one in-flight proof per instance makes \
              the request journal an incomplete record of money at risk"
+        );
+        anyhow::ensure!(
+            self.ops.submit_failure_threshold > 0,
+            "ops.submit_failure_threshold must be at least 1"
         );
         Ok(())
     }
@@ -398,6 +410,12 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
     #[test]
     fn a_minimal_config_is_accepted() {
         assert!(parse(GOOD).is_ok());
+    }
+
+    #[test]
+    fn a_zero_submit_failure_threshold_is_rejected() {
+        let err = parse(&format!("{GOOD}\n[ops]\nsubmit_failure_threshold = 0\n")).unwrap_err();
+        assert!(err.contains("must be at least 1"), "{err}");
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 use alloy_primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 /// Which SP1 program owns an instance. The id is `keccak256(name)`, matching the
 /// `InstanceRegistry` record's `program` field.
@@ -184,6 +185,10 @@ pub struct InstanceState {
 
     /// Known checkpoints, ascending by id. Only the newest unproven one is ever proved.
     pub checkpoints: Vec<CheckpointRef>,
+    /// Checkpoints whose held proof deterministically reverted enough times to be terminally
+    /// abandoned by this operator. Persisted in the request journal and projected into the pure
+    /// planning state on every tick/restart.
+    pub abandoned_checkpoints: BTreeSet<u64>,
     /// `None` = no root has ever been applied.
     pub last_applied_checkpoint: Option<u64>,
 
@@ -219,10 +224,15 @@ impl InstanceState {
     /// Coalescing lives here: `submitProof` is monotonic, so intermediate checkpoints can be
     /// skipped forever. A `trigger()` spam run therefore costs the spammer gas and us nothing.
     pub fn newest_unproven(&self) -> Option<&CheckpointRef> {
-        self.checkpoints
+        let newest = self
+            .checkpoints
             .iter()
             .filter(|c| self.last_applied_checkpoint.is_none_or(|last| c.id > last))
-            .max_by_key(|c| c.id)
+            .max_by_key(|c| c.id)?;
+        // Do not fall back to an older checkpoint: coalescing says only the newest immutable
+        // snapshot is relevant. If that newest one is abandoned, the next safe action is to
+        // freeze a newer snapshot after input movement, never to resurrect older paid work.
+        (!self.abandoned_checkpoints.contains(&newest.id)).then_some(newest)
     }
 
     /// The commitments the last applied root was computed over. `None` = no root yet.
@@ -284,6 +294,9 @@ pub enum IdleReason {
     Proving { checkpoint_id: u64 },
     /// Someone landed a newer root while we were proving. Not a failure.
     Superseded { checkpoint_id: u64 },
+    /// The newest checkpoint was abandoned, but no consumed input has moved since it froze.
+    /// Triggering now would either revert `NoNewInputs` or recreate the same rejected statement.
+    AwaitingNewInputs { checkpoint_id: u64 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

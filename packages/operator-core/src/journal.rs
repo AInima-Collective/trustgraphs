@@ -58,6 +58,23 @@ pub struct WorkKey {
     pub checkpoint_id: u64,
 }
 
+/// A submit failure that is safe to count toward abandoning one immutable checkpoint.
+///
+/// These are deliberately all execution reverts. Provider outages, fee errors, receipt timeouts,
+/// broadcast failures, and reorgs never enter this enum: the same proof may succeed once those
+/// transient conditions clear, so treating them as evidence that the checkpoint is bad would
+/// discard valid paid work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmitFailureClass {
+    /// `eth_estimateGas` executed the submit and reported a revert.
+    EstimateRevert,
+    /// The explicit pre-broadcast `eth_call` executed the submit and reported a revert.
+    SimulationRevert,
+    /// A broadcast transaction was mined with `status = 0`.
+    ReceiptRevert,
+}
+
 /// One line of the journal.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -106,6 +123,14 @@ pub enum Record {
         cost_cents: u64,
         at: u64,
     },
+    /// A deterministic pre-broadcast failure. Receipt reverts are already represented by
+    /// `SubmitGas { reverted: true }`; keeping this record preflight-only avoids double-counting
+    /// a mined revert while putting both paths through the same failure counter.
+    SubmitFailure { key: WorkKey, class: SubmitFailureClass, at: u64 },
+    /// Terminal local disposition for one immutable checkpoint. The proof remains a proof of the
+    /// same rejected root; it is never reinterpreted or retried. The planner may instead freeze a
+    /// newer checkpoint after inputs move.
+    Abandoned { key: WorkKey, class: SubmitFailureClass, attempts: u32, at: u64 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,6 +157,9 @@ pub enum Status {
     InFlight { request_id: B256 },
     /// Done. Never request again for this key.
     Settled(Outcome),
+    /// This immutable checkpoint deterministically rejected enough submit attempts. Never submit
+    /// or prove it again; advance to a newer checkpoint.
+    Abandoned { class: SubmitFailureClass, attempts: u32 },
 }
 
 /// Append-only JSONL, one file, fsynced at the points that matter.
@@ -215,6 +243,9 @@ impl Journal {
         for rec in self.records.iter() {
             match rec {
                 Record::Intent { key: k, public_values_hash, vk_hash, at, .. } if k == key => {
+                    if matches!(status, Status::Abandoned { .. }) {
+                        continue;
+                    }
                     status = Status::OutcomeUnknown {
                         public_values_hash: *public_values_hash,
                         vk_hash: *vk_hash,
@@ -222,9 +253,15 @@ impl Journal {
                     };
                 }
                 Record::Requested { key: k, request_id, .. } if k == key => {
+                    if matches!(status, Status::Abandoned { .. }) {
+                        continue;
+                    }
                     status = Status::InFlight { request_id: *request_id };
                 }
                 Record::Resolved { key: k, request_id, .. } if k == key => {
+                    if matches!(status, Status::Abandoned { .. }) {
+                        continue;
+                    }
                     status = match request_id {
                         Some(id) => Status::InFlight { request_id: *id },
                         // A human confirmed nothing was created. Safe to start over.
@@ -233,6 +270,9 @@ impl Journal {
                 }
                 Record::Settled { key: k, outcome, .. } if k == key => {
                     status = Status::Settled(*outcome);
+                }
+                Record::Abandoned { key: k, class, attempts, .. } if k == key => {
+                    status = Status::Abandoned { class: *class, attempts: *attempts };
                 }
                 _ => {}
             }
@@ -314,6 +354,12 @@ impl Journal {
                 "checkpoint {} was already settled ({outcome:?}) and paid work is never repeated.",
                 key.checkpoint_id
             ),
+            Status::Abandoned { class, attempts } => format!(
+                "checkpoint {} was abandoned after {attempts} deterministic submit failures \
+                 (latest class: {class:?}). Its proof remains rejected and is never retried; wait \
+                 for or trigger a newer checkpoint.",
+                key.checkpoint_id
+            ),
         }
     }
 
@@ -361,20 +407,37 @@ impl Journal {
         s
     }
 
-    /// How many times a submit for this key has REVERTED on-chain since the last human
-    /// `Resolved` line for it (H-3's 3-strikes hold). A revert loop is a standing invitation to
-    /// drain the hot wallet — after enough strikes the caller must hold for a human instead of
-    /// re-broadcasting; appending a `Resolved` record clears the count.
-    pub fn submit_strikes(&self, key: &WorkKey) -> u32 {
-        let mut strikes = 0u32;
+    /// How many deterministic submit failures this key has accumulated, and the latest class.
+    ///
+    /// Legacy journals represented receipt reverts only as `SubmitGas`; those records remain
+    /// first-class failure observations. A `Resolved` line clears pre-abandonment counters for
+    /// backwards compatibility with the old circuit breaker, but it cannot clear the terminal
+    /// [`Status::Abandoned`] disposition.
+    pub fn submit_failures(&self, key: &WorkKey) -> (u32, Option<SubmitFailureClass>) {
+        let mut attempts = 0u32;
+        let mut latest = None;
+        let mut abandoned = false;
         for r in &self.records {
             match r {
-                Record::SubmitGas { key: k, reverted: true, .. } if k == key => strikes += 1,
-                Record::Resolved { key: k, .. } if k == key => strikes = 0,
+                Record::SubmitGas { key: k, reverted: true, .. } if k == key => {
+                    attempts = attempts.saturating_add(1);
+                    latest = Some(SubmitFailureClass::ReceiptRevert);
+                }
+                Record::SubmitFailure { key: k, class, .. } if k == key => {
+                    attempts = attempts.saturating_add(1);
+                    latest = Some(*class);
+                }
+                Record::Resolved { key: k, .. } if k == key => {
+                    if !abandoned {
+                        attempts = 0;
+                        latest = None;
+                    }
+                }
+                Record::Abandoned { key: k, .. } if k == key => abandoned = true,
                 _ => {}
             }
         }
-        strikes
+        (attempts, latest)
     }
 
     pub fn records(&self) -> &[Record] {

@@ -32,6 +32,7 @@ pub mod policy;
 pub mod types;
 
 pub use decide::plan;
+pub use journal::SubmitFailureClass;
 pub use policy::{LossBudget, Policy, Spend};
 pub use types::{
     Action, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight, InFlightState,

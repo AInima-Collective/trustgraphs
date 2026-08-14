@@ -128,9 +128,7 @@ replacement_after_s = 300       # a tx with no receipt after this long is re-sig
                                 # nonce with fees bumped ≥12.5%, up to twice (audit M-11)
 simulate_before_send = true     # eth_call AT THE INTENDED GAS LIMIT first; a revert is a hold,
                                 # not a broadcast. The limit itself comes from eth_estimateGas
-                                # plus 25% margin, refused above the per-call cap; a submit that
-                                # reverts on-chain 3x for one checkpoint is held for a human
-                                # (clear it with a `Resolved` journal record) — audit H-3
+                                # plus 25% margin, refused above the per-call cap
 
 # ── finality ────────────────────────────────────────────────────────────────
 [finality]
@@ -174,6 +172,10 @@ journal_path = "./.trustgraph/operator/journal.jsonl"
 status_path  = "./.trustgraph/operator/status.json"
 alert_webhook = "https://…"
 log_format   = "json"
+submit_failure_threshold = 3    # estimate/simulation/mined execution reverts for one immutable
+                                # checkpoint before it is abandoned and the planner advances.
+                                # Provider, fee, timeout, availability, and reorg failures do
+                                # not consume attempts.
 ```
 
 ### Keys
@@ -200,6 +202,7 @@ log_format   = "json"
 | `budget.eth_usd` | crude ETH/USD for booking gas into the budget (H-3) | 5000 |
 | `ipfs.api` | kubo RPC the score blob is published to | unset (nothing published) |
 | `ipfs.gateway` | read the pin back through a reader's gateway before calling it published | unset (no read-back) |
+| `ops.submit_failure_threshold` | deterministic submit reverts before advancing past a checkpoint | 3 |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
 ### Keys and balances
@@ -303,9 +306,10 @@ Two files, both rewritten in place, both meant to be scraped:
   decided action, the non-secret `settings` policy projection, and the current `unresolved` list.
   If `tick_at` stops advancing, the daemon is wedged; nothing else in this file matters more than
   that.
-- **`ops.journal_path`** — the append-only money record. One `intent` per proof request, one
-  `settled` per resolved one. It is the only file whose loss costs money, and the only one worth
-  backing up.
+- **`ops.journal_path`** — the append-only money and recovery record. It carries proof intents,
+  request handles, submit gas, deterministic submit failures, settlements, and terminal
+  `abandoned` checkpoints. It is the only file whose loss can duplicate paid work or resurrect a
+  rejected checkpoint, and the only one worth backing up.
 
 Useful one-liners:
 
@@ -338,6 +342,7 @@ and what each actually means:
 | `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
 | `could not publish the score blob` | the root is valid but its data is not on IPFS | check `ipfs.api`; the page will render an empty roster until the bytes are published, and anyone can publish them (the CID is content-addressed) |
 | `the API accepted the blob but the gateway … answers 504` | `add` and the read are hitting **different nodes** | the pin went somewhere readers do not ask. Compare `curl -X POST <api>/api/v0/id` against whatever serves `ipfs.gateway`; until they agree, every root lands unreadable and the indexer stalls retrying one event |
+| `checkpoint N abandoned after M deterministic submit failures` | the same immutable proof reverted during estimate, simulation, or in a mined receipt M times | no manual unstick is required. The proof remains rejected; after consumed inputs move, the operator triggers and proves a newer checkpoint. Investigate the named `failure_class` before lowering the threshold or restoring the underlying hook/policy. |
 | `journal … was written against a DIFFERENT chain` | a devnet restarted (or the config moved) and the old journal's keys collide with the new chain's work | point `ops.journal_path` at a fresh file for this chain. See below |
 
 #### Why a restarted devnet wedges the journal
@@ -363,6 +368,13 @@ The contracts are the database, so recovery is mostly "start it again".
 - **Someone else landed the root first.** Nothing to do; that is the design. The bounty follows the
   journal's recipient, so `ProvingVault.claim(instanceId, checkpointId)` still pays the prover
   afterwards — anyone may call it.
+- **A submit deterministically reverts.** Estimate-time, simulation-time, and mined receipt
+  reverts increment the same checkpoint-local counter. At `ops.submit_failure_threshold`, an
+  `abandoned` record is fsynced and survives restart. The held proof is never called valid and is
+  never submitted again. If inputs have not moved, the operator reports `awaiting_new_inputs`
+  instead of trigger-looping; once they move, it freezes/proves a newer checkpoint automatically.
+  Provider transport, rate limits, fee/nonce failures, receipt timeouts, blob availability, and
+  reorgs do not increment this counter and retain their existing retry/re-attach behavior.
 - **`RequestOutcomeUnknown`.** The one case needing a human. Query the prover network for the
   request (§3 says how), then append a `Resolved` record to the journal. Do not delete the line and
   do not restart hoping it clears — that is how you pay twice.
