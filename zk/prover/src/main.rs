@@ -42,6 +42,12 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::trust_graph::Command,
     },
+    /// Weighted-prior trust-graph root producer (persistent personalized teleport prior).
+    #[command(name = "trust-graph-weighted")]
+    Weighted {
+        #[command(subcommand)]
+        cmd: programs::weighted::Command,
+    },
     /// Signer-sync (top-N Safe signer set + threshold from the proven scores).
     Signer {
         #[command(subcommand)]
@@ -79,6 +85,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.program {
         Program::Trustgraphs { cmd } => programs::trust_graph::run(cmd),
+        Program::Weighted { cmd } => programs::weighted::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
         Program::Contributions { cmd } => programs::contributions::run(cmd),

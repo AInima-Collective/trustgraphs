@@ -6,3 +6,4 @@ pub mod contributions;
 pub mod hypercerts;
 pub mod signer;
 pub mod trust_graph;
+pub mod weighted;

@@ -3220,6 +3220,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weighted-prior-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "hex",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "zk-core",
+]
+
+[[package]]
 name = "weighted-prior-research"
 version = "0.9.3"
 dependencies = [
