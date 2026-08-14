@@ -82,6 +82,12 @@ pub struct PublicSettings {
     pub publication_min_success: usize,
     pub publication_retry_seconds: u64,
     pub submit_failure_threshold: u32,
+    pub signer_sync_enabled: bool,
+    pub signer_confirmations: u64,
+    pub signer_track_block_hash: bool,
+    pub signer_per_instance_usd_per_day: u64,
+    pub signer_global_usd_per_day: u64,
+    pub signer_budget_window_seconds: u64,
 }
 
 #[derive(Serialize)]

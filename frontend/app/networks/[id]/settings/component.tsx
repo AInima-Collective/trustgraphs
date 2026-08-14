@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { type ReactNode, useMemo, useState } from 'react'
 import {
   type Hex,
+  encodeFunctionData,
   erc20Abi,
   formatUnits,
   keccak256,
@@ -55,9 +56,11 @@ import {
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
+  signerSyncZkModuleAbi,
   trustgraphsFactoryAbi,
 } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { contributionsRoundsFor } from '@/lib/network-nav'
 import {
   type PublicOperatorAction,
@@ -85,6 +88,7 @@ const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 const SAFE_GUARD_STORAGE_SLOT =
   0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
 const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
+const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
 
 type ReadResult = { status?: string; result?: unknown }
 
@@ -633,6 +637,7 @@ export const SettingsPage = ({
   instance: InstanceRow | null
   activeTab?: SettingsTab
 }) => {
+  const router = useRouter()
   const {
     network,
     gnosisSafe,
@@ -681,6 +686,10 @@ export const SettingsPage = ({
   const recordedRecoveryDelay = asBigInt(
     tupleValue(recordedAuthority, 'recoveryDelay', 5)
   )
+  const authoritySignerSync =
+    realAddress(
+      asString(tupleValue(recordedAuthority, 'signerSyncModule', 6))
+    ) || realAddress(network.contracts.safe?.signerSyncManager)
   const hasRecordedAuthority =
     !!authoritySafe &&
     !!authorityGovernance &&
@@ -688,7 +697,7 @@ export const SettingsPage = ({
     !!authorityGuard
 
   const { data: authorityReads } = useReadContracts({
-    contracts: hasRecordedAuthority
+    contracts: (hasRecordedAuthority
       ? [
           {
             address: authorityGuard,
@@ -739,8 +748,18 @@ export const SettingsPage = ({
             functionName: 'getModulesPaginated',
             args: [SAFE_SENTINEL, 10n],
           },
+          ...(authoritySignerSync
+            ? [
+                {
+                  address: authoritySafe,
+                  abi: gnosisSafeAuthorityReadAbi,
+                  functionName: 'isModuleEnabled' as const,
+                  args: [authoritySignerSync],
+                },
+              ]
+            : []),
         ]
-      : [],
+      : []) as any,
     query: { enabled: hasRecordedAuthority, refetchInterval: 30_000 },
   })
   const liveGuardSafe = realAddress(asString(readResult(authorityReads, 0)))
@@ -759,15 +778,25 @@ export const SettingsPage = ({
   const nextModule = realAddress(
     asString(tupleValue(enabledModulePage, 'next', 1))
   )
+  const signerModuleEnabled = authoritySignerSync
+    ? asBoolean(readResult(authorityReads, 9))
+    : false
+  const expectedAuthorityModules = [
+    authorityGovernance,
+    authorityRecovery,
+    authoritySignerSync,
+  ].filter((module): module is Hex => !!module)
   const exactAuthorityModules =
-    enabledModules.length === 2 &&
-    enabledModules.some((module) => sameHex(module, authorityGovernance)) &&
-    enabledModules.some((module) => sameHex(module, authorityRecovery)) &&
+    enabledModules.length === expectedAuthorityModules.length &&
+    expectedAuthorityModules.every((expected) =>
+      enabledModules.some((module) => sameHex(module, expected))
+    ) &&
     sameHex(nextModule, SAFE_SENTINEL)
   const authorityReadsComplete =
     guardSealed !== undefined &&
     governanceModuleEnabled !== undefined &&
     recoveryModuleEnabled !== undefined &&
+    (!authoritySignerSync || signerModuleEnabled !== undefined) &&
     enabledModulePage !== undefined &&
     !!liveGuardSafe &&
     !!liveRecoverySafe &&
@@ -778,6 +807,7 @@ export const SettingsPage = ({
     guardSealed === true &&
     governanceModuleEnabled === true &&
     recoveryModuleEnabled === true &&
+    (!authoritySignerSync || signerModuleEnabled === true) &&
     exactAuthorityModules &&
     sameHex(liveGuardSafe, authoritySafe) &&
     sameHex(liveRecoverySafe, authoritySafe) &&
@@ -785,6 +815,68 @@ export const SettingsPage = ({
     (!governanceAddress || sameHex(authorityGovernance, governanceAddress)) &&
     (!network.contracts.safe?.proxy ||
       sameHex(authoritySafe, network.contracts.safe.proxy))
+
+  const { data: signerSyncReads } = useReadContracts({
+    contracts: authoritySignerSync
+      ? [
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'paused',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'hasAppliedCheckpoint',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'lastAppliedCheckpoint',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'paramsHash',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'selectionParamsHash',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'zkVerifier',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'scoreSnapshot',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'accumulator',
+          },
+          {
+            address: authoritySignerSync,
+            abi: signerSyncZkModuleAbi,
+            functionName: 'owner',
+          },
+        ]
+      : [],
+    query: { enabled: !!authoritySignerSync, refetchInterval: 30_000 },
+  })
+  const signerPaused = asBoolean(readResult(signerSyncReads, 0))
+  const signerHasApplied = asBoolean(readResult(signerSyncReads, 1))
+  const signerLastApplied = asBigInt(readResult(signerSyncReads, 2))
+  const signerParamsHash = asString(readResult(signerSyncReads, 3))
+  const signerSelectionHash = asString(readResult(signerSyncReads, 4))
+  const signerVerifier = asString(readResult(signerSyncReads, 5))
+  const signerScoreSnapshot = asString(readResult(signerSyncReads, 6))
+  const signerAccumulator = asString(readResult(signerSyncReads, 7))
+  const signerOwner = asString(readResult(signerSyncReads, 8))
 
   const { data: factoryVault } = useReadContract({
     address: factoryAddress as Hex,
@@ -1160,6 +1252,11 @@ export const SettingsPage = ({
   const { data: operatorStatus, isLoading: operatorLoading } = useQuery(
     operatorStatusQuery(instanceId)
   )
+  const signerOperatorInstanceId =
+    network.safeZodiacSignerSync.operatorInstanceId ?? ''
+  const { data: signerOperatorStatus } = useQuery(
+    operatorStatusQuery(signerOperatorInstanceId)
+  )
 
   const heartbeatAge =
     operatorStatus?.available && operatorStatus.tickAt
@@ -1340,6 +1437,51 @@ export const SettingsPage = ({
   const distributorPaused = asBoolean(readResult(distributorReads, 5))
   const fundingRestricted = asBoolean(readResult(distributorReads, 4))
   const distributorFee = asBigInt(readResult(distributorReads, 3))
+  const signerCheckpointStale =
+    authoritySignerSync &&
+    hasAppliedCheckpoint === true &&
+    (!signerHasApplied ||
+      signerLastApplied === undefined ||
+      lastAppliedCheckpoint === undefined ||
+      signerLastApplied < lastAppliedCheckpoint)
+  const signerOperatorWatch = signerOperatorStatus?.available
+    ? signerOperatorStatus.instance
+    : null
+  const createSignerPauseProposal = () => {
+    if (!authoritySignerSync || signerPaused === undefined) return
+    const nextPaused = !signerPaused
+    const data = encodeFunctionData({
+      abi: signerSyncZkModuleAbi,
+      functionName: 'setPaused',
+      args: [nextPaused],
+    })
+    const fingerprint = keccak256(data)
+    saveGovernancePrefill({
+      networkId: network.id,
+      fingerprint,
+      parentHash: ZERO_HASH,
+      proposedHash: ZERO_HASH,
+      title: `${nextPaused ? 'Pause' : 'Resume'} score-selected Safe signer updates`,
+      description: nextPaused
+        ? 'Pause new signer-sync proofs while retaining the last recorded Safe owner set.'
+        : 'Resume application of ZK-proven signer sets for new score checkpoints.',
+      actions: [
+        {
+          target: authoritySignerSync,
+          value: '0',
+          data,
+          operation: 0,
+          description: `${nextPaused ? 'Pause' : 'Resume'} signer synchronization`,
+          contractName: 'SignerSyncZkModule',
+          functionSignature: 'setPaused(bool)',
+        },
+      ],
+      createdAt: Date.now(),
+    })
+    router.push(
+      `/networks/${network.id}/governance?new=1&actionDraft=${fingerprint}`
+    )
+  }
   const attentionItems = [
     operatorStatus?.available && watched && !heartbeatFresh
       ? 'The proof-service heartbeat is stale.'
@@ -1350,6 +1492,13 @@ export const SettingsPage = ({
     distributorPaused ? 'Reward funding and claims are paused.' : null,
     paramsMatch === false
       ? 'The live scoring parameter hash differs from the creation tuple.'
+      : null,
+    signerCheckpointStale
+      ? 'Safe signers have not caught up to the latest applied score checkpoint.'
+      : null,
+    signerOperatorWatch?.action?.action === 'hold' ||
+    signerOperatorWatch?.action?.action === 'skip'
+      ? `Signer-sync operator: ${signerOperatorWatch.action.reason ?? signerOperatorWatch.action.action}.`
       : null,
     inputCapacity !== undefined && inputCount * 5n >= inputCapacity * 4n
       ? `Proof inputs have reached at least 80% of the ${comma(inputCapacity)}-input capacity.`
@@ -2186,10 +2335,47 @@ export const SettingsPage = ({
                     />
                   </SettingRow>
                   <SettingRow label="Signer sync enabled">
-                    {yesNo(network.safeZodiacSignerSync.enabled)}
+                    {!authoritySignerSync
+                      ? 'Not installed'
+                      : signerModuleEnabled === false
+                        ? 'Safe module disabled'
+                        : signerPaused === undefined
+                          ? '—'
+                          : signerPaused
+                            ? 'Paused'
+                            : 'Active'}
                   </SettingRow>
                   <SettingRow label="Top signers">
                     {network.safeZodiacSignerSync.topNSigners}
+                  </SettingRow>
+                  <SettingRow label="Last signer checkpoint">
+                    {signerHasApplied ? comma(signerLastApplied) : 'None yet'}
+                  </SettingRow>
+                  <SettingRow label="Latest score checkpoint">
+                    {hasAppliedCheckpoint
+                      ? comma(lastAppliedCheckpoint)
+                      : 'None yet'}
+                  </SettingRow>
+                  <SettingRow label="Last signer receipt">
+                    {network.safeZodiacSignerSync.lastSyncedTxHash ? (
+                      <div className="space-y-1">
+                        <Hash
+                          value={network.safeZodiacSignerSync.lastSyncedTxHash}
+                        />
+                        <div className="text-xs text-muted-foreground">
+                          {timestamp(
+                            network.safeZodiacSignerSync.lastSyncedTimestamp
+                          )}
+                          {' · '}
+                          {network.safeZodiacSignerSync.lastSigners?.length ??
+                            0}{' '}
+                          signers · threshold{' '}
+                          {network.safeZodiacSignerSync.lastThreshold ?? '—'}
+                        </div>
+                      </div>
+                    ) : (
+                      'None yet'
+                    )}
                   </SettingRow>
                   <SettingRow label="Safe threshold">
                     {gnosisSafe
@@ -2567,11 +2753,113 @@ export const SettingsPage = ({
                       : '—'}
                   </SettingRow>
                   <SettingRow label="Signer sync enabled">
-                    {yesNo(network.safeZodiacSignerSync.enabled)}
+                    {!authoritySignerSync
+                      ? 'Not installed'
+                      : signerModuleEnabled === false
+                        ? 'Disabled in Safe'
+                        : signerPaused
+                          ? 'Paused deliberately'
+                          : 'Active'}
                   </SettingRow>
                   <SettingRow label="Top signers">
                     {network.safeZodiacSignerSync.topNSigners}
                   </SettingRow>
+                  <SettingRow label="Threshold policy">
+                    {Math.round(
+                      network.safeZodiacSignerSync.targetThreshold * 100
+                    )}
+                    % target, minimum{' '}
+                    {network.safeZodiacSignerSync.minThreshold}
+                  </SettingRow>
+                  <SettingRow label="Safe module enabled">
+                    {yesNo(signerModuleEnabled)}
+                  </SettingRow>
+                  <SettingRow label="Paused">{yesNo(signerPaused)}</SettingRow>
+                  <SettingRow label="Checkpoint status">
+                    {!signerHasApplied
+                      ? 'No signer proof applied yet'
+                      : signerCheckpointStale
+                        ? `Stale at ${comma(signerLastApplied)}; scores are at ${comma(lastAppliedCheckpoint)}`
+                        : `Current at checkpoint ${comma(signerLastApplied)}`}
+                  </SettingRow>
+                  <SettingRow label="Signer verifier">
+                    <ContractAddress value={signerVerifier} />
+                  </SettingRow>
+                  <SettingRow label="Signer program vkey">
+                    <Hash value={network.safeZodiacSignerSync.programVKey} />
+                  </SettingRow>
+                  <SettingRow label="Selection policy hash">
+                    <Hash
+                      value={
+                        signerSelectionHash ??
+                        network.safeZodiacSignerSync.selectionParamsHash
+                      }
+                    />
+                  </SettingRow>
+                  <SettingRow label="Module score-params reference">
+                    <Hash value={signerParamsHash} />
+                  </SettingRow>
+                  <SettingRow label="Score snapshot">
+                    <ContractAddress value={signerScoreSnapshot} />
+                  </SettingRow>
+                  <SettingRow label="Accumulator">
+                    <ContractAddress value={signerAccumulator} />
+                  </SettingRow>
+                  <SettingRow label="Module owner">
+                    <ContractAddress value={signerOwner} />
+                  </SettingRow>
+                  <SettingRow label="Operator identity">
+                    <Hash value={signerOperatorInstanceId} />
+                  </SettingRow>
+                  <SettingRow label="Operator status">
+                    {!signerOperatorStatus?.available
+                      ? 'Status endpoint unavailable'
+                      : !signerOperatorWatch
+                        ? 'Not discovered by operator'
+                        : `${actionLabel(signerOperatorWatch.action)}${signerOperatorWatch.action?.reason ? ` — ${signerOperatorWatch.action.reason}` : ''}`}
+                  </SettingRow>
+                  <SettingRow label="Signer service policy">
+                    {!signerOperatorStatus?.available
+                      ? '—'
+                      : signerOperatorStatus.settings?.signerSyncEnabled
+                        ? 'Enabled'
+                        : 'Disabled'}
+                  </SettingRow>
+                  <SettingRow label="Signer proof finality">
+                    {signerOperatorStatus?.available
+                      ? `${comma(signerOperatorStatus.settings?.signerConfirmations ?? undefined)} confirmations · block-hash tracking ${yesNo(signerOperatorStatus.settings?.signerTrackBlockHash)}`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Signer proof loss budget">
+                    {signerOperatorStatus?.available
+                      ? `$${comma(signerOperatorStatus.settings?.signerPerInstanceUsdPerDay ?? undefined)} per module / $${comma(signerOperatorStatus.settings?.signerGlobalUsdPerDay ?? undefined)} globally per window`
+                      : '—'}
+                  </SettingRow>
+                  <SettingRow label="Signer budget window">
+                    {signerOperatorStatus?.available
+                      ? duration(
+                          signerOperatorStatus.settings
+                            ?.signerBudgetWindowSeconds ?? undefined
+                        )
+                      : '—'}
+                  </SettingRow>
+                  {authoritySignerSync && signerPaused !== undefined && (
+                    <div className="pt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={createSignerPauseProposal}
+                      >
+                        Create proposal to {signerPaused ? 'resume' : 'pause'}
+                      </Button>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        This prepares an ordinary delayed member-governance
+                        action. It does not grant this wallet a direct module
+                        control path.
+                      </p>
+                    </div>
+                  )}
                 </SettingsCard>
 
                 <SettingsCard title="Feature ownership">

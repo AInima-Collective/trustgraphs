@@ -18,7 +18,7 @@
 
 use alloy_primitives::{Address, B256};
 use contributions_core::Params as ContributionsParams;
-use pagerank_core::{encode, Params};
+use pagerank_core::{encode, Params, SelectionParams};
 
 use crate::manifest::{Manifest, ManifestEntry};
 use crate::types::Program;
@@ -82,6 +82,22 @@ pub struct CreatedParams {
     pub resolver: Address,
     pub created_block: u64,
     pub params: Params,
+    /// Present when the governed factory installed the optional signer module in the same
+    /// transaction. The helper event is the canonical, zero-config description of that child.
+    pub signer_sync: Option<SignerSyncDescriptor>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignerSyncDescriptor {
+    pub operator_instance_id: B256,
+    pub module: Address,
+    pub safe: Address,
+    pub score_snapshot: Address,
+    pub accumulator: Address,
+    pub verifier: Address,
+    pub program_vkey: B256,
+    pub selection_params_hash: B256,
+    pub selection: SelectionParams,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,10 +123,18 @@ pub struct ContributionsControllerParams {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
     pub instance_id: B256,
+    /// The registered trust-graph instance this derived program follows.
+    pub parent_instance_id: Option<B256>,
     pub program: Program,
     pub snapshot: Address,
+    /// Proof submission target. Usually the snapshot; the signer program submits to its module.
+    pub submit_to: Address,
     pub accumulator: Address,
     pub verifier: Address,
+    /// Event-pinned program identity for derived modules.
+    pub program_vkey: Option<B256>,
+    /// Event-pinned signer selection; manifests retain their legacy file pointer instead.
+    pub selection: Option<SelectionParams>,
     /// `None` for a manifest instance whose params come from a file rather than an event.
     pub params: Option<Params>,
     /// Complete tuple for a chain-described contributions round.
@@ -211,7 +235,12 @@ pub fn scan<R: ChainReader>(
     // Registry-discoverable instances. Only a top-level read is allowed to fail the whole scan:
     // without the id list there is nothing to be per-instance about.
     for id in reader.instance_ids()? {
-        match scan_one(reader, program, id) {
+        let scanned = if program == Program::Signer {
+            scan_signer(reader, id)
+        } else {
+            scan_one(reader, program, id)
+        };
+        match scanned {
             Ok(Some(entry)) => catalog.entries.push(entry),
             Ok(None) => {}
             Err(skipped) => catalog.skipped.push(skipped),
@@ -244,10 +273,14 @@ pub fn scan<R: ChainReader>(
         };
         catalog.entries.push(CatalogEntry {
             instance_id: id,
+            parent_instance_id: entry.depends_on.first().copied(),
             program: entry.program,
             snapshot: entry.snapshot,
+            submit_to: entry.submit_target(),
             accumulator: Address::ZERO,
             verifier: Address::ZERO,
+            program_vkey: None,
+            selection: None,
             params: None,
             contributions_params: None,
             reconstructed_params_hash: on_chain,
@@ -261,6 +294,89 @@ pub fn scan<R: ChainReader>(
     }
 
     Ok(catalog)
+}
+
+/// Derive the signer program from the governed factory's helper event rather than requiring a
+/// second registry row or a hand-written manifest. A trust instance without the optional module
+/// is simply not a signer instance (`Ok(None)`), not an unhealthy row.
+fn scan_signer<R: ChainReader>(reader: &R, id: B256) -> Result<Option<CatalogEntry>, Skipped> {
+    let record = reader.instance_record(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: Address::ZERO,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    if record.program != Program::Trustgraphs.id() {
+        return Ok(None);
+    }
+
+    let Some(base) = scan_one(reader, Program::Trustgraphs, id)? else {
+        return Ok(None);
+    };
+    let created = reader.created_params(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    let Some(descriptor) = created.and_then(|created| created.signer_sync) else {
+        return Ok(None);
+    };
+
+    let reconstructed_selection = encode::selection_params_hash(&descriptor.selection);
+    let mut disagreements = Vec::new();
+    if descriptor.module == Address::ZERO
+        || descriptor.safe == Address::ZERO
+        || descriptor.verifier == Address::ZERO
+        || descriptor.program_vkey == B256::ZERO
+    {
+        disagreements
+            .push("signer helper event contains a zero authority or program identity".to_string());
+    }
+    if descriptor.score_snapshot != base.snapshot {
+        disagreements.push(format!(
+            "signer score snapshot {:#x} != registry snapshot {:#x}",
+            descriptor.score_snapshot, base.snapshot
+        ));
+    }
+    if descriptor.accumulator != base.accumulator {
+        disagreements.push(format!(
+            "signer accumulator {:#x} != registry accumulator {:#x}",
+            descriptor.accumulator, base.accumulator
+        ));
+    }
+    if reconstructed_selection != descriptor.selection_params_hash {
+        disagreements.push(format!(
+            "selection tuple hashes to {reconstructed_selection:#x}, event names {:#x}",
+            descriptor.selection_params_hash
+        ));
+    }
+    if !disagreements.is_empty() {
+        return Err(Skipped {
+            instance_id: descriptor.operator_instance_id,
+            snapshot: descriptor.score_snapshot,
+            reason: SkipCause::ControllerInconsistent(disagreements.join("; ")),
+        });
+    }
+
+    Ok(Some(CatalogEntry {
+        instance_id: descriptor.operator_instance_id,
+        parent_instance_id: Some(id),
+        program: Program::Signer,
+        snapshot: descriptor.score_snapshot,
+        submit_to: descriptor.module,
+        accumulator: descriptor.accumulator,
+        verifier: descriptor.verifier,
+        program_vkey: Some(descriptor.program_vkey),
+        selection: Some(descriptor.selection),
+        params: base.params,
+        contributions_params: None,
+        reconstructed_params_hash: base.reconstructed_params_hash,
+        params_controller: base.params_controller,
+        params_version: base.params_version,
+        eas: base.eas,
+        created_block: base.created_block,
+        name: format!("{} signer sync", base.name),
+        manifest: None,
+    }))
 }
 
 /// `Ok(None)` = not ours. `Err(Skipped)` = ours but unusable. Never returns a hard error: a
@@ -360,10 +476,14 @@ fn scan_one<R: ChainReader>(
         })?;
         return Ok(Some(CatalogEntry {
             instance_id: id,
+            parent_instance_id: None,
             program,
             snapshot: record.snapshot,
+            submit_to: record.snapshot,
             accumulator: record.registry_or_accumulator,
             verifier: record.verifier,
+            program_vkey: None,
+            selection: None,
             params: None,
             contributions_params: Some(current.params),
             reconstructed_params_hash: reconstructed,
@@ -455,10 +575,14 @@ fn scan_one<R: ChainReader>(
         let eas = reader.factory_eas(created.factory).ok();
         return Ok(Some(CatalogEntry {
             instance_id: id,
+            parent_instance_id: None,
             program,
             snapshot: record.snapshot,
+            submit_to: record.snapshot,
             accumulator: record.registry_or_accumulator,
             verifier: record.verifier,
+            program_vkey: None,
+            selection: None,
             params: Some(current.params),
             contributions_params: None,
             reconstructed_params_hash: reconstructed,
@@ -492,10 +616,14 @@ fn scan_one<R: ChainReader>(
 
     Ok(Some(CatalogEntry {
         instance_id: id,
+        parent_instance_id: None,
         program,
         snapshot: record.snapshot,
+        submit_to: record.snapshot,
         accumulator: record.registry_or_accumulator,
         verifier: record.verifier,
+        program_vkey: None,
+        selection: None,
         params: Some(created.params),
         contributions_params: None,
         reconstructed_params_hash: reconstructed,

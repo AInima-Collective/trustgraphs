@@ -63,6 +63,11 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
       <SummaryRow label="Delayed recovery module">
         <CopyableText text={created.recoveryModule} className="text-xs" />
       </SummaryRow>
+      {created.signerSyncModule !== zeroAddress && (
+        <SummaryRow label="Score-selected signer module">
+          <CopyableText text={created.signerSyncModule} className="text-xs" />
+        </SummaryRow>
+      )}
       {created.distributor !== zeroAddress && (
         <SummaryRow label="Your shared fund">
           <CopyableText text={created.distributor} className="text-xs" />

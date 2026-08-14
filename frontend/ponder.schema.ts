@@ -151,6 +151,36 @@ export const parameterVersion = onchainTable(
   })
 )
 
+/** Complete, append-only Contributions tuples recovered from their typed controller events. */
+export const contributionsParameterVersion = onchainTable(
+  'contributions_parameter_version',
+  (t) => ({
+    id: t.text().primaryKey(),
+    instanceId: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    eas: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    paramsHash: t.hex().notNull(),
+    previousParamsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    trustedSeeds: t.hex().array().notNull(),
+    evidenceURI: t.text().notNull(),
+    executor: t.hex().notNull(),
+    executedAtBlock: t.bigint().notNull(),
+    executedTimestamp: t.bigint().notNull(),
+    executedTxHash: t.hex().notNull(),
+    valid: t.boolean().notNull(),
+    invalidReason: t.text(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    controllerIdx: index().on(t.controller),
+    snapshotHashIdx: index().on(t.snapshot, t.paramsHash),
+    versionIdx: index().on(t.instanceId, t.version),
+  })
+)
+
 export const merkleSnapshot = onchainTable(
   'merkle_snapshot',
   (t) => ({
@@ -366,6 +396,7 @@ export const anchor = onchainTable(
     nodeId: t.hex().notNull(),
     envelopeKind: t.integer().notNull(), // uint8 — 0 = EAS-offchain, 1 = atproto, ...
     head: t.hex().notNull(),
+    count: t.bigint().notNull(), // uint64 — the head's owner-signed monotonic position (H-5)
     dataCommitment: t.hex().notNull(),
     blockTimestamp: t.bigint().notNull(), // the on-chain timestamp folded into the leaf
     txHash: t.hex().notNull(),
@@ -645,6 +676,68 @@ export const merkleGovModuleVote = onchainTable(
     voteTypeIdx: index().on(t.voteType),
     blockNumberIdx: index().on(t.blockNumber),
     timestampIdx: index().on(t.timestamp),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
+       OPTIONAL FACTORY SIGNER-SYNC — live state and receipts
+//////////////////////////////////////////////////////////////*/
+
+export const signerSyncModule = onchainTable(
+  'signer_sync_module',
+  (t) => ({
+    address: t.hex().primaryKey(),
+    instanceId: t.hex().notNull(),
+    operatorInstanceId: t.hex().notNull(),
+    safe: t.hex().notNull(),
+    scoreSnapshot: t.hex().notNull(),
+    accumulator: t.hex().notNull(),
+    verifier: t.hex().notNull(),
+    programVKey: t.hex().notNull(),
+    selectionParamsHash: t.hex().notNull(),
+    topN: t.integer().notNull(),
+    minThreshold: t.integer().notNull(),
+    targetThresholdBps: t.integer().notNull(),
+    paused: t.boolean().notNull(),
+    safeModuleEnabled: t.boolean().notNull(),
+    hasAppliedCheckpoint: t.boolean().notNull(),
+    lastAppliedCheckpoint: t.bigint(),
+    lastSyncedBlock: t.bigint(),
+    lastSyncedTimestamp: t.bigint(),
+    lastSyncedTxHash: t.hex(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    operatorInstanceIdx: index().on(t.operatorInstanceId),
+    safeIdx: index().on(t.safe),
+    snapshotIdx: index().on(t.scoreSnapshot),
+    enabledIdx: index().on(t.safeModuleEnabled),
+  })
+)
+
+export const signerSyncRotation = onchainTable(
+  'signer_sync_rotation',
+  (t) => ({
+    id: t.text().primaryKey(),
+    module: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    checkpointId: t.bigint().notNull(),
+    signerSetRoot: t.hex().notNull(),
+    threshold: t.bigint().notNull(),
+    submitter: t.hex().notNull(),
+    signers: t.hex().array().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    moduleIdx: index().on(t.module),
+    instanceIdx: index().on(t.instanceId),
+    checkpointIdx: index().on(t.module, t.checkpointId),
+    blockIdx: index().on(t.blockNumber),
   })
 )
 

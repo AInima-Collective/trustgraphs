@@ -14,7 +14,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 
 // Our modules
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
-import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
+import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 
 // MerkleSnapshot + verifier interfaces
@@ -255,6 +255,7 @@ contract DeployZodiacSafes is Common {
             safeProxy, // target
             IZkVerifier(signerVerifier),
             IAttestationAccumulator(address(merkleSnapshot.accumulator())),
+            ISignerSyncCheckpointSource(address(merkleSnapshot)),
             merkleSnapshot.paramsHash(),
             selectionParamsHash
         );

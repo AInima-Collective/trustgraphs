@@ -8,7 +8,7 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 import {Vm} from "forge-std/Vm.sol";
 
 import {GovernedTrustgraphsFactory} from "contracts/factory/GovernedTrustgraphsFactory.sol";
-import {GovernedAuthorityDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {GovernedAuthorityDeployer, SignerSyncModuleDeployer} from "contracts/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
@@ -16,12 +16,29 @@ import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
-import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
+import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {DeployZodiacSafes} from "script/DeployZodiacSafes.s.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
+
+contract FactorySignerVerifier is IZkVerifier {
+    bytes32 public immutable programVKey;
+    bytes32 public expectedDigest;
+
+    constructor(bytes32 programVKey_) {
+        programVKey = programVKey_;
+    }
+
+    function setExpectedDigest(bytes32 digest) external {
+        expectedDigest = digest;
+    }
+
+    function verify(bytes calldata, bytes32 digest) external view {
+        require(expectedDigest == bytes32(0) || digest == expectedDigest, "FactorySignerVerifier: digest mismatch");
+    }
+}
 
 contract DeployZodiacSafesHarness is DeployZodiacSafes {
     function handoff(address deployer, SafeDeployment memory deployment, TrustgraphsParamsController controller)
@@ -38,6 +55,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
     GovernedAuthorityDeployer internal authorityDeployer;
+    SignerSyncModuleDeployer internal signerSyncDeployer;
     DeployZodiacSafesHarness internal zodiacHarness;
 
     address internal creator = address(0xA11CE);
@@ -46,13 +64,33 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         return GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0});
     }
 
+    function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
+        return GovernedTrustgraphsFactory.SignerSyncConfig({
+            enabled: false,
+            verifier: address(0),
+            programVKey: bytes32(0),
+            topN: 0,
+            minThreshold: 0,
+            targetThresholdBps: 0
+        });
+    }
+
+    function _createGoverned(
+        TrustgraphsFactory.CreateArgs memory args,
+        GovernedTrustgraphsFactory.InitialPolicy memory policy
+    ) internal returns (bytes32, address, address, address) {
+        return governedFactory.createGovernedInstance(args, policy, _noSigner());
+    }
+
     function setUp() public override {
         super.setUp();
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
         authorityDeployer = new GovernedAuthorityDeployer();
-        governedFactory =
-            new GovernedTrustgraphsFactory(factory, safeFactory, address(safeSingleton), authorityDeployer);
+        signerSyncDeployer = new SignerSyncModuleDeployer();
+        governedFactory = new GovernedTrustgraphsFactory(
+            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer
+        );
         zodiacHarness = new DeployZodiacSafesHarness();
     }
 
@@ -64,8 +102,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         vm.recordLogs();
         vm.prank(creator);
-        (bytes32 instanceId, address safe, address module, address snapshot) =
-            governedFactory.createGovernedInstance(args, _unpaidPolicy());
+        (bytes32 instanceId, address safe, address module, address snapshot) = _createGoverned(args, _unpaidPolicy());
         Vm.Log[] memory logs = vm.getRecordedLogs();
         CreatedEvent memory created = _decodeCreated(logs);
         address controller = _decodeController(logs, instanceId);
@@ -116,13 +153,131 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(next, address(0x1), "module list must be exhausted");
     }
 
+    function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
+        bytes32 signerVKey = keccak256("factory signer guest");
+        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(signerVKey);
+        GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
+            enabled: true,
+            verifier: address(signerVerifier),
+            programVKey: signerVKey,
+            topN: 5,
+            minThreshold: 1,
+            targetThresholdBps: 5000
+        });
+
+        TrustgraphsFactory.CreateArgs memory args = _args("self-serve-signer-sync");
+        vm.prank(creator);
+        (bytes32 instanceId, address safe,, address snapshot) =
+            governedFactory.createGovernedInstance(args, _unpaidPolicy(), signerConfig);
+
+        GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
+        SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
+        assertTrue(
+            GnosisSafe(payable(safe)).isModuleEnabled(authority.governanceModule),
+            "governance module must remain discoverable and enabled"
+        );
+        assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
+        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
+        assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
+        assertEq(signer.paramsAuthority(), safe, "scoring mirror must be governed by the Safe");
+        assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
+        assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
+        assertEq(address(signer.zkVerifier()), address(signerVerifier), "dedicated signer verifier");
+        assertEq(signer.selectionParamsHash(), keccak256(abi.encode(uint32(5), uint32(1), uint32(5000))));
+
+        (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
+        assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
+        assertEq(next, address(0x1));
+
+        MerkleSnapshot scoreSnapshot = MerkleSnapshot(snapshot);
+        vm.roll(uint256(scoreSnapshot.epochOriginBlock()) + EPOCH_FLOOR);
+        uint256 checkpointId = scoreSnapshot.trigger();
+        IAttestationAccumulator.Checkpoint memory checkpoint = scoreSnapshot.accumulator().getCheckpoint(checkpointId);
+
+        address[] memory desired = new address[](2);
+        desired[0] = address(0xB0B);
+        desired[1] = address(0xCAFE);
+        bytes32 firstLeaf = keccak256(abi.encode(desired[0]));
+        bytes32 secondLeaf = keccak256(abi.encode(desired[1]));
+        bytes32 signerSetRoot = firstLeaf < secondLeaf
+            ? keccak256(abi.encode(firstLeaf, secondLeaf))
+            : keccak256(abi.encode(secondLeaf, firstLeaf));
+        signerVerifier.setExpectedDigest(
+            keccak256(
+                abi.encode(
+                    checkpoint.acc,
+                    checkpoint.leafCount,
+                    scoreSnapshot.checkpointParamsHash(checkpointId),
+                    signer.selectionParamsHash(),
+                    signerSetRoot,
+                    uint256(2),
+                    keccak256(abi.encode(address(signer), block.chainid))
+                )
+            )
+        );
+
+        address relayer = address(0xBEEF);
+        vm.prank(relayer);
+        signer.submitSignerProof(checkpointId, desired, 2, hex"1234");
+
+        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
+        assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
+        assertFalse(GnosisSafe(payable(safe)).isOwner(creator));
+        assertEq(GnosisSafe(payable(safe)).getThreshold(), 2);
+        assertEq(signer.lastAppliedCheckpoint(), checkpointId);
+    }
+
+    function test_OptionalSignerRejectsVerifierProgramMismatchAtomically() public {
+        bytes32 verifierVKey = keccak256("deployed signer guest");
+        bytes32 suppliedVKey = keccak256("different signer guest");
+        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(verifierVKey);
+        GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
+            enabled: true,
+            verifier: address(signerVerifier),
+            programVKey: suppliedVKey,
+            topN: 5,
+            minThreshold: 1,
+            targetThresholdBps: 5000
+        });
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SignerSyncModuleDeployer.SignerProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+            )
+        );
+        governedFactory.createGovernedInstance(_args("mismatched-signer-program"), _unpaidPolicy(), signerConfig);
+        assertEq(registry.instanceCount(), 0, "invalid signer identity must roll back base creation");
+    }
+
+    function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
+        bytes32 signerVKey = keccak256("factory signer guest");
+        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(signerVKey);
+        GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
+            enabled: true,
+            verifier: address(signerVerifier),
+            programVKey: signerVKey,
+            topN: 65,
+            minThreshold: 1,
+            targetThresholdBps: 5000
+        });
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(1), uint32(5000)
+            )
+        );
+        governedFactory.createGovernedInstance(_args("unsafe-signer-selection"), _unpaidPolicy(), signerConfig);
+        assertEq(registry.instanceCount(), 0, "invalid signer policy must roll back base creation");
+    }
+
     function test_CreatorCannotExecuteAnyOwnerTransactionAfterAtomicGraduation() public {
         TrustgraphsFactory.CreateArgs memory args = _args("sealed-owner-route");
         args.withDistributor = true;
 
         vm.prank(creator);
-        (bytes32 instanceId, address safe,, address snapshot) =
-            governedFactory.createGovernedInstance(args, _unpaidPolicy());
+        (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
         GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         SafeExecutionGuard guard = SafeExecutionGuard(authority.executionGuard);
         bytes32 originalParamsHash = MerkleSnapshot(snapshot).paramsHash();
@@ -171,7 +326,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_RecoveryRouteEnforcesFourteenDayDelayAndExecutesPermissionlessly() public {
         TrustgraphsFactory.CreateArgs memory args = _args("delayed-recovery");
         vm.prank(creator);
-        (bytes32 instanceId,,, address snapshot) = governedFactory.createGovernedInstance(args, _unpaidPolicy());
+        (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
         GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         DelayedRecoveryModule recovery = DelayedRecoveryModule(authority.recoveryModule);
 
@@ -201,8 +356,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_RecoveryActionsCanBeCancelledByProposerOrSafe() public {
         TrustgraphsFactory.CreateArgs memory args = _args("recovery-veto");
         vm.prank(creator);
-        (bytes32 instanceId, address safe,, address snapshot) =
-            governedFactory.createGovernedInstance(args, _unpaidPolicy());
+        (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
         DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
         bytes memory data = abi.encodeCall(MerkleSnapshot.setParamsHash, (bytes32(uint256(0xA))));
 
@@ -222,7 +376,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_RecoveryDelegatecallBatchCannotBypassDelay() public {
         TrustgraphsFactory.CreateArgs memory args = _args("delayed-recovery-batch");
         vm.prank(creator);
-        (bytes32 instanceId,,, address snapshot) = governedFactory.createGovernedInstance(args, _unpaidPolicy());
+        (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
         DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
 
         MultiSend multiSend = new MultiSend();
@@ -273,7 +427,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedInstance{value: 3 ether}(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap})
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: cap}),
+            _noSigner()
         );
 
         IProvingVault.Account memory account = vault.accountOf(instanceId);
@@ -302,7 +458,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         vm.prank(creator);
         vm.expectRevert(GovernedTrustgraphsFactory.PrepayRequiresPolicy.selector);
-        governedFactory.createGovernedInstance{value: 1 ether}(args, _unpaidPolicy());
+        governedFactory.createGovernedInstance{value: 1 ether}(args, _unpaidPolicy(), _noSigner());
         assertEq(registry.instanceCount(), 0, "invalid prepay must create nothing");
     }
 
@@ -312,7 +468,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         vm.prank(creator);
         vm.expectRevert(GovernedTrustgraphsFactory.PolicyRequiresPrepay.selector);
         governedFactory.createGovernedInstance(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8})
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            _noSigner()
         );
         assertEq(registry.instanceCount(), 0, "unfunded policy must create nothing");
     }
@@ -326,7 +484,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             abi.encodeWithSelector(GovernedTrustgraphsFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(1))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8})
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 25e8}),
+            _noSigner()
         );
     }
 
@@ -343,7 +503,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8})
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8}),
+            _noSigner()
         );
 
         uint96 maximum = governedFactory.MAX_INITIAL_MAX_PER_ROOT_USD();
@@ -352,14 +513,17 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
-            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1})
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1}),
+            _noSigner()
         );
 
         vm.expectRevert(
             abi.encodeWithSelector(GovernedTrustgraphsFactory.InitialCapBelowFee.selector, uint96(4e8), uint256(5e8))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
-            args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8})
+            args,
+            GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: 4e8}),
+            _noSigner()
         );
         vm.stopPrank();
     }
@@ -378,6 +542,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             address(demoSafe),
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(created.resolver),
+            ISignerSyncCheckpointSource(created.snapshot),
             MerkleSnapshot(created.snapshot).paramsHash(),
             bytes32(uint256(1))
         );

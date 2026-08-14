@@ -4,6 +4,10 @@
     "ponder": "https://ponder.example.com/ponder",
     "ipfsGateway": "https://gateway.pinata.cloud/ipfs/"
   },
+  "signerSync": {
+    "verifier": "",
+    "programVKey": ""
+  },
   "contracts": {
     "EAS": "0x4200000000000000000000000000000000000021",
     "SchemaRegistrar": "0x33b9885ac3cb1891b0bc43f55d71963bd1fee5f2",
@@ -12,6 +16,8 @@
     "EASIndexerResolver": "",
     "MerkleSnapshot": "",
     "MerkleGovModule": "",
+    "SignerSyncZkModule": "",
+    "SignerSyncModuleDeployer": "",
     "MerkleFundDistributor": "",
     "GovernedTrustgraphsFactory": ""
   }

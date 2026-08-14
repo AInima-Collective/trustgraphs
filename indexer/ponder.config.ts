@@ -21,6 +21,8 @@ import {
   merkleFundDistributorAbi,
   merkleGovModuleAbi,
   merkleSnapshotAbi,
+  signerSyncModuleDeployerAbi,
+  signerSyncZkModuleAbi,
 } from '../frontend/lib/contract-abis'
 
 /**
@@ -46,7 +48,10 @@ const deploymentSummary = deploymentSummaryJson as {
   networks: DeployedNetwork[]
   /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
   factory?: { factory?: string; instance_registry?: string }
-  governedFactory?: { governed_factory?: string }
+  governedFactory?: {
+    governed_factory?: string
+    signer_sync_deployer?: string
+  }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -129,6 +134,8 @@ const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
 const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | Hex
   | undefined
+const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
+  ?.signer_sync_deployer as Hex | undefined
 
 /**
  * Whether to discover trust-graph children from the factory. Discovery follows the deployment
@@ -154,6 +161,10 @@ const PARAMS_AUTHORITY_UPDATED = getAbiItem({
 const GOVERNED_INSTANCE_CREATED = getAbiItem({
   abi: governedTrustgraphsFactoryAbi,
   name: 'GovernedInstanceCreated',
+})
+const SIGNER_SYNC_MODULE_CONFIGURED = getAbiItem({
+  abi: signerSyncModuleDeployerAbi,
+  name: 'SignerSyncModuleConfigured',
 })
 
 /**
@@ -192,6 +203,14 @@ const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
     address: GOVERNED_FACTORY!,
     event: GOVERNED_INSTANCE_CREATED,
     parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const governedSignerModules = () =>
+  factory({
+    address: SIGNER_SYNC_DEPLOYER!,
+    event: SIGNER_SYNC_MODULE_CONFIGURED,
+    parameter: 'signerSyncModule',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -263,6 +282,13 @@ export default createConfig({
       startBlock: CORE_START_BLOCK,
       chain: GOVERNED_FACTORY
         ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
+        : {},
+    },
+    signerSyncModuleDeployer: {
+      abi: signerSyncModuleDeployerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: SIGNER_SYNC_DEPLOYER
+        ? { [CORE_CHAIN]: { address: SIGNER_SYNC_DEPLOYER } }
         : {},
     },
     trustgraphsParamsController: {
@@ -410,11 +436,22 @@ export default createConfig({
     },
     governedMerkleGovModule: {
       abi: merkleGovModuleAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: GOVERNED_FACTORY
         ? {
             [CORE_CHAIN]: {
               address: governedChildren('merkleGovModule'),
+            },
+          }
+        : {},
+    },
+    governedSignerSyncModule: {
+      abi: signerSyncZkModuleAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: SIGNER_SYNC_DEPLOYER
+        ? {
+            [CORE_CHAIN]: {
+              address: governedSignerModules(),
             },
           }
         : {},
@@ -436,7 +473,7 @@ export default createConfig({
     },
     governedGnosisSafe: {
       abi: gnosisSafeAbi,
-      startBlock: DEV_START_BLOCK,
+      startBlock: CORE_START_BLOCK,
       chain: GOVERNED_FACTORY
         ? {
             [CORE_CHAIN]: {

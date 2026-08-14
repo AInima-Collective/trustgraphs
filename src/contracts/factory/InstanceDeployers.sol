@@ -10,6 +10,7 @@ import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
+import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
 
 /// @title MerkleSnapshotDeployer
 /// @notice A one-per-chain singleton whose only job is to hold `MerkleSnapshot`'s creation code so
@@ -90,5 +91,78 @@ contract GovernedAuthorityDeployer {
     {
         guard = new SafeExecutionGuard(safe, bootstrapper);
         recovery = new DelayedRecoveryModule(safe, recoveryProposer, recoveryDelay);
+    }
+}
+
+/// @title SignerSyncModuleDeployer
+/// @notice Keeps the signer guest module's creation code out of the governed factory runtime.
+/// @dev Every authority and dependency is explicit; this permissionless helper retains nothing.
+contract SignerSyncModuleDeployer {
+    uint32 public constant MAX_SIGNERS = 64;
+
+    error InvalidSignerVerifier();
+    error SignerProgramVKeyMismatch(bytes32 supplied, bytes32 verifierVKey);
+    error InvalidSignerSelection(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps);
+
+    event SignerSyncModuleConfigured(
+        bytes32 indexed instanceId,
+        address indexed safe,
+        address indexed signerSyncModule,
+        bytes32 operatorInstanceId,
+        address scoreSnapshot,
+        address accumulator,
+        address verifier,
+        bytes32 programVKey,
+        bytes32 selectionParamsHash,
+        uint32 topN,
+        uint32 minThreshold,
+        uint32 targetThresholdBps
+    );
+
+    function deploy(
+        bytes32 instanceId,
+        address safe,
+        IZkVerifier verifier,
+        IAttestationAccumulator accumulator,
+        ISignerSyncCheckpointSource scoreSnapshot,
+        bytes32 paramsHash,
+        bytes32 programVKey,
+        uint32 topN,
+        uint32 minThreshold,
+        uint32 targetThresholdBps
+    ) external returns (SignerSyncZkModule) {
+        if (address(verifier) == address(0) || programVKey == bytes32(0)) {
+            revert InvalidSignerVerifier();
+        }
+        if (
+            topN == 0 || topN > MAX_SIGNERS || minThreshold == 0 || minThreshold > topN || targetThresholdBps == 0
+                || targetThresholdBps > 10_000
+        ) revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
+
+        (bool ok, bytes memory returned) = address(verifier).staticcall(abi.encodeWithSignature("programVKey()"));
+        if (!ok || returned.length != 32) revert InvalidSignerVerifier();
+        bytes32 verifierVKey = abi.decode(returned, (bytes32));
+        if (verifierVKey != programVKey) revert SignerProgramVKeyMismatch(programVKey, verifierVKey);
+
+        bytes32 selectionParamsHash = keccak256(abi.encode(topN, minThreshold, targetThresholdBps));
+        SignerSyncZkModule module = new SignerSyncZkModule(
+            safe, safe, safe, verifier, accumulator, scoreSnapshot, paramsHash, selectionParamsHash
+        );
+        bytes32 operatorInstanceId = keccak256(abi.encode(instanceId, address(module), keccak256("signer-sync")));
+        emit SignerSyncModuleConfigured(
+            instanceId,
+            safe,
+            address(module),
+            operatorInstanceId,
+            address(scoreSnapshot),
+            address(accumulator),
+            address(verifier),
+            programVKey,
+            selectionParamsHash,
+            topN,
+            minThreshold,
+            targetThresholdBps
+        );
+        return module;
     }
 }

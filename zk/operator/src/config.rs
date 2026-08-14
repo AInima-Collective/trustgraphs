@@ -47,6 +47,10 @@ pub struct Config {
     pub prover: Prover,
     #[serde(default)]
     pub budget: Budget,
+    /// Derived signer proofs are a distinct workload and liability envelope. They follow landed
+    /// score checkpoints but have their own enable switch, finality depth, and rolling caps.
+    #[serde(default)]
+    pub signer_sync: SignerSync,
     #[serde(default)]
     pub ipfs: Ipfs,
     #[serde(default)]
@@ -179,6 +183,22 @@ pub struct Budget {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SignerSync {
+    #[serde(default = "d_true")]
+    pub enabled: bool,
+    #[serde(default = "d_signer_confirmations")]
+    pub confirmations: u64,
+    #[serde(default = "d_true")]
+    pub track_block_hash: bool,
+    #[serde(default = "d_signer_per_instance_usd")]
+    pub per_instance_usd_per_day: u64,
+    #[serde(default = "d_signer_global_usd")]
+    pub global_usd_per_day: u64,
+    #[serde(default = "d_budget_window")]
+    pub budget_window_seconds: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Ops {
     #[serde(default = "d_journal_path")]
     pub journal_path: String,
@@ -221,6 +241,9 @@ fn d_true() -> bool {
 fn d_confirmations() -> u64 {
     12
 }
+fn d_signer_confirmations() -> u64 {
+    24
+}
 fn d_backend() -> String {
     "network".into()
 }
@@ -232,6 +255,12 @@ fn d_per_instance_usd() -> u64 {
 }
 fn d_global_usd() -> u64 {
     250
+}
+fn d_signer_per_instance_usd() -> u64 {
+    5
+}
+fn d_signer_global_usd() -> u64 {
+    50
 }
 fn d_cents_per_gcycle() -> u64 {
     100
@@ -296,6 +325,18 @@ impl Default for Budget {
             cents_per_billion_cycles: d_cents_per_gcycle(),
             window_seconds: d_budget_window(),
             eth_usd: d_eth_usd(),
+        }
+    }
+}
+impl Default for SignerSync {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            confirmations: d_signer_confirmations(),
+            track_block_hash: true,
+            per_instance_usd_per_day: d_signer_per_instance_usd(),
+            global_usd_per_day: d_signer_global_usd(),
+            budget_window_seconds: d_budget_window(),
         }
     }
 }
@@ -378,6 +419,10 @@ impl Config {
             self.ops.submit_failure_threshold > 0,
             "ops.submit_failure_threshold must be at least 1"
         );
+        anyhow::ensure!(
+            self.signer_sync.budget_window_seconds > 0,
+            "signer_sync.budget_window_seconds must be at least 1"
+        );
         self.ipfs.validate()?;
         Ok(())
     }
@@ -387,8 +432,14 @@ impl Config {
     }
 
     /// The policy for one instance. Curation is the only thing that differs per instance.
-    pub fn policy_for(&self, instance_id: B256, supported: BTreeSet<Program>) -> Policy {
-        let curated = self.curated.instances.contains(&instance_id);
+    pub fn policy_for(
+        &self,
+        instance_id: B256,
+        program: Program,
+        supported: BTreeSet<Program>,
+    ) -> Policy {
+        let signer = program == Program::Signer;
+        let curated = signer || self.curated.instances.contains(&instance_id);
         Policy {
             curated,
             // A vault is consulted only when there is a paid path AND this instance is not one we
@@ -399,13 +450,41 @@ impl Config {
             // else: a community self-proving with its own keys is not throttled by it.
             subsidy_min_blocks: if curated { self.cadence.subsidy_min_blocks } else { 0 },
             max_basefee_wei: u128::from(self.gas.max_basefee_gwei) * 1_000_000_000,
-            confirmations: self.finality.confirmations,
+            confirmations: if signer {
+                self.signer_sync.confirmations
+            } else {
+                self.finality.confirmations
+            },
             supported_programs: supported,
             loss_budget: LossBudget {
-                per_instance_cents_per_day: self.budget.per_instance_usd_per_day * 100,
-                global_cents_per_day: self.budget.global_usd_per_day * 100,
+                per_instance_cents_per_day: if signer {
+                    self.signer_sync.per_instance_usd_per_day * 100
+                } else {
+                    self.budget.per_instance_usd_per_day * 100
+                },
+                global_cents_per_day: if signer {
+                    self.signer_sync.global_usd_per_day * 100
+                } else {
+                    self.budget.global_usd_per_day * 100
+                },
             },
             ..Policy::default()
+        }
+    }
+
+    pub fn budget_window_for(&self, program: Program) -> u64 {
+        if program == Program::Signer {
+            self.signer_sync.budget_window_seconds
+        } else {
+            self.budget.window_seconds
+        }
+    }
+
+    pub fn tracks_block_hash_for(&self, program: Program) -> bool {
+        if program == Program::Signer {
+            self.signer_sync.track_block_hash
+        } else {
+            self.finality.track_block_hash
         }
     }
 
@@ -510,6 +589,9 @@ impl Ipfs {
 #[cfg(test)]
 mod validate_tests {
     use super::Config;
+    use alloy_primitives::B256;
+    use operator_core::types::Program;
+    use std::collections::BTreeSet;
 
     fn parse(toml_src: &str) -> Result<Config, String> {
         let cfg: Config = toml::from_str(toml_src).map_err(|e| e.to_string())?;
@@ -525,6 +607,22 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
     #[test]
     fn a_minimal_config_is_accepted() {
         assert!(parse(GOOD).is_ok());
+    }
+
+    #[test]
+    fn signer_schedule_has_separate_finality_and_loss_caps() {
+        let cfg = parse(GOOD).unwrap();
+        let supported = BTreeSet::from([Program::Trustgraphs, Program::Signer]);
+        let signer = cfg.policy_for(B256::from([0x51; 32]), Program::Signer, supported.clone());
+        let scores = cfg.policy_for(B256::from([0x11; 32]), Program::Trustgraphs, supported);
+        assert!(signer.curated);
+        assert!(!signer.requires_vault);
+        assert_eq!(signer.confirmations, 24);
+        assert_eq!(signer.loss_budget.per_instance_cents_per_day, 500);
+        assert_eq!(signer.loss_budget.global_cents_per_day, 5_000);
+        assert_eq!(scores.confirmations, 12);
+        assert_eq!(scores.loss_budget.per_instance_cents_per_day, 2_500);
+        assert_eq!(scores.loss_budget.global_cents_per_day, 25_000);
     }
 
     #[test]

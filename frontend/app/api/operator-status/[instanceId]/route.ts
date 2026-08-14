@@ -181,6 +181,14 @@ const sanitizeSettings = (value: unknown) => {
     publicationTargetCount: safeInteger(input.publication_target_count),
     publicationMinimum: safeInteger(input.publication_min_success),
     publicationRetrySeconds: safeInteger(input.publication_retry_seconds),
+    signerSyncEnabled: boolean(input.signer_sync_enabled),
+    signerConfirmations: safeInteger(input.signer_confirmations),
+    signerTrackBlockHash: boolean(input.signer_track_block_hash),
+    signerPerInstanceUsdPerDay: safeInteger(
+      input.signer_per_instance_usd_per_day
+    ),
+    signerGlobalUsdPerDay: safeInteger(input.signer_global_usd_per_day),
+    signerBudgetWindowSeconds: safeInteger(input.signer_budget_window_seconds),
   }
 }
 

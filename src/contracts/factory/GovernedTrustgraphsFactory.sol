@@ -6,11 +6,14 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
-import {GovernedAuthorityDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {GovernedAuthorityDeployer, SignerSyncModuleDeployer} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
+import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
+import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
@@ -41,6 +44,17 @@ contract GovernedTrustgraphsFactory {
         uint96 maxPerRootUsd;
     }
 
+    /// @notice Optional score-selected Safe owner rotation. The signer guest is distinct from the
+    ///         score-root guest and therefore names its own verifier and immutable program vkey.
+    struct SignerSyncConfig {
+        bool enabled;
+        address verifier;
+        bytes32 programVKey;
+        uint32 topN;
+        uint32 minThreshold;
+        uint32 targetThresholdBps;
+    }
+
     struct Authority {
         address safe;
         address governanceModule;
@@ -48,12 +62,14 @@ contract GovernedTrustgraphsFactory {
         address executionGuard;
         address initialRecoveryProposer;
         uint48 recoveryDelay;
+        address signerSyncModule;
     }
 
     TrustgraphsFactory public immutable FACTORY;
     GnosisSafeProxyFactory public immutable SAFE_FACTORY;
     address public immutable SAFE_SINGLETON;
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
+    SignerSyncModuleDeployer public immutable SIGNER_SYNC_DEPLOYER;
 
     mapping(bytes32 instanceId => Authority authority) private _authorities;
 
@@ -84,18 +100,20 @@ contract GovernedTrustgraphsFactory {
         address governanceModule,
         address recoveryModule,
         address recoveryProposer,
-        uint48 recoveryDelay
+        uint48 recoveryDelay,
+        address signerSyncModule
     );
 
     constructor(
         TrustgraphsFactory factory_,
         GnosisSafeProxyFactory safeFactory_,
         address safeSingleton_,
-        GovernedAuthorityDeployer authorityDeployer_
+        GovernedAuthorityDeployer authorityDeployer_,
+        SignerSyncModuleDeployer signerSyncDeployer_
     ) {
         if (
             address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)
-                || address(authorityDeployer_) == address(0)
+                || address(authorityDeployer_) == address(0) || address(signerSyncDeployer_) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -103,6 +121,7 @@ contract GovernedTrustgraphsFactory {
         SAFE_FACTORY = safeFactory_;
         SAFE_SINGLETON = safeSingleton_;
         AUTHORITY_DEPLOYER = authorityDeployer_;
+        SIGNER_SYNC_DEPLOYER = signerSyncDeployer_;
     }
 
     function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
@@ -113,11 +132,12 @@ contract GovernedTrustgraphsFactory {
     ///         the newly-created Safe is the instance admin, controller owner and fund owner.
     /// @param requested The canonical factory arguments; its effective epoch bounds paid cadence.
     /// @param policy Initial vault terms. Must be zero/zero without value and fully enabled with it.
-    function createGovernedInstance(TrustgraphsFactory.CreateArgs calldata requested, InitialPolicy calldata policy)
-        external
-        payable
-        returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot)
-    {
+    /// @notice Create one governed trust graph with optional ZK-proven Safe owner rotation.
+    function createGovernedInstance(
+        TrustgraphsFactory.CreateArgs calldata requested,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync
+    ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         IProvingVault vault = FACTORY.VAULT();
         if (msg.value == 0) {
             if (policy.minPaidIntervalBlocks != 0 || policy.maxPerRootUsd != 0) revert PolicyRequiresPrepay();
@@ -184,10 +204,29 @@ contract GovernedTrustgraphsFactory {
         (SafeExecutionGuard executionGuard, DelayedRecoveryModule recoveryModule) =
             AUTHORITY_DEPLOYER.deploy(safeAddress, address(this), msg.sender, RECOVERY_DELAY);
 
+        SignerSyncZkModule signerModule;
+        if (signerSync.enabled) {
+            signerModule = SIGNER_SYNC_DEPLOYER.deploy(
+                instanceId,
+                safeAddress,
+                IZkVerifier(signerSync.verifier),
+                IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator())),
+                ISignerSyncCheckpointSource(snapshot),
+                MerkleSnapshot(snapshot).paramsHash(),
+                signerSync.programVKey,
+                signerSync.topN,
+                signerSync.minThreshold,
+                signerSync.targetThresholdBps
+            );
+        }
+
         // These calls must originate from the Safe: it owns its module/guard configuration and
         // holds the new snapshot's constitutional role from the instant the base factory returns.
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", merkleGovModule));
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", address(recoveryModule)));
+        if (address(signerModule) != address(0)) {
+            _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", address(signerModule)));
+        }
         _execSafe(safe, snapshot, 0, abi.encodeCall(MerkleSnapshot.addHook, (IMerkleSnapshotHook(merkleGovModule))));
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("setGuard(address)", address(executionGuard)));
 
@@ -208,7 +247,8 @@ contract GovernedTrustgraphsFactory {
             recoveryModule: address(recoveryModule),
             executionGuard: address(executionGuard),
             initialRecoveryProposer: msg.sender,
-            recoveryDelay: RECOVERY_DELAY
+            recoveryDelay: RECOVERY_DELAY,
+            signerSyncModule: address(signerModule)
         });
         _authorities[instanceId] = authority;
 
@@ -220,7 +260,8 @@ contract GovernedTrustgraphsFactory {
             merkleGovModule,
             address(recoveryModule),
             msg.sender,
-            RECOVERY_DELAY
+            RECOVERY_DELAY,
+            address(signerModule)
         );
     }
 

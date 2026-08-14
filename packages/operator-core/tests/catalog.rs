@@ -4,11 +4,11 @@
 use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
     scan, Catalog, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord, SkipCause,
+    RegistryRecord, SignerSyncDescriptor, SkipCause,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
-use pagerank_core::{encode, Params};
+use pagerank_core::{encode, Params, SelectionParams};
 use std::collections::BTreeMap;
 
 fn params(seed: u8) -> Params {
@@ -136,11 +136,42 @@ fn add_healthy(chain: &mut FakeChain, seed: u8) -> B256 {
             resolver,
             created_block: 100,
             params: p,
+            signer_sync: None,
         },
     );
     chain.snapshot_hashes.insert(snapshot, hash);
     chain.factory_eas.insert(FACTORY, EAS);
     id
+}
+
+#[test]
+fn governed_signer_module_is_derived_from_creation_events_without_a_manifest() {
+    let mut chain = FakeChain::default();
+    let parent = add_healthy(&mut chain, 1);
+    let module = Address::from([0x91; 20]);
+    let selection = SelectionParams { top_n: 5, min_threshold: 2, target_threshold_bps: 6000 };
+    let operator_instance_id = B256::from([0xA1; 32]);
+    let created = chain.created.get_mut(&parent).unwrap();
+    created.signer_sync = Some(SignerSyncDescriptor {
+        operator_instance_id,
+        module,
+        safe: Address::from([0x92; 20]),
+        score_snapshot: created.snapshot,
+        accumulator: created.resolver,
+        verifier: Address::from([0x93; 20]),
+        program_vkey: B256::from([0x94; 32]),
+        selection_params_hash: encode::selection_params_hash(&selection),
+        selection,
+    });
+
+    let catalog = scan(&chain, Program::Signer, &Manifest::default()).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let signer = catalog.get(operator_instance_id).expect("derived signer program");
+    assert_eq!(signer.parent_instance_id, Some(parent));
+    assert_eq!(signer.submit_to, module);
+    assert_eq!(signer.selection, Some(selection));
+    assert_eq!(signer.program, Program::Signer);
+    assert!(signer.manifest.is_none(), "the helper event is the descriptor");
 }
 
 fn add_controller(chain: &mut FakeChain, id: B256, version: u64, current: Params) -> Address {

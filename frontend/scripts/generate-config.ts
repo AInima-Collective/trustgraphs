@@ -33,6 +33,13 @@ const governedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
   ? (JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
       .governed_factory ?? '')
   : ''
+const signerVerifierDeployFile = path.join(
+  __dirname,
+  '../../.docker/zk_verifier_signer_deploy.json'
+)
+const signerVerifierDeployment = fs.existsSync(signerVerifierDeployFile)
+  ? JSON.parse(fs.readFileSync(signerVerifierDeployFile, 'utf8'))
+  : {}
 
 console.log('🔄 Updating config with latest deployment data...')
 
@@ -55,6 +62,10 @@ try {
         ? 'http://127.0.0.1:8080/ipfs/'
         : 'https://gateway.pinata.cloud/ipfs/',
   }
+  configOutput.signerSync = {
+    verifier: signerVerifierDeployment.zk_verifier ?? '',
+    programVKey: signerVerifierDeployment.program_vkey ?? '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {
@@ -68,6 +79,8 @@ try {
     EASIndexerResolver: '',
     MerkleSnapshot: '',
     MerkleGovModule: '',
+    SignerSyncZkModule: '',
+    SignerSyncModuleDeployer: '',
     MerkleFundDistributor: '',
     // Lane-2 (envelope-0) anchor accumulator; exposes anchorAcc()/anchorCount()
     // views + AnchorsCheckpointed/HeadAnchored events for journal-v2 verification.
@@ -93,7 +106,12 @@ try {
   Object.keys(configOutput.contracts)
     .sort()
     .forEach((name) => {
-      const abiPath = path.join(__dirname, `../../out/${name}.sol/${name}.json`)
+      const sourceFile =
+        name === 'SignerSyncModuleDeployer' ? 'InstanceDeployers' : name
+      const abiPath = path.join(
+        __dirname,
+        `../../out/${sourceFile}.sol/${name}.json`
+      )
       const abiExists = fs.existsSync(abiPath)
       if (!abiExists) {
         throw new Error(

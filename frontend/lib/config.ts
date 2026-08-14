@@ -50,6 +50,11 @@ export const VISIBLE_CONTRIBUTIONS_NETWORKS = CONTRIBUTIONS_NETWORKS.filter(
 export const CHAIN = CONFIG.chain
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
+export const SIGNER_SYNC_CONFIG = (
+  CONFIG as {
+    signerSync?: { verifier?: string; programVKey?: string }
+  }
+).signerSync
 
 /**
  * The chain's shared `ProvingVault`, or undefined on a deployment without one.

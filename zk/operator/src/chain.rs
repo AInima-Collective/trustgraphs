@@ -2,16 +2,16 @@
 //!
 //! Everything here is mechanical. Every decision is in `operator-core`.
 
-use alloy_primitives::{keccak256, Address, B256, U256};
-use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
-use anyhow::{anyhow, bail, Context, Result};
+use alloy_primitives::{Address, B256, U256, keccak256};
+use alloy_sol_types::{SolCall, SolEvent, SolValue, sol};
+use anyhow::{Context, Result, anyhow, bail};
 use operator_core::catalog::{
     CatalogEntry, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord,
+    RegistryRecord, SignerSyncDescriptor,
 };
 use operator_core::types::{CheckpointRef, Commitments};
-use pagerank_core::Params;
-use serde_json::{json, Value};
+use pagerank_core::{Params, SelectionParams};
+use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -39,6 +39,14 @@ sol! {
         bytes32 indexed instanceId, address indexed creator, address indexed admin,
         string name, string metadataURI, address resolver, bytes32 schemaUid, address snapshot,
         address distributor, address distributorToken, uint64 epochLength, SolParams params
+    );
+
+    /// `SignerSyncModuleDeployer`: emitted in the same governed creation receipt.
+    event SignerSyncModuleConfigured(
+        bytes32 indexed instanceId, address indexed safe, address indexed signerSyncModule,
+        bytes32 operatorInstanceId, address scoreSnapshot, address accumulator, address verifier,
+        bytes32 programVKey, bytes32 selectionParamsHash, uint32 topN, uint32 minThreshold,
+        uint32 targetThresholdBps
     );
 
     struct Instance {
@@ -99,6 +107,14 @@ sol! {
         uint256 indexed checkpointId, bytes32 indexed root, address indexed prover,
         address recipient
     );
+
+    /// `SignerSyncZkModule` reads/writes.
+    function paused() external view returns (bool);
+    function selectionParamsHash() external view returns (bytes32);
+    function scoreSnapshot() external view returns (address);
+    function submitSignerProof(
+        uint256 checkpointId, address[] signers, uint256 targetThreshold, bytes proof
+    ) external;
 
     /// `AttestationAccumulator`.
     struct Checkpoint { bytes32 acc; uint64 leafCount; uint64 blockNumber; }
@@ -543,6 +559,42 @@ impl ChainReader for RpcCatalog<'_> {
             return Ok(None);
         };
         let ev = InstanceCreated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+        let signer_logs = logs
+            .iter()
+            .filter(|candidate| {
+                candidate.topics.first() == Some(&SignerSyncModuleConfigured::SIGNATURE_HASH)
+                    && candidate.topics.get(1) == Some(&id)
+            })
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            signer_logs.len() <= 1,
+            "creation receipt for {id:#x} has {} signer configuration events",
+            signer_logs.len()
+        );
+        let signer_sync = signer_logs
+            .first()
+            .map(|signer_log| {
+                let configured = SignerSyncModuleConfigured::decode_raw_log(
+                    signer_log.topics.iter().copied(),
+                    &signer_log.data,
+                )?;
+                Ok::<_, anyhow::Error>(SignerSyncDescriptor {
+                    operator_instance_id: configured.operatorInstanceId,
+                    module: configured.signerSyncModule,
+                    safe: configured.safe,
+                    score_snapshot: configured.scoreSnapshot,
+                    accumulator: configured.accumulator,
+                    verifier: configured.verifier,
+                    program_vkey: configured.programVKey,
+                    selection_params_hash: configured.selectionParamsHash,
+                    selection: SelectionParams {
+                        top_n: configured.topN,
+                        min_threshold: configured.minThreshold,
+                        target_threshold_bps: configured.targetThresholdBps,
+                    },
+                })
+            })
+            .transpose()?;
         Ok(Some(CreatedParams {
             factory: log.address,
             name: ev.name.clone(),
@@ -550,6 +602,7 @@ impl ChainReader for RpcCatalog<'_> {
             resolver: ev.resolver,
             created_block,
             params: to_core_params(&ev.params),
+            signer_sync,
         }))
     }
 
@@ -837,6 +890,105 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
     })
 }
 
+/// Read a derived signer program from its module and its registered score source. Signer work is
+/// intentionally downstream: only score checkpoints that have actually landed are exposed to the
+/// planner, and this derived program never calls `trigger()` itself.
+pub fn read_signer_view(
+    rpc: &Rpc,
+    entry: &CatalogEntry,
+    chain_id: u64,
+) -> Result<(SnapshotView, bool)> {
+    anyhow::ensure!(
+        entry.program == operator_core::types::Program::Signer,
+        "read_signer_view called for {}",
+        entry.program.name()
+    );
+    let module = entry.submit_to;
+    let source = match rpc.eth_call(module, scoreSnapshotCall {}.abi_encode()) {
+        Ok(returned) => word_addr(&returned, "signer.scoreSnapshot")?,
+        // Pre-factory modules did not expose scoreSnapshot(); their manifest's snapshot field is
+        // the explicit trust instance they follow. New event-derived modules must always expose
+        // the getter, so the same failure remains fatal for the zero-config path.
+        Err(_) if entry.manifest.is_some() => entry.snapshot,
+        Err(error) => return Err(error).context("read signer.scoreSnapshot"),
+    };
+    anyhow::ensure!(
+        source == entry.snapshot,
+        "signer module {module:#x} follows {source:#x}, catalog event names {:#x}",
+        entry.snapshot
+    );
+
+    let mut view = read_snapshot(rpc, source)?;
+    let module_accumulator =
+        word_addr(&rpc.eth_call(module, accumulatorCall {}.abi_encode())?, "signer.accumulator")?;
+    anyhow::ensure!(
+        module_accumulator == view.accumulator && module_accumulator == entry.accumulator,
+        "signer accumulator {module_accumulator:#x} disagrees with score source {:#x} or catalog {:#x}",
+        view.accumulator,
+        entry.accumulator
+    );
+    let selection_hash = word32(
+        &rpc.eth_call(module, selectionParamsHashCall {}.abi_encode())?,
+        "signer.selectionParamsHash",
+    )?;
+    if let Some(selection) = entry.selection.as_ref() {
+        let expected_selection = pagerank_core::encode::selection_params_hash(selection);
+        anyhow::ensure!(
+            selection_hash == expected_selection,
+            "signer selection hash {selection_hash:#x} differs from event tuple {expected_selection:#x}"
+        );
+    }
+    let module_verifier =
+        word_addr(&rpc.eth_call(module, zkVerifierCall {}.abi_encode())?, "signer.zkVerifier")?;
+    if let Some(event_vkey) = entry.program_vkey {
+        let live_vkey = verifier_vkey(rpc, module_verifier)?;
+        anyhow::ensure!(
+            live_vkey == event_vkey,
+            "signer verifier now reports vkey {live_vkey:#x}, creation event pinned {event_vkey:#x}"
+        );
+    }
+    let paused = match rpc.eth_call(module, pausedCall {}.abi_encode()) {
+        Ok(returned) => pausedCall::abi_decode_returns(&returned)?,
+        // The deliberate pause gate was added with governed-factory discovery. A legacy module
+        // can still be stopped by disabling it on the Safe, but has no separate pause view.
+        Err(_) if entry.manifest.is_some() => false,
+        Err(error) => return Err(error).context("read signer.paused"),
+    };
+    let has_applied = hasAppliedCheckpointCall::abi_decode_returns(
+        &rpc.eth_call(module, hasAppliedCheckpointCall {}.abi_encode())?,
+    )?;
+    let signer_last = if has_applied {
+        Some(word_u64(
+            &rpc.eth_call(module, lastAppliedCheckpointCall {}.abi_encode())?,
+            "signer.lastAppliedCheckpoint",
+        )?)
+    } else {
+        None
+    };
+
+    // A signer rotation follows a score receipt; it cannot lead one. Once both are caught up,
+    // matching live/applied commitments makes the planner report Quiet. Before the first score,
+    // the saturated epoch gate keeps the derived instance from minting a checkpoint itself.
+    let score_last = view.last_applied;
+    if let Some(last) = score_last {
+        if let Some(checkpoint) = view.checkpoints.iter().find(|checkpoint| checkpoint.id == last) {
+            // Inputs admitted after the latest landed score root are not signer work yet. Keep
+            // both the quiet check and the loss estimate scoped to the exact score receipt this
+            // derived program is allowed to follow.
+            view.live = checkpoint.commitments;
+        }
+    }
+    view.checkpoints.retain(|checkpoint| score_last.is_some_and(|last| checkpoint.id <= last));
+    view.last_applied = signer_last;
+    view.zk_verifier = module_verifier;
+    view.instance_domain = expected_instance_domain(module, chain_id);
+    view.epoch_length = u64::MAX;
+    view.live.anchor_acc = B256::ZERO;
+    view.live.anchor_count = 0;
+    view.input_capacity = None;
+    Ok((view, paused))
+}
+
 /// Read one checkpoint directly, including ids older than the daemon's trailing scheduling
 /// window. The repair command is explicitly historical and cannot silently inherit that window.
 pub fn read_checkpoint(rpc: &Rpc, snapshot: Address, checkpoint_id: u64) -> Result<CheckpointRef> {
@@ -955,11 +1107,12 @@ pub fn entry_at_params_hash(
         _ => ParamsUpdated::SIGNATURE_HASH,
     };
     let logs = rpc.logs(controller, event_signature, entry.created_block, head, 10_000)?;
+    let controller_instance_id = entry.parent_instance_id.unwrap_or(entry.instance_id);
     for log in logs {
         if entry.program == operator_core::types::Program::Contributions {
             let event =
                 ContributionsParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
-            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+            if event.instanceId != controller_instance_id || event.paramsHash != params_hash {
                 continue;
             }
             let params = to_contributions_params(&event.params);
@@ -976,7 +1129,7 @@ pub fn entry_at_params_hash(
             return Ok(historical);
         } else {
             let event = ParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
-            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+            if event.instanceId != controller_instance_id || event.paramsHash != params_hash {
                 continue;
             }
             let params = to_core_params(&event.params);
@@ -1031,6 +1184,23 @@ pub fn submit_calldata(
         totalValue: total_value,
         skippedDigest: skipped_digest,
         recipient,
+        proof: proof.into(),
+    }
+    .abi_encode()
+}
+
+/// Calldata for the derived signer program. Unlike a score root, the receipt carries the complete
+/// owner set and needs no IPFS publication step.
+pub fn submit_signer_calldata(
+    checkpoint_id: u64,
+    signers: Vec<Address>,
+    target_threshold: U256,
+    proof: Vec<u8>,
+) -> Vec<u8> {
+    submitSignerProofCall {
+        checkpointId: U256::from(checkpoint_id),
+        signers,
+        targetThreshold: target_threshold,
         proof: proof.into(),
     }
     .abi_encode()

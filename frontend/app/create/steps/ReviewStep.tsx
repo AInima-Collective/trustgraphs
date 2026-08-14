@@ -47,6 +47,7 @@ import {
   FACTORY_ADDRESS,
   GOVERNED_FACTORY_ADDRESS,
   WizardData,
+  buildSignerSyncConfig,
   describeBlocks,
   effectiveBlocks,
   explainFactoryError,
@@ -65,6 +66,7 @@ export type CreatedNetwork = {
   executionGuard: Hex
   recoveryModule: Hex
   recoveryDelay: bigint
+  signerSyncModule: Hex
 }
 
 const shortAddress = (address: string) =>
@@ -101,6 +103,7 @@ export const ReviewStep = ({
     effective,
     data.maxPerRootUsd
   )
+  const signerSync = buildSignerSyncConfig(data)
 
   const program = keccak256(toBytes('trust-graph'))
   const { data: vaultPreview } = useReadContracts({
@@ -199,7 +202,7 @@ export const ReviewStep = ({
     address: GOVERNED_FACTORY_ADDRESS,
     abi: governedTrustgraphsFactoryAbi,
     functionName: 'createGovernedInstance',
-    args: [args, initialPolicy] as any,
+    args: [args, initialPolicy, signerSync] as any,
     ...(prepay > 0n ? { value: prepay } : {}),
     query: {
       enabled:
@@ -260,7 +263,7 @@ export const ReviewStep = ({
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
-          args: [args, initialPolicy] as any,
+          args: [args, initialPolicy, signerSync] as any,
           ...(prepay > 0n ? { value: prepay } : {}),
         })
         gas = estimate ? (estimate * 125n) / 100n : undefined
@@ -273,7 +276,7 @@ export const ReviewStep = ({
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
-          args: [args, initialPolicy],
+          args: [args, initialPolicy, signerSync],
           ...(gas ? { gas } : {}),
           ...(prepay > 0n ? { value: prepay } : {}),
         } as any,
@@ -328,6 +331,8 @@ export const ReviewStep = ({
           recoveryModule: authorityEvent.recoveryModule as Hex,
           recoveryDelay:
             (authorityEvent.recoveryDelay as bigint | undefined) ?? 0n,
+          signerSyncModule:
+            (authorityEvent.signerSyncModule as Hex | undefined) ?? zeroAddress,
         })
         return
       }
@@ -389,6 +394,11 @@ export const ReviewStep = ({
           {data.tuning.headStartPct}%
         </SummaryRow>
         <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
+        <SummaryRow label="Score-selected Safe signers">
+          {data.withSignerSync
+            ? `Yes — top ${data.signerTopN}, ${data.signerTargetThresholdPct}% target threshold, minimum ${data.signerMinThreshold}`
+            : 'No'}
+        </SummaryRow>
         <SummaryRow label="Refresh prepayment">
           {prepay > 0n
             ? `${data.prepayEth.trim()} ETH`

@@ -24,6 +24,7 @@ import {
   nameProblem,
   prepayProblem,
   randomSalt,
+  signerSyncProblem,
   urlProblem,
 } from './model'
 import { pinMetadata } from './pin'
@@ -107,7 +108,9 @@ export const CreateNetworkWizard = () => {
       return data.seeds.length ? null : 'Add at least one starting account.'
     }
     if (index === 3) {
-      return fundTokenProblem(data) || prepayProblem(data)
+      return (
+        fundTokenProblem(data) || prepayProblem(data) || signerSyncProblem(data)
+      )
     }
     return null
   }

@@ -2413,6 +2413,11 @@ export const governedTrustgraphsFactoryAbi = [
         internalType: 'contract GovernedAuthorityDeployer',
         type: 'address',
       },
+      {
+        name: 'signerSyncDeployer_',
+        internalType: 'contract SignerSyncModuleDeployer',
+        type: 'address',
+      },
     ],
     stateMutability: 'nonpayable',
   },
@@ -2499,6 +2504,19 @@ export const governedTrustgraphsFactoryAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'SIGNER_SYNC_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract SignerSyncModuleDeployer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'authorityOf',
     outputs: [
@@ -2521,6 +2539,11 @@ export const governedTrustgraphsFactoryAbi = [
             type: 'address',
           },
           { name: 'recoveryDelay', internalType: 'uint48', type: 'uint48' },
+          {
+            name: 'signerSyncModule',
+            internalType: 'address',
+            type: 'address',
+          },
         ],
       },
     ],
@@ -2616,6 +2639,23 @@ export const governedTrustgraphsFactoryAbi = [
           { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
         ],
       },
+      {
+        name: 'signerSync',
+        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', internalType: 'bool', type: 'bool' },
+          { name: 'verifier', internalType: 'address', type: 'address' },
+          { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'topN', internalType: 'uint32', type: 'uint32' },
+          { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'targetThresholdBps',
+            internalType: 'uint32',
+            type: 'uint32',
+          },
+        ],
+      },
     ],
     name: 'createGovernedInstance',
     outputs: [
@@ -2665,6 +2705,12 @@ export const governedTrustgraphsFactoryAbi = [
         name: 'recoveryDelay',
         internalType: 'uint48',
         type: 'uint48',
+        indexed: false,
+      },
+      {
+        name: 'signerSyncModule',
+        internalType: 'address',
+        type: 'address',
         indexed: false,
       },
     ],
@@ -6394,6 +6440,673 @@ export const schemaRegistryAbi = [
     name: 'Registered',
   },
   { type: 'error', inputs: [], name: 'AlreadyExists' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SignerSyncModuleDeployer
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const signerSyncModuleDeployerAbi = [
+  {
+    type: 'function',
+    inputs: [],
+    name: 'MAX_SIGNERS',
+    outputs: [{ name: '', internalType: 'uint32', type: 'uint32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'safe', internalType: 'address', type: 'address' },
+      {
+        name: 'verifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+      {
+        name: 'accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+      {
+        name: 'scoreSnapshot',
+        internalType: 'contract ISignerSyncCheckpointSource',
+        type: 'address',
+      },
+      { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'topN', internalType: 'uint32', type: 'uint32' },
+      { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+      { name: 'targetThresholdBps', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'deploy',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract SignerSyncZkModule',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      { name: 'safe', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'signerSyncModule',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'operatorInstanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'scoreSnapshot',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'accumulator',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'verifier',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'programVKey',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'selectionParamsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      { name: 'topN', internalType: 'uint32', type: 'uint32', indexed: false },
+      {
+        name: 'minThreshold',
+        internalType: 'uint32',
+        type: 'uint32',
+        indexed: false,
+      },
+      {
+        name: 'targetThresholdBps',
+        internalType: 'uint32',
+        type: 'uint32',
+        indexed: false,
+      },
+    ],
+    name: 'SignerSyncModuleConfigured',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'topN', internalType: 'uint32', type: 'uint32' },
+      { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+      { name: 'targetThresholdBps', internalType: 'uint32', type: 'uint32' },
+    ],
+    name: 'InvalidSignerSelection',
+  },
+  { type: 'error', inputs: [], name: 'InvalidSignerVerifier' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'supplied', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'verifierVKey', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'SignerProgramVKeyMismatch',
+  },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SignerSyncZkModule
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const signerSyncZkModuleAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: '_owner', internalType: 'address', type: 'address' },
+      { name: '_avatar', internalType: 'address', type: 'address' },
+      { name: '_target', internalType: 'address', type: 'address' },
+      {
+        name: '_zkVerifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+      {
+        name: '_accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+      {
+        name: '_scoreSnapshot',
+        internalType: 'contract ISignerSyncCheckpointSource',
+        type: 'address',
+      },
+      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: '_selectionParamsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acceptParamsAuthority',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'accumulator',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'avatar',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'hasAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'lastAppliedCheckpoint',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'owner',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'paramsAuthority',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'paramsHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'paused',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'pendingParamsAuthority',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'renounceOwnership',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'scoreSnapshot',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ISignerSyncCheckpointSource',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'selectionParamsHash',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_accumulator',
+        internalType: 'contract IAttestationAccumulator',
+        type: 'address',
+      },
+    ],
+    name: 'setAccumulator',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
+    name: 'setAvatar',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'setParamsHash',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'paused_', internalType: 'bool', type: 'bool' }],
+    name: 'setPaused',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_selectionParamsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+      },
+    ],
+    name: 'setSelectionParamsHash',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '_target', internalType: 'address', type: 'address' }],
+    name: 'setTarget',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'initializeParams', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'setUp',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: '_zkVerifier',
+        internalType: 'contract IZkVerifier',
+        type: 'address',
+      },
+    ],
+    name: 'setZkVerifier',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+      { name: 'signers', internalType: 'address[]', type: 'address[]' },
+      { name: 'targetThreshold', internalType: 'uint256', type: 'uint256' },
+      { name: 'proof', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'submitSignerProof',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'target',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newOwner', internalType: 'address', type: 'address' }],
+    name: 'transferOwnership',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'nextAuthority', internalType: 'address', type: 'address' },
+    ],
+    name: 'transferParamsAuthority',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'zkVerifier',
+    outputs: [
+      { name: '', internalType: 'contract IZkVerifier', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'accumulator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AccumulatorUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousAvatar',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newAvatar',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AvatarSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'version',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'Initialized',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'OwnershipTransferred',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'currentAuthority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'pendingAuthority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ParamsAuthorityTransferStarted',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousAuthority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newAuthority',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ParamsAuthorityTransferred',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'paramsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'ParamsHashUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'selectionParamsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'SelectionParamsHashUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'paused', internalType: 'bool', type: 'bool', indexed: false },
+    ],
+    name: 'SignerSyncPausedUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'signerSetRoot',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'threshold',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'submitter',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'signers',
+        internalType: 'address[]',
+        type: 'address[]',
+        indexed: false,
+      },
+    ],
+    name: 'SignersSynced',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousTarget',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newTarget',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'TargetSet',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'zkVerifier',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ZkVerifierUpdated',
+  },
+  { type: 'error', inputs: [], name: 'AlreadyInitialized' },
+  { type: 'error', inputs: [], name: 'EmptySignerSet' },
+  { type: 'error', inputs: [], name: 'InvalidInitialization' },
+  {
+    type: 'error',
+    inputs: [{ name: 'authority', internalType: 'address', type: 'address' }],
+    name: 'InvalidParamsAuthority',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'signer', internalType: 'address', type: 'address' }],
+    name: 'InvalidSigner',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'threshold', internalType: 'uint256', type: 'uint256' },
+      { name: 'ownerCount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidThreshold',
+  },
+  { type: 'error', inputs: [], name: 'NotInitializing' },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotParamsAuthority',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
+    name: 'OwnableInvalidOwner',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
+    name: 'OwnableUnauthorizedAccount',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'owner', internalType: 'address', type: 'address' }],
+    name: 'OwnerNotFound',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'data', internalType: 'bytes', type: 'bytes' }],
+    name: 'SafeCallFailed',
+  },
+  { type: 'error', inputs: [], name: 'SignerSyncPaused' },
+  { type: 'error', inputs: [], name: 'SignersNotStrictlyAscending' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'submitted', internalType: 'uint256', type: 'uint256' },
+      { name: 'lastApplied', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'StaleCheckpoint',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'UnpinnedCheckpoint',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

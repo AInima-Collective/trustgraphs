@@ -72,14 +72,15 @@ chain_id = 1                    # optional; checked against eth_chainId at start
 registry_from_block = 21000000  # the block `registry` was deployed at. SET THIS on any real chain.
 
 # ── which instances ─────────────────────────────────────────────────────────
-# Factory-minted trust-graph instances need ZERO per-instance config: the daemon reconstructs
-# them from the chain (registry row → InstanceRegistered tx → factory InstanceCreated → full
-# params) and self-checks params_hash(event.params) == snapshot.paramsHash().
+# Factory-minted trust-graph instances and their optional governed signer modules need ZERO
+# per-instance config. The daemon reconstructs the score instance from the registry/creation
+# receipt, then derives signer work from SignerSyncModuleConfigured in that same receipt. New
+# typed-controller Contributions rounds are registry-described too.
 #
-# Everything else needs a manifest entry, because the chain does not describe it:
-#   - contributions instances are not in InstanceRegistry at all
+# Legacy deployments still need a manifest entry when the chain does not describe them:
+#   - old contributions instances predate their registry/controller publication
 #   - hypercerts registers an opaque paramsHash with no params-bearing event
-#   - SignerSyncZkModule is not discoverable from the registry in any form
+#   - old SignerSyncZkModule deployments have no factory helper event
 # Say so plainly rather than implying the chain describes everything.
 
 [[manifest]]
@@ -93,7 +94,7 @@ from_block   = 0                # first block to scan for this instance's logs
 
 [[manifest]]
 program      = "signer"         # the config name; the registry's program-id string is "signer-sync"
-snapshot     = "0x…"            # the TRUST instance it follows (woken by its MerkleRootUpdated)
+snapshot     = "0x…"            # LEGACY ONLY: governed-factory modules need no entry
 submit_to    = "0x…"            # SignerSyncZkModule — the one entry where these differ
 params       = "./params.json"  # the trust instance's params; the signer reuses them
 selection    = "./selection.json"
@@ -156,6 +157,17 @@ eth_usd                  = 5000  # crude ETH/USD used to book on-chain gas burn 
                                  # reverted) into the same rolling budget — a stop-the-runaway
                                  # constant, not a price feed (audit H-3)
 
+# ── score-selected Safe signer work ─────────────────────────────────────────
+# Signer proofs follow score checkpoints only after the score root has landed. They never draw a
+# vault, never publish an IPFS score blob, and use a separate operator id/spend namespace.
+[signer_sync]
+enabled                      = true
+confirmations                = 24
+track_block_hash             = true
+per_instance_usd_per_day     = 5
+global_usd_per_day           = 50
+budget_window_seconds        = 86400
+
 # ── publishing the scores ───────────────────────────────────────────────────
 # The chain carries the ROOT, the sha256 and the CID. It does not carry the scores. Everything
 # that renders a member list fetches the blob by CID, so a daemon that proves and submits without
@@ -209,6 +221,10 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
 | `budget.eth_usd` | crude ETH/USD for booking gas into the budget (H-3) | 5000 |
+| `signer_sync.enabled` | schedule factory-discovered signer modules | true |
+| `signer_sync.confirmations` / `track_block_hash` | signer-specific finality before proving | 24 / true |
+| `signer_sync.*_usd_per_day` | signer-only halt thresholds, isolated from root spend | 5 / 50 |
+| `signer_sync.budget_window_seconds` | rolling signer budget window | 86400 |
 | `ipfs.targets[]` | named independent kubo-compatible add API + reader gateway pairs | empty (nothing published) |
 | `ipfs.min_success` | targets that must add and serve the exact bytes before submit | all configured targets |
 | `ipfs.retry_seconds` | durable failed-publication retry cadence | 300 |
@@ -500,12 +516,17 @@ the one thing on this page that a deployment must do before trusting the rest. R
 prover-network key, alongside the vkey pinning check in
 [`networks-and-programs.md`](../concepts/networks-and-programs.md).
 
-**Not run: the daemon scheduling a contributions round or a signer-sync rotation.** The fork run
-drives two trust-graph instances — one curated, one vault-funded, in the same loop, which is the
-pair that can disagree with each other. Both other programs have handlers, and `test/e2e/run.sh`
-proves each one's full pipeline through the CLI, but nothing yet shows the daemon deciding and
-landing them unattended. Everything between the decision and the submit is program-agnostic; the
-per-program difference is input reconstruction. Recorded as [`DEVIATIONS`](../../research/DEVIATIONS.md) #23.
+**Signer scheduling is now part of the standard catalog.** A governed creation receipt yields a
+distinct signer operator id, module target, verifier/vkey, score source, and selection tuple. The
+operator waits for a landed score checkpoint, reconstructs `SignerInput`, proves with the signer
+guest, and submits the complete owner set directly to the module without IPFS or vault handling.
+Catalog derivation, native receipt construction, isolated budgets, and the real-Safe owner update
+are regression-tested. Legacy signer deployments retain the manifest fallback above.
+
+**Still not run unattended here: a Contributions round.** Its typed chain discovery is covered,
+and `test/e2e/run.sh` proves the full program pipeline through the CLI, but the fork rehearsal still
+drives only the curated and vault-funded trust-graph pair. The remaining Contributions part of
+[`DEVIATIONS`](../../research/DEVIATIONS.md) #23 therefore remains accurate.
 
 **Also not run:** a multi-day soak, a real reorg (the block-hash finality check is unit-tested
 against a synthetic one), and the `RequestOutcomeUnknown` resolution path against the live prover

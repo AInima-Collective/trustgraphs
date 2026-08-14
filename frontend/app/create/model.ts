@@ -1,6 +1,6 @@
-import { Hex, isAddress, zeroAddress } from 'viem'
+import { Hex, isAddress, isHex, zeroAddress } from 'viem'
 
-import { CHAIN, CONTRACT_CONFIG } from '@/lib/config'
+import { CHAIN, CONTRACT_CONFIG, SIGNER_SYNC_CONFIG } from '@/lib/config'
 import { parseAccountIdentifier } from '@/lib/ens'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -127,6 +127,14 @@ export type WizardData = {
   prepayEth: string
   /** Maximum combined proving fee and gas reimbursement paid for one root, in oracle USD. */
   maxPerRootUsd: string
+  /** Install the score-selected Safe signer module in the same governed creation transaction. */
+  withSignerSync: boolean
+  /** Number of highest-scoring accounts considered for Safe ownership. */
+  signerTopN: number
+  /** Absolute lower bound for the Safe threshold. */
+  signerMinThreshold: number
+  /** Fraction of selected signers required, in the percentage shown by the UI. */
+  signerTargetThresholdPct: number
 }
 
 export const EMPTY_WIZARD_DATA: WizardData = {
@@ -143,6 +151,10 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   fundTokenAddress: '',
   prepayEth: '',
   maxPerRootUsd: DEFAULT_MAX_PER_ROOT_USD,
+  withSignerSync: false,
+  signerTopN: 5,
+  signerMinThreshold: 1,
+  signerTargetThresholdPct: 50,
 }
 
 /** The presentation blob the on-chain `metadataURI` points at. Nothing here affects scores. */
@@ -333,6 +345,47 @@ export const fundTokenProblem = (data: WizardData): string | null => {
   return null
 }
 
+export const isSignerSyncAvailable = (): boolean => {
+  const verifier = SIGNER_SYNC_CONFIG?.verifier ?? ''
+  const programVKey = SIGNER_SYNC_CONFIG?.programVKey ?? ''
+  return (
+    isAddress(verifier, { strict: false }) &&
+    verifier.toLowerCase() !== zeroAddress &&
+    isHex(programVKey, { strict: true }) &&
+    programVKey.length === 66 &&
+    !/^0x0{64}$/i.test(programVKey)
+  )
+}
+
+export const signerSyncProblem = (data: WizardData): string | null => {
+  if (!data.withSignerSync) return null
+  if (!isSignerSyncAvailable()) {
+    return 'Score-selected Safe signers are not configured on this deployment.'
+  }
+  if (
+    !Number.isInteger(data.signerTopN) ||
+    data.signerTopN < 1 ||
+    data.signerTopN > 64
+  ) {
+    return 'Choose between 1 and 64 score-selected signers.'
+  }
+  if (
+    !Number.isInteger(data.signerMinThreshold) ||
+    data.signerMinThreshold < 1 ||
+    data.signerMinThreshold > data.signerTopN
+  ) {
+    return 'The minimum threshold must be at least 1 and no larger than the signer count.'
+  }
+  if (
+    !Number.isFinite(data.signerTargetThresholdPct) ||
+    data.signerTargetThresholdPct < 1 ||
+    data.signerTargetThresholdPct > 100
+  ) {
+    return 'The target threshold must be between 1% and 100%.'
+  }
+  return null
+}
+
 /*//////////////////////////////////////////////////////////////
                     BUILDING THE TRANSACTION
 //////////////////////////////////////////////////////////////*/
@@ -367,6 +420,37 @@ export type CreateArgs = {
   distributorToken: Hex
   salt: Hex
 }
+
+export type SignerSyncCreateConfig = {
+  enabled: boolean
+  verifier: Hex
+  programVKey: Hex
+  topN: number
+  minThreshold: number
+  targetThresholdBps: number
+}
+
+/** Exact optional module config consumed by `createGovernedInstance`. */
+export const buildSignerSyncConfig = (
+  data: WizardData
+): SignerSyncCreateConfig =>
+  data.withSignerSync
+    ? {
+        enabled: true,
+        verifier: SIGNER_SYNC_CONFIG!.verifier!.toLowerCase() as Hex,
+        programVKey: SIGNER_SYNC_CONFIG!.programVKey!.toLowerCase() as Hex,
+        topN: data.signerTopN,
+        minThreshold: data.signerMinThreshold,
+        targetThresholdBps: Math.round(data.signerTargetThresholdPct * 100),
+      }
+    : {
+        enabled: false,
+        verifier: zeroAddress,
+        programVKey: `0x${'0'.repeat(64)}` as Hex,
+        topN: 0,
+        minThreshold: 0,
+        targetThresholdBps: 0,
+      }
 
 export const buildParams = (data: WizardData): FactoryParams => ({
   dampingFp: pctToFp(data.tuning.vouchWeightPct),

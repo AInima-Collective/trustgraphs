@@ -56,8 +56,38 @@ export type InstanceRow = {
     merkleFundDistributor: Hex | null
     trustgraphsParamsController: Hex | null
     merkleGovModule: Hex | null
-    safe: { proxy: Hex } | null
+    safe: { proxy: Hex; signerSyncManager: Hex | null } | null
   }
+  signerSync?: {
+    operatorInstanceId: Hex
+    module: Hex
+    safe: Hex
+    scoreSnapshot: Hex
+    accumulator: Hex
+    verifier: Hex
+    programVKey: Hex
+    selectionParamsHash: Hex
+    topN: number
+    minThreshold: number
+    targetThresholdBps: number
+    paused: boolean
+    safeModuleEnabled: boolean
+    hasAppliedCheckpoint: boolean
+    lastAppliedCheckpoint: string | null
+    lastSyncedBlock: string | null
+    lastSyncedTimestamp: string | null
+    lastSyncedTxHash: Hex | null
+    lastRotation: {
+      checkpointId: string
+      signerSetRoot: Hex
+      threshold: string
+      submitter: Hex
+      signers: Hex[]
+      blockNumber: string
+      timestamp: string
+      txHash: Hex
+    } | null
+  } | null
   schema: NetworkSchema
   distributorToken: Hex | null
   epochLength: string
@@ -172,7 +202,18 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
       ...(row.contracts.merkleGovModule
         ? { merkleGovModule: row.contracts.merkleGovModule }
         : {}),
-      ...(row.contracts.safe ? { safe: row.contracts.safe } : {}),
+      ...(row.contracts.safe
+        ? {
+            safe: {
+              proxy: row.contracts.safe.proxy,
+              ...(row.contracts.safe.signerSyncManager
+                ? {
+                    signerSyncManager: row.contracts.safe.signerSyncManager,
+                  }
+                : {}),
+            },
+          }
+        : {}),
     },
     schemas: [row.schema],
     pagerank: {
@@ -193,13 +234,29 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
         ? { lane2MaxHeadAge: Number(row.params.lane2MaxHeadAge) }
         : {}),
     },
-    // Signer-sync remains optional. Governed factory instances always have a Safe and voting
-    // module, while automatic signer rotation can still be added separately.
     safeZodiacSignerSync: {
-      enabled: false,
-      topNSigners: 5,
-      minThreshold: 1,
-      targetThreshold: 0.5,
+      enabled: !!row.signerSync,
+      active:
+        !!row.signerSync &&
+        row.signerSync.safeModuleEnabled &&
+        !row.signerSync.paused,
+      paused: row.signerSync?.paused ?? false,
+      topNSigners: row.signerSync?.topN ?? 5,
+      minThreshold: row.signerSync?.minThreshold ?? 1,
+      targetThreshold: (row.signerSync?.targetThresholdBps ?? 5000) / 10_000,
+      ...(row.signerSync
+        ? {
+            operatorInstanceId: row.signerSync.operatorInstanceId,
+            verifier: row.signerSync.verifier,
+            programVKey: row.signerSync.programVKey,
+            selectionParamsHash: row.signerSync.selectionParamsHash,
+            lastAppliedCheckpoint: row.signerSync.lastAppliedCheckpoint,
+            lastSyncedTimestamp: row.signerSync.lastSyncedTimestamp,
+            lastSyncedTxHash: row.signerSync.lastSyncedTxHash,
+            lastSigners: row.signerSync.lastRotation?.signers ?? [],
+            lastThreshold: row.signerSync.lastRotation?.threshold ?? null,
+          }
+        : {}),
     },
     // Presentation-only "has this member cleared the bar" marker. The chain pins no such number,
     // so an instance that published none has no bar: everyone with a score counts.
@@ -245,7 +302,9 @@ const overlaySeed = (catalog: Network, seed: Network): Network => ({
         }
       : {}),
   },
-  safeZodiacSignerSync: seed.safeZodiacSignerSync,
+  safeZodiacSignerSync: catalog.safeZodiacSignerSync.enabled
+    ? catalog.safeZodiacSignerSync
+    : seed.safeZodiacSignerSync,
   validatedThreshold: seed.validatedThreshold,
 })
 
