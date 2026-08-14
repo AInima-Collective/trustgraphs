@@ -105,10 +105,7 @@ fn a_failed_publication_waits_for_its_persisted_retry_time() {
     s.in_flight = Some(InFlight {
         checkpoint_id: 0,
         request_id: Some(B256::from([0xAA; 32])),
-        state: InFlightState::PublicationBackoff {
-            attempts: 3,
-            retry_at: 1_234,
-        },
+        state: InFlightState::PublicationBackoff { attempts: 3, retry_at: 1_234 },
     });
     assert_eq!(
         plan(&s, &curated(), Spend::default()),
