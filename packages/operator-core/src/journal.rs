@@ -46,6 +46,7 @@
 use crate::policy::Spend;
 use alloy_primitives::B256;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -417,11 +418,25 @@ impl Journal {
     /// reverted, is unpreventable spend the moment it broadcast). Counting settlements alone
     /// would let a run of failures spend without ever registering.
     pub fn spend(&self, instance_id: B256, now: u64, window_secs: u64) -> Spend {
+        self.spend_scoped(instance_id, now, window_secs, None)
+    }
+
+    /// Rolling spend with an optional namespace for the global cap. Callers use disjoint root and
+    /// signer id sets so neither workload can exhaust the other's configured loss ceiling.
+    pub fn spend_scoped(
+        &self,
+        instance_id: B256,
+        now: u64,
+        window_secs: u64,
+        global_scope: Option<&BTreeSet<B256>>,
+    ) -> Spend {
         let floor = now.saturating_sub(window_secs);
         let mut s = Spend::default();
         let mut add = |key: &WorkKey, at: u64, cost_cents: u64| {
             if at >= floor {
-                s.global_cents_today = s.global_cents_today.saturating_add(cost_cents);
+                if global_scope.is_none_or(|scope| scope.contains(&key.instance_id)) {
+                    s.global_cents_today = s.global_cents_today.saturating_add(cost_cents);
+                }
                 if key.instance_id == instance_id {
                     s.instance_cents_today = s.instance_cents_today.saturating_add(cost_cents);
                 }

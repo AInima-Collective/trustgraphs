@@ -111,12 +111,13 @@ function GovernancePageContent() {
   const pushBreadcrumb = usePushBreadcrumb()
   const createModal = useRouteModal('new')
   const searchParams = useSearchParams()
-  const scoringFingerprint = searchParams.get('scoringDraft')
+  const prefillFingerprint =
+    searchParams.get('actionDraft') ?? searchParams.get('scoringDraft')
   const [scoringPrefill, setScoringPrefill] =
     useState<ReturnType<typeof loadGovernancePrefill>>(null)
   useEffect(() => {
-    setScoringPrefill(loadGovernancePrefill(network.id, scoringFingerprint))
-  }, [network.id, scoringFingerprint])
+    setScoringPrefill(loadGovernancePrefill(network.id, prefillFingerprint))
+  }, [network.id, prefillFingerprint])
 
   const {
     isAnyActionLoading,
@@ -346,8 +347,8 @@ function GovernancePageContent() {
               voteType
             )
             if (result) {
-              if (scoringFingerprint) {
-                clearGovernancePrefill(network.id, scoringFingerprint)
+              if (prefillFingerprint) {
+                clearGovernancePrefill(network.id, prefillFingerprint)
               }
               createModal.close()
             }

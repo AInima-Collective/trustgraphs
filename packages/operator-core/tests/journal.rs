@@ -2,6 +2,7 @@
 
 use alloy_primitives::B256;
 use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
+use std::collections::BTreeSet;
 
 fn key(checkpoint_id: u64) -> WorkKey {
     WorkKey { chain_id: 31337, instance_id: B256::from([0x01; 32]), checkpoint_id }
@@ -536,6 +537,32 @@ fn h3_submit_gas_counts_into_the_rolling_spend_window() {
 
     // SubmitGas is bookkeeping only: it never changes the key's request status.
     assert_eq!(j.status(&other), Status::Untouched);
+}
+
+#[test]
+fn derived_signer_budget_has_an_independent_global_namespace() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut journal = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    let root = key(0);
+    let signer = WorkKey { chain_id: 31337, instance_id: B256::from([0x51; 32]), checkpoint_id: 0 };
+    journal.append(priced_intent(root, 1_000, 2_000)).unwrap();
+    journal.append(priced_intent(signer, 1_000, 300)).unwrap();
+
+    let signer_scope = BTreeSet::from([signer.instance_id]);
+    let spend = journal.spend_scoped(signer.instance_id, 2_000, 10_000, Some(&signer_scope));
+    assert_eq!(spend.instance_cents_today, 300);
+    assert_eq!(
+        spend.global_cents_today, 300,
+        "score-root spend must not exhaust the signer-specific cap"
+    );
+
+    let root_scope = BTreeSet::from([root.instance_id]);
+    let spend = journal.spend_scoped(root.instance_id, 2_000, 10_000, Some(&root_scope));
+    assert_eq!(spend.instance_cents_today, 2_000);
+    assert_eq!(
+        spend.global_cents_today, 2_000,
+        "signer spend must not exhaust the ordinary root cap"
+    );
 }
 
 /// A journal written before SubmitGas existed still replays (forward-compat mirror of the

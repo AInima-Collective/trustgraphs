@@ -28,7 +28,13 @@
 import { and, count, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
-import { instance, merkleGovModule, parameterVersion } from 'ponder:schema'
+import {
+  instance,
+  merkleGovModule,
+  parameterVersion,
+  signerSyncModule,
+  signerSyncRotation,
+} from 'ponder:schema'
 import { type Hex, isAddress, isHex } from 'viem'
 
 import type { InstanceParamsJson } from '../factory'
@@ -44,6 +50,9 @@ type GovernanceRow = Pick<
   typeof merkleGovModule.$inferSelect,
   'address' | 'merkleSnapshot' | 'target'
 >
+type SignerRow = typeof signerSyncModule.$inferSelect
+type SignerRotationRow = typeof signerSyncRotation.$inferSelect
+type SignerView = SignerRow & { lastRotation?: SignerRotationRow }
 
 /**
  * The canonical vouch schema's presentation labels. Every factory instance shares one schema
@@ -65,7 +74,11 @@ const parseSchemaFields = (schema: string) =>
       return { name: name ?? '', type: type ?? '' }
     })
 
-const serialize = (row: InstanceRow, governance?: GovernanceRow) => ({
+const serialize = (
+  row: InstanceRow,
+  governance?: GovernanceRow,
+  signer?: SignerView
+) => ({
   id: row.id,
   chainId: row.chainId,
   factory: row.factory,
@@ -82,8 +95,48 @@ const serialize = (row: InstanceRow, governance?: GovernanceRow) => ({
     merkleFundDistributor: row.distributor,
     trustgraphsParamsController: row.paramsController,
     merkleGovModule: governance?.address ?? null,
-    safe: governance ? { proxy: governance.target } : null,
+    safe:
+      governance || signer
+        ? {
+            proxy: governance?.target ?? signer!.safe,
+            signerSyncManager: signer?.address ?? null,
+          }
+        : null,
   },
+  signerSync: signer
+    ? {
+        operatorInstanceId: signer.operatorInstanceId,
+        module: signer.address,
+        safe: signer.safe,
+        scoreSnapshot: signer.scoreSnapshot,
+        accumulator: signer.accumulator,
+        verifier: signer.verifier,
+        programVKey: signer.programVKey,
+        selectionParamsHash: signer.selectionParamsHash,
+        topN: signer.topN,
+        minThreshold: signer.minThreshold,
+        targetThresholdBps: signer.targetThresholdBps,
+        paused: signer.paused,
+        safeModuleEnabled: signer.safeModuleEnabled,
+        hasAppliedCheckpoint: signer.hasAppliedCheckpoint,
+        lastAppliedCheckpoint: signer.lastAppliedCheckpoint?.toString() ?? null,
+        lastSyncedBlock: signer.lastSyncedBlock?.toString() ?? null,
+        lastSyncedTimestamp: signer.lastSyncedTimestamp?.toString() ?? null,
+        lastSyncedTxHash: signer.lastSyncedTxHash,
+        lastRotation: signer.lastRotation
+          ? {
+              checkpointId: signer.lastRotation.checkpointId.toString(),
+              signerSetRoot: signer.lastRotation.signerSetRoot,
+              threshold: signer.lastRotation.threshold.toString(),
+              submitter: signer.lastRotation.submitter,
+              signers: signer.lastRotation.signers,
+              blockNumber: signer.lastRotation.blockNumber.toString(),
+              timestamp: signer.lastRotation.timestamp.toString(),
+              txHash: signer.lastRotation.txHash,
+            }
+          : null,
+      }
+    : null,
   // Ready to drop into `Network['schemas']`.
   schema: {
     uid: row.schemaUid,
@@ -145,6 +198,39 @@ const governanceFor = async (rows: InstanceRow[]) => {
   )
 }
 
+const signerSyncFor = async (rows: InstanceRow[]) => {
+  if (rows.length === 0) return new Map<string, SignerView>()
+  const ids = rows.map((row) => row.id)
+  const [modules, rotations] = await Promise.all([
+    db
+      .select()
+      .from(signerSyncModule)
+      .where(inArray(signerSyncModule.instanceId, ids)),
+    db
+      .select()
+      .from(signerSyncRotation)
+      .where(inArray(signerSyncRotation.instanceId, ids))
+      .orderBy(
+        desc(signerSyncRotation.blockNumber),
+        desc(signerSyncRotation.id)
+      ),
+  ])
+  const latest = new Map<string, SignerRotationRow>()
+  for (const rotation of rotations) {
+    const key = rotation.instanceId.toLowerCase()
+    if (!latest.has(key)) latest.set(key, rotation)
+  }
+  return new Map(
+    modules.map((module) => [
+      module.instanceId.toLowerCase(),
+      {
+        ...module,
+        lastRotation: latest.get(module.instanceId.toLowerCase()),
+      },
+    ])
+  )
+}
+
 /** Parse a bounded non-negative integer query param. */
 const intParam = (raw: string | undefined, fallback: number, max: number) => {
   if (raw === undefined) return fallback
@@ -202,11 +288,18 @@ app.get('/', async (c) => {
       .from(instance)
       .where(where)
 
-    const governance = await governanceFor(rows)
+    const [governance, signerSync] = await Promise.all([
+      governanceFor(rows),
+      signerSyncFor(rows),
+    ])
 
     return c.json({
       instances: rows.map((row) =>
-        serialize(row, governance.get(row.snapshot.toLowerCase()))
+        serialize(
+          row,
+          governance.get(row.snapshot.toLowerCase()),
+          signerSync.get(row.id.toLowerCase())
+        )
       ),
       pagination: {
         limit,
@@ -294,9 +387,16 @@ app.get('/:id', async (c) => {
     if (!row) {
       return c.json({ error: 'Instance not found' }, 404)
     }
-    const governance = await governanceFor([row])
+    const [governance, signerSync] = await Promise.all([
+      governanceFor([row]),
+      signerSyncFor([row]),
+    ])
     return c.json({
-      instance: serialize(row, governance.get(row.snapshot.toLowerCase())),
+      instance: serialize(
+        row,
+        governance.get(row.snapshot.toLowerCase()),
+        signerSync.get(row.id.toLowerCase())
+      ),
     })
   } catch (error) {
     console.error('Error fetching instance:', error)

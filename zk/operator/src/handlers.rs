@@ -11,9 +11,9 @@
 //! daemon would mean a second implementation of the one thing that must never be wrong, tested
 //! half as well. Reuse is the conservative choice here, not the lazy one.
 
-use alloy_primitives::{keccak256, Address, B256, U256};
-use alloy_sol_types::{sol, SolCall};
-use anyhow::{anyhow, bail, Context, Result};
+use alloy_primitives::{Address, B256, U256, keccak256};
+use alloy_sol_types::{SolCall, sol};
+use anyhow::{Context, Result, anyhow, bail};
 use operator_core::catalog::CatalogEntry;
 use operator_core::types::{Program, VaultView};
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,9 @@ pub struct Built {
     /// CIDv1). The ROOT is the proof; this is the data the root is about, and nothing can read a
     /// score without it — see [`publish`].
     pub blob: Vec<u8>,
+    /// Populated only by the signer guest; submitted verbatim and bound by `signer_set_root`.
+    pub signers: Vec<Address>,
+    pub target_threshold: U256,
 }
 
 /// A finished proof plus the fields the submit needs.
@@ -68,6 +71,10 @@ pub struct HeldProof {
     pub total_value: U256,
     pub skipped_digest: B256,
     pub recipient: Address,
+    #[serde(default)]
+    pub signers: Vec<Address>,
+    #[serde(default)]
+    pub target_threshold: U256,
     /// The canonical score bytes committed by `ipfs_hash` and `cid`. Older held files predate
     /// this field; they are repaired deterministically from the retained `input.json` on load.
     #[serde(default, with = "hex_bytes")]
@@ -125,7 +132,7 @@ pub fn build_input(
     let params_path = params_path(entry)?;
 
     match entry.program {
-        Program::Trustgraphs | Program::Signer => {
+        Program::Trustgraphs => {
             let eas = entry.eas.ok_or_else(|| {
                 anyhow!("no EAS address for {}; add one to its manifest entry", entry.name)
             })?;
@@ -159,6 +166,41 @@ pub fn build_input(
                 .into_iter()
                 .chain(anchor_args.iter().map(|s| s.as_str()))
                 .collect::<Vec<_>>(),
+            )?;
+        }
+        Program::Signer => {
+            let eas = entry.eas.ok_or_else(|| {
+                anyhow!("no EAS address for {}; its parent factory must expose EAS()", entry.name)
+            })?;
+            let selection_path = selection_path(entry)?;
+            run_tool(
+                "cargo",
+                vec![
+                    "run",
+                    "-q",
+                    "-p",
+                    "input-exporter",
+                    "--",
+                    "--rpc",
+                    &cfg.rpc,
+                    "--accumulator",
+                    &format!("{:#x}", accumulator),
+                    "--eas",
+                    &format!("{eas:#x}"),
+                    "--checkpoint",
+                    &checkpoint_id.to_string(),
+                    "--params",
+                    &params_path,
+                    "--signer",
+                    "--selection",
+                    &selection_path,
+                    "--module",
+                    &format!("{:#x}", entry.submit_to),
+                    "--from-block",
+                    &entry.created_block.to_string(),
+                    "--out",
+                    &input_path.display().to_string(),
+                ],
             )?;
         }
         Program::Contributions => {
@@ -212,6 +254,11 @@ pub fn build_input(
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let text = std::fs::read_to_string(input_path)?;
+    if program == Program::Signer {
+        let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
+        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::signer::elf())?;
+        return Ok(native_signer_journal(input_path, &input, parse_b256(&vk)?));
+    }
     let (j, cid, vk, blob) = match program {
         Program::Trustgraphs => {
             let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
@@ -247,7 +294,35 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         skipped_digest: j.skipped_digest,
         recipient: j.recipient,
         blob,
+        signers: Vec::new(),
+        target_threshold: U256::ZERO,
     })
+}
+
+/// Pure signer receipt construction, split from vkey derivation so unit tests do not regenerate
+/// an SP1 proving key merely to assert the calldata fields.
+fn native_signer_journal(
+    input_path: &PathBuf,
+    input: &pagerank_core::SignerInput,
+    vk_hash: B256,
+) -> Built {
+    let result = pagerank_core::signer::compute_signers(input);
+    let encoded = pagerank_core::encode::signer_journal_encoded(&result.journal);
+    Built {
+        program: Program::Signer,
+        input_path: input_path.clone(),
+        public_values_hash: keccak256(&encoded),
+        vk_hash,
+        output_root: result.journal.signer_set_root,
+        ipfs_hash: B256::ZERO,
+        cid: String::new(),
+        total_value: U256::ZERO,
+        skipped_digest: B256::ZERO,
+        recipient: Address::ZERO,
+        blob: Vec::new(),
+        signers: result.signers,
+        target_threshold: result.target_threshold,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -408,6 +483,15 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
             (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
         }
+        Program::Signer => {
+            let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
+            let native = pagerank_core::encode::signer_journal_encoded(
+                &pagerank_core::signer::compute_signers(&input).journal,
+            );
+            let elf = trustgraph_prover::programs::signer::elf();
+            trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+            (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+        }
         _ => bail!("{} cannot be proven here", built.program.name()),
     };
 
@@ -443,6 +527,8 @@ pub fn save_held(
         total_value: built.total_value,
         skipped_digest: built.skipped_digest,
         recipient: built.recipient,
+        signers: built.signers.clone(),
+        target_threshold: built.target_threshold,
         score_blob: built.blob.clone(),
         blob: proved.blob.clone(),
     };
@@ -472,6 +558,10 @@ pub fn load_publication_blob(
     entry: &CatalogEntry,
     checkpoint_id: u64,
 ) -> Result<(HeldProof, Vec<u8>)> {
+    anyhow::ensure!(
+        entry.program != Program::Signer,
+        "signer receipts carry their complete owner set and have no IPFS publication"
+    );
     let held = load_proof(entry, checkpoint_id)?;
     let rebuilt = native_journal(
         entry.program,
@@ -539,6 +629,19 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
     Ok(path.display().to_string())
 }
 
+fn selection_path(entry: &CatalogEntry) -> Result<String> {
+    if let Some(selection) = &entry.selection {
+        let dir = PathBuf::from(".trustgraph/operator").join(format!("{:#x}", entry.instance_id));
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join("selection.json");
+        std::fs::write(&path, serde_json::to_string_pretty(selection)?)?;
+        return Ok(path.display().to_string());
+    }
+    entry.manifest.as_ref().and_then(|manifest| manifest.selection.clone()).ok_or_else(|| {
+        anyhow!("signer entry {} has no selection tuple or manifest path", entry.name)
+    })
+}
+
 fn run_tool(bin: &str, args: Vec<&str>) -> Result<()> {
     let out = Command::new(bin)
         .args(&args)
@@ -562,10 +665,62 @@ fn parse_b256(s: &str) -> Result<B256> {
 
 #[cfg(test)]
 mod readback_tests {
-    use super::{publish, readable};
+    use super::{native_signer_journal, publish, readable};
     use crate::config::Config;
+    use alloy_primitives::{Address, B256, U256};
+    use alloy_sol_types::SolValue;
+    use operator_core::types::Program;
+    use pagerank_core::{Params, RawEdge, SelectionParams, SignerInput};
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    #[test]
+    fn signer_native_journal_carries_the_complete_submit_receipt() {
+        let scale = U256::from(10u64).pow(U256::from(18u64));
+        let seed = Address::from([0x22; 20]);
+        let input = SignerInput {
+            edges: vec![RawEdge {
+                kind: 0,
+                attester: seed,
+                recipient: seed,
+                uid: B256::from([0x11; 32]),
+                block_timestamp: 1,
+                data: (String::new(), scale).abi_encode(),
+            }],
+            params: Params {
+                damping_fp: scale * U256::from(85) / U256::from(100),
+                tolerance_fp: scale / U256::from(1_000_000),
+                max_iterations: 100,
+                min_weight_fp: U256::ZERO,
+                max_weight_fp: scale * U256::from(100),
+                trust_multiplier_fp: scale * U256::from(2),
+                trust_share_fp: scale,
+                trust_decay_fp: scale,
+                trusted_seeds: vec![seed],
+                total_pool: scale,
+                precision_scale: scale,
+                schema_uid: B256::ZERO,
+                weight_field_index: 1,
+                envelope0_domain_separators: Vec::new(),
+                lane2_max_head_age: 0,
+                accumulator: Address::from([0x33; 20]),
+                chain_id: 31_337,
+            },
+            selection: SelectionParams { top_n: 5, min_threshold: 1, target_threshold_bps: 5_000 },
+            instance_domain: B256::from([0x44; 32]),
+        };
+        let path = std::path::PathBuf::from("signer.json");
+        let vkey = B256::from([0x55; 32]);
+        let built = native_signer_journal(&path, &input, vkey);
+        assert_eq!(built.program, Program::Signer);
+        assert_eq!(built.vk_hash, vkey);
+        assert_eq!(built.signers, vec![seed]);
+        assert_eq!(built.target_threshold, U256::from(1));
+        assert_eq!(built.output_root, pagerank_core::signer::signer_set_root(&[seed]));
+        assert_eq!(built.recipient, Address::ZERO);
+        assert!(built.cid.is_empty());
+        assert!(built.blob.is_empty(), "signer receipts need no score publication blob");
+    }
 
     /// A one-shot HTTP server that answers the first request with `status`, then stops.
     fn serve_once(status: &'static str, body: &'static str) -> String {

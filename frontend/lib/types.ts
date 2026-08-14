@@ -85,9 +85,20 @@ export type Network = {
   }
   safeZodiacSignerSync: {
     enabled: boolean
+    active?: boolean
+    paused?: boolean
     topNSigners: number
     minThreshold: number
     targetThreshold: number
+    operatorInstanceId?: Hex
+    verifier?: Hex
+    programVKey?: Hex
+    selectionParamsHash?: Hex
+    lastAppliedCheckpoint?: string | null
+    lastSyncedTimestamp?: string | null
+    lastSyncedTxHash?: Hex | null
+    lastSigners?: Hex[]
+    lastThreshold?: string | null
   }
   validatedThreshold: number
 }

@@ -44,6 +44,12 @@ export type PublicOperatorSettings = {
   publicationTargetCount: number | null
   publicationMinimum: number | null
   publicationRetrySeconds: number | null
+  signerSyncEnabled: boolean | null
+  signerConfirmations: number | null
+  signerTrackBlockHash: boolean | null
+  signerPerInstanceUsdPerDay: number | null
+  signerGlobalUsdPerDay: number | null
+  signerBudgetWindowSeconds: number | null
 }
 
 export type PublicOperatorStatus =

@@ -9,7 +9,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {Common} from "script/Common.s.sol";
 import {GovernedTrustgraphsFactory} from "contracts/factory/GovernedTrustgraphsFactory.sol";
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
-import {GovernedAuthorityDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {GovernedAuthorityDeployer, SignerSyncModuleDeployer} from "contracts/factory/InstanceDeployers.sol";
 
 contract DeployGovernedTrustgraphsFactory is Common {
     using stdJson for string;
@@ -25,8 +25,13 @@ contract DeployGovernedTrustgraphsFactory is Common {
         GnosisSafe singleton = new GnosisSafe();
         GnosisSafeProxyFactory proxyFactory = new GnosisSafeProxyFactory();
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
+        SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
         GovernedTrustgraphsFactory governed = new GovernedTrustgraphsFactory(
-            TrustgraphsFactory(vm.parseAddress(factoryAddr)), proxyFactory, address(singleton), authorityDeployer
+            TrustgraphsFactory(vm.parseAddress(factoryAddr)),
+            proxyFactory,
+            address(singleton),
+            authorityDeployer,
+            signerSyncDeployer
         );
         vm.stopBroadcast();
 
@@ -38,6 +43,7 @@ contract DeployGovernedTrustgraphsFactory is Common {
         json.serialize("safe_singleton", Strings.toChecksumHexString(safeSingleton));
         json.serialize("safe_factory", Strings.toChecksumHexString(safeFactory));
         json.serialize("authority_deployer", Strings.toChecksumHexString(address(authorityDeployer)));
+        json.serialize("signer_sync_deployer", Strings.toChecksumHexString(address(signerSyncDeployer)));
         json.serialize("recovery_delay_seconds", governed.RECOVERY_DELAY());
         json = json.serialize("governed_factory", Strings.toChecksumHexString(governedFactory));
         vm.writeFile(script_output_path, json);

@@ -359,9 +359,19 @@ struct InitialPolicy {
     uint96 maxPerRootUsd; // 8-decimal oracle USD; fee + gas combined
 }
 
+struct SignerSyncConfig {
+    bool enabled;
+    address verifier;
+    bytes32 programVKey;
+    uint32 topN;
+    uint32 minThreshold;
+    uint32 targetThresholdBps;
+}
+
 function createGovernedInstance(
     TrustgraphsFactory.CreateArgs calldata requested,
-    InitialPolicy calldata policy
+    InitialPolicy calldata policy,
+    SignerSyncConfig calldata signerSync
 )
     external
     payable
@@ -369,7 +379,7 @@ function createGovernedInstance(
 ```
 
 The wrapper creates a temporary bootstrap Safe, makes that Safe the base-factory caller and `admin`
-(`requested.admin` is deliberately ignored), and installs three pieces of authority before removing
+(`requested.admin` is deliberately ignored), and installs three mandatory pieces of authority before removing
 itself as Safe owner:
 
 - the snapshot-specific `MerkleGovModule`, whose member vote, voting period, and execution delay
@@ -379,6 +389,13 @@ itself as Safe owner:
 - `SafeExecutionGuard`, which is sealed in the creation transaction and permanently rejects every
   owner-originated Safe transaction, including calls, withdrawals, self-configuration, delegatecalls,
   and batches.
+
+When `signerSync.enabled` is true, it also deploys `SignerSyncZkModule` through the bytecode helper,
+checks that `verifier.programVKey()` equals the supplied signer guest identity, pins the selection
+tuple, enables the module on the Safe, and records it in the authority tuple before sealing the
+guard. The signer module is deliberately separate from the score snapshot: both consume the same
+checkpoint and pinned score params, but only the signer module can update Safe owners. A zeroed
+config omits it completely.
 
 The creator wallet remains the Safe's visible 1-of-1 owner and the initial recovery proposer, but its
 owner signature has no execution path. It can only publish a recovery action and wait the full delay.
@@ -408,6 +425,14 @@ factory's `InstanceCreated`, which is how the indexer discovers the Safe and vot
 file edit or restart. `GovernedAuthorityInstalled` and `authorityOf(instanceId)` additionally expose
 the execution guard, delayed-recovery module/initial proposer/delay, and the addresses required to
 verify the live graduation state and current proposer directly.
+
+The helper additionally emits `SignerSyncModuleConfigured` with the module, Safe, score snapshot,
+accumulator, verifier/vkey, selection hash and tuple, plus a collision-free derived operator id.
+Ponder turns that into the signer status/receipt API; the operator derives work from the same event,
+so enabling the wizard toggle requires no manifest or later config edit. Settings display module
+enablement, pause state, checkpoint staleness, the last signer receipt and operator diagnostics.
+Pause/resume is prepared as a normal delayed member-governance proposal calling `setPaused(bool)`;
+there is no creator-only control path.
 
 ## 7. The frozen identity: params schema v2
 

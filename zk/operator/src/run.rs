@@ -5,8 +5,8 @@
 //! CI can test it against a fake chain.
 
 use alloy_primitives::{Address, B256, U256};
-use anyhow::{bail, Context, Result};
-use operator_core::catalog::{scan as catalog_scan, CatalogEntry, SkipCause};
+use anyhow::{Context, Result, bail};
+use operator_core::catalog::{CatalogEntry, SkipCause, scan as catalog_scan};
 use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
@@ -17,13 +17,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::chain::{
-    entry_at_params_hash, expected_instance_domain, read_checkpoint, read_landed_publication,
-    read_snapshot, verifier_vkey, RegistryScan, Rpc, RpcCatalog,
+    RegistryScan, Rpc, RpcCatalog, entry_at_params_hash, expected_instance_domain, read_checkpoint,
+    read_landed_publication, read_signer_view, read_snapshot, verifier_vkey,
 };
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{
-    alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
+    InstanceStatus, Logger, PublicSettings, Status as OpsStatus, alert, write_status,
 };
 use crate::tx::Sender;
 
@@ -44,6 +44,12 @@ fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
 /// Programs this binary carries a guest for. Anything else is skipped rather than attempted.
 fn supported() -> BTreeSet<Program> {
     BTreeSet::from([Program::Trustgraphs, Program::Contributions, Program::Signer])
+}
+
+#[derive(Clone, Copy)]
+struct PendingSettle {
+    anchor: Anchor,
+    confirmations: u64,
 }
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
@@ -123,7 +129,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // the journal behind manual surgery. Both are per-run: a restart re-reads the live chain,
     // which is a fresh observation.
     let mut seen_anchors: BTreeMap<(B256, u64), Anchor> = BTreeMap::new();
-    let mut pending_settles: BTreeMap<WorkKey, Anchor> = BTreeMap::new();
+    let mut pending_settles: BTreeMap<WorkKey, PendingSettle> = BTreeMap::new();
 
     let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
     let unresolved = journal.unresolved();
@@ -274,7 +280,7 @@ fn tick(
     journal: &mut Journal,
     scan: &mut RegistryScan,
     seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
-    pending_settles: &mut BTreeMap<WorkKey, Anchor>,
+    pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
     logger: &Logger,
     dry_run: bool,
 ) -> Result<()> {
@@ -286,9 +292,10 @@ fn tick(
     // `Settled{Landed}` now (and only now). Reorged → drop it, alert, and let `plan` re-submit
     // the held proof. Pending → keep waiting.
     let mut resolved: Vec<WorkKey> = Vec::new();
-    for (key, anchor) in pending_settles.iter() {
+    for (key, pending) in pending_settles.iter() {
+        let anchor = pending.anchor;
         let live = rpc.block_hash(anchor.block_number).ok().flatten();
-        match anchor.finality(head, cfg.finality.confirmations, live) {
+        match anchor.finality(head, pending.confirmations, live) {
             Finality::Final => {
                 journal.append(Record::Settled {
                     key: *key,
@@ -301,7 +308,7 @@ fn tick(
                         "instance": format!("{:#x}", key.instance_id),
                         "checkpoint": key.checkpoint_id,
                         "block": anchor.block_number,
-                        "confirmations": cfg.finality.confirmations,
+                        "confirmations": pending.confirmations,
                     }),
                 );
                 resolved.push(*key);
@@ -331,10 +338,27 @@ fn tick(
     let mut alerts_raised = Vec::new();
     let mut in_flight_now = 0usize;
     let vkeys = guest_vkeys()?;
+    let programs = supported()
+        .into_iter()
+        .filter(|program| *program != Program::Signer || cfg.signer_sync.enabled)
+        .collect::<Vec<_>>();
+    let catalogs = programs
+        .iter()
+        .copied()
+        .map(|program| catalog_scan(&reader, program, &manifest).map(|catalog| (program, catalog)))
+        .collect::<Result<Vec<_>, _>>()?;
+    let signer_instance_ids = catalogs
+        .iter()
+        .filter(|(program, _)| *program == Program::Signer)
+        .flat_map(|(_, catalog)| catalog.entries.iter().map(|entry| entry.instance_id))
+        .collect::<BTreeSet<_>>();
+    let root_instance_ids = catalogs
+        .iter()
+        .filter(|(program, _)| *program != Program::Signer)
+        .flat_map(|(_, catalog)| catalog.entries.iter().map(|entry| entry.instance_id))
+        .collect::<BTreeSet<_>>();
 
-    for program in supported() {
-        let catalog = catalog_scan(&reader, program, &manifest)?;
-
+    for (program, catalog) in &catalogs {
         // Say what was skipped. A silently shorter list is indistinguishable from a healthy one.
         for s in &catalog.skipped {
             let reason = s.reason.to_string();
@@ -362,12 +386,12 @@ fn tick(
             // The vkey check, per instance. `expected_zk_verifier` in the state is what makes
             // `plan` produce a `VerifierRotated` hold, so it has to reflect reality rather than
             // being copied from the chain read.
-            let ours = vkeys.get(&program).copied();
+            let ours = vkeys.get(program).copied();
             let state = match build_state(
                 rpc,
                 cfg,
                 chain_id,
-                program,
+                *program,
                 entry,
                 head,
                 basefee,
@@ -412,11 +436,25 @@ fn tick(
                 alerts_raised.push(text);
             }
 
-            let policy = cfg.policy_for(entry.instance_id, supported());
+            let policy = cfg.policy_for(entry.instance_id, *program, supported());
             // Rolling spend, from the journal. This is what makes `LossBudget` reachable at all:
             // it was `Spend::default()` here, so the budget could never fire and "unpreventable
             // spend is budgeted" was a property of the library rather than of the daemon.
-            let spend = journal.spend(entry.instance_id, now(), cfg.budget.window_seconds);
+            let spend = if *program == Program::Signer {
+                journal.spend_scoped(
+                    entry.instance_id,
+                    now(),
+                    cfg.budget_window_for(*program),
+                    Some(&signer_instance_ids),
+                )
+            } else {
+                journal.spend_scoped(
+                    entry.instance_id,
+                    now(),
+                    cfg.budget_window_for(*program),
+                    Some(&root_instance_ids),
+                )
+            };
             let action = plan(&state, &policy, spend);
             logger.action(&format!("{:#x}", entry.instance_id), &action);
 
@@ -513,6 +551,12 @@ fn tick(
                 publication_min_success: cfg.ipfs.required_successes(),
                 publication_retry_seconds: cfg.ipfs.retry_seconds,
                 submit_failure_threshold: cfg.ops.submit_failure_threshold,
+                signer_sync_enabled: cfg.signer_sync.enabled,
+                signer_confirmations: cfg.signer_sync.confirmations,
+                signer_track_block_hash: cfg.signer_sync.track_block_hash,
+                signer_per_instance_usd_per_day: cfg.signer_sync.per_instance_usd_per_day,
+                signer_global_usd_per_day: cfg.signer_sync.global_usd_per_day,
+                signer_budget_window_seconds: cfg.signer_sync.budget_window_seconds,
             },
             unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
             alerts: alerts_raised,
@@ -536,12 +580,16 @@ fn build_state(
     our_vkey: Option<B256>,
     seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
 ) -> Result<InstanceState> {
-    let view = read_snapshot(rpc, entry.snapshot)?;
+    let (view, module_paused) = if program == Program::Signer {
+        read_signer_view(rpc, entry, chain_id)?
+    } else {
+        (read_snapshot(rpc, entry.snapshot)?, false)
+    };
 
     // The domain the contract will rebuild, checked against our own derivation. A mismatch means
     // this binary and the chain disagree about what `instanceDomain` is, which would waste every
     // proof it produced.
-    let expected = expected_instance_domain(entry.snapshot, chain_id);
+    let expected = expected_instance_domain(entry.submit_to, chain_id);
     if view.instance_domain != expected {
         bail!(
             "snapshot {:#x} reports instanceDomain {:#x}, we derive {expected:#x}",
@@ -558,7 +606,7 @@ fn build_state(
     // FIRST observed — the pre-fix code built the anchor from the live hash and then compared it
     // to itself, so `Reorged` could never fire. `seen_anchors` is that first observation.
     let mut checkpoints = view.checkpoints.clone();
-    if cfg.finality.track_block_hash {
+    if cfg.tracks_block_hash_for(program) {
         for c in &mut checkpoints {
             let live = rpc.block_hash(c.block_number)?;
             let anchor = *seen_anchors.entry((entry.instance_id, c.id)).or_insert(Anchor {
@@ -581,6 +629,21 @@ fn build_state(
             }
         }
     }
+
+    // Parameter rotations are recoverable from typed controller history. The planner compares a
+    // frozen checkpoint with the tuple we can actually reconstruct, so use that historical tuple
+    // here rather than making a paid, already-pinned checkpoint look permanently mismatched.
+    let reconstructed_params_hash = checkpoints
+        .iter()
+        .filter(|checkpoint| view.last_applied.is_none_or(|last| checkpoint.id > last))
+        .max_by_key(|checkpoint| checkpoint.id)
+        .and_then(|checkpoint| checkpoint.pinned_params_hash)
+        .map(|pinned| {
+            entry_at_params_hash(rpc, entry, pinned, head)
+                .map(|historical| historical.reconstructed_params_hash)
+        })
+        .transpose()?
+        .unwrap_or(entry.reconstructed_params_hash);
 
     // In-flight work, from the journal rather than from memory: a restart must re-attach rather
     // than pay again.
@@ -606,7 +669,7 @@ fn build_state(
                 // durably satisfied. Failed attempts survive restart and produce a quiet
                 // backoff state until their retry time.
                 let flight_state = if handlers::has_held_proof(entry, id) {
-                    if cfg.ipfs.required_successes() == 0 {
+                    if program == Program::Signer || cfg.ipfs.required_successes() == 0 {
                         InFlightState::Ready
                     } else {
                         let held = handlers::load_proof(entry, id)?;
@@ -648,8 +711,9 @@ fn build_state(
         None
     };
 
-    let vault = match (cfg.paid.enabled, cfg.paid.vault) {
-        (true, Some(vault)) => newest.and_then(|checkpoint_id| {
+    let vault = match (program, cfg.paid.enabled, cfg.paid.vault) {
+        (Program::Signer, _, _) => None,
+        (_, true, Some(vault)) => newest.and_then(|checkpoint_id| {
             handlers::vault_quote(rpc, vault, entry.instance_id, checkpoint_id).ok()
         }),
         _ => None,
@@ -667,7 +731,7 @@ fn build_state(
         abandoned_checkpoints,
         last_applied_checkpoint: view.last_applied,
         params_hash: view.params_hash,
-        reconstructed_params_hash: entry.reconstructed_params_hash,
+        reconstructed_params_hash,
         zk_verifier: view.zk_verifier,
         // Equal when the deployed verifier is pinned to the vkey our guest produces, and
         // deliberately unequal otherwise — that inequality is what makes `plan` hold instead of
@@ -679,7 +743,7 @@ fn build_state(
             Some(_) => Address::ZERO,
             None => view.zk_verifier,
         },
-        paused: false,
+        paused: module_paused,
         rotation_pending: false,
         live_commitments: view.live,
         size: InstanceSize {
@@ -700,7 +764,7 @@ fn act(
     chain_id: u64,
     sender: Option<&Sender>,
     journal: &mut Journal,
-    pending_settles: &mut BTreeMap<WorkKey, Anchor>,
+    pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
     logger: &Logger,
     entry: &CatalogEntry,
     state: &InstanceState,
@@ -711,6 +775,11 @@ fn act(
 
     match action {
         Action::Trigger => {
+            if entry.program == Program::Signer {
+                bail!(
+                    "derived signer program attempted to trigger its score source; it must only follow landed score checkpoints"
+                );
+            }
             let (tx, r) = sender.send_watched(
                 rpc,
                 entry.snapshot,
@@ -747,7 +816,20 @@ fn act(
                 bail!("{}", journal.refusal(&key, state.last_applied_checkpoint));
             }
 
-            let built = handlers::build_input(cfg, rpc, entry, *checkpoint_id, cfg.recipient())?;
+            let pinned_params_hash = state
+                .checkpoints
+                .iter()
+                .find(|checkpoint| checkpoint.id == *checkpoint_id)
+                .and_then(|checkpoint| checkpoint.pinned_params_hash)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "checkpoint {checkpoint_id} has no pinned params hash and cannot be proven safely"
+                    )
+                })?;
+            let proving_entry =
+                entry_at_params_hash(rpc, entry, pinned_params_hash, state.head_block)?;
+            let built =
+                handlers::build_input(cfg, rpc, &proving_entry, *checkpoint_id, cfg.recipient())?;
 
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".
@@ -777,10 +859,16 @@ fn act(
                     "output_root": format!("{:#x}", proof.output_root),
                 }),
             );
-            attempt_publication(cfg, journal, logger, entry, key, &built.cid, &built.blob)?;
+            if entry.program != Program::Signer {
+                attempt_publication(cfg, journal, logger, entry, key, &built.cid, &built.blob)?;
+            }
         }
 
         Action::Publish { checkpoint_id } => {
+            anyhow::ensure!(
+                entry.program != Program::Signer,
+                "signer proof unexpectedly entered the score publication state"
+            );
             let key =
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
             let (held, score_blob) = handlers::load_publication_blob(entry, *checkpoint_id)?;
@@ -815,10 +903,21 @@ fn act(
             // `submitProof`, drawing no vault; everything else goes through the vault so the
             // bounty is actually collected. Which one an instance is was already decided by
             // `policy.curated`; this is only where that decision becomes calldata.
-            let curated = cfg.curated.instances.contains(&entry.instance_id);
-            let (target, data) = if curated || !cfg.paid.enabled {
+            let curated = entry.program == Program::Signer
+                || cfg.curated.instances.contains(&entry.instance_id);
+            let (target, data) = if entry.program == Program::Signer {
                 (
-                    entry.snapshot,
+                    entry.submit_to,
+                    crate::chain::submit_signer_calldata(
+                        *checkpoint_id,
+                        held.signers.clone(),
+                        held.target_threshold,
+                        held.blob.clone(),
+                    ),
+                )
+            } else if curated || !cfg.paid.enabled {
+                (
+                    entry.submit_to,
                     crate::chain::submit_calldata(
                         *checkpoint_id,
                         held.output_root,
@@ -905,11 +1004,19 @@ fn act(
                     // M-9: `Settled{Landed}` is journaled only after N confirmations (the
                     // pending-settle pass at the top of `tick`), so a reorged-out submit
                     // re-plans instead of wedging the journal.
+                    let confirmations_required = if entry.program == Program::Signer {
+                        cfg.signer_sync.confirmations
+                    } else {
+                        cfg.finality.confirmations
+                    };
                     pending_settles.insert(
                         key,
-                        Anchor {
-                            block_number: r.block_number,
-                            block_hash: rpc.block_hash(r.block_number)?.unwrap_or(B256::ZERO),
+                        PendingSettle {
+                            anchor: Anchor {
+                                block_number: r.block_number,
+                                block_hash: rpc.block_hash(r.block_number)?.unwrap_or(B256::ZERO),
+                            },
+                            confirmations: confirmations_required,
                         },
                     );
                     logger.event(
@@ -920,7 +1027,7 @@ fn act(
                             "tx": format!("{tx:#x}"),
                             "block": r.block_number,
                             "gas_used": r.gas_used,
-                            "confirmations_required": cfg.finality.confirmations,
+                            "confirmations_required": confirmations_required,
                         }),
                     );
                 }

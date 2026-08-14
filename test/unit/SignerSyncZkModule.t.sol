@@ -6,11 +6,19 @@ import {Test} from "forge-std/Test.sol";
 import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
-import {SignerSyncZkModule} from "contracts/zodiac/SignerSyncZkModule.sol";
+import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
+
+contract MockSignerSyncCheckpointSource is ISignerSyncCheckpointSource {
+    mapping(uint256 => bytes32) public checkpointParamsHash;
+
+    function set(uint256 checkpointId, bytes32 value) external {
+        checkpointParamsHash[checkpointId] = value;
+    }
+}
 
 contract SignerSyncZkModuleTest is Test {
     GnosisSafe internal safeSingleton;
@@ -20,6 +28,7 @@ contract SignerSyncZkModuleTest is Test {
     SignerSyncZkModule internal module;
     MockZkVerifier internal verifier;
     MockAccumulator internal accumulator;
+    MockSignerSyncCheckpointSource internal scoreSnapshot;
 
     address internal owner = address(0xABCD);
 
@@ -66,6 +75,9 @@ contract SignerSyncZkModuleTest is Test {
         // Two checkpoints available (ids 0 and 1) for monotonicity tests.
         accumulator.pushCheckpoint(keccak256("acc0"), 10, uint64(block.number));
         accumulator.pushCheckpoint(keccak256("acc1"), 20, uint64(block.number));
+        scoreSnapshot = new MockSignerSyncCheckpointSource();
+        scoreSnapshot.set(0, PARAMS_HASH);
+        scoreSnapshot.set(1, PARAMS_HASH);
 
         module = new SignerSyncZkModule(
             owner,
@@ -73,6 +85,7 @@ contract SignerSyncZkModuleTest is Test {
             address(safe),
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
+            scoreSnapshot,
             PARAMS_HASH,
             SEL_HASH
         );
@@ -148,6 +161,7 @@ contract SignerSyncZkModuleTest is Test {
             address(safe),
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
+            scoreSnapshot,
             PARAMS_HASH,
             SEL_HASH
         );
@@ -173,6 +187,41 @@ contract SignerSyncZkModuleTest is Test {
         vm.stopPrank();
         assertEq(module.paramsHash(), bytes32(uint256(7)));
         assertEq(module.selectionParamsHash(), bytes32(uint256(8)));
+    }
+
+    function test_PauseIsGovernedAndStopsProofs() public {
+        vm.expectRevert();
+        vm.prank(address(0xdead));
+        module.setPaused(true);
+
+        vm.prank(owner);
+        module.setPaused(true);
+        assertTrue(module.paused());
+        vm.expectRevert(SignerSyncZkModule.SignerSyncPaused.selector);
+        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+
+        vm.prank(owner);
+        module.setPaused(false);
+        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+    }
+
+    function test_UnpinnedCheckpointRevertsBeforeVerification() public {
+        scoreSnapshot.set(0, bytes32(0));
+        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.UnpinnedCheckpoint.selector, uint256(0)));
+        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+    }
+
+    function test_ParamsRotationDoesNotInvalidatePinnedCheckpoint() public {
+        address[] memory signers = _arr(D, E, F);
+        bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, signers, 2);
+        verifier.setExpectedDigest(expected);
+
+        vm.prank(owner);
+        module.setParamsHash(keccak256("next params"));
+        assertTrue(module.paramsHash() != PARAMS_HASH, "live status should show the rotation");
+
+        module.submitSignerProof(0, signers, 2, PROOF);
+        _assertOwnerSet(signers, 2);
     }
 
     function test_Governance_ParamsAuthorityTransfersWithoutModuleOwnership() public {
@@ -328,11 +377,13 @@ contract SignerSyncZkModuleTest is Test {
 
     /// @dev The exact digest `submitSignerProof` rebuilds for `mod_` on the current chain: the
     ///      frozen 7-word signer journal, whose final word is the M-3 instance/chain binding.
-    function _expectedDigest(SignerSyncZkModule mod_, bytes32 acc, uint64 leafCount, address[] memory signers, uint256 threshold)
-        internal
-        view
-        returns (bytes32)
-    {
+    function _expectedDigest(
+        SignerSyncZkModule mod_,
+        bytes32 acc,
+        uint64 leafCount,
+        address[] memory signers,
+        uint256 threshold
+    ) internal view returns (bytes32) {
         return keccak256(
             abi.encode(
                 acc,
@@ -357,7 +408,7 @@ contract SignerSyncZkModuleTest is Test {
     }
 
     function test_JournalDigest_WrongParamsFails() public {
-        // If the stored paramsHash differs from what the proof was made for, verification fails.
+        // The checkpoint pins PARAMS_HASH; a proof made for any other tuple still fails.
         address[] memory signers = _arr(D, E, F);
         bytes32 signerSetRoot = _ozRoot(signers);
         bytes32 madeForDifferentParams = keccak256(
@@ -389,6 +440,7 @@ contract SignerSyncZkModuleTest is Test {
             address(safe),
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
+            scoreSnapshot,
             PARAMS_HASH,
             SEL_HASH
         );

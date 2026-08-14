@@ -11,8 +11,10 @@
 //! - Legacy **contributions** deployments predate their typed on-chain controller and still need a
 //!   manifest. New deployments are registry-discoverable and need no params path.
 //! - **hypercerts** registers an opaque `paramsHash` with no params-bearing event.
-//! - **`SignerSyncZkModule`** is not discoverable from the registry in any form; it is a Zodiac
-//!   module on a Safe, woken by `MerkleRootUpdated` on its trust instance.
+//! - Legacy **`SignerSyncZkModule`** deployments still need a manifest. Governed-factory modules
+//!   are different: their creation receipt carries a `SignerSyncModuleConfigured` event with the
+//!   source, target, verifier/vkey, selection tuple, and derived operator id, so they are discovered
+//!   with no file entry.
 //!
 //! So those get a small explicit entry each. The goal is not to avoid config; it is to avoid
 //! config that could silently disagree with the chain.

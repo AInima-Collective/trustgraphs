@@ -7,12 +7,16 @@ import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 
+interface ISignerSyncCheckpointSource {
+    function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
+}
+
 /// @title SignerSyncZkModule
 /// @notice Zodiac module that rotates a Safe's owner set to the top-scored trustgraph accounts,
 ///         gated by a permissionless zero-knowledge proof (the signer-sync analogue of
 ///         `MerkleSnapshot.submitProof`). A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint,
-///           (b) the governance-pinned PageRank `paramsHash`,
+///           (b) the score snapshot's checkpoint-pinned PageRank `paramsHash`,
 ///           (c) the governance-pinned `selectionParamsHash` (topN / minThreshold / targetBps),
 ///         and commits the resulting `signerSetRoot` + `targetThreshold`. The guest proves the
 ///         selection is the correct deterministic function of those inputs; this contract does the
@@ -40,8 +44,14 @@ contract SignerSyncZkModule is Module {
     /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
     IAttestationAccumulator public accumulator;
 
-    /// @notice keccak256 of the canonical PageRank parameters the guest must use (same value as
-    ///         `MerkleSnapshot.paramsHash` for a consistent score/signer view).
+    /// @notice The score snapshot that pins the PageRank params hash for each checkpoint.
+    /// @dev Signer proofs consume the same frozen checkpoint as score proofs. Reading the pinned
+    ///      hash here prevents a scoring rotation during proving from invalidating paid work.
+    ISignerSyncCheckpointSource public scoreSnapshot;
+
+    /// @notice Governance's live PageRank params reference for status and coordinated rotations.
+    /// @dev Proofs bind `scoreSnapshot.checkpointParamsHash(checkpointId)` instead, so updating
+    ///      this reference while a proof is running cannot invalidate already-paid work.
     bytes32 public paramsHash;
 
     /// @notice Narrow authority over only the shared PageRank commitment.
@@ -61,6 +71,10 @@ contract SignerSyncZkModule is Module {
     /// @notice Whether any checkpoint has been applied (distinguishes "none" from "checkpoint 0").
     bool public hasAppliedCheckpoint;
 
+    /// @notice A deliberate governance-controlled stop. Disabling the Safe module and pausing the
+    ///         proof gate are separate, observable actions; either one stops owner rotation.
+    bool public paused;
+
     bool private _initialized;
 
     /*///////////////////////////////////////////////////////////////
@@ -78,6 +92,8 @@ contract SignerSyncZkModule is Module {
     error OwnerNotFound(address owner);
     error NotParamsAuthority(address caller);
     error InvalidParamsAuthority(address authority);
+    error UnpinnedCheckpoint(uint256 checkpointId);
+    error SignerSyncPaused();
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
@@ -85,8 +101,13 @@ contract SignerSyncZkModule is Module {
     event ParamsAuthorityTransferStarted(address indexed currentAuthority, address indexed pendingAuthority);
     event ParamsAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event SelectionParamsHashUpdated(bytes32 selectionParamsHash);
+    event SignerSyncPausedUpdated(bool paused);
     event SignersSynced(
-        uint256 indexed checkpointId, bytes32 signerSetRoot, uint256 threshold, address indexed submitter
+        uint256 indexed checkpointId,
+        bytes32 signerSetRoot,
+        uint256 threshold,
+        address indexed submitter,
+        address[] signers
     );
 
     /*///////////////////////////////////////////////////////////////
@@ -98,7 +119,8 @@ contract SignerSyncZkModule is Module {
     /// @param _target The contract the module calls (the Safe).
     /// @param _zkVerifier The proof verifier.
     /// @param _accumulator The attestation accumulator producing checkpoints.
-    /// @param _paramsHash The canonical PageRank params hash.
+    /// @param _scoreSnapshot The score snapshot that pins params per checkpoint.
+    /// @param _paramsHash The initial live PageRank params reference exposed for governance status.
     /// @param _selectionParamsHash The canonical selection params hash.
     constructor(
         address _owner,
@@ -106,10 +128,11 @@ contract SignerSyncZkModule is Module {
         address _target,
         IZkVerifier _zkVerifier,
         IAttestationAccumulator _accumulator,
+        ISignerSyncCheckpointSource _scoreSnapshot,
         bytes32 _paramsHash,
         bytes32 _selectionParamsHash
     ) {
-        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _paramsHash, _selectionParamsHash);
+        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _scoreSnapshot, _paramsHash, _selectionParamsHash);
     }
 
     /// @notice Factory (proxy) setup.
@@ -120,12 +143,23 @@ contract SignerSyncZkModule is Module {
             address _target,
             IZkVerifier _zkVerifier,
             IAttestationAccumulator _accumulator,
+            ISignerSyncCheckpointSource _scoreSnapshot,
             bytes32 _paramsHash,
             bytes32 _selectionParamsHash
         ) = abi.decode(
-            initializeParams, (address, address, address, IZkVerifier, IAttestationAccumulator, bytes32, bytes32)
+            initializeParams,
+            (
+                address,
+                address,
+                address,
+                IZkVerifier,
+                IAttestationAccumulator,
+                ISignerSyncCheckpointSource,
+                bytes32,
+                bytes32
+            )
         );
-        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _paramsHash, _selectionParamsHash);
+        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _scoreSnapshot, _paramsHash, _selectionParamsHash);
     }
 
     function _init(
@@ -134,6 +168,7 @@ contract SignerSyncZkModule is Module {
         address _target,
         IZkVerifier _zkVerifier,
         IAttestationAccumulator _accumulator,
+        ISignerSyncCheckpointSource _scoreSnapshot,
         bytes32 _paramsHash,
         bytes32 _selectionParamsHash
     ) internal {
@@ -141,7 +176,7 @@ contract SignerSyncZkModule is Module {
         _initialized = true;
         if (
             _avatar == address(0) || _target == address(0) || address(_zkVerifier) == address(0)
-                || address(_accumulator) == address(0)
+                || address(_accumulator) == address(0) || address(_scoreSnapshot) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -151,6 +186,7 @@ contract SignerSyncZkModule is Module {
         target = _target;
         zkVerifier = _zkVerifier;
         accumulator = _accumulator;
+        scoreSnapshot = _scoreSnapshot;
         paramsHash = _paramsHash;
         paramsAuthority = _owner;
         selectionParamsHash = _selectionParamsHash;
@@ -201,6 +237,12 @@ contract SignerSyncZkModule is Module {
         emit SelectionParamsHashUpdated(_selectionParamsHash);
     }
 
+    /// @notice Stop or resume proof-authorized owner rotation through a delayed Safe action.
+    function setPaused(bool paused_) external onlyOwner {
+        paused = paused_;
+        emit SignerSyncPausedUpdated(paused_);
+    }
+
     /*///////////////////////////////////////////////////////////////
                             PROOF SUBMISSION
     //////////////////////////////////////////////////////////////*/
@@ -217,6 +259,7 @@ contract SignerSyncZkModule is Module {
         uint256 targetThreshold,
         bytes calldata proof
     ) external {
+        if (paused) revert SignerSyncPaused();
         // Monotonic: an older (or equal) checkpoint cannot clobber a newer applied one.
         if (hasAppliedCheckpoint && checkpointId <= lastAppliedCheckpoint) {
             revert StaleCheckpoint(checkpointId, lastAppliedCheckpoint);
@@ -224,6 +267,8 @@ contract SignerSyncZkModule is Module {
 
         // Reverts if checkpointId is out of range.
         IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(checkpointId);
+        bytes32 pinnedParamsHash = scoreSnapshot.checkpointParamsHash(checkpointId);
+        if (pinnedParamsHash == bytes32(0)) revert UnpinnedCheckpoint(checkpointId);
 
         // Validate the canonical form and recompute the set commitment the guest proved.
         bytes32 signerSetRoot = _validateAndRoot(signers);
@@ -238,7 +283,7 @@ contract SignerSyncZkModule is Module {
             abi.encode(
                 c.acc,
                 c.leafCount,
-                paramsHash,
+                pinnedParamsHash,
                 selectionParamsHash,
                 signerSetRoot,
                 targetThreshold,
@@ -254,7 +299,7 @@ contract SignerSyncZkModule is Module {
 
         _syncOwners(signers, targetThreshold);
 
-        emit SignersSynced(checkpointId, signerSetRoot, targetThreshold, msg.sender);
+        emit SignersSynced(checkpointId, signerSetRoot, targetThreshold, msg.sender, signers);
     }
 
     /*///////////////////////////////////////////////////////////////

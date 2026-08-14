@@ -18,7 +18,7 @@ proof — acceptable for zero blast radius on the core.
 Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == frontend TS):
 
 - **`packages/pagerank-core`**: `SelectionParams`, `select_signers` (value-desc / addr-asc total
-  order, canonical ascending output, clamped threshold), `signer_set_root`, the 6-field
+  order, canonical ascending output, clamped threshold), `signer_set_root`, the 7-field
   `SignerJournal`, `encode::{selection_params_hash, signer_journal_encoded, signer_journal_digest}`,
   and `signer::compute_signers`. Signer journal digest `0xb81a2e5e…`, root `0x2a003402…`.
 - **`zk/program/src/signer.rs`** (2nd guest bin) + **`zk/prover`** signer subcommands
@@ -26,13 +26,19 @@ Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == fr
   guest == native at 1.85M cycles.
 - **`src/contracts/zodiac/SignerSyncZkModule.sol`**: permissionless `submitSignerProof` (monotonic
   checkpoint, journal rebuild + verify, canonical-signer validation, **on-chain owner diff against
-  the Safe's real linked list**, threshold invariant preserved every step, `onlyOwner` governance).
-  21 unit tests + a 256-run fuzz over random target sets against a real Gnosis Safe.
+  the Safe's real linked list**, threshold invariant preserved every step, `onlyOwner` governance,
+  and a deliberate pause gate). The focused suite covers 28 cases plus randomized owner-set diffs
+  against a real Gnosis Safe.
 - **Golden parity** (`test/unit/GoldenVectors.t.sol`): `selectionParamsHash`, `signerSetRoot`,
   signer journal encoding/digest recomputed in Solidity and asserted equal to the Rust vectors.
-- **Deploy** (`script/DeployZodiacSafes.s.sol`): deploys + enables the module, reusing the
-  MerkleSnapshot's verifier/accumulator/paramsHash; `selectionParamsHash` from `SELECTION_PARAMS_HASH`
-  env (default 0 → inert until governance sets it, the fail-closed pattern).
+- **Deploy** (`script/DeployZodiacSafes.s.sol`): deploys + enables the module with the signer
+  guest's dedicated verifier while reusing the MerkleSnapshot's accumulator, score-checkpoint
+  source, and params commitment; `selectionParamsHash` comes from `SELECTION_PARAMS_HASH`.
+- **Factory/app/operator** (`GovernedTrustgraphsFactory`, `SignerSyncModuleDeployer`, Ponder,
+  create/settings UI, `zk/operator`): optional atomic installation with a distinct signer verifier
+  and vkey, event-derived operator identity and selection tuple, indexed rotation receipts,
+  governed pause/resume, and automatic downstream scheduling with signer-only finality and loss
+  budgets. Governed-factory modules need no manifest.
 
 The signer journal (frozen): `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash,
 bytes32 selectionParamsHash, bytes32 signerSetRoot, uint256 targetThreshold, bytes32
@@ -186,7 +192,8 @@ accumulator, the operational tier owns the params.
 - The Ponder `gnosis_safe` table (owners/threshold via Safe events) already surfaces the owner set and
   is unaffected — the UI keeps reading it. No WAVS dependency returns.
 - The old `safe_signer_sync.template.json` config (top_n / min_threshold / target_threshold) becomes
-  on-chain governance params behind the timelock; expose them via a small read + admin UI if desired.
+  governed factory inputs committed on chain. The settings UI reads the live commitment and exposes
+  pause/resume only through delayed member governance; Ponder exposes every applied rotation.
 
 ## 7. Work-package sketch
 

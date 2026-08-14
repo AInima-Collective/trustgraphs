@@ -14,7 +14,9 @@ import {
   describeBlocks,
   effectiveBlocks,
   fundTokenProblem,
+  isSignerSyncAvailable,
   prepayProblem,
+  signerSyncProblem,
 } from '../model'
 import { Field, Note, StepHeader } from '../ui'
 
@@ -58,6 +60,8 @@ export const AddOnsStep = ({
 
   const tokenError = showErrors ? fundTokenProblem(data) : null
   const prepayError = showErrors ? prepayProblem(data) : null
+  const signerSyncError = showErrors ? signerSyncProblem(data) : null
+  const signerSyncAvailable = isSignerSyncAvailable()
   const paidCadence = effectiveBlocks(data.tuning.cadence, epochFloor)
 
   return (
@@ -82,6 +86,89 @@ export const AddOnsStep = ({
             onClick={() => onChange({ withFund: !data.withFund })}
           />
         </div>
+      </Card>
+
+      <Card type="detail" size="md">
+        <div className="flex flex-row items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm">Keep Safe signers aligned with scores</div>
+            <p className="text-xs text-muted-foreground max-w-xl">
+              Install a separate zero-knowledge module that periodically makes
+              the highest-scoring accounts the Safe&apos;s recorded signers. The
+              sealed guard still prevents owner-signed execution; member voting
+              remains the authority for transactions.
+            </p>
+          </div>
+          <Switch
+            size="md"
+            enabled={data.withSignerSync}
+            readOnly={!signerSyncAvailable}
+            onClick={() =>
+              signerSyncAvailable &&
+              onChange({ withSignerSync: !data.withSignerSync })
+            }
+          />
+        </div>
+
+        {!signerSyncAvailable && (
+          <Note>
+            This deployment has not published a signer verifier and program
+            identity, so the optional module cannot be installed here.
+          </Note>
+        )}
+
+        {data.withSignerSync && (
+          <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-3">
+            <Field label="Top signers" error={signerSyncError}>
+              <input
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
+                type="number"
+                min={1}
+                max={64}
+                value={data.signerTopN}
+                onChange={(event) =>
+                  onChange({ signerTopN: Number(event.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Minimum threshold">
+              <input
+                className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
+                type="number"
+                min={1}
+                max={data.signerTopN}
+                value={data.signerMinThreshold}
+                onChange={(event) =>
+                  onChange({ signerMinThreshold: Number(event.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Target threshold">
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={data.signerTargetThresholdPct}
+                  onChange={(event) =>
+                    onChange({
+                      signerTargetThresholdPct: Number(event.target.value),
+                    })
+                  }
+                />
+                <span className="text-sm opacity-60">%</span>
+              </div>
+            </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-3">
+              Each proven score checkpoint selects up to {data.signerTopN}{' '}
+              accounts. The Safe threshold targets{' '}
+              {data.signerTargetThresholdPct}% and never falls below{' '}
+              {data.signerMinThreshold}.
+            </p>
+          </div>
+        )}
       </Card>
 
       {/* The proving tank. Deliberately its own card rather than a sub-option of the fund: the

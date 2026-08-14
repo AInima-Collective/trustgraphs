@@ -1,5 +1,5 @@
 import { ponder } from 'ponder:registry'
-import { gnosisSafe } from 'ponder:schema'
+import { gnosisSafe, signerSyncModule } from 'ponder:schema'
 
 import { revalidateNetwork } from './utils'
 import { gnosisSafeAbi } from '../../frontend/lib/contract-abis'
@@ -85,3 +85,18 @@ ponder.on('gnosisSafe:ChangedThreshold', syncSafe)
 ponder.on('governedGnosisSafe:AddedOwner', syncSafe)
 ponder.on('governedGnosisSafe:RemovedOwner', syncSafe)
 ponder.on('governedGnosisSafe:ChangedThreshold', syncSafe)
+
+const signerModuleToggled =
+  (enabled: boolean) =>
+  async ({ event, context }: { event: any; context: any }) => {
+    const address = event.args.module
+    const row = await context.db.find(signerSyncModule, { address })
+    if (!row) return
+    await context.db
+      .update(signerSyncModule, { address })
+      .set({ safeModuleEnabled: enabled })
+    await revalidateNetwork(row.instanceId)
+  }
+
+ponder.on('governedGnosisSafe:EnabledModule', signerModuleToggled(true))
+ponder.on('governedGnosisSafe:DisabledModule', signerModuleToggled(false))
