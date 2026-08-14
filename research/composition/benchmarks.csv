@@ -1,0 +1,5 @@
+sources,aggregate_entries,union_accounts,aggregate_blob_bytes,median_native_ms,max_native_ms,deterministic_live_bytes_floor
+8,24,17,1221,2.738,3.341,4173
+8,1024,576,52819,42.999,57.439,168019
+8,4096,2304,212563,146.409,152.719,673363
+8,8192,4608,425035,293.919,300.508,1346635

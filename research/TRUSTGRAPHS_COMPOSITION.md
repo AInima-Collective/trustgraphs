@@ -1,6 +1,6 @@
 # Trustgraphs Composition
 
-**Status:** research report, 2026-08-12. Design recommendation; no implementation decision yet.
+**Status:** accepted V1 research decision, 2026-08-14. Implementation remains in ordered child issues.
 **Question:** how should a user combine trust graphs A, B, and C into one scored graph, and what would it mean for graphs themselves to earn reputation and vouch for other graphs?
 
 ---
@@ -50,17 +50,125 @@ The recommended sequence is therefore:
 The key product principle is: **prove adherence to an explicit composition policy, while making no
 claim that the policy itself is wise or that a score is objective truth.**
 
+## Decision record (accepted 2026-08-14)
+
+This section resolves the report's former open questions. The executable evidence is in
+[`composition/`](composition/README.md); the longer sections below retain the reasoning and threat
+model behind the choices.
+
+| Boundary            | V1 decision                                                                                                                                                                                                                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operator            | Blend finalized source distributions. Imported priors, raw/multiplex edges, sequential weighting, robust pooling, and evidence fusion remain distinct programs.                                                                                                                                             |
+| Compatible source   | Same-chain `eip155` address-keyed, positive allocation output from the admitted base TrustGraph program and an immutable snapshot allowlist. Initial scope is `governance-voice-allocation-v1`; its scope hash is `0xb0993679504f19d518e9dac8362d3e2bc12d2c42f41606dad6d44c53af667e9d`.                     |
+| Weights             | Explicit nonzero uint64 weights summing exactly to `1e18`. Equal weight is a UI default only. No per-account renormalization and no automatic graph-reputation adjustment in V1.                                                                                                                            |
+| Arithmetic          | Two-stage source-aware Hamilton apportionment: source quota first, then accounts inside each quota. Descending exact remainder; source-ID/address ascending tie break.                                                                                                                                      |
+| Numeric bounds      | Source values, source totals, and composite pool are positive uint128. Products use checked uint256 intermediates. No legacy `1e6` re-quantization. Every required source must receive at least one output point.                                                                                           |
+| Workload            | 2–8 sources; at most 4,096 positive entries in one source; at most 8,192 aggregate entries and 8,192 union accounts; at most 1 MiB of aggregate canonical source bytes. The exact SP1 implementation may lower these caps after measurement but cannot raise them without a new version/evidence.           |
+| Epoch/freshness     | Pull exact same-chain source states atomically at trigger and bind `captureBlock`. Each required source has `0 < maxAgeBlocks <= 500,000`; age is `captureBlock - sourceFreezeBlock`. Resolve no “latest” state during proving.                                                                             |
+| Failure             | All sources are required. Empty, stale, invalid, unadmitted, or unavailable sources block trigger preflight. If availability is lost after trigger, that checkpoint remains unprovable until the exact bytes are restored; weights are never silently redistributed, and there is no expiry/fallback in V1. |
+| Provenance claim    | The proof establishes exact composition of complete blobs whose roots/states were atomically captured from governance-admitted immutable snapshots. Under today's source interface, historical program/config/verifier compatibility remains a governance assertion, not a ZK claim.                        |
+| Nesting/cross-chain | Composite inputs, duplicate ancestry, and cross-chain sources are forbidden. A later version needs atomic ancestry flattening plus explicit state/identity verification.                                                                                                                                    |
+| Graph reputation    | Separate, scope-specific, curated-admission meta-layer. Personalized damped referral is advisory-only at launch; it uses a previous finalized epoch and never changes V1 weights automatically.                                                                                                             |
+
+### Why source-aware Hamilton won
+
+The reference compared the selected two-stage rule with one Hamilton pass over the exact ideal
+account masses. Across the 7-, 13-, 100-, and 1,000,000-point fixture pools, the maximum difference
+for one account was one point; at the realistic 1,000,000-point pool the outputs were identical.
+The single-stage method approximates the ideal account vector slightly more directly, but it has no
+exact integer source quota or exact source-attribution ledger. The selected rule gives every source
+an auditable realized quota, conserves the pool, and makes all per-account values sum back to those
+quotas.
+
+For source `g`, the Hamilton source quota differs from the ideal `P * weight / 1e18` by less than one
+point. An account's allocation inside that source differs from `quota * value / totalValue` by less
+than one point. Therefore one source's contribution to one account differs from the ideal rational
+contribution by less than two points, and a V1 account's aggregate error is strictly below
+`2 * sourceCount` points. This is a conservative bound; the golden fixture's candidates differed
+by at most one point. Multiplication is safe because uint128-by-uint128 is at most uint256, while a
+uint128 pool times a `1e18` weight is below 2^188. Every operation is checked and floors only at the
+two declared divisions.
+
+### Evidence and selected cap
+
+The golden uses the repository's existing 1e24-point TrustGraph output as source A, a 100-point
+sparse source B, and a 7-point source C under 33.3/33.3/33.4 weights. It pins overlap, missing
+accounts, unequal pools, remainder ownership, exact per-source attribution, manifest/blob/CID/root,
+staleness, wrong bytes/root, and an update after trigger. Reversing source enumeration produces the
+same manifest and output.
+
+The 10%-step A/B/C simplex contained 36 positive policies and three different top accounts; its
+largest L1 change from the equal policy was 0.736272. Removing A, B, or C changed L1 by 0.452106,
+0.518542, and 0.527716 respectively. A fully compromised 33.3% source produced exactly the ideal
+0.666 L1 upper bound. These results support explicit manual weights plus disagreement and
+leave-one-out preview; they do not support automatic “optimal” weights.
+
+The bounded synthetic run used eight sources. At 8,192 aggregate records / 4,608 union accounts it
+consumed 425,035 canonical source bytes, had a 1,346,635-byte deterministic live-data floor, and ran
+in a 293.9 ms Node median on the recorded Linux/aarch64 host. The exact worst canonical address/
+uint128 JSON at 8,192 records remains below 0.75 MiB, so a separately enforced 1 MiB cap catches
+format/implementation drift. This is enough to choose a conservative implementation ceiling, not
+to price a proof: the core/guest child must measure exact SP1 cycles, memory, and witness bytes and
+may only lower the limits.
+
+### Graph-lineage and vouch policy
+
+The meta-layer has a separate identity and launch gate:
+
+- `lineageId` commits chain, lineage registry, and instance ID; an exact epoch additionally commits
+  program/config identity, checkpoint, freeze block, root, blob digest/CID digest, and total.
+- Only the lineage's authenticated governance authority can issue a vouch. Controller/authority
+  rotation suspends inherited endorsements until the issuer or composer policy explicitly accepts
+  the new authority; no silent “follow upgrades” default exists.
+- Every vouch commits issuer/subject lineage, subject version constraint, `scopeHash`, kind, weight,
+  `validFrom`, finite `validUntil`, evidence URI, and sequence/revocation reference. Initial policy
+  caps validity at 90 days.
+- Only `referral` edges propagate. Integrity, methodology, agreement, warnings, and negative claims
+  are evidence/eligibility signals, never ordinary positive or negative transitive edges.
+- One issuer's active referral weights for one scope spend at most `1e18`; unused/dangling mass
+  returns to the sparse personalized prior. The advisory computation uses `lambda = 0.85` and a
+  previous finalized vouch epoch.
+- Admission is a curator/governance-controlled root set with authenticated publisher/controller and
+  family IDs. There is no uniform prior over permissionless graph registrations. This is the
+  external Sybil assumption; math cannot replace it.
+- The experiment confirmed a disconnected three-lineage cartel receives zero mass, while spending
+  10% of one trusted root's referral budget into it produced 16.3225% stationary mass. Therefore
+  damping alone is insufficient. The UI must show trusted ingress, family/controller overlap, and
+  effective family mass.
+- V1 graph reputation only recommends sources/weights. A later automatic policy must commit a
+  mixing coefficient, per-source and per-family caps, and deterministic capped-simplex
+  redistribution (not clipping), while displaying base, reputation, and effective weights.
+
+### Ordered implementation split
+
+The accepted design is split into independently reviewable trust boundaries:
+
+1. **#63 — core/guest/goldens.** Exact Rust/SP1 arithmetic, manifest/params/journal codecs,
+   negative fixtures, and maximum-shape proving measurements.
+2. **#64 — atomic capture and control.** Same-transaction source capture, historical
+   program/config/verifier adapter, timelocked policy lifecycle, and factory/verifier wiring;
+   depends on #63.
+3. **#65 — operator/indexer/API.** Work-aware quotes, durable source/output publication,
+   restart/reorg handling, root-validating ingestion, attribution/provenance APIs; depends on #61,
+   #63, and #64.
+4. **#66 — product.** Compatibility-filtered selection, simplex/sensitivity preview, governed
+   creation/rotation, and durable provenance UI; depends on #65.
+5. **#67 — graph lineage/vouches.** Authenticated lineage/config/epoch identities and typed,
+   scoped, expiring, revocable endorsement history. This is parallel to the proven blend.
+6. **#68 — advisory graph reputation.** Previous-epoch personalized referral recommendations,
+   family/ingress diagnostics, and attack fixtures; depends on #67 and cannot mutate V1 weights.
+
 ## 1. What exactly is being composed?
 
 The word “graph” currently collapses several distinct objects:
 
-| Object | Stable for | Example use |
-|---|---|---|
-| Graph lineage | The continuing community/network identity | “Octant reputation” |
-| Program and configuration | One scoring method and parameter version | PageRank parameters and vkey |
-| Epoch/source state | One immutable cutoff and accepted output | Root at freeze block 19,000,000 |
-| Score distribution | Address → relative allocation for that epoch | Alice 60%, Bob 40% |
-| Raw relation graph | Attestations/edges before scoring | Alice vouches for Bob |
+| Object                    | Stable for                                   | Example use                     |
+| ------------------------- | -------------------------------------------- | ------------------------------- |
+| Graph lineage             | The continuing community/network identity    | “Octant reputation”             |
+| Program and configuration | One scoring method and parameter version     | PageRank parameters and vkey    |
+| Epoch/source state        | One immutable cutoff and accepted output     | Root at freeze block 19,000,000 |
+| Score distribution        | Address → relative allocation for that epoch | Alice 60%, Bob 40%              |
+| Raw relation graph        | Attestations/edges before scoring            | Alice vouches for Bob           |
 
 Composition must say which of these it consumes. Combining raw edges, PageRank priors, and final
 score distributions yields different results even with the same A, B, and C. A composition must
@@ -87,15 +195,15 @@ unlabelled behavior change to existing instances ([program model](../docs/concep
 
 ## 2. Composition is not one operator
 
-| Operator | Meaning | Cross-source interaction | Best use | Recommendation |
-|---|---|---:|---|---|
-| **Final-distribution blend** | “A gets 33%, B 33%, C 34% of the final voice” | None | The stated user story; ensembles; plural governance | Build first |
-| **Raw-edge union** | Put all attestations in one graph and rank once | Full | Sources use identical edge semantics and conflict rules | Do not call this score composition |
-| **Multiplex ranking** | Preserve A/B/C as layers while ranking nodes and perhaps layers together | Full | Cross-community path effects are desired | Research later |
-| **Prior injection** | A/B/C provide the teleport/start distribution for a destination graph | Imported standing propagates through destination edges | Bootstrapping and inherited trust | Pursue via [graph seeding](GRAPH_SEEDING.md) |
-| **Sequential composition** | A scores evaluators; their ratings in B determine C | Directional and task-specific | Contribution funding, curation, oracle panels | Already has a precedent |
-| **Robust/agreement pool** | Quorum, veto, median, trimming, or geometric pooling | Rewards agreement or limits outliers | Security and eligibility decisions | A separate operator, not a transform |
-| **Evidence/opinion fusion** | Combine beliefs, disbelief, and uncertainty | Depends on declared evidence independence | Claims with calibrated uncertainty | Research only after the score type supports it |
+| Operator                     | Meaning                                                                  |                               Cross-source interaction | Best use                                                | Recommendation                                 |
+| ---------------------------- | ------------------------------------------------------------------------ | -----------------------------------------------------: | ------------------------------------------------------- | ---------------------------------------------- |
+| **Final-distribution blend** | “A gets 33%, B 33%, C 34% of the final voice”                            |                                                   None | The stated user story; ensembles; plural governance     | Build first                                    |
+| **Raw-edge union**           | Put all attestations in one graph and rank once                          |                                                   Full | Sources use identical edge semantics and conflict rules | Do not call this score composition             |
+| **Multiplex ranking**        | Preserve A/B/C as layers while ranking nodes and perhaps layers together |                                                   Full | Cross-community path effects are desired                | Research later                                 |
+| **Prior injection**          | A/B/C provide the teleport/start distribution for a destination graph    | Imported standing propagates through destination edges | Bootstrapping and inherited trust                       | Pursue via [graph seeding](GRAPH_SEEDING.md)   |
+| **Sequential composition**   | A scores evaluators; their ratings in B determine C                      |                          Directional and task-specific | Contribution funding, curation, oracle panels           | Already has a precedent                        |
+| **Robust/agreement pool**    | Quorum, veto, median, trimming, or geometric pooling                     |                   Rewards agreement or limits outliers | Security and eligibility decisions                      | A separate operator, not a transform           |
+| **Evidence/opinion fusion**  | Combine beliefs, disbelief, and uncertainty                              |              Depends on declared evidence independence | Claims with calibrated uncertainty                      | Research only after the score type supports it |
 
 These operators answer different questions:
 
@@ -168,15 +276,15 @@ Let:
 
 Compute a high-precision mass:
 
-\[
+```math
 q(x)=\sum_{g\in G}a_g\frac{v_g(x)}{T_g}.
-\]
+```
 
 That formula is the ideal rational policy, not yet an executable consensus specification. The
 order and rounding of `alpha * value / (S * total)` matter. A naive floor per source loses mass and
 makes implementations disagree about residual points.
 
-A strong baseline candidate is **source-aware largest-remainder apportionment**:
+V1 selects **source-aware largest-remainder (Hamilton) apportionment**:
 
 1. Allocate \(P\) integer points among sources in proportion to \(\alpha_g/S\). Floor every source
    quota, then award residual points by descending fractional remainder, tie-broken by canonical
@@ -188,22 +296,20 @@ A strong baseline candidate is **source-aware largest-remainder apportionment**:
 
 This approximates the rational blend at the composite point quantum while conserving the entire
 pool, makes the integer contribution of every source explicit, and exactly reproduces a 100%
-source when \(P=T_g\). It applies no second `1e6` score quantization. Its tradeoff is that a source
-whose weight is smaller than one composite point may receive zero, and largest-remainder methods
-have known non-monotonic behavior as the total pool changes. Phase 0 should compare this with a
-single high-precision mass-grid method before golden-locking one.
-
-Whichever wins must specify operand order, flooring direction, intermediate width and overflow
-bounds, maximum sources and entries, residual ordering, and error bounds. “Use widened integers”
-is not a sufficient consensus rule.
+source when \(P=T_g\). It applies no second `1e6` score quantization. A policy is rejected if a
+required source would receive zero points. Largest-remainder methods retain known non-monotonic
+behavior as the total pool changes, so the output pool is a committed parameter and the preview
+must show exact integer quotas. The Phase-0 evidence compares the single-stage ideal-mass Hamilton
+alternative and pins operand order, flooring, uint128/uint256 bounds, source/account limits,
+residual ordering, and the conservative per-account error bound in the decision record above.
 
 For the product example, suppose:
 
-| Source | Alice | Bob | Carol | Weight |
-|---|---:|---:|---:|---:|
-| A | 60% | 40% | 0% | 33.3% |
-| B | 0% | 50% | 50% | 33.3% |
-| C | 20% | 0% | 80% | 33.4% |
+| Source        |      Alice |        Bob |      Carol |   Weight |
+| ------------- | ---------: | ---------: | ---------: | -------: |
+| A             |        60% |        40% |         0% |    33.3% |
+| B             |         0% |        50% |        50% |    33.3% |
+| C             |        20% |         0% |        80% |    33.4% |
 | **Composite** | **26.66%** | **29.97%** | **43.37%** | **100%** |
 
 At a composite pool of 1,000,000 points, this idealized example yields 266,600, 299,700, and
@@ -254,7 +360,7 @@ The ideal rational blend provides unusually legible guarantees:
 - **Attribution:** \(a_gp_g(x)\) is the exact ideal contribution of source \(g\) to account \(x\).
 
 The consensus apportionment must state which survive exactly and which hold within a point-sized
-error bound. The source-aware candidate makes integer source quotas and total conservation exact;
+error bound. The selected source-aware rule makes integer source quotas and total conservation exact;
 its account allocations approximate the ideal blend and can exhibit boundary effects.
 
 These are valuable product properties, not just mathematical niceties. They let the UI explain a
@@ -364,7 +470,7 @@ negative reputation edges in this program.
 
 ### 4.4 A defensible first meta-reputation calculation
 
-For one scope, let \(V_{ij}\) be the fraction of graph lineage \(i\)'s referral budget assigned to
+For one scope, let \(V(i,j)\) be the fraction of graph lineage \(i\)'s referral budget assigned to
 \(j\), let \(p\) be the composer's sparse root-of-trust distribution, and let \(\lambda<1\) be a
 damping factor. Every non-dangling row of \(V\) must sum to one; route dangling or explicitly
 unspent budget back to \(p\). Then solve:
@@ -385,9 +491,14 @@ Two sensible ways to use \(r\) are:
 
 1. **Advisory:** rank candidate sources and ask governance to set explicit \(\alpha\). This is the
    safest first product.
-2. **Bounded automatic adjustment:** for eligible set \(E\), first restrict and renormalize
-   \(r_E(g)=r(g)/\sum_{h\in E}r(h)\), falling back to \(b\) if eligible reputation is zero. Then
-   combine a normalized manual allocation \(b\), for example
+2. **Bounded automatic adjustment:** for eligible set \(E\), first restrict and renormalize:
+
+   ```math
+   r_E(g)=r(g)/\sum_{h\in E}r(h).
+   ```
+
+   Fall back to \(b\) if eligible reputation is zero. Then combine a normalized manual allocation
+   \(b\), for example
    \(\alpha=(1-\beta)b+\beta r_E\). Per-source and publisher-family caps require a deterministic
    capped-simplex redistribution—not simple clipping—or weights will no longer sum to one. The UI
    must display `base weight`, `reputation adjustment`, and `effective weight` separately.
@@ -643,7 +754,7 @@ complete canonical source blob. The guest must:
 6. enforce identity domain, capture-block freshness, required-source, and duplicate policy; treat
    admitted program/method compatibility as the explicit governance assumption described above;
 7. form the union of positive source keys, treating a missing key as zero;
-8. run the fully specified source-aware apportionment (or the precision method selected in Phase 0);
+8. run the fully specified source-aware two-stage Hamilton apportionment;
 9. emit the normal output root, blob commitments, total value, and composition journal.
 
 Conditional on the admitted source contract and verifier governance, the accepted upstream proof
@@ -715,26 +826,26 @@ sufficient circuit or bounty bound.
 
 ## 7. Threat model
 
-| Failure mode | Why it matters | Initial mitigation |
-|---|---|---|
-| Raw-point scale gaming | A large `total_pool` becomes accidental influence | Normalize every source by proven `totalValue` |
-| Sparse-coverage gaming | Per-account weight renormalization rewards narrow graphs | Missing is zero; keep global source weights |
-| Source omission | Selected inclusion proofs can omit competitors | Require and validate complete canonical blobs |
-| Stale/racy source | Prover chooses a convenient “latest” epoch | Pull exact states and capture block into the trigger commitment |
-| Malicious source contract | A fake snapshot returns arbitrary “accepted” roots | Immutable allowlist, known code/deployment family, explicit governance trust |
-| Compromised source | One source redirects all its mass | Source quotas/caps; bounded ideal influence; pause/removal process |
-| Graph Sybils/clones | One operator manufactures apparent consensus | External admission assumption; controller/family caps; overlap warnings |
-| Mutual-vouch cartel | Colluders recursively endorse one another | Sparse personalized roots, damping, flow/path caps, family limits |
-| Rank laundering | A composite hides repeated or disfavored ancestry | Atomic lineage manifest; flatten nesting; reject duplicates/cycles |
-| Scope laundering | Reputation earned for one task is reused for another | Scope hashes and compatible-output adapters |
-| Version bait-and-switch | Endorsement of good v1 silently follows malicious v2 | Version constraints, expiry, controller history, re-endorsement rules |
-| Correlated evidence | Copies look like independent agreement | Data/method/controller lineage and correlation diagnostics |
-| Identity collision | Same address or DID is assumed to be one actor | Explicit identity domain and proven bindings |
-| Whitewashing | A distrusted graph returns under a new ID | Publisher lineage and controller history; probation/admission policy |
-| Lock-in | Early trusted graphs accumulate permanent centrality | Personalization, time decay/expiry, caps, challenger slots, audit |
-| Data unavailable | Root exists but complete blob cannot be fetched | Mirrors/pinning, trigger preflight, explicit expiry/retry policy |
-| Work underpricing | Three manifest leaves hide millions of source accounts | Commit/limit input size and price bytes/accounts, not source count alone |
-| Precision loss | Small sources/accounts disappear through rounding | Source-aware quotas, declared errors, canonical residual rules, golden vectors |
+| Failure mode              | Why it matters                                           | Initial mitigation                                                             |
+| ------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Raw-point scale gaming    | A large `total_pool` becomes accidental influence        | Normalize every source by proven `totalValue`                                  |
+| Sparse-coverage gaming    | Per-account weight renormalization rewards narrow graphs | Missing is zero; keep global source weights                                    |
+| Source omission           | Selected inclusion proofs can omit competitors           | Require and validate complete canonical blobs                                  |
+| Stale/racy source         | Prover chooses a convenient “latest” epoch               | Pull exact states and capture block into the trigger commitment                |
+| Malicious source contract | A fake snapshot returns arbitrary “accepted” roots       | Immutable allowlist, known code/deployment family, explicit governance trust   |
+| Compromised source        | One source redirects all its mass                        | Source quotas/caps; bounded ideal influence; pause/removal process             |
+| Graph Sybils/clones       | One operator manufactures apparent consensus             | External admission assumption; controller/family caps; overlap warnings        |
+| Mutual-vouch cartel       | Colluders recursively endorse one another                | Sparse personalized roots, damping, flow/path caps, family limits              |
+| Rank laundering           | A composite hides repeated or disfavored ancestry        | Atomic lineage manifest; flatten nesting; reject duplicates/cycles             |
+| Scope laundering          | Reputation earned for one task is reused for another     | Scope hashes and compatible-output adapters                                    |
+| Version bait-and-switch   | Endorsement of good v1 silently follows malicious v2     | Version constraints, expiry, controller history, re-endorsement rules          |
+| Correlated evidence       | Copies look like independent agreement                   | Data/method/controller lineage and correlation diagnostics                     |
+| Identity collision        | Same address or DID is assumed to be one actor           | Explicit identity domain and proven bindings                                   |
+| Whitewashing              | A distrusted graph returns under a new ID                | Publisher lineage and controller history; probation/admission policy           |
+| Lock-in                   | Early trusted graphs accumulate permanent centrality     | Personalization, time decay/expiry, caps, challenger slots, audit              |
+| Data unavailable          | Root exists but complete blob cannot be fetched          | Mirrors/pinning, trigger preflight, explicit expiry/retry policy               |
+| Work underpricing         | Three manifest leaves hide millions of source accounts   | Commit/limit input size and price bytes/accounts, not source count alone       |
+| Precision loss            | Small sources/accounts disappear through rounding        | Source-aware quotas, declared errors, canonical residual rules, golden vectors |
 
 The protocol can constrain arithmetic and provenance. It cannot prove that a community's social
 judgments are fair, that two publishers are independent, or that a graph identity corresponds to a
@@ -822,7 +933,7 @@ Terminology should stay literal:
 
 ## 10. Recommended roadmap
 
-### Phase 0 — semantics and simulator
+### Phase 0 — semantics and simulator (**complete**)
 
 - Build an offchain reference implementation of normalized distribution blending.
 - Replay at least three real or demo source outputs.
@@ -833,6 +944,10 @@ Terminology should stay literal:
 
 **Exit criterion:** stakeholders can predict and explain results under overlap, missing accounts,
 different source pools, and one compromised source.
+
+The checked-in [`composition/`](composition/README.md) package satisfies this exit with exact
+goldens, all 36 positive A/B/C 10%-grid policies, leave-one-out/candidate/adversarial simulations,
+and the selected bounded scaling measurements.
 
 ### Phase 1 — published-manifest composition
 
@@ -881,21 +996,26 @@ clone amplification, hidden scope changes, or unexplained effective weights.
 - Introduce uncertainty/evidence fusion only with a richer, calibrated output schema.
 - Consider cross-chain sources only with explicit identity and state-verification architecture.
 
-## 11. Decisions to make before implementation
+## 11. V1 decisions and explicit deferrals
 
-The report recommends defaults, but these choices should be made explicitly:
+The decision record at the top is normative. It fixes the first scope/output kind, source/program
+allowlist boundary, 2–8 source and byte/account caps, `1e18` weight scale, source-aware Hamilton
+rule, per-source freshness, fail-closed availability behavior, authority rotation, curated Sybil
+root, and advisory-only meta-reputation.
 
-1. What first scope/output kind is safe to call compatible across graphs?
-2. How many sources can one proven composition contain?
-3. Which source programs/versions are admitted, and how is compatibility represented?
-4. What fixed-point weight scale and final rounding rule become consensus?
-5. What is the maximum source age, and is an additional post-publication delay needed?
-6. Do required-source failures block indefinitely, expire the checkpoint, or trigger a separately
-   committed fallback policy?
-7. Is nesting forbidden until atomic lineage flattening exists? This report recommends yes.
-8. Who owns a graph lineage, and what happens on controller, program, or params rotation?
-9. Which external admission assumption anchors graph meta-reputation?
-10. Is meta-reputation advisory only at launch? This report recommends yes.
+The following are explicit later-version questions, not hidden implementation discretion:
+
+1. An authenticated source adapter that binds checkpoint ID, historical params hash,
+   verifier/vkey, accepted-output block, program ID, and immutable factory provenance.
+2. Optional-source fallback with separately committed effective weights, if product evidence shows
+   that blocking/repair is insufficient.
+3. Atomic ancestry flattening, duplicate/cycle rejection, and one-round quantization for nested
+   compositions.
+4. Cross-chain identity/state verification and finality.
+5. Automatic meta-reputation adjustment with committed beta, source/family caps, and deterministic
+   capped-simplex redistribution.
+6. Richer uncertainty/evidence outputs and robust or multiplex operators under separate program
+   identities.
 
 ## 12. Bottom line
 

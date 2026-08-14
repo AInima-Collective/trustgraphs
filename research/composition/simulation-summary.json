@@ -1,0 +1,110 @@
+{
+  "measurement": {
+    "date": "2026-08-14",
+    "runtime": "Node 22.23.1",
+    "platform": "linux/arm64",
+    "timingSamples": 5,
+    "timingStatistic": "median"
+  },
+  "fixture": {
+    "sourcePositiveSupport": [3, 3, 4],
+    "unionPositiveSupport": 7,
+    "pairwise": [
+      {
+        "pair": "A/B",
+        "supportJaccard": 0.2,
+        "pearsonWithMissingZero": -0.286366,
+        "jensenShannonBits": 0.618092
+      },
+      {
+        "pair": "A/C",
+        "supportJaccard": 0.166667,
+        "pearsonWithMissingZero": -0.805632,
+        "jensenShannonBits": 0.824526
+      },
+      {
+        "pair": "B/C",
+        "supportJaccard": 0.166667,
+        "pearsonWithMissingZero": -0.800629,
+        "jensenShannonBits": 0.832022
+      }
+    ]
+  },
+  "weightSimplex": {
+    "gridStepBps": 1000,
+    "positivePolicies": 36,
+    "distinctTopAccounts": [
+      "0x0202020202020202020202020202020202020202",
+      "0x0303030303030303030303030303030303030303",
+      "0x0707070707070707070707070707070707070707"
+    ],
+    "maximumL1FromEqual": 0.736272
+  },
+  "candidateComparison": {
+    "selected": "two-stage source-aware Hamilton",
+    "singleStageIdealHamilton": "comparison only",
+    "testedPools": [
+      {
+        "points": 7,
+        "l1ShareDifference": 0.285714,
+        "maximumAccountPointDifference": 1
+      },
+      {
+        "points": 13,
+        "l1ShareDifference": 0,
+        "maximumAccountPointDifference": 0
+      },
+      {
+        "points": 100,
+        "l1ShareDifference": 0.02,
+        "maximumAccountPointDifference": 1
+      },
+      {
+        "points": 1000000,
+        "l1ShareDifference": 0,
+        "maximumAccountPointDifference": 0
+      }
+    ],
+    "reason": "Observed precision differences were at most one account point; two-stage allocation additionally fixes exact integer source quotas and attribution."
+  },
+  "leaveOneSourceOutL1": {
+    "A": 0.452106,
+    "B": 0.518542,
+    "C": 0.527716
+  },
+  "adversarial": {
+    "compromisedA": {
+      "configuredWeight": 0.333,
+      "observedL1": 0.666,
+      "idealL1UpperBound": 0.666
+    },
+    "equalPerInstanceCloneFamilyShare": {
+      "1clonePlus2Others": 0.333333,
+      "7clonesPlus2Others": 0.777778,
+      "10clonesPlus2Others": 0.833333,
+      "100clonesPlus2Others": 0.980392
+    },
+    "metaReferralCartel": {
+      "disconnectedCartelShare": 0,
+      "cartelShareAfterTrustedRootSpends10PercentReferral": 0.163225
+    }
+  },
+  "selectedBounds": {
+    "maxSources": 8,
+    "maxEntriesPerSource": 4096,
+    "maxAggregateEntries": 8192,
+    "maxUnionAccounts": 8192,
+    "maxAggregateBlobBytes": 1048576,
+    "maxValueAndPool": "uint128"
+  },
+  "largestMeasurement": {
+    "sources": 8,
+    "aggregateEntries": 8192,
+    "unionAccounts": 4608,
+    "aggregateBlobBytes": 425035,
+    "medianNativeMs": 293.919,
+    "maxNativeMs": 300.508,
+    "deterministicLiveBytesFloor": 1346635
+  },
+  "caveat": "Native research evidence only; the implementation issue must benchmark the exact SP1 guest and may lower, but not raise, these caps without new evidence."
+}
