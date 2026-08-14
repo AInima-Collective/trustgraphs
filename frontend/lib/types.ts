@@ -1,5 +1,7 @@
 import { Hex } from 'viem'
 
+import { type Erc8004AgentCompact } from './erc8004'
+
 export type Network = {
   /** Program discriminator; absent/'trust-graph' = the address-keyed EAS vouching network. */
   program?: 'trust-graph'
@@ -199,6 +201,8 @@ export interface NetworkGraphNode {
   sent: number
   received: number
   isSeed: boolean
+  /** Current verified-wallet identities; presentation only, never a score input. */
+  agents: Erc8004AgentCompact[]
   color?: string
 }
 
@@ -234,4 +238,5 @@ export type NetworkEntry = {
   rank: number
   sent: number
   received: number
+  agents: Erc8004AgentCompact[]
 }

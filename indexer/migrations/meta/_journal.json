@@ -8,6 +8,13 @@
       "when": 1784906667933,
       "tag": "0000_salty_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786684791201,
+      "tag": "0001_early_talisman",
+      "breakpoints": true
     }
   ]
 }

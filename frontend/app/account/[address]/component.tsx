@@ -32,6 +32,11 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { useIntoAttestationsData } from '@/hooks/useAttestation'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { AttestationData } from '@/lib/attestation'
+import {
+  type Erc8004AgentSummary,
+  erc8004AgentHref,
+  erc8004AgentLabel,
+} from '@/lib/erc8004'
 import { parseErrorMessage } from '@/lib/error'
 import { isTrustedSeed } from '@/lib/network'
 import { Network } from '@/lib/types'
@@ -88,6 +93,13 @@ export const AccountProfilePage = ({
   } = useQuery(ponderQueries.accountNetworkProfiles(address))
 
   const {
+    isLoading: isLoadingAgents,
+    error: errorAgents,
+    data: agentRelations,
+    refetch: refreshAgents,
+  } = useQuery(ponderQueries.accountAgents(address))
+
+  const {
     isLoading: isLoadingAttestations,
     error: errorAttestations,
     data: attestations,
@@ -102,8 +114,27 @@ export const AccountProfilePage = ({
     refreshNetworkProfiles()
   }, [attestations?.length, refreshNetworkProfiles])
 
-  const isLoading = isLoadingNetworkProfiles || isLoadingAttestations
-  const error = errorNetworkProfiles || errorAttestations
+  const isLoading =
+    isLoadingNetworkProfiles || isLoadingAttestations || isLoadingAgents
+  const error = errorNetworkProfiles || errorAttestations || errorAgents
+
+  const relatedAgents = useMemo(() => {
+    const byKey = new Map<string, Erc8004AgentSummary>()
+    for (const agent of agentRelations?.owns ?? []) byKey.set(agent.key, agent)
+    for (const agent of agentRelations?.verifiedWalletFor ?? []) {
+      const existing = byKey.get(agent.key)
+      byKey.set(
+        agent.key,
+        existing
+          ? {
+              ...existing,
+              roles: [...new Set([...existing.roles, ...agent.roles])],
+            }
+          : agent
+      )
+    }
+    return [...byKey.values()]
+  }, [agentRelations])
 
   useEffect(() => {
     attestations?.forEach((attestation) => {
@@ -339,6 +370,61 @@ export const AccountProfilePage = ({
         </div>
       </div>
 
+      {!isLoadingAgents && !errorAgents && relatedAgents.length > 0 && (
+        <section
+          aria-label="ERC-8004 agent identities"
+          className="border-y border-border py-4 space-y-3"
+        >
+          <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-wider">
+            {(agentRelations?.verifiedWalletFor.length ?? 0) > 0 && (
+              <span className="border border-success/40 bg-success-soft px-2 py-1 text-success">
+                Verified wallet for {agentRelations!.verifiedWalletFor.length}{' '}
+                {agentRelations!.verifiedWalletFor.length === 1
+                  ? 'agent'
+                  : 'agents'}
+              </span>
+            )}
+            {(agentRelations?.owns.length ?? 0) > 0 && (
+              <span className="border border-border bg-surface px-2 py-1 text-text-muted">
+                Owns {agentRelations!.owns.length}{' '}
+                {agentRelations!.owns.length === 1 ? 'identity' : 'identities'}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {relatedAgents.map((agent) => (
+              <Link
+                key={agent.key}
+                href={erc8004AgentHref(agent)}
+                className="group inline-flex min-w-48 items-center justify-between gap-4 border border-border bg-surface px-3 py-2 text-xs transition-colors hover:border-hairline-strong"
+              >
+                <span>
+                  <span className="block text-text">
+                    {erc8004AgentLabel(agent)}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-text-subtle">
+                    {agent.chainId === '10'
+                      ? 'Optimism'
+                      : `Chain ${agent.chainId}`}{' '}
+                    · ERC-8004 #{agent.agentId}
+                  </span>
+                  <span className="mt-1 block text-[9px] uppercase tracking-wider text-success">
+                    {agent.roles
+                      .map((role) =>
+                        role === 'verified_wallet'
+                          ? 'Verified wallet'
+                          : 'Owner identity'
+                      )
+                      .join(' · ')}
+                  </span>
+                </span>
+                <ArrowUpRight className="h-3.5 w-3.5 text-text-subtle group-hover:text-text" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Loading State */}
       {isLoading && (
         <div className="text-center py-8">
@@ -359,6 +445,7 @@ export const AccountProfilePage = ({
             onClick={() => {
               refreshNetworkProfiles()
               refreshAttestations()
+              refreshAgents()
             }}
             className="mt-3 !px-4 !py-2"
           >

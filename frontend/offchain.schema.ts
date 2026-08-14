@@ -2,6 +2,61 @@ import { index, pgSchema, primaryKey } from 'drizzle-orm/pg-core'
 
 export const offchainSchema = pgSchema('offchain')
 
+/*///////////////////////////////////////////////////////////////
+       ERC-8004 REGISTRATION AVAILABILITY — never consensus
+//////////////////////////////////////////////////////////////*/
+
+/** Append-only fetch observations for mutable agentURI documents. */
+export const erc8004RegistrationDocument = offchainSchema.table(
+  'erc8004_registration_document',
+  (t) => ({
+    id: t.text().primaryKey(),
+    agentKey: t.text().notNull(),
+    uri: t.text().notNull(),
+    finalUri: t.text(),
+    contentHash: t.text(), // sha256 of the exact fetched bytes
+    schemaVersion: t.text(),
+    parsedJson: t.jsonb().$type<Record<string, unknown> | null>(),
+    fetchedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    fetchStatus: t.text().notNull(),
+    error: t.text(),
+    httpStatus: t.integer(),
+    contentType: t.text(),
+    byteLength: t.integer(),
+    mutable: t.boolean().notNull(),
+    sourceBlock: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceLogIndex: t.integer().notNull(),
+  }),
+  (t) => [
+    index().on(t.agentKey),
+    index().on(t.agentKey, t.fetchedAt),
+    index().on(t.contentHash),
+    index().on(t.fetchStatus),
+  ]
+)
+
+/** Bounded service availability checks tied to one document observation. */
+export const erc8004EndpointObservation = offchainSchema.table(
+  'erc8004_endpoint_observation',
+  (t) => ({
+    id: t.text().primaryKey(),
+    documentId: t.text().notNull(),
+    agentKey: t.text().notNull(),
+    serviceName: t.text().notNull(),
+    endpoint: t.text().notNull(),
+    status: t.text().notNull(),
+    httpStatus: t.integer(),
+    checkedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    latencyMs: t.integer(),
+    error: t.text(),
+  }),
+  (t) => [
+    index().on(t.documentId),
+    index().on(t.agentKey, t.checkedAt),
+    index().on(t.status),
+  ]
+)
+
 export const merkleMetadata = offchainSchema.table(
   'merkle_metadata',
   (t) => ({
@@ -160,7 +215,7 @@ export const hypercertsScore = offchainSchema.table(
 // journal commitments, the validated params snapshot, and the verification verdict of the display
 // recompute. Populated on `MerkleRootUpdated` by `ingestContributionsScores` (src/contributions.ts):
 // the indexer re-derives the FULL stage-2 computation from its own fold-log rows (truncated to the
-// checkpointed leaf counts) + the params sidecar, and only writes score/audit rows when the
+// checkpointed leaf counts) + the controller event tuple selected by checkpoint paramsHash, and only writes score/audit rows when the
 // recomputed output root equals the proven on-chain root. `verified = false` rows exist so the API
 // can answer 409 ("refuse to serve") instead of silently serving nothing — the recompute is a
 // display validation, never a second source of truth.
@@ -178,8 +233,8 @@ export const contributionRound = offchainSchema.table(
     anchorAcc: t.text().notNull(),
     anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
     paramsHash: t.text().notNull(),
-    // The validated params snapshot (bigints as decimal strings), from the params sidecar whose
-    // hash reproduced the on-chain paramsHash. Null when the sidecar was missing/invalid.
+    // The validated params snapshot (bigints as decimal strings), from the on-chain controller
+    // event whose hash reproduced the checkpoint paramsHash. Null when history was unavailable/invalid.
     params: t.jsonb().$type<Record<string, unknown> | null>(),
     // uint64 unix seconds (null without valid params). numeric(78,0), NOT int8: an open-ended
     // round pins roundEnd = u64::MAX (1.8e19), which overflows Postgres bigint (~9.2e18).

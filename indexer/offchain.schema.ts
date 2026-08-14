@@ -2,6 +2,61 @@ import { index, pgSchema, primaryKey } from 'drizzle-orm/pg-core'
 
 export const offchainSchema = pgSchema('offchain')
 
+/*///////////////////////////////////////////////////////////////
+       ERC-8004 REGISTRATION AVAILABILITY — never consensus
+//////////////////////////////////////////////////////////////*/
+
+/** Append-only fetch observations for mutable agentURI documents. */
+export const erc8004RegistrationDocument = offchainSchema.table(
+  'erc8004_registration_document',
+  (t) => ({
+    id: t.text().primaryKey(),
+    agentKey: t.text().notNull(),
+    uri: t.text().notNull(),
+    finalUri: t.text(),
+    contentHash: t.text(), // sha256 of the exact fetched bytes
+    schemaVersion: t.text(),
+    parsedJson: t.jsonb().$type<Record<string, unknown> | null>(),
+    fetchedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    fetchStatus: t.text().notNull(),
+    error: t.text(),
+    httpStatus: t.integer(),
+    contentType: t.text(),
+    byteLength: t.integer(),
+    mutable: t.boolean().notNull(),
+    sourceBlock: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceLogIndex: t.integer().notNull(),
+  }),
+  (t) => [
+    index().on(t.agentKey),
+    index().on(t.agentKey, t.fetchedAt),
+    index().on(t.contentHash),
+    index().on(t.fetchStatus),
+  ]
+)
+
+/** Bounded service availability checks tied to one document observation. */
+export const erc8004EndpointObservation = offchainSchema.table(
+  'erc8004_endpoint_observation',
+  (t) => ({
+    id: t.text().primaryKey(),
+    documentId: t.text().notNull(),
+    agentKey: t.text().notNull(),
+    serviceName: t.text().notNull(),
+    endpoint: t.text().notNull(),
+    status: t.text().notNull(),
+    httpStatus: t.integer(),
+    checkedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    latencyMs: t.integer(),
+    error: t.text(),
+  }),
+  (t) => [
+    index().on(t.documentId),
+    index().on(t.agentKey, t.checkedAt),
+    index().on(t.status),
+  ]
+)
+
 export const merkleMetadata = offchainSchema.table(
   'merkle_metadata',
   (t) => ({

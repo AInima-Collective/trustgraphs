@@ -7,6 +7,10 @@ import { Hex, getAbiItem } from 'viem'
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
+import {
+  OPTIMISM_ERC8004_IDENTITY_REGISTRY,
+  erc8004IdentityRegistryAbi,
+} from './abis/erc8004IdentityRegistry'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
@@ -109,6 +113,18 @@ const DEV_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK', 1)
 // when deploying a fresh catalog, but it must remain at or before every configured contract.
 const PROD_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK_10', 142_786_328)
 const CORE_START_BLOCK = IS_PRODUCTION ? PROD_START_BLOCK : DEV_START_BLOCK
+
+/**
+ * ERC-8004 is deliberately allowlisted: production always follows the official Optimism
+ * singleton, while development accepts only an explicit local-fixture address. An arbitrary
+ * production address cannot be smuggled in through configuration.
+ */
+const ERC8004_IDENTITY_REGISTRY = IS_PRODUCTION
+  ? (OPTIMISM_ERC8004_IDENTITY_REGISTRY.proxy as Hex)
+  : (process.env.ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 as Hex | undefined)
+const ERC8004_START_BLOCK = IS_PRODUCTION
+  ? OPTIMISM_ERC8004_IDENTITY_REGISTRY.sourceBlock
+  : DEV_START_BLOCK
 
 /**
  * The permissionless instance factory (research/INSTANCE_FACTORY.md §3). When it is deployed, the
@@ -267,6 +283,13 @@ export default createConfig({
         }),
   },
   contracts: {
+    erc8004IdentityRegistry: {
+      abi: erc8004IdentityRegistryAbi,
+      startBlock: ERC8004_START_BLOCK,
+      chain: ERC8004_IDENTITY_REGISTRY
+        ? { [CORE_CHAIN]: { address: ERC8004_IDENTITY_REGISTRY } }
+        : {},
+    },
     // The instance directory itself: `InstanceCreated` is both the catalog row (src/factory.ts →
     // the `instance` table, which replaces config/networks.json for trust-graph networks) and the
     // address source for the three child contracts below.
