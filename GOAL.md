@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 15 issues closed, 23 remain.**
+> **Status (2026-08-14): 16 issues closed, 23 remain.**
 >
 > Closed after auditing `main` through `5526d6a` and rerunning the focused regressions:
 >
@@ -35,9 +35,12 @@
 > - **#37** — accepted issuer-known/unlinkable private profile, band-only disclosure and leakage
 >   oracle, replicated attested-TEE pilot, bounded four-party MPC target, and first private consumer
 >   (`5526d6a`, PR #76; children #70–#75)
+> - **#38** — dedicated upkeep-agent runbook, human-signed EAS relay, notification-first voting
+>   runner, and exact principal-overrides-delegate governance with indexed/UI receipts
+>   (`d71ca82`, PR #78; graph-native research split to #77)
 >
 > Remaining launch-risk issue: **#27**.
-> Remaining product epic: **#38**.
+> Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52 → #53 → #54 → #55**.
 > ERC-8004 reputation chain: **#58 → #59**; #60 and #61 are parallel gates; all feed blocked #62.
 > Trust-composition chain: **#63 → #64 → #65 → #66** (with #61 also gating #65); graph lineage
@@ -89,13 +92,13 @@ can proceed concurrently:
 | D · authority and production      | #20 closed → #27                 | Creator bypass removed; deploy and smoke-test production         | `820b6f3`; #12/#14/#22 prerequisites closed |
 | E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
 | F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
-| G · agent product                 | #35 closed; #38                  | ERC-8004 enrichment and delegated action/voting                  | shared agent UX only; avoid coupling proofs |
+| G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52 → #53 → #54 → #55            | Core/guest, commitment lifecycle, operator/indexer, then UX      | ordered by #34 ADR                          |
 | I · ERC-8004 reputation           | #58 → #59; #60 and #61 → #62     | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #58–#61                      |
 | J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | #65 also depends on shared #61              |
 | K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
 
-The remaining D and G lanes can proceed independently; F is complete. H, J, and K are ordered
+D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
 internally, while I shares program-aware ingestion issue #61 with J. None blocks the core public
 repository release.
 
@@ -491,6 +494,17 @@ proof paths remain byte-identical.
 
 ### M5.2 · #38 — delegated actions with human override
 
+**Closed in `d71ca82` (PR #78).** The shipped module supports one revocable vote delegate per
+principal, proposal-pinned provisional votes, and exactly one final principal override with stored
+power and tally conservation. Events, Ponder history, and governance UI preserve the original
+agent, rationale, override, and transaction positions. The notification-first runner waits through
+the configured notice interval, votes late with its own key, recovers across restarts, and writes
+digest-bearing mode-0600 receipts; the operator runbook covers permissionless upkeep and incident
+response. EAS 1.3 typed signatures keep humans as attesters while a chain/contract/schema-bounded,
+zero-value, short-deadline relay pays gas. All 568 Forge tests, frontend/indexer suites, production
+frontend build, strict runner compile, CI-budget fuzzing, Rust tests, secret scan, code generation,
+and size checks pass. Stage 5 is isolated in #77; no deployment was attempted.
+
 Ship stages 1–4; split stage 5 into its own research issue:
 
 1. Upkeep-agent runbook for permissionless execute/claim/trigger/prover operations.
@@ -529,7 +543,8 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 - **Decision track:** complete — #34, #36, and #37 have accepted ADRs and owned child splits.
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
-- **Feature track:** #38 — delegated actions after the #35 identity slice.
+- **Feature track:** complete — #35 identity enrichment and #38 delegated actions are closed;
+  graph-native delegation research continues separately in #77.
 - **Weighted-prior track:** #52 → #53 → #54 → #55 — implement the accepted #34 ADR in reviewable
   trust-boundary order.
 - **ERC-8004 reputation track:** #58 → #59, with #60/#61 as parallel design/platform gates; #62
