@@ -4,6 +4,7 @@ use weighted_prior_core::{
     compute::compute,
     encode,
     manifest::{canonical_manifest, manifest_digest, normalize, prior_root},
+    rank::apportion,
     Binding, GuestInput, Params, RawEdge, RawPriorEntry, PARAMS_VERSION,
 };
 
@@ -74,6 +75,36 @@ fn rust_pipeline_consumes_the_production_golden() {
         },
     };
     let result = compute(&input).unwrap();
+
+    let tie_prior = normalize(&[
+        RawPriorEntry { account: address(1), weight: "1".into() },
+        RawPriorEntry { account: address(2), weight: "1".into() },
+        RawPriorEntry { account: address(3), weight: "1".into() },
+    ])
+    .unwrap();
+    let tie_allocation =
+        apportion(&[(address(1), 1), (address(2), 1), (address(3), 1)], 2, 3).unwrap();
+    assert_eq!(
+        tie_prior.iter().map(|entry| entry.weight.to_string()).collect::<Vec<_>>(),
+        golden["ties"]["normalizedWeights"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        tie_prior
+            .iter()
+            .map(|entry| tie_allocation[&entry.account].to_string())
+            .collect::<Vec<_>>(),
+        golden["ties"]["apportionValues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    );
 
     assert_eq!(hex(input.params.prior_root), golden["prior"]["root"]);
     assert_eq!(hex(input.params.manifest_sha256), golden["prior"]["manifestSha256"]);

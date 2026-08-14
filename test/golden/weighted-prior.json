@@ -118,5 +118,24 @@
     ],
     "root": "0x3bfa55c8c22dc55892da0439ba84748c4072b323d2ae036cb4088a60f46095cd"
   },
-  "schema": "trustgraph-weighted-golden-v1"
+  "schema": "trustgraph-weighted-golden-v1",
+  "ties": {
+    "accounts": [
+      "0x0101010101010101010101010101010101010101",
+      "0x0202020202020202020202020202020202020202",
+      "0x0303030303030303030303030303030303030303"
+    ],
+    "apportionBudget": "2",
+    "apportionDenominator": "3",
+    "apportionValues": [
+      "1",
+      "1",
+      "0"
+    ],
+    "normalizedWeights": [
+      "333333333333333334",
+      "333333333333333333",
+      "333333333333333333"
+    ]
+  }
 }

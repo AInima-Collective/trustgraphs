@@ -55,6 +55,26 @@ contract WeightedPriorGoldenVectorsTest is Test {
         assertEq(root, json.readBytes32(".prior.root"), "prior root");
     }
 
+    function test_HamiltonAndNormalizationTiesUseAddressOrder() public view {
+        address previous;
+        uint256 normalizedSum;
+        uint256 apportionedSum;
+        for (uint256 i; i < 3; ++i) {
+            address account = json.readAddress(string.concat(".ties.accounts[", vm.toString(i), "]"));
+            uint256 normalized = json.readUint(string.concat(".ties.normalizedWeights[", vm.toString(i), "]"));
+            uint256 apportioned = json.readUint(string.concat(".ties.apportionValues[", vm.toString(i), "]"));
+            assertTrue(account > previous, "tie account order");
+            assertEq(normalized, i == 0 ? 333_333_333_333_333_334 : 333_333_333_333_333_333);
+            assertEq(apportioned, i < 2 ? 1 : 0, "lower address wins equal remainder");
+            previous = account;
+            normalizedSum += normalized;
+            apportionedSum += apportioned;
+        }
+        assertEq(normalizedSum, 1e18, "tie normalization mass");
+        assertEq(apportionedSum, json.readUint(".ties.apportionBudget"), "tie budget mass");
+        assertEq(json.readUint(".ties.apportionDenominator"), 3, "tie denominator");
+    }
+
     function test_WeightedParamsEncodingAndHash() public view {
         bytes memory encoded = abi.encode(
             uint32(json.readUint(".params.version")),

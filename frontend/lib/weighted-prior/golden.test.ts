@@ -5,6 +5,7 @@ import { type Hex, concat, keccak256, sha256 } from 'viem'
 import {
   type GuestInput,
   type Params,
+  apportion,
   canonicalManifest,
   compute,
   normalize,
@@ -106,7 +107,31 @@ const expected = {
     '0xea6cc53b71e680a0e832e3b3c5ed2c0df4c77a136f8cd17d1ee2c90c39a024c0',
   journalDigest:
     '0xae29b5cc5e8d27a6d1d77d4b094efb4bfe5242b5d2336063270758c457196b37',
+  tieNormalizedWeights: [
+    333333333333333334n,
+    333333333333333333n,
+    333333333333333333n,
+  ],
+  tieApportionValues: [1n, 1n, 0n],
 }
+
+const tieAccounts = [addr('01'), addr('02'), addr('03')]
+assert.deepEqual(
+  normalize(tieAccounts.map((account) => ({ account, weight: '1' }))).map(
+    (entry) => entry.weight
+  ),
+  expected.tieNormalizedWeights
+)
+assert.deepEqual(
+  [
+    ...apportion(
+      tieAccounts.map((account) => [account, 1n] as [Hex, bigint]),
+      2n,
+      3n
+    ).values(),
+  ],
+  expected.tieApportionValues
+)
 
 assert.deepEqual(
   prior.map((entry) => entry.weight),

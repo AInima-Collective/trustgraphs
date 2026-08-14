@@ -4,6 +4,7 @@ use weighted_prior_core::{
     compute::compute,
     encode,
     manifest::{canonical_manifest, manifest_digest, normalize, prior_leaf, prior_root},
+    rank::apportion,
     Binding, GuestInput, Params, RawEdge, RawPriorEntry, PARAMS_VERSION,
 };
 
@@ -77,6 +78,14 @@ fn main() {
     let (sample_account, sample_value) = result.scores[0];
     let sample_leaf = zk_core::merkle::output_leaf(sample_account, sample_value);
     let sample_proof = zk_core::merkle::proof_for(&tree, sample_leaf).unwrap();
+    let tie_raw = vec![
+        RawPriorEntry { account: address(0x01), weight: "1".into() },
+        RawPriorEntry { account: address(0x02), weight: "1".into() },
+        RawPriorEntry { account: address(0x03), weight: "1".into() },
+    ];
+    let tie_prior = normalize(&tie_raw).unwrap();
+    let tie_allocation =
+        apportion(&[(address(0x01), 1), (address(0x02), 1), (address(0x03), 1)], 2, 3).unwrap();
 
     let output = json!({
         "schema": "trustgraph-weighted-golden-v1",
@@ -93,6 +102,13 @@ fn main() {
             "root": hx(input.params.prior_root.as_slice()),
             "manifest": hx(&input.manifest),
             "manifestSha256": hx(input.params.manifest_sha256.as_slice()),
+        },
+        "ties": {
+            "accounts": tie_prior.iter().map(|entry| hx(entry.account.as_slice())).collect::<Vec<_>>(),
+            "normalizedWeights": tie_prior.iter().map(|entry| entry.weight.to_string()).collect::<Vec<_>>(),
+            "apportionBudget": "2",
+            "apportionDenominator": "3",
+            "apportionValues": tie_prior.iter().map(|entry| tie_allocation[&entry.account].to_string()).collect::<Vec<_>>(),
         },
         "params": {
             "version": input.params.version,
