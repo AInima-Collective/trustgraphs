@@ -33,3 +33,20 @@ export const erc20MetadataReadAbi = parseAbi([
   'function symbol() view returns (string)',
   'function decimals() view returns (uint8)',
 ])
+
+export const safeExecutionGuardReadAbi = parseAbi([
+  'function safe() view returns (address)',
+  'function isSealed() view returns (bool)',
+])
+
+export const delayedRecoveryModuleReadAbi = parseAbi([
+  'function safe() view returns (address)',
+  'function proposer() view returns (address)',
+  'function delay() view returns (uint48)',
+])
+
+export const gnosisSafeAuthorityReadAbi = parseAbi([
+  'function isModuleEnabled(address module) view returns (bool)',
+  'function getModulesPaginated(address start, uint256 pageSize) view returns (address[] array, address next)',
+  'function getStorageAt(uint256 offset, uint256 length) view returns (bytes)',
+])

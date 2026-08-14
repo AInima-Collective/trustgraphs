@@ -369,14 +369,26 @@ function createGovernedInstance(
 ```
 
 The wrapper creates a temporary bootstrap Safe, makes that Safe the base-factory caller and `admin`
-(`requested.admin` is deliberately ignored), installs the snapshot-specific `MerkleGovModule` as an
-enabled module and snapshot hook, then removes itself as Safe owner. The creator wallet remains the
-Safe's initial break-glass signer, but the Safe — not that wallet — owns the params controller,
-snapshot authority, distributor, and governance settings from the creation transaction. Because the
-Safe is the actual factory caller, it is also the `creator` inside `instanceId`. Any `msg.value` is
-routed through the Safe into the base factory. Before the wrapper removes itself as bootstrap
-owner, it has that same Safe call `ProvingVault.setPolicy`, so a funded network is payable from the
-first valid checkpoint and a partially configured creation reverts in full.
+(`requested.admin` is deliberately ignored), and installs three pieces of authority before removing
+itself as Safe owner:
+
+- the snapshot-specific `MerkleGovModule`, whose member vote, voting period, and execution delay
+  apply before it can execute through the Safe;
+- `DelayedRecoveryModule`, through which the named recovery proposer can queue an exact Safe action
+  for a public, cancellable 14-day delay; and
+- `SafeExecutionGuard`, which is sealed in the creation transaction and permanently rejects every
+  owner-originated Safe transaction, including calls, withdrawals, self-configuration, delegatecalls,
+  and batches.
+
+The creator wallet remains the Safe's visible 1-of-1 owner and the initial recovery proposer, but its
+owner signature has no execution path. It can only publish a recovery action and wait the full delay.
+The Safe — not that wallet — owns the params controller, snapshot authority, distributor, and
+governance settings from the creation transaction. Because the Safe is the actual factory caller, it
+is also the `creator` inside `instanceId`. Any `msg.value` is routed through the Safe into the base
+factory. Before the wrapper seals the owner path, it has that same Safe call
+`ProvingVault.setPolicy`, so a funded network is payable from the first valid checkpoint and a
+partially configured or partially graduated creation reverts in full. The decision and recovery
+model are recorded in [`GOVERNED_SAFE_AUTHORITY`](../../research/GOVERNED_SAFE_AUTHORITY.md).
 
 The creation guardrails are intentionally stricter than later DAO governance:
 
@@ -391,8 +403,11 @@ The wizard also shows the effective cadence, combined fee/gas cap, initial size 
 refresh count at the current ETH/USD answer, and the vault withdrawal notice before asking for the
 single signature. The DAO Safe may change its policy later through the normal constitutional path.
 
-Governed instances emit `GovernedInstanceCreated` alongside the base factory's `InstanceCreated`,
-which is how the indexer discovers the Safe and module with no file edit or restart.
+Governed instances emit the stable discovery event `GovernedInstanceCreated` alongside the base
+factory's `InstanceCreated`, which is how the indexer discovers the Safe and voting module with no
+file edit or restart. `GovernedAuthorityInstalled` and `authorityOf(instanceId)` additionally expose
+the execution guard, delayed-recovery module/initial proposer/delay, and the addresses required to
+verify the live graduation state and current proposer directly.
 
 ## 7. The frozen identity: params schema v2
 

@@ -57,6 +57,12 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
       <SummaryRow label="Voting module">
         <CopyableText text={created.merkleGovModule} className="text-xs" />
       </SummaryRow>
+      <SummaryRow label="Sealed owner-execution guard">
+        <CopyableText text={created.executionGuard} className="text-xs" />
+      </SummaryRow>
+      <SummaryRow label="Delayed recovery module">
+        <CopyableText text={created.recoveryModule} className="text-xs" />
+      </SummaryRow>
       {created.distributor !== zeroAddress && (
         <SummaryRow label="Your shared fund">
           <CopyableText text={created.distributor} className="text-xs" />
@@ -65,9 +71,10 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
     </Card>
 
     <Note>
-      The DAO Safe owns the network contracts. Your wallet is its initial
-      break-glass signer, while member proposals execute through the enabled
-      voting module.
+      The DAO Safe owns the network contracts and graduated atomically. Your
+      wallet&apos;s owner signature cannot execute Safe transactions. Members
+      act through delayed voting; your wallet may only queue a recovery action
+      for a {Number(created.recoveryDelay) / 86_400}-day public delay.
     </Note>
   </div>
 )

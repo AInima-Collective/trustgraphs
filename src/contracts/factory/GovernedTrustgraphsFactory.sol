@@ -6,23 +6,31 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {GovernedAuthorityDeployer} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
+import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
+import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title GovernedTrustgraphsFactory
-/// @notice Creates a factory trust graph and its DAO Safe + Merkle governance module as one
-///         transaction, with the Safe installed as every instance authority from genesis.
+/// @notice Creates a factory trust graph and a module-only DAO Safe as one transaction, with member
+///         governance plus delayed recovery installed as every execution route from genesis.
 /// @dev The base factory remains the canonical instance creator. This wrapper temporarily owns a
 ///      fresh one-owner Safe, has that Safe call `TrustgraphsFactory.createInstance`, installs the
-///      snapshot-specific governance module, and finally replaces itself with the caller as the
-///      Safe's initial break-glass signer. Targets therefore see the Safe — never this wrapper or
-///      the creator EOA — as `msg.sender`, and `TrustgraphsParamsController.owner()` is correct from
-///      version one onward.
+///      snapshot-specific governance module, a 14-day recovery module, and a permanently sealed
+///      owner-execution guard. The caller remains the Safe owner and recovery proposer for visible
+///      identity/recovery, but cannot execute a Safe transaction directly. Targets therefore see
+///      the Safe — never this wrapper or the creator EOA — as `msg.sender`, and no creator-only
+///      zero-delay path exists after the creation transaction.
 contract GovernedTrustgraphsFactory {
     address internal constant SENTINEL_OWNERS = address(0x1);
+    uint48 public constant RECOVERY_DELAY = 14 days;
+    uint256 public constant MEMBER_VOTING_DELAY = 1;
+    uint256 public constant MEMBER_VOTING_PERIOD = 50_400;
+    uint256 public constant MEMBER_EXECUTION_DELAY = 7_200;
     /// @notice Creation-time guardrail. The DAO may deliberately raise its cap later through the
     ///         vault, but the one-click wizard may not accidentally authorize more than $10,000
     ///         (8-decimal oracle USD) for one root.
@@ -33,9 +41,21 @@ contract GovernedTrustgraphsFactory {
         uint96 maxPerRootUsd;
     }
 
+    struct Authority {
+        address safe;
+        address governanceModule;
+        address recoveryModule;
+        address executionGuard;
+        address initialRecoveryProposer;
+        uint48 recoveryDelay;
+    }
+
     TrustgraphsFactory public immutable FACTORY;
     GnosisSafeProxyFactory public immutable SAFE_FACTORY;
     address public immutable SAFE_SINGLETON;
+    GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
+
+    mapping(bytes32 instanceId => Authority authority) private _authorities;
 
     error ZeroAddress();
     error SafeFundingFailed();
@@ -48,6 +68,7 @@ contract GovernedTrustgraphsFactory {
     error InitialCapTooHigh(uint96 supplied, uint96 maximum);
     error InitialFeeUnpriced(bytes32 program, uint8 band);
     error InitialCapBelowFee(uint96 supplied, uint256 feeUsd);
+    error GovernanceDefaultsMismatch();
 
     event GovernedInstanceCreated(
         bytes32 indexed instanceId,
@@ -56,14 +77,36 @@ contract GovernedTrustgraphsFactory {
         address merkleGovModule,
         address snapshot
     );
+    event GovernedAuthorityInstalled(
+        bytes32 indexed instanceId,
+        address indexed safe,
+        address indexed executionGuard,
+        address governanceModule,
+        address recoveryModule,
+        address recoveryProposer,
+        uint48 recoveryDelay
+    );
 
-    constructor(TrustgraphsFactory factory_, GnosisSafeProxyFactory safeFactory_, address safeSingleton_) {
-        if (address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)) {
+    constructor(
+        TrustgraphsFactory factory_,
+        GnosisSafeProxyFactory safeFactory_,
+        address safeSingleton_,
+        GovernedAuthorityDeployer authorityDeployer_
+    ) {
+        if (
+            address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)
+                || address(authorityDeployer_) == address(0)
+        ) {
             revert ZeroAddress();
         }
         FACTORY = factory_;
         SAFE_FACTORY = safeFactory_;
         SAFE_SINGLETON = safeSingleton_;
+        AUTHORITY_DEPLOYER = authorityDeployer_;
+    }
+
+    function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
+        return _authorities[instanceId];
     }
 
     /// @notice Create one DAO-governed trust graph. `requested.admin` is deliberately ignored:
@@ -133,23 +176,52 @@ contract GovernedTrustgraphsFactory {
 
         MerkleGovModule module = new MerkleGovModule(safeAddress, safeAddress, safeAddress, snapshot);
         merkleGovModule = address(module);
+        if (
+            module.votingDelay() != MEMBER_VOTING_DELAY || module.votingPeriod() != MEMBER_VOTING_PERIOD
+                || module.executionDelay() != MEMBER_EXECUTION_DELAY
+        ) revert GovernanceDefaultsMismatch();
 
-        // Both calls must originate from the Safe: it owns its own module list and holds the new
-        // snapshot's constitutional role from the instant the base factory returns.
+        (SafeExecutionGuard executionGuard, DelayedRecoveryModule recoveryModule) =
+            AUTHORITY_DEPLOYER.deploy(safeAddress, address(this), msg.sender, RECOVERY_DELAY);
+
+        // These calls must originate from the Safe: it owns its module/guard configuration and
+        // holds the new snapshot's constitutional role from the instant the base factory returns.
         _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", merkleGovModule));
+        _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("enableModule(address)", address(recoveryModule)));
         _execSafe(safe, snapshot, 0, abi.encodeCall(MerkleSnapshot.addHook, (IMerkleSnapshotHook(merkleGovModule))));
+        _execSafe(safe, safeAddress, 0, abi.encodeWithSignature("setGuard(address)", address(executionGuard)));
 
-        // The wrapper existed only to finish same-transaction setup. The creator becomes the
-        // initial Safe signer; community governance can execute immediately through the enabled
-        // module once the first score root supplies voting power.
+        // The guard permits only this wrapper while unsealed. Swap in the creator, then seal it in
+        // the same outer transaction: there is no block or callback window in which the new owner
+        // can execute without the module delays.
         _execSafe(
             safe,
             safeAddress,
             0,
             abi.encodeWithSignature("swapOwner(address,address,address)", SENTINEL_OWNERS, address(this), msg.sender)
         );
+        executionGuard.seal();
+
+        Authority memory authority = Authority({
+            safe: safeAddress,
+            governanceModule: merkleGovModule,
+            recoveryModule: address(recoveryModule),
+            executionGuard: address(executionGuard),
+            initialRecoveryProposer: msg.sender,
+            recoveryDelay: RECOVERY_DELAY
+        });
+        _authorities[instanceId] = authority;
 
         emit GovernedInstanceCreated(instanceId, msg.sender, safeAddress, merkleGovModule, snapshot);
+        emit GovernedAuthorityInstalled(
+            instanceId,
+            safeAddress,
+            address(executionGuard),
+            merkleGovModule,
+            address(recoveryModule),
+            msg.sender,
+            RECOVERY_DELAY
+        );
     }
 
     function _createBootstrapSafe(address creator, string calldata name, bytes32 salt)

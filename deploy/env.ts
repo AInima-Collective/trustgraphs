@@ -144,9 +144,9 @@ abstract class EnvBase implements IEnv {
       // snapshot / resolver / distributor from its `InstanceCreated` events, so this one address is
       // all the trust-graph configuration the indexer needs.
       factory: readJsonIfFileExists('.docker/factory_deploy.json'),
-      // One per chain: the frontend wizard calls this wrapper so a new instance, DAO Safe and
-      // snapshot-specific Merkle governance module are born in one transaction. The base factory
-      // remains the canonical event/catalog source.
+      // One per chain: the frontend wizard calls this wrapper so a new instance, DAO Safe,
+      // snapshot-specific Merkle governance, sealed owner guard, and delayed recovery module are
+      // born in one transaction. The base factory remains the canonical event/catalog source.
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
       ),
@@ -422,7 +422,8 @@ export class DevEnv extends EnvBase {
         },
         // The browser-facing creation seam. It has a shared Safe singleton/factory and wraps the
         // canonical instance factory so every wizard-created controller is Safe-owned from
-        // version one, with a MerkleGovModule enabled before the transaction returns.
+        // version one, with delayed member/recovery modules and a sealed owner-execution guard
+        // installed before the transaction returns.
         {
           name: 'Governed Factory',
           script:
