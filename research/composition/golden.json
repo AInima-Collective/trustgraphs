@@ -1,0 +1,71 @@
+{
+  "sourceStates": [
+    {
+      "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "blobSha256": "0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f",
+      "cid": "bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4",
+      "outputRoot": "0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27",
+      "totalValue": "1000000000000000000000000"
+    },
+    {
+      "sourceId": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "blobSha256": "0x88be50f68d36055b1221fd94ce75990f8ddd3869b71c53e0a886155599c364d0",
+      "cid": "bafkreieixzipndjwavnreip5sthhlgiprxotq2nxdrj6bkegcvkztq3e2a",
+      "outputRoot": "0x9ce1b9fbfd433427fc8b28f3525b124a9154b1452b2341811af99edf5361516f",
+      "totalValue": "100"
+    },
+    {
+      "sourceId": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "blobSha256": "0x14378f1664fea67366d33b9f2ee2f212835487335cb1c66aff2ac2b8e57a43b2",
+      "cid": "bafkreiaug6hrmzh6uzzwnuz3t4xof4qsqnkiom24whdgv7zkyk4ok6sdwi",
+      "outputRoot": "0x2e2fedc953325fb2c1a794a943ec3554ffda5dc7ada392d0c27fd37fd419d56c",
+      "totalValue": "7"
+    }
+  ],
+  "manifestSha256": "0xa4e784186aaf288e625d5b459f2902f1d0394ad1558c1e0ce86871562276ba79",
+  "sourceQuotas": {
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "333000",
+    "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "333000",
+    "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": "334000"
+  },
+  "sourceAllocations": {
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+      "0x0101010101010101010101010101010101010101": "73266",
+      "0x0202020202020202020202020202020202020202": "99963",
+      "0x0303030303030303030303030303030303030303": "159771"
+    },
+    "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+      "0x0202020202020202020202020202020202020202": "166500",
+      "0x0404040404040404040404040404040404040404": "99900",
+      "0x0505050505050505050505050505050505050505": "66600"
+    },
+    "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+      "0x0101010101010101010101010101010101010101": "47714",
+      "0x0505050505050505050505050505050505050505": "47714",
+      "0x0606060606060606060606060606060606060606": "95429",
+      "0x0707070707070707070707070707070707070707": "143143"
+    }
+  },
+  "output": {
+    "0x0101010101010101010101010101010101010101": "120980",
+    "0x0202020202020202020202020202020202020202": "266463",
+    "0x0303030303030303030303030303030303030303": "159771",
+    "0x0404040404040404040404040404040404040404": "99900",
+    "0x0505050505050505050505050505050505050505": "114314",
+    "0x0606060606060606060606060606060606060606": "95429",
+    "0x0707070707070707070707070707070707070707": "143143"
+  },
+  "outputBlobSha256": "0x23988f69ce34c5b9b3fbbf02189dad5da66875a0a6f5b475fbdfa2f7d2b5e546",
+  "outputCid": "bafkreibdtchwttruyw43h657aimj3lk5uzuhlifg6w2hl667ul35fnpfiy",
+  "outputRoot": "0x409eefd533c9193d333d390168c836fc02a0e718a696d515c4262984e3a70b15",
+  "totalValue": "1000000",
+  "postTriggerUpdate": {
+    "outputRoot": "0x58bbcf0b1579177149330c6eb6b2aca6fa3f5cb0040dd22bd98fe9623d513130",
+    "manifestSha256": "0x24c7c94af777e4fcf962100a5d79427cf2aa67bfe6f72f7ebcc58c2a224a47f5"
+  },
+  "expectedFailures": {
+    "stale": "is stale at capture",
+    "wrongBlob": "blob sha256 mismatch",
+    "wrongRoot": "output root mismatch"
+  }
+}
