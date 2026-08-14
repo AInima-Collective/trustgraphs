@@ -146,7 +146,7 @@ merkle proofs in their own contracts/apps (and the [bundle API](#score-bundle-ap
 
 | Role | Held by | Knobs | Meaning |
 |---|---|---|---|
-| **CONSTITUTIONAL_ROLE** (MerkleSnapshot) | long-delay `TimelockController` | `setZkVerifier`, `setAccumulator`, `setAnchorRegistry`, `setEpochLength`, `addHook`/`removeHook` | The truth-defining tier. Changing the guest = deploy a new `SP1JournalVerifier(gateway, newVkey)` and `setZkVerifier` here. An operational compromise **cannot** swap the guest. |
+| **CONSTITUTIONAL_ROLE** (MerkleSnapshot) | long-delay `TimelockController` | `setZkVerifier`, pre-checkpoint `setAccumulator`, `setAnchorRegistry`, `setEpochLength`, hooks, two-step authority handoff | The truth-defining tier. The final holder cannot revoke/renounce itself. After checkpoint 0, changing an input lane requires a new snapshot plus explicit migration, preventing checkpoint-id/history reuse. |
 | **OPERATIONAL_ROLE** (MerkleSnapshot) | short-delay `TimelockController` | `setParamsHash` | Tuning: rotate the seed set, adjust weights/damping. Moves a new `paramsHash` with no guest change. |
 | **REGISTRAR_ROLE** (AnchorRegistry) | operational timelock (or a PDS-allowlist steward it delegates to) | `registerNode(nodeId, kind)` | The registration gate. At launch it admits DID nodes on the **PDS allowlist** (Hypercerts' PDSes). Address nodes self-register via `register()` and are **not** registrar-mintable. |
 | — (permissionless) | anyone | `AnchorRegistry.anchor(...)`, `MerkleSnapshot.trigger()`, `MerkleSnapshot.submitProof(...)` | Force-inclusion + the permissionless prove loop. Heads are self-certifying; a relayer can only relay, never forge. |
@@ -200,7 +200,8 @@ cast send "$HC_REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" "$
 
 `trigger()` is gated by `epochLength` (reverts `EpochNotElapsed` before the week is up) and freezes
 **both** lanes at one boundary: lane 1 is the empty accumulator (`acc = 0`), lane 2 is the registry's
-`(anchorAcc, anchorCount)`.
+`(anchorAcc, anchorCount)`. The schedule is anchored when configured. If the transaction lands late,
+it consumes the already-fixed boundary for that epoch; it cannot shift the following weeks.
 
 ```bash
 cast send "$HC_SNAPSHOT" "trigger()" --rpc-url "$RPC" --private-key "$PK"   # emits SnapshotTriggered + AnchorsCheckpointed

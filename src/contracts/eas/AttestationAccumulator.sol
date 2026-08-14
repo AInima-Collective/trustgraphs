@@ -67,8 +67,9 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
     ///
     ///      The `accumulator()` read-back is defence in depth: it turns a mistyped binding — the
     ///      one irreversible mistake available here — into a revert. It also fixes the ordering
-    ///      when an instance rotates its input lane: deploy the new accumulator, call the
-    ///      snapshot's constitutional `setAccumulator`, THEN bind.
+    ///      during pre-checkpoint wiring: deploy the new accumulator, call the snapshot's
+    ///      constitutional `setAccumulator`, THEN bind. Once any checkpoint exists,
+    ///      `MerkleSnapshot` forbids re-pointing; recovery uses a new snapshot and vault migration.
     function bindSnapshot(address _snapshot) external {
         if (msg.sender != binder) revert NotBinder();
         if (snapshot != address(0)) revert AlreadyBound();

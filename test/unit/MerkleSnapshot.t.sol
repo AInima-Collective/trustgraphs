@@ -147,6 +147,44 @@ contract MerkleSnapshotTest is Test {
         assertEq(ms.getStateAtBlock(70).blockNumber, 42, "at-or-before lookup");
     }
 
+    function test_NonMonotonicFreezeBlockCannotCorruptHistory() public {
+        _mint(bytes32(uint256(1)), 1, 100);
+        _mint(bytes32(uint256(2)), 2, 50);
+        _submit(0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleSnapshot.NonMonotonicStateBlock.selector, uint256(50), uint256(100))
+        );
+        _submit(1);
+
+        assertEq(ms.getStateCount(), 1);
+        assertEq(ms.getLatestState().blockNumber, 100);
+        assertEq(ms.lastAppliedCheckpoint(), 0, "revert rolls back the newer checkpoint marker");
+    }
+
+    function test_StatePaginationIsEmptyAndOverflowSafeAtEveryBoundary() public {
+        _mint(bytes32(uint256(1)), 1, 10);
+        _mint(bytes32(uint256(2)), 2, 20);
+        _submit(0);
+        _submit(1);
+
+        assertEq(ms.getStateBlocks(2, 1).length, 0, "exact end");
+        assertEq(ms.getStateBlocks(3, 1).length, 0, "past end");
+        assertEq(ms.getStateBlocks(type(uint256).max, type(uint256).max).length, 0, "max offset");
+        assertEq(ms.getStateBlocks(0, 0).length, 0, "zero limit");
+        uint256[] memory tailBlocks = ms.getStateBlocks(1, type(uint256).max);
+        assertEq(tailBlocks.length, 1, "max limit clamps without addition overflow");
+        assertEq(tailBlocks[0], 20);
+
+        assertEq(ms.getStates(2, 1).length, 0, "states exact end");
+        assertEq(ms.getStates(3, 1).length, 0, "states past end");
+        assertEq(ms.getStates(type(uint256).max, type(uint256).max).length, 0, "states max offset");
+        assertEq(ms.getStates(0, 0).length, 0, "states zero limit");
+        IMerkleSnapshot.MerkleState[] memory tailStates = ms.getStates(1, type(uint256).max);
+        assertEq(tailStates.length, 1);
+        assertEq(tailStates[0].blockNumber, 20);
+    }
+
     function test_EmptyCheckpointProvable() public {
         uint256 id = _mint(bytes32(0), 0, 7);
         bytes32 digest = keccak256(
@@ -282,12 +320,18 @@ contract MerkleSnapshotTest is Test {
         assertEq(ms.paramsHash(), bytes32(uint256(9)));
     }
 
-    function test_ConstructorRejectsZeroVerifierOrAccumulator() public {
+    function test_ConstructorRejectsZeroVerifierAccumulatorOrAdmins() public {
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
         new MerkleSnapshot(MockZkVerifier(address(0)), paramsHash, accer, constitutional, operational);
 
         vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
         new MerkleSnapshot(verifier, paramsHash, MockAccumulator(address(0)), constitutional, operational);
+
+        vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
+        new MerkleSnapshot(verifier, paramsHash, accer, address(0), operational);
+
+        vm.expectRevert(IMerkleSnapshot.ZeroAddress.selector);
+        new MerkleSnapshot(verifier, paramsHash, accer, constitutional, address(0));
     }
 
     function test_SetZeroVerifierReverts() public {
@@ -309,6 +353,114 @@ contract MerkleSnapshotTest is Test {
         vm.prank(constitutional);
         ms.grantRole(oRole, address(0xF00D));
         assertTrue(ms.hasRole(oRole, address(0xF00D)));
+    }
+
+    function test_LastConstitutionalHolderCannotBeRevokedOrRenounce() public {
+        bytes32 role = ms.CONSTITUTIONAL_ROLE();
+        assertEq(ms.constitutionalHolderCount(), 1);
+
+        vm.prank(constitutional);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.LastConstitutionalHolder.selector, constitutional));
+        ms.revokeRole(role, constitutional);
+
+        vm.prank(constitutional);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.LastConstitutionalHolder.selector, constitutional));
+        ms.renounceRole(role, constitutional);
+
+        assertTrue(ms.hasRole(role, constitutional));
+        assertEq(ms.constitutionalHolderCount(), 1);
+    }
+
+    function test_MultipleConstitutionalHoldersCanRemoveOneButNeverTheLast() public {
+        bytes32 role = ms.CONSTITUTIONAL_ROLE();
+        address second = address(0xC042);
+
+        vm.prank(constitutional);
+        ms.grantRole(role, second);
+        assertEq(ms.constitutionalHolderCount(), 2);
+
+        vm.prank(constitutional);
+        ms.revokeRole(role, constitutional);
+        assertFalse(ms.hasRole(role, constitutional));
+        assertTrue(ms.hasRole(role, second));
+        assertEq(ms.constitutionalHolderCount(), 1);
+
+        vm.prank(second);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.LastConstitutionalHolder.selector, second));
+        ms.renounceRole(role, second);
+    }
+
+    function test_TwoStepConstitutionalTransferPreservesAuthorityFloor() public {
+        bytes32 role = ms.CONSTITUTIONAL_ROLE();
+        address successor = address(0xC043);
+
+        vm.prank(constitutional);
+        vm.expectEmit(true, true, false, false);
+        emit IMerkleSnapshot.ConstitutionalTransferProposed(constitutional, successor);
+        ms.proposeConstitutionalTransfer(successor);
+        assertEq(ms.pendingConstitutionalTransferor(), constitutional);
+        assertEq(ms.pendingConstitutionalSuccessor(), successor);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleSnapshot.NotPendingConstitutionalSuccessor.selector, address(0xBAD), successor
+            )
+        );
+        ms.acceptConstitutionalTransfer();
+
+        vm.prank(successor);
+        vm.expectEmit(true, true, false, false);
+        emit IMerkleSnapshot.ConstitutionalTransferAccepted(constitutional, successor);
+        ms.acceptConstitutionalTransfer();
+        assertFalse(ms.hasRole(role, constitutional));
+        assertTrue(ms.hasRole(role, successor));
+        assertEq(ms.constitutionalHolderCount(), 1);
+        assertEq(ms.pendingConstitutionalTransferor(), address(0));
+        assertEq(ms.pendingConstitutionalSuccessor(), address(0));
+
+        MockZkVerifier replacement = new MockZkVerifier();
+        vm.prank(successor);
+        ms.setZkVerifier(replacement);
+        assertEq(address(ms.zkVerifier()), address(replacement), "successor controls emergency recovery");
+    }
+
+    function test_AccumulatorRotationIsOnlyAvailableBeforeAnyCheckpoint() public {
+        MockAccumulator replacement = new MockAccumulator();
+        vm.prank(constitutional);
+        ms.setAccumulator(replacement);
+        assertEq(address(ms.accumulator()), address(replacement));
+
+        MockAccumulator usedCandidate = new MockAccumulator();
+        usedCandidate.pushCheckpoint(bytes32(uint256(1)), 1, 1);
+        vm.prank(constitutional);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleSnapshot.AccumulatorRotationLocked.selector, uint256(0), uint256(1))
+        );
+        ms.setAccumulator(usedCandidate);
+    }
+
+    function test_AccumulatorRotationLocksAfterFirstCheckpoint() public {
+        _mint(bytes32(uint256(1)), 1, 10);
+        MockAccumulator replacement = new MockAccumulator();
+
+        vm.prank(constitutional);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleSnapshot.AccumulatorRotationLocked.selector, uint256(1), uint256(0))
+        );
+        ms.setAccumulator(replacement);
+
+        assertEq(address(ms.accumulator()), address(accer));
+    }
+
+    function test_AccumulatorCannotReuseOrSkipSnapshotCheckpointIds() public {
+        accer.pushCheckpoint(bytes32(uint256(1)), 1, 1);
+        accer.setState(bytes32(uint256(2)), 2);
+
+        vm.expectRevert(abi.encodeWithSelector(IMerkleSnapshot.UnexpectedCheckpointId.selector, uint256(0), uint256(1)));
+        ms.trigger();
+        assertEq(accer.checkpointCount(), 1, "the reverted trigger cannot append the unexpected id");
+        assertEq(ms.nextCheckpointId(), 0);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -334,29 +486,61 @@ contract MerkleSnapshotTest is Test {
     function test_EpochScheduleGatesTrigger() public {
         vm.prank(constitutional);
         ms.setEpochLength(50);
+        uint64 origin = uint64(block.number);
+        assertEq(ms.epochOriginBlock(), origin);
 
-        // lastTriggerBlock starts at 0; before block 50 the boundary hasn't elapsed.
-        vm.roll(10);
-        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(0), uint64(50)));
+        // Configuring the schedule consumes its origin boundary; the first due boundary is +50.
+        vm.roll(uint256(origin) + 10);
+        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, origin, uint64(50)));
         ms.trigger();
 
         // At the boundary it fires and records the trigger block.
-        vm.roll(50);
+        vm.roll(uint256(origin) + 50);
         accer.setState(bytes32(uint256(1)), 1);
         ms.trigger();
-        assertEq(ms.lastTriggerBlock(), 50);
+        assertEq(ms.lastTriggerBlock(), uint256(origin) + 50);
 
-        // Before the next boundary (50 + 50 = 100) it reverts again — on the EPOCH gate, which is
+        // Before the next boundary it reverts again — on the EPOCH gate, which is
         // what this test is about, so give it fresh inputs to prove it is not the movement check.
         accer.setState(bytes32(uint256(2)), 2);
-        vm.roll(99);
-        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(50), uint64(50)));
+        vm.roll(uint256(origin) + 99);
+        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, origin + 50, uint64(50)));
         ms.trigger();
 
-        // Past the next boundary it fires.
-        vm.roll(100);
+        // At the next boundary it fires.
+        vm.roll(uint256(origin) + 100);
         ms.trigger();
-        assertEq(ms.lastTriggerBlock(), 100);
+        assertEq(ms.lastTriggerBlock(), uint256(origin) + 100);
+    }
+
+    function test_LatePermissionlessTriggerCannotMoveFutureEpochPhase() public {
+        vm.roll(100);
+        vm.prank(constitutional);
+        ms.setEpochLength(50);
+
+        // The first boundary is 150, but a caller waits until block 175. The consumed boundary is
+        // still 150, not the caller-selected freeze block.
+        vm.roll(175);
+        accer.setState(bytes32(uint256(1)), 1);
+        ms.trigger();
+        assertEq(ms.epochOriginBlock(), 100);
+        assertEq(ms.lastTriggerBlock(), 150);
+        assertEq(accer.getCheckpoint(0).blockNumber, 175, "checkpoint preserves the real freeze block");
+
+        // Reapplying the same length cannot reset the phase.
+        vm.prank(constitutional);
+        ms.setEpochLength(50);
+        assertEq(ms.epochOriginBlock(), 100);
+        assertEq(ms.lastTriggerBlock(), 150);
+
+        accer.setState(bytes32(uint256(2)), 2);
+        vm.roll(199);
+        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(150), uint64(50)));
+        ms.trigger();
+
+        vm.roll(200);
+        ms.trigger();
+        assertEq(ms.lastTriggerBlock(), 200, "next boundary stays on the original phase");
     }
 
     /// A checkpoint identical to the last one across BOTH lanes is refused.

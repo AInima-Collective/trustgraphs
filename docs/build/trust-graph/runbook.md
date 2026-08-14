@@ -137,10 +137,13 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
    That legacy script requires a nonzero `epochLength` argument and applies it before returning;
    zero is rejected because it disables the schedule and hands checkpoint timing to callers.
 3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
-   operational (short-delay) `TimelockController`s. On a controller-backed trust graph, transfer
-   the snapshot's `CONSTITUTIONAL_ROLE` to the constitutional timelock and transfer ownership of
-   `TrustgraphsParamsController` to the operational timelock through its two-step ownership flow.
-   The controller—not the timelock directly—remains the snapshot's sole `OPERATIONAL_ROLE` holder.
+   operational (short-delay) `TimelockController`s. On a controller-backed trust graph, call
+   `proposeConstitutionalTransfer(timelock)` from the current holder, then have the timelock execute
+   `acceptConstitutionalTransfer()`; acceptance grants the successor before removing the old holder.
+   Transfer ownership of `TrustgraphsParamsController` to the operational timelock through its
+   two-step ownership flow. The controller—not the timelock directly—remains the snapshot's sole
+   `OPERATIONAL_ROLE` holder. The snapshot refuses to revoke or renounce its final constitutional
+   holder, and the accepted successor immediately inherits every `ProvingVault` community control.
 
 ## Produce a root (the permissionless loop)
 
@@ -387,8 +390,13 @@ the indexer + frontend read.
 
 MerkleSnapshot and the typed trust-graph controller:
 
-- **Constitutional** (long timelock): `setZkVerifier`, `setAccumulator`. Changing the guest = deploy a
-  new `SP1JournalVerifier(gateway, newVkey)` and `setZkVerifier` through this timelock.
+- **Constitutional** (long timelock): `setZkVerifier`, pre-checkpoint `setAccumulator`, epoch/input
+  wiring, hooks, and the two-step constitutional handoff. Changing the guest = deploy a new
+  `SP1JournalVerifier(gateway, newVkey)` and `setZkVerifier` through this timelock. Once checkpoint 0
+  exists, accumulator re-pointing is locked: deploy a replacement snapshot, preserve the last
+  root/blob as migration evidence, update the directory, and authorize `ProvingVault.migrate` from
+  the old snapshot's constitutional authority. This avoids checkpoint-id reuse and descending
+  historical freeze blocks until a generation-aware migration protocol exists.
 - **Operational** (direct owner, Safe, or short timelock):
   `TrustgraphsParamsController.updateParams(fullTuple, evidenceURI)`. The
   controller validates the shared safety envelope, writes snapshot + registry

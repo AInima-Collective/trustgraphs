@@ -111,7 +111,8 @@ One `trigger()` freezes BOTH lanes at the same block: the mirror checkpoints
 the trust accumulator's live `(acc, leafCount)`, and the snapshot freezes the
 resolver's `(anchorAcc, anchorCount)` under the same checkpoint id.
 `epochLength` (blocks) paces triggers; the epoch boundary is contract-fixed,
-never prover-chosen.
+never prover-chosen. A late trigger records the real freeze block in its checkpoint but consumes the
+fixed boundary for that epoch, so the following boundary does not slide with the caller.
 
 ### 4. Prove (permissionless)
 
@@ -221,7 +222,7 @@ filters, and wei-exact expected outputs for every step.
 
 | power | holder | notes |
 |---|---|---|
-| `CONSTITUTIONAL_ROLE` (snapshot) | deployer (dev) / constitutional admin | truth-defining knobs: `setZkVerifier`, `setAccumulator`, `setAnchorRegistry`, `setEpochLength`, hooks; admin of both roles |
+| `CONSTITUTIONAL_ROLE` (snapshot) | deployer (dev) / constitutional admin | verifier, pre-checkpoint input wiring, epoch schedule, hooks, and two-step authority handoff; final holder cannot disappear |
 | Contributions controller owner | deployer (dev) / operational admin | typed `updateParams` — per-round window + params rotation |
 | `OPERATIONAL_ROLE` (snapshot) | Contributions controller only | atomically applies the typed tuple's hash; no EOA raw-hash bypass |
 | resolver owner | deployer | one-shot `setSchemas` allowlist (already consumed at deploy) |

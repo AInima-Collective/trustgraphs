@@ -61,7 +61,9 @@ contract DeployNetworkTest is Test {
         assertEq(resolver.boundSchema(), schemaUid, "resolver must be bound to its own schema");
         assertEq(resolver.snapshot(), snapshotAddr, "resolver must be bound to its snapshot");
 
-        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(0), EPOCH_LENGTH));
+        vm.expectRevert(
+            abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, snapshot.epochOriginBlock(), EPOCH_LENGTH)
+        );
         snapshot.trigger();
     }
 

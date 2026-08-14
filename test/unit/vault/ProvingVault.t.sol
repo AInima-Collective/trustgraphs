@@ -959,6 +959,29 @@ contract ProvingVaultTest is Test {
         assertEq(vault.policyOf(INSTANCE).maxPerRootUsd, 1);
     }
 
+    function test_TwoStepSnapshotHandoffRecoversEveryVaultAuthority() public {
+        _fund(2 ether, 0);
+        address successor = address(0xC048);
+
+        vm.prank(constitutional);
+        snapshot.proposeConstitutionalTransfer(successor);
+        vm.prank(successor);
+        snapshot.acceptConstitutionalTransfer();
+
+        vm.prank(constitutional);
+        vm.expectRevert(abi.encodeWithSelector(IProvingVault.NotConstitutional.selector, INSTANCE, constitutional));
+        vault.setPolicy(INSTANCE, 0, 1);
+
+        vm.startPrank(successor);
+        vault.setPolicy(INSTANCE, 25, uint96(50 * vault.USD()));
+        vault.requestWithdrawal(INSTANCE, 1 ether, 0);
+        vm.stopPrank();
+
+        assertEq(vault.policyOf(INSTANCE).minPaidIntervalBlocks, 25);
+        assertEq(vault.policyOf(INSTANCE).maxPerRootUsd, 50 * vault.USD());
+        assertEq(vault.pendingWithdrawalOf(INSTANCE).ethAmount, 1 ether);
+    }
+
     function test_OnlyTheFeeSetterSetsPrices() public {
         vm.prank(mallory);
         vm.expectRevert();

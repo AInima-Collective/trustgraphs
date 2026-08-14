@@ -19,9 +19,10 @@ Three properties follow:
 
 - **The input set is frozen.** Scores for checkpoint N are computed over exactly the vouches
   that existed when N was frozen. Vouches created afterwards belong to the next round.
-- **Boundaries are not prover-chosen.** A network can set a fixed epoch length in blocks; when
-  it does, `trigger()` only fires after the boundary has passed, and it refuses to mint a
-  checkpoint when nothing has changed since the last one.
+- **Boundaries are not prover-chosen.** Setting a nonzero epoch length anchors a fixed phase at
+  that configuration block. `trigger()` only fires once a boundary is due; a late caller consumes
+  the boundary for the current epoch instead of moving every future boundary. The checkpoint still
+  records the exact, possibly later, freeze block. An unchanged input set is refused.
 - **Past rounds are never recalculated.** Each proven result is filed at its checkpoint's
   freeze block, and checkpoints apply monotonically: an older checkpoint's proof can never
   overwrite a newer one. "Score as of block N" stays honest forever, even though proving is
@@ -78,6 +79,10 @@ skippedDigest, recipient, proof)` is permissionless. Before writing anything it:
    (the vkey, which identifies one exact guest binary).
 6. **Records the result.** The root is filed at the checkpoint's input-freeze block, the
    checkpoint's bounty recipient is recorded, and registered consumer hooks are notified.
+
+State-history pagination is total: exact-end, past-end, zero-limit, and overflowing-sized requests
+return an empty or clamped page rather than reverting. Freeze blocks are enforced as monotonic
+before insertion, which preserves the binary-search invariant used by historical proof queries.
 
 If any step fails, the transaction reverts and nothing changes. If all succeed, the root is as
 trustworthy as the guest program and parameters that governance pinned; no honesty assumption

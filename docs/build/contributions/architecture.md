@@ -52,8 +52,10 @@ is identical because `acc` already commits to the full ordered edge log. The
 mirror is bound one-shot to its snapshot (`bindSnapshot`), so nothing else can
 grow its checkpoint array and desync lane A from lane B; one
 `trigger()` on the contributions snapshot freezes both lanes at the same
-block. Re-pointing lane A is a constitutional event on the snapshot
-(`setAccumulator` to a new mirror), never a mutation of the mirror.
+block. Lane A can be re-pointed to a new mirror only before checkpoint 0. Once history exists, the
+safe path is a replacement snapshot plus explicit directory/vault migration; the mirror itself is
+never mutated. This prevents a new accumulator from reusing checkpoint ids or lowering historical
+freeze blocks.
 
 The resolver holds an immutable allowlist of the three schema UIDs (set once
 post-registration) and **reverts** attestations from any other schema — the

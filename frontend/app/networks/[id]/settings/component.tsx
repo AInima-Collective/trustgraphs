@@ -1169,7 +1169,9 @@ export const SettingsPage = ({
       ? sameHex(creationHash, liveParamsHash)
       : null
   const nextTriggerBlock =
-    epochLength !== undefined && lastTriggerBlock !== undefined
+    epochLength !== undefined &&
+    epochLength > 0n &&
+    lastTriggerBlock !== undefined
       ? lastTriggerBlock + epochLength
       : undefined
   const nextPaidBlock =
@@ -1793,7 +1795,13 @@ export const SettingsPage = ({
                       ? '—'
                       : `${comma(epochLength)} blocks`}
                   </SettingRow>
-                  <SettingRow label="Last trigger block">
+                  <SettingRow
+                    label={
+                      epochLength !== undefined && epochLength > 0n
+                        ? 'Last consumed epoch boundary'
+                        : 'Last trigger block'
+                    }
+                  >
                     {comma(lastTriggerBlock)}
                   </SettingRow>
                   <SettingRow label="Next trigger boundary">

@@ -183,7 +183,7 @@ contract ContributionsInstanceTest is Test {
 
         _claim(bob);
         vm.expectRevert(
-            abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(block.number), EPOCH_LENGTH)
+            abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, snapshot.lastTriggerBlock(), EPOCH_LENGTH)
         );
         snapshot.trigger();
 

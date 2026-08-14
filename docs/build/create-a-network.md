@@ -135,11 +135,13 @@ Two details are worth stating out loud:
 **The factory holds a role for part of one transaction, and never again.** `setEpochLength` is
 constitutional-only and is _not_ a constructor argument, which is the sole reason the factory ever
 takes `CONSTITUTIONAL_ROLE`. The grant to the admin happens **before** the renounce — the role
-administers itself, so the reverse order would leave the instance with no constitutional holder,
-permanently. Post-condition: the factory holds zero roles on the snapshot, zero ownership of the
-distributor, and only append-only `REGISTRAR_ROLE` on `InstanceRegistry`. This is enforced as a test
-invariant, not a convention. A compromised factory can write directory garbage; it cannot touch one
-existing instance.
+administers itself, and the snapshot now rejects any revoke/renounce that would remove its final
+holder. The ordered handoff succeeds; the reverse order reverts instead of bricking the instance.
+Later handoffs use `proposeConstitutionalTransfer` → successor
+`acceptConstitutionalTransfer`, which grants before removing. Post-condition: the factory holds zero
+roles on the snapshot, zero ownership of the distributor, and only append-only `REGISTRAR_ROLE` on
+`InstanceRegistry`. This is enforced as a test invariant, not a convention. A compromised factory
+can write directory garbage; it cannot touch one existing instance.
 
 **Distributor ownership is set outright, not via the 2-step handshake.** Two-step transfer protects
 a _live_ owner from handing control to an address that cannot act; at construction there is no live
@@ -427,9 +429,11 @@ Three cases it was **not** covered for, which is what the two fields are for:
    v1 `paramsHash`**, with nothing anywhere in the 15 fields naming a chain. Verified on a real
    instance's params: the v1 hash is `0x9d188d20…` on both chains, while the v2 hash is
    `0xdb7f2ec1…` on 31337 and `0x4ccc0994…` on 1.
-2. **A re-pointed accumulator (`accumulator`).** `setAccumulator` is a constitutional knob. After a
-   re-point, `schemaUid` names a resolver that is no longer the instance's input source, and a v1
-   `paramsHash` would not register the change at all. v2 pins the accumulator the guest must read.
+2. **A re-pointed accumulator (`accumulator`).** Before checkpoint 0, `setAccumulator` is a
+   constitutional wiring knob. After a re-point, `schemaUid` names a resolver that is no longer the
+   instance's input source, and a v1 `paramsHash` would not register the change at all. v2 pins the
+   accumulator the guest must read. Once history exists, re-pointing is locked and recovery uses a
+   replacement snapshot plus explicit directory/vault migration.
 3. **Two snapshots over one accumulator.** They share a resolver, therefore a schema UID. The
    contributions program already has this shape (`TrustAccumulatorMirror`).
 

@@ -11,6 +11,23 @@ interface IMerkleSnapshot {
     error HookAlreadyAdded();
     error HookNotAdded();
 
+    /// @notice The final constitutional holder cannot be removed. Use the two-step transfer path.
+    error LastConstitutionalHolder(address holder);
+
+    error InvalidConstitutionalSuccessor(address successor);
+    error NoPendingConstitutionalTransfer();
+    error NotPendingConstitutionalSuccessor(address caller, address pendingSuccessor);
+    error ConstitutionalTransferorLostRole(address transferor);
+
+    /// @notice Accumulator replacement is only safe before either lane has checkpoint history.
+    error AccumulatorRotationLocked(uint256 currentCheckpointCount, uint256 candidateCheckpointCount);
+
+    /// @notice An accumulator must return dense checkpoint ids beginning at zero.
+    error UnexpectedCheckpointId(uint256 expected, uint256 actual);
+
+    /// @notice Historical state blocks must remain ascending for binary search to be sound.
+    error NonMonotonicStateBlock(uint256 proposed, uint256 latest);
+
     /// @notice Thrown when a proof targets a checkpoint that is not newer than the last applied one.
     error StaleCheckpoint(uint256 checkpointId, uint256 lastApplied);
 
@@ -50,6 +67,14 @@ interface IMerkleSnapshot {
 
     /// @notice Emitted when the constitutional authority updates the accumulator.
     event AccumulatorUpdated(address indexed accumulator);
+
+    /// @notice Two-step constitutional authority handoff lifecycle.
+    event ConstitutionalTransferProposed(address indexed transferor, address indexed successor);
+    event ConstitutionalTransferCancelled(address indexed transferor, address indexed successor);
+    event ConstitutionalTransferAccepted(address indexed transferor, address indexed successor);
+
+    /// @notice A changed nonzero epoch length fixes a new phase at `originBlock`.
+    event EpochScheduleAnchored(uint64 epochLength, uint64 originBlock);
 
     /// @notice Emitted when the operational authority updates the params hash.
     event ParamsHashUpdated(bytes32 indexed paramsHash);

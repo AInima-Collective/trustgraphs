@@ -97,16 +97,17 @@ log event + status page) as soon as any instance's `leafCount + anchorCount` cro
 of the ceiling, on every tick until addressed. Do not silence it without acting: past 100%
 there is nothing left to operate.
 
-**Recovery path (prepare BEFORE launch).** `MerkleSnapshot.setAccumulator` is constitutional
-(the slow timelock). The runbook step for a re-seed is: deploy a fresh
-`EASIndexerResolver`/accumulator, snapshot the final proven root of the old one (the score
-history is preserved by the last landed root + its score blob, whose CID identifies the bytes but
-does not keep them available; retain it on independent targets and an offline backup), point the
-instance at the new accumulator through the constitutional queue, and have
-members re-attest their live edges against the new resolver. Budget the timelock delay into
-the response: at current growth rate, the 80% alert must fire earlier than
-`timelock delay + re-attestation window` before the cliff. If the instance is open-set, do not
-wait for the alert — price the ingress now (outstanding report D2).
+**Recovery path (prepare BEFORE launch).** `MerkleSnapshot.setAccumulator` is available only before
+checkpoint 0. After history exists, in-place re-pointing is deliberately locked because a fresh
+accumulator can restart checkpoint ids and freeze blocks, corrupting pinned commitments and
+historical search. Re-seed by deploying a fresh resolver/accumulator **and snapshot**, preserving the
+old instance's final proven root and score blob as migration evidence (retain the CID bytes on
+independent targets and an offline backup), updating the instance-directory row, then authorizing
+`ProvingVault.migrate` from the old snapshot's constitutional authority. Members re-attest their
+live edges against the replacement resolver. Budget the timelock delay into the response: at the
+current growth rate, the 80% alert must fire earlier than `timelock delay + deployment +
+re-attestation window` before the cliff. This is operationally heavier than generation-aware
+in-place migration; #12 must resolve that design before open adversarial ingress carries value.
 
 ### Run the indexer
 
