@@ -51,9 +51,9 @@ contract TrustAccumulatorMirror is IAttestationAccumulator {
     /// @notice Emitted when the snapshot is bound.
     event SnapshotBound(address snapshot);
 
-    /// @param _trustAccumulator The trust accumulator to mirror. Immutable: re-pointing the input
-    ///        lane is a constitutional event on the snapshot (`setAccumulator` to a new mirror),
-    ///        never a mutation here.
+    /// @param _trustAccumulator The trust accumulator to mirror. Immutable: pre-checkpoint
+    ///        re-pointing is a constitutional event on the snapshot (`setAccumulator` to a new
+    ///        mirror), never a mutation here. Historical instances migrate to a new snapshot.
     constructor(IAttestationAccumulator _trustAccumulator) {
         if (address(_trustAccumulator) == address(0)) {
             revert ZeroAddress();

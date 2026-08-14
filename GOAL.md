@@ -1,12 +1,14 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 7 issues closed, 10 remain.**
+> **Status (2026-08-13): 8 issues closed, 9 remain.**
 >
-> Closed after auditing `main` at `9fdbe1f` and rerunning the focused regressions:
+> Closed after auditing `main` through `238a770` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
 > - **#13** — snapshot-scoped claims and quote/settlement parity (`2d46090`)
+> - **#14** — constitutional authority floor and handoff, fail-closed accumulator history,
+>   total pagination, and fixed epoch phase (`aa8e2b5`)
 > - **#15** — persistent deterministic-submit abandonment and fresh-checkpoint recovery
 >   (`362e547`; empty-root/hook precursor in `a6f89c5`)
 > - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
@@ -16,7 +18,7 @@
 >   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#12, #14, #20, #27**.
+> Remaining launch-risk issues: **#12, #20, #27**.
 > Remaining reproducibility and self-service issue: **#21**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -59,7 +61,7 @@ can proceed concurrently:
 | Lane | Issues | Purpose | Dependencies |
 | --- | --- | --- | --- |
 | A · operator availability | #16 closed | Repair score-blob availability | `131ecfd` |
-| B · snapshot/vault hardening | #12, #14 | Bound hostile input growth and finish snapshot invariants | coordinate accumulator migration semantics |
+| B · snapshot/vault hardening | #12; #14 closed | Bound hostile input growth and finish snapshot invariants | `aa8e2b5` fixes the fail-closed migration boundary |
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
 | D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
 | E · program self-service | #21; #28 closed | Factory signer-sync and reproducible Contributions params | `3de8943` for #28 |
@@ -73,8 +75,8 @@ parallel without blocking the core public repository release.
 
 ## Milestone 1 — Availability and paid proving
 
-Three remaining comparatively bounded issues. Completing this milestone should remove the most operational
-risk per review cycle.
+**Complete.** These four issues removed the most immediate availability, payment, and snapshot
+invariant risks.
 
 ### M1.1 · #15 — abandon deterministic submission failures and advance
 
@@ -167,6 +169,16 @@ quotes return `PolicyDisabled` forever until an administrator uses an out-of-ban
 accepts money into a disabled policy by accident.
 
 ### M1.4 · #14 — finish the four MerkleSnapshot hardening findings
+
+**Closed in `aa8e2b5`.** The constitutional role now has a nonzero holder invariant and explicit
+two-step handoff whose successor inherits snapshot and vault emergency authority. Accumulator
+replacement is permitted only while both sides are pristine; dense checkpoint ids and monotonic
+freeze blocks are enforced independently, and the documented post-checkpoint recovery path is a
+replacement snapshot plus directory/vault migration. Both history views now return empty or
+clamped pages for every boundary and overflow-sized request. A changed nonzero epoch length anchors
+a fixed phase, while late permissionless triggers consume the current scheduled boundary without
+misstating the checkpoint's actual freeze block. The 532-test Forge suite, frontend suite, generated
+ABI checks, and size build pass; `MerkleSnapshot` retains 12,022 bytes of EIP-170 runtime margin.
 
 Treat the four findings as separate commits in one issue PR if that makes review easier:
 
@@ -398,10 +410,10 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #14 and #37 — two independently closable issues.
+- **Near term:** #37 — the remaining independently closable research decision.
 - **Production track:** #12, #20, and then #27 — three security/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 10 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 9 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.

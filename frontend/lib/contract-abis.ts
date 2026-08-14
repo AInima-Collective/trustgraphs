@@ -4086,6 +4086,13 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'acceptConstitutionalTransfer',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'accumulator',
     outputs: [
       {
@@ -4139,6 +4146,13 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'cancelConstitutionalTransfer',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [
       { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
     ],
@@ -4158,7 +4172,21 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'constitutionalHolderCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'epochLength',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'epochOriginBlock',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
@@ -4379,6 +4407,13 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'nextCheckpointId',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'nextHookIndex',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
@@ -4389,6 +4424,27 @@ export const merkleSnapshotAbi = [
     name: 'paramsHash',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'pendingConstitutionalSuccessor',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'pendingConstitutionalTransferor',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'successor', internalType: 'address', type: 'address' }],
+    name: 'proposeConstitutionalTransfer',
+    outputs: [],
+    stateMutability: 'nonpayable',
   },
   {
     type: 'function',
@@ -4680,6 +4736,63 @@ export const merkleSnapshotAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'transferor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'successor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ConstitutionalTransferAccepted',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'transferor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'successor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ConstitutionalTransferCancelled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'transferor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'successor',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ConstitutionalTransferProposed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'epochLength',
         internalType: 'uint64',
         type: 'uint64',
@@ -4687,6 +4800,25 @@ export const merkleSnapshotAbi = [
       },
     ],
     name: 'EpochLengthUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'epochLength',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'originBlock',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'EpochScheduleAnchored',
   },
   {
     type: 'event',
@@ -4865,6 +4997,27 @@ export const merkleSnapshotAbi = [
   {
     type: 'error',
     inputs: [
+      {
+        name: 'currentCheckpointCount',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+      {
+        name: 'candidateCheckpointCount',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+    ],
+    name: 'AccumulatorRotationLocked',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'transferor', internalType: 'address', type: 'address' }],
+    name: 'ConstitutionalTransferorLostRole',
+  },
+  {
+    type: 'error',
+    inputs: [
       { name: 'lastTriggerBlock', internalType: 'uint64', type: 'uint64' },
       { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
     ],
@@ -4872,6 +5025,16 @@ export const merkleSnapshotAbi = [
   },
   { type: 'error', inputs: [], name: 'HookAlreadyAdded' },
   { type: 'error', inputs: [], name: 'HookNotAdded' },
+  {
+    type: 'error',
+    inputs: [{ name: 'successor', internalType: 'address', type: 'address' }],
+    name: 'InvalidConstitutionalSuccessor',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'holder', internalType: 'address', type: 'address' }],
+    name: 'LastConstitutionalHolder',
+  },
   {
     type: 'error',
     inputs: [
@@ -4890,6 +5053,23 @@ export const merkleSnapshotAbi = [
   },
   { type: 'error', inputs: [], name: 'NoMerkleStates' },
   { type: 'error', inputs: [], name: 'NoNewInputs' },
+  { type: 'error', inputs: [], name: 'NoPendingConstitutionalTransfer' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'proposed', internalType: 'uint256', type: 'uint256' },
+      { name: 'latest', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'NonMonotonicStateBlock',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'caller', internalType: 'address', type: 'address' },
+      { name: 'pendingSuccessor', internalType: 'address', type: 'address' },
+    ],
+    name: 'NotPendingConstitutionalSuccessor',
+  },
   {
     type: 'error',
     inputs: [
@@ -4897,6 +5077,14 @@ export const merkleSnapshotAbi = [
       { name: 'lastApplied', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'StaleCheckpoint',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'expected', internalType: 'uint256', type: 'uint256' },
+      { name: 'actual', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'UnexpectedCheckpointId',
   },
   {
     type: 'error',

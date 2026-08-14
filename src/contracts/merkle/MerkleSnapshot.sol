@@ -24,6 +24,13 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     /// @notice Owns `paramsHash` — governance-cadence parameter changes.
     bytes32 public constant OPERATIONAL_ROLE = keccak256("OPERATIONAL_ROLE");
 
+    /// @notice Number of live constitutional authorities. Never allowed to reach zero.
+    uint256 public constitutionalHolderCount;
+
+    /// @notice Current two-step constitutional handoff, if any.
+    address public pendingConstitutionalTransferor;
+    address public pendingConstitutionalSuccessor;
+
     /// @notice The chained-hash accumulator over the attestation log (source of checkpoints).
     IAttestationAccumulator public accumulator;
 
@@ -42,11 +49,17 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     mapping(uint256 checkpointId => AnchorCheckpoint) public anchorCheckpoints;
 
     /// @notice Contract-fixed epoch schedule in blocks; 0 = unscheduled (lane-1-only default).
-    ///         When set, trigger() only fires once the boundary has passed — epoch boundaries are
-    ///         never prover-chosen (OFFCHAIN doc §4.1).
+    ///         A nonzero schedule is anchored when configured; callers consume its boundaries but
+    ///         cannot move the phase by triggering late (OFFCHAIN doc §4.1).
     uint64 public epochLength;
 
-    /// @notice The block at which the last scheduled trigger fired.
+    /// @notice Origin of the current nonzero epoch schedule. Zero while unscheduled.
+    uint64 public epochOriginBlock;
+
+    /// @notice Last consumed scheduled boundary (or actual trigger block while unscheduled).
+    /// @dev The checkpoint itself records the actual freeze block. Keeping the scheduled boundary
+    ///      here makes `lastTriggerBlock + epochLength` the next immutable boundary even when a
+    ///      permissionless caller triggers late.
     uint64 public lastTriggerBlock;
 
     /// @notice The proof verifier gating the write (SP1 today; swappable behind IZkVerifier).
@@ -63,6 +76,11 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     ///         deliberately NOT pinned: rotating it is the emergency response to an SP1 soundness
     ///         bug (§5.5), and pinning would let proofs under a known-broken verifier keep landing.
     mapping(uint256 checkpointId => bytes32 paramsHash) public checkpointParamsHash;
+
+    /// @notice Next checkpoint id this snapshot requires its accumulator to return.
+    /// @dev Prevents a malformed/re-pointed accumulator from reusing or skipping ids and thereby
+    ///      overwriting checkpoint-bound parameter or anchor commitments.
+    uint256 public nextCheckpointId;
 
     /// @notice The journal-committed payee of the proof that applied a checkpoint, recorded so a
     ///         bounty can be settled against the ROOT rather than against who submitted it.
@@ -116,7 +134,10 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         address constitutionalAdmin,
         address operationalAdmin
     ) {
-        if (address(_zkVerifier) == address(0) || address(_accumulator) == address(0)) {
+        if (
+            address(_zkVerifier) == address(0) || address(_accumulator) == address(0)
+                || constitutionalAdmin == address(0) || operationalAdmin == address(0)
+        ) {
             revert ZeroAddress();
         }
         if (_paramsHash == bytes32(0)) revert ZeroParamsHash();
@@ -135,6 +156,74 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
                         GOVERNANCE (two-tier)
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Begin an explicit two-step handoff of the caller's constitutional authority.
+    /// @dev Direct multi-holder grants remain available, but the last holder can only move through
+    ///      this accept step; it can never be revoked or renounced into a zero-authority state.
+    function proposeConstitutionalTransfer(address successor) external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (successor == address(0) || successor == msg.sender) {
+            revert InvalidConstitutionalSuccessor(successor);
+        }
+        _cancelPendingConstitutionalTransfer();
+        pendingConstitutionalTransferor = msg.sender;
+        pendingConstitutionalSuccessor = successor;
+        emit ConstitutionalTransferProposed(msg.sender, successor);
+    }
+
+    /// @notice Cancel the pending handoff. Any live constitutional holder may stop a stale proposal.
+    function cancelConstitutionalTransfer() external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (pendingConstitutionalTransferor == address(0)) revert NoPendingConstitutionalTransfer();
+        _cancelPendingConstitutionalTransfer();
+    }
+
+    /// @notice Accept the pending handoff, atomically granting the successor before removing the
+    ///         proposing holder.
+    function acceptConstitutionalTransfer() external {
+        address successor = pendingConstitutionalSuccessor;
+        if (msg.sender != successor) {
+            revert NotPendingConstitutionalSuccessor(msg.sender, successor);
+        }
+        address transferor = pendingConstitutionalTransferor;
+        if (!hasRole(CONSTITUTIONAL_ROLE, transferor)) {
+            revert ConstitutionalTransferorLostRole(transferor);
+        }
+
+        delete pendingConstitutionalTransferor;
+        delete pendingConstitutionalSuccessor;
+        _grantRole(CONSTITUTIONAL_ROLE, successor);
+        _revokeRole(CONSTITUTIONAL_ROLE, transferor);
+        emit ConstitutionalTransferAccepted(transferor, successor);
+    }
+
+    /// @dev Track constitutional membership at the one mutation seam used by AccessControl and
+    ///      constructor/factory handoffs.
+    function _grantRole(bytes32 role, address account) internal override returns (bool granted) {
+        if (role == CONSTITUTIONAL_ROLE && account == address(0)) revert ZeroAddress();
+        granted = super._grantRole(role, account);
+        if (granted && role == CONSTITUTIONAL_ROLE) constitutionalHolderCount++;
+    }
+
+    /// @dev The nonzero-holder invariant applies equally to revokeRole, renounceRole, and the
+    ///      two-step helper because all three converge here.
+    function _revokeRole(bytes32 role, address account) internal override returns (bool revoked) {
+        if (role == CONSTITUTIONAL_ROLE && hasRole(role, account) && constitutionalHolderCount == 1) {
+            revert LastConstitutionalHolder(account);
+        }
+        revoked = super._revokeRole(role, account);
+        if (revoked && role == CONSTITUTIONAL_ROLE) {
+            constitutionalHolderCount--;
+            if (account == pendingConstitutionalTransferor) _cancelPendingConstitutionalTransfer();
+        }
+    }
+
+    function _cancelPendingConstitutionalTransfer() internal {
+        address transferor = pendingConstitutionalTransferor;
+        if (transferor == address(0)) return;
+        address successor = pendingConstitutionalSuccessor;
+        delete pendingConstitutionalTransferor;
+        delete pendingConstitutionalSuccessor;
+        emit ConstitutionalTransferCancelled(transferor, successor);
+    }
+
     /// @notice Update the proof verifier (constitutional).
     function setZkVerifier(IZkVerifier _zkVerifier) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_zkVerifier) == address(0)) revert ZeroAddress();
@@ -142,9 +231,22 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         emit ZkVerifierUpdated(address(_zkVerifier));
     }
 
-    /// @notice Update the accumulator (constitutional).
+    /// @notice Update the accumulator before this snapshot has frozen any checkpoints.
+    /// @dev Post-checkpoint rotation is deliberately forbidden in v1. It could otherwise reuse
+    ///      checkpoint ids and introduce lower freeze blocks, corrupting pinned commitments and
+    ///      binary-search history. Recover by deploying a new snapshot and migrating the vault
+    ///      binding; a future generation-aware migration can replace this fail-closed rule.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyRole(CONSTITUTIONAL_ROLE) {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
+        if (_accumulator == accumulator) {
+            emit AccumulatorUpdated(address(_accumulator));
+            return;
+        }
+        uint256 currentCheckpointCount = accumulator.checkpointCount();
+        uint256 candidateCheckpointCount = _accumulator.checkpointCount();
+        if (currentCheckpointCount != 0 || candidateCheckpointCount != 0) {
+            revert AccumulatorRotationLocked(currentCheckpointCount, candidateCheckpointCount);
+        }
         accumulator = _accumulator;
         emit AccumulatorUpdated(address(_accumulator));
     }
@@ -167,8 +269,20 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     }
 
     /// @notice Set the epoch schedule (constitutional; 0 disables the schedule).
+    /// @dev A changed nonzero length anchors a new fixed phase at this block. Reapplying the same
+    ///      value is a no-op for phase, so even governance automation cannot shift it accidentally.
     function setEpochLength(uint64 _epochLength) external onlyRole(CONSTITUTIONAL_ROLE) {
-        epochLength = _epochLength;
+        if (_epochLength != epochLength) {
+            epochLength = _epochLength;
+            if (_epochLength == 0) {
+                epochOriginBlock = 0;
+            } else {
+                uint64 origin = uint64(block.number);
+                epochOriginBlock = origin;
+                lastTriggerBlock = origin;
+            }
+            emit EpochScheduleAnchored(_epochLength, epochOriginBlock);
+        }
         emit EpochLengthUpdated(_epochLength);
     }
 
@@ -193,11 +307,18 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Freeze the current accumulator(s) as a checkpoint. Permissionless; when an epoch
-    ///         schedule is set, only past the contract-fixed boundary (never prover-chosen).
+    ///         schedule is set, only at or past a fixed boundary. A late trigger consumes the
+    ///         boundary for its current epoch rather than moving every future boundary.
     /// @return checkpointId The id of the new checkpoint (provers watch InputsCheckpointed).
     function trigger() external returns (uint256 checkpointId) {
         if (epochLength > 0 && block.number < uint256(lastTriggerBlock) + epochLength) {
             revert EpochNotElapsed(lastTriggerBlock, epochLength);
+        }
+
+        uint64 consumedBoundary;
+        if (epochLength > 0) {
+            uint256 elapsedEpochs = (block.number - epochOriginBlock) / epochLength;
+            consumedBoundary = uint64(uint256(epochOriginBlock) + elapsedEpochs * epochLength);
         }
 
         // Refuse to freeze a checkpoint identical to the last one, across BOTH lanes.
@@ -229,9 +350,14 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
             }
         }
 
-        lastTriggerBlock = uint64(block.number);
+        lastTriggerBlock = epochLength == 0 ? uint64(block.number) : consumedBoundary;
 
         checkpointId = accumulator.checkpoint();
+        uint256 expectedCheckpointId = nextCheckpointId;
+        if (checkpointId != expectedCheckpointId) {
+            revert UnexpectedCheckpointId(expectedCheckpointId, checkpointId);
+        }
+        nextCheckpointId = expectedCheckpointId + 1;
 
         // Pin the params this checkpoint must be proven under, at the block its inputs froze.
         checkpointParamsHash[checkpointId] = paramsHash;
@@ -328,7 +454,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Whether this instance has ever frozen a checkpoint.
     function hasCheckpoints() public view returns (bool) {
-        return accumulator.checkpointCount() > 0;
+        return nextCheckpointId > 0;
     }
 
     /// The lane-2 state right now, or the zero pair on a lane-1-only instance.
@@ -363,9 +489,14 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
     ) internal {
         uint256 stateIndex;
 
+        uint256 length = stateBlocks.length;
+        if (length != 0 && blockNumber < stateBlocks[length - 1]) {
+            revert NonMonotonicStateBlock(blockNumber, stateBlocks[length - 1]);
+        }
+
         // If this is a new block, add it.
-        if (stateBlocks.length == 0 || stateBlocks[stateBlocks.length - 1] != blockNumber) {
-            stateIndex = stateBlocks.length;
+        if (length == 0 || stateBlocks[length - 1] != blockNumber) {
+            stateIndex = length;
             blockToStateIndex[blockNumber] = stateIndex;
             stateBlocks.push(blockNumber);
         } else {
@@ -539,12 +670,13 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Get paginated block numbers that have states
     function getStateBlocks(uint256 offset, uint256 limit) public view returns (uint256[] memory result_) {
-        uint256 end = offset + limit;
-        if (end > stateBlocks.length) {
-            end = stateBlocks.length;
-        }
+        uint256 length = stateBlocks.length;
+        if (offset >= length || limit == 0) return new uint256[](0);
+        uint256 count = length - offset;
+        if (limit < count) count = limit;
+        uint256 end = offset + count;
 
-        uint256[] memory result = new uint256[](end - offset);
+        uint256[] memory result = new uint256[](count);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = stateBlocks[i];
         }
@@ -553,12 +685,13 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Get paginated states
     function getStates(uint256 offset, uint256 limit) public view returns (MerkleState[] memory result_) {
-        uint256 end = offset + limit;
-        if (end > stateBlocks.length) {
-            end = stateBlocks.length;
-        }
+        uint256 length = stateBlocks.length;
+        if (offset >= length || limit == 0) return new MerkleState[](0);
+        uint256 count = length - offset;
+        if (limit < count) count = limit;
+        uint256 end = offset + count;
 
-        MerkleState[] memory result = new MerkleState[](end - offset);
+        MerkleState[] memory result = new MerkleState[](count);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = states[i];
         }

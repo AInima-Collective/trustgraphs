@@ -74,16 +74,17 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
         assertEq(acc.leafCount(), 2, "revocation folds a second edge");
     }
 
-    /// The epoch schedule the factory set is LIVE from block zero: `trigger()` is refused before the
-    /// contract-fixed boundary, so epoch boundaries are never prover-chosen even on a brand-new
-    /// instance.
+    /// The epoch schedule the factory set is anchored during creation: `trigger()` is refused
+    /// before its first fixed boundary, so callers cannot choose the phase on a brand-new instance.
     function test_TriggerIsRefusedBeforeTheEpochBoundary() public {
         Created memory c = _create(_args("scheduled"));
         _vouch(c.schemaUid, member, peer, "early", 10);
+        MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
+        uint64 origin = snapshot.epochOriginBlock();
 
-        vm.roll(uint256(EPOCH_FLOOR) - 1);
-        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, uint64(0), EPOCH_FLOOR));
-        MerkleSnapshot(c.snapshot).trigger();
+        vm.roll(uint256(origin) + EPOCH_FLOOR - 1);
+        vm.expectRevert(abi.encodeWithSelector(MerkleSnapshot.EpochNotElapsed.selector, origin, EPOCH_FLOOR));
+        snapshot.trigger();
     }
 
     /// Past the boundary the instance checkpoints itself: the snapshot freezes ITS resolver's
@@ -91,9 +92,10 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
     function test_TriggerCheckpointsTheInstancesOwnAccumulator() public {
         Created memory c = _create(_args("checkpointed"));
         _vouch(c.schemaUid, member, peer, "counted", 90);
+        MerkleSnapshot snapshot = MerkleSnapshot(c.snapshot);
 
-        vm.roll(uint256(EPOCH_FLOOR) + 1);
-        uint256 checkpointId = MerkleSnapshot(c.snapshot).trigger();
+        vm.roll(uint256(snapshot.epochOriginBlock()) + EPOCH_FLOOR);
+        uint256 checkpointId = snapshot.trigger();
 
         IAttestationAccumulator acc = IAttestationAccumulator(c.resolver);
         assertEq(checkpointId, 0, "first checkpoint");

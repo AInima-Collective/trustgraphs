@@ -108,8 +108,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(safe.balance, 0, "the bootstrap Safe must retain nothing");
         assertEq(address(governedFactory).balance, 0, "the wrapper must retain nothing");
 
-        vm.roll(EPOCH_FLOOR);
-        MerkleSnapshot(snapshot).trigger();
+        MerkleSnapshot snapshotContract = MerkleSnapshot(snapshot);
+        vm.roll(uint256(snapshotContract.epochOriginBlock()) + EPOCH_FLOOR);
+        snapshotContract.trigger();
         IProvingVault.Quote memory quote = vault.quote(instanceId, 0);
         assertTrue(quote.eligible, "the first valid checkpoint must be payable");
         assertTrue(

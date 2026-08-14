@@ -12,8 +12,9 @@ import {ISnapshotAccumulatorView} from "interfaces/merkle/ISnapshotAccumulatorVi
 ///         accumulator; a real `EASIndexerResolver` would revert `NoNewInputs` forever on an
 ///         instance where lane 1 never moves.
 /// @dev No fold path exists at all: this lane cannot become nonzero without redeploying a
-///      real accumulator through the constitutional `setAccumulator` knob — opening lane 1
-///      is deliberately a governance event, not a drift.
+///      real accumulator through the constitutional `setAccumulator` knob before the first
+///      checkpoint. After history exists, opening lane 1 requires a replacement snapshot and
+///      explicit vault migration so checkpoint ids and freeze blocks cannot be rewritten.
 contract EmptyLaneAccumulator is IAttestationAccumulator {
     Checkpoint[] private _checkpoints;
 
