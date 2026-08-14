@@ -1,6 +1,12 @@
 import { Hono } from 'hono'
 
 import { offchainDb } from './db'
+import {
+  ScoreProgramApiError,
+  requireEntryScoreProgram,
+  requireRowScoreProgram,
+  requireSnapshotScoreProgram,
+} from './score-programs'
 import { getMerkleTreeWithEntries, lower } from './utils'
 
 declare global {
@@ -65,12 +71,27 @@ merkleApp.get('/:snapshot/all', async (c) => {
     return c.json({ error: 'Merkle snapshot contract is required' }, 400)
   }
 
-  const trees = await offchainDb.query.merkleMetadata.findMany({
-    where: (t, { eq }) =>
-      eq(lower(t.merkleSnapshotContract), merkleSnapshotContract.toLowerCase()),
-    orderBy: (t, { desc }) => desc(t.timestamp),
-  })
-  return c.json({ trees })
+  try {
+    const current = await requireSnapshotScoreProgram(
+      merkleSnapshotContract,
+      'merkle'
+    )
+    const trees = await offchainDb.query.merkleMetadata.findMany({
+      where: (t, { eq }) =>
+        eq(
+          lower(t.merkleSnapshotContract),
+          merkleSnapshotContract.toLowerCase()
+        ),
+      orderBy: (t, { desc }) => desc(t.timestamp),
+    })
+    for (const tree of trees) requireRowScoreProgram(tree, current, 'merkle')
+    return c.json({ trees, scoreProgram: current })
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
+    throw error
+  }
 })
 
 merkleApp.get('/:snapshot/:root', async (c) => {
@@ -90,15 +111,33 @@ merkleApp.get('/:snapshot/:root', async (c) => {
     return c.json({ error: error.message }, 404)
   }
 
-  const treeWithEntries = await getMerkleTreeWithEntries(
-    merkleSnapshotContract,
-    root
-  )
-  if (!treeWithEntries) {
-    return c.json({ error: 'Merkle tree not found' }, 404)
+  try {
+    const current = await requireSnapshotScoreProgram(
+      merkleSnapshotContract,
+      'merkle'
+    )
+    const treeWithEntries = await getMerkleTreeWithEntries(
+      merkleSnapshotContract,
+      root
+    )
+    if (!treeWithEntries) {
+      return c.json({ error: 'Merkle tree not found' }, 404)
+    }
+    const scoreProgram = requireRowScoreProgram(
+      treeWithEntries.tree,
+      current,
+      'merkle'
+    )
+    for (const entry of treeWithEntries.entries) {
+      requireEntryScoreProgram(entry, current)
+    }
+    return c.json({ ...treeWithEntries, scoreProgram })
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
+    throw error
   }
-
-  return c.json(treeWithEntries)
 })
 
 merkleApp.get('/:snapshot/:root/:account', async (c) => {
@@ -123,6 +162,8 @@ merkleApp.get('/:snapshot/:root/:account', async (c) => {
       account: true,
       value: true,
       proof: true,
+      programId: true,
+      outputDomain: true,
     },
     where: (t, { and, eq }) =>
       and(
@@ -137,8 +178,31 @@ merkleApp.get('/:snapshot/:root/:account', async (c) => {
   if (!entry) {
     return c.json({ error: 'Merkle entry not found' }, 404)
   }
-
-  return c.json({ entry })
+  try {
+    const current = await requireSnapshotScoreProgram(
+      merkleSnapshotContract,
+      'merkle'
+    )
+    const tree = await offchainDb.query.merkleMetadata.findFirst({
+      where: (t, { and, eq }) =>
+        and(
+          eq(
+            lower(t.merkleSnapshotContract),
+            merkleSnapshotContract.toLowerCase()
+          ),
+          eq(lower(t.root), root.toLowerCase())
+        ),
+    })
+    if (!tree) return c.json({ error: 'Merkle tree not found' }, 404)
+    const scoreProgram = requireRowScoreProgram(tree, current, 'merkle')
+    requireEntryScoreProgram(entry, current)
+    return c.json({ entry, scoreProgram })
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
+    throw error
+  }
 })
 
 export default merkleApp

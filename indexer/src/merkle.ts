@@ -14,10 +14,16 @@ import {
 import { type Hex } from 'viem'
 
 import { type ScoreBlob, deriveAddressMerkleRows } from './merkle-ingest'
+import { validateScoreBlob } from './score-program'
 import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
 import { ingestContributionsScores } from './contributions'
-import { contributionsInstanceForSnapshot } from './contributions-shared'
+import type { ScoreProgramProvenance } from './score-program'
+import {
+  canRepairScoreRowsOnRestart,
+  scoreRowDiscriminators,
+} from './score-program-backfill'
+import { requireAuthenticatedScoreBinding } from './score-program-binding'
 import { type SharedArgs, revalidateNetwork, staticAddresses } from './utils'
 import {
   merkleFundDistributorAbi,
@@ -163,8 +169,17 @@ const onMerkleRootUpdated = async ({
   context,
 }: SharedArgs<'merkleSnapshot:MerkleRootUpdated'>) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
+  const { program, provenance } = await requireAuthenticatedScoreBinding(
+    context,
+    event.log.address
+  )
+  if (program.ingestion === 'not-enabled') {
+    throw new Error(
+      `score ingestion refused: ${program.name} is registered but its decoder/table is not enabled`
+    )
+  }
   console.log(
-    `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid}`
+    `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid} program ${program.name}`
   )
 
   await context.db.insert(merkleSnapshot).values({
@@ -179,39 +194,42 @@ const onMerkleRootUpdated = async ({
     totalValue,
   })
 
-  // If metadata and at least one entry already exist, skip.
+  const metadataTable =
+    program.ingestion === 'hypercerts'
+      ? offchainSchema.hypercertsMetadata
+      : offchainSchema.merkleMetadata
+  const entryTable =
+    program.ingestion === 'hypercerts'
+      ? offchainSchema.hypercertsScore
+      : offchainSchema.merkleEntry
+
+  // If matching program-specific metadata and at least one score already exist, repair provenance
+  // columns left by a pre-discriminator indexer and skip the untrusted blob fetch.
   const existingMetadata = await offchainDb
     .select()
-    .from(offchainSchema.merkleMetadata)
+    .from(metadataTable)
     .where(
       and(
-        eq(
-          offchainSchema.merkleMetadata.merkleSnapshotContract,
-          event.log.address
-        ),
-        eq(offchainSchema.merkleMetadata.root, root),
-        eq(offchainSchema.merkleMetadata.ipfsHashCid, ipfsHashCid)
+        eq(metadataTable.merkleSnapshotContract, event.log.address),
+        eq(metadataTable.root, root),
+        eq(metadataTable.ipfsHashCid, ipfsHashCid)
       )
     )
     .limit(1)
   const existingEntries = await offchainDb
     .select()
-    .from(offchainSchema.merkleEntry)
+    .from(entryTable)
     .where(
       and(
-        eq(
-          offchainSchema.merkleEntry.merkleSnapshotContract,
-          event.log.address
-        ),
-        eq(offchainSchema.merkleEntry.root, root),
-        eq(offchainSchema.merkleEntry.ipfsHashCid, ipfsHashCid)
+        eq(entryTable.merkleSnapshotContract, event.log.address),
+        eq(entryTable.root, root)
       )
     )
     .limit(1)
   // A contributions snapshot additionally needs its derived round/score rows — a crash (or an
   // older indexer build) can leave the generic rows present but the round missing, so the skip
   // must consider both surfaces or the ingestion is never retried.
-  const isContributions = !!contributionsInstanceForSnapshot(event.log.address)
+  const isContributions = program.ingestion === 'contributions'
   const existingRound = isContributions
     ? await offchainDb
         .select()
@@ -228,10 +246,76 @@ const onMerkleRootUpdated = async ({
         .limit(1)
     : []
   if (
-    existingMetadata.length > 0 &&
-    existingEntries.length > 0 &&
-    (!isContributions || existingRound.length > 0)
+    canRepairScoreRowsOnRestart(program, {
+      metadata: existingMetadata.length > 0,
+      entries: existingEntries.length > 0,
+      contributionRound: existingRound.length > 0,
+    })
   ) {
+    const discriminators = scoreRowDiscriminators(program)
+    const rootWhere = and(
+      eq(metadataTable.merkleSnapshotContract, event.log.address),
+      eq(metadataTable.root, root)
+    )
+    await offchainDb
+      .update(metadataTable)
+      .set({
+        ...discriminators.primary,
+        programProvenance: provenance,
+      })
+      .where(rootWhere)
+    await offchainDb
+      .update(entryTable)
+      .set(discriminators.primary)
+      .where(
+        and(
+          eq(entryTable.merkleSnapshotContract, event.log.address),
+          eq(entryTable.root, root)
+        )
+      )
+    if (isContributions) {
+      const contributionsWhere = and(
+        eq(
+          offchainSchema.contributionRound.merkleSnapshotContract,
+          event.log.address.toLowerCase()
+        ),
+        eq(offchainSchema.contributionRound.root, root)
+      )
+      await Promise.all([
+        offchainDb
+          .update(offchainSchema.contributionRound)
+          .set({
+            ...discriminators.primary,
+            programProvenance: provenance,
+          })
+          .where(contributionsWhere),
+        offchainDb
+          .update(offchainSchema.contributionScore)
+          .set(discriminators.claim!)
+          .where(
+            and(
+              eq(
+                offchainSchema.contributionScore.merkleSnapshotContract,
+                event.log.address.toLowerCase()
+              ),
+              eq(offchainSchema.contributionScore.root, root)
+            )
+          ),
+        offchainDb
+          .update(offchainSchema.contributionValuationAudit)
+          .set(discriminators.claim!)
+          .where(
+            and(
+              eq(
+                offchainSchema.contributionValuationAudit
+                  .merkleSnapshotContract,
+                event.log.address.toLowerCase()
+              ),
+              eq(offchainSchema.contributionValuationAudit.root, root)
+            )
+          ),
+      ])
+    }
     return
   }
 
@@ -262,15 +346,12 @@ const onMerkleRootUpdated = async ({
         `guarantee that any provider still stores them.`
     )
   }
-  const scores = (await merkleRequest.json()) as ScoreBlob
-
-  // The blob is self-describing: 32-byte keys (0x + 64 hex) = a hypercerts (nodeId-keyed) instance,
-  // 20-byte keys = the address-keyed trust-graph blob. Route to the matching ingestion.
-  const firstKey = Object.keys(scores)[0]
+  const rawScores = (await merkleRequest.json()) as Record<string, unknown>
+  const scores = validateScoreBlob(rawScores, program) as ScoreBlob
   console.log(
-    `merkle: blob fetched (${Object.keys(scores).length} entries) — routing to ${firstKey && firstKey.length === 66 ? 'hypercerts' : 'trust-graph'} ingestion`
+    `merkle: blob fetched (${Object.keys(scores).length} entries) — authenticated ${program.name}/${program.outputDomainName} routing to ${program.ingestion}`
   )
-  if (firstKey && firstKey.length === 66) {
+  if (program.ingestion === 'hypercerts') {
     await ingestHypercertsScores(
       scores,
       event,
@@ -278,7 +359,8 @@ const onMerkleRootUpdated = async ({
       root,
       ipfsHash,
       ipfsHashCid,
-      totalValue
+      totalValue,
+      provenance
     )
   } else {
     await insertMerkleData(
@@ -287,7 +369,8 @@ const onMerkleRootUpdated = async ({
       root,
       ipfsHash,
       ipfsHashCid,
-      totalValue
+      totalValue,
+      provenance
     )
 
     // A contributions instance's blob is address-keyed like the trust graph's (v1 leaves are
@@ -302,7 +385,8 @@ const onMerkleRootUpdated = async ({
         root,
         ipfsHash,
         ipfsHashCid,
-        totalValue
+        totalValue,
+        provenance
       )
     }
   }
@@ -421,7 +505,8 @@ async function insertMerkleData(
   root: string,
   ipfsHash: string,
   ipfsHashCid: string,
-  totalValue: bigint
+  totalValue: bigint,
+  provenance: ScoreProgramProvenance
 ) {
   // The blob is just { account: value }. Rebuild the OZ output tree exactly as the guest did (same
   // leaf/hash-pair encoding, ported in frontend/lib/pagerank/merkle) to recover each account's proof.
@@ -449,6 +534,9 @@ async function insertMerkleData(
       sources: [],
       blockNumber: event.block.number,
       timestamp: event.block.timestamp,
+      programId: provenance.programId,
+      outputDomain: provenance.outputDomain,
+      programProvenance: provenance,
     })
     .onConflictDoUpdate({
       target: [
@@ -477,6 +565,15 @@ async function insertMerkleData(
         timestamp: sql.raw(
           `excluded."${offchainSchema.merkleMetadata.timestamp.name}"`
         ),
+        programId: sql.raw(
+          `excluded."${offchainSchema.merkleMetadata.programId.name}"`
+        ),
+        outputDomain: sql.raw(
+          `excluded."${offchainSchema.merkleMetadata.outputDomain.name}"`
+        ),
+        programProvenance: sql.raw(
+          `excluded."${offchainSchema.merkleMetadata.programProvenance.name}"`
+        ),
       },
     })
 
@@ -497,6 +594,8 @@ async function insertMerkleData(
         proof,
         blockNumber: event.block.number,
         timestamp: event.block.timestamp,
+        programId: provenance.programId,
+        outputDomain: provenance.outputDomain,
       }))
     )
     .onConflictDoUpdate({
@@ -516,6 +615,12 @@ async function insertMerkleData(
         ),
         timestamp: sql.raw(
           `excluded."${offchainSchema.merkleEntry.timestamp.name}"`
+        ),
+        programId: sql.raw(
+          `excluded."${offchainSchema.merkleEntry.programId.name}"`
+        ),
+        outputDomain: sql.raw(
+          `excluded."${offchainSchema.merkleEntry.outputDomain.name}"`
         ),
       },
     })

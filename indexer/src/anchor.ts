@@ -15,6 +15,7 @@ import {
   nodeOutputLeaf,
   proofFor,
 } from './api/hypercerts-tree'
+import type { ScoreProgramProvenance } from './score-program'
 import { type SharedArgs } from './utils'
 
 /**
@@ -152,7 +153,7 @@ const loadBundle = (): HypercertsBundle => {
  *
  *   1. The caller (merkle.ts) fetched the canonical nodeId-keyed blob from IPFS at the event's
  *      `ipfsHashCid` (`{ "0x<nodeId>": "<decimal>", … }`, hypercerts_core::compute::canonical_blob)
- *      and detected the nodeId keying.
+ *      after the authenticated InstanceRegistry binding selected this decoder.
  *   2. `link.evm` bindings (nodeId → address) + DID labels come from the prover's sidecar
  *      (`HYPERCERTS_BUNDLE_PATH`); the journal's `checkpointId`/`skippedDigest` are decoded from the
  *      `submitProof` calldata, and the lane-2 checkpoint (`anchorAcc`, `anchorCount`) is read from
@@ -170,7 +171,8 @@ export async function ingestHypercertsScores(
   root: string,
   ipfsHash: string,
   ipfsHashCid: string,
-  totalValue: bigint
+  totalValue: bigint,
+  provenance: ScoreProgramProvenance
 ): Promise<void> {
   const snapshot = event.log.address as Hex
 
@@ -263,6 +265,9 @@ export async function ingestHypercertsScores(
       anchorCount,
       blockNumber: event.block.number,
       timestamp: event.block.timestamp,
+      programId: provenance.programId,
+      outputDomain: provenance.outputDomain,
+      programProvenance: provenance,
     })
     .onConflictDoUpdate({
       target: [
@@ -297,6 +302,15 @@ export async function ingestHypercertsScores(
         timestamp: sql.raw(
           `excluded."${offchainSchema.hypercertsMetadata.timestamp.name}"`
         ),
+        programId: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.programId.name}"`
+        ),
+        outputDomain: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.outputDomain.name}"`
+        ),
+        programProvenance: sql.raw(
+          `excluded."${offchainSchema.hypercertsMetadata.programProvenance.name}"`
+        ),
       },
     })
 
@@ -317,6 +331,8 @@ export async function ingestHypercertsScores(
         proof: proofFor(tree, nodeOutputLeaf(r.nodeId, r.value)) ?? [],
         blockNumber: event.block.number,
         timestamp: event.block.timestamp,
+        programId: provenance.programId,
+        outputDomain: provenance.outputDomain,
       }))
     )
     .onConflictDoUpdate({
@@ -341,6 +357,12 @@ export async function ingestHypercertsScores(
         ),
         timestamp: sql.raw(
           `excluded."${offchainSchema.hypercertsScore.timestamp.name}"`
+        ),
+        programId: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.programId.name}"`
+        ),
+        outputDomain: sql.raw(
+          `excluded."${offchainSchema.hypercertsScore.outputDomain.name}"`
         ),
       },
     })

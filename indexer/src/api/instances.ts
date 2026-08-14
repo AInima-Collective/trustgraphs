@@ -32,6 +32,7 @@ import {
   instance,
   merkleGovModule,
   parameterVersion,
+  scoreProgramBinding,
   signerSyncModule,
   signerSyncRotation,
 } from 'ponder:schema'
@@ -39,6 +40,10 @@ import { type Hex, isAddress, isHex } from 'viem'
 
 import type { InstanceParamsJson } from '../factory'
 import { deriveParameterVersionStates } from '../params-shared'
+import {
+  ScoreProgramApiError,
+  serializeScoreProgramBinding,
+} from './score-programs'
 
 const app = new Hono()
 
@@ -77,7 +82,8 @@ const parseSchemaFields = (schema: string) =>
 const serialize = (
   row: InstanceRow,
   governance?: GovernanceRow,
-  signer?: SignerView
+  signer?: SignerView,
+  scoreProgram?: ReturnType<typeof serializeScoreProgramBinding>
 ) => ({
   id: row.id,
   chainId: row.chainId,
@@ -171,7 +177,28 @@ const serialize = (
   createdBlock: row.createdBlock.toString(),
   createdTimestamp: row.createdTimestamp.toString(),
   createdTxHash: row.createdTxHash,
+  scoreProgram,
 })
+
+const scoreProgramsFor = async (rows: InstanceRow[]) => {
+  if (rows.length === 0)
+    return new Map<string, ReturnType<typeof serializeScoreProgramBinding>>()
+  const bindings = await db
+    .select()
+    .from(scoreProgramBinding)
+    .where(
+      inArray(
+        scoreProgramBinding.snapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+  return new Map(
+    bindings.map((binding) => [
+      binding.snapshot.toLowerCase(),
+      serializeScoreProgramBinding(binding),
+    ])
+  )
+}
 
 const governanceFor = async (rows: InstanceRow[]) => {
   if (rows.length === 0) return new Map<string, GovernanceRow>()
@@ -288,17 +315,27 @@ app.get('/', async (c) => {
       .from(instance)
       .where(where)
 
-    const [governance, signerSync] = await Promise.all([
+    const [governance, signerSync, scorePrograms] = await Promise.all([
       governanceFor(rows),
       signerSyncFor(rows),
+      scoreProgramsFor(rows),
     ])
+
+    for (const row of rows) {
+      if (!scorePrograms.has(row.snapshot.toLowerCase())) {
+        throw new ScoreProgramApiError(
+          `instance ${row.id} has no authenticated score-program binding`
+        )
+      }
+    }
 
     return c.json({
       instances: rows.map((row) =>
         serialize(
           row,
           governance.get(row.snapshot.toLowerCase()),
-          signerSync.get(row.id.toLowerCase())
+          signerSync.get(row.id.toLowerCase()),
+          scorePrograms.get(row.snapshot.toLowerCase())
         )
       ),
       pagination: {
@@ -308,6 +345,9 @@ app.get('/', async (c) => {
       },
     })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching instances:', error)
     return c.json({ error: 'Failed to fetch instances' }, 500)
   }
@@ -387,18 +427,29 @@ app.get('/:id', async (c) => {
     if (!row) {
       return c.json({ error: 'Instance not found' }, 404)
     }
-    const [governance, signerSync] = await Promise.all([
+    const [governance, signerSync, scorePrograms] = await Promise.all([
       governanceFor([row]),
       signerSyncFor([row]),
+      scoreProgramsFor([row]),
     ])
+    const scoreProgram = scorePrograms.get(row.snapshot.toLowerCase())
+    if (!scoreProgram) {
+      throw new ScoreProgramApiError(
+        `instance ${row.id} has no authenticated score-program binding`
+      )
+    }
     return c.json({
       instance: serialize(
         row,
         governance.get(row.snapshot.toLowerCase()),
-        signerSync.get(row.id.toLowerCase())
+        signerSync.get(row.id.toLowerCase()),
+        scoreProgram
       ),
     })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching instance:', error)
     return c.json({ error: 'Failed to fetch instance' }, 500)
   }

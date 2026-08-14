@@ -290,6 +290,7 @@ export const NetworkProvider = ({
     console.log('simulatedResults:', simulatedResults)
 
     const networkData: typeof _networkData = _networkData && {
+      scoreProgram: _networkData.scoreProgram,
       accounts: _networkData.accounts.map((account) => ({
         ...account,
         value:
@@ -299,6 +300,7 @@ export const NetworkProvider = ({
     }
 
     const merkleTreeData: typeof _merkleTreeData = _merkleTreeData && {
+      scoreProgram: _merkleTreeData.scoreProgram,
       tree: {
         ..._merkleTreeData.tree,
         // Real canonical outputs from the fixed-point recompute (matches the zk guest).

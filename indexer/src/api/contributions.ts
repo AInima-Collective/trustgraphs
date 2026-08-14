@@ -33,12 +33,21 @@ import {
 import { type Hex } from 'viem'
 
 import { offchainDb } from './db'
+import {
+  ScoreProgramApiError,
+  requireRowScoreProgram,
+  requireSnapshotScoreProgram,
+} from './score-programs'
 import { lower } from './utils'
 import * as offchainSchema from '../../offchain.schema'
 import {
   CONTRIBUTIONS_INSTANCES,
   contributionsInstanceForSnapshot,
 } from '../contributions-shared'
+import {
+  SCORE_OUTPUT_DOMAIN_IDS,
+  requireScoreKeyDomain,
+} from '../score-program'
 
 declare global {
   interface BigInt {
@@ -51,7 +60,64 @@ BigInt.prototype.toJSON = function () {
 
 const app = new Hono()
 
+const contributionClaimDomain = requireScoreKeyDomain(
+  SCORE_OUTPUT_DOMAIN_IDS['contributions-claim-v1'],
+  'contributions'
+)
+const serializedClaimDomain = {
+  outputDomain: contributionClaimDomain.id,
+  outputDomainName: contributionClaimDomain.name,
+  keyEncoding: contributionClaimDomain.keyEncoding,
+}
+
+const requireClaimRow = (
+  row: { programId: string | null; outputDomain: string | null },
+  scoreProgram: Awaited<ReturnType<typeof requireSnapshotScoreProgram>>
+) => {
+  if (
+    !row.programId ||
+    !row.outputDomain ||
+    row.programId.toLowerCase() !== scoreProgram.programId.toLowerCase()
+  ) {
+    throw new ScoreProgramApiError(
+      'contributions claim row has an unknown or mismatched program discriminator'
+    )
+  }
+  let domain
+  try {
+    domain = requireScoreKeyDomain(row.outputDomain, 'contributions')
+  } catch (error) {
+    throw new ScoreProgramApiError(
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+  if (domain.name !== 'contributions-claim-v1') {
+    throw new ScoreProgramApiError(
+      `contributions claim row uses ${domain.name}, expected contributions-claim-v1`
+    )
+  }
+}
+
+const requireRecipientRow = (
+  row: { programId: string | null; outputDomain: string | null },
+  scoreProgram: Awaited<ReturnType<typeof requireSnapshotScoreProgram>>
+) => {
+  if (
+    !row.programId ||
+    !row.outputDomain ||
+    row.programId.toLowerCase() !== scoreProgram.programId.toLowerCase() ||
+    row.outputDomain.toLowerCase() !== scoreProgram.outputDomain.toLowerCase()
+  ) {
+    throw new ScoreProgramApiError(
+      'contributions payout row has an unknown or mismatched program/output domain'
+    )
+  }
+}
+
 type RoundRow = typeof offchainSchema.contributionRound.$inferSelect
+type ResolvedRound = RoundRow & {
+  scoreProgram: Awaited<ReturnType<typeof requireSnapshotScoreProgram>>
+}
 
 /** The latest round row, optionally scoped to one snapshot contract. */
 const latestRound = async (snapshot?: string) =>
@@ -77,7 +143,7 @@ const resolveSnapshot = (snapshotQ?: string): string | null => {
 const resolveRound = async (
   snapshot: string,
   root: string
-): Promise<RoundRow> => {
+): Promise<ResolvedRound> => {
   const row =
     root === 'current'
       ? await latestRound(snapshot)
@@ -89,16 +155,21 @@ const resolveRound = async (
             ),
         })
   if (!row) throw new Error('No contributions round found for this root')
-  return row
+  const current = await requireSnapshotScoreProgram(snapshot, 'contributions')
+  return {
+    ...row,
+    scoreProgram: requireRowScoreProgram(row, current, 'contributions'),
+  }
 }
 
 /** 409 body for a round whose display recompute could not reproduce the proven root. */
-const unverifiedBody = (round: RoundRow) => ({
+const unverifiedBody = (round: ResolvedRound) => ({
   error:
     'The indexed data for this round does not reproduce the proven on-chain root; refusing to serve derived scores',
   failureReason: round.failureReason,
   root: round.root,
   snapshot: round.merkleSnapshotContract,
+  scoreProgram: round.scoreProgram,
 })
 
 /** Round status from the window vs now (plain-language lifecycle for the UI). */
@@ -112,7 +183,7 @@ const roundStatus = (
   return 'closed'
 }
 
-const roundSummary = (round: RoundRow) => ({
+const roundSummary = (round: ResolvedRound) => ({
   snapshot: round.merkleSnapshotContract,
   root: round.root,
   checkpointId: round.checkpointId,
@@ -135,6 +206,7 @@ const roundSummary = (round: RoundRow) => ({
   paramsHash: round.paramsHash,
   blockNumber: round.blockNumber,
   timestamp: round.timestamp,
+  scoreProgram: round.scoreProgram,
 })
 
 // GET /contributions/rounds — discovery: known rounds (newest first), optionally per snapshot.
@@ -147,7 +219,26 @@ app.get('/rounds', async (c) => {
       : undefined,
     orderBy: (t, { desc }) => desc(t.timestamp),
   })
-  return c.json({ rounds: rows.map(roundSummary) })
+  try {
+    const authenticated = await Promise.all(
+      rows.map(async (row) => {
+        const current = await requireSnapshotScoreProgram(
+          row.merkleSnapshotContract,
+          'contributions'
+        )
+        return {
+          ...row,
+          scoreProgram: requireRowScoreProgram(row, current, 'contributions'),
+        }
+      })
+    )
+    return c.json({ rounds: authenticated.map(roundSummary) })
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
+    throw error
+  }
 })
 
 // GET /contributions/round — the round summary at the current (or ?root=) root.
@@ -163,7 +254,10 @@ app.get('/round', async (c) => {
     const round = await resolveRound(snapshot, c.req.query('root') ?? 'current')
     return c.json(roundSummary(round))
   } catch (e: any) {
-    return c.json({ error: e.message }, 404)
+    return c.json(
+      { error: e.message },
+      e instanceof ScoreProgramApiError ? 409 : 404
+    )
   }
 })
 
@@ -175,12 +269,27 @@ app.get('/:snapshot/round', async (c) => {
     const round = await resolveRound(snapshot, c.req.query('root') ?? 'current')
     return c.json(roundSummary(round))
   } catch (e: any) {
-    return c.json({ error: e.message }, 404)
+    return c.json(
+      { error: e.message },
+      e instanceof ScoreProgramApiError ? 409 : 404
+    )
   }
 })
 
 /** Claims list: live decoded claims for the instance's resolver + scores at the resolved root. */
 const serveClaims = async (snapshot: string, rootQ: string) => {
+  let currentScoreProgram
+  try {
+    currentScoreProgram = await requireSnapshotScoreProgram(
+      snapshot,
+      'contributions'
+    )
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
   const instance = contributionsInstanceForSnapshot(snapshot)
   if (!instance) {
     return {
@@ -192,10 +301,13 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
 
   // The round is optional here: before any proven root the claims list still serves the live
   // attested state (scores null). An unverified round serves claims but refuses its scores.
-  let round: RoundRow | null = null
+  let round: ResolvedRound | null = null
   try {
     round = await resolveRound(snapshot, rootQ)
-  } catch {
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
     if (rootQ !== 'current') {
       return {
         status: 404 as const,
@@ -243,6 +355,14 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
             ),
         })
       : []
+  try {
+    for (const score of scores) requireClaimRow(score, round!.scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
   const scoreByUid = new Map(scores.map((s) => [s.claimUid.toLowerCase(), s]))
 
   const body = {
@@ -251,6 +371,8 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
     verified: round?.verified ?? null,
     roundStart: round?.roundStart ?? null,
     roundEnd: round?.roundEnd ?? null,
+    scoreProgram: round?.scoreProgram ?? currentScoreProgram,
+    scoreKeyDomain: serializedClaimDomain,
     claims: claims
       .map((cl) => {
         const uid = cl.uid.toLowerCase()
@@ -326,11 +448,14 @@ const serveScore = async (
   rootQ: string,
   claimUid: string
 ) => {
-  let round: RoundRow
+  let round: ResolvedRound
   try {
     round = await resolveRound(snapshot, rootQ)
   } catch (e: any) {
-    return { status: 404 as const, body: { error: e.message } }
+    return {
+      status: (e instanceof ScoreProgramApiError ? 409 : 404) as 404 | 409,
+      body: { error: e.message },
+    }
   }
   if (!round.verified) {
     return { status: 409 as const, body: unverifiedBody(round) }
@@ -350,6 +475,14 @@ const serveScore = async (
       body: { error: 'No score for this claim at this root' },
     }
   }
+  try {
+    requireClaimRow(score, round.scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
 
   const audit = await offchainDb.query.contributionValuationAudit.findMany({
     where: (t, { and, eq }) =>
@@ -360,6 +493,14 @@ const serveScore = async (
       ),
     orderBy: (t, { asc }) => asc(t.rater),
   })
+  try {
+    for (const row of audit) requireClaimRow(row, round.scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
 
   const [claim] = await db
     .select()
@@ -372,6 +513,8 @@ const serveScore = async (
       snapshot,
       root: round.root,
       claimUid: claimUid.toLowerCase(),
+      scoreProgram: round.scoreProgram,
+      scoreKeyDomain: serializedClaimDomain,
       scoreFp: score.scoreFp,
       breakdown: score.contributors,
       valuations: audit.map((a) => ({
@@ -419,15 +562,24 @@ const servePayout = async (
   rootQ: string,
   account: string
 ) => {
-  let round: RoundRow
+  let round: ResolvedRound
   try {
     round = await resolveRound(snapshot, rootQ)
   } catch (e: any) {
-    return { status: 404 as const, body: { error: e.message } }
+    return {
+      status: (e instanceof ScoreProgramApiError ? 409 : 404) as 404 | 409,
+      body: { error: e.message },
+    }
   }
 
   const entry = await offchainDb.query.merkleEntry.findFirst({
-    columns: { account: true, value: true, proof: true },
+    columns: {
+      account: true,
+      value: true,
+      proof: true,
+      programId: true,
+      outputDomain: true,
+    },
     where: (t, { and, eq }) =>
       and(
         eq(lower(t.merkleSnapshotContract), snapshot.toLowerCase()),
@@ -441,6 +593,14 @@ const servePayout = async (
       body: { error: 'No payout for this account at this root' },
     }
   }
+  try {
+    requireRecipientRow(entry, round.scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
 
   return {
     status: 200 as const,
@@ -451,6 +611,7 @@ const servePayout = async (
       ipfsHashCid: round.ipfsHashCid,
       totalValue: round.totalValue,
       verified: round.verified,
+      scoreProgram: round.scoreProgram,
       account: entry.account,
       value: entry.value,
       proof: entry.proof,
@@ -480,11 +641,14 @@ const serveAudit = async (
   rootQ: string,
   claimUid: string
 ) => {
-  let round: RoundRow
+  let round: ResolvedRound
   try {
     round = await resolveRound(snapshot, rootQ)
   } catch (e: any) {
-    return { status: 404 as const, body: { error: e.message } }
+    return {
+      status: (e instanceof ScoreProgramApiError ? 409 : 404) as 404 | 409,
+      body: { error: e.message },
+    }
   }
   if (!round.verified) {
     return { status: 409 as const, body: unverifiedBody(round) }
@@ -499,6 +663,14 @@ const serveAudit = async (
       ),
     orderBy: (t, { asc }) => asc(t.rater),
   })
+  try {
+    for (const row of audit) requireClaimRow(row, round.scoreProgram)
+  } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return { status: 409 as const, body: { error: error.message } }
+    }
+    throw error
+  }
 
   return {
     status: 200 as const,
@@ -506,6 +678,8 @@ const serveAudit = async (
       snapshot,
       root: round.root,
       claimUid: claimUid.toLowerCase(),
+      scoreProgram: round.scoreProgram,
+      scoreKeyDomain: serializedClaimDomain,
       valuations: audit.map((a) => ({
         rater: a.rater,
         score: a.score,

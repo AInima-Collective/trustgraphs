@@ -13,10 +13,29 @@ import {
 import { Hex, isAddress } from 'viem'
 
 import { offchainDb } from './db'
+import {
+  ScoreProgramApiError,
+  requireEntryScoreProgram,
+  requireRowScoreProgram,
+  requireSnapshotScoreProgram,
+} from './score-programs'
 import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
 import { currentVouches } from '../trust-reconcile'
 
 const app = new Hono()
+
+const requireTrustNetworkProgram = async (snapshot: string) => {
+  const scoreProgram = await requireSnapshotScoreProgram(snapshot, 'merkle')
+  if (
+    scoreProgram.programName !== 'trust-graph' &&
+    scoreProgram.programName !== 'trust-graph-weighted'
+  ) {
+    throw new ScoreProgramApiError(
+      `${scoreProgram.programName} scores are not a vouch-network API type`
+    )
+  }
+  return scoreProgram
+}
 
 // Get the accounts and attestations that are part of the network defined by the Merkle Snapshot contract.
 /**
@@ -81,6 +100,9 @@ app.get('/:snapshot', async (c) => {
   }
 
   try {
+    const currentScoreProgram = await requireTrustNetworkProgram(
+      merkleSnapshotContract
+    )
     const latestMerkleTree = await offchainDb.query.merkleMetadata.findFirst({
       where: (t, { eq }) =>
         eq(
@@ -92,11 +114,18 @@ app.get('/:snapshot', async (c) => {
     if (!latestMerkleTree) {
       return c.json({ error: 'Merkle tree not found' }, 404)
     }
+    const scoreProgram = requireRowScoreProgram(
+      latestMerkleTree,
+      currentScoreProgram,
+      'merkle'
+    )
 
     const allAccounts = await offchainDb.query.merkleEntry.findMany({
       columns: {
         account: true,
         value: true,
+        programId: true,
+        outputDomain: true,
       },
       where: (t, { eq, gt, and }) =>
         and(
@@ -109,6 +138,9 @@ app.get('/:snapshot', async (c) => {
         ),
       orderBy: (t, { asc }) => asc(t.account),
     })
+    for (const account of allAccounts) {
+      requireEntryScoreProgram(account, currentScoreProgram)
+    }
 
     // Map of in-network accounts to their metadata.
     const accountsMap: Map<
@@ -228,8 +260,12 @@ app.get('/:snapshot', async (c) => {
     return c.json({
       accounts,
       attestations,
+      scoreProgram,
     })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching network:', error)
     return c.json({ error: 'Failed to fetch network' }, 500)
   }
@@ -254,6 +290,7 @@ app.get('/:snapshot/checkpoints/:checkpointId/inputs', async (c) => {
   }
 
   try {
+    const scoreProgram = await requireTrustNetworkProgram(snapshot)
     const checkpointId = BigInt(checkpointRaw)
     const resolver = await resolverForSnapshot(snapshot)
     if (!resolver) return c.json({ error: 'Network not found' }, 404)
@@ -315,8 +352,12 @@ app.get('/:snapshot/checkpoints/:checkpointId/inputs', async (c) => {
         blockTimestamp: row.blockTimestamp.toString(),
         blockNumber: row.blockNumber.toString(),
       })),
+      scoreProgram,
     })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching checkpoint inputs:', error)
     return c.json({ error: 'Failed to fetch checkpoint inputs' }, 500)
   }
@@ -333,6 +374,7 @@ app.get('/:snapshot/status', async (c) => {
   const snapshot = c.req.param('snapshot').toLowerCase() as Hex
 
   try {
+    const scoreProgram = await requireTrustNetworkProgram(snapshot)
     const [lastRoot] = await db
       .select({
         root: merkleSnapshot.root,
@@ -432,8 +474,12 @@ app.get('/:snapshot/status', async (c) => {
           }
         : null,
       pendingAttestations,
+      scoreProgram,
     })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching network status:', error)
     return c.json({ error: 'Failed to fetch network status' }, 500)
   }

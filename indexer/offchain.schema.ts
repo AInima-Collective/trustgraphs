@@ -111,6 +111,9 @@ export const merkleMetadata = offchainSchema.table(
     >(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
+    programProvenance: t.jsonb().$type<Record<string, unknown> | null>(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
@@ -133,6 +136,8 @@ export const merkleEntry = offchainSchema.table(
     proof: t.jsonb().notNull().$type<string[]>(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.account] }),
@@ -198,6 +203,9 @@ export const hypercertsMetadata = offchainSchema.table(
     anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
+    programProvenance: t.jsonb().$type<Record<string, unknown> | null>(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
@@ -230,6 +238,8 @@ export const hypercertsScore = offchainSchema.table(
     proof: t.jsonb().$type<string[]>(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.nodeId] }),
@@ -286,6 +296,9 @@ export const contributionRound = offchainSchema.table(
     failureReason: t.text(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
+    programProvenance: t.jsonb().$type<Record<string, unknown> | null>(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
@@ -321,6 +334,8 @@ export const contributionScore = offchainSchema.table(
     >(),
     blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
     timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
   }),
   (t) => [
     primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.claimUid] }),
@@ -353,6 +368,8 @@ export const contributionValuationAudit = offchainSchema.table(
       .numeric({ precision: 78, scale: 0, mode: 'bigint' })
       .notNull(),
     updatedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text(),
+    outputDomain: t.text(),
   }),
   (t) => [
     primaryKey({

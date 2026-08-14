@@ -10,15 +10,23 @@ import {
 import { Hex } from 'viem'
 
 import {
+  ScoreProgramApiError,
+  requireEntryScoreProgram,
+  requireRowScoreProgram,
+  requireSnapshotScoreProgram,
+} from './score-programs'
+import {
   MerkleTreeWithEntries,
   EAS_NETWORKS as NETWORKS,
   getMerkleTreeWithEntries,
   isHexEqual,
   lower,
 } from './utils'
+import type { ScoreProgramProvenance } from '../score-program'
 import { currentVouches } from '../trust-reconcile'
 
 export type NetworkProfile = {
+  scoreProgram: ScoreProgramProvenance
   /** The chain ID of the merkle snapshot contract. */
   chainId: string
   /** The address of the merkle snapshot contract. */
@@ -141,6 +149,18 @@ app.get('/:account/networks', async (c) => {
           if (!merkleTreeWithEntries) {
             return null
           }
+          const currentScoreProgram = await requireSnapshotScoreProgram(
+            snapshot.address,
+            'merkle'
+          )
+          const scoreProgram = requireRowScoreProgram(
+            merkleTreeWithEntries.tree,
+            currentScoreProgram,
+            'merkle'
+          )
+          for (const entry of merkleTreeWithEntries.entries) {
+            requireEntryScoreProgram(entry, currentScoreProgram)
+          }
 
           return buildNetworkProfile({
             account,
@@ -149,6 +169,7 @@ app.get('/:account/networks', async (c) => {
             attestations,
             network,
             currentAttestationUids,
+            scoreProgram,
           })
         })
       )
@@ -156,6 +177,9 @@ app.get('/:account/networks', async (c) => {
 
     return c.json({ networks })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching network profiles:', error)
     return c.json({ error: 'Failed to fetch network profiles' }, 500)
   }
@@ -225,6 +249,18 @@ app.get('/:account/network/:snapshot', async (c) => {
     if (!merkleTreeWithEntries) {
       return c.json({ error: 'Merkle tree not found' }, 404)
     }
+    const currentScoreProgram = await requireSnapshotScoreProgram(
+      snapshot.address,
+      'merkle'
+    )
+    const scoreProgram = requireRowScoreProgram(
+      merkleTreeWithEntries.tree,
+      currentScoreProgram,
+      'merkle'
+    )
+    for (const entry of merkleTreeWithEntries.entries) {
+      requireEntryScoreProgram(entry, currentScoreProgram)
+    }
 
     const networkProfile = buildNetworkProfile({
       account,
@@ -235,10 +271,14 @@ app.get('/:account/network/:snapshot', async (c) => {
       currentAttestationUids: await currentUidsForResolver(
         network.contracts.easIndexerResolver
       ),
+      scoreProgram,
     })
 
     return c.json({ network: networkProfile })
   } catch (error) {
+    if (error instanceof ScoreProgramApiError) {
+      return c.json({ error: error.message }, 409)
+    }
     console.error('Error fetching network profile:', error)
     return c.json({ error: 'Failed to fetch network profile' }, 500)
   }
@@ -256,6 +296,7 @@ const buildNetworkProfile = ({
   attestations,
   network,
   currentAttestationUids,
+  scoreProgram,
 }: {
   account: string
   snapshot: typeof merkleSnapshot.$inferSelect
@@ -263,6 +304,7 @@ const buildNetworkProfile = ({
   attestations: (typeof easAttestation.$inferSelect)[]
   network: (typeof NETWORKS)[number]
   currentAttestationUids: Set<string>
+  scoreProgram: ScoreProgramProvenance
 }): NetworkProfile => {
   // Set of in-network account addresses.
   const inNetworkAccounts = new Set(
@@ -341,6 +383,7 @@ const buildNetworkProfile = ({
     .map((attestation) => attestation.uid)
 
   return {
+    scoreProgram,
     chainId: snapshot.chainId,
     merkleSnapshotContract: snapshot.address,
     merkleRoot: snapshot.root,

@@ -27,6 +27,10 @@ import { type Hex, isAddressEqual } from 'viem'
 
 import { collectCatalogPages } from './catalog-pagination'
 import { APIS, VISIBLE_SEED_NETWORKS } from './config'
+import {
+  type ScoreProgramProvenance,
+  parseScoreProgramProvenance,
+} from './score-program'
 import type { ExactParamsJson } from './scoring-params'
 import { Network, NetworkSchema } from './types'
 
@@ -104,6 +108,7 @@ export type InstanceRow = {
   createdBlock: string
   createdTimestamp: string
   createdTxHash: Hex
+  scoreProgram: ScoreProgramProvenance
 }
 
 export type InstancesResponse = {
@@ -170,6 +175,15 @@ export const fromFp = (raw: string | bigint, scale: bigint): number => {
 export const instanceToNetwork = (row: InstanceRow): Network => {
   const scale = scaleOf(row.params)
   const metadata = row.metadata ?? {}
+  const scoreProgram = parseScoreProgramProvenance(row.scoreProgram)
+  if (
+    scoreProgram.programName !== 'trust-graph' &&
+    scoreProgram.programName !== 'trust-graph-weighted'
+  ) {
+    throw new Error(
+      `catalog instance ${row.id} is not a TrustGraph score program`
+    )
+  }
 
   return {
     program: 'trust-graph',
@@ -261,6 +275,7 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
     // Presentation-only "has this member cleared the bar" marker. The chain pins no such number,
     // so an instance that published none has no bar: everyone with a score counts.
     validatedThreshold: 0,
+    scoreProgram,
   }
 }
 

@@ -18,6 +18,7 @@ import {
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
+  instanceRegistryAbi,
   instanceRegistryParamsAbi,
   trustgraphsParamsControllerAbi,
 } from './abis/trustgraphsParamsController'
@@ -333,6 +334,15 @@ export default createConfig({
         }),
   },
   contracts: {
+    // Authenticated program/output-domain discovery. Only this explicitly configured registry can
+    // create score bindings; catalog metadata and score-key shape are never discovery sources.
+    instanceRegistry: {
+      abi: instanceRegistryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: INSTANCE_REGISTRY
+        ? { [CORE_CHAIN]: { address: INSTANCE_REGISTRY } }
+        : {},
+    },
     erc8004IdentityRegistry: {
       abi: erc8004IdentityRegistryAbi,
       startBlock: ERC8004_START_BLOCK,

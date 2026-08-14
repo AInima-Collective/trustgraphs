@@ -150,6 +150,18 @@ entries whose recomputed root does not match the on-chain root (`indexer/src/mer
 All routes are GET. `:snapshot` is the network's `MerkleSnapshot` address, the stable handle a
 consumer should key on (find it via `/instances` or the `InstanceCreated` event).
 
+Every score response also carries `scoreProgram`: the bytes32 program id and output-domain id,
+their stable names/key encoding, the instance/verifier/params tuple, and the exact configured
+`InstanceRegistry` event (registry, block, log index, transaction) that authenticated the binding.
+Clients must validate the id/domain pair before interpreting a key. `GET
+/score-programs/:snapshot` exposes the current binding even before the first root. A missing,
+unknown, conflicted, or wrong-namespace binding is `409`; there is no fallback based on whether a
+key is 20 or 32 bytes.
+
+Routes keyed by a secondary subject also carry `scoreKeyDomain`; Contributions claim-score and
+audit responses use `contributions-claim-v1`, distinct from the program's address-keyed payout
+domain.
+
 ### Discovery
 
 | Route | Serves |
@@ -157,6 +169,7 @@ consumer should key on (find it via `/instances` or the `InstanceCreated` event)
 | `/instances` | the factory catalog, paginated (`?limit=&offset=`), filterable by `creator`, `admin`, `snapshot`, `resolver`, `distributor`, `schemaUid`; each row includes the instance's contract addresses and governance (Safe + module) when present |
 | `/instances/:id` | one instance by 32-byte `instanceId` |
 | `/instances/:id/params` | the instance's full scoring params (from the on-chain event, not a config file) |
+| `/score-programs/:snapshot` | authenticated program/output-domain and registry-event provenance for a snapshot |
 
 ### Trust-graph scores and proofs
 

@@ -16,6 +16,7 @@ import { trustNetworkFor } from '@/lib/network-nav'
 import { ponderClient } from '@/lib/ponder'
 import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
+import { getScoreProgram } from '@/lib/score-program.server'
 import { realAddress } from '@/lib/utils'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
@@ -79,22 +80,50 @@ export default async function NetworkPageServer({
   const hypercertsNetwork = VISIBLE_HYPERCERTS_NETWORKS.find(
     (network) => network.id === id
   )
-  if (hypercertsNetwork) {
-    return <HypercertsNetworkPage network={hypercertsNetwork} />
-  }
-
-  // A contributions instance renders the round view — claims/ratings live on-chain against its
-  // own resolver, so none of the vouching-network prefetching below applies either. Also not
-  // factory-minted in v1; also static.
   const contributionsNetwork = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
     (network) => network.id === id
   )
-  if (contributionsNetwork) {
-    const trustNetwork = trustNetworkFor(contributionsNetwork)
-    if (trustNetwork) {
-      redirect(`/networks/${trustNetwork.id}/contributions`)
+  const staticProgramNetwork = hypercertsNetwork ?? contributionsNetwork
+  if (staticProgramNetwork) {
+    let scoreProgram
+    try {
+      scoreProgram = await getScoreProgram(
+        staticProgramNetwork.contracts.merkleSnapshot
+      )
+    } catch (error) {
+      return (
+        <CatalogUnavailable
+          reason={error instanceof Error ? error.message : String(error)}
+          networkId={id}
+        />
+      )
     }
-    return <ContributionsNetworkPage network={contributionsNetwork} />
+    // Dispatch comes from authenticated registry provenance. The static row supplies only the
+    // page slug, copy, and program-specific contract addresses, and must agree with it.
+    if (scoreProgram.programName === 'hypercerts' && hypercertsNetwork) {
+      return (
+        <HypercertsNetworkPage
+          network={{ ...hypercertsNetwork, scoreProgram }}
+        />
+      )
+    }
+    if (scoreProgram.programName === 'contributions' && contributionsNetwork) {
+      const trustNetwork = trustNetworkFor(contributionsNetwork)
+      if (trustNetwork) {
+        redirect(`/networks/${trustNetwork.id}/contributions`)
+      }
+      return (
+        <ContributionsNetworkPage
+          network={{ ...contributionsNetwork, scoreProgram }}
+        />
+      )
+    }
+    return (
+      <CatalogUnavailable
+        reason={`Configured page type conflicts with authenticated ${scoreProgram.programName} program`}
+        networkId={id}
+      />
+    )
   }
 
   // Trust-graph: resolved against the RUNTIME catalog, so an instance created seconds ago renders
@@ -107,6 +136,19 @@ export default async function NetworkPageServer({
       return <CatalogUnavailable reason={catalogError} networkId={id} />
     }
     notFound()
+  }
+
+  try {
+    network.scoreProgram =
+      network.scoreProgram ??
+      (await getScoreProgram(network.contracts.merkleSnapshot, 'trust-graph'))
+  } catch (error) {
+    return (
+      <CatalogUnavailable
+        reason={error instanceof Error ? error.message : String(error)}
+        networkId={id}
+      />
+    )
   }
 
   const queryClient = makeQueryClient()
