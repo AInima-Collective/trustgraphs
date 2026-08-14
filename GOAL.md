@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 10 issues closed, 7 remain.**
+> **Status (2026-08-14): 11 issues closed, 6 remain.**
 >
 > Closed after auditing `main` through `89ca749` and rerunning the focused regressions:
 >
@@ -17,13 +17,14 @@
 >   repair (`131ecfd`)
 > - **#20** — atomic module-only Safe graduation, sealed owner execution, delayed member/recovery
 >   routes, and live authority disclosure (`820b6f3`)
+> - **#21** — optional atomic signer-sync installation, zero-config discovery/operation, indexed
+>   receipts and settings controls, plus isolated signer finality/loss budgets (`56326fd`)
 > - **#22** — atomic governed prepayment and payable initial policy (`f1ef43f`)
 > - **#28** — versioned canonical Contributions tuples, registry discovery, hard commitment checks,
 >   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
 > Remaining launch-risk issue: **#27**.
-> Remaining reproducibility and self-service issue: **#21**.
 > Remaining research/product epics: **#34–#38**.
 
 Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
@@ -68,7 +69,7 @@ can proceed concurrently:
 | B · snapshot/vault hardening | #12 and #14 closed | Bound hostile input growth and finish snapshot invariants | `f5d826a`, `aa8e2b5` |
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
 | D · authority and production | #20 closed → #27 | Creator bypass removed; deploy and smoke-test production | `820b6f3`; #12/#14/#22 prerequisites closed |
-| E · program self-service | #21; #28 closed | Factory signer-sync and reproducible Contributions params | `3de8943` for #28 |
+| E · program self-service | #21 and #28 closed | Factory signer-sync and reproducible Contributions params | `56326fd`, `3de8943` |
 | F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
 | G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
 
@@ -333,8 +334,16 @@ nonzero accepted root, and independently reproduces that exact root from chain h
 
 ### M3.2 · #21 — make signer-sync an optional governed-factory module
 
-The voting half of this issue is complete. Close the remaining signer-sync half without changing
-the trust-graph program or its roots.
+**Closed in `56326fd`.** Governed creation optionally installs a dedicated signer verifier/vkey and
+selection tuple, enables the module before sealing the Safe, and publishes a complete descriptor.
+Ponder/API and settings now expose live module state, receipts, staleness, failures, and a delayed
+member-governed pause/resume action. The operator derives signer work from the creation receipt,
+waits for landed score checkpoints, reconstructs historical pinned params, submits the complete
+owner receipt without IPFS/vault handling, and uses mutually isolated finality/loss-budget policy.
+The real-Safe integration creates once, discovers both modules, applies a signer proof and replaces
+the owner set; invalid program identities and unsafe selection policies roll the whole creation
+back. Verification: 553 Forge tests, 34 adapter tests, 88 operator-core tests, 25 indexer tests,
+frontend parity/lint/production build, Ponder codegen, and EIP-170 size checks.
 
 - Add optional signer-sync creation inputs: verifier/program identity, selection policy, and clearly
   separated signer-sync snapshot/module addresses.
@@ -459,8 +468,8 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 - **Near term:** #37 — the remaining independently closable research decision.
 - **Production track:** #27 — deploy and exercise the now-guarded creation path.
-- **Feature track:** #21, #35, #38 — substantial vertical slices.
+- **Feature track:** #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 7 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 6 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
