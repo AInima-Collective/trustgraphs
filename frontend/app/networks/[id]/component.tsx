@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, Check, ListFilter } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
@@ -21,6 +22,7 @@ import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useScoreDeltas } from '@/hooks/useScoreDeltas'
+import { erc8004AgentHref } from '@/lib/erc8004'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
 import { NetworkEntry } from '@/lib/types'
 import { cn, formatBigNumber } from '@/lib/utils'
@@ -86,6 +88,36 @@ export const NetworkPage = () => {
       render: (row) => (isTrustedSeed(network, row.account) ? '🌱' : ''),
     },
     {
+      key: 'agent',
+      header: 'AGENT',
+      tooltip:
+        'Current ERC-8004 identities whose verified wallet is this account.',
+      sortable: true,
+      accessor: (row) => row.agents.length,
+      render: (row) =>
+        row.agents.length > 0 ? (
+          <span className="inline-flex flex-wrap gap-1">
+            {row.agents.slice(0, 2).map((agent) => (
+              <Link
+                key={agent.key}
+                href={erc8004AgentHref(agent)}
+                onClick={(event) => event.stopPropagation()}
+                className="border border-success/40 px-1.5 py-0.5 text-[10px] text-success hover:border-success"
+              >
+                ◈ #{agent.agentId}
+              </Link>
+            ))}
+            {row.agents.length > 2 && (
+              <span className="text-[10px] text-text-subtle">
+                +{row.agents.length - 2}
+              </span>
+            )}
+          </span>
+        ) : (
+          ''
+        ),
+    },
+    {
       key: 'validated',
       header: 'VALIDATED',
       tooltip:
@@ -141,12 +173,16 @@ export const NetworkPage = () => {
     },
   ]
 
-  const [filterMode, setFilterMode] = useState<'all' | 'validated'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'validated' | 'agents'>(
+    'all'
+  )
 
   const filteredNetworkData =
     filterMode === 'validated'
       ? networkData.filter((row) => isValidatedInNetwork(network, row.value))
-      : networkData
+      : filterMode === 'agents'
+        ? networkData.filter((row) => row.agents.length > 0)
+        : networkData
 
   return (
     <div className="space-y-10 sm:space-y-12">
@@ -178,9 +214,19 @@ export const NetworkPage = () => {
         aria-label={`${name} trust graph`}
         className="relative h-[max(38rem,calc(100svh-10rem))] max-h-[58rem]"
       >
+        {filterMode === 'agents' && (
+          <p className="absolute left-1/2 top-4 z-10 w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 border border-border bg-background/90 px-3 py-2 text-center text-xs text-text-muted backdrop-blur-sm">
+            This view contains the vouch subgraph induced by verified ERC-8004
+            agent wallets. Scores, ranks, and edge weights are unchanged.
+          </p>
+        )}
         <div className="absolute inset-0">
           <Suspense fallback={null}>
-            <NetworkGraph title={name} initialZoom={1.1} />
+            <NetworkGraph
+              title={name}
+              initialZoom={1.1}
+              agentsOnly={filterMode === 'agents'}
+            />
           </Suspense>
         </div>
 
@@ -227,6 +273,7 @@ export const NetworkPage = () => {
 
               <Dropdown
                 options={[
+                  { value: 'agents', label: 'AGENT WALLETS' },
                   { value: 'validated', label: 'VALIDATED' },
                   { value: 'all', label: 'ALL MEMBERS' },
                 ]}

@@ -1,5 +1,169 @@
 import { index, onchainTable, primaryKey } from 'ponder'
 
+/*///////////////////////////////////////////////////////////////
+        ERC-8004 IDENTITY — event-sourced enrichment only
+//////////////////////////////////////////////////////////////*/
+
+/** Current registry control-plane state, reconstructed from proxy events. */
+export const erc8004Registry = onchainTable(
+  'erc8004_registry',
+  (t) => ({
+    id: t.text().primaryKey(), // `eip155:<chainId>:<lowercase proxy>`
+    chainId: t.text().notNull(),
+    proxy: t.hex().notNull(),
+    implementation: t.hex().notNull(),
+    version: t.text().notNull(),
+    owner: t.hex(),
+    sourceBlock: t.bigint().notNull(),
+    observedBlock: t.bigint().notNull(),
+    observedTimestamp: t.bigint().notNull(),
+    observedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    chainProxyIdx: index().on(t.chainId, t.proxy),
+    ownerIdx: index().on(t.owner),
+    implementationIdx: index().on(t.implementation),
+  })
+)
+
+/** Append-only implementation and registry-owner history. */
+export const erc8004RegistryEvent = onchainTable(
+  'erc8004_registry_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    registryId: t.text().notNull(),
+    kind: t.text().notNull(), // `upgrade` | `ownership`
+    implementation: t.hex(),
+    version: t.text(),
+    previousOwner: t.hex(),
+    newOwner: t.hex(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    registryIdx: index().on(t.registryId),
+    orderIdx: index().on(
+      t.registryId,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+  })
+)
+
+/** Current ERC-8004 agent state. IDs are registry-qualified; no address reverse lookup is guessed. */
+export const erc8004Agent = onchainTable(
+  'erc8004_agent',
+  (t) => ({
+    id: t.text().primaryKey(), // `agent:eip155:<chainId>:<registry>:<decimal agentId>`
+    chainId: t.text().notNull(),
+    registry: t.hex().notNull(),
+    agentId: t.bigint().notNull(),
+    owner: t.hex(),
+    agentWallet: t.hex(),
+    agentURI: t.text().notNull(),
+    registeredBlock: t.bigint().notNull(),
+    registeredTimestamp: t.bigint().notNull(),
+    registeredTxHash: t.hex().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTransactionIndex: t.integer().notNull(),
+    updatedLogIndex: t.integer().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    registryAgentIdx: index().on(t.chainId, t.registry, t.agentId),
+    ownerIdx: index().on(t.owner),
+    walletIdx: index().on(t.agentWallet),
+  })
+)
+
+/** Temporal owner/verified-wallet relation changes in canonical log order. */
+export const erc8004AgentRelationHistory = onchainTable(
+  'erc8004_agent_relation_history',
+  (t) => ({
+    id: t.text().primaryKey(),
+    agentKey: t.text().notNull(),
+    relation: t.text().notNull(), // `owner` | `verified_wallet`
+    account: t.hex().notNull(),
+    active: t.boolean().notNull(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    agentIdx: index().on(t.agentKey),
+    accountIdx: index().on(t.account),
+    orderIdx: index().on(
+      t.agentKey,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+  })
+)
+
+/** Every on-chain URI pointer version; fetching its document is an asynchronous sidecar concern. */
+export const erc8004AgentUriVersion = onchainTable(
+  'erc8004_agent_uri_version',
+  (t) => ({
+    id: t.text().primaryKey(),
+    agentKey: t.text().notNull(),
+    uri: t.text().notNull(),
+    kind: t.text().notNull(), // `registered` | `updated`
+    updatedBy: t.hex(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    agentIdx: index().on(t.agentKey),
+    orderIdx: index().on(
+      t.agentKey,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+  })
+)
+
+/** Full identity event timeline. Values are presentation/audit data, never score inputs. */
+export const erc8004AgentEvent = onchainTable(
+  'erc8004_agent_event',
+  (t) => ({
+    id: t.text().primaryKey(),
+    agentKey: t.text().notNull(),
+    kind: t.text().notNull(), // Registered | URIUpdated | MetadataSet | Transfer
+    actor: t.hex(),
+    from: t.hex(),
+    to: t.hex(),
+    uri: t.text(),
+    metadataKey: t.text(),
+    metadataValue: t.hex(),
+    blockNumber: t.bigint().notNull(),
+    transactionIndex: t.integer().notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    agentIdx: index().on(t.agentKey),
+    orderIdx: index().on(
+      t.agentKey,
+      t.blockNumber,
+      t.transactionIndex,
+      t.logIndex
+    ),
+  })
+)
+
 export const easAttestation = onchainTable(
   'eas_attestation',
   (t) => ({

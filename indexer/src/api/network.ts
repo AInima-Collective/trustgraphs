@@ -4,6 +4,7 @@ import { db } from 'ponder:api'
 import {
   accumulatorRecord,
   easAttestation,
+  erc8004Agent,
   instance,
   merkleSnapshot,
   proofSubmission,
@@ -177,12 +178,50 @@ app.get('/:snapshot', async (c) => {
       accountsMap.get(attestation.recipient)!.received++
     }
 
+    // One bulk reverse lookup decorates the existing address graph. It does not change member
+    // inclusion, scores, vouches, roots, or proofs; it only exposes current verified-wallet links.
+    const agentRows =
+      relevantAccounts.length === 0
+        ? []
+        : await db
+            .select()
+            .from(erc8004Agent)
+            .where(inArray(erc8004Agent.agentWallet, relevantAccounts))
+            .orderBy(
+              asc(erc8004Agent.chainId),
+              asc(erc8004Agent.registry),
+              asc(erc8004Agent.agentId)
+            )
+    const agentsByWallet = new Map<
+      string,
+      Array<{
+        key: string
+        chainId: string
+        registry: Hex
+        agentId: string
+        owner: Hex | null
+      }>
+    >()
+    for (const agent of agentRows) {
+      if (!agent.agentWallet) continue
+      const agents = agentsByWallet.get(agent.agentWallet) ?? []
+      agents.push({
+        key: agent.id,
+        chainId: agent.chainId,
+        registry: agent.registry,
+        agentId: agent.agentId.toString(),
+        owner: agent.owner,
+      })
+      agentsByWallet.set(agent.agentWallet, agents)
+    }
+
     const accounts = Array.from(accountsMap)
       .map(([account, { value, sent, received }]) => ({
         account,
         value: value.toString(),
         sent,
         received,
+        agents: agentsByWallet.get(account.toLowerCase()) ?? [],
       }))
       .sort((a, b) => a.account.localeCompare(b.account))
 

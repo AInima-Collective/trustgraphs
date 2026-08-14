@@ -85,6 +85,8 @@ export interface NetworkGraphProps {
   title?: string
   /** Only show attestations connected to this address. */
   onlyAddress?: Hex
+  /** Induce the existing address graph on current ERC-8004 verified wallets. */
+  agentsOnly?: boolean
   className?: string
   /** Initial zoom level. > 1.0 zooms out, < 1.0 zooms in. Defaults to 1.25. */
   initialZoom?: number
@@ -122,6 +124,7 @@ export interface NetworkGraphProps {
 export function NetworkGraph({
   title,
   onlyAddress,
+  agentsOnly = false,
   className,
   initialZoom = 1.25,
   chrome = true,
@@ -223,22 +226,40 @@ export function NetworkGraph({
     const maxNodeSize = 17
 
     // Skip attestations that are not connected to the onlyAddress, if set.
-    const attestations = attestationsData.filter(
-      (attestation) =>
+    const agentWallets = new Set(
+      accountData
+        .filter((account) => account.agents.length > 0)
+        .map((account) => account.account.toLowerCase())
+    )
+    const attestations = attestationsData.filter((attestation) => {
+      const connectedToFocus =
         !onlyAddress ||
         isHexEqual(attestation.attester, onlyAddress) ||
         isHexEqual(attestation.recipient, onlyAddress)
-    )
+      const insideAgentLens =
+        !agentsOnly ||
+        (agentWallets.has(attestation.attester.toLowerCase()) &&
+          agentWallets.has(attestation.recipient.toLowerCase()))
+      return connectedToFocus && insideAgentLens
+    })
 
-    for (const { account, value, sent, received, ensName } of accountData) {
-      // Skip accounts not included in the graph.
-      if (
-        !attestations.some(
-          (attestation) =>
-            isHexEqual(attestation.attester, account) ||
-            isHexEqual(attestation.recipient, account)
-        )
-      ) {
+    for (const {
+      account,
+      value,
+      sent,
+      received,
+      ensName,
+      agents,
+    } of accountData) {
+      // The ordinary graph retains its existing edge-connected node policy. An induced agent
+      // lens, however, must retain verified-wallet vertices even when filtering removes all of
+      // their edges; isolates are part of the induced vertex set too.
+      const connected = attestations.some(
+        (attestation) =>
+          isHexEqual(attestation.attester, account) ||
+          isHexEqual(attestation.recipient, account)
+      )
+      if (agentsOnly ? agents.length === 0 : !connected) {
         continue
       }
 
@@ -255,13 +276,16 @@ export function NetworkGraph({
 
       graph.addNode(account.toLowerCase(), {
         href,
-        label: ensName || `${account.slice(0, 6)}...${account.slice(-4)}`,
+        label: `${ensName || `${account.slice(0, 6)}...${account.slice(-4)}`}${
+          agents.length > 0 ? ' ◈' : ''
+        }`,
         x: 0,
         y: 0,
         value: BigInt(value),
         sent,
         received,
         isSeed: seed,
+        agents,
         // Circle area, rather than radius, tracks score. The square root keeps
         // low-score members legible without letting one outlier swallow the map.
         size:
@@ -407,6 +431,7 @@ export function NetworkGraph({
     network.pagerank.minWeight,
     network.pagerank.maxWeight,
     onlyAddress,
+    agentsOnly,
     router,
   ])
 
@@ -429,7 +454,7 @@ export function NetworkGraph({
           <LoaderCircle size={20} className="animate-spin text-text-subtle" />
           <span className="tg-label">Building graph</span>
         </div>
-      ) : error || !attestationsData || !graph || graph.size === 0 ? (
+      ) : error || !attestationsData || !graph || graph.order === 0 ? (
         // An empty network is not a failure — it is a network nobody has
         // attested in yet, and it gets the neutral empty state. Only a real
         // fetch error takes the error tone.
@@ -859,6 +884,10 @@ function GraphGuide({
           node = member · area = score
         </span>
         <span className="inline-flex items-center gap-2">
+          <span className="text-success">◈</span>
+          glyph = verified agent wallet
+        </span>
+        <span className="inline-flex items-center gap-2">
           <span className="h-px w-5 bg-text-muted" />
           edge = vouch · weight = confidence
         </span>
@@ -1014,7 +1043,11 @@ function NodeInspector({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[9px] uppercase tracking-wider text-text-subtle">
-            {node.isSeed ? 'Seed member' : 'Network member'}
+            {node.agents.length > 0
+              ? 'Verified agent wallet'
+              : node.isSeed
+                ? 'Seed member'
+                : 'Network member'}
           </p>
           <p
             className="mt-0.5 truncate text-sm text-text"
@@ -1038,6 +1071,21 @@ function NodeInspector({
         <GraphMetric label="Received" value={node.received.toLocaleString()} />
         <GraphMetric label="Given" value={node.sent.toLocaleString()} />
       </div>
+      {node.agents.length > 0 && (
+        <div className="border-t border-hairline pt-2.5">
+          <p className="text-[9px] uppercase tracking-wider text-text-subtle">
+            ERC-8004 identities
+          </p>
+          <div className="mt-1 space-y-1 text-[10px] text-success">
+            {node.agents.map((agent) => (
+              <p key={agent.key} className="break-all">
+                agent:eip155:{agent.chainId}:{agent.registry.toLowerCase()}:
+                {agent.agentId}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

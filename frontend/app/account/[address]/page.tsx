@@ -88,6 +88,7 @@ export default async function AccountProfilePageServer({
 
     // Networks
     queryClient.prefetchQuery(ponderQueries.accountNetworkProfiles(address)),
+    queryClient.prefetchQuery(ponderQueries.accountAgents(address)),
   ])
 
   const dehydratedState = dehydrate(queryClient)

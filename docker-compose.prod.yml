@@ -98,5 +98,27 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+  # Registration files are mutable/untrusted availability data, so they are fetched outside the
+  # chain handler. This bounded worker reads current URI tasks from the serving indexer and writes
+  # timestamped observations to the offchain schema without ever stalling event ingestion.
+  erc8004-metadata:
+    image: node:22-alpine
+    container_name: erc8004-metadata
+    working_dir: /app/indexer
+    init: true
+    volumes:
+      - .:/app
+    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run metadata:erc8004:watch"
+    depends_on:
+      ponder-server:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
+      ERC8004_METADATA_TASKS_URL: http://ponder-server:65421/erc8004/metadata-tasks
+      ERC8004_IPFS_GATEWAY: ${ERC8004_IPFS_GATEWAY:-https://ipfs.io/ipfs/}
+      ERC8004_METADATA_INTERVAL_MS: ${ERC8004_METADATA_INTERVAL_MS:-3600000}
+    restart: unless-stopped
+    stop_grace_period: 10s
+
 volumes:
   ponder-db-data:

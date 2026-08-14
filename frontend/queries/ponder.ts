@@ -15,6 +15,10 @@ import {
   isReviewRoot,
 } from '@/lib/contributions-review-fixtures'
 import {
+  type Erc8004AccountRelations,
+  type Erc8004AgentCompact,
+} from '@/lib/erc8004'
+import {
   REVIEW_FIXTURES_ENABLED,
   withReviewFixture,
 } from '@/lib/review-fixture-query'
@@ -55,6 +59,8 @@ export const ponderKeys = {
     [...ponderKeys.all, 'checkpointInputs', snapshot, checkpointId] as const,
   accountNetworkProfiles: (address: Hex) =>
     [...ponderKeys.all, 'accountNetworkProfiles', address] as const,
+  accountAgents: (address: Hex) =>
+    [...ponderKeys.all, 'accountAgents', address] as const,
   accountNetworkProfile: (options: { address: Hex; snapshot: string }) =>
     [...ponderKeys.all, 'accountNetworkProfile', options] as const,
   hypercertsScores: (snapshot: string) =>
@@ -202,6 +208,7 @@ export type NetworkData = {
     value: string
     sent: number
     received: number
+    agents: Erc8004AgentCompact[]
   }[]
   attestations: AttestationData[]
 }
@@ -294,6 +301,27 @@ export type NetworkProfile = {
 }
 
 export const ponderQueries = {
+  accountAgents: (address: Hex) =>
+    queryOptions({
+      queryKey: ponderKeys.accountAgents(address),
+      queryFn: async (): Promise<Erc8004AccountRelations> => {
+        const response = await fetch(
+          `${APIS.ponder}/erc8004/accounts/${address}`
+        )
+        // Permit a rolling frontend deployment against an indexer that has not
+        // exposed the ERC-8004 enrichment route yet.
+        if (response.status === 404) {
+          return { address, owns: [], verifiedWalletFor: [] }
+        }
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch ERC-8004 account relations: ${response.status} ${response.statusText} (${await response.text()})`
+          )
+        }
+        return response.json()
+      },
+      enabled: !!address && !!APIS.ponder,
+    }),
   parameterHistory: (instanceId: string) =>
     queryOptions({
       queryKey: [...ponderKeys.all, 'parameterHistory', instanceId] as const,
@@ -505,7 +533,14 @@ export const ponderQueries = {
           const data = await response.json()
 
           return {
-            accounts: data.accounts,
+            // Empty fallback keeps rolling frontend/indexer deploys compatible.
+            accounts: data.accounts.map(
+              (
+                account: Omit<NetworkData['accounts'][number], 'agents'> & {
+                  agents?: Erc8004AgentCompact[]
+                }
+              ) => ({ ...account, agents: account.agents ?? [] })
+            ),
             attestations: intoAttestationsData(
               data.attestations as (typeof easAttestation.$inferSelect)[]
             ),
