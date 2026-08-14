@@ -643,9 +643,10 @@ mod fetch {
         )
         .context("decoding paramsHash()")?;
         if ph != pinned {
-            eprintln!(
-                "WARNING: params_hash(--params) = {ph:#x} != snapshot.paramsHash() = {pinned:#x} \
-                 — the proof will verify but submitProof will reject it."
+            bail!(
+                "PARAMS HASH MISMATCH: params_hash(--params)={ph:#x}, \
+                 snapshot.paramsHash()={pinned:#x}. Refusing to reconstruct or prove a round whose \
+                 public tuple does not match its on-chain commitment."
             );
         }
 

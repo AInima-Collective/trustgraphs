@@ -369,9 +369,9 @@ Everything below cost someone real time.
   from the round API and each claim fetches its merkle bundle from it — the payout page's exact
   seams, which is the point of driving them. No indexer → the step skips itself and says how to
   run it later (`task demo:payout`). The indexer marks the round `verified` only once its own
-  re-derivation matches the landed root, which also requires the params sidecar
-  (`params.contributions.json` at the repo root — the round tasks maintain it) to hash to the
-  on-chain `paramsHash`.
+  re-derivation matches the landed root. It selects the complete public tuple from
+  `ContributionsParamsUpdated` history by the checkpoint's pinned `paramsHash`; no indexer
+  sidecar is involved.
 - **`task demo:govern` is only needed for later raw `demo:create` instances.** Browser-created
   instances emit `GovernedInstanceCreated`, so their Safe and module are discovered without a file
   edit or restart. The raw add-on task still writes two files, and they are not interchangeable: the frontend reads

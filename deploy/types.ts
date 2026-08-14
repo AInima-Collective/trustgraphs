@@ -88,6 +88,7 @@ export type DeployedSchema = {
  */
 export type ContributionsInstanceDeploy = {
   deployer: Hex
+  instance_id: Hex
   params_hash: Hex
   epoch_length: number
   contracts: {
@@ -97,6 +98,8 @@ export type ContributionsInstanceDeploy = {
     sp1_gateway: Hex
     zk_verifier: Hex
     merkle_snapshot: Hex
+    params_controller: Hex
+    instance_registry: Hex
     fund_distributor: Hex
     pool_token: Hex
   }

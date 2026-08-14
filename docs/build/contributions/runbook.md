@@ -50,21 +50,49 @@ export EAS_ADDRESS=$(jq -r '.eas.eas' .docker/deployment_summary.json)
 
 ### 1. Configure (operational)
 
-Set the round window + params, keep the sidecar file in sync, pin the hash:
+Set the round window and publish the complete tuple:
 
 ```bash
 task contributions:open-round-window
 # = edit params.contributions.json (round_start/round_end)
-#   → trustgraph-prover contributions paramshash params.contributions.json
-#   → cast send $SNAP "setParamsHash(bytes32)" <hash>   (OPERATIONAL_ROLE key)
+#   → ContributionsParamsController.updateParams(tuple, evidenceURI)
+#   → atomically update snapshot + registry hashes
+#   → emit ContributionsParamsUpdated(full tuple)
 ```
 
-`params.contributions.json` is the **params sidecar**: the prover's `fetch`
-embeds it into the guest input (its hash must equal the pinned `paramsHash` or
-the proof cannot land), and the indexer validates it the same way before
-publishing derived scores (`CONTRIBUTIONS_PARAMS_PATH`). One file, three
-consumers — rotate it and `setParamsHash` together, before the round's
-`submit`.
+`params.contributions.json` is only a local governance draft. Once submitted,
+the controller event is the durable public preimage: scanners, the operator,
+and the indexer reconstruct it from registry history and hard-fail if its
+21-word hash differs from the checkpoint, snapshot, controller, or registry.
+
+### Public reproduction (no sidecar)
+
+A third party needs only an RPC URL, the chain's `InstanceRegistry`, and its
+deployment/start block. The scanner enumerates contributions rows, follows each
+`paramsAuthority`, selects the complete event tuple by hash, and writes a
+machine-derived proving plan:
+
+```bash
+cargo run -q -p input-exporter --bin instance-scan -- \
+  --rpc "$RPC_URL" --registry "$INSTANCE_REGISTRY" \
+  --program contributions --from-block "$REGISTRY_START_BLOCK" \
+  --out-dir /tmp/contributions-public
+
+ROW=$(jq -r '.instances[] | select(.paramsPath != null) | @base64' \
+  /tmp/contributions-public/instances.json | head -1)
+field() { printf '%s' "$ROW" | base64 -d | jq -r ".$1"; }
+
+SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch \
+  --manifest-path zk/prover/Cargo.toml -- contributions fetch \
+  --rpc "$RPC_URL" --snapshot "$(field snapshot)" --eas "$(field eas)" \
+  --checkpoint "$CHECKPOINT" --params "$(field paramsPath)" \
+  --from-block "$REGISTRY_START_BLOCK" --out /tmp/contributions-public/input.json
+```
+
+Running `contributions execute /tmp/contributions-public/input.json` rebuilds
+the canonical allocation/root. Compare `outputRoot` with the accepted snapshot
+state for that checkpoint. Any known tuple/commitment mismatch aborts before
+input construction or proving.
 
 ### 2. Contribute / evaluate (users)
 
@@ -194,7 +222,8 @@ filters, and wei-exact expected outputs for every step.
 | power | holder | notes |
 |---|---|---|
 | `CONSTITUTIONAL_ROLE` (snapshot) | deployer (dev) / constitutional admin | truth-defining knobs: `setZkVerifier`, `setAccumulator`, `setAnchorRegistry`, `setEpochLength`, hooks; admin of both roles |
-| `OPERATIONAL_ROLE` (snapshot) | deployer (dev) / operational admin | `setParamsHash` — the per-round window + params rotation |
+| Contributions controller owner | deployer (dev) / operational admin | typed `updateParams` — per-round window + params rotation |
+| `OPERATIONAL_ROLE` (snapshot) | Contributions controller only | atomically applies the typed tuple's hash; no EOA raw-hash bypass |
 | resolver owner | deployer | one-shot `setSchemas` allowlist (already consumed at deploy) |
 | mirror binder | deployer | one-shot `bindSnapshot` (consumed at deploy; only the bound snapshot can checkpoint the mirror) |
 | distributor owner | deployer | fee config, pause, allowlist toggle |
@@ -203,9 +232,9 @@ filters, and wei-exact expected outputs for every step.
 | `distribute` | anyone (dev: allowlist disabled) | the caller funds the round and is the sweep beneficiary |
 | `claim` / `sweep` | anyone | funds always go to the leaf account / the funder respectively |
 
-**Params rotation is operational, deliberately.** Per-round `setParamsHash`
-(window + weights) is an `OPERATIONAL_ROLE` action so rounds can be cadenced
-without constitutional ceremony. Which governance lane should own that key in
+**Params rotation is operational, deliberately.** Per-round typed `updateParams`
+(window + weights) is controller-owner action so rounds can be cadenced without
+constitutional ceremony while retaining a complete public history. Which governance lane should own that key in
 production — and the timelock/veto shape around it — is out of scope here
 pending the [`UPGRADE_GOVERNANCE.md`](../../../research/UPGRADE_GOVERNANCE.md)
 review; until then the dev default (deployer holds it) is a known

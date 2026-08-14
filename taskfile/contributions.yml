@@ -48,17 +48,17 @@ tasks:
       - cd frontend && npx tsx scripts/contribution-round.ts round2
 
   # Rotate the round window to [now+1, now+1+7d]: update the params sidecar, recompute the
-  # 21-word paramsHash, and pin it on the snapshot (OPERATIONAL_ROLE = the deployer in dev).
+  # 21-word paramsHash, and publish the complete tuple through the typed controller.
   # Claims attested BEFORE this task ran are outside the new window by construction.
   open-round-window:
-    desc: 'Set round_start/round_end bracketing now, update {{.PARAMS_FILE}}, setParamsHash'
+    desc: 'Set round_start/round_end bracketing now and publish the full tuple on chain'
     preconditions:
       - test -f {{.PARAMS_FILE}}
       - test -n "$FUNDED_KEY"
     cmds:
       - |
         set -e
-        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        CONTROLLER=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.paramsController' {{.DEPLOYMENT_FILE}})
         LATEST_TS=$(cast block latest -f timestamp --rpc-url {{.RPC_URL}})
         ROUND_START=$((LATEST_TS + 1))
         ROUND_END=$((ROUND_START + 604800))
@@ -70,11 +70,11 @@ tasks:
         # task runs inside `demo:seed-round`), that changes every vkey AFTER the deploy pinned the
         # old ones into the verifiers, and the daemon then correctly holds both instances with
         # `verifier_rotated` forever. Only `task zk:build` builds guests.
-        PH=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release --features fetch -- contributions paramshash ../../{{.PARAMS_FILE}})
-        echo "window [$ROUND_START, $ROUND_END] paramsHash $PH"
-        cast send "$SNAPSHOT" "setParamsHash(bytes32)" "$PH" \
-          --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
-        echo "setParamsHash OK"
+        echo "window [$ROUND_START, $ROUND_END]"
+        forge script script/UpdateContributionsParams.s.sol:UpdateContributionsParams \
+          --sig 'run(string,string,string)' "$CONTROLLER" {{.PARAMS_FILE}} 'local round window' \
+          --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
+        echo "complete ContributionsParamsUpdated tuple published"
 
   # ──────────────────────────────────────────────────────────────────────────
   # Operator lifecycle: trigger → prove → submit → fund → (claim) → sweep

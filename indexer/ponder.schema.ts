@@ -151,6 +151,36 @@ export const parameterVersion = onchainTable(
   })
 )
 
+/** Complete, append-only Contributions tuples recovered from their typed controller events. */
+export const contributionsParameterVersion = onchainTable(
+  'contributions_parameter_version',
+  (t) => ({
+    id: t.text().primaryKey(),
+    instanceId: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    eas: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    paramsHash: t.hex().notNull(),
+    previousParamsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    trustedSeeds: t.hex().array().notNull(),
+    evidenceURI: t.text().notNull(),
+    executor: t.hex().notNull(),
+    executedAtBlock: t.bigint().notNull(),
+    executedTimestamp: t.bigint().notNull(),
+    executedTxHash: t.hex().notNull(),
+    valid: t.boolean().notNull(),
+    invalidReason: t.text(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    controllerIdx: index().on(t.controller),
+    snapshotHashIdx: index().on(t.snapshot, t.paramsHash),
+    versionIdx: index().on(t.instanceId, t.version),
+  })
+)
+
 export const merkleSnapshot = onchainTable(
   'merkle_snapshot',
   (t) => ({

@@ -8,8 +8,8 @@
 //! It is not true for anything else, and saying so plainly beats implying the chain describes
 //! everything:
 //!
-//! - **contributions** is not in `InstanceRegistry` at all — `DeployContributionsInstance.s.sol`
-//!   writes a `deployment_summary.json` and stops there.
+//! - Legacy **contributions** deployments predate their typed on-chain controller and still need a
+//!   manifest. New deployments are registry-discoverable and need no params path.
 //! - **hypercerts** registers an opaque `paramsHash` with no params-bearing event.
 //! - **`SignerSyncZkModule`** is not discoverable from the registry in any form; it is a Zodiac
 //!   module on a Safe, woken by `MerkleRootUpdated` on its trust instance.

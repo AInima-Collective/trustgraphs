@@ -3,7 +3,8 @@
 
 use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
-    scan, Catalog, ChainReader, ControllerParams, CreatedParams, RegistryRecord, SkipCause,
+    scan, Catalog, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
+    RegistryRecord, SkipCause,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
@@ -42,6 +43,8 @@ struct FakeChain {
     factory_eas: BTreeMap<Address, Address>,
     authorities: BTreeMap<B256, Address>,
     controllers: BTreeMap<Address, ControllerParams>,
+    contributions_controllers: BTreeMap<Address, ContributionsControllerParams>,
+    registration_blocks: BTreeMap<B256, u64>,
     /// Instance ids whose reads blow up, to prove one flaky read does not stop the rest.
     poisoned: Vec<B256>,
 }
@@ -72,11 +75,27 @@ impl ChainReader for FakeChain {
     fn params_authority(&self, id: B256) -> Result<Address, Self::Error> {
         Ok(self.authorities.get(&id).copied().unwrap_or(Address::ZERO))
     }
+    fn registration_block(&self, id: B256) -> Result<u64, Self::Error> {
+        self.registration_blocks
+            .get(&id)
+            .copied()
+            .or_else(|| self.created.get(&id).map(|created| created.created_block))
+            .ok_or_else(|| FakeError("no registration event".into()))
+    }
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>, Self::Error> {
         Ok(self.created.get(&id).cloned())
     }
     fn controller_params(&self, controller: Address) -> Result<ControllerParams, Self::Error> {
         self.controllers.get(&controller).cloned().ok_or_else(|| FakeError("no controller".into()))
+    }
+    fn contributions_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<ContributionsControllerParams, Self::Error> {
+        self.contributions_controllers
+            .get(&controller)
+            .cloned()
+            .ok_or_else(|| FakeError("no contributions controller".into()))
     }
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error> {
         self.snapshot_hashes.get(&snapshot).copied().ok_or_else(|| FakeError("no snapshot".into()))
@@ -144,6 +163,68 @@ fn add_controller(chain: &mut FakeChain, id: B256, version: u64, current: Params
     controller
 }
 
+fn contributions_params(seed: u8) -> contributions_core::Params {
+    let s = U256::from(10u64).pow(U256::from(18u64));
+    contributions_core::Params {
+        damping_fp: s * U256::from(85u64) / U256::from(100u64),
+        tolerance_fp: s / U256::from(1_000_000u64),
+        max_iterations: 100,
+        min_weight_fp: U256::ZERO,
+        max_weight_fp: U256::from(100u64) * s,
+        trust_multiplier_fp: U256::from(2u64) * s,
+        trust_share_fp: s * U256::from(15u64) / U256::from(100u64),
+        trust_decay_fp: s * U256::from(80u64) / U256::from(100u64),
+        trusted_seeds: vec![Address::from([seed; 20])],
+        precision_scale: s,
+        weight_field_index: 1,
+        round_start: 1_700_000_000,
+        round_end: 1_700_604_800,
+        unaccepted_mult_fp: s / U256::from(2u64),
+        collaborator_mult_fp: s / U256::from(2u64),
+        min_rater_rep_fp: U256::from(1_000_000_000u64),
+        evaluator_carveout_bps: 100,
+        total_pool: U256::from(5_000_000_000u64),
+        claim_schema_uid: B256::from([seed; 32]),
+        response_schema_uid: B256::from([seed.wrapping_add(1); 32]),
+        valuation_schema_uid: B256::from([seed.wrapping_add(2); 32]),
+    }
+}
+
+fn add_contributions(chain: &mut FakeChain, seed: u8) -> B256 {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let resolver = Address::from([seed.wrapping_add(0x20); 20]);
+    let controller = Address::from([seed.wrapping_add(0x40); 20]);
+    let p = contributions_params(seed);
+    let hash = contributions_core::params::params_hash(&p);
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::Contributions.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: resolver,
+            params_hash: hash,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, hash);
+    chain.authorities.insert(id, controller);
+    chain.registration_blocks.insert(id, 77);
+    chain.contributions_controllers.insert(
+        controller,
+        ContributionsControllerParams {
+            instance_id: id,
+            snapshot,
+            eas: EAS,
+            version: 1,
+            current_params_hash: hash,
+            params: p,
+        },
+    );
+    id
+}
+
 fn scan_all(chain: &FakeChain) -> Catalog {
     scan(chain, Program::Trustgraphs, &Manifest::default()).unwrap()
 }
@@ -180,6 +261,22 @@ fn a_controller_rotation_uses_the_live_tuple_not_the_creation_tuple() {
     assert_eq!(entry.params_version, Some(2));
     assert_eq!(entry.params, Some(current));
     assert_ne!(entry.reconstructed_params_hash, creation_hash);
+    assert!(entry.manifest.is_none());
+}
+
+#[test]
+fn contributions_are_reconstructed_from_the_registry_controller_without_a_manifest() {
+    let mut chain = FakeChain::default();
+    let id = add_contributions(&mut chain, 9);
+
+    let catalog = scan(&chain, Program::Contributions, &Manifest::default()).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("chain-described contributions round");
+    assert_eq!(entry.eas, Some(EAS));
+    assert_eq!(entry.created_block, 77);
+    assert!(entry.params.is_none());
+    let p = entry.contributions_params.as_ref().expect("complete contributions tuple");
+    assert_eq!(contributions_core::params::params_hash(p), entry.reconstructed_params_hash);
     assert!(entry.manifest.is_none());
 }
 
@@ -271,8 +368,7 @@ fn an_event_that_disagrees_with_the_directory_is_refused() {
 
 #[test]
 fn a_manifest_covers_what_the_chain_cannot_describe() {
-    // Contributions is not in `InstanceRegistry` at all. This is the honest half of
-    // "chain is the config".
+    // A legacy Contributions deployment can still be described by a manifest.
     let mut chain = FakeChain::default();
     add_healthy(&mut chain, 1);
     let contrib_snapshot = address!("00000000000000000000000000000000000000C0");

@@ -143,6 +143,43 @@ export const parseParamsFile = (
   valuationSchemaUid: f.valuation_schema_uid as Hex,
 })
 
+/** Restore the JSON-safe controller-event snapshot stored by the indexer. */
+export const parseParamsSnapshot = (
+  value: Record<string, unknown>
+): ContributionsParams => ({
+  dampingFp: BigInt(value.dampingFp as string),
+  toleranceFp: BigInt(value.toleranceFp as string),
+  maxIterations: Number(value.maxIterations),
+  minWeightFp: BigInt(value.minWeightFp as string),
+  maxWeightFp: BigInt(value.maxWeightFp as string),
+  trustMultiplierFp: BigInt(value.trustMultiplierFp as string),
+  trustShareFp: BigInt(value.trustShareFp as string),
+  trustDecayFp: BigInt(value.trustDecayFp as string),
+  trustedSeeds: value.trustedSeeds as Hex[],
+  precisionScale: BigInt(value.precisionScale as string),
+  weightFieldIndex: Number(value.weightFieldIndex),
+  roundStart: BigInt(value.roundStart as string),
+  roundEnd: BigInt(value.roundEnd as string),
+  unacceptedMultFp: BigInt(value.unacceptedMultFp as string),
+  collaboratorMultFp: BigInt(value.collaboratorMultFp as string),
+  minRaterRepFp: BigInt(value.minRaterRepFp as string),
+  evaluatorCarveoutBps: Number(value.evaluatorCarveoutBps),
+  totalPool: BigInt(value.totalPool as string),
+  claimSchemaUid: value.claimSchemaUid as Hex,
+  responseSchemaUid: value.responseSchemaUid as Hex,
+  valuationSchemaUid: value.valuationSchemaUid as Hex,
+})
+
+/** Normalize viem's named Solidity tuple into the canonical TS params type. */
+export const normalizeOnchainContributionsParams = (
+  p: Omit<ContributionsParams, 'trustedSeeds'> & {
+    trustedSeeds: readonly Hex[]
+  }
+): ContributionsParams => ({
+  ...p,
+  trustedSeeds: [...p.trustedSeeds],
+})
+
 /** The 21-word paramsHash of parsed params (re-export for the sidecar-vs-chain check). */
 export const contributionsParamsHash = (p: ContributionsParams): Hex =>
   paramsHash(p)

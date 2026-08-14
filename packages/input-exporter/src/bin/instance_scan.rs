@@ -1,19 +1,18 @@
 //! instance-scan — "chain is the config": reconstruct every registry instance from chain data.
 //!
 //! Given nothing but an RPC endpoint and an `InstanceRegistry` address, this walks the directory and
-//! rebuilds each instance's complete proving configuration — addresses, EAS, and the full 17-field
-//! `Params` — with **zero per-instance config files and zero manual params entry**. It writes one
+//! rebuilds each instance's complete proving configuration — addresses, EAS, and its full canonical
+//! params tuple — with **zero per-instance config files and zero manual params entry**. It writes one
 //! `params.json` per instance plus a machine-readable plan (`instances.json`) that
 //! `task instances:prove-all` drives the trigger → export → prove → pin → submit loop from.
 //!
 //! How it finds an instance's params without being told where to look:
 //!
 //! 1. `getInstanceIds()` enumerates the directory; `getInstance(id)` gives the contract set.
-//! 2. `InstanceRegistered` on the registry gives the *transaction* that registered each id.
-//! 3. That same transaction's receipt contains the factory's `InstanceCreated` log, which carries
-//!    the FULL params struct (`docs/build/create-a-network.md` §1.4). The log's emitter **is** the
-//!    factory, so the factory address never has to be supplied either — and `factory.EAS()` then
-//!    yields the EAS the exporter needs.
+//! 2. Trust graphs recover the creation tuple from their factory's `InstanceCreated` log.
+//! 3. Contributions instances follow `paramsAuthority(id)` to their typed controller and recover
+//!    the hash-selected tuple from its append-only `ContributionsParamsUpdated` history. The
+//!    controller also publishes its EAS and snapshot addresses.
 //!
 //! The load-bearing safety check is step 4: `pagerank_core::encode::params_hash(event.params)` must
 //! equal the live `snapshot.paramsHash()`. That is the canonical **Rust** encoder re-deriving the
@@ -57,6 +56,31 @@ sol! {
         uint64 chainId;
     }
 
+    /// Mirror of `ContributionsParamsCodec.Params` (21 fields, order FROZEN).
+    struct SolContributionsParams {
+        uint256 dampingFp;
+        uint256 toleranceFp;
+        uint32 maxIterations;
+        uint256 minWeightFp;
+        uint256 maxWeightFp;
+        uint256 trustMultiplierFp;
+        uint256 trustShareFp;
+        uint256 trustDecayFp;
+        address[] trustedSeeds;
+        uint256 precisionScale;
+        uint32 weightFieldIndex;
+        uint64 roundStart;
+        uint64 roundEnd;
+        uint256 unacceptedMultFp;
+        uint256 collaboratorMultFp;
+        uint256 minRaterRepFp;
+        uint32 evaluatorCarveoutBps;
+        uint256 totalPool;
+        bytes32 claimSchemaUid;
+        bytes32 responseSchemaUid;
+        bytes32 valuationSchemaUid;
+    }
+
     /// The frozen factory interface (`TrustgraphsFactory.sol`).
     event InstanceCreated(
         bytes32 indexed instanceId,
@@ -91,6 +115,22 @@ sol! {
     );
     function getInstanceIds() external view returns (bytes32[]);
     function getInstance(bytes32 instanceId) external view returns (Instance);
+    function paramsAuthority(bytes32 instanceId) external view returns (address);
+
+    /// `ContributionsParamsController` — the complete, versioned params preimage.
+    event ContributionsParamsUpdated(
+        bytes32 indexed instanceId,
+        uint64 indexed version,
+        bytes32 indexed paramsHash,
+        bytes32 previousParamsHash,
+        SolContributionsParams params,
+        string evidenceURI
+    );
+    function instanceId() external view returns (bytes32);
+    function snapshot() external view returns (address);
+    function eas() external view returns (address);
+    function currentParamsHash() external view returns (bytes32);
+    function getContributionsParams() external view returns (SolContributionsParams);
 
     /// `MerkleSnapshot` — the authority on what an instance is pinned to prove.
     function paramsHash() external view returns (bytes32);
@@ -104,6 +144,7 @@ sol! {
     function leafCount() external view returns (uint64);
     function checkpointCount() external view returns (uint256);
     function getCheckpoint(uint256 id) external view returns (Checkpoint);
+    function anchorCount() external view returns (uint64);
 
     /// `TrustgraphsFactory` — the shared singletons an instance inherits.
     function EAS() external view returns (address);
@@ -240,6 +281,163 @@ async fn main() -> Result<()> {
             ));
             continue;
         };
+
+        if args.program == "contributions" {
+            let authority_ret = rpc
+                .eth_call(registry, paramsAuthorityCall { instanceId: *id }.abi_encode())
+                .await
+                .with_context(|| format!("paramsAuthority({id:#x}) failed"))?;
+            let controller = paramsAuthorityCall::abi_decode_returns(&authority_ret)
+                .context("decoding contributions params authority")?;
+            if controller == Address::ZERO {
+                bail!("contributions instance {id:#x} has no typed params authority");
+            }
+
+            let controller_id = B256::from(instanceIdCall::abi_decode_returns(
+                &rpc.eth_call(controller, instanceIdCall {}.abi_encode()).await?,
+            )?);
+            let controller_snapshot = snapshotCall::abi_decode_returns(
+                &rpc.eth_call(controller, snapshotCall {}.abi_encode()).await?,
+            )?;
+            let eas = easCall::abi_decode_returns(
+                &rpc.eth_call(controller, easCall {}.abi_encode()).await?,
+            )?;
+            let controller_hash = B256::from(currentParamsHashCall::abi_decode_returns(
+                &rpc.eth_call(controller, currentParamsHashCall {}.abi_encode()).await?,
+            )?);
+            if controller_id != *id || controller_snapshot != record.snapshot {
+                bail!(
+                    "contributions controller {controller:#x} is bound to id {controller_id:#x} / \
+                     snapshot {controller_snapshot:#x}, not registry id {id:#x} / snapshot {:#x}",
+                    record.snapshot
+                );
+            }
+
+            let live = B256::from(paramsHashCall::abi_decode_returns(
+                &rpc.eth_call(record.snapshot, paramsHashCall {}.abi_encode())
+                    .await
+                    .with_context(|| format!("paramsHash() on snapshot {:#x}", record.snapshot))?,
+            )?);
+            if record.paramsHash != live || controller_hash != live {
+                bail!(
+                    "contributions instance {id:#x} commitment divergence: registry={:#x}, \
+                     controller={controller_hash:#x}, snapshot={live:#x}",
+                    record.paramsHash
+                );
+            }
+
+            // Recover the tuple from chain history, keyed by the exact live commitment. This is
+            // deliberately not just a getter read: old versions remain reproducible after a later
+            // round rotates the controller.
+            let param_logs = rpc
+                .get_logs(
+                    controller,
+                    &[
+                        Some(ContributionsParamsUpdated::SIGNATURE_HASH),
+                        Some(*id),
+                        None,
+                        Some(live),
+                    ],
+                    created_block,
+                    head,
+                    args.chunk,
+                )
+                .await
+                .with_context(|| format!("querying params history on {controller:#x}"))?;
+            let selected_log = param_logs.last().ok_or_else(|| {
+                anyhow!(
+                    "contributions instance {id:#x}: controller has no full tuple event for live hash {live:#x}"
+                )
+            })?;
+            let published = ContributionsParamsUpdated::decode_raw_log(
+                selected_log.topics.iter().copied(),
+                &selected_log.data,
+            )
+            .context("decoding ContributionsParamsUpdated")?;
+            let params = to_contributions_params(&published.params);
+            let computed = contributions_core::params::params_hash(&params);
+            if computed != live {
+                bail!(
+                    "PARAMS HASH MISMATCH for contributions instance {id:#x}: \
+                     params_hash(on-chain event tuple)={computed:#x}, live={live:#x}"
+                );
+            }
+
+            // The getter is a convenience surface, while the event is the historical source. Both
+            // must describe the same current tuple or the controller implementation is unsafe.
+            let current_ret = rpc
+                .eth_call(controller, getContributionsParamsCall {}.abi_encode())
+                .await
+                .context("getContributionsParams failed")?;
+            let current = getContributionsParamsCall::abi_decode_returns(&current_ret)?;
+            let getter_hash =
+                contributions_core::params::params_hash(&to_contributions_params(&current));
+            if getter_hash != live {
+                bail!(
+                    "contributions controller getter hash {getter_hash:#x} != published/live hash {live:#x}"
+                );
+            }
+
+            let epoch_length =
+                call_u64(&rpc, record.snapshot, epochLengthCall {}.abi_encode()).await?;
+            let last_trigger =
+                call_u64(&rpc, record.snapshot, lastTriggerBlockCall {}.abi_encode()).await?;
+            let anchor_count =
+                call_u64(&rpc, record.registryOrAccumulator, anchorCountCall {}.abi_encode())
+                    .await?;
+            let status = if epoch_length > 0 && next_block < last_trigger + epoch_length {
+                Status::Skipped(format!(
+                    "epoch boundary not reached — next trigger allowed at block {}",
+                    last_trigger + epoch_length
+                ))
+            } else if anchor_count == 0 {
+                Status::Skipped("no contribution records yet — nothing to prove".to_string())
+            } else {
+                Status::Ready
+            };
+
+            let inst_dir = out_root.join(format!("{id:#x}"));
+            std::fs::create_dir_all(&inst_dir)
+                .with_context(|| format!("create {}", inst_dir.display()))?;
+            let params_path = inst_dir.join("params.json");
+            std::fs::write(&params_path, serde_json::to_string_pretty(&params)?)
+                .with_context(|| format!("write {}", params_path.display()))?;
+            if matches!(status, Status::Ready) {
+                ready += 1;
+            }
+            eprintln!(
+                "  {:<8} {id:#x} contributions snapshot={:#x} records={anchor_count}{}",
+                status.label(),
+                record.snapshot,
+                if status.reason().is_empty() {
+                    String::new()
+                } else {
+                    format!("\n           └─ {}", status.reason())
+                }
+            );
+            entries.push(json!({
+                "instanceId": format!("{id:#x}"),
+                "program": "contributions",
+                "controller": format!("{controller:#x}"),
+                "eas": format!("{eas:#x}"),
+                "snapshot": format!("{:#x}", record.snapshot),
+                "resolver": format!("{:#x}", record.registryOrAccumulator),
+                "verifier": format!("{:#x}", record.verifier),
+                "paramsHash": format!("{live:#x}"),
+                "paramsVersion": published.version,
+                "paramsPublishedBlock": selected_log.block_number,
+                "epochLength": epoch_length,
+                "lastTriggerBlock": last_trigger,
+                "createdBlock": created_block,
+                "inputFromBlock": args.from_block,
+                "anchorCount": anchor_count,
+                "paramsPath": params_path.display().to_string(),
+                "outDir": inst_dir.display().to_string(),
+                "status": status.label(),
+                "reason": status.reason(),
+            }));
+            continue;
+        }
 
         // --- 3. The creating transaction's InstanceCreated log: params + the factory address. ---
         let logs = rpc
@@ -481,5 +679,32 @@ fn to_core_params(p: &SolParams) -> Params {
         lane2_max_head_age: p.lane2MaxHeadAge,
         accumulator: p.accumulator,
         chain_id: p.chainId,
+    }
+}
+
+/// On-chain canonical contributions tuple → the exact Rust type consumed by the guest.
+fn to_contributions_params(p: &SolContributionsParams) -> contributions_core::Params {
+    contributions_core::Params {
+        damping_fp: p.dampingFp,
+        tolerance_fp: p.toleranceFp,
+        max_iterations: p.maxIterations,
+        min_weight_fp: p.minWeightFp,
+        max_weight_fp: p.maxWeightFp,
+        trust_multiplier_fp: p.trustMultiplierFp,
+        trust_share_fp: p.trustShareFp,
+        trust_decay_fp: p.trustDecayFp,
+        trusted_seeds: p.trustedSeeds.clone(),
+        precision_scale: p.precisionScale,
+        weight_field_index: p.weightFieldIndex,
+        round_start: p.roundStart,
+        round_end: p.roundEnd,
+        unaccepted_mult_fp: p.unacceptedMultFp,
+        collaborator_mult_fp: p.collaboratorMultFp,
+        min_rater_rep_fp: p.minRaterRepFp,
+        evaluator_carveout_bps: p.evaluatorCarveoutBps,
+        total_pool: p.totalPool,
+        claim_schema_uid: p.claimSchemaUid,
+        response_schema_uid: p.responseSchemaUid,
+        valuation_schema_uid: p.valuationSchemaUid,
     }
 }

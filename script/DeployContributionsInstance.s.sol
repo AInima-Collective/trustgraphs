@@ -20,6 +20,8 @@ import {ContributionResolver} from "contracts/eas/resolvers/ContributionResolver
 import {SchemaRegistrar} from "contracts/eas/SchemaRegistrar.sol";
 import {TestUSDC} from "contracts/tokens/TestUSDC.sol";
 import {ContributionsParamsCodec} from "contracts/params/ContributionsParamsCodec.sol";
+import {ContributionsParamsController} from "contracts/factory/ContributionsParamsController.sol";
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 import {MockSP1Gateway} from "../test/mocks/MockSP1Gateway.sol";
 
@@ -42,7 +44,7 @@ import {ContributionsParamsJson} from "script/lib/ContributionsParamsJson.sol";
 ///      scaffolding, which deploys a MockSP1Gateway so mock-proved journals submit —
 ///      set the real vkey AND a real gateway for any deploy that matters),
 ///      SP1_VERIFIER_GATEWAY (canonical per-chain gateway; only read when a vkey is set
-///      and no gateway address is passed as the sixth argument),
+///      and no gateway address is passed),
 ///      CONTRIBUTIONS_EPOCH_LENGTH (blocks between triggers; default 10 for dev),
 ///      CONTRIBUTIONS_POOL_MINT (TestUSDC minted to the deployer; default 1,000,000 tUSDC),
 ///      CONSTITUTIONAL_ADMIN / OPERATIONAL_ADMIN (default: deployer).
@@ -70,21 +72,26 @@ contract DeployContributionsInstance is Common {
     ///        MUST pass the local MockSP1Gateway here: the env var names Succinct's per-chain
     ///        deployment, which has no code on a plain anvil, and a verifier constructed over it
     ///        reverts every `submitProof` inside `gateway.verifyProof` — immutably.
+    /// @param instanceRegistryAddr The chain's public instance directory. The broadcaster must
+    ///        hold its OPERATOR_ROLE so this script can publish the new instance atomically.
     function run(
         string calldata outLabel,
         string calldata easAddr,
         string calldata schemaRegistrarAddr,
         string calldata trustAccumulatorAddr,
         string calldata paramsPath,
-        string calldata gatewayAddr
+        string calldata gatewayAddr,
+        string calldata instanceRegistryAddr
     ) public {
         address deployer = vm.addr(_privateKey);
         address eas = vm.parseAddress(easAddr);
         address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
         address trustAccumulator = vm.parseAddress(trustAccumulatorAddr);
+        IInstanceRegistry instanceRegistry = IInstanceRegistry(vm.parseAddress(instanceRegistryAddr));
         require(eas != address(0), "DeployContributionsInstance: eas is zero");
         require(schemaRegistrar != address(0), "DeployContributionsInstance: schemaRegistrar is zero");
         require(trustAccumulator != address(0), "DeployContributionsInstance: trustAccumulator is zero");
+        require(address(instanceRegistry) != address(0), "DeployContributionsInstance: registry is zero");
 
         bytes32 vkey = vm.envOr("CONTRIBUTIONS_PROGRAM_VKEY", bytes32(0));
         uint64 epochLength = uint64(vm.envOr("CONTRIBUTIONS_EPOCH_LENGTH", uint256(10)));
@@ -116,9 +123,8 @@ contract DeployContributionsInstance is Common {
             gateway = address(new MockSP1Gateway());
             console.log("CONTRIBUTIONS_PROGRAM_VKEY unset: dev MockSP1Gateway deployed at", gateway);
         } else {
-            gateway = bytes(gatewayAddr).length == 0
-                ? vm.envAddress("SP1_VERIFIER_GATEWAY")
-                : vm.parseAddress(gatewayAddr);
+            gateway =
+                bytes(gatewayAddr).length == 0 ? vm.envAddress("SP1_VERIFIER_GATEWAY") : vm.parseAddress(gatewayAddr);
             require(gateway != address(0), "DeployContributionsInstance: gateway is zero");
         }
         SP1JournalVerifier verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
@@ -126,9 +132,9 @@ contract DeployContributionsInstance is Common {
         // paramsHash from the params file + the just-registered schema UIDs (slots 19-21).
         // `ContributionsParamsCodec.hash` is byte-identical to `contributions_core::params::params_hash`
         // (golden-tested), so the value the guest commits matches what MerkleSnapshot stores.
-        bytes32 paramsHash = ContributionsParamsCodec.hash(
-            ContributionsParamsJson.read(paramsPath, claimUid, responseUid, valuationUid)
-        );
+        ContributionsParamsCodec.Params memory params =
+            ContributionsParamsJson.read(paramsPath, claimUid, responseUid, valuationUid);
+        bytes32 paramsHash = ContributionsParamsCodec.hash(params);
 
         // Journal v2 wiring: slot A (acc, leafCount) = the trust accumulator via the mirror;
         // slot B (anchorAcc, anchorCount) = the contribution accumulator via the resolver's
@@ -137,9 +143,9 @@ contract DeployContributionsInstance is Common {
             IZkVerifier(address(verifier)),
             paramsHash,
             IAttestationAccumulator(address(mirror)),
-            // Deployer holds the roles during wiring; hand-off below.
+            // Deployer holds both roles during wiring; hand-off below.
             deployer,
-            operational
+            deployer
         );
         snapshot.setAnchorRegistry(IAnchorRegistry(address(resolver)));
         // M6-1: only the snapshot's trigger() may mint mirror checkpoints (a directly-minted id
@@ -148,6 +154,14 @@ contract DeployContributionsInstance is Common {
         if (epochLength > 0) {
             snapshot.setEpochLength(epochLength);
         }
+
+        // A unique public directory id, bound to both the label namespace and this snapshot.
+        bytes32 instanceId = keccak256(abi.encode(deployer, "contributions", outLabel, address(snapshot)));
+        ContributionsParamsController paramsController = new ContributionsParamsController(
+            instanceId, address(snapshot), eas, instanceRegistry, params, operational, deployer
+        );
+        snapshot.grantRole(snapshot.OPERATIONAL_ROLE(), address(paramsController));
+        snapshot.renounceRole(snapshot.OPERATIONAL_ROLE(), deployer);
         if (constitutional != deployer) {
             snapshot.grantRole(snapshot.CONSTITUTIONAL_ROLE(), constitutional);
             snapshot.renounceRole(snapshot.CONSTITUTIONAL_ROLE(), deployer);
@@ -165,6 +179,21 @@ contract DeployContributionsInstance is Common {
         TestUSDC poolToken = new TestUSDC();
         poolToken.mint(deployer, poolMint);
 
+        // Register before publishing version 1. Streaming consumers learn the controller address
+        // from ParamsAuthorityUpdated, then observe the complete tuple in the following log.
+        instanceRegistry.registerWithParamsAuthority(
+            instanceId,
+            IInstanceRegistry.Instance({
+                program: keccak256("contributions"),
+                snapshot: address(snapshot),
+                verifier: address(verifier),
+                registryOrAccumulator: address(resolver),
+                paramsHash: paramsHash
+            }),
+            address(paramsController)
+        );
+        paramsController.publishInitialVersion();
+
         vm.stopBroadcast();
 
         // Keep the prover's params file in sync with the registered schema UIDs (paramsHash already
@@ -178,6 +207,8 @@ contract DeployContributionsInstance is Common {
         console.log("SP1JournalVerifier:    ", address(verifier));
         console.log("MerkleSnapshot:        ", address(snapshot));
         console.log("MerkleFundDistributor: ", address(distributor));
+        console.log("ParamsController:      ", address(paramsController));
+        console.log("instanceId:            ", vm.toString(instanceId));
         console.log("TestUSDC:              ", address(poolToken));
         console.log("paramsHash:            ", vm.toString(paramsHash));
 
@@ -190,6 +221,8 @@ contract DeployContributionsInstance is Common {
         contractsJson.serialize("sp1_gateway", Strings.toChecksumHexString(gateway));
         contractsJson.serialize("zk_verifier", Strings.toChecksumHexString(address(verifier)));
         contractsJson.serialize("merkle_snapshot", Strings.toChecksumHexString(address(snapshot)));
+        contractsJson.serialize("params_controller", Strings.toChecksumHexString(address(paramsController)));
+        contractsJson.serialize("instance_registry", Strings.toChecksumHexString(address(instanceRegistry)));
         contractsJson.serialize("fund_distributor", Strings.toChecksumHexString(address(distributor)));
         string memory finalContractsJson =
             contractsJson.serialize("pool_token", Strings.toChecksumHexString(address(poolToken)));
@@ -234,6 +267,7 @@ contract DeployContributionsInstance is Common {
 
         string memory _json = "json";
         _json.serialize("deployer", Strings.toChecksumHexString(deployer));
+        _json.serialize("instance_id", vm.toString(instanceId));
         _json.serialize("params_hash", vm.toString(paramsHash));
         _json.serialize("epoch_length", uint256(epochLength));
         _json.serialize("contracts", finalContractsJson);
