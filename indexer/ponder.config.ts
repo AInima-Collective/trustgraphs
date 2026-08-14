@@ -6,6 +6,7 @@ import { Hex, getAbiItem } from 'viem'
 
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
+import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
@@ -273,6 +274,13 @@ export default createConfig({
     },
     migratedTrustgraphsParamsController: {
       abi: trustgraphsParamsControllerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: INSTANCE_REGISTRY
+        ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }
+        : {},
+    },
+    contributionsParamsController: {
+      abi: contributionsParamsControllerAbi,
       startBlock: CORE_START_BLOCK,
       chain: INSTANCE_REGISTRY
         ? { [CORE_CHAIN]: { address: migratedParamsControllers() } }

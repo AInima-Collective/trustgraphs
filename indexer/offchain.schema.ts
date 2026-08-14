@@ -160,7 +160,7 @@ export const hypercertsScore = offchainSchema.table(
 // journal commitments, the validated params snapshot, and the verification verdict of the display
 // recompute. Populated on `MerkleRootUpdated` by `ingestContributionsScores` (src/contributions.ts):
 // the indexer re-derives the FULL stage-2 computation from its own fold-log rows (truncated to the
-// checkpointed leaf counts) + the params sidecar, and only writes score/audit rows when the
+// checkpointed leaf counts) + the controller event tuple selected by checkpoint paramsHash, and only writes score/audit rows when the
 // recomputed output root equals the proven on-chain root. `verified = false` rows exist so the API
 // can answer 409 ("refuse to serve") instead of silently serving nothing — the recompute is a
 // display validation, never a second source of truth.
@@ -178,8 +178,8 @@ export const contributionRound = offchainSchema.table(
     anchorAcc: t.text().notNull(),
     anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
     paramsHash: t.text().notNull(),
-    // The validated params snapshot (bigints as decimal strings), from the params sidecar whose
-    // hash reproduced the on-chain paramsHash. Null when the sidecar was missing/invalid.
+    // The validated params snapshot (bigints as decimal strings), from the on-chain controller
+    // event whose hash reproduced the checkpoint paramsHash. Null when history was unavailable/invalid.
     params: t.jsonb().$type<Record<string, unknown> | null>(),
     // uint64 unix seconds (null without valid params). numeric(78,0), NOT int8: an open-ended
     // round pins roundEnd = u64::MAX (1.8e19), which overflows Postgres bigint (~9.2e18).

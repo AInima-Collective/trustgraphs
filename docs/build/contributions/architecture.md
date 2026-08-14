@@ -62,8 +62,9 @@ the resolver's own allowlist index, not attacker-supplied.
 
 ## Proof + payout path
 
-`trigger()` → `prover contributions fetch` (re-folds the `EdgeFolded` logs of
-both lanes to the checkpointed accumulators, embeds the params sidecar) →
+`trigger()` → registry `paramsAuthority` → `ContributionsParamsUpdated` tuple →
+`prover contributions fetch` (re-folds the `EdgeFolded` logs of both lanes to
+the checkpointed accumulators and embeds that hash-checked public tuple) →
 guest: reconcile (revocation-excludes, LWW, round window) → stage-1 PageRank →
 stage-2 filters/budgets/consent/carve-out → `distribute_points_generic` →
 journal v3 (`paramsHash` = the 21-word tuple; `skippedDigest` = 0 in v1;

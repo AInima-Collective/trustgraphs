@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 6 issues closed, 11 remain.**
+> **Status (2026-08-13): 7 issues closed, 10 remain.**
 >
-> Closed after auditing `main` at `c7ee5ec` and rerunning the focused regressions:
+> Closed after auditing `main` at `9fdbe1f` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -12,10 +12,12 @@
 > - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
 >   repair (`131ecfd`)
 > - **#22** — atomic governed prepayment and payable initial policy (`f1ef43f`)
+> - **#28** — versioned canonical Contributions tuples, registry discovery, hard commitment checks,
+>   and sidecar-free public reproduction (`3de8943`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
 > Remaining launch-risk issues: **#12, #14, #20, #27**.
-> Remaining reproducibility and self-service issues: **#21, #28**.
+> Remaining reproducibility and self-service issue: **#21**.
 > Remaining research/product epics: **#34–#38**.
 
 Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
@@ -60,7 +62,7 @@ can proceed concurrently:
 | B · snapshot/vault hardening | #12, #14 | Bound hostile input growth and finish snapshot invariants | coordinate accumulator migration semantics |
 | C · self-serve economics | #22 closed | Make app prepayment activate a payable proving policy | `f1ef43f` |
 | D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
-| E · program self-service | #21, #28 | Factory signer-sync and reproducible Contributions params | none; separate PRs |
+| E · program self-service | #21; #28 closed | Factory signer-sync and reproducible Contributions params | `3de8943` for #28 |
 | F · decision closure | #37; #34 and #36 | Close bounded research questions with evidence and child issues | independent research tracks |
 | G · agent product | #35, #38 | ERC-8004 enrichment and delegated action/voting | shared agent UX only; avoid coupling proofs |
 
@@ -251,6 +253,15 @@ is automatically discovered and operational end to end.
 
 ### M3.1 · #28 — publish and reconstruct Contributions parameters
 
+**Closed in `3de8943`.** New Contributions deployments register a typed parameter controller that
+emits every complete canonical tuple and binds it to the instance ID, snapshot, EAS, and registry.
+Rotations atomically update the controller, snapshot, and registry commitments while preserving
+version history. The scanner, operator, indexer, and verifier tooling reconstruct from that public
+history and fail closed on any event/getter/controller/snapshot/registry mismatch; the prover now
+rejects a known mismatch before constructing an input. The Anvil acceptance test removes the local
+draft, gives the reproducer only RPC/registry/start-block inputs, rebuilds the checkpoint, submits a
+nonzero accepted root, and independently reproduces that exact root from chain history.
+
 - Introduce a Contributions deployer/factory or immutable parameter publisher that emits the full
   canonical parameter tuple and binds it to the snapshot/instance ID.
 - Teach `instance_scan`, the operator, indexer, and verifier tooling to reconstruct the tuple from
@@ -387,10 +398,10 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #14, #28, and #37 — three independently closable issues.
+- **Near term:** #14 and #37 — two independently closable issues.
 - **Production track:** #12, #20, and then #27 — three security/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 11 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 10 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.

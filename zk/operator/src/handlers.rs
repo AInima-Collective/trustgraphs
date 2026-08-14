@@ -162,6 +162,10 @@ pub fn build_input(
             )?;
         }
         Program::Contributions => {
+            // The mirrored trust accumulator predates the Contributions registration. The public
+            // registry scan floor is guaranteed to precede all factory/deploy children; starting
+            // at this round's registration block can silently omit earlier trust edges.
+            let contributions_from_block = cfg.registry_from_block.to_string();
             run_tool(
                 "cargo",
                 vec![
@@ -185,6 +189,8 @@ pub fn build_input(
                     &checkpoint_id.to_string(),
                     "--params",
                     &params_path,
+                    "--from-block",
+                    &contributions_from_block,
                     "--recipient",
                     &format!("{recipient:#x}"),
                     "--out",
@@ -514,14 +520,22 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
     }
     // A factory instance's params came from the chain, so write them out for the tool that needs
     // a file. Nothing is typed in; this is a serialization step, not configuration.
-    let params = entry
-        .params
-        .as_ref()
-        .ok_or_else(|| anyhow!("no params for {} and no manifest entry", entry.name))?;
     let dir = PathBuf::from(".trustgraph/operator").join(format!("{:#x}", entry.instance_id));
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("params.json");
-    std::fs::write(&path, serde_json::to_string_pretty(params)?)?;
+    let encoded = if entry.program == Program::Contributions {
+        serde_json::to_string_pretty(entry.contributions_params.as_ref().ok_or_else(|| {
+            anyhow!("no contributions params for {} and no manifest entry", entry.name)
+        })?)?
+    } else {
+        serde_json::to_string_pretty(
+            entry
+                .params
+                .as_ref()
+                .ok_or_else(|| anyhow!("no params for {} and no manifest entry", entry.name))?,
+        )?
+    };
+    std::fs::write(&path, encoded)?;
     Ok(path.display().to_string())
 }
 

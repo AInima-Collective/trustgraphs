@@ -464,7 +464,7 @@ export class DevEnv extends EnvBase {
           name: 'Contributions',
           script:
             'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
-          sig: 'run(string,string,string,string,string,string)',
+          sig: 'run(string,string,string,string,string,string,string)',
           args: () => {
             // Provision the contributions params file from its committed template if absent
             // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
@@ -492,6 +492,10 @@ export class DevEnv extends EnvBase {
               // address, no code on a plain anvil — and the contributions verifier immutably
               // reverts every submitProof while the trust instance (built over the mock) works.
               gatewayAddress(),
+              readJsonKey(
+                '.docker/instance_registry_deploy.json',
+                'instance_registry'
+              ),
             ]
           },
         },
@@ -597,6 +601,7 @@ export class DevEnv extends EnvBase {
       )
     }
 
+    network.id = deploy.instance_id
     network.contracts = {
       merkleSnapshot: deploy.contracts.merkle_snapshot,
       contributionResolver: deploy.contracts.contribution_resolver,
@@ -605,6 +610,7 @@ export class DevEnv extends EnvBase {
       merkleFundDistributor: deploy.contracts.fund_distributor,
       zkVerifier: deploy.contracts.zk_verifier,
       poolToken: deploy.contracts.pool_token,
+      paramsController: deploy.contracts.params_controller,
     } as unknown as Network['contracts']
     network.schemas = [
       deploy.schemas.claim,

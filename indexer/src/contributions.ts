@@ -1,7 +1,4 @@
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
 import {
   accumulatorRecord,
@@ -9,20 +6,20 @@ import {
   contributionClaimContributor,
   contributionResponse,
   contributionValuation,
+  contributionsParameterVersion,
 } from 'ponder:schema'
 import { type Hex, decodeAbiParameters, decodeFunctionData } from 'viem'
 
 import * as offchainSchema from '../offchain.schema'
 import { offchainDb } from './api/db'
 import {
-  type ContributionsParamsFile,
   applyDiscountStatus,
   contributionsInstanceForSnapshot,
   contributionsParamsHash,
   deriveAudit,
   deriveScores,
   paramsSnapshot,
-  parseParamsFile,
+  parseParamsSnapshot,
   rowsToRawEdges,
 } from './contributions-shared'
 import {
@@ -416,24 +413,6 @@ ponder.on(
       Derived scoring on MerkleRootUpdated (root-validated)
 //////////////////////////////////////////////////////////////*/
 
-/**
- * The params sidecar the prover ran with (`params.contributions.json` at the repo root by
- * default; `CONTRIBUTIONS_PARAMS_PATH` overrides). Availability, not truth — the parsed params
- * are only used once their 21-word hash reproduces the snapshot's on-chain `paramsHash`.
- */
-const loadParamsFile = (): ContributionsParamsFile | null => {
-  const p = path.resolve(
-    process.cwd(),
-    process.env.CONTRIBUTIONS_PARAMS_PATH ?? '../params.contributions.json'
-  )
-  try {
-    return JSON.parse(readFileSync(p, 'utf8')) as ContributionsParamsFile
-  } catch (e) {
-    console.warn(`contributions: could not read params sidecar at ${p}: ${e}`)
-    return null
-  }
-}
-
 /** Read the ordered fold log for one accumulator, truncated to the checkpointed leaf count. */
 const loadFoldLog = async (
   context: any,
@@ -484,7 +463,7 @@ const upsertRound = async (
 
 /**
  * Ingest one contributions `MerkleRootUpdated`: rebuild the guest's exact computation from the
- * indexer's own fold-log rows + the validated params sidecar, assert every commitment
+ * indexer's own fold-log rows + the controller's hash-selected on-chain tuple, assert every commitment
  * (accumulators, paramsHash, output root, blob), and only then publish `contribution_score` +
  * `contribution_valuation_audit` rows. A mismatch writes `contribution_round.verified = false`
  * and NOTHING else, so the API refuses (409) instead of serving unproven numbers.
@@ -585,7 +564,8 @@ export async function ingestContributionsScores(
     chainParamsHash = (await context.client.readContract({
       address: snapshot,
       abi: merkleSnapshotAbi,
-      functionName: 'paramsHash',
+      functionName: 'checkpointParamsHash',
+      args: [checkpointId],
     })) as Hex
     trustAcc = checkpoint.acc
     trustLeafCount = BigInt(checkpoint.leafCount)
@@ -607,17 +587,40 @@ export async function ingestContributionsScores(
     paramsHash: chainParamsHash,
   }
 
-  // 3. Params sidecar, trusted only if it reproduces the on-chain paramsHash.
-  const file = loadParamsFile()
-  if (file === null) {
-    await refuse('params sidecar missing/unreadable', committed)
+  // 3. Full tuple selected from append-only controller history by the CHECKPOINT'S pinned hash.
+  // Reading the current snapshot hash here would be wrong after a round rotates but an older
+  // checkpoint is still being submitted.
+  const versions = await context.db.sql
+    .select()
+    .from(contributionsParameterVersion)
+    .where(
+      and(
+        eq(
+          contributionsParameterVersion.snapshot,
+          snapshot.toLowerCase() as Hex
+        ),
+        eq(contributionsParameterVersion.paramsHash, chainParamsHash),
+        eq(contributionsParameterVersion.valid, true)
+      )
+    )
+    .orderBy(desc(contributionsParameterVersion.version))
+    .limit(1)
+  const version = versions[0]
+  if (!version) {
+    await refuse(
+      'no valid on-chain ContributionsParamsUpdated tuple matches the checkpoint paramsHash',
+      committed
+    )
     return
   }
   let params
   try {
-    params = parseParamsFile(file)
+    params = parseParamsSnapshot(version.params as Record<string, unknown>)
   } catch (e) {
-    await refuse(`params sidecar malformed: ${e}`, committed)
+    await refuse(
+      `on-chain params tuple malformed after indexing: ${e}`,
+      committed
+    )
     return
   }
   if (
@@ -625,7 +628,7 @@ export async function ingestContributionsScores(
     chainParamsHash.toLowerCase()
   ) {
     await refuse(
-      'params sidecar does not reproduce the on-chain paramsHash',
+      'indexed on-chain tuple does not reproduce the checkpoint paramsHash',
       committed
     )
     return

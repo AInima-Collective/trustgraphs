@@ -25,6 +25,7 @@ path = "src/bin/instance_scan.rs"
 
 [dependencies]
 pagerank-core = { path = "../pagerank-core" }
+contributions-core = { path = "../contributions-core" }
 envelopes_crate = { path = "../envelopes", package = "envelopes" }
 zk-core = { path = "../zk-core" }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }

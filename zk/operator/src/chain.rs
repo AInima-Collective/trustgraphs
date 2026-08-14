@@ -6,7 +6,8 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::{
-    CatalogEntry, ChainReader, ControllerParams, CreatedParams, RegistryRecord,
+    CatalogEntry, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
+    RegistryRecord,
 };
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::Params;
@@ -23,6 +24,15 @@ sol! {
         address[] trustedSeeds; uint256 totalPool; uint256 precisionScale; bytes32 schemaUid;
         uint32 weightFieldIndex; bytes32[] envelope0DomainSeparators; uint64 lane2MaxHeadAge;
         address accumulator; uint64 chainId;
+    }
+
+    struct SolContributionsParams {
+        uint256 dampingFp; uint256 toleranceFp; uint32 maxIterations; uint256 minWeightFp;
+        uint256 maxWeightFp; uint256 trustMultiplierFp; uint256 trustShareFp; uint256 trustDecayFp;
+        address[] trustedSeeds; uint256 precisionScale; uint32 weightFieldIndex;
+        uint64 roundStart; uint64 roundEnd; uint256 unacceptedMultFp; uint256 collaboratorMultFp;
+        uint256 minRaterRepFp; uint32 evaluatorCarveoutBps; uint256 totalPool;
+        bytes32 claimSchemaUid; bytes32 responseSchemaUid; bytes32 valuationSchemaUid;
     }
 
     event InstanceCreated(
@@ -52,6 +62,14 @@ sol! {
     event ParamsUpdated(
         bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
         bytes32 previousParamsHash, SolParams params, string evidenceURI
+    );
+
+    /// `ContributionsParamsController`.
+    function eas() external view returns (address);
+    function getContributionsParams() external view returns (SolContributionsParams);
+    event ContributionsParamsUpdated(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 previousParamsHash, SolContributionsParams params, string evidenceURI
     );
 
     /// `MerkleSnapshot` — journal v3.
@@ -505,6 +523,13 @@ impl ChainReader for RpcCatalog<'_> {
         Ok(paramsAuthorityCall::abi_decode_returns(&ret)?)
     }
 
+    fn registration_block(&self, id: B256) -> Result<u64> {
+        self.registered_in
+            .get(&id)
+            .map(|(block, _)| *block)
+            .ok_or_else(|| anyhow!("no InstanceRegistered event for {id:#x}"))
+    }
+
     fn created_params(&self, id: B256) -> Result<Option<CreatedParams>> {
         let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
             return Ok(None);
@@ -547,6 +572,32 @@ impl ChainReader for RpcCatalog<'_> {
         })
     }
 
+    fn contributions_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<ContributionsControllerParams> {
+        let call = |data: Vec<u8>| self.rpc.eth_call(controller, data);
+        let instance_id =
+            instanceIdCall::abi_decode_returns(&call(instanceIdCall {}.abi_encode())?)?;
+        let snapshot = snapshotCall::abi_decode_returns(&call(snapshotCall {}.abi_encode())?)?;
+        let eas = easCall::abi_decode_returns(&call(easCall {}.abi_encode())?)?;
+        let version = versionCall::abi_decode_returns(&call(versionCall {}.abi_encode())?)?;
+        let current_params_hash = currentParamsHashCall::abi_decode_returns(&call(
+            currentParamsHashCall {}.abi_encode(),
+        )?)?;
+        let params = getContributionsParamsCall::abi_decode_returns(&call(
+            getContributionsParamsCall {}.abi_encode(),
+        )?)?;
+        Ok(ContributionsControllerParams {
+            instance_id,
+            snapshot,
+            eas,
+            version,
+            current_params_hash,
+            params: to_contributions_params(&params),
+        })
+    }
+
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256> {
         let ret = self.rpc.eth_call(snapshot, paramsHashCall {}.abi_encode())?;
         Ok(paramsHashCall::abi_decode_returns(&ret)?)
@@ -582,6 +633,32 @@ fn to_core_params(p: &SolParams) -> Params {
         lane2_max_head_age: p.lane2MaxHeadAge,
         accumulator: p.accumulator,
         chain_id: p.chainId,
+    }
+}
+
+fn to_contributions_params(p: &SolContributionsParams) -> contributions_core::Params {
+    contributions_core::Params {
+        damping_fp: p.dampingFp,
+        tolerance_fp: p.toleranceFp,
+        max_iterations: p.maxIterations,
+        min_weight_fp: p.minWeightFp,
+        max_weight_fp: p.maxWeightFp,
+        trust_multiplier_fp: p.trustMultiplierFp,
+        trust_share_fp: p.trustShareFp,
+        trust_decay_fp: p.trustDecayFp,
+        trusted_seeds: p.trustedSeeds.clone(),
+        precision_scale: p.precisionScale,
+        weight_field_index: p.weightFieldIndex,
+        round_start: p.roundStart,
+        round_end: p.roundEnd,
+        unaccepted_mult_fp: p.unacceptedMultFp,
+        collaborator_mult_fp: p.collaboratorMultFp,
+        min_rater_rep_fp: p.minRaterRepFp,
+        evaluator_carveout_bps: p.evaluatorCarveoutBps,
+        total_pool: p.totalPool,
+        claim_schema_uid: p.claimSchemaUid,
+        response_schema_uid: p.responseSchemaUid,
+        valuation_schema_uid: p.valuationSchemaUid,
     }
 }
 
@@ -857,24 +934,48 @@ pub fn entry_at_params_hash(
             entry.name
         )
     })?;
-    let logs =
-        rpc.logs(controller, ParamsUpdated::SIGNATURE_HASH, entry.created_block, head, 10_000)?;
+    let event_signature = match entry.program {
+        operator_core::types::Program::Contributions => ContributionsParamsUpdated::SIGNATURE_HASH,
+        _ => ParamsUpdated::SIGNATURE_HASH,
+    };
+    let logs = rpc.logs(controller, event_signature, entry.created_block, head, 10_000)?;
     for log in logs {
-        let event = ParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
-        if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
-            continue;
+        if entry.program == operator_core::types::Program::Contributions {
+            let event =
+                ContributionsParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_contributions_params(&event.params);
+            let reconstructed = contributions_core::params::params_hash(&params);
+            anyhow::ensure!(
+                reconstructed == params_hash,
+                "contributions controller event tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
+            );
+            let mut historical = entry.clone();
+            historical.params = None;
+            historical.contributions_params = Some(params);
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
+        } else {
+            let event = ParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_core_params(&event.params);
+            let reconstructed = pagerank_core::encode::params_hash(&params);
+            anyhow::ensure!(
+                reconstructed == params_hash,
+                "controller event tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
+            );
+            let mut historical = entry.clone();
+            historical.params = Some(params);
+            historical.contributions_params = None;
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
         }
-        let params = to_core_params(&event.params);
-        let reconstructed = pagerank_core::encode::params_hash(&params);
-        anyhow::ensure!(
-            reconstructed == params_hash,
-            "controller event tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
-        );
-        let mut historical = entry.clone();
-        historical.params = Some(params);
-        historical.reconstructed_params_hash = reconstructed;
-        historical.params_version = Some(event.version);
-        return Ok(historical);
     }
     bail!(
         "no ParamsUpdated event for instance {:#x} and pinned hash {params_hash:#x}",

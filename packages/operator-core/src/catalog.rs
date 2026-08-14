@@ -17,6 +17,7 @@
 //! verify, or (before journal v3) one valid for a *different* instance.
 
 use alloy_primitives::{Address, B256};
+use contributions_core::Params as ContributionsParams;
 use pagerank_core::{encode, Params};
 
 use crate::manifest::{Manifest, ManifestEntry};
@@ -38,6 +39,9 @@ pub trait ChainReader {
     /// `InstanceRegistry.paramsAuthority(id)`. Zero identifies an unmigrated legacy row.
     fn params_authority(&self, id: B256) -> Result<Address, Self::Error>;
 
+    /// Block containing the first `InstanceRegistered` event for this id.
+    fn registration_block(&self, id: B256) -> Result<u64, Self::Error>;
+
     /// The full params the factory emitted for this id, reconstructed from the `InstanceCreated`
     /// log in the registering transaction's receipt. `None` when there is no such log — which is
     /// the normal case for anything the factory did not mint.
@@ -45,6 +49,12 @@ pub trait ChainReader {
 
     /// Complete current tuple read directly from a registered typed controller.
     fn controller_params(&self, controller: Address) -> Result<ControllerParams, Self::Error>;
+
+    /// Complete Contributions tuple and public EAS read from its typed controller.
+    fn contributions_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<ContributionsControllerParams, Self::Error>;
 
     /// `MerkleSnapshot.paramsHash()`.
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error>;
@@ -83,6 +93,16 @@ pub struct ControllerParams {
     pub params: Params,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContributionsControllerParams {
+    pub instance_id: B256,
+    pub snapshot: Address,
+    pub eas: Address,
+    pub version: u64,
+    pub current_params_hash: B256,
+    pub params: ContributionsParams,
+}
+
 /// A fully reconstructed, self-checked instance the operator can act on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -93,6 +113,8 @@ pub struct CatalogEntry {
     pub verifier: Address,
     /// `None` for a manifest instance whose params come from a file rather than an event.
     pub params: Option<Params>,
+    /// Complete tuple for a chain-described contributions round.
+    pub contributions_params: Option<ContributionsParams>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,
     /// Typed control metadata. Both are absent for legacy and manifest instances.
@@ -227,6 +249,7 @@ pub fn scan<R: ChainReader>(
             accumulator: Address::ZERO,
             verifier: Address::ZERO,
             params: None,
+            contributions_params: None,
             reconstructed_params_hash: on_chain,
             params_controller: None,
             params_version: None,
@@ -261,6 +284,98 @@ fn scan_one<R: ChainReader>(
         });
     }
 
+    let controller = reader.params_authority(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+
+    // Contributions deployments do not emit the trust factory's InstanceCreated event. Their
+    // typed controller is the creation record: it publishes the full tuple, EAS, instance id,
+    // snapshot, and every later version.
+    if program == Program::Contributions {
+        if controller == Address::ZERO {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::Undescribable,
+            });
+        }
+        let current = reader.contributions_controller_params(controller).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ControllerInconsistent(format!("controller read failed: {e}")),
+        })?;
+        let reconstructed = contributions_core::params::params_hash(&current.params);
+        let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        let mut disagreements = Vec::new();
+        if current.instance_id != id {
+            disagreements.push(format!(
+                "controller instance {:#x} != registry id {id:#x}",
+                current.instance_id
+            ));
+        }
+        if current.snapshot != record.snapshot {
+            disagreements.push(format!(
+                "controller snapshot {:#x} != registry snapshot {:#x}",
+                current.snapshot, record.snapshot
+            ));
+        }
+        if current.eas == Address::ZERO {
+            disagreements.push("controller EAS is zero".to_string());
+        }
+        if reconstructed != current.current_params_hash {
+            disagreements.push(format!(
+                "params_hash(full tuple) {reconstructed:#x} != controller hash {:#x}",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != snapshot_hash {
+            disagreements.push(format!(
+                "controller hash {:#x} != snapshot live hash {snapshot_hash:#x}",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != record.params_hash {
+            disagreements.push(format!(
+                "controller hash {:#x} != registry hash {:#x}",
+                current.current_params_hash, record.params_hash
+            ));
+        }
+        if !disagreements.is_empty() {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::ControllerInconsistent(disagreements.join("; ")),
+            });
+        }
+        let created_block = reader.registration_block(id).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        return Ok(Some(CatalogEntry {
+            instance_id: id,
+            program,
+            snapshot: record.snapshot,
+            accumulator: record.registry_or_accumulator,
+            verifier: record.verifier,
+            params: None,
+            contributions_params: Some(current.params),
+            reconstructed_params_hash: reconstructed,
+            params_controller: Some(controller),
+            params_version: Some(current.version),
+            eas: Some(current.eas),
+            created_block,
+            name: format!("contributions @ {id:#x}"),
+            manifest: None,
+        }));
+    }
+
     let created = reader.created_params(id).map_err(|e| Skipped {
         instance_id: id,
         snapshot: record.snapshot,
@@ -284,12 +399,6 @@ fn scan_one<R: ChainReader>(
             },
         });
     }
-
-    let controller = reader.params_authority(id).map_err(|e| Skipped {
-        instance_id: id,
-        snapshot: record.snapshot,
-        reason: SkipCause::ReadFailed(e.to_string()),
-    })?;
 
     if controller != Address::ZERO {
         let current = reader.controller_params(controller).map_err(|e| Skipped {
@@ -351,6 +460,7 @@ fn scan_one<R: ChainReader>(
             accumulator: record.registry_or_accumulator,
             verifier: record.verifier,
             params: Some(current.params),
+            contributions_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
@@ -387,6 +497,7 @@ fn scan_one<R: ChainReader>(
         accumulator: record.registry_or_accumulator,
         verifier: record.verifier,
         params: Some(created.params),
+        contributions_params: None,
         reconstructed_params_hash: reconstructed,
         params_controller: None,
         params_version: None,

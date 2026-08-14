@@ -367,8 +367,9 @@ tasks:
         CONTRIBUTIONS_PROGRAM_VKEY=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
           cargo run -q --release -- contributions vkey) \
         forge script script/DeployContributionsInstance.s.sol:DeployContributionsInstance \
-          --sig 'run(string,string,string,string,string,string)' \
+          --sig 'run(string,string,string,string,string,string,string)' \
           'demo' "$EAS" "$REGISTRAR" "$RESOLVER" "$PARAMS" "$GATEWAY" \
+          "$(jq -r .instance_registry .docker/instance_registry_deploy.json)" \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
         echo "  ✓ contributions instance over the demo network's graph"
 
@@ -382,21 +383,11 @@ tasks:
         CHAIN=$(cast chain-id --rpc-url {{.RPC}})
         : "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?}"
 
-        # The contributions instance is invisible to the registry scan — DeployContributionsInstance
-        # writes a summary file and stops, no InstanceRegistered row — so the daemon can only see it
-        # through a manifest entry (operator-core's manifest.rs names this exact case). Its id is
-        # therefore DERIVED, not registered: keccak(snapshot ‖ chain_id as 8 BE bytes ‖ the ASCII
-        # program name), the same derivation ManifestEntry::derived_id uses. Reproduce it here so
-        # [curated] below can name the instance. Curated rather than paid, and not only for
-        # simplicity: the vault prices per REGISTERED program, so it has no quote for an instance
-        # with no registry row — and "networks we curate are proven on us" is the tier this
-        # demonstrates anyway (the trust root demonstrates the paid one).
-        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
-          .docker/deployment_summary.json 2>/dev/null | tr 'A-F' 'a-f')
+        # Contributions is registry-discoverable and publishes its full tuple through the typed
+        # params authority. Curate its registered id; no manifest or local params path is needed.
+        CONTRIB_ID=$(jq -r '.instance_id // empty' .docker/contributions_instance_dev_deploy.json 2>/dev/null)
         CURATED="[]"
-        if [ -n "$CSNAP" ]; then
-          PROG_HEX=$(printf 'contributions' | od -An -v -tx1 | tr -d ' \n')
-          CONTRIB_ID=$(cast keccak "0x${CSNAP#0x}$(printf '%016x' "$CHAIN")${PROG_HEX}")
+        if [ -n "$CONTRIB_ID" ]; then
           CURATED="[\"$CONTRIB_ID\"]"
         fi
 
@@ -409,8 +400,7 @@ tasks:
         registry = "$REG"
         chain_id = $CHAIN
 
-        # Proven on us. This list IS the free tier; there is no unconditional one. The demo's
-        # contribution round lives here: it has no registry row, so the vault cannot quote it.
+        # Proven on us. This list IS the free tier; there is no unconditional one.
         [curated]
         instances = $CURATED
 
@@ -445,22 +435,6 @@ tasks:
         status_path  = "{{.WORK}}/status.json"
         log_format   = "json"
         EOF
-        # TOML array-of-tables swallow every key that follows them, so [[manifest]] must be the
-        # LAST thing in the file — appended after the block above, never templated into it.
-        if [ -n "$CSNAP" ]; then
-        EAS=$(jq -r .eas .docker/eas_deploy.json)
-        cat >> {{.WORK}}/operator.toml <<EOF
-
-        # The contribution round: deployed by the main deploy, described by nothing on chain, so
-        # this pointer is what the daemon acts on. The params file is the deploy's own sidecar;
-        # the round tasks keep it and the pinned on-chain paramsHash in sync.
-        [[manifest]]
-        program  = "contributions"
-        snapshot = "$CSNAP"
-        params   = "params.contributions.json"
-        eas      = "$EAS"
-        EOF
-        fi
         echo "✓ {{.WORK}}/operator.toml"
 
   dry-run:
@@ -589,8 +563,8 @@ tasks:
         if [ "$V" != "true" ]; then
           echo "  ✗ the round never turned verified at {{.PONDER}}/contributions/$CSNAP/round"
           echo "    Either the indexer is behind (task demo:settle, wait, re-run task demo:payout),"
-          echo "    or it refused the params sidecar: it re-hashes params.contributions.json against"
-          echo "    the on-chain paramsHash and publishes nothing on a mismatch."
+          echo "    or it refused controller history: the indexed full tuple must hash to the"
+          echo "    checkpoint commitment before any scores are published."
           exit 1
         fi
 

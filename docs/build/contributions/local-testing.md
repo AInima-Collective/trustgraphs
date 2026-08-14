@@ -128,12 +128,11 @@ IPFS_PATH=~/.ipfs-dev ipfs init 2>/dev/null; IPFS_PATH=~/.ipfs-dev ipfs daemon -
 #   → initialise() → start() → createDatabase('ponder')
 ```
 
-`indexer/.env.local` needs the DB URL and the params sidecar path (the indexer, started in §3,
-refuses to publish scores unless this hash matches the on-chain `paramsHash`):
+`indexer/.env.local` needs the DB URL. Contributions params are reconstructed from the typed
+controller's event history and matched to each checkpoint hash:
 
 ```
 DATABASE_URL=postgresql://ponder:ponder@localhost:6432/ponder
-CONTRIBUTIONS_PARAMS_PATH=<absolute path to>/params.contributions.json
 ```
 
 ### 2. Deploy
@@ -188,9 +187,9 @@ exact `SchemaManager.encode` → `EAS.attest` seam the frontend screens drive):
 2. **C4, the out-of-window claim** — BOB self-claims *before* the window opens.
 3. **Window open** — `task contributions:open-round-window`: sets
    `round_start = latest block timestamp + 1`, `round_end = +7 days` in
-   `params.contributions.json`, recomputes the 21-word `paramsHash`
-   (`trustgraph-prover contributions paramshash`), and pins it with the
-   operational `setParamsHash`. C4 is now genuinely outside the window.
+   `params.contributions.json`, then publishes the complete tuple through
+   `ContributionsParamsController.updateParams`. The controller atomically updates the snapshot
+   and registry hashes and emits the public preimage. C4 is now genuinely outside the window.
 4. **The in-window fixture sequence** — C1 ALICE self-claim [ALICE:100];
    C2 BOB claim [BOB:60, CAROL:40]; C3 ALICE nomination [EVE:50, DAVE:50];
    C5 BOB self-claim [BOB:100]; CAROL accepts C2; EVE rejects C3; then the 12
@@ -366,10 +365,9 @@ task contributions:prove-round ID=<checkpoint>
 - **`prove --groth16`** — the on-chain path always takes the Groth16-shaped blob; under
   `SP1_PROVER=mock` the seal is empty and only the dev MockSP1Gateway accepts it.
 - **`--features fetch`** when building the prover, or the `contributions fetch` subcommand errors.
-- **`CONTRIBUTIONS_PARAMS_PATH`** — the indexer refuses to publish derived scores unless the
-  sidecar params file's 21-word hash reproduces the snapshot's on-chain `paramsHash` at ingest
-  time. Keep `params.contributions.json` in sync: the `open-round-window` task maintains it, so if
-  you rotate params by hand, rotate the file in the same breath, **before** `submit-proof`.
+- **Params history** — the indexer refuses to publish derived scores unless a valid
+  `ContributionsParamsUpdated` event tuple reproduces the checkpoint's pinned `paramsHash`.
+  Rotate through the controller; direct snapshot hash mutation is unavailable on new instances.
 - **`NEXT_PUBLIC_TG_REVIEW_FIXTURES` must stay OFF** (unset). It exists only for building and
   reviewing screens without live data; with it set to `1`, the pages read built-in review
   fixtures instead of the live API.

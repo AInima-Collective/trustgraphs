@@ -22,7 +22,9 @@ import {
   contributionsParamsHash,
   deriveAudit,
   deriveScores,
+  paramsSnapshot,
   parseParamsFile,
+  parseParamsSnapshot,
   rowsToRawEdges,
 } from './contributions-shared'
 import * as contributionsLibNs from '../../frontend/lib/contributions'
@@ -111,6 +113,15 @@ const result = computeContributions({ trustEdges, records, params })
 
 test('params sidecar (snake_case hex) parses to the identical paramsHash', () => {
   const parsed = parseParamsFile(sidecarOf(params))
+  assert.deepEqual(parsed, params)
+  assert.equal(
+    contributionsParamsHash(parsed),
+    golden.compute.journal.paramsHash
+  )
+})
+
+test('on-chain controller snapshot round-trips to the identical paramsHash', () => {
+  const parsed = parseParamsSnapshot(paramsSnapshot(params))
   assert.deepEqual(parsed, params)
   assert.equal(
     contributionsParamsHash(parsed),

@@ -1465,6 +1465,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "clap",
+ "contributions-core",
  "envelopes",
  "hex",
  "k256",
@@ -1767,6 +1768,7 @@ name = "operator-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
+ "contributions-core",
  "pagerank-core",
  "serde",
  "serde_json",
