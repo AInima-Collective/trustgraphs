@@ -121,6 +121,7 @@ const sanitizeAction = (value: unknown) => {
       'trigger',
       'await_finality',
       'prove',
+      'publish',
       'submit',
       'hold',
       'skip',
@@ -146,6 +147,8 @@ const sanitizeAction = (value: unknown) => {
     confirmations: safeInteger(input.confirmations),
     requiredConfirmations: safeInteger(input.required),
     boundaryBlock: safeInteger(input.boundary),
+    attempts: safeInteger(input.attempts),
+    retryAt: safeInteger(input.retry_at),
   }
 }
 
@@ -175,6 +178,9 @@ const sanitizeSettings = (value: unknown) => {
     budgetWindowSeconds: safeInteger(input.budget_window_seconds),
     publishesScores: boolean(input.publishes_scores),
     verifiesScoreReadback: boolean(input.verifies_score_readback),
+    publicationTargetCount: safeInteger(input.publication_target_count),
+    publicationMinimum: safeInteger(input.publication_min_success),
+    publicationRetrySeconds: safeInteger(input.publication_retry_seconds),
   }
 }
 

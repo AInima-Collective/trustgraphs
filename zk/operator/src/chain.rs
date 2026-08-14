@@ -4,8 +4,10 @@
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
-use anyhow::{anyhow, Context, Result};
-use operator_core::catalog::{ChainReader, ControllerParams, CreatedParams, RegistryRecord};
+use anyhow::{anyhow, bail, Context, Result};
+use operator_core::catalog::{
+    CatalogEntry, ChainReader, ControllerParams, CreatedParams, RegistryRecord,
+};
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::Params;
 use serde_json::{json, Value};
@@ -47,10 +49,15 @@ sol! {
     function version() external view returns (uint64);
     function currentParamsHash() external view returns (bytes32);
     function getCurrentParams() external view returns (SolParams);
+    event ParamsUpdated(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 previousParamsHash, SolParams params, string evidenceURI
+    );
 
     /// `MerkleSnapshot` — journal v3.
     function paramsHash() external view returns (bytes32);
     function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
+    function checkpointRecipient(uint256 checkpointId) external view returns (address);
     function epochLength() external view returns (uint64);
     function lastTriggerBlock() external view returns (uint64);
     function hasAppliedCheckpoint() external view returns (bool);
@@ -65,6 +72,15 @@ sol! {
         uint256 checkpointId, bytes32 outputRoot, bytes32 ipfsHash, string ipfsHashCid,
         uint256 totalValue, bytes32 skippedDigest, address recipient, bytes proof
     ) external;
+    struct MerkleState {
+        uint256 blockNumber; uint256 timestamp; bytes32 root; bytes32 ipfsHash;
+        string ipfsHashCid; uint256 totalValue;
+    }
+    function getStateAtBlock(uint256 blockNumber) external view returns (MerkleState);
+    event MerkleProofSubmitted(
+        uint256 indexed checkpointId, bytes32 indexed root, address indexed prover,
+        address recipient
+    );
 
     /// `AttestationAccumulator`.
     struct Checkpoint { bytes32 acc; uint64 leafCount; uint64 blockNumber; }
@@ -585,6 +601,16 @@ pub struct SnapshotView {
     pub live: Commitments,
 }
 
+/// The chain facts that bind one landed checkpoint to the bytes a repair command reconstructs.
+pub struct LandedPublication {
+    pub submitted_block: u64,
+    pub output_root: B256,
+    pub ipfs_hash: B256,
+    pub cid: String,
+    pub total_value: U256,
+    pub recipient: Address,
+}
+
 /// How many trailing checkpoints to read. Only the newest unproven one is ever proved, so a full
 /// history walk would be pure RPC cost — but reading a few gives the coalescing branch something
 /// to coalesce and makes a stale `lastApplied` visible.
@@ -716,6 +742,144 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
             anchor_count: live_anchor_count,
         },
     })
+}
+
+/// Read one checkpoint directly, including ids older than the daemon's trailing scheduling
+/// window. The repair command is explicitly historical and cannot silently inherit that window.
+pub fn read_checkpoint(rpc: &Rpc, snapshot: Address, checkpoint_id: u64) -> Result<CheckpointRef> {
+    let accumulator =
+        word_addr(&rpc.eth_call(snapshot, accumulatorCall {}.abi_encode())?, "accumulator")?;
+    let ret = rpc
+        .eth_call(accumulator, getCheckpointCall { id: U256::from(checkpoint_id) }.abi_encode())
+        .with_context(|| format!("getCheckpoint({checkpoint_id})"))?;
+    let checkpoint = getCheckpointCall::abi_decode_returns(&ret)?;
+    let anchors = anchorCheckpointsCall::abi_decode_returns(&rpc.eth_call(
+        snapshot,
+        anchorCheckpointsCall { checkpointId: U256::from(checkpoint_id) }.abi_encode(),
+    )?)?;
+    let pinned = word32(
+        &rpc.eth_call(
+            snapshot,
+            checkpointParamsHashCall { checkpointId: U256::from(checkpoint_id) }.abi_encode(),
+        )?,
+        "checkpointParamsHash",
+    )?;
+    Ok(CheckpointRef {
+        id: checkpoint_id,
+        block_number: checkpoint.blockNumber,
+        commitments: Commitments {
+            acc: checkpoint.acc,
+            leaf_count: checkpoint.leafCount,
+            anchor_acc: anchors.anchorAcc,
+            anchor_count: anchors.anchorCount,
+        },
+        pinned_params_hash: (pinned != B256::ZERO).then_some(pinned),
+    })
+}
+
+/// Find the proof-submission event for a checkpoint and read the exact state filed at that
+/// checkpoint's input-freeze block. `getStateAtBlock` is an at-or-before lookup, so equality is
+/// checked explicitly; otherwise an unknown checkpoint could be mistaken for an older root.
+pub fn read_landed_publication(
+    rpc: &Rpc,
+    snapshot: Address,
+    checkpoint_id: u64,
+    checkpoint_block: u64,
+    from_block: u64,
+    head: u64,
+) -> Result<LandedPublication> {
+    let logs =
+        rpc.logs(snapshot, MerkleProofSubmitted::SIGNATURE_HASH, from_block, head, 10_000)?;
+    let mut matches = Vec::new();
+    for log in logs {
+        let event = MerkleProofSubmitted::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+        if event.checkpointId.to::<u64>() == checkpoint_id {
+            matches.push((log.block_number, event));
+        }
+    }
+    anyhow::ensure!(
+        matches.len() == 1,
+        "checkpoint {checkpoint_id} has {} MerkleProofSubmitted events; expected exactly one landed root",
+        matches.len()
+    );
+    let (submitted_block, event) = matches.pop().expect("length checked");
+    let state = getStateAtBlockCall::abi_decode_returns(&rpc.eth_call(
+        snapshot,
+        getStateAtBlockCall { blockNumber: U256::from(checkpoint_block) }.abi_encode(),
+    )?)?;
+    anyhow::ensure!(
+        state.blockNumber.to::<u64>() == checkpoint_block,
+        "state lookup for checkpoint {checkpoint_id} returned input block {}, expected its checkpoint block {checkpoint_block}",
+        state.blockNumber
+    );
+    anyhow::ensure!(
+        state.root == event.root,
+        "MerkleProofSubmitted root {:#x} disagrees with state root {:#x}",
+        event.root,
+        state.root
+    );
+    let mapped_recipient = word_addr(
+        &rpc.eth_call(
+            snapshot,
+            checkpointRecipientCall { checkpointId: U256::from(checkpoint_id) }.abi_encode(),
+        )?,
+        "checkpointRecipient",
+    )?;
+    anyhow::ensure!(
+        mapped_recipient == event.recipient,
+        "checkpoint recipient {mapped_recipient:#x} disagrees with submission event {:#x}",
+        event.recipient
+    );
+    Ok(LandedPublication {
+        submitted_block,
+        output_root: state.root,
+        ipfs_hash: state.ipfsHash,
+        cid: state.ipfsHashCid,
+        total_value: state.totalValue,
+        recipient: event.recipient,
+    })
+}
+
+/// Select the complete parameter tuple pinned to a historical checkpoint. Typed controller
+/// events carry every field, so rotation does not make old roots irreconstructible.
+pub fn entry_at_params_hash(
+    rpc: &Rpc,
+    entry: &CatalogEntry,
+    params_hash: B256,
+    head: u64,
+) -> Result<CatalogEntry> {
+    if entry.reconstructed_params_hash == params_hash {
+        return Ok(entry.clone());
+    }
+    let controller = entry.params_controller.ok_or_else(|| {
+        anyhow!(
+            "checkpoint pins historical params {params_hash:#x}, but {} has no typed params controller history",
+            entry.name
+        )
+    })?;
+    let logs =
+        rpc.logs(controller, ParamsUpdated::SIGNATURE_HASH, entry.created_block, head, 10_000)?;
+    for log in logs {
+        let event = ParamsUpdated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+        if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+            continue;
+        }
+        let params = to_core_params(&event.params);
+        let reconstructed = pagerank_core::encode::params_hash(&params);
+        anyhow::ensure!(
+            reconstructed == params_hash,
+            "controller event tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
+        );
+        let mut historical = entry.clone();
+        historical.params = Some(params);
+        historical.reconstructed_params_hash = reconstructed;
+        historical.params_version = Some(event.version);
+        return Ok(historical);
+    }
+    bail!(
+        "no ParamsUpdated event for instance {:#x} and pinned hash {params_hash:#x}",
+        entry.instance_id
+    )
 }
 
 /// The vkey a deployed verifier is pinned to. Checked at startup against the guest this binary was

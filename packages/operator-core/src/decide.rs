@@ -61,6 +61,16 @@ pub fn plan(state: &InstanceState, policy: &Policy, spend: Spend) -> Action {
             InFlightState::Proving => {
                 Action::Idle(IdleReason::Proving { checkpoint_id: flight.checkpoint_id })
             }
+            InFlightState::AwaitingPublication => {
+                Action::Publish { checkpoint_id: flight.checkpoint_id }
+            }
+            InFlightState::PublicationBackoff { attempts, retry_at } => {
+                Action::Idle(IdleReason::PublicationBackoff {
+                    checkpoint_id: flight.checkpoint_id,
+                    attempts,
+                    retry_at,
+                })
+            }
             InFlightState::Ready => submit_or_hold(state, policy, flight.checkpoint_id),
         };
     }

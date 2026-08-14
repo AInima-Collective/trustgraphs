@@ -17,7 +17,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::chain::{
-    expected_instance_domain, read_snapshot, verifier_vkey, RegistryScan, Rpc, RpcCatalog,
+    entry_at_params_hash, expected_instance_domain, read_checkpoint, read_landed_publication,
+    read_snapshot, verifier_vkey, RegistryScan, Rpc, RpcCatalog,
 };
 use crate::config::Config;
 use crate::handlers;
@@ -164,6 +165,104 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
         }
         std::thread::sleep(std::time::Duration::from_secs(cfg.cadence.tick_seconds));
     }
+}
+
+/// Reconstruct and republish the canonical score blob for an already-landed checkpoint.
+///
+/// This path needs no submitter or prover credentials. Chain history supplies the checkpoint,
+/// landed root, recipient, CID and (for rotated factory instances) the complete historical params
+/// tuple. Publication uses the same multi-target policy and durable journal as the daemon.
+pub fn republish(cfg: Config, instance_id: B256, checkpoint_id: u64) -> Result<()> {
+    anyhow::ensure!(
+        cfg.ipfs.required_successes() > 0,
+        "republish needs at least one configured [ipfs] target"
+    );
+    let logger = Logger { json: cfg.ops.log_format == "json" };
+    let rpc = Rpc::new(cfg.rpc.clone());
+    let chain_id = rpc.eth_chain_id().context("eth_chainId")?;
+    if let Some(expected) = cfg.chain_id {
+        anyhow::ensure!(
+            expected == chain_id,
+            "config names chain {expected} but {} is chain {chain_id}",
+            cfg.rpc
+        );
+    }
+    let head = rpc.block_number()?;
+    let mut scan = RegistryScan::default();
+    scan.refresh(&rpc, cfg.registry, cfg.registry_from_block, head)?;
+    let manifest = cfg.manifest_struct();
+    let reader = RpcCatalog::new(&rpc, cfg.registry, &scan);
+    let mut found = None;
+    let mut diagnosis = None;
+    for program in supported() {
+        let catalog = catalog_scan(&reader, program, &manifest)?;
+        if let Some(entry) = catalog.get(instance_id) {
+            found = Some(entry.clone());
+            break;
+        }
+        if let Some(skipped) = catalog.skipped.iter().find(|row| row.instance_id == instance_id) {
+            diagnosis = Some(skipped.reason.to_string());
+        }
+    }
+    let entry = found.ok_or_else(|| {
+        anyhow::anyhow!(
+            "instance {instance_id:#x} is not repairable from this catalog{}",
+            diagnosis.map_or_else(String::new, |reason| format!(": {reason}"))
+        )
+    })?;
+
+    let checkpoint = read_checkpoint(&rpc, entry.snapshot, checkpoint_id)?;
+    let pinned_params = checkpoint.pinned_params_hash.ok_or_else(|| {
+        anyhow::anyhow!(
+            "checkpoint {checkpoint_id} has no pinned params hash and cannot be reconstructed safely"
+        )
+    })?;
+    let historical = entry_at_params_hash(&rpc, &entry, pinned_params, head)?;
+    let landed = read_landed_publication(
+        &rpc,
+        entry.snapshot,
+        checkpoint_id,
+        checkpoint.block_number,
+        entry.created_block,
+        head,
+    )?;
+    let built = handlers::build_input(&cfg, &rpc, &historical, checkpoint_id, landed.recipient)?;
+    anyhow::ensure!(
+        built.output_root == landed.output_root
+            && built.ipfs_hash == landed.ipfs_hash
+            && built.cid == landed.cid
+            && built.total_value == landed.total_value,
+        "reconstructed checkpoint does not match landed state: root {:#x}/{:#x}, hash {:#x}/{:#x}, CID {}/{}, total {}/{}",
+        built.output_root,
+        landed.output_root,
+        built.ipfs_hash,
+        landed.ipfs_hash,
+        built.cid,
+        landed.cid,
+        built.total_value,
+        landed.total_value
+    );
+
+    logger.event(
+        "republish_verified",
+        json!({
+            "instance": format!("{instance_id:#x}"),
+            "checkpoint": checkpoint_id,
+            "checkpoint_block": checkpoint.block_number,
+            "submitted_block": landed.submitted_block,
+            "params_hash": format!("{pinned_params:#x}"),
+            "cid": built.cid,
+        }),
+    );
+    let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
+    let key = WorkKey { chain_id, instance_id, checkpoint_id };
+    if !attempt_publication(&cfg, &mut journal, &logger, &historical, key, &built.cid, &built.blob)?
+    {
+        bail!(
+            "republish did not meet the configured publication minimum; failure is journaled for retry"
+        );
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -411,8 +510,11 @@ fn tick(
                 per_instance_usd_per_day: cfg.budget.per_instance_usd_per_day,
                 global_usd_per_day: cfg.budget.global_usd_per_day,
                 budget_window_seconds: cfg.budget.window_seconds,
-                publishes_scores: cfg.ipfs.api.is_some(),
-                verifies_score_readback: cfg.ipfs.gateway.is_some(),
+                publishes_scores: !cfg.ipfs.resolved_targets().is_empty(),
+                verifies_score_readback: !cfg.ipfs.resolved_targets().is_empty(),
+                publication_target_count: cfg.ipfs.resolved_targets().len(),
+                publication_min_success: cfg.ipfs.required_successes(),
+                publication_retry_seconds: cfg.ipfs.retry_seconds,
                 submit_failure_threshold: cfg.ops.submit_failure_threshold,
             },
             unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
@@ -497,29 +599,57 @@ fn build_state(
             matches!(journal.status(&key), Status::Abandoned { .. }).then_some(c.id)
         })
         .collect();
-    let in_flight = newest.and_then(|id| {
+    let in_flight = if let Some(id) = newest {
         let key = WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: id };
         match journal.status(&key) {
             Status::Untouched | Status::Settled(_) | Status::Abandoned { .. } => None,
-            Status::InFlight { request_id } => Some(InFlight {
-                checkpoint_id: id,
-                request_id: Some(request_id),
+            Status::InFlight { request_id } => {
                 // The journal says a request is ours; the DISK says whether the proof came back.
-                // Reading only the journal left the daemon reporting `Proving` forever on a proof
-                // it was already holding — it proved, then sat on the result.
-                state: if handlers::has_held_proof(entry, id) {
-                    InFlightState::Ready
+                // A held proof is submit-ready only after its exact publication policy is
+                // durably satisfied. Failed attempts survive restart and produce a quiet
+                // backoff state until their retry time.
+                let flight_state = if handlers::has_held_proof(entry, id) {
+                    if cfg.ipfs.required_successes() == 0 {
+                        InFlightState::Ready
+                    } else {
+                        let held = handlers::load_proof(entry, id)?;
+                        let policy_hash = cfg.ipfs.policy_hash();
+                        if journal.publication_satisfied(&key, &held.cid, policy_hash) {
+                            InFlightState::Ready
+                        } else if let Some(retry) =
+                            journal.publication_retry(&key, &held.cid, policy_hash)
+                        {
+                            let retry_at = retry.last_at.saturating_add(cfg.ipfs.retry_seconds);
+                            if now() < retry_at {
+                                InFlightState::PublicationBackoff {
+                                    attempts: retry.attempts,
+                                    retry_at,
+                                }
+                            } else {
+                                InFlightState::AwaitingPublication
+                            }
+                        } else {
+                            InFlightState::AwaitingPublication
+                        }
+                    }
                 } else {
                     InFlightState::Proving
-                },
-            }),
+                };
+                Some(InFlight {
+                    checkpoint_id: id,
+                    request_id: Some(request_id),
+                    state: flight_state,
+                })
+            }
             Status::OutcomeUnknown { .. } => Some(InFlight {
                 checkpoint_id: id,
                 request_id: None,
                 state: InFlightState::OutcomeUnknown,
             }),
         }
-    });
+    } else {
+        None
+    };
 
     let vault = match (cfg.paid.enabled, cfg.paid.vault) {
         (true, Some(vault)) => newest.and_then(|checkpoint_id| {
@@ -619,7 +749,7 @@ fn act(
                 bail!("{}", journal.refusal(&key, state.last_applied_checkpoint));
             }
 
-            let built = handlers::build_input(cfg, rpc, entry, state, *checkpoint_id)?;
+            let built = handlers::build_input(cfg, rpc, entry, *checkpoint_id, cfg.recipient())?;
 
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".
@@ -637,29 +767,9 @@ fn act(
             let proof = handlers::prove(cfg, &built)?;
             journal.append(Record::Requested { key, request_id: proof.request_id, at: now() })?;
 
-            // Publish the scores BEFORE the root lands, so nothing ever observes a root whose
-            // data cannot be fetched. Best-effort: a failed pin must not stop a valid proof from
-            // being submitted, so it alerts and carries on.
-            match handlers::pin(cfg, &built) {
-                Ok(cid) => logger.event(
-                    "pinned",
-                    json!({ "instance": format!("{:#x}", entry.instance_id), "cid": cid }),
-                ),
-                Err(e) => {
-                    let text = format!(
-                        "{}: could not publish the score blob ({e}). The root is still valid, but \
-                         until these bytes are on IPFS the indexer cannot build a member list and \
-                         the network page will render empty.",
-                        entry.name
-                    );
-                    logger.event(
-                        "pin_failed",
-                        json!({ "instance": format!("{:#x}", entry.instance_id), "error": e.to_string() }),
-                    );
-                    alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
-                }
-            }
-
+            // Persist both the proof and its canonical score bytes before publication. A crash
+            // after this point resumes the cheap, idempotent publish rather than buying a proof
+            // again. Submission remains unreachable until publication satisfies policy.
             handlers::save_held(entry, *checkpoint_id, &built, &proof)?;
             logger.event(
                 "proved",
@@ -669,6 +779,14 @@ fn act(
                     "output_root": format!("{:#x}", proof.output_root),
                 }),
             );
+            attempt_publication(cfg, journal, logger, entry, key, &built.cid, &built.blob)?;
+        }
+
+        Action::Publish { checkpoint_id } => {
+            let key =
+                WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
+            let (held, score_blob) = handlers::load_publication_blob(entry, *checkpoint_id)?;
+            attempt_publication(cfg, journal, logger, entry, key, &held.cid, &score_blob)?;
         }
 
         Action::Submit { checkpoint_id } => {
@@ -850,6 +968,92 @@ fn act(
         _ => {}
     }
     Ok(())
+}
+
+/// Attempt every configured publication target and make the result restart-safe.
+///
+/// A failed minimum is ordinary queued work, not a failed tick: it is journaled, logged every
+/// time, and alerted only on attempt 1 and powers of two. That preserves escalation without a
+/// webhook every daemon cadence while the same provider remains down.
+fn attempt_publication(
+    cfg: &Config,
+    journal: &mut Journal,
+    logger: &Logger,
+    entry: &CatalogEntry,
+    key: WorkKey,
+    cid: &str,
+    score_blob: &[u8],
+) -> Result<bool> {
+    let report = handlers::publish(cfg, cid, score_blob);
+    let policy_hash = cfg.ipfs.policy_hash();
+    let at = now();
+    let successes = u32::try_from(report.successes.len()).unwrap_or(u32::MAX);
+    let required = u32::try_from(report.required).unwrap_or(u32::MAX);
+
+    if report.satisfied() {
+        journal.append(Record::Published {
+            key,
+            cid: cid.to_string(),
+            policy_hash,
+            successes,
+            required,
+            at,
+        })?;
+        logger.event(
+            "published",
+            json!({
+                "instance": format!("{:#x}", entry.instance_id),
+                "checkpoint": key.checkpoint_id,
+                "cid": cid,
+                "targets": report.successes,
+                "successes": successes,
+                "required": required,
+            }),
+        );
+        return Ok(true);
+    }
+
+    let failures = report.failure_strings();
+    journal.append(Record::PublicationAttempt {
+        key,
+        cid: cid.to_string(),
+        policy_hash,
+        successes,
+        required,
+        failures: failures.clone(),
+        at,
+    })?;
+    let attempts =
+        journal.publication_retry(&key, cid, policy_hash).map_or(1, |retry| retry.attempts);
+    let retry_at = at.saturating_add(cfg.ipfs.retry_seconds);
+    logger.event(
+        "publication_failed",
+        json!({
+            "instance": format!("{:#x}", entry.instance_id),
+            "checkpoint": key.checkpoint_id,
+            "cid": cid,
+            "attempt": attempts,
+            "successes": successes,
+            "required": required,
+            "failures": failures,
+            "retry_at": retry_at,
+        }),
+    );
+    if attempts == 1 || attempts.is_power_of_two() {
+        alert(
+            logger,
+            cfg.ops.alert_webhook.as_deref(),
+            &format!(
+                "{}: publication policy failed for checkpoint {} (attempt {attempts}, \
+                 {successes}/{required} targets); submission is blocked and retry is queued for \
+                 unix time {retry_at}: {}",
+                entry.name,
+                key.checkpoint_id,
+                failures.join("; ")
+            ),
+        );
+    }
+    Ok(false)
 }
 
 /// Persist terminal abandonment and emit the one alert that explains both the failure and the

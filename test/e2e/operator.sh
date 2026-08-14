@@ -29,9 +29,9 @@ if ! cast block-number --rpc-url "$RPC" >/dev/null 2>&1; then
   say "== starting anvil =="
   anvil --silent &
   ANVIL_PID=$!
-  trap '[ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
   for _ in $(seq 1 40); do cast block-number --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.25; done
 fi
+trap '[ -n "${KUBO_PID:-}" ] && kill "$KUBO_PID" 2>/dev/null; [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
 cast block-number --rpc-url "$RPC" >/dev/null || die "no chain at $RPC"
 DEPLOYER=$(cast wallet address --private-key "$PK")
 
@@ -144,9 +144,53 @@ ROOT=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,
 say ""
 say "   ${GREEN}root landed unattended: $ROOT ✓${NC}"
 
+# --- an unavailable landed CID can be repaired, then ingested --------------------
+# The daemon intentionally had no [ipfs] targets above, so the chain now names canonical bytes
+# no service has. Add a target only to the repair config, reconstruct from chain history, and
+# prove the exact production indexer derivation accepts the bytes that become readable.
+STATE=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" \
+  --rpc-url "$RPC")
+CID=$(printf '%s\n' "$STATE" | grep -o 'baf[a-z0-9]*' | head -1)
+[ -n "$CID" ] || die "could not read the landed CID from getLatestState: $STATE"
+INSTANCE_ID=$(jq -r '.instances[0].instance_id' "$WORK/status.json")
+REPAIR_PORT=15001
+REPAIR_GATEWAY="http://127.0.0.1:$REPAIR_PORT/ipfs/"
+if curl -fsS "$REPAIR_GATEWAY$CID" >/dev/null 2>&1; then
+  die "repair precondition failed: landed CID was already readable"
+fi
+say "== landed CID is unreadable; reconstruct and republish =="
+EXPECTED_CID="$CID" PORT="$REPAIR_PORT" node test/e2e/kubo-stub.mjs &
+KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$REPAIR_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$REPAIR_PORT/health" >/dev/null \
+  || die "repair kubo stub did not start"
+REPAIR_CONFIG="$WORK/operator-repair.toml"
+cp "$CONFIG" "$REPAIR_CONFIG"
+cat >> "$REPAIR_CONFIG" <<EOF
+
+[ipfs]
+api = "http://127.0.0.1:$REPAIR_PORT"
+gateway = "$REPAIR_GATEWAY"
+retry_seconds = 1
+EOF
+cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
+  --config "$REPAIR_CONFIG" republish --instance "$INSTANCE_ID" --checkpoint 0 \
+  >"$WORK/republish.log" 2>&1 \
+  || die "republish failed: $(cat "$WORK/republish.log")"
+curl -fsS "$REPAIR_GATEWAY$CID" >/dev/null || die "CID remained unreadable after republish"
+pnpm --dir indexer exec tsx scripts/check-merkle-ingest.ts \
+  --gateway "$REPAIR_GATEWAY" --cid "$CID" --root "$ROOT" \
+  >"$WORK/indexer-ingest.log" \
+  || die "indexer could not ingest repaired CID: $(cat "$WORK/indexer-ingest.log")"
+say "   ${GREEN}repaired CID is readable and indexer-derived entries match $ROOT ✓${NC}"
+
 # One checkpoint, one intent, one request, one settlement. Anything else means it paid twice.
 INTENTS=$(grep -c '"kind":"intent"' "$WORK/journal.jsonl" || echo 0)
-SETTLED=$(grep -c '"kind":"settled"' "$WORK/journal.jsonl" || echo 0)
+SETTLED=$(grep -c '"kind":"settled"' "$WORK/journal.jsonl" || true)
+SETTLED=${SETTLED:-0}
 say "   journal: $INTENTS intent(s), $SETTLED settlement(s)"
 [ "$INTENTS" = "1" ] || die "expected exactly 1 intent, got $INTENTS — the daemon paid more than once"
 
@@ -204,5 +248,5 @@ jq -e '.instances | length >= 1' "$WORK/status.json" >/dev/null || die "status.j
 say "   status.json: $(jq -c '{head_block, instances: [.instances[] | {name, action: .action.action}]}' "$WORK/status.json")"
 
 say ""
-say "${GREEN}OPERATOR E2E PASS — trigger, prove and submit two graph versions unattended,${NC}"
-say "${GREEN}with a restart that re-attaches instead of paying again.${NC}"
+say "${GREEN}OPERATOR E2E PASS — trigger, prove and submit two graph versions unattended;${NC}"
+say "${GREEN}repair an unreadable landed CID; and restart without paying again.${NC}"

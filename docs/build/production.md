@@ -46,7 +46,7 @@ In production that loop is not driven by hand. Deploy the **proof scheduler** an
 instance's scores fresh with nobody watching: [`run-a-prover.md`](./run-a-prover.md) is the whole
 contract — what it does, how to configure it, what it alerts on, and how to recover it.
 
-Three things to get right before the first tick:
+Four things to get right before the first tick:
 
 1. **`registry_from_block`.** Set it to the `InstanceRegistry` deployment block. Left at 0 the
    daemon scans from genesis, which most providers reject outright as an archive request — the
@@ -58,6 +58,14 @@ Three things to get right before the first tick:
    one thing the build could not exercise (11 GiB box, no network key — [`DEVIATIONS`](../../research/DEVIATIONS.md)
    #20). Every proof in CI wraps at a mock gateway. Prove one checkpoint for real, submit it, watch
    it land, and only then start the daemon.
+4. **Independent score-blob durability.** Configure at least two independently operated
+   `[[ipfs.targets]]` and set `ipfs.min_success = 2`. Each target needs a kubo-compatible add API
+   and the gateway readers actually use; the operator reads the exact bytes back before permitting
+   proof submission. A CID is a content identity, not a storage SLA. Contract for retention at
+   least as long as the root may be queried, keep an offline backup of every canonical blob (or
+   the checkpoint inputs and historical params needed to reproduce it), and test
+   `operator republish --instance <id> --checkpoint <id>` before launch. Two endpoints backed by
+   the same storage failure domain do not count as independent.
 
 ### The accumulator ceiling (audit H-4) — document, monitor, and the recovery path
 
@@ -92,8 +100,9 @@ there is nothing left to operate.
 **Recovery path (prepare BEFORE launch).** `MerkleSnapshot.setAccumulator` is constitutional
 (the slow timelock). The runbook step for a re-seed is: deploy a fresh
 `EASIndexerResolver`/accumulator, snapshot the final proven root of the old one (the score
-history is preserved by the last landed root + its IPFS blob, which is content-addressed and
-pinned), point the instance at the new accumulator through the constitutional queue, and have
+history is preserved by the last landed root + its score blob, whose CID identifies the bytes but
+does not keep them available; retain it on independent targets and an offline backup), point the
+instance at the new accumulator through the constitutional queue, and have
 members re-attest their live edges against the new resolver. Budget the timelock delay into
 the response: at current growth rate, the 80% alert must fire earlier than
 `timelock delay + re-attestation window` before the cliff. If the instance is open-set, do not

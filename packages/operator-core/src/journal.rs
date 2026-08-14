@@ -131,6 +131,28 @@ pub enum Record {
     /// same rejected root; it is never reinterpreted or retried. The planner may instead freeze a
     /// newer checkpoint after inputs move.
     Abandoned { key: WorkKey, class: SubmitFailureClass, attempts: u32, at: u64 },
+    /// One publication policy attempt that did not reach its configured minimum. The held score
+    /// blob and input live on disk; this durable record makes restart retain backoff and
+    /// visibility instead of forgetting the work or alert-looping every tick.
+    PublicationAttempt {
+        key: WorkKey,
+        cid: String,
+        policy_hash: B256,
+        successes: u32,
+        required: u32,
+        failures: Vec<String>,
+        at: u64,
+    },
+    /// The score blob satisfied the exact configured publication policy. Bound to `policy_hash`,
+    /// so changing targets or the minimum republishes before submit.
+    Published {
+        key: WorkKey,
+        cid: String,
+        policy_hash: B256,
+        successes: u32,
+        required: u32,
+        at: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,6 +182,14 @@ pub enum Status {
     /// This immutable checkpoint deterministically rejected enough submit attempts. Never submit
     /// or prove it again; advance to a newer checkpoint.
     Abandoned { class: SubmitFailureClass, attempts: u32 },
+}
+
+/// Persistent failed-publication state for one work key and one exact policy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicationRetry {
+    pub attempts: u32,
+    pub last_at: u64,
+    pub failures: Vec<String>,
 }
 
 /// Append-only JSONL, one file, fsynced at the points that matter.
@@ -438,6 +468,63 @@ impl Journal {
             }
         }
         (attempts, latest)
+    }
+
+    /// Whether this key's CID satisfied the exact publication policy now configured.
+    pub fn publication_satisfied(&self, key: &WorkKey, cid: &str, policy_hash: B256) -> bool {
+        self.records.iter().rev().any(|record| {
+            matches!(
+                record,
+                Record::Published {
+                    key: k,
+                    cid: published_cid,
+                    policy_hash: published_policy,
+                    ..
+                } if k == key && published_cid == cid && *published_policy == policy_hash
+            )
+        })
+    }
+
+    /// Failed attempts since the latest success under this exact policy. A policy change starts a
+    /// fresh retry series instead of inheriting the old target set's alert/backoff history.
+    pub fn publication_retry(
+        &self,
+        key: &WorkKey,
+        cid: &str,
+        policy_hash: B256,
+    ) -> Option<PublicationRetry> {
+        let mut retry = None;
+        for record in &self.records {
+            match record {
+                Record::Published {
+                    key: k,
+                    cid: published_cid,
+                    policy_hash: published_policy,
+                    ..
+                } if k == key && published_cid == cid && *published_policy == policy_hash => {
+                    retry = None;
+                }
+                Record::PublicationAttempt {
+                    key: k,
+                    cid: attempted_cid,
+                    policy_hash: attempted_policy,
+                    failures,
+                    at,
+                    ..
+                } if k == key && attempted_cid == cid && *attempted_policy == policy_hash => {
+                    let attempts = retry
+                        .as_ref()
+                        .map_or(1, |state: &PublicationRetry| state.attempts.saturating_add(1));
+                    retry = Some(PublicationRetry {
+                        attempts,
+                        last_at: *at,
+                        failures: failures.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        retry
     }
 
     pub fn records(&self) -> &[Record] {

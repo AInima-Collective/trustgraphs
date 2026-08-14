@@ -154,10 +154,90 @@ fn every_record_survives_a_round_trip_through_the_file() {
             at: 6,
         })
         .unwrap();
+        j.append(Record::PublicationAttempt {
+            key: key(3),
+            cid: "bafkreifailed".into(),
+            policy_hash: B256::from([0x33; 32]),
+            successes: 1,
+            required: 2,
+            failures: vec!["backup: unavailable".into()],
+            at: 7,
+        })
+        .unwrap();
+        j.append(Record::Published {
+            key: key(3),
+            cid: "bafkreifailed".into(),
+            policy_hash: B256::from([0x33; 32]),
+            successes: 2,
+            required: 2,
+            at: 8,
+        })
+        .unwrap();
         j.records().to_vec()
     };
     let reopened = Journal::open(&path).unwrap();
     assert_eq!(reopened.records(), written.as_slice());
+}
+
+#[test]
+fn failed_publication_retry_state_survives_restart_and_success_clears_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let policy = B256::from([0x33; 32]);
+    {
+        let mut j = Journal::open(&path).unwrap();
+        for at in [100, 200] {
+            j.append(Record::PublicationAttempt {
+                key: key(0),
+                cid: "bafkreiblob".into(),
+                policy_hash: policy,
+                successes: 1,
+                required: 2,
+                failures: vec!["backup: timeout".into()],
+                at,
+            })
+            .unwrap();
+        }
+    }
+    let mut reopened = Journal::open(&path).unwrap();
+    let retry = reopened.publication_retry(&key(0), "bafkreiblob", policy).unwrap();
+    assert_eq!(retry.attempts, 2);
+    assert_eq!(retry.last_at, 200);
+    assert_eq!(retry.failures, vec!["backup: timeout"]);
+    assert!(!reopened.publication_satisfied(&key(0), "bafkreiblob", policy));
+
+    reopened
+        .append(Record::Published {
+            key: key(0),
+            cid: "bafkreiblob".into(),
+            policy_hash: policy,
+            successes: 2,
+            required: 2,
+            at: 300,
+        })
+        .unwrap();
+    assert!(reopened.publication_satisfied(&key(0), "bafkreiblob", policy));
+    assert_eq!(reopened.publication_retry(&key(0), "bafkreiblob", policy), None);
+}
+
+#[test]
+fn publication_success_is_bound_to_the_exact_cid_and_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    let policy = B256::from([0x44; 32]);
+    j.append(Record::Published {
+        key: key(0),
+        cid: "bafkreiblob".into(),
+        policy_hash: policy,
+        successes: 2,
+        required: 2,
+        at: 100,
+    })
+    .unwrap();
+
+    assert!(j.publication_satisfied(&key(0), "bafkreiblob", policy));
+    assert!(!j.publication_satisfied(&key(0), "bafkreiother", policy));
+    assert!(!j.publication_satisfied(&key(0), "bafkreiblob", B256::from([0x55; 32])));
 }
 
 #[test]

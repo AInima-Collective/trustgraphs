@@ -161,10 +161,19 @@ eth_usd                  = 5000  # crude ETH/USD used to book on-chain gas burn 
 # that renders a member list fetches the blob by CID, so a daemon that proves and submits without
 # publishing produces roots that are correct, verifiable, and unreadable.
 [ipfs]
-api = "http://127.0.0.1:5001"          # a kubo RPC API. Unset = we are not publishing.
-gateway = "http://127.0.0.1:8080/ipfs/"  # optional, and worth setting: the pin is verified by
-                                         # fetching it back the way a READER does. Use the same
-                                         # string the indexer has in `IPFS_GATEWAY`.
+min_success = 2                  # submit is blocked until this many targets add and serve the
+                                 # exact canonical bytes
+retry_seconds = 300              # failed work is journaled and survives restart
+
+[[ipfs.targets]]
+name = "primary"
+api = "http://127.0.0.1:5001"    # kubo-compatible /api/v0/add endpoint
+gateway = "http://127.0.0.1:8080/ipfs/"
+
+[[ipfs.targets]]
+name = "backup"
+api = "https://kubo-api.backup.example"
+gateway = "https://gateway.backup.example/ipfs/"
 
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
@@ -200,8 +209,10 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
 | `budget.window_seconds` | rolling window for both caps | 86400 |
 | `budget.eth_usd` | crude ETH/USD for booking gas into the budget (H-3) | 5000 |
-| `ipfs.api` | kubo RPC the score blob is published to | unset (nothing published) |
-| `ipfs.gateway` | read the pin back through a reader's gateway before calling it published | unset (no read-back) |
+| `ipfs.targets[]` | named independent kubo-compatible add API + reader gateway pairs | empty (nothing published) |
+| `ipfs.min_success` | targets that must add and serve the exact bytes before submit | all configured targets |
+| `ipfs.retry_seconds` | durable failed-publication retry cadence | 300 |
+| `ipfs.api` / `ipfs.gateway` | legacy single target; both required, cannot mix with `targets` | unset |
 | `ops.submit_failure_threshold` | deterministic submit reverts before advancing past a checkpoint | 3 |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
 
@@ -239,6 +250,15 @@ That last row is the gap, and it is a real one: a request id cannot be journaled
 that mints it. If the backend can answer "what happened to nonce N?", the window closes
 automatically. If it cannot, the record becomes `RequestOutcomeUnknown`, which is surfaced to a
 human and **never auto-retried** — the failure mode of auto-retry here is paying twice.
+
+Publication has its own cheaper restart boundary. The completed proof, reconstruction input, and
+canonical score blob are written before any target is contacted. Every failed policy attempt is
+appended to the same journal with the CID, policy hash, target failures, and timestamp. A restart
+therefore resumes publication without requesting another proof. While the minimum is unmet the
+planner reports `publication_backoff` and **cannot produce `submit`**. Alerts fire on attempt 1 and
+powers of two; every attempt remains visible in logs and the heartbeat without flooding the
+webhook every tick. Changing the target set or minimum changes the policy hash and requires the
+held blob to satisfy the new policy before submission.
 
 ### Measured: what sp1-sdk 6.3.1 actually offers
 
@@ -280,7 +300,18 @@ cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operato
 
 # the daemon.
 cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml
+
+# repair an already-landed but unavailable CID. No prover or submitter credentials are needed.
+cargo run --release --manifest-path zk/operator/Cargo.toml -- \
+  --config ./operator.toml republish \
+  --instance 0x0123...cdef --checkpoint 42
 ```
+
+`republish` rebuilds checkpoint inputs and historical controller parameters, verifies the
+root/hash/CID/total against the exact landed chain state, and only then uses the normal publication
+policy. It refuses unlanded or unpinned checkpoints and any mismatch. For manifest-only programs,
+retain the params file version used by each checkpoint; the manifest is the description source
+precisely because those params are not available from chain history.
 
 Startup refuses a config that cannot work rather than dying on the first call: an empty or
 scheme-less `rpc`, a zero `registry`, or `[paid]` naming a zero vault or recipient. An empty `rpc` is
@@ -340,8 +371,9 @@ and what each actually means:
 | `<instance>: Unfunded` | a paid instance's tank will not cover the next root | tell the community, or move it to `curated` |
 | `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
 | `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
-| `could not publish the score blob` | the root is valid but its data is not on IPFS | check `ipfs.api`; the page will render an empty roster until the bytes are published, and anyone can publish them (the CID is content-addressed) |
-| `the API accepted the blob but the gateway … answers 504` | `add` and the read are hitting **different nodes** | the pin went somewhere readers do not ask. Compare `curl -X POST <api>/api/v0/id` against whatever serves `ipfs.gateway`; until they agree, every root lands unreadable and the indexer stalls retrying one event |
+| `publication policy failed` / `publication_backoff` | fewer than `ipfs.min_success` targets added and served the exact blob | repair the named targets or lower the minimum only as an explicit durability decision; submission stays blocked and the journal retries automatically |
+| `the API accepted the blob but the gateway … answers 504` | one target's add API and reader gateway hit **different nodes** | compare `curl -X POST <api>/api/v0/id` with the gateway host; that target does not count until readers can fetch the exact bytes |
+| an already-landed CID is unreadable | content addressing proves which bytes belong at a CID, not that anyone still stores them | restore a retained copy or reconstruct from checkpoint history, then run `operator republish --instance … --checkpoint …`; the indexer retries once the CID is readable |
 | `checkpoint N abandoned after M deterministic submit failures` | the same immutable proof reverted during estimate, simulation, or in a mined receipt M times | no manual unstick is required. The proof remains rejected; after consumed inputs move, the operator triggers and proves a newer checkpoint. Investigate the named `failure_class` before lowering the threshold or restoring the underlying hook/policy. |
 | `journal … was written against a DIFFERENT chain` | a devnet restarted (or the config moved) and the old journal's keys collide with the new chain's work | point `ops.journal_path` at a fresh file for this chain. See below |
 

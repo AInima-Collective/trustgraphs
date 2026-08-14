@@ -131,6 +131,11 @@ pub enum InFlightState {
     Proving,
     /// The proof is in hand and byte-checked against the native journal.
     Ready,
+    /// The proof and canonical score blob are held, but the configured publication minimum has
+    /// not yet been met. Publishing is retryable and must precede submission.
+    AwaitingPublication,
+    /// A persisted publication attempt failed; wait until `retry_at` instead of alert-looping.
+    PublicationBackoff { attempts: u32, retry_at: u64 },
     /// The request was made but we cannot tell what happened to it. Never auto-retried.
     OutcomeUnknown,
 }
@@ -272,6 +277,8 @@ pub enum Action {
     AwaitFinality { checkpoint_id: u64, confirmations: u64, required: u64 },
     /// Request a proof for this checkpoint.
     Prove { checkpoint_id: u64 },
+    /// Publish the held canonical score blob to the configured durability targets.
+    Publish { checkpoint_id: u64 },
     /// Land a proof we already hold.
     Submit { checkpoint_id: u64 },
     /// The instance is fine; we are not writing to it right now. Recoverable, alertable.
@@ -294,6 +301,8 @@ pub enum IdleReason {
     Proving { checkpoint_id: u64 },
     /// Someone landed a newer root while we were proving. Not a failure.
     Superseded { checkpoint_id: u64 },
+    /// Publication failed and is durably queued for a later retry.
+    PublicationBackoff { checkpoint_id: u64, attempts: u32, retry_at: u64 },
     /// The newest checkpoint was abandoned, but no consumed input has moved since it froze.
     /// Triggering now would either revert `NoNewInputs` or recreate the same rejected statement.
     AwaitingNewInputs { checkpoint_id: u64 },

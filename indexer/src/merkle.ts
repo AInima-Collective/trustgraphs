@@ -13,20 +13,16 @@ import {
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
-import {
-  merkleFundDistributorAbi,
-  merkleSnapshotAbi,
-} from '../../frontend/lib/contract-abis'
-import {
-  buildTree,
-  outputLeaf,
-  proofFor,
-} from '../../frontend/lib/pagerank/merkle'
+import { type ScoreBlob, deriveAddressMerkleRows } from './merkle-ingest'
 import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
 import { ingestContributionsScores } from './contributions'
 import { contributionsInstanceForSnapshot } from './contributions-shared'
 import { type SharedArgs, revalidateNetwork, staticAddresses } from './utils'
+import {
+  merkleFundDistributorAbi,
+  merkleSnapshotAbi,
+} from '../../frontend/lib/contract-abis'
 
 /**
  * The canonical score blob the ZK guest commits (`pagerank_core::cid::canonical_blob`): a flat map of
@@ -34,8 +30,6 @@ import { type SharedArgs, revalidateNetwork, staticAddresses } from './utils'
  * entries. Its sha256 is the on-chain `ipfsHash`; there is no metadata or precomputed proofs — those
  * are recomputed here from the guest-identical `outputLeaf`/`buildTree`/`proofFor`.
  */
-type ScoreBlob = Record<string, string>
-
 const positiveIntegerEnv = (name: string, fallback: number) => {
   const raw = process.env[name]
   if (raw === undefined || raw === '') return fallback
@@ -255,10 +249,10 @@ const onMerkleRootUpdated = async ({
         `and /network/${event.log.address} will 404. Indexing is paused here and will resume by ` +
         `itself once the blob is retrievable.\n` +
         `Check, in order: (1) is an IPFS node actually serving IPFS_GATEWAY; (2) did whoever ` +
-        `produced this root publish the blob — the operator does it, but only if [ipfs] api is ` +
-        `set; (3) are that api and this gateway the SAME node? A 504 with a successful pin means ` +
-        `they are not. Anyone can republish it: the CID is content-addressed, so re-deriving the ` +
-        `blob reproduces these exact bytes.`
+        `produced this root satisfy its [ipfs] publication target minimum; (3) does each target's ` +
+        `gateway serve the exact bytes accepted by its add API? Repair the target or run operator ` +
+        `republish --instance <id> --checkpoint <id>. The CID identifies the bytes but does not ` +
+        `guarantee that any provider still stores them.`
     )
   }
   const scores = (await merkleRequest.json()) as ScoreBlob
@@ -421,17 +415,16 @@ async function insertMerkleData(
 ) {
   // The blob is just { account: value }. Rebuild the OZ output tree exactly as the guest did (same
   // leaf/hash-pair encoding, ported in frontend/lib/pagerank/merkle) to recover each account's proof.
-  const entries = Object.entries(scores)
-  const leaves = entries.map(([account, value]) =>
-    outputLeaf(account as Hex, BigInt(value))
-  )
-  const tree = buildTree(leaves)
-  if (tree.length > 0 && tree[0].toLowerCase() !== root.toLowerCase()) {
+  let derived
+  try {
+    derived = deriveAddressMerkleRows(scores, root)
+  } catch (error) {
     // Pinned blob doesn't reproduce the on-chain root — proofs would be useless. Surface it rather
     // than store bad data, but don't crash the whole indexer on one bad snapshot.
     console.warn(
-      `merkle: recomputed root ${tree[0]} != on-chain root ${root} for cid ${ipfsHashCid}; skipping entries`
+      `merkle: ${error instanceof Error ? error.message : String(error)} for cid ${ipfsHashCid}; skipping entries`
     )
+    derived = { computedRoot: null, rows: [] }
   }
 
   await offchainDb
@@ -441,7 +434,7 @@ async function insertMerkleData(
       root,
       ipfsHash,
       ipfsHashCid,
-      numAccounts: entries.length,
+      numAccounts: Object.keys(scores).length,
       totalValue,
       sources: [],
       blockNumber: event.block.number,
@@ -478,22 +471,20 @@ async function insertMerkleData(
     })
 
   // Skip entries if there are none, or if the recomputed root doesn't match (proofs would be wrong).
-  const rootMatches =
-    tree.length === 0 || tree[0].toLowerCase() === root.toLowerCase()
-  if (entries.length === 0 || !rootMatches) {
+  if (derived.rows.length === 0) {
     return
   }
 
   await offchainDb
     .insert(offchainSchema.merkleEntry)
     .values(
-      entries.map(([account, value], i) => ({
+      derived.rows.map(({ account, value, proof }) => ({
         merkleSnapshotContract: event.log.address,
         root,
         ipfsHashCid,
         account,
-        value: BigInt(value),
-        proof: proofFor(tree, leaves[i]) ?? [],
+        value,
+        proof,
         blockNumber: event.block.number,
         timestamp: event.block.timestamp,
       }))
