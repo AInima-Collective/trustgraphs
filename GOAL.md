@@ -1,15 +1,17 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-13): 3 issues closed, 14 remain.**
+> **Status (2026-08-13): 4 issues closed, 13 remain.**
 >
 > Closed after auditing `main` at `c7ee5ec` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
 > - **#13** — snapshot-scoped claims and quote/settlement parity (`2d46090`)
+> - **#15** — persistent deterministic-submit abandonment and fresh-checkpoint recovery
+>   (`362e547`; empty-root/hook precursor in `a6f89c5`)
 > - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
 >
-> Remaining launch-risk issues: **#12, #14, #15, #16, #20, #22, #27**.
+> Remaining launch-risk issues: **#12, #14, #16, #20, #22, #27**.
 > Remaining reproducibility and self-service issues: **#21, #28**.
 > Remaining research/product epics: **#34–#38**.
 
@@ -51,7 +53,7 @@ can proceed concurrently:
 
 | Lane | Issues | Purpose | Dependencies |
 | --- | --- | --- | --- |
-| A · operator availability | #15, #16 | Self-heal failed submissions and repair score-blob availability | none |
+| A · operator availability | #16 | Repair score-blob availability | #15 closed in `362e547` |
 | B · snapshot/vault hardening | #12, #14 | Bound hostile input growth and finish snapshot invariants | coordinate accumulator migration semantics |
 | C · self-serve economics | #22 | Make app prepayment activate a payable proving policy | fee schedule deployed |
 | D · authority and production | #20 → #27 | Remove creator bypass, then deploy and smoke-test production | #20 before #27; #12/#14/#22 before value |
@@ -66,10 +68,15 @@ parallel without blocking the core public repository release.
 
 ## Milestone 1 — Availability and paid proving
 
-Four comparatively bounded issues. Completing this milestone should remove the most operational
+Three remaining comparatively bounded issues. Completing this milestone should remove the most operational
 risk per review cycle.
 
 ### M1.1 · #15 — abandon deterministic submission failures and advance
+
+**Closed in `362e547`** (with the empty-root/hook precursor in `a6f89c5`). The journal now records
+terminal abandonment across restarts; estimate, simulation, and receipt reverts share one
+configurable counter; transient failures and reorgs do not consume it; and the planner waits for
+input movement before triggering/proving a fresh checkpoint.
 
 The three-strike circuit breaker in `zk/operator/src/run.rs` prevents wallet drain but deliberately
 holds for a human. It does not satisfy the issue's self-healing requirement, and simulation failures
@@ -349,10 +356,10 @@ override, and tally-conservation tests; graph-level delegation research has its 
 
 ### Honest closure target
 
-- **Near term:** #14, #15, #16, #22, #28, and #37 — six independently closable issues.
+- **Near term:** #14, #16, #22, #28, and #37 — five independently closable issues.
 - **Production track:** #12, #20, and then #27 — three security/deployment issues.
 - **Feature track:** #21, #35, #38 — substantial vertical slices.
 - **Research track:** #34 and #36 — close through evidence and decisions, not placeholder code.
 
-The target is all 14 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 13 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.

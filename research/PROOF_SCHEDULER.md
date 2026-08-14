@@ -92,8 +92,10 @@ Per tick (~1 min) and per registered instance:
 7. PROVE     SP1_PROVER=network, Groth16; journal the request id to disk first
 8. PIN       blob.json → IPFS (CID must equal the guest's in-journal CID)
 9. SUBMIT    submitProof(...); on StaleCheckpoint revert: drop job (someone landed a
-             newer root — that's success, not failure); on pause-shaped revert: back
-             off + alert (Lane D tolerance)
+             newer root — that's success, not failure); deterministic execution reverts share a
+             persistent per-checkpoint counter across estimate/simulation/mined receipts. At the
+             configured threshold, abandon only that immutable checkpoint and advance after new
+             inputs; provider/fee/timeout/reorg failures remain retryable.
 ```
 
 Design properties worth stating explicitly:
@@ -355,8 +357,10 @@ a correct root.
   step 6) makes the operator stop before spending; after activation it resumes with the
   new preimage/vkey. Registry-published `(config, activation epoch)` (UPGRADE_GOVERNANCE
   §5.6) would let it pre-build both sides.
-- **Lane D freeze lands:** submitProof reverts read as pause ⇒ hold + alert, don't
-  crash-loop, don't mark the instance dead.
+- **Deterministic submit revert:** count estimate, explicit simulation, and mined receipt reverts
+  consistently. At the configured threshold, fsync an `Abandoned` journal record, stop submitting
+  that immutable proof, and freeze a newer checkpoint after consumed inputs move. Do not count
+  provider, fee/nonce, receipt-timeout, availability, or reorg failures; those retry safely.
 - **Witness fetch fails (atproto):** the PDS is down or a repo moved — `--keep-going`
   semantics per DID, alert on manifest-empty; the anchor step must only anchor heads the
   witness fetch subsequently captured, else the epoch is unprovable (fail before

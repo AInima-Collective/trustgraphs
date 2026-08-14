@@ -164,6 +164,7 @@ const sanitizeSettings = (value: unknown) => {
     maxBasefeeGwei: safeInteger(input.max_basefee_gwei),
     replacementAfterSeconds: safeInteger(input.replacement_after_s),
     simulateBeforeSend: boolean(input.simulate_before_send),
+    submitFailureThreshold: safeInteger(input.submit_failure_threshold),
     confirmations: safeInteger(input.confirmations),
     tracksBlockHash: boolean(input.track_block_hash),
     proverBackend: text(input.prover_backend, 24),

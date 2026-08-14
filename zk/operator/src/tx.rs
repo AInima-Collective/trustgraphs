@@ -7,9 +7,50 @@ use alloy_primitives::{Address, Bytes, TxKind, B256, U256};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
 use anyhow::{anyhow, bail, Context, Result};
+use operator_core::journal::SubmitFailureClass;
 use serde_json::json;
+use std::fmt;
 
-use crate::chain::Rpc;
+use crate::chain::{Rpc, RpcResponseError};
+
+/// Why a watched send stopped. Only a positively identified EVM execution revert is terminal
+/// evidence about an immutable checkpoint. Everything else stays retryable.
+#[derive(Debug)]
+pub struct SendFailure {
+    deterministic: Option<SubmitFailureClass>,
+    source: anyhow::Error,
+}
+
+impl SendFailure {
+    fn preflight(class: SubmitFailureClass, source: anyhow::Error) -> Self {
+        let reverted = source.chain().any(|cause| {
+            cause
+                .downcast_ref::<RpcResponseError>()
+                .is_some_and(RpcResponseError::is_execution_revert)
+        });
+        Self { deterministic: reverted.then_some(class), source }
+    }
+
+    fn transient(source: anyhow::Error) -> Self {
+        Self { deterministic: None, source }
+    }
+
+    pub fn deterministic_class(&self) -> Option<SubmitFailureClass> {
+        self.deterministic
+    }
+}
+
+impl fmt::Display for SendFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.source.fmt(f)
+    }
+}
+
+impl std::error::Error for SendFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
 
 pub struct Sender {
     signer: PrivateKeySigner,
@@ -84,45 +125,41 @@ impl Sender {
         simulate: bool,
         replacement_after_s: u64,
         timeout_s: u64,
-    ) -> Result<(B256, Receipt)> {
+    ) -> std::result::Result<(B256, Receipt), SendFailure> {
         let estimate = rpc
             .estimate_gas(self.address(), to, &data)
-            .context("gas estimation failed/reverted; not broadcasting")?;
-        let gas_limit = gas_with_margin(estimate, gas_cap)?;
+            .context("gas estimation failed/reverted; not broadcasting")
+            .map_err(|e| SendFailure::preflight(SubmitFailureClass::EstimateRevert, e))?;
+        let gas_limit = gas_with_margin(estimate, gas_cap).map_err(SendFailure::transient)?;
         if simulate {
             rpc.simulate(self.address(), to, &data, Some(gas_limit))
-                .context("simulation reverted; not broadcasting")?;
+                .context("simulation reverted; not broadcasting")
+                .map_err(|e| SendFailure::preflight(SubmitFailureClass::SimulationRevert, e))?;
         }
 
-        let nonce = rpc.transaction_count(self.address())?;
+        let nonce = rpc.transaction_count(self.address()).map_err(SendFailure::transient)?;
         let mut max_fee = max_fee_wei;
         let mut priority = self.priority_fee_wei;
-        let mut hashes = vec![self.sign_and_broadcast(
-            rpc,
-            to,
-            data.clone(),
-            gas_limit,
-            nonce,
-            max_fee,
-            priority,
-        )?];
+        let mut hashes = vec![self
+            .sign_and_broadcast(rpc, to, data.clone(), gas_limit, nonce, max_fee, priority)
+            .map_err(SendFailure::transient)?];
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_s);
         let mut last_broadcast = std::time::Instant::now();
         let mut replacements = 0u32;
         loop {
             for h in &hashes {
-                if let Some(r) = rpc.receipt(*h)? {
+                if let Some(r) = rpc.receipt(*h).map_err(SendFailure::transient)? {
                     return Ok((*h, r));
                 }
             }
             if std::time::Instant::now() >= deadline {
-                bail!(
+                return Err(SendFailure::transient(anyhow!(
                     "no receipt for {} broadcast(s) of nonce {nonce} within {timeout_s}s — treat \
                      as UNKNOWN, not failed (hashes: {})",
                     hashes.len(),
                     hashes.iter().map(|h| format!("{h:#x}")).collect::<Vec<_>>().join(", ")
-                );
+                )));
             }
             if replacements < 2
                 && last_broadcast.elapsed() >= std::time::Duration::from_secs(replacement_after_s)
@@ -316,7 +353,11 @@ mod tests {
 
     /// A single-request JSON-RPC stub: answers `eth_estimateGas` with an execution revert and
     /// records whether anything was ever broadcast.
-    fn stub_rpc(broadcast_seen: Arc<AtomicBool>) -> String {
+    fn stub_rpc(
+        broadcast_seen: Arc<AtomicBool>,
+        estimate_response: &'static str,
+        simulation_response: &'static str,
+    ) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
@@ -326,7 +367,9 @@ mod tests {
                 let n = s.read(&mut buf).unwrap_or(0);
                 let req = String::from_utf8_lossy(&buf[..n]).to_string();
                 let body = if req.contains("eth_estimateGas") {
-                    r#"{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted: StaleCheckpoint"}}"#
+                    estimate_response
+                } else if req.contains("eth_call") {
+                    simulation_response
                 } else if req.contains("eth_sendRawTransaction") {
                     broadcast_seen.store(true, Ordering::SeqCst);
                     r#"{"jsonrpc":"2.0","id":1,"result":"0x1111111111111111111111111111111111111111111111111111111111111111"}"#
@@ -350,10 +393,17 @@ mod tests {
     #[test]
     fn reverting_estimate_never_broadcasts() {
         let broadcast_seen = Arc::new(AtomicBool::new(false));
-        let url = stub_rpc(broadcast_seen.clone());
+        let url = stub_rpc(
+            broadcast_seen.clone(),
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted: StaleCheckpoint"}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,
+        );
         let rpc = Rpc::new(url);
 
-        std::env::set_var("TEST_SUBMITTER_KEY", "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+        std::env::set_var(
+            "TEST_SUBMITTER_KEY",
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        );
         let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
 
         let err = sender
@@ -364,6 +414,75 @@ mod tests {
         assert!(
             !broadcast_seen.load(Ordering::SeqCst),
             "REGRESSION: a reverting estimate must never reach eth_sendRawTransaction"
+        );
+    }
+
+    #[test]
+    fn watched_send_classifies_estimate_and_simulation_reverts_as_deterministic() {
+        std::env::set_var(
+            "TEST_SUBMITTER_KEY",
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        );
+        let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
+
+        let estimate_rpc = Rpc::new(stub_rpc(
+            Arc::new(AtomicBool::new(false)),
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":3,"message":"execution reverted","data":"0xdeadbeef"}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,
+        ));
+        let estimate = sender
+            .send_watched(
+                &estimate_rpc,
+                Address::ZERO,
+                vec![0xAB; 4],
+                1_500_000,
+                80_000_000_000,
+                true,
+                1,
+                1,
+            )
+            .unwrap_err();
+        assert_eq!(estimate.deterministic_class(), Some(SubmitFailureClass::EstimateRevert));
+
+        let simulation_rpc = Rpc::new(stub_rpc(
+            Arc::new(AtomicBool::new(false)),
+            r#"{"jsonrpc":"2.0","id":1,"result":"0x186a0"}"#,
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"VM execution error: revert"}}"#,
+        ));
+        let simulation = sender
+            .send_watched(
+                &simulation_rpc,
+                Address::ZERO,
+                vec![0xCD; 4],
+                1_500_000,
+                80_000_000_000,
+                true,
+                1,
+                1,
+            )
+            .unwrap_err();
+        assert_eq!(simulation.deterministic_class(), Some(SubmitFailureClass::SimulationRevert));
+    }
+
+    #[test]
+    fn watched_send_keeps_provider_errors_retryable() {
+        std::env::set_var(
+            "TEST_SUBMITTER_KEY",
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+        );
+        let sender = Sender::from_env("TEST_SUBMITTER_KEY", 31337, 100_000_000).unwrap();
+        let rpc = Rpc::new(stub_rpc(
+            Arc::new(AtomicBool::new(false)),
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"rate limit exceeded; try again"}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":"0x"}"#,
+        ));
+        let err = sender
+            .send_watched(&rpc, Address::ZERO, vec![0xEF; 4], 1_500_000, 80_000_000_000, true, 1, 1)
+            .unwrap_err();
+        assert_eq!(
+            err.deterministic_class(),
+            None,
+            "provider/availability failures must not consume abandonment attempts"
         );
     }
 }

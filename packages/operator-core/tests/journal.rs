@@ -1,7 +1,7 @@
 //! Crash-restart replay in all three journal states, and the one thing the journal must never do.
 
 use alloy_primitives::B256;
-use operator_core::journal::{Journal, Outcome, Record, Status, WorkKey};
+use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
 
 fn key(checkpoint_id: u64) -> WorkKey {
     WorkKey { chain_id: 31337, instance_id: B256::from([0x01; 32]), checkpoint_id }
@@ -141,6 +141,19 @@ fn every_record_survives_a_round_trip_through_the_file() {
             .unwrap();
         j.append(Record::Settled { key: key(0), outcome: Outcome::Failed, at: 3 }).unwrap();
         j.append(Record::Resolved { key: key(1), request_id: None, at: 4 }).unwrap();
+        j.append(Record::SubmitFailure {
+            key: key(2),
+            class: SubmitFailureClass::SimulationRevert,
+            at: 5,
+        })
+        .unwrap();
+        j.append(Record::Abandoned {
+            key: key(2),
+            class: SubmitFailureClass::SimulationRevert,
+            attempts: 3,
+            at: 6,
+        })
+        .unwrap();
         j.records().to_vec()
     };
     let reopened = Journal::open(&path).unwrap();
@@ -336,27 +349,80 @@ fn submit_gas(k: WorkKey, reverted: bool, cost_cents: u64, at: u64) -> Record {
     Record::SubmitGas { key: k, reverted, cost_cents, at }
 }
 
-/// A persistently reverting submit registers a strike per on-chain revert; three strikes is the
-/// breaker the daemon holds on. A human `Resolved` line clears them.
+/// Receipt and preflight reverts share one deterministic failure counter. Provider/fee/reorg
+/// failures have no journal record and therefore cannot accidentally advance this counter.
 #[test]
-fn h3_three_reverted_submits_trip_the_breaker_until_a_human_resolves() {
+fn deterministic_submit_failures_share_one_counter() {
     let dir = tempfile::tempdir().unwrap();
     let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
 
-    assert_eq!(j.submit_strikes(&key(0)), 0);
-    for n in 1..=3u32 {
-        j.append(submit_gas(key(0), true, 250, 1_000 + n as u64)).unwrap();
-        assert_eq!(j.submit_strikes(&key(0)), n);
-    }
-    // Strikes are per-key: another checkpoint is unaffected.
-    assert_eq!(j.submit_strikes(&key(1)), 0);
+    assert_eq!(j.submit_failures(&key(0)), (0, None));
+    j.append(Record::SubmitFailure {
+        key: key(0),
+        class: SubmitFailureClass::EstimateRevert,
+        at: 1_001,
+    })
+    .unwrap();
+    assert_eq!(j.submit_failures(&key(0)), (1, Some(SubmitFailureClass::EstimateRevert)));
+    j.append(Record::SubmitFailure {
+        key: key(0),
+        class: SubmitFailureClass::SimulationRevert,
+        at: 1_002,
+    })
+    .unwrap();
+    j.append(submit_gas(key(0), true, 250, 1_003)).unwrap();
+    assert_eq!(j.submit_failures(&key(0)), (3, Some(SubmitFailureClass::ReceiptRevert)));
+
+    // Counters are per-key: another checkpoint is unaffected.
+    assert_eq!(j.submit_failures(&key(1)), (0, None));
     // A successful (non-reverted) submit is not a strike.
     j.append(submit_gas(key(1), false, 250, 2_000)).unwrap();
-    assert_eq!(j.submit_strikes(&key(1)), 0);
+    assert_eq!(j.submit_failures(&key(1)), (0, None));
 
-    // The hold stands until a human appends a Resolved record for the key.
+    // Before terminal abandonment, the legacy human recovery record still clears the counter.
     j.append(Record::Resolved { key: key(0), request_id: None, at: 3_000 }).unwrap();
-    assert_eq!(j.submit_strikes(&key(0)), 0, "a human Resolved line clears the strikes");
+    assert_eq!(j.submit_failures(&key(0)), (0, None));
+}
+
+#[test]
+fn abandoned_is_terminal_and_survives_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    {
+        let mut j = Journal::open(&path).unwrap();
+        j.append(intent(key(0), 100)).unwrap();
+        j.append(Record::Requested { key: key(0), request_id: B256::from([0xAA; 32]), at: 101 })
+            .unwrap();
+        for at in 102..=104 {
+            j.append(Record::SubmitFailure {
+                key: key(0),
+                class: SubmitFailureClass::SimulationRevert,
+                at,
+            })
+            .unwrap();
+        }
+        j.append(Record::Abandoned {
+            key: key(0),
+            class: SubmitFailureClass::SimulationRevert,
+            attempts: 3,
+            at: 104,
+        })
+        .unwrap();
+    }
+
+    let mut reopened = Journal::open(&path).unwrap();
+    assert_eq!(
+        reopened.status(&key(0)),
+        Status::Abandoned { class: SubmitFailureClass::SimulationRevert, attempts: 3 }
+    );
+    assert!(!reopened.may_request(&key(0)));
+    assert!(reopened.refusal(&key(0), None).contains("never retried"));
+
+    // `Resolved` belongs to the request-outcome ambiguity and cannot resurrect an abandoned
+    // immutable proof.
+    reopened.append(Record::Resolved { key: key(0), request_id: None, at: 105 }).unwrap();
+    assert!(matches!(reopened.status(&key(0)), Status::Abandoned { .. }));
+    assert_eq!(reopened.submit_failures(&key(0)), (3, Some(SubmitFailureClass::SimulationRevert)));
 }
 
 /// On-chain gas — landed or reverted — lands in the SAME rolling budget as proving cost, so a
@@ -404,6 +470,10 @@ fn h3_submit_gas_round_trips_through_replay() {
         j.append(submit_gas(key(0), true, 456, 1_001)).unwrap();
     }
     let j = Journal::open(&path).unwrap();
-    assert_eq!(j.submit_strikes(&key(0)), 2, "strikes survive a restart");
+    assert_eq!(
+        j.submit_failures(&key(0)),
+        (2, Some(SubmitFailureClass::ReceiptRevert)),
+        "failures survive a restart"
+    );
     assert_eq!(j.spend(key(0).instance_id, 1_500, 10_000).instance_cents_today, 579);
 }
