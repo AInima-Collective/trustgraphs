@@ -21,6 +21,25 @@ forge script script/research/WeightedPriorGas.s.sol:WeightedPriorGas \
 pnpm exec tsx research/weighted-priors/benchmark-client.ts
 ```
 
+The research script above preserves the original architecture spike. The promoted production
+validator and lifecycle gates are reproduced with:
+
+```sh
+forge test --match-path test/unit/WeightedPriorValidator.t.sol -vv
+forge test --match-path test/unit/factory/WeightedPriorParamsController.t.sol
+forge test --match-path test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
+forge test --match-path test/unit/factory/WeightedTrustgraphsFactory.t.sol
+forge build --sizes
+```
+
+On 2026-08-14, the production 2,048-row `proposePrior` path measured 3,579,477 execution gas and
+448,484 calldata gas. Adding 21,000 intrinsic gas gives a 4,048,961-gas L1 upper bound. This is the
+real validation, pending-version/provenance storage, and event path; the lower-level validator/store
+harness measured 3,349,958 execution and 3,819,070 total gas. The Forge tests fail unless execution
+stays below 5 million and the same total accounting stays below 4.5 million. Full instance creation
+additionally deploys and wires the resolver, snapshot, controller, schema, roles, and registry row;
+it is deliberately outside this manifest-ingestion benchmark.
+
 ## Production V1 release gates
 
 The final exact, mass-conserving implementation has a separate guest and a separate benchmark

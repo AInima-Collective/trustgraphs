@@ -111,6 +111,7 @@ binary), and its deployed instances. Status snapshot:
 | Program | What it proves | Status | Docs |
 |---|---|---|---|
 | **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/build/trust-graph/architecture.md) · [runbook](./docs/build/trust-graph/runbook.md) · [local testing](./docs/build/trust-graph/local-testing.md) |
+| **trust-graph-weighted** | PageRank with a persistent, governance-rotated weighted teleport prior | **Core + contracts built; operator pending** | [contract architecture](./docs/build/weighted-prior/architecture.md) · [rotation/recovery runbook](./docs/build/weighted-prior/runbook.md) |
 | **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/build/signer-sync/architecture.md) · [runbook](./docs/build/signer-sync/runbook.md) |
 | **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/build/hypercerts/architecture.md) · [runbook](./docs/build/hypercerts/runbook.md) · [local testing](./docs/build/hypercerts/local-testing.md) |
 | **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/build/contributions/architecture.md) · [runbook](./docs/build/contributions/runbook.md) · [local testing](./docs/build/contributions/local-testing.md) |

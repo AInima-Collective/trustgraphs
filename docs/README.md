@@ -33,6 +33,7 @@ measurements) also live in `research/` — they are not product documentation.
 | understand what this is, without jargon | [`learn/what-is-trustgraphs.md`](./learn/what-is-trustgraphs.md) |
 | see how scores are computed and proven | [`learn/how-scoring-works.md`](./learn/how-scoring-works.md) · [`concepts/algorithm.md`](./concepts/algorithm.md) |
 | stand up a trust network for my community | [`build/create-a-network.md`](./build/create-a-network.md) |
+| understand or rotate a weighted prior | [`build/weighted-prior/architecture.md`](./build/weighted-prior/architecture.md) · [`runbook.md`](./build/weighted-prior/runbook.md) |
 | read scores from my app or contract | [`build/integrate-scores.md`](./build/integrate-scores.md) |
 | run everything locally, end to end | [`build/setup.md`](./build/setup.md) → [`build/quickstart.md`](./build/quickstart.md) |
 | run the proving daemon | [`build/run-a-prover.md`](./build/run-a-prover.md) |
