@@ -1,0 +1,14 @@
+{
+  "extends": ["../../indexer/.eslintrc.json"],
+  "parserOptions": {
+    "sourceType": "module"
+  },
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "parserOptions": {
+        "project": "research/erc8004-completeness/tsconfig.json"
+      }
+    }
+  ]
+}
