@@ -3,23 +3,77 @@ name: ZK Parity
 on:
   pull_request:
     paths:
-      - "packages/**"
-      - "zk/**"
-      - "test/golden/**"
-      - "test/unit/golden/**"
-      - "frontend/lib/pagerank/**"
-      - "frontend/lib/hypercerts/**"
-      - "frontend/lib/contributions/**"
-      - "taskfile/zk.yml"
+      - 'packages/**'
+      - 'zk/**'
+      - 'test/golden/**'
+      - 'test/unit/golden/**'
+      - 'frontend/lib/pagerank/**'
+      - 'frontend/lib/hypercerts/**'
+      - 'frontend/lib/contributions/**'
+      - 'research/composition/**'
+      - 'src/contracts/params/TrustCompose*.sol'
+      - 'test/unit/TrustCompose*.sol'
+      - 'taskfile/zk.yml'
+      - '.github/workflows/zk-parity.yml'
 
 jobs:
+  guest-elfs:
+    name: Build pinned SP1 guest ELFs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          workspaces: |
+            zk/program -> target
+            zk/weighted-program -> target
+            zk/composition-program -> target
+
+      - name: Install SP1 toolchain (pinned 6.3.1)
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version v6.3.1
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+
+      - name: Build all isolated guest families
+        run: |
+          (cd zk/program && cargo prove build)
+          (cd zk/weighted-program && cargo prove build)
+          (cd zk/composition-program && cargo prove build)
+          tar -czf sp1-guest-elfs.tar.gz \
+            zk/program/target/elf-compilation \
+            zk/weighted-program/target/elf-compilation \
+            zk/composition-program/target/elf-compilation
+
+      - name: Upload guest ELFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-guest-elfs
+          path: sp1-guest-elfs.tar.gz
+          retention-days: 1
+
   parity:
     name: Parity (${{ matrix.program }})
+    needs: guest-elfs
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        program: [trust-graph, signer, hypercerts, contributions]
+        program:
+          [
+            trust-graph,
+            trust-graph-weighted,
+            trust-compose,
+            signer,
+            hypercerts,
+            contributions,
+          ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -46,17 +100,19 @@ jobs:
         with:
           version: 8
 
-      - name: Install SP1 toolchain (pinned 6.3.1)
-        run: |
-          curl -L https://sp1up.succinct.xyz | bash
-          ~/.sp1/bin/sp1up --version v6.3.1
-          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
-
       - name: Install Task
         uses: go-task/setup-task@v1
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Download pinned guest ELFs
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+
+      - name: Restore guest ELF paths
+        run: tar -xzf sp1-guest-elfs.tar.gz
 
       - name: ZK parity (${{ matrix.program }})
         run: task --yes zk:parity PROGRAM=${{ matrix.program }}

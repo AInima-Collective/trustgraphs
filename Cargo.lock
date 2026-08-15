@@ -633,6 +633,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "composition-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "proptest",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "zk-core",
+]
+
+[[package]]
 name = "const-hex"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

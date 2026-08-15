@@ -1,0 +1,5 @@
+measured_at_utc,os,arch,cpu_count,sp1_version,profile,sources,aggregate_entries,union_accounts,witness_bytes,native_micros,native_peak_rss_kib,native_rss_delta_kib,guest_cycles,proof_backend,proof_verified,proof_bytes
+2026-08-15,Linux,aarch64,8,6.3.1,release,2,128,128,7622,244,3440,116,2616399,none,false,0
+2026-08-15,Linux,aarch64,8,6.3.1,release,4,1024,1024,53015,1680,3848,392,24312132,mock-groth16,true,512
+2026-08-15,Linux,aarch64,8,6.3.1,release,8,4096,4096,207675,7101,5208,1472,105652691,none,false,0
+2026-08-15,Linux,aarch64,8,6.3.1,release,8,8192,8192,412097,15137,7328,3160,222311301,mock-groth16,true,512

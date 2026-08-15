@@ -1,6 +1,7 @@
 # Trustgraphs Composition
 
-**Status:** accepted V1 research decision, 2026-08-14. Implementation remains in ordered child issues.
+**Status:** accepted V1 research decision, 2026-08-14. Core/guest/goldens implemented in #63;
+atomic capture and product integration remain in ordered child issues.
 **Question:** how should a user combine trust graphs A, B, and C into one scored graph, and what would it mean for graphs themselves to earn reputation and vouch for other graphs?
 
 ---
@@ -157,6 +158,25 @@ The accepted design is split into independently reviewable trust boundaries:
    scoped, expiring, revocable endorsement history. This is parallel to the proven blend.
 6. **#68 — advisory graph reputation.** Previous-epoch personalized referral recommendations,
    family/ingress diagnostics, and attack fixtures; depends on #67 and cannot mutate V1 weights.
+
+### Core/guest implementation outcome (#63)
+
+The isolated `composition-core` crate and `composition-program` SP1 guest implement the decision
+above without changing or importing into any legacy guest. The production boundary is frozen by
+independent TypeScript vectors plus Rust and Solidity codecs/validators: compact static `TGCP`,
+captured-state `TGCM`, the 20-word params tuple, and the common 12-word journal. The core reproduces
+the research fixture's quotas, account attribution, canonical output bytes/CID/root, source update,
+and output proof exactly.
+
+The accepted caps remain 2–8 required sources, 4,096 entries per source, 8,192 aggregate entries,
+8,192 union accounts, 1 MiB aggregate canonical source bytes, positive uint128 values/pool, and
+maximum source age 500,000 blocks. The measured maximum shape executes in 222,311,301 SP1 cycles
+with a 412,097-byte serialized witness and 7,328 KiB host peak RSS on the recorded Linux/aarch64
+environment. Smaller 128-, 1,024-, and 4,096-entry shapes establish scaling; 1,024 and maximum
+shapes also pass the SP1 mock Groth16 wrapping/verifier gate. Full environment, artifact hashes,
+commands, and the limitation of mock proofs are recorded in
+[`composition/README.md`](composition/README.md) and
+[`composition/sp1-benchmarks.csv`](composition/sp1-benchmarks.csv).
 
 ## 1. What exactly is being composed?
 

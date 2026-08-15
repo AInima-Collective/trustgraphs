@@ -48,6 +48,7 @@ hypercerts-core = { path = "../../packages/hypercerts-core" }
 contributions-core = { path = "../../packages/contributions-core" }
 weighted-prior-core = { path = "../../packages/weighted-prior-core" }
 weighted-prior-research = { path = "../../packages/weighted-prior-research" }
+composition-core = { path = "../../packages/composition-core" }
 alloy-primitives = { version = "1", features = ["serde"] }
 # fetch feature only: the sol! call/event ABI plumbing for on-chain reconstruction.
 alloy-sol-types = { version = "1", optional = true }

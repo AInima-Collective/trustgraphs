@@ -88,7 +88,10 @@ tasks:
         # first failure is a missing-file error from `include_elf!` in the middle of a Rust build,
         # several minutes in, which reads like a broken checkout instead of a missing step.
         # Globbed on the target triple on purpose: SP1 moved it from riscv32im to riscv64im.
-        ls zk/program/target/elf-compilation/*/release/trustgraph-program >/dev/null 2>&1 \
+        ls zk/program/target/elf-compilation/*/release/trustgraph-program \
+           zk/weighted-program/target/elf-compilation/*/release/trustgraph-weighted-program \
+           zk/composition-program/target/elf-compilation/*/release/trustgraph-compose-program \
+           >/dev/null 2>&1 \
           || fail "the SP1 guest ELFs are not built — run: task zk:build"
 
         cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
@@ -111,8 +114,8 @@ tasks:
     cmds:
       - |
         cd zk/prover
-        for p in trust-graph signer contributions; do
-          printf '%-14s %s\n' "$p" "$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- $p vkey)"
+        for p in trust-graph trust-graph-weighted trust-compose signer hypercerts contributions; do
+          printf '%-21s %s\n' "$p" "$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- $p vkey)"
         done
 
   deploy:
