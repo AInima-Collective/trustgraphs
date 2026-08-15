@@ -61,6 +61,17 @@ library TrustComposeValidator {
     error InvalidSourceAge(uint8 index, uint64 maxAgeBlocks);
     error OptionalSourceUnsupported(uint8 index);
     error PolicyCommitmentMismatch();
+    error DerivedFieldNotZero();
+    error IdentityFieldChanged();
+
+    /// @notice Validate user-selected creation fields before factory-derived policy/chain fields.
+    function validateCreation(TrustComposeParamsCodec.Params memory p) internal pure {
+        if (
+            p.sourcePolicyRoot != bytes32(0) || p.sourceCount != 0 || p.policyManifestSha256 != bytes32(0)
+                || p.accumulator != address(0) || p.chainId != 0
+        ) revert DerivedFieldNotZero();
+        _validateStatic(p, false);
+    }
 
     function validateFinal(TrustComposeParamsCodec.Params memory p, bytes calldata manifest)
         internal
@@ -76,6 +87,32 @@ library TrustComposeValidator {
     }
 
     function validateComputationalEnvelope(TrustComposeParamsCodec.Params memory p) internal pure {
+        _validateStatic(p, true);
+        if (p.chainId == 0) revert InvalidChain(p.chainId);
+    }
+
+    /// @notice Prove every field except the complete source policy remains constitutional.
+    function validateRotation(TrustComposeParamsCodec.Params memory next, TrustComposeParamsCodec.Params memory initial)
+        internal
+        pure
+    {
+        validateComputationalEnvelope(next);
+        if (
+            next.version != initial.version || next.programId != initial.programId
+                || next.scopeHash != initial.scopeHash || next.identityDomain != initial.identityDomain
+                || next.outputKind != initial.outputKind || next.outputDomain != initial.outputDomain
+                || next.admittedProgramId != initial.admittedProgramId || next.weightScale != initial.weightScale
+                || next.outputPool != initial.outputPool || next.maxSources != initial.maxSources
+                || next.maxEntriesPerSource != initial.maxEntriesPerSource
+                || next.maxAggregateEntries != initial.maxAggregateEntries
+                || next.maxUnionAccounts != initial.maxUnionAccounts
+                || next.maxAggregateBlobBytes != initial.maxAggregateBlobBytes
+                || next.maxSourceAgeBlocks != initial.maxSourceAgeBlocks || next.accumulator != initial.accumulator
+                || next.chainId != initial.chainId
+        ) revert IdentityFieldChanged();
+    }
+
+    function _validateStatic(TrustComposeParamsCodec.Params memory p, bool requirePolicy) private pure {
         if (p.version != PARAMS_VERSION) revert InvalidParamsVersion(p.version);
         if (p.programId != PROGRAM_ID) revert InvalidProgramId(p.programId);
         if (p.scopeHash == bytes32(0)) revert InvalidScope();
@@ -87,11 +124,13 @@ library TrustComposeValidator {
         }
         if (p.weightScale != WEIGHT_SCALE) revert InvalidWeightScale(p.weightScale);
         if (p.outputPool == 0) revert InvalidOutputPool();
-        if (p.sourceCount < MIN_SOURCES || p.sourceCount > MAX_SOURCES || p.sourceCount > p.maxSources) {
-            revert InvalidSourceCount(p.sourceCount);
-        }
-        if (p.sourcePolicyRoot == bytes32(0) || p.policyManifestSha256 == bytes32(0)) {
-            revert InvalidPolicyCommitment();
+        if (requirePolicy) {
+            if (p.sourceCount < MIN_SOURCES || p.sourceCount > MAX_SOURCES || p.sourceCount > p.maxSources) {
+                revert InvalidSourceCount(p.sourceCount);
+            }
+            if (p.sourcePolicyRoot == bytes32(0) || p.policyManifestSha256 == bytes32(0)) {
+                revert InvalidPolicyCommitment();
+            }
         }
         if (
             p.maxSources < MIN_SOURCES || p.maxSources > MAX_SOURCES || p.maxEntriesPerSource == 0
@@ -104,8 +143,83 @@ library TrustComposeValidator {
         if (p.maxSourceAgeBlocks == 0 || p.maxSourceAgeBlocks > MAX_SOURCE_AGE_BLOCKS) {
             revert InvalidMaxSourceAge(p.maxSourceAgeBlocks);
         }
-        if (p.accumulator == address(0)) revert InvalidAccumulator();
-        if (p.chainId == 0) revert InvalidChain(p.chainId);
+        if (requirePolicy && p.accumulator == address(0)) revert InvalidAccumulator();
+    }
+
+    /// @notice Constructor equivalent of `validatePolicyManifest` for ABI-decoded memory bytes.
+    function validatePolicyManifestMemory(
+        bytes memory manifest,
+        uint64 expectedChain,
+        bytes32 admittedProgramId,
+        uint64 maximumAge
+    ) internal pure returns (Commitment memory commitment) {
+        uint256 length = manifest.length;
+        if (length < HEADER_LENGTH) revert InvalidManifestLength(length, HEADER_LENGTH);
+        bytes4 magic;
+        uint16 version;
+        uint64 chainId;
+        uint8 count;
+        assembly ("memory-safe") {
+            let header := mload(add(manifest, 32))
+            magic := header
+            version := and(shr(208, header), 0xffff)
+            chainId := and(shr(144, header), 0xffffffffffffffff)
+            count := and(shr(136, header), 0xff)
+        }
+        if (magic != MANIFEST_MAGIC) revert InvalidManifestMagic(magic);
+        if (version != MANIFEST_VERSION) revert InvalidManifestVersion(version);
+        if (chainId != expectedChain) revert InvalidManifestChain(chainId, expectedChain);
+        if (count < MIN_SOURCES || count > MAX_SOURCES) revert InvalidSourceCount(count);
+        uint256 expectedLength = HEADER_LENGTH + uint256(count) * RECORD_LENGTH;
+        if (length != expectedLength) revert InvalidManifestLength(length, expectedLength);
+
+        bytes32[] memory level = new bytes32[](count);
+        address[] memory snapshots = new address[](count);
+        bytes32 previousId;
+        uint256 weightSum;
+        for (uint8 i; i < count; ++i) {
+            uint256 offset = HEADER_LENGTH + uint256(i) * RECORD_LENGTH;
+            bytes32 sourceId;
+            address snapshot;
+            bytes32 familyId;
+            bytes32 programId;
+            uint64 weight;
+            uint64 maxAgeBlocks;
+            uint8 required;
+            assembly ("memory-safe") {
+                sourceId := mload(add(add(manifest, 32), offset))
+                snapshot := shr(96, mload(add(add(add(manifest, 32), offset), 32)))
+                familyId := mload(add(add(add(manifest, 32), offset), 52))
+                programId := mload(add(add(add(manifest, 32), offset), 84))
+                weight := shr(192, mload(add(add(add(manifest, 32), offset), 116)))
+                maxAgeBlocks := shr(192, mload(add(add(add(manifest, 32), offset), 124)))
+                required := shr(248, mload(add(add(add(manifest, 32), offset), 132)))
+            }
+            if (sourceId == bytes32(0)) revert InvalidSourceId(i, sourceId);
+            if (sourceId <= previousId) revert SourceIdsNotAscending(i, previousId, sourceId);
+            if (snapshot == address(0)) revert InvalidSnapshot(i, snapshot);
+            for (uint8 j; j < i; ++j) {
+                if (snapshots[j] == snapshot) revert DuplicateSnapshot(i, snapshot);
+            }
+            if (familyId == bytes32(0)) revert InvalidFamilyId(i);
+            if (programId != admittedProgramId || programId == PROGRAM_ID) {
+                revert UnadmittedSourceProgram(i, programId);
+            }
+            if (weight == 0) revert InvalidSourceWeight(i);
+            if (maxAgeBlocks == 0 || maxAgeBlocks > maximumAge) revert InvalidSourceAge(i, maxAgeBlocks);
+            if (required != 1) revert OptionalSourceUnsupported(i);
+            previousId = sourceId;
+            snapshots[i] = snapshot;
+            weightSum += weight;
+            level[i] = keccak256(abi.encode(sourceId, snapshot, familyId, programId, weight, maxAgeBlocks, required));
+        }
+        if (weightSum != WEIGHT_SCALE) revert InvalidWeightSum(weightSum);
+        commitment = Commitment({
+            sourcePolicyRoot: _orderedRoot(level),
+            sourceCount: count,
+            manifestSha256: sha256(manifest),
+            chainId: chainId
+        });
     }
 
     function validatePolicyManifest(

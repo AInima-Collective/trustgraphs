@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
+import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
@@ -18,7 +19,7 @@ import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 ///         then writes through the same historical-state path every consumer already reads.
 /// @dev Two-tier authority (AccessControl + timelocks): CONSTITUTIONAL_ROLE owns the truth-defining
 ///      knobs (`zkVerifier`, `accumulator`); OPERATIONAL_ROLE owns `paramsHash`. See ZK_ARCHITECTURE.md.
-contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
+contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessControl {
     /// @notice Owns `zkVerifier` and `accumulator` — changes what "correct PageRank" means.
     bytes32 public constant CONSTITUTIONAL_ROLE = keccak256("CONSTITUTIONAL_ROLE");
     /// @notice Owns `paramsHash` — governance-cadence parameter changes.
@@ -100,6 +101,22 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
     /// @notice Historical merkle states, keyed by index
     mapping(uint256 stateIndex => MerkleState state) public states;
+
+    /// @notice Proof/configuration provenance parallel to `states`.
+    /// @dev Added without changing `MerkleState`, preserving every existing consumer ABI.
+    mapping(uint256 stateIndex => StateProvenance provenance) private _stateProvenance;
+
+    /// @notice Append-only accepted checkpoint history for provenance consumers. The legacy
+    ///         block-indexed state view may replace a slot when two freezes share one block; this
+    ///         parallel record never does.
+    mapping(uint256 checkpointId => MerkleState state) private _acceptedCheckpointStates;
+    mapping(uint256 checkpointId => StateProvenance provenance) private _acceptedCheckpointProvenance;
+    mapping(uint256 checkpointId => bool accepted) private _acceptedCheckpoints;
+
+    /// @notice Opt-in provenance history for snapshots intended to serve as composition sources.
+    /// @dev False preserves the exact legacy proof-submission economics. Constitutional authority
+    ///      may enable it once before the first accepted state; it can never be disabled.
+    bool public provenanceEnabled;
 
     /// @notice Array of block numbers where states were created (ascending)
     /// @dev Used for efficient binary search of historical states
@@ -259,6 +276,15 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         if (_paramsHash == bytes32(0)) revert ZeroParamsHash();
         paramsHash = _paramsHash;
         emit ParamsHashUpdated(_paramsHash);
+    }
+
+    /// @notice Permanently enable the additive accepted-state provenance/history seam.
+    function enableStateProvenance() external onlyRole(CONSTITUTIONAL_ROLE) {
+        if (provenanceEnabled) return;
+        uint256 stateCount = stateBlocks.length;
+        if (stateCount != 0) revert ProvenanceEnableAfterState(stateCount);
+        provenanceEnabled = true;
+        emit StateProvenanceEnabled();
     }
 
     /// @notice Set (or clear) the lane-2 anchor registry (constitutional — it changes which
@@ -442,8 +468,12 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
             )
         );
 
+        // Snapshot the exact verifier facts used by this acceptance. The verifier cannot change
+        // during this transaction, and an invalid proof reverts before anything is recorded.
+        IZkVerifier acceptedVerifier = zkVerifier;
+        address acceptedVerifierAddress = address(acceptedVerifier);
         // Reverts on an invalid proof.
-        zkVerifier.verify(proof, journalDigest);
+        acceptedVerifier.verify(proof, journalDigest);
 
         lastAppliedCheckpoint = checkpointId;
         hasAppliedCheckpoint = true;
@@ -451,7 +481,33 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
 
         // File at the checkpoint's INPUT-FREEZE block, not the submission block, so "score as of
         // block N" stays honest despite permissionless, delayed, racy proving.
-        _updateStateAtBlock(c.blockNumber, outputRoot, ipfsHash, ipfsHashCid, totalValue);
+        uint256 stateIndex = _updateStateAtBlock(c.blockNumber, outputRoot, ipfsHash, ipfsHashCid, totalValue);
+        if (provenanceEnabled) {
+            bytes32 acceptedVerifierCodehash = acceptedVerifierAddress.codehash;
+            bytes32 acceptedProgramVKey = _programVKey(acceptedVerifierAddress);
+            StateProvenance memory provenance = StateProvenance({
+                stateIndex: stateIndex,
+                checkpointId: checkpointId,
+                acceptedAtBlock: uint64(block.number),
+                paramsHash: pinnedParamsHash,
+                verifier: acceptedVerifierAddress,
+                verifierCodehash: acceptedVerifierCodehash,
+                programVKey: acceptedProgramVKey
+            });
+            _stateProvenance[stateIndex] = provenance;
+            _acceptedCheckpointStates[checkpointId] = states[stateIndex];
+            _acceptedCheckpointProvenance[checkpointId] = provenance;
+            _acceptedCheckpoints[checkpointId] = true;
+            emit StateProvenanceRecorded(
+                stateIndex,
+                checkpointId,
+                provenance.acceptedAtBlock,
+                pinnedParamsHash,
+                acceptedVerifierAddress,
+                acceptedVerifierCodehash,
+                acceptedProgramVKey
+            );
+        }
 
         emit MerkleRootUpdated(outputRoot, ipfsHash, ipfsHashCid, totalValue);
         emit MerkleProofSubmitted(checkpointId, outputRoot, msg.sender, recipient);
@@ -491,9 +547,7 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
         bytes32 ipfsHash,
         string memory ipfsHashCid,
         uint256 totalValue
-    ) internal {
-        uint256 stateIndex;
-
+    ) internal returns (uint256 stateIndex) {
         uint256 length = stateBlocks.length;
         if (length != 0 && blockNumber < stateBlocks[length - 1]) {
             revert NonMonotonicStateBlock(blockNumber, stateBlocks[length - 1]);
@@ -532,6 +586,15 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
                 emit HookFailed(i, address(hook));
             }
         }
+    }
+
+    /// @notice Read `programVKey()` when the verifier exposes the SP1-compatible provenance seam.
+    /// @dev Generic verifiers remain supported and record zero. Composition adapters require a
+    ///      nonzero key, so a source must use an authenticated program-specific verifier to enter
+    ///      a composition policy.
+    function _programVKey(address verifier) private view returns (bytes32 value) {
+        (bool ok, bytes memory returned) = verifier.staticcall(abi.encodeWithSignature("programVKey()"));
+        if (ok && returned.length == 32) value = abi.decode(returned, (bytes32));
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -640,6 +703,24 @@ contract MerkleSnapshot is IMerkleSnapshot, AccessControl {
             revert NoMerkleStateAtIndex(index, stateBlocks.length);
         }
         return states[index];
+    }
+
+    /// @inheritdoc IMerkleSnapshotProvenance
+    function getStateProvenance(uint256 stateIndex) external view returns (StateProvenance memory) {
+        if (stateIndex >= stateBlocks.length) {
+            revert NoMerkleStateAtIndex(stateIndex, stateBlocks.length);
+        }
+        return _stateProvenance[stateIndex];
+    }
+
+    /// @inheritdoc IMerkleSnapshotProvenance
+    function getAcceptedCheckpoint(uint256 checkpointId)
+        external
+        view
+        returns (MerkleState memory state, StateProvenance memory provenance)
+    {
+        if (!_acceptedCheckpoints[checkpointId]) revert UnpinnedCheckpoint(checkpointId);
+        return (_acceptedCheckpointStates[checkpointId], _acceptedCheckpointProvenance[checkpointId]);
     }
 
     /// @notice Binary search to find the state index at (or before) a given block

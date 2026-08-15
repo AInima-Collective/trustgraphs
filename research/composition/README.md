@@ -2,8 +2,9 @@
 
 This directory contains both the accepted Phase-0 decision evidence from issue #36 and the
 independent TypeScript oracle for the production core/guest boundary implemented in issue #63.
-Atomic onchain capture, factory/deployment wiring, operator/indexer integration, and product UI
-remain separate child issues.
+Issue #64 adds the atomic onchain capture, authenticated source provenance, timelocked policy
+lifecycle, and factory/deployment wiring described below. Operator/indexer integration and product
+UI remain separate child issues.
 
 ## Production V1 implementation
 
@@ -16,7 +17,12 @@ The implementation deliberately isolates the new program from every legacy guest
 - `zk/composition-program` is the dedicated SP1 6.3.1 guest. `zk/prover/src/programs/composition.rs`
   is its native adapter and refuses any guest/native journal difference.
 - `src/contracts/params/TrustComposeParamsCodec.sol` and `TrustComposeValidator.sol` freeze the
-  policy/params boundary for the later capture/factory issue.
+  policy/params boundary.
+- `CompositionSourceAdapter`, `CompositionSourceAccumulator`, `TrustComposeParamsController`, and
+  `TrustComposeFactory` authenticate source deployments/proofs, freeze exact `TGCM` bytes in one
+  trigger transaction, govern complete policy rotations, and register isolated composition
+  instances. The [contract architecture](../../docs/build/composition/architecture.md) and
+  [runbook](../../docs/build/composition/runbook.md) define the operational boundary.
 - `production.ts` and `test/golden/trust-compose.json` independently pin every byte consumed by
   Rust, SP1, and Solidity.
 

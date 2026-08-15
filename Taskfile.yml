@@ -18,6 +18,7 @@ includes:
   instances: ./taskfile/instances.yml
   trustgraph: ./taskfile/trustgraph.yml
   contributions: ./taskfile/contributions.yml
+  composition: ./taskfile/composition.yml
   demo: ./taskfile/demo.yml
   env:
     taskfile: ./taskfile/env.yml
