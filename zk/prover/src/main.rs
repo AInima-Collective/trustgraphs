@@ -15,11 +15,12 @@
 //!   trustgraph-prover contributions {vkey|paramshash|fetch|execute|prove}
 //!                                                         the contributions program (fetch needs
 //!                                                         `--features fetch`)
+//!   trustgraph-prover trust-graph-weighted {vkey|paramshash|execute|prove}
+//!   trustgraph-prover trust-compose {vkey|paramshash|execute|prove}
 //!
 //! For `trust-graph`, `input.json` is a serialized `pagerank_core::GuestInput`; for `signer` it is a
-//! `pagerank_core::SignerInput`; for `contributions` it is a
-//! `contributions_core::compute::GuestInput`. Omit it to use the built-in sample (identical to
-//! test/golden/trust-graph.json / test/golden/contributions.json).
+//! `pagerank_core::SignerInput`; for `trust-graph-weighted`, `trust-compose`, and `contributions`
+//! it is their core crate's `GuestInput`. Omit it to use the relevant built-in golden sample.
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -47,6 +48,12 @@ enum Program {
     Weighted {
         #[command(subcommand)]
         cmd: programs::weighted::Command,
+    },
+    /// Normalized final-distribution composition over captured complete source outputs.
+    #[command(name = "trust-compose")]
+    Composition {
+        #[command(subcommand)]
+        cmd: programs::composition::Command,
     },
     /// Signer-sync (top-N Safe signer set + threshold from the proven scores).
     Signer {
@@ -86,6 +93,7 @@ fn main() -> Result<()> {
     match cli.program {
         Program::Trustgraphs { cmd } => programs::trust_graph::run(cmd),
         Program::Weighted { cmd } => programs::weighted::run(cmd),
+        Program::Composition { cmd } => programs::composition::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
         Program::Contributions { cmd } => programs::contributions::run(cmd),

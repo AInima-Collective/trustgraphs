@@ -29,6 +29,8 @@ a proof from any other binary does not verify.
 | Program | Deployment vkey |
 |---|---|
 | trust-graph | none yet |
+| trust-graph-weighted | none yet |
+| trust-compose | none yet |
 | signer-sync | none yet |
 | hypercerts | none yet |
 | contributions | none yet |
@@ -49,7 +51,7 @@ ceremony and published in the table above, alongside the source commit they were
 # once per checkout: build the guest ELFs with the pinned SP1 toolchain (v6.3.1)
 task zk:build
 
-# print the vkey for a program (trust-graph | signer | hypercerts | contributions)
+# print the vkey for any program listed in the program index
 task zk:vkey PROGRAM=trust-graph
 ```
 

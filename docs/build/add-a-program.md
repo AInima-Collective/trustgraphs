@@ -2,8 +2,8 @@
 
 A *program* is one provable scoring pipeline: a guest binary, the core-crate semantics it compiles,
 one journal shape, and one params schema, with its own verification key and golden vectors
-(trust-graph, signer-sync, hypercerts and contributions are the four that exist; the program vs.
-instance distinction is defined in
+(trust-graph, trust-graph-weighted, trust-compose, signer-sync, hypercerts, and contributions are
+the current set; the program vs. instance distinction is defined in
 [`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md)). This page is for
 contributors extending the platform itself: if you only want another network of an existing
 program, you never touch any of this, because that costs one factory transaction
@@ -16,11 +16,13 @@ program (call it `foo`) is exactly these additions — no change to any existing
    program's own `Params`/`Journal` + byte encodings, depending on `packages/zk-core` (and
    `packages/envelopes` if it ingests a *lane-2* substrate — off-chain signed data, like atproto repos, anchored on-chain by digest rather than attested via EAS). Same discipline as every core crate: no
    floats, `BTreeMap` only, no non-deterministic iteration.
-2. **Guest `[[bin]]`** — add `zk/program/src/foo.rs` (a ~25-line shell) and its `[[bin]]` entry. The
-   single `build.rs` (`sp1_build::build_program("../program")`) builds it automatically.
-   *Consequence:* adding a bin (and any new `[patch.crates-io]` crypto patches it needs) recompiles the
-   **existing** bins' ELFs → the trust-graph and signer vkeys rotate at the next deploy. Batch that
-   rotation through the constitutional-timelock path; don't dribble it.
+2. **Isolated guest workspace** — add `zk/foo-program/` with a ~25-line `src/main.rs`, its own pinned
+   SP1 dependencies/lockfile, and `[workspace]`; then register it in `zk/prover/build.rs`. This is the
+   default for a new consensus program and follows `zk/weighted-program` and
+   `zk/composition-program`: changing `foo-core` cannot perturb a shipped guest dependency graph or
+   vkey. Adding a `[[bin]]` to the legacy `zk/program` multi-bin workspace remains possible only when
+   shared compilation is intentional. It recompiles every existing bin and therefore rotates their
+   vkeys; treat that as an explicit governed migration.
 3. **Prover subcommand group** — `zk/prover/src/programs/foo.rs` adding a `foo {vkey | paramshash |
    [fetch] | execute | prove}` clap group that shares the existing proof-writing plumbing
    (`abi.encode(publicValues, seal)`, blob export, local verify). Lane-2 programs also add host-only
@@ -31,8 +33,9 @@ program (call it `foo`) is exactly these additions — no change to any existing
    program).
 5. **Docs dir** — `docs/build/foo/` with `architecture.md` (pointer to the research design) and
    `runbook.md`, following the per-program directories already under `docs/build/`
-   (`trust-graph/`, `signer-sync/`, `hypercerts/`, `contributions/`), plus a new row in the program
-   index in [`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md).
+   (`trust-graph/`, `weighted-prior/`, `signer-sync/`, `hypercerts/`, `contributions/`), plus a new
+   row in the program index in
+   [`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md).
 
 Task/CI plumbing: `zk:{vkey|execute|prove|parity}` are generic via `PROGRAM=foo`; `zk:vectors` needs a
 per-program branch (each program writes its own vector file — see the existing hypercerts branch),

@@ -112,6 +112,7 @@ binary), and its deployed instances. Status snapshot:
 |---|---|---|---|
 | **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/build/trust-graph/architecture.md) · [runbook](./docs/build/trust-graph/runbook.md) · [local testing](./docs/build/trust-graph/local-testing.md) |
 | **trust-graph-weighted** | PageRank with a persistent, governance-rotated weighted teleport prior | **Built** | [contract architecture](./docs/build/weighted-prior/architecture.md) · [rotation/recovery runbook](./docs/build/weighted-prior/runbook.md) |
+| **trust-compose** | a source-aware weighted composition of complete captured score distributions | **Core/guest built** | [implementation and measurements](./research/composition/README.md) · [accepted design](./research/TRUSTGRAPHS_COMPOSITION.md) |
 | **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/build/signer-sync/architecture.md) · [runbook](./docs/build/signer-sync/runbook.md) |
 | **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/build/hypercerts/architecture.md) · [runbook](./docs/build/hypercerts/runbook.md) · [local testing](./docs/build/hypercerts/local-testing.md) |
 | **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/build/contributions/architecture.md) · [runbook](./docs/build/contributions/runbook.md) · [local testing](./docs/build/contributions/local-testing.md) |
@@ -126,8 +127,8 @@ gitignored `.trustgraph/` directory, one subdirectory per program.
 | Path | What lives there |
 |---|---|
 | `src/contracts/` | Solidity: EAS resolvers + attestation accumulator, `MerkleSnapshot`, the SP1 journal verifier (a *journal* is a proof's public output record), governance/reward/Zodiac modules |
-| `packages/` | Rust cores — `zk-core` (shared encodings), `pagerank-core` (canonical algorithm), `hypercerts-core`, `contributions-core`, `envelopes` (atproto verification), `input-exporter` |
-| `zk/program` · `zk/prover` | the SP1 guest bins and the `trustgraph-prover` host CLI |
+| `packages/` | Rust cores — `zk-core` (shared encodings), `pagerank-core`, `weighted-prior-core`, `composition-core`, `hypercerts-core`, `contributions-core`, `envelopes` (atproto verification), `input-exporter` |
+| `zk/program` · `zk/weighted-program` · `zk/composition-program` · `zk/prover` | the legacy multi-bin and isolated SP1 guests, plus the `trustgraph-prover` host CLI |
 | `frontend/` · `indexer/` | Next.js app and Ponder indexer (with a browser port of the algorithm for client-side recompute) |
 | `docs/` | product docs — `learn/` (plain-language intros), `concepts/` ([`networks-and-programs.md`](./docs/concepts/networks-and-programs.md) index, the algorithm), `build/` ([`setup.md`](./docs/build/setup.md), [`production.md`](./docs/build/production.md), per-program `architecture`/`runbook`/`local-testing`), `verify/` (epoch reproduction) |
 | `research/` | design provenance — why the architecture is what it is (`ZK_ARCHITECTURE.md`, program plans, the [`DEVIATIONS.md`](./research/DEVIATIONS.md) log, `archive/` for superseded designs) |
