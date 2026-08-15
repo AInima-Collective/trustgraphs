@@ -22,7 +22,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10.18.3
 
       - name: Install Task
         uses: go-task/setup-task@v1

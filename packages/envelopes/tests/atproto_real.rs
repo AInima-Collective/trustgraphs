@@ -71,6 +71,7 @@ fn load_witness(car_rel: &str, plc_rel: &str) -> (String, B256, AtprotoWitness) 
 }
 
 #[test]
+#[ignore = "requires the gitignored real Bluesky CAR fixture"]
 fn real_bluesky_repo_full_pipeline() {
     let (did, head, w) = load_witness(
         "test/fixtures/atproto/repos/atproto.car",
@@ -88,6 +89,7 @@ fn real_bluesky_repo_full_pipeline() {
 }
 
 #[test]
+#[ignore = "requires the gitignored real Bluesky CAR fixture"]
 fn legacy_create_genesis_chain_verifies() {
     // jay.bsky.team's log starts with a legacy "create" op and has later rotations.
     let (did, head, w) = load_witness(
@@ -129,6 +131,7 @@ fn hypercerts_seeded_repo_verifies_all_collections() {
 }
 
 #[test]
+#[ignore = "requires the gitignored real Bluesky CAR fixture"]
 fn tampered_block_fails_closed() {
     let (did, head, mut w) = load_witness(
         "test/fixtures/atproto/repos/atproto.car",
@@ -148,6 +151,7 @@ fn tampered_block_fails_closed() {
 }
 
 #[test]
+#[ignore = "requires the gitignored real Bluesky CAR fixture"]
 fn wrong_head_rejected() {
     let (did, _head, w) = load_witness(
         "test/fixtures/atproto/repos/atproto.car",
@@ -164,6 +168,7 @@ fn wrong_head_rejected() {
 }
 
 #[test]
+#[ignore = "requires the gitignored real Bluesky CAR fixture"]
 fn foreign_did_rejected() {
     let (_did, head, w) = load_witness(
         "test/fixtures/atproto/repos/atproto.car",
