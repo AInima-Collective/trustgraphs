@@ -1,6 +1,6 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-15): 24 issues closed, 18 remain.**
+> **Status (2026-08-15): 25 issues closed, 17 remain.**
 >
 > Closed after auditing `main` through `6d03320` and rerunning the focused regressions:
 >
@@ -63,13 +63,16 @@
 > - **#61** — registry-authenticated immutable score-program/output-domain bindings, explicit
 >   decoder/table/API routing, fail-closed provenance validation, and audited restart/backfill and
 >   rolling-deploy paths (`b725c32`, PR #85)
+> - **#63** — isolated strict trust-compose core/guest, exact TGCP/TGCM/params/journal commitments,
+>   source-aware Hamilton attribution, cross-language production vectors and fail-closed gates,
+>   plus measured 8-source / 8,192-entry proving bounds (`344cc08`, PR #90)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
 > is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63 → #64 → #65 → #66**; the shared #61 gate is closed; graph lineage
+> Trust-composition chain: **#63 closed → #64 → #65 → #66**; the shared #61 gate is closed; graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
@@ -121,7 +124,7 @@ can proceed concurrently:
 | G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63 → #64 → #65 → #66; #67 → #68              | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| J · trust composition             | #63 closed → #64 → #65 → #66; #67 → #68       | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
@@ -551,6 +554,27 @@ is split across #63–#66 (sharing #61), and lineage/vouch experimentation acros
 
 **Close when:** every exit criterion in #36 is met; a detailed candidate report alone is not enough.
 
+### M4.3a · #63 — trust-compose core, SP1 guest, and production vectors
+
+**Closed in `344cc08` (PR #90).** The isolated `composition-core` validates exact canonical source
+blobs against CID/SHA-256/Merkle/total commitments, validates compact static `TGCP` policy and
+captured-state `TGCM` bytes, and performs checked uint128/two-stage source-aware Hamilton allocation
+with widened uint256 products. It emits canonical output bytes/CID/root plus a complete per-source
+attribution ledger. The detached SP1 6.3.1 guest and native adapter pin the new program identity,
+20-word params tuple, common 12-word journal, capture commitment, and instance binding without
+changing any legacy guest artifact.
+
+Independent TypeScript production vectors plus Rust and Solidity codecs/validators reproduce every
+research quota, attribution, source update, output commitment, journal digest, and proof. Positive
+guest scenarios cover overlap, missing accounts, unequal pools, reorder, exact reproduction,
+remainder ties, updates, and representative scale; native and guest rejection gates fail closed on
+commitment/source/program/freshness/quota/cap violations. The accepted maximum remains 8 required
+sources and 8,192 aggregate/union entries: its 412,097-byte witness executes in 222,311,301 cycles
+with 7,328 KiB host peak RSS, and the SP1 mock Groth16 path verifies exact public values. The full
+Rust workspace, 610 Forge tests, 11 TypeScript composition tests, frontend suite, and aggregate
+parity task passed locally. Hosted Actions were billing-blocked before runner allocation. Atomic
+capture/factory wiring continues in #64.
+
 ---
 
 ## Milestone 5 — Agent product epics
@@ -726,10 +750,10 @@ fixture, and independently reviewable child-issue criterion in #60 passes. Compl
 - **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
   no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
   gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
+- **Trust-composition track:** #63 closed; #64 → #65 → #66 for the remaining proven blend; #67 → #68 for separate
   advisory graph reputation. The shared program-aware ingestion gate #61 is closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 18 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 17 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
