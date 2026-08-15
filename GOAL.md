@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-15): 25 issues closed, 17 remain.**
+> **Status (2026-08-15): 26 issues closed, 16 remain.**
 >
-> Closed after auditing `main` through `6d03320` and rerunning the focused regressions:
+> Closed after auditing `main` through `0a100da` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -66,13 +66,16 @@
 > - **#63** — isolated strict trust-compose core/guest, exact TGCP/TGCM/params/journal commitments,
 >   source-aware Hamilton attribution, cross-language production vectors and fail-closed gates,
 >   plus measured 8-source / 8,192-entry proving bounds (`344cc08`, PR #90)
+> - **#64** — authenticated source/proof provenance, atomic bounded TGCM capture, durable checkpoint
+>   recovery, timelocked policy rotation and adapter recovery, plus isolated composition factory and
+>   verifier registration (`0a100da`, PR #91)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
 > is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63 closed → #64 → #65 → #66**; the shared #61 gate is closed; graph lineage
+> Trust-composition chain: **#63 and #64 closed → #65 → #66**; the shared #61 gate is closed; graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
@@ -124,7 +127,7 @@ can proceed concurrently:
 | G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63 closed → #64 → #65 → #66; #67 → #68       | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| J · trust composition             | #63/#64 closed → #65 → #66; #67 → #68          | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
@@ -573,7 +576,31 @@ sources and 8,192 aggregate/union entries: its 412,097-byte witness executes in 
 with 7,328 KiB host peak RSS, and the SP1 mock Groth16 path verifies exact public values. The full
 Rust workspace, 610 Forge tests, 11 TypeScript composition tests, frontend suite, and aggregate
 parity task passed locally. Hosted Actions were billing-blocked before runner allocation. Atomic
-capture/factory wiring continues in #64.
+capture/factory wiring shipped in #64; operator/indexer integration continues in #65.
+
+### M4.3b · #64 — atomic source capture and control lifecycle
+
+**Closed in `0a100da` (PR #91).** Authenticated, factory-created source adapters now pin the exact
+registry row, controller, snapshot/verifier bytecode, SP1 vkey, program/family/output identity, and
+reviewed deployment provenance. Composition source snapshots explicitly opt into additive accepted-
+state provenance without changing the legacy snapshot ABI or gas-sensitive storage path. Every
+captured state is recoverable by never-reused source checkpoint ID, including same-block legacy
+state-slot replacement.
+
+The bounded accumulator pulls 2–8 required same-chain allocation sources and freezes exact canonical
+`TGCM` bytes, capture block, policy version, adapter-set hash, and source checkpoint IDs in one
+trigger transaction. Unavailable, empty, stale, future, overflowing, duplicated, cross-chain,
+composite, wrong-program, controller-rotated, and unauthenticated inputs fail closed. The isolated
+factory registers the dedicated verifier/vkey and leaves no factory authority behind; its two-step
+controller provides delayed proposal, cancellation, permissionless exact-preimage activation,
+append-only rollback, and adapter-only recovery.
+
+All Forge suites passed with zero failures, including 13 composition regressions and 54 proving-vault
+regressions. The Rust all-features workspace, independent 11-test TypeScript oracle, secret scan,
+and composition SP1 guest build also passed locally. Trigger gas measured 677,312 at two sources and
+1,916,283 at eight. Hosted Actions were billing-blocked before runner allocation; the existing
+repository-wide Rust formatting/rustdoc debt was recorded separately and this PR changed no Rust
+source files.
 
 ---
 
@@ -750,10 +777,11 @@ fixture, and independently reviewable child-issue criterion in #60 passes. Compl
 - **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
   no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
   gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** #63 closed; #64 → #65 → #66 for the remaining proven blend; #67 → #68 for separate
-  advisory graph reputation. The shared program-aware ingestion gate #61 is closed.
+- **Trust-composition track:** #63 and #64 closed; #65 → #66 for the remaining proven blend;
+  #67 → #68 for separate advisory graph reputation. The shared program-aware ingestion gate #61 is
+  closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 17 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 16 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
