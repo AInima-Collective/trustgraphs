@@ -75,6 +75,15 @@ const run = async () => {
   }
 
   if (apply) {
+    const compositions = plans.filter((plan) =>
+      plan.families.includes('composition')
+    )
+    if (compositions.length > 0) {
+      throw new Error(
+        `refusing discriminator-only backfill for ${compositions.length} trust-compose snapshot(s); ` +
+          'replay their factory, capture, source blobs, proof, and accepted state through live ingestion'
+      )
+    }
     await offchainDb.transaction(async (tx) => {
       for (const plan of plans) {
         const discriminators = scoreRowDiscriminators(plan.program)

@@ -17,6 +17,11 @@ import { type ScoreBlob, deriveAddressMerkleRows } from './merkle-ingest'
 import { validateScoreBlob } from './score-program'
 import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
+import {
+  compositionEpochExists,
+  ingestCompositionScores,
+} from './composition-ingest'
+import { compositionCheckpointForEvent } from './composition-receipt'
 import { ingestContributionsScores } from './contributions'
 import type { ScoreProgramProvenance } from './score-program'
 import {
@@ -164,6 +169,13 @@ ponder.on('weightedMerkleSnapshot:setup', async ({ context }) => {
   )
 })
 
+ponder.on('compositionMerkleSnapshot:setup', async ({ context }) => {
+  await backfillSnapshotStates(
+    context,
+    staticAddresses(context.contracts.compositionMerkleSnapshot.address)
+  )
+})
+
 const onMerkleRootUpdated = async ({
   event,
   context,
@@ -230,6 +242,7 @@ const onMerkleRootUpdated = async ({
   // older indexer build) can leave the generic rows present but the round missing, so the skip
   // must consider both surfaces or the ingestion is never retried.
   const isContributions = program.ingestion === 'contributions'
+  const isComposition = program.ingestion === 'composition'
   const existingRound = isContributions
     ? await offchainDb
         .select()
@@ -245,11 +258,23 @@ const onMerkleRootUpdated = async ({
         )
         .limit(1)
     : []
+  const compositionCheckpoint = isComposition
+    ? await compositionCheckpointForEvent(event, context)
+    : null
+  const existingCompositionEpoch =
+    compositionCheckpoint === null
+      ? false
+      : await compositionEpochExists(
+          offchainDb,
+          event.log.address,
+          compositionCheckpoint
+        )
   if (
     canRepairScoreRowsOnRestart(program, {
       metadata: existingMetadata.length > 0,
       entries: existingEntries.length > 0,
       contributionRound: existingRound.length > 0,
+      compositionEpoch: existingCompositionEpoch,
     })
   ) {
     const discriminators = scoreRowDiscriminators(program)
@@ -346,7 +371,15 @@ const onMerkleRootUpdated = async ({
         `guarantee that any provider still stores them.`
     )
   }
-  const rawScores = (await merkleRequest.json()) as Record<string, unknown>
+  const outputBytes = new Uint8Array(await merkleRequest.arrayBuffer())
+  let rawScores: Record<string, unknown>
+  try {
+    rawScores = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(outputBytes)
+    )
+  } catch {
+    throw new Error(`score blob ${ipfsHashCid} is not valid UTF-8 JSON`)
+  }
   const scores = validateScoreBlob(rawScores, program) as ScoreBlob
   console.log(
     `merkle: blob fetched (${Object.keys(scores).length} entries) — authenticated ${program.name}/${program.outputDomainName} routing to ${program.ingestion}`
@@ -363,6 +396,27 @@ const onMerkleRootUpdated = async ({
       provenance
     )
   } else {
+    // Composition is all-or-nothing: authenticate every captured source and reproduce its policy,
+    // attribution, output bytes, proof provenance, and accepted state before generic Merkle rows
+    // become visible to consumers.
+    if (isComposition) {
+      await ingestCompositionScores(
+        event,
+        context,
+        outputBytes,
+        provenance,
+        async (cid) => {
+          const sourceUrl = (ipfsGateway + cid).replace(
+            'localhost',
+            '127.0.0.1'
+          )
+          const response = await fetchIpfs(sourceUrl)
+          return new Uint8Array(await response.arrayBuffer())
+        },
+        offchainDb
+      )
+    }
+
     await insertMerkleData(
       scores,
       event,
@@ -424,6 +478,10 @@ const onMerkleProofSubmitted = async ({
 ponder.on('merkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 ponder.on('programSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
 ponder.on('weightedMerkleSnapshot:MerkleProofSubmitted', onMerkleProofSubmitted)
+ponder.on(
+  'compositionMerkleSnapshot:MerkleProofSubmitted',
+  onMerkleProofSubmitted
+)
 
 /** Attach a parameter version to the first checkpoint that actually pins it. */
 const onCheckpointParamsPinned = async ({
@@ -468,6 +526,10 @@ const onCheckpointParamsPinned = async ({
 
 ponder.on('merkleSnapshot:CheckpointParamsPinned', onCheckpointParamsPinned)
 ponder.on('programSnapshot:CheckpointParamsPinned', onCheckpointParamsPinned)
+ponder.on(
+  'compositionMerkleSnapshot:CheckpointParamsPinned',
+  onCheckpointParamsPinned
+)
 
 /**
  * `SnapshotTriggered` — the moment a checkpoint froze. Between this event and the matching
@@ -494,10 +556,12 @@ const onSnapshotTriggered = async ({
 ponder.on('merkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('programSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('weightedMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
+ponder.on('compositionMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('weightedMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
+ponder.on('compositionMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 
 async function insertMerkleData(
   scores: ScoreBlob,

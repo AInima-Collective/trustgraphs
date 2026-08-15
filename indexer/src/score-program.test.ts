@@ -27,6 +27,10 @@ test('authenticated declarations route colliding-looking keys only to declared s
     SCORE_PROGRAM_IDS.hypercerts,
     SCORE_OUTPUT_DOMAIN_IDS['hypercerts-node-v1']
   )
+  const composition = requireScoreProgram(
+    SCORE_PROGRAM_IDS['trust-compose'],
+    SCORE_OUTPUT_DOMAIN_IDS['trust-compose-account-v1']
+  )
   const agent = requireScoreProgram(
     SCORE_PROGRAM_IDS['agent-reputation'],
     SCORE_OUTPUT_DOMAIN_IDS['erc8004-agent-v1']
@@ -44,6 +48,9 @@ test('authenticated declarations route colliding-looking keys only to declared s
   assert.deepEqual(validateScoreBlob({ [bytes32Key]: '4' }, agent), {
     [bytes32Key]: '4',
   })
+  assert.deepEqual(validateScoreBlob({ [addressKey]: '5' }, composition), {
+    [addressKey]: '5',
+  })
 
   assert.equal(trust.ingestion, 'address-merkle')
   assert.deepEqual(trust.tables, [
@@ -59,10 +66,20 @@ test('authenticated declarations route colliding-looking keys only to declared s
   ])
   assert.equal(agent.ingestion, 'not-enabled')
   assert.deepEqual(agent.tables, [])
+  assert.equal(composition.ingestion, 'composition')
+  assert.ok(composition.tables.includes('offchain.composition_attribution'))
 
   assert.equal(
     requireScoreApi(trust.programId, trust.outputDomain, 'merkle').name,
     'trust-graph'
+  )
+  assert.equal(
+    requireScoreApi(
+      composition.programId,
+      composition.outputDomain,
+      'compositions'
+    ).name,
+    'trust-compose'
   )
   assert.equal(
     requireScoreApi(

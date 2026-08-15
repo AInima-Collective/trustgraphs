@@ -1892,6 +1892,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "composition-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2 0.10.9",
+ "zk-core",
+]
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4096,6 +4108,7 @@ name = "operator-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
+ "composition-core",
  "contributions-core",
  "pagerank-core",
  "serde",
@@ -7533,6 +7546,7 @@ dependencies = [
  "alloy-sol-types",
  "anyhow",
  "clap",
+ "composition-core",
  "contributions-core",
  "hex",
  "operator-core",
@@ -7556,6 +7570,7 @@ dependencies = [
  "bincode",
  "chrono",
  "clap",
+ "composition-core",
  "contributions-core",
  "envelopes",
  "hex",

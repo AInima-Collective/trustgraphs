@@ -3,6 +3,7 @@
 //! See `docs/build/run-a-prover.md`. Structurally: this binary reads the chain, hands the facts to
 //! `operator-core::plan`, and does what it is told. It contains no policy of its own.
 mod chain;
+mod composition;
 mod config;
 mod handlers;
 mod ops;

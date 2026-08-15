@@ -29,6 +29,13 @@
       "when": 1786705758622,
       "tag": "0003_uneven_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786816444856,
+      "tag": "0004_trust_compose",
+      "breakpoints": true
     }
   ]
 }

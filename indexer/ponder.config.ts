@@ -6,6 +6,11 @@ import { Hex, getAbiItem } from 'viem'
 
 import deploymentSummaryJson from '../.docker/deployment_summary.json'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
+import {
+  compositionAccumulatorAbi,
+  trustComposeFactoryAbi,
+  trustComposeParamsControllerAbi,
+} from './abis/composition'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
 import {
   OPTIMISM_ERC8004_IDENTITY_REGISTRY,
@@ -66,6 +71,7 @@ const deploymentSummary = deploymentSummaryJson as {
     signer_sync_deployer?: string
   }
   weightedFactory?: { weighted_factory?: string }
+  compositionFactory?: { composition_factory?: string }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -179,6 +185,12 @@ const WEIGHTED_FACTORY =
     : process.env.WEIGHTED_FACTORY_ADDRESS_31337
   )?.trim() as Hex | undefined) ??
   (deploymentSummary.weightedFactory?.weighted_factory as Hex | undefined)
+const COMPOSITION_FACTORY =
+  ((IS_PRODUCTION
+    ? process.env.TRUST_COMPOSE_FACTORY_ADDRESS_10
+    : process.env.TRUST_COMPOSE_FACTORY_ADDRESS_31337
+  )?.trim() as Hex | undefined) ??
+  (deploymentSummary.compositionFactory?.composition_factory as Hex | undefined)
 
 /**
  * Whether to discover trust-graph children from the factory. Discovery follows the deployment
@@ -216,6 +228,14 @@ const WEIGHTED_PARAMS_CONTROLLER_CREATED = getAbiItem({
 const WEIGHTED_INSTANCE_CREATED = getAbiItem({
   abi: weightedTrustgraphsFactoryAbi,
   name: 'WeightedInstanceCreated',
+})
+const COMPOSITION_CONTROLLER_CREATED = getAbiItem({
+  abi: trustComposeFactoryAbi,
+  name: 'TrustComposeParamsControllerCreated',
+})
+const COMPOSITION_INSTANCE_CREATED = getAbiItem({
+  abi: trustComposeFactoryAbi,
+  name: 'TrustComposeInstanceCreated',
 })
 
 /**
@@ -277,6 +297,22 @@ const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
   factory({
     address: WEIGHTED_FACTORY!,
     event: WEIGHTED_INSTANCE_CREATED,
+    parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const compositionControllers = () =>
+  factory({
+    address: COMPOSITION_FACTORY!,
+    event: COMPOSITION_CONTROLLER_CREATED,
+    parameter: 'controller',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const compositionChildren = (parameter: 'snapshot' | 'accumulator') =>
+  factory({
+    address: COMPOSITION_FACTORY!,
+    event: COMPOSITION_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
   })
@@ -393,6 +429,38 @@ export default createConfig({
       startBlock: CORE_START_BLOCK,
       chain: WEIGHTED_FACTORY
         ? { [CORE_CHAIN]: { address: weightedChildren('snapshot') } }
+        : {},
+    },
+    trustComposeFactory: {
+      abi: trustComposeFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: COMPOSITION_FACTORY
+        ? { [CORE_CHAIN]: { address: COMPOSITION_FACTORY } }
+        : {},
+    },
+    trustComposeParamsController: {
+      abi: trustComposeParamsControllerAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: COMPOSITION_FACTORY
+        ? { [CORE_CHAIN]: { address: compositionControllers() } }
+        : {},
+    },
+    compositionAccumulator: {
+      abi: compositionAccumulatorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: COMPOSITION_FACTORY
+        ? {
+            [CORE_CHAIN]: {
+              address: compositionChildren('accumulator'),
+            },
+          }
+        : {},
+    },
+    compositionMerkleSnapshot: {
+      abi: merkleSnapshotAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: COMPOSITION_FACTORY
+        ? { [CORE_CHAIN]: { address: compositionChildren('snapshot') } }
         : {},
     },
     governedTrustgraphsFactory: {

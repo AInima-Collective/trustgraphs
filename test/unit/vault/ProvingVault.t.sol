@@ -606,6 +606,12 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(PROGRAM, 10_000_000, 0), 0);
     }
 
+    function test_CompositionUsesConservativeWorkBandNotSourceCount() public view {
+        bytes32 composition = keccak256("trust-compose");
+        assertEq(vault.bandOf(composition, 2, 0), 3, "two sources can hide the max blob/account work");
+        assertEq(vault.bandOf(composition, 8, 0), 3, "source count never selects a cheap band");
+    }
+
     /// Size is the SUM of both lanes, for every program, because that is what the operator's
     /// cycle estimate sums. An earlier version banded trust-graph on `leafCount` alone: a
     /// two-lane instance with 900 edges and 400k anchors then priced at the CHEAPEST band for a

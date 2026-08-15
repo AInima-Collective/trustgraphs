@@ -5,6 +5,7 @@ import schema from 'ponder:schema'
 
 import account from './account'
 import attestations from './attestations'
+import compositions from './compositions'
 import contributions from './contributions'
 import erc8004 from './erc8004'
 import hypercerts from './hypercerts'
@@ -24,6 +25,7 @@ app.use('/graphql', graphql({ db, schema }))
 app.route('/account', account)
 app.route('/attestations', attestations)
 app.route('/contributions', contributions)
+app.route('/compositions', compositions)
 app.route('/erc8004', erc8004)
 app.route('/hypercerts', hypercerts)
 app.route('/instances', instances)

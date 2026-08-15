@@ -48,6 +48,7 @@ fn supported() -> BTreeSet<Program> {
         Program::Trustgraphs,
         Program::Contributions,
         Program::Weighted,
+        Program::Composition,
         Program::Signer,
     ])
 }
@@ -475,7 +476,7 @@ fn tick(
             // either cliff must be loud while a replacement-snapshot migration is still orderly.
             let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
             let ceiling = state.input_capacity.max(1).min(operator_core::policy::MAX_PRICED_INPUTS);
-            if inputs >= ceiling.saturating_mul(8) / 10 {
+            if *program != Program::Composition && inputs >= ceiling.saturating_mul(8) / 10 {
                 let text = format!(
                     "{} ({}): {inputs} of {ceiling} admitted inputs ({}%) — inputs cannot be \
                      trimmed. Revoke unexpected ingress authority and plan the constitutional \
@@ -641,7 +642,7 @@ fn build_state(
     entry: &CatalogEntry,
     head: u64,
     basefee: u128,
-    journal: &Journal,
+    journal: &mut Journal,
     our_vkey: Option<B256>,
     seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
 ) -> Result<InstanceState> {
@@ -698,17 +699,16 @@ fn build_state(
     // Parameter rotations are recoverable from typed controller history. The planner compares a
     // frozen checkpoint with the tuple we can actually reconstruct, so use that historical tuple
     // here rather than making a paid, already-pinned checkpoint look permanently mismatched.
-    let reconstructed_params_hash = checkpoints
+    let proving_checkpoint = checkpoints
         .iter()
         .filter(|checkpoint| view.last_applied.is_none_or(|last| checkpoint.id > last))
-        .max_by_key(|checkpoint| checkpoint.id)
+        .max_by_key(|checkpoint| checkpoint.id);
+    let proving_entry = proving_checkpoint
         .and_then(|checkpoint| checkpoint.pinned_params_hash)
-        .map(|pinned| {
-            entry_at_params_hash(rpc, entry, pinned, head)
-                .map(|historical| historical.reconstructed_params_hash)
-        })
+        .map(|pinned| entry_at_params_hash(rpc, entry, pinned, head))
         .transpose()?
-        .unwrap_or(entry.reconstructed_params_hash);
+        .unwrap_or_else(|| entry.clone());
+    let reconstructed_params_hash = proving_entry.reconstructed_params_hash;
 
     // In-flight work, from the journal rather than from memory: a restart must re-attach rather
     // than pay again.
@@ -717,6 +717,48 @@ fn build_state(
         .filter(|c| view.last_applied.is_none_or(|last| c.id > last))
         .map(|c| c.id)
         .max();
+    let authenticated_cycles = if program == Program::Composition {
+        let should_recover = newest.is_none_or(|id| {
+            let key = WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: id };
+            matches!(journal.status(&key), Status::Untouched)
+        });
+        if should_recover {
+            let checkpoint = newest;
+            if let Some(retry) =
+                journal.composition_availability_retry(chain_id, entry.instance_id, checkpoint)
+            {
+                let retry_at = retry.last_at.saturating_add(cfg.ipfs.retry_seconds);
+                if now() < retry_at {
+                    bail!(
+                        "composition source recovery is in durable backoff until {retry_at}: {}",
+                        retry.error
+                    );
+                }
+            }
+            match crate::composition::prepare(cfg, rpc, &proving_entry, checkpoint, cfg.recipient())
+            {
+                Ok(prepared) => Some(prepared.work.measured_cycles),
+                Err(error) => {
+                    journal.append(Record::CompositionAvailabilityAttempt {
+                        chain_id,
+                        instance_id: entry.instance_id,
+                        checkpoint_id: checkpoint,
+                        error: error.to_string(),
+                        at: now(),
+                    })?;
+                    return Err(error)
+                        .context("composition source availability/validation preflight");
+                }
+            }
+        } else {
+            // Already-paid work was validated before its journal intent. Retained input/held files
+            // drive restart, publication and submission; do not make a later gateway outage erase
+            // that progress. Use the conservative measured maximum for the planner's cheap gate.
+            Some(crate::composition::BAND_4_CYCLES)
+        }
+    } else {
+        None
+    };
     let abandoned_checkpoints = checkpoints
         .iter()
         .filter_map(|c| {
@@ -776,13 +818,27 @@ fn build_state(
         None
     };
 
-    let vault = match (program, cfg.paid.enabled, cfg.paid.vault) {
+    let mut vault = match (program, cfg.paid.enabled, cfg.paid.vault) {
         (Program::Signer, _, _) => None,
         (_, true, Some(vault)) => newest.and_then(|checkpoint_id| {
             handlers::vault_quote(rpc, vault, entry.instance_id, checkpoint_id).ok()
         }),
         _ => None,
     };
+    if program == Program::Composition {
+        if let (Some(cycles), Some(quote)) = (authenticated_cycles, vault.as_mut()) {
+            if !composition_quote_covers_proving(
+                *quote,
+                cycles,
+                cfg.budget.cents_per_billion_cycles,
+            ) {
+                quote.eligible = false;
+                // Operator-local reason outside the on-chain enum: authenticated composition work
+                // exceeds the available quote. It is surfaced as an ordinary funded hold.
+                quote.reason = u8::MAX;
+            }
+        }
+    }
 
     Ok(InstanceState {
         instance_id: entry.instance_id,
@@ -814,11 +870,26 @@ fn build_state(
         size: InstanceSize {
             leaf_count: view.live.leaf_count,
             anchor_count: view.live.anchor_count,
+            authenticated_cycles,
         },
         input_capacity: view.input_capacity.unwrap_or(operator_core::policy::MAX_PRICED_INPUTS),
         in_flight,
         vault,
     })
+}
+
+fn composition_required_usd_1e8(cycles: u64, cents_per_billion_cycles: u64) -> u128 {
+    let required_cents =
+        cycles.saturating_mul(cents_per_billion_cycles).div_ceil(1_000_000_000).max(1);
+    u128::from(required_cents).saturating_mul(1_000_000)
+}
+
+fn composition_quote_covers_proving(
+    quote: operator_core::types::VaultView,
+    cycles: u64,
+    cents_per_billion_cycles: u64,
+) -> bool {
+    quote.fee_usd >= composition_required_usd_1e8(cycles, cents_per_billion_cycles)
 }
 
 /// Do the one thing the plan said. Nothing here reinterprets it.
@@ -845,11 +916,19 @@ fn act(
                     "derived signer program attempted to trigger its score source; it must only follow landed score checkpoints"
                 );
             }
+            let trigger_gas = if entry.program == Program::Composition {
+                // Eight authenticated source reads plus durable TGCM storage measured 1,916,283
+                // gas in the optimized contract profile. Keep explicit headroom without granting
+                // a block-sized ceiling to every legacy trigger.
+                2_500_000
+            } else {
+                400_000
+            };
             let (tx, r) = sender.send_watched(
                 rpc,
                 entry.snapshot,
                 crate::chain::trigger_calldata(),
-                400_000,
+                trigger_gas,
                 max_fee,
                 cfg.gas.simulate_before_send,
                 cfg.gas.replacement_after_s,
@@ -1003,7 +1082,7 @@ fn act(
                 // ineligible instance, so a zero here would mean the terms changed underneath us
                 // — exactly the case that must revert rather than hand over a free root.
                 let min_payout =
-                    state.vault.map(|v| min_payout_usd(v.payable_usd)).unwrap_or(U256::ZERO);
+                    state.vault.map(|v| min_payout_usd(v.offered_usd())).unwrap_or(U256::ZERO);
                 (
                     vault,
                     crate::chain::submit_and_claim_calldata(
@@ -1297,10 +1376,33 @@ mod tests {
     /// turned a $500 quote into a `minPayoutUsd` of 1.
     #[test]
     fn m6_min_payout_demands_the_full_quote() {
-        assert_eq!(min_payout_usd(500), U256::from(500u64), "the full quote, not 1");
+        assert_eq!(min_payout_usd(500), U256::from(500u64), "the quoted claim, not 1");
         assert_eq!(min_payout_usd(1), U256::from(1u64));
         // Zero would disable the guard entirely; the floor keeps it armed.
         assert_eq!(min_payout_usd(0), U256::from(1u64));
+    }
+
+    #[test]
+    fn composition_cost_uses_authenticated_cycles_in_vault_usd_units() {
+        assert_eq!(composition_required_usd_1e8(2_616_399, 100), 1_000_000);
+        assert_eq!(composition_required_usd_1e8(222_311_301, 100), 23_000_000);
+        assert!(
+            composition_required_usd_1e8(222_311_301, 100)
+                > composition_required_usd_1e8(2_616_399, 100)
+        );
+        let large_tank_tiny_fee = operator_core::types::VaultView {
+            eligible: true,
+            fee_usd: 1_000_000,
+            gas_usd: 2_000_000,
+            payable_usd: 100_000_000_000,
+            reason: 0,
+        };
+        assert!(!composition_quote_covers_proving(
+            large_tank_tiny_fee,
+            crate::composition::BAND_4_CYCLES,
+            100
+        ));
+        assert_eq!(large_tank_tiny_fee.offered_usd(), 3_000_000);
     }
 }
 
@@ -1312,6 +1414,7 @@ fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
         (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
         (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
         (Program::Weighted, trustgraph_prover::programs::weighted::elf()),
+        (Program::Composition, trustgraph_prover::programs::composition::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {
         let s = trustgraph_prover::common::vkey(vk)?;

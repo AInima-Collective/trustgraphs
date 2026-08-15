@@ -17,6 +17,7 @@
 //! verify, or (before journal v3) one valid for a *different* instance.
 
 use alloy_primitives::{Address, B256};
+use composition_core::Params as CompositionParams;
 use contributions_core::Params as ContributionsParams;
 use pagerank_core::{encode, Params, SelectionParams};
 use weighted_prior_core::Params as WeightedParams;
@@ -62,6 +63,12 @@ pub trait ChainReader {
         &self,
         controller: Address,
     ) -> Result<WeightedControllerParams, Self::Error>;
+
+    /// Complete current composition tuple read from its isolated typed controller.
+    fn composition_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<CompositionControllerParams, Self::Error>;
 
     /// The isolated weighted factory's creation event. Unlike the legacy factory event, this
     /// deliberately excludes the manifest bytes; those are recovered and validated from cache,
@@ -144,6 +151,15 @@ pub struct WeightedControllerParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompositionControllerParams {
+    pub instance_id: B256,
+    pub snapshot: Address,
+    pub version: u64,
+    pub current_params_hash: B256,
+    pub params: CompositionParams,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WeightedCreatedParams {
     pub factory: Address,
     pub name: String,
@@ -174,6 +190,8 @@ pub struct CatalogEntry {
     pub contributions_params: Option<ContributionsParams>,
     /// Complete frozen V1 tuple for the isolated weighted-prior program.
     pub weighted_params: Option<WeightedParams>,
+    /// Complete frozen V1 tuple for the isolated composition program.
+    pub composition_params: Option<CompositionParams>,
     /// The hash our reconstruction produces. Equal to the snapshot's, or this would be a skip.
     pub reconstructed_params_hash: B256,
     /// Typed control metadata. Both are absent for legacy and manifest instances.
@@ -319,6 +337,7 @@ pub fn scan<R: ChainReader>(
             params: None,
             contributions_params: None,
             weighted_params: None,
+            composition_params: None,
             reconstructed_params_hash: on_chain,
             params_controller: None,
             params_version: None,
@@ -406,6 +425,7 @@ fn scan_signer<R: ChainReader>(reader: &R, id: B256) -> Result<Option<CatalogEnt
         params: base.params,
         contributions_params: None,
         weighted_params: None,
+        composition_params: None,
         reconstructed_params_hash: base.reconstructed_params_hash,
         params_controller: base.params_controller,
         params_version: base.params_version,
@@ -524,12 +544,109 @@ fn scan_one<R: ChainReader>(
             params: None,
             contributions_params: Some(current.params),
             weighted_params: None,
+            composition_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
             eas: Some(current.eas),
             created_block,
             name: format!("contributions @ {id:#x}"),
+            manifest: None,
+        }));
+    }
+
+    // Composition instances are entirely chain-described: their typed controller publishes the
+    // complete 20-word tuple and the registry row identifies the dedicated accumulator. No
+    // manifest or address-shaped legacy fallback is allowed for this program.
+    if program == Program::Composition {
+        if controller == Address::ZERO {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::Undescribable,
+            });
+        }
+        let current = reader.composition_controller_params(controller).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ControllerInconsistent(format!(
+                "composition controller read failed: {e}"
+            )),
+        })?;
+        let reconstructed = composition_core::codec::params_hash(&current.params);
+        let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        let mut disagreements = Vec::new();
+        if let Err(error) = current.params.validate() {
+            disagreements.push(format!("invalid composition tuple: {error}"));
+        }
+        if current.instance_id != id {
+            disagreements.push(format!(
+                "controller instance {:#x} != registry id {id:#x}",
+                current.instance_id
+            ));
+        }
+        if current.snapshot != record.snapshot {
+            disagreements.push(format!(
+                "controller snapshot {:#x} != registry snapshot {:#x}",
+                current.snapshot, record.snapshot
+            ));
+        }
+        if current.params.accumulator != record.registry_or_accumulator {
+            disagreements.push(format!(
+                "params accumulator {:#x} != registry accumulator {:#x}",
+                current.params.accumulator, record.registry_or_accumulator
+            ));
+        }
+        if reconstructed != current.current_params_hash {
+            disagreements.push(format!(
+                "composition params tuple hashes to {reconstructed:#x}, controller names {:#x}",
+                current.current_params_hash
+            ));
+        }
+        if current.current_params_hash != snapshot_hash
+            || current.current_params_hash != record.params_hash
+        {
+            disagreements.push(format!(
+                "controller hash {:#x}, snapshot hash {snapshot_hash:#x}, registry hash {:#x}",
+                current.current_params_hash, record.params_hash
+            ));
+        }
+        if !disagreements.is_empty() {
+            return Err(Skipped {
+                instance_id: id,
+                snapshot: record.snapshot,
+                reason: SkipCause::ControllerInconsistent(disagreements.join("; ")),
+            });
+        }
+        let created_block = reader.registration_block(id).map_err(|e| Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ReadFailed(e.to_string()),
+        })?;
+        return Ok(Some(CatalogEntry {
+            instance_id: id,
+            parent_instance_id: None,
+            program,
+            snapshot: record.snapshot,
+            submit_to: record.snapshot,
+            accumulator: record.registry_or_accumulator,
+            verifier: record.verifier,
+            program_vkey: None,
+            selection: None,
+            params: None,
+            contributions_params: None,
+            weighted_params: None,
+            composition_params: Some(current.params),
+            reconstructed_params_hash: reconstructed,
+            params_controller: Some(controller),
+            params_version: Some(current.version),
+            eas: None,
+            created_block,
+            name: format!("trust-compose @ {id:#x}"),
             manifest: None,
         }));
     }
@@ -627,6 +744,7 @@ fn scan_one<R: ChainReader>(
             params: None,
             contributions_params: None,
             weighted_params: Some(current.params),
+            composition_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
@@ -731,6 +849,7 @@ fn scan_one<R: ChainReader>(
             params: Some(current.params),
             contributions_params: None,
             weighted_params: None,
+            composition_params: None,
             reconstructed_params_hash: reconstructed,
             params_controller: Some(controller),
             params_version: Some(current.version),
@@ -773,6 +892,7 @@ fn scan_one<R: ChainReader>(
         params: Some(created.params),
         contributions_params: None,
         weighted_params: None,
+        composition_params: None,
         reconstructed_params_hash: reconstructed,
         params_controller: None,
         params_version: None,

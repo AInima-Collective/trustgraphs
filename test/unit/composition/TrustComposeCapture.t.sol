@@ -373,6 +373,7 @@ contract TrustComposeCaptureTest is Test {
         assertFalse(snapshot.hasRole(snapshot.OPERATIONAL_ROLE(), address(factory)));
         assertTrue(snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), address(this)));
         assertTrue(snapshot.hasRole(snapshot.OPERATIONAL_ROLE(), controller));
+        assertTrue(snapshot.provenanceEnabled(), "composition accepted-state provenance is mandatory");
         assertEq(accumulator.binder(), address(factory));
         assertEq(accumulator.controller(), controller);
         assertLt(address(factory).code.length, 24_576);

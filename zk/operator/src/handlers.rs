@@ -279,6 +279,14 @@ pub fn build_input(
                 ],
             )?;
         }
+        Program::Composition => {
+            let prepared =
+                crate::composition::prepare(cfg, rpc, entry, Some(checkpoint_id), recipient)
+                    .with_context(|| {
+                        format!("recovering exact composition capture for {}", entry.name)
+                    })?;
+            std::fs::write(&input_path, serde_json::to_vec_pretty(&prepared.input)?)?;
+        }
         Program::Hypercerts => {
             bail!("hypercerts is out of scope for this operator (GOAL scope fence)")
         }
@@ -309,6 +317,33 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         }
         let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::weighted::elf())?;
         let encoded = weighted_prior_core::encode::journal_encoded(&result.journal);
+        return Ok(Built {
+            program,
+            input_path: input_path.clone(),
+            public_values_hash: keccak256(&encoded),
+            vk_hash: parse_b256(&vk)?,
+            output_root: result.journal.output_root,
+            ipfs_hash: result.journal.ipfs_hash,
+            cid: result.cid,
+            total_value: result.journal.total_value,
+            skipped_digest: result.journal.skipped_digest,
+            recipient: result.journal.recipient,
+            blob: result.blob,
+            signers: Vec::new(),
+            target_threshold: U256::ZERO,
+        });
+    }
+    if program == Program::Composition {
+        let input: composition_core::GuestInput = serde_json::from_str(&text)?;
+        let result = composition_core::compute::compute(&input)?;
+        if result.journal.recipient != recipient {
+            bail!(
+                "input names recipient {:#x}, config says {recipient:#x}",
+                result.journal.recipient
+            );
+        }
+        let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::composition::elf())?;
+        let encoded = composition_core::codec::journal_encoded(&result.journal);
         return Ok(Built {
             program,
             input_path: input_path.clone(),
@@ -558,6 +593,15 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
             (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
         }
+        Program::Composition => {
+            let input: composition_core::GuestInput = serde_json::from_str(&text)?;
+            let native = composition_core::codec::journal_encoded(
+                &composition_core::compute::compute(&input)?.journal,
+            );
+            let elf = trustgraph_prover::programs::composition::elf();
+            trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+            (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+        }
         Program::Signer => {
             let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
             let native = pagerank_core::encode::signer_journal_encoded(
@@ -676,7 +720,13 @@ pub fn vault_quote(
         quoteCall { instanceId: instance_id, checkpointId: U256::from(checkpoint_id) }.abi_encode(),
     )?;
     let q = quoteCall::abi_decode_returns(&ret)?;
-    Ok(VaultView { eligible: q.eligible, payable_usd: q.payableUsd.to::<u128>(), reason: q.reason })
+    Ok(VaultView {
+        eligible: q.eligible,
+        fee_usd: q.feeUsd.to::<u128>(),
+        gas_usd: q.gasUsd.to::<u128>(),
+        payable_usd: q.payableUsd.to::<u128>(),
+        reason: q.reason,
+    })
 }
 
 fn params_path(entry: &CatalogEntry) -> Result<String> {
@@ -696,6 +746,13 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
         serde_json::to_string_pretty(entry.weighted_params.as_ref().ok_or_else(|| {
             anyhow!("no weighted params for {} and no manifest entry", entry.name)
         })?)?
+    } else if entry.program == Program::Composition {
+        serde_json::to_string_pretty(
+            entry
+                .composition_params
+                .as_ref()
+                .ok_or_else(|| anyhow!("no composition params for {}", entry.name))?,
+        )?
     } else {
         serde_json::to_string_pretty(
             entry
@@ -777,6 +834,49 @@ mod readback_tests {
         assert_eq!(execution.public_values, native);
         assert_eq!(built.public_values_hash, alloy_primitives::keccak256(&native));
         assert_eq!(built.output_root, expected.journal.output_root);
+    }
+
+    #[test]
+    #[ignore = "release gate: derives the real SP1 composition proving key"]
+    fn composition_operator_native_journal_reproduces_the_cross_language_golden() {
+        let input = composition_core::fixture::sample_input();
+        let recipient = input.binding.recipient;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), serde_json::to_vec(&input).unwrap()).unwrap();
+        let built =
+            native_journal(Program::Composition, &file.path().to_path_buf(), recipient).unwrap();
+        let expected = composition_core::compute::compute(&input).unwrap();
+        assert_eq!(built.output_root, expected.journal.output_root);
+        assert_eq!(built.ipfs_hash, expected.journal.ipfs_hash);
+        assert_eq!(built.cid, expected.cid);
+        assert_eq!(built.blob, expected.blob);
+        assert_eq!(
+            built.public_values_hash,
+            alloy_primitives::keccak256(composition_core::codec::journal_encoded(
+                &expected.journal
+            ))
+        );
+    }
+
+    #[test]
+    #[ignore = "release gate: executes the real SP1 composition guest; run with --release --ignored"]
+    fn composition_operator_native_journal_byte_matches_the_isolated_guest() {
+        let input = composition_core::fixture::remainder_tie_input();
+        let recipient = input.binding.recipient;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), serde_json::to_vec(&input).unwrap()).unwrap();
+        let built =
+            native_journal(Program::Composition, &file.path().to_path_buf(), recipient).unwrap();
+        let expected = composition_core::compute::compute(&input).unwrap();
+        let native = composition_core::codec::journal_encoded(&expected.journal);
+        let execution = trustgraph_prover::common::execute_values(
+            trustgraph_prover::programs::composition::elf(),
+            &input,
+            &native,
+        )
+        .unwrap();
+        assert_eq!(execution.public_values, native);
+        assert_eq!(built.public_values_hash, alloy_primitives::keccak256(&native));
     }
 
     #[test]

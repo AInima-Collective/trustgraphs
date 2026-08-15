@@ -480,6 +480,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             if (n <= MAX_PRICED_INPUTS) return 3;
             return 0; // beyond the top band = beyond the operator's cycle limit = unpriced
         }
+        // A composition checkpoint's on-chain leafCount is only its 2–8 source count; the actual
+        // work is hidden in up to 8,192 authenticated source entries / 1 MiB of blobs. Never price
+        // that count as a tiny graph. The operator performs exact byte/account/work-band
+        // eligibility before proving; the vault conservatively reserves the top supported fee.
+        if (program == keccak256("trust-compose")) return 3;
         // Unknown program. Zero, never the cheapest band.
         return 0;
     }
