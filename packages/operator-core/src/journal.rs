@@ -385,7 +385,7 @@ impl Journal {
     ///
     /// `last_applied_on_chain` is the instance's `lastAppliedCheckpoint` as the chain reports it
     /// right now, which is what separates the one cause you cannot guess from the rest — see
-    /// [`Self::contradicts_chain`].
+    /// the internal `contradicts_chain` check.
     pub fn refusal(&self, key: &WorkKey, last_applied_on_chain: Option<u64>) -> String {
         match self.status(key) {
             Status::Untouched => {

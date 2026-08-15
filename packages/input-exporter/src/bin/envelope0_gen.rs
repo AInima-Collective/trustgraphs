@@ -7,7 +7,7 @@
 //!
 //! Example (one edge, confidence 60):
 //!   envelope0-gen --key 0x... --domain-separator 0x... --schema 0xab..ab \
-//!     --attest 0x<recipient>:60 --out log.json
+//!     --attest `0x<recipient>:60` --out log.json
 
 use alloy_primitives::{hex, keccak256, Address, B256, U256};
 use anyhow::{anyhow, bail, Context, Result};
