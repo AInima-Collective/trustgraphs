@@ -102,7 +102,10 @@ fn fixed_points(g: &Graph) -> HashMap<Address, U256> {
             data,
         });
     }
-    compute(&GuestInput { edges, params, lane2: None, binding: Default::default() }).scores.into_iter().collect()
+    compute(&GuestInput { edges, params, lane2: None, binding: Default::default() })
+        .scores
+        .into_iter()
+        .collect()
 }
 
 fn main() {

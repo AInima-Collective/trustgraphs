@@ -142,7 +142,8 @@ fn the_ports_agree_wherever_both_are_defined() {
     // which is why the slider was lowered to match what the maths can actually represent.
     let mut p = live_params(100);
     p.trust_multiplier_fp = U256::from(4u64) * s();
-    let input = pagerank_core::GuestInput { edges, params: p, lane2: None, binding: Default::default() };
+    let input =
+        pagerank_core::GuestInput { edges, params: p, lane2: None, binding: Default::default() };
     let r = pagerank_core::compute::compute(&input);
     let total: U256 = r.scores.iter().map(|(_, v)| *v).fold(U256::ZERO, |a, b| a + b);
     assert_eq!(total, U256::from(1_000_000u64), "payouts sum to the pool");

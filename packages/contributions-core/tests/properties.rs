@@ -59,7 +59,12 @@ fn generate(seed: u64) -> Scenario {
     let t0 = p.round_start;
 
     let mut sc = Scenario {
-        input: GuestInput { trust_edges: vec![], records: vec![], params: p, binding: Default::default() },
+        input: GuestInput {
+            trust_edges: vec![],
+            records: vec![],
+            params: p,
+            binding: Default::default(),
+        },
         uid_counter: 0,
     };
 
