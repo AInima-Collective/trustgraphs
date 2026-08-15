@@ -20,7 +20,8 @@ measurements) also live in `research/` — they are not product documentation.
   ([run a prover](./build/run-a-prover.md), [run an agent](./build/run-an-agent.md),
   [production](./build/production.md), [add a program](./build/add-a-program.md)) and the
   per-program directories
-  (`trust-graph/`, `signer-sync/`, `hypercerts/`, `contributions/`) cover operating the
+  (`trust-graph/`, `weighted-prior/`, `composition/`, `signer-sync/`, `hypercerts/`,
+  `contributions/`) cover operating the
   machinery yourself.
 - [`verify/`](./verify/) — check the work: [reproduce an epoch from public data](./verify/reproduce-an-epoch.md),
   [golden vectors and cross-language parity](./verify/golden-vectors.md), and
@@ -34,6 +35,7 @@ measurements) also live in `research/` — they are not product documentation.
 | see how scores are computed and proven | [`learn/how-scoring-works.md`](./learn/how-scoring-works.md) · [`concepts/algorithm.md`](./concepts/algorithm.md) |
 | stand up a trust network for my community | [`build/create-a-network.md`](./build/create-a-network.md) |
 | understand or rotate a weighted prior | [`build/weighted-prior/architecture.md`](./build/weighted-prior/architecture.md) · [`runbook.md`](./build/weighted-prior/runbook.md) |
+| create or rotate a score composition | [`build/composition/architecture.md`](./build/composition/architecture.md) · [`runbook.md`](./build/composition/runbook.md) |
 | read scores from my app or contract | [`build/integrate-scores.md`](./build/integrate-scores.md) |
 | run everything locally, end to end | [`build/setup.md`](./build/setup.md) → [`build/quickstart.md`](./build/quickstart.md) |
 | run the proving daemon | [`build/run-a-prover.md`](./build/run-a-prover.md) |

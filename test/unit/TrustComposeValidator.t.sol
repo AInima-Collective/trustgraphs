@@ -28,6 +28,14 @@ contract TrustComposeValidatorHarness {
     {
         return TrustComposeValidator.validatePolicyManifest(manifest, chainId, programId, maximumAge);
     }
+
+    function validateManifestMemory(bytes memory manifest, uint64 chainId, bytes32 programId, uint64 maximumAge)
+        external
+        pure
+        returns (TrustComposeValidator.Commitment memory)
+    {
+        return TrustComposeValidator.validatePolicyManifestMemory(manifest, chainId, programId, maximumAge);
+    }
 }
 
 contract TrustComposeValidatorTest is Test {
@@ -80,6 +88,12 @@ contract TrustComposeValidatorTest is Test {
         assertEq(commitment.manifestSha256, json.readBytes32(".policyManifest.sha256"));
         assertEq(commitment.chainId, 10);
         assertEq(harness.hash(params), json.readBytes32(".params.paramsHash"));
+
+        TrustComposeValidator.Commitment memory memoryCommitment = harness.validateManifestMemory(
+            manifest, params.chainId, params.admittedProgramId, params.maxSourceAgeBlocks
+        );
+        assertEq(memoryCommitment.sourcePolicyRoot, commitment.sourcePolicyRoot);
+        assertEq(memoryCommitment.manifestSha256, commitment.manifestSha256);
     }
 
     function test_RevertMalformedPolicyHeaderLengthAndOrder() public {
@@ -108,6 +122,11 @@ contract TrustComposeValidatorTest is Test {
             malformed[15 + 133 + i] = malformed[15 + i];
         }
         vm.expectPartialRevert(TrustComposeValidator.SourceIdsNotAscending.selector);
+        harness.validate(params, malformed);
+
+        malformed = manifest;
+        malformed[13] = bytes1(uint8(malformed[13]) ^ 1);
+        vm.expectPartialRevert(TrustComposeValidator.InvalidManifestChain.selector);
         harness.validate(params, malformed);
     }
 
