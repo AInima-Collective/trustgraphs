@@ -74,6 +74,10 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 [build-dependencies]
 sp1-build = "=6.3.1"
 
+[dev-dependencies]
+# Research-only benchmark support; this does not enter the production prover dependency graph.
+erc8004-completeness-research = { path = "../../research/erc8004-completeness/rust" }
+
 # Detached from the root workspace: sp1-sdk brings its own (large) dependency graph that must not
 # be unified with the alloy graph of the main workspace.
 [workspace]

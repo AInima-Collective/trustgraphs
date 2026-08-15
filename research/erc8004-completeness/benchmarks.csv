@@ -1,0 +1,8 @@
+measurement,events,data_bytes,witness_bytes,native_micros,guest_cycles,execution_gas
+sp1-replay,18,256,10178,115,219454,
+sp1-replay,1024,256,578568,5686,11957060,
+sp1-replay,4096,256,2314248,24561,47800004,
+sp1-replay,16384,256,9256968,97640,192335661,
+sp1-replay,65536,256,37027848,454441,770469301,
+steady-cooperating-append,,,,,,51674
+checkpoint,,,,,,83128

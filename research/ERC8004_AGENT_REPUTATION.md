@@ -1,6 +1,7 @@
 # ERC-8004 agent identity and reputation spike
 
-**Status:** research complete; identity/raw slices and bounded graph experiment shipped
+**Status:** research complete; identity/raw slices and bounded graph experiment shipped;
+proof-completeness decision recorded
 
 **Date:** 2026-08-12
 
@@ -462,8 +463,17 @@ Credible paths are:
 
 Anchoring an exporter-produced list with the existing lane-2 machinery proves consistency with
 that anchor, but by itself does not prove completeness relative to an external chain contract.
-Until one of the first three paths is designed, the agent graph is not a canonical ZK-proven
-Trustgraphs program.
+
+The follow-up [input-completeness ADR](./ERC8004_INPUT_COMPLETENESS.md) resolves this decision for
+the currently deployed Optimism registries as a **no-go**: their pre-activation event history
+cannot support the required no-omission claim. It defines a conditional activation-era path only
+for a cooperating official or new registry domain: an immutable sidecar, a complete activation
+wallet seed, reviewed implementation epochs, and fixed finalized milestones. That work proceeds
+through [#86](https://github.com/JakeHartnell/trustgraphs/issues/86),
+[#87](https://github.com/JakeHartnell/trustgraphs/issues/87), and
+[#88](https://github.com/JakeHartnell/trustgraphs/issues/88) before the program in
+[#62](https://github.com/JakeHartnell/trustgraphs/issues/62). The score policy remains a separate
+no-go until it is re-evaluated on complete activation-era data.
 
 ### Phase 4 — validation and composed trust
 
@@ -542,8 +552,9 @@ The identity-enrichment spike is successful when:
    initially consumes a hosted parsed index while chain events remain canonical.
 5. **Feedback descriptor:** choose one exact tag/unit profile before computing any score.
 6. **Reviewer trust:** choose a curated seed set or a specific pinned trustgraph root.
-7. **Completeness path:** choose mirror, chain proofs, registry cooperation, or explicitly
-   indexer-computed status before starting a guest program.
+7. **Completeness path:** use the activation-scoped registry-cooperation design in the
+   [input-completeness ADR](./ERC8004_INPUT_COMPLETENESS.md), or retain explicitly
+   indexer-computed status. Do not start a guest program for the existing registry history.
 
 ## Sources
 
