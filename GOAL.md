@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-14): 23 issues closed, 16 remain.**
+> **Status (2026-08-15): 24 issues closed, 18 remain.**
 >
-> Closed after auditing `main` through `b725c32` and rerunning the focused regressions:
+> Closed after auditing `main` through `6d03320` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -56,6 +56,10 @@
 > - **#59** — hashed pinned-policy ERC-8004 experiment, independent exact replay, complete
 >   exclusion/coverage/sensitivity evidence, adversarial ring/Sybil/rotation fixtures, isolated UI,
 >   and a bounded no-go for production or proof integration (`1608411`, PR #84)
+> - **#60** — explicit deployed-history completeness no-go, conditional activation-scoped
+>   cooperating-registry boundary, exact cross-language accumulator/checkpoint vectors,
+>   adversarial omission/reorg/upgrade/recovery evidence, and a measured 16,384-event milestone cap
+>   (`6d03320`, PR #89; children #86–#88)
 > - **#61** — registry-authenticated immutable score-program/output-domain bindings, explicit
 >   decoder/table/API routing, fail-closed provenance validation, and audited restart/backfill and
 >   rolling-deploy paths (`b725c32`, PR #85)
@@ -63,7 +67,8 @@
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
-> ERC-8004 reputation chain: **#58, #59, and #61 closed**; #60 is the remaining gate blocking #62.
+> ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
+> is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
 > Trust-composition chain: **#63 → #64 → #65 → #66**; the shared #61 gate is closed; graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
@@ -105,19 +110,19 @@ scope.
 Run one branch/PR per numbered issue unless two issues share an inseparable invariant. These lanes
 can proceed concurrently:
 
-| Lane                              | Issues                           | Purpose                                                          | Dependencies                                |
-| --------------------------------- | -------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| A · operator availability         | #16 closed                       | Repair score-blob availability                                   | `131ecfd`                                   |
-| B · snapshot/vault hardening      | #12 and #14 closed               | Bound hostile input growth and finish snapshot invariants        | `f5d826a`, `aa8e2b5`                        |
-| C · self-serve economics          | #22 closed                       | Make app prepayment activate a payable proving policy            | `f1ef43f`                                   |
-| D · authority and production      | #20 closed → #27                 | Creator bypass removed; deploy and smoke-test production         | `820b6f3`; #12/#14/#22 prerequisites closed |
-| E · program self-service          | #21 and #28 closed               | Factory signer-sync and reproducible Contributions params        | `56326fd`, `3de8943`                        |
-| F · decision closure              | #34, #36, and #37 closed         | Close bounded research questions with evidence and child issues  | accepted ADRs and child splits              |
-| G · agent product                 | #35 and #38 closed; #77          | ERC-8004 enrichment, delegated action/voting, graph research     | shared agent UX only; avoid coupling proofs |
-| H · weighted-prior implementation | #52, #53, #54, and #55 closed   | Core/guest, commitment lifecycle, operator/indexer, then UX      | complete in #34 ADR order                   |
-| I · ERC-8004 reputation           | #58/#59/#61 closed; #60 → #62   | Raw evidence, experiment, completeness/program gates, then proof | #62 blocked on #60                          |
-| J · trust composition             | #63 → #64 → #65 → #66; #67 → #68 | Proven blend stack plus separate advisory graph reputation       | shared #61 gate closed                      |
-| K · private profile               | #70 → #71; #70 → #74 → #75       | Leakage oracle, TEE pilot, and unlinkable governance consumer    | #72/#73 evaluate the MPC target in parallel |
+| Lane                              | Issues                                        | Purpose                                                         | Dependencies                                |
+| --------------------------------- | --------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| A · operator availability         | #16 closed                                    | Repair score-blob availability                                  | `131ecfd`                                   |
+| B · snapshot/vault hardening      | #12 and #14 closed                            | Bound hostile input growth and finish snapshot invariants       | `f5d826a`, `aa8e2b5`                        |
+| C · self-serve economics          | #22 closed                                    | Make app prepayment activate a payable proving policy           | `f1ef43f`                                   |
+| D · authority and production      | #20 closed → #27                              | Creator bypass removed; deploy and smoke-test production        | `820b6f3`; #12/#14/#22 prerequisites closed |
+| E · program self-service          | #21 and #28 closed                            | Factory signer-sync and reproducible Contributions params       | `56326fd`, `3de8943`                        |
+| F · decision closure              | #34, #36, and #37 closed                      | Close bounded research questions with evidence and child issues | accepted ADRs and child splits              |
+| G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
+| H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
+| I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
+| J · trust composition             | #63 → #64 → #65 → #66; #67 → #68              | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
 internally; the program-aware ingestion gate shared by I and J is closed in #61. None blocks the
@@ -667,6 +672,31 @@ frontend build pass; hosted jobs were billing-blocked before runner allocation.
 provenance, restart/backfill, rolling-deploy, golden-parity, and operator-documentation acceptance
 criterion in #61 passes. Complete.
 
+### M5.6 · #60 — proof-complete external ERC-8004 registry inputs
+
+**Closed in `6d03320` (PR #89).** The accepted ADR records a no-go for a proof-complete claim over
+the existing Optimism registry history: event exports, signatures, CIDs, and individual receipt
+proofs authenticate supplied items but cannot prove non-omission. The only selected future path is
+activation-scoped cooperation from an official or separately named registry domain: reviewed proxy
+implementations synchronously append every admitted semantic event to an immutable global sidecar,
+import a complete frozen starting wallet state, bind implementation epochs and exact topic/data
+bytes, and freeze finalized fixed-count milestones. No pre-activation feedback becomes proven.
+
+The executable miniature freezes 18 TypeScript/Rust/Solidity vectors for the event fold, raw
+preimage fold, checkpoint, and event-time wallet attribution. Adversarial tests reject deletion,
+insertion, reordering, duplication, truncation, stale forks, missing preimages, unknown upgrades,
+and recovery crossing. The measured steady append is 51,674 execution gas; 16,384 records with
+256-byte data produce a 9,256,968-byte witness and 192,335,661 isolated SP1 cycles, establishing the
+maximum research milestone pending a complete-guest benchmark. The full 601-test Forge suite,
+focused 3-test Solidity gas/golden suite, six TypeScript adversarial tests, Rust golden test, prover
+library/example checks, formatting, and detached SP1 benchmarks pass; hosted jobs were
+billing-blocked before runner allocation. Implementation is independently ordered as #86 → #87 →
+#88 → #62, and #59's scoring-policy no-go remains in force.
+
+**Close when:** every boundary, candidate-comparison, threat-model, canonical-encoding,
+historical-attribution, fail-closed behavior, cost/exhaustion/recovery, precise-claim, executable
+fixture, and independently reviewable child-issue criterion in #60 passes. Complete.
+
 ---
 
 ## Release gates and issue-count target
@@ -693,12 +723,13 @@ criterion in #61 passes. Complete.
   graph-native delegation research continues separately in #77.
 - **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
   reviewable trust-boundary order.
-- **ERC-8004 reputation track:** #58, #59, and #61 closed; #60 is the remaining design gate and
-  #62 remains blocked until it closes compatibly.
+- **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
+  no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
+  gated by upstream adoption plus a future scoring-policy go.
 - **Trust-composition track:** #63 → #64 → #65 → #66 for the proven blend; #67 → #68 for separate
   advisory graph reputation. The shared program-aware ingestion gate #61 is closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 16 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 18 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
