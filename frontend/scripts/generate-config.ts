@@ -73,6 +73,14 @@ try {
     deployment.weightedFactory?.weighted_factory ||
     process.env.WEIGHTED_FACTORY_ADDRESS ||
     ''
+  // trust-compose is additive and may roll out after the existing factory/indexer. An absent
+  // address keeps the workspace in explicit read-only preview mode.
+  configOutput.trustCompose = {
+    factory:
+      deployment.trustComposeFactory?.trust_compose_factory ||
+      process.env.TRUST_COMPOSE_FACTORY_ADDRESS ||
+      '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {

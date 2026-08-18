@@ -139,6 +139,22 @@ export const DOCS_SECTIONS: DocSection[] = [
           { slug: 'build/contributions/local-testing', label: 'Local testing' },
         ],
       },
+      {
+        label: 'trust-compose',
+        collapsible: true,
+        items: [
+          { slug: 'build/composition/architecture', label: 'Architecture' },
+          {
+            slug: 'build/composition/frontend',
+            label: 'Preview and provenance UI',
+          },
+          {
+            slug: 'build/composition/operator-indexer',
+            label: 'Operator and indexer',
+          },
+          { slug: 'build/composition/runbook', label: 'Runbook' },
+        ],
+      },
     ],
   },
   {
