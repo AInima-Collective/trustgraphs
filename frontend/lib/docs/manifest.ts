@@ -170,6 +170,21 @@ export const DOCS_SECTIONS: DocSection[] = [
           },
         ],
       },
+      {
+        label: 'graph reputation',
+        collapsible: true,
+        items: [
+          {
+            slug: 'build/graph-reputation/architecture',
+            label: 'Architecture',
+          },
+          { slug: 'build/graph-reputation/runbook', label: 'Runbook' },
+          {
+            slug: 'build/graph-reputation/local-testing',
+            label: 'Local testing',
+          },
+        ],
+      },
     ],
   },
   {

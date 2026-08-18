@@ -67,6 +67,12 @@ export const GraphLineageCatalog = () => {
           >
             Composition provenance
           </Link>
+          <Link
+            className="rounded border px-3 py-2 text-sm"
+            href="/graph-reputation"
+          >
+            Advisory recommendations
+          </Link>
         </div>
       </header>
 

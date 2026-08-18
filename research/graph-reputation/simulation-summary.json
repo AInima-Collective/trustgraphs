@@ -1,0 +1,23 @@
+{
+  "format": "trustgraphs-graph-reputation-simulations-v1",
+  "damping": "850000000000000000",
+  "iterations": 128,
+  "scenarios": [
+    { "name": "disconnected reciprocal cartel", "cartelMass": "0", "outcome": "no sparse-prior ingress, no mass" },
+    { "name": "ten percent trusted ingress", "cartelMass": "163225274570032530", "displayPercent": "16.3225" },
+    { "name": "dangling and unspent rows", "outcome": "exact mass returns to the sparse trusted prior" },
+    { "name": "family/controller clones", "outcome": "individual scores remain visible beside aggregated effective family mass and overlap flags" },
+    {
+      "name": "compromised root",
+      "leaveOneRootOutL1": [
+        "76365313134000152",
+        "70606420703059644",
+        "55635808045293184"
+      ],
+      "outcome": "exact L1 distance exposes dependence; a single root is explicitly reported"
+    },
+    { "name": "authority rotation", "outcome": "configuration mismatch or unavailable canonical liveness fails closed" },
+    { "name": "revocation and expiry", "outcome": "edge is absent from the cutoff-bound active set" },
+    { "name": "probation", "outcome": "non-root candidates younger than 30 days receive no recommended weight" }
+  ]
+}

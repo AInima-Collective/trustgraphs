@@ -68,4 +68,5 @@ it then calls `endorsementStatus` on the configured registry. RPC failure return
 
 `GET /graph-lineages/referrals?scopeHash=...` emits only canonically active referrals, exact spent
 and unused budgets, overlap diagnostics, and mutable-evidence flags. Its output is explicitly
-previous-epoch/advisory input for issue #68, not an automatic composition policy.
+previous-epoch/advisory input. `POST /graph-lineages/recommendations` adds a finalized-cutoff,
+sparse-prior recommendation and diagnostics; neither endpoint is an automatic composition policy.

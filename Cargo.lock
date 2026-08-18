@@ -1171,6 +1171,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-reputation-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

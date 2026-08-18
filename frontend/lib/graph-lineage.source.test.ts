@@ -7,6 +7,7 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 const catalog = source('app/graph-lineages/catalog.tsx')
 const detail = source('app/graph-lineages/[lineageId]/view.tsx')
 const api = source('lib/graph-lineage.ts')
+const recommendations = source('app/graph-reputation/view.tsx')
 const config = source('lib/config.ts')
 
 assert.match(catalog, /A Merkle root\s*\n?\s*is one epoch—not an actor/)
@@ -21,6 +22,20 @@ assert.match(
   /Existing\s*\n?\s*score, proof, and composition routes are unaffected/
 )
 assert.match(api, /GraphLineageApiUnavailableError/)
+assert.match(api, /fetchGraphRecommendations/)
+assert.match(api, /graph-lineages\/recommendations/)
+
+assert.match(recommendations, /sparse set of trusted roots/i)
+assert.match(recommendations, /previous\s+finalized epoch/i)
+assert.match(recommendations, /never applies weights/i)
+assert.match(recommendations, /Manual comparison/)
+assert.match(recommendations, /Trusted ingress/)
+assert.match(recommendations, /Effective family mass/)
+assert.match(recommendations, /Leave-one-root-out sensitivity/)
+assert.doesNotMatch(
+  recommendations,
+  /writeContract|sendTransaction|applyRecommendation/
+)
 assert.match(config, /GRAPH_LINEAGE_CONFIG/)
 
 console.log(
