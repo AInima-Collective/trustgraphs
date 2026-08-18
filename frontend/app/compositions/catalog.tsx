@@ -67,6 +67,12 @@ export const CompositionCatalog = () => {
           >
             Open composition workspace
           </Link>
+          <Link
+            className="rounded border px-3 py-2 text-sm"
+            href="/graph-lineages"
+          >
+            Graph lineage provenance
+          </Link>
         </div>
       </header>
       {problem && (

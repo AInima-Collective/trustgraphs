@@ -1,0 +1,175 @@
+{
+  "now": "2000",
+  "scopes": {
+    "governance": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+    "grants": "0xc2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+  },
+  "lineages": [
+    {
+      "id": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "currentConfigurationId": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "live": true
+    },
+    {
+      "id": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "currentConfigurationId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "live": true
+    },
+    {
+      "id": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "currentConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "live": true
+    }
+  ],
+  "configurations": [
+    {
+      "id": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "familyId": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+      "methodId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "controller": "0x1000000000000000000000000000000000000001",
+      "authority": "0x2000000000000000000000000000000000000001"
+    },
+    {
+      "id": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "familyId": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
+      "methodId": "0x0101010101010101010101010101010101010101010101010101010101010101",
+      "controller": "0x1000000000000000000000000000000000000001",
+      "authority": "0x2000000000000000000000000000000000000002"
+    },
+    {
+      "id": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "familyId": "0xf3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3",
+      "methodId": "0x0303030303030303030303030303030303030303030303030303030303030303",
+      "controller": "0x1000000000000000000000000000000000000003",
+      "authority": "0x2000000000000000000000000000000000000003"
+    }
+  ],
+  "endorsements": [
+    {
+      "id": "0xe101010101010101010101010101010101010101010101010101010101010101",
+      "issuerLineageId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "subjectLineageId": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "issuerConfigurationId": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "subjectConfigurationId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 2,
+      "weight": "400000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "ipfs://a-refers-b",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "1",
+      "supersededBy": null,
+      "revokedAt": null
+    },
+    {
+      "id": "0xe202020202020202020202020202020202020202020202020202020202020202",
+      "issuerLineageId": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "subjectLineageId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "issuerConfigurationId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "subjectConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 2,
+      "weight": "300000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "https://mutable.example/b-refers-c",
+      "evidenceDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "evidenceMutable": true,
+      "sequence": "1",
+      "supersededBy": null,
+      "revokedAt": null
+    },
+    {
+      "id": "0xe303030303030303030303030303030303030303030303030303030303030303",
+      "issuerLineageId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "subjectLineageId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "issuerConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "subjectConfigurationId": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 2,
+      "weight": "200000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "ipfs://c-refers-a-revoked",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "1",
+      "supersededBy": null,
+      "revokedAt": "1900"
+    },
+    {
+      "id": "0xe404040404040404040404040404040404040404040404040404040404040404",
+      "issuerLineageId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "subjectLineageId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "issuerConfigurationId": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "subjectConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "scopeHash": "0xc2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2",
+      "kind": 2,
+      "weight": "1000000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "ipfs://a-refers-c-grants",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "1",
+      "supersededBy": null,
+      "revokedAt": null
+    },
+    {
+      "id": "0xe505050505050505050505050505050505050505050505050505050505050505",
+      "issuerLineageId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "subjectLineageId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "issuerConfigurationId": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "subjectConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 0,
+      "weight": "900000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "ipfs://integrity-does-not-propagate",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "2",
+      "supersededBy": null,
+      "revokedAt": null
+    },
+    {
+      "id": "0xe606060606060606060606060606060606060606060606060606060606060606",
+      "issuerLineageId": "0x3333333333333333333333333333333333333333333333333333333333333333",
+      "subjectLineageId": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "issuerConfigurationId": "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+      "subjectConfigurationId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 2,
+      "weight": "100000000000000000",
+      "validFrom": "500",
+      "validUntil": "1500",
+      "evidenceURI": "ipfs://expired",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "2",
+      "supersededBy": null,
+      "revokedAt": null
+    },
+    {
+      "id": "0xe707070707070707070707070707070707070707070707070707070707070707",
+      "issuerLineageId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "subjectLineageId": "0x2222222222222222222222222222222222222222222222222222222222222222",
+      "issuerConfigurationId": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "subjectConfigurationId": "0xb1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "scopeHash": "0xc1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "kind": 2,
+      "weight": "100000000000000000",
+      "validFrom": "1000",
+      "validUntil": "3000",
+      "evidenceURI": "ipfs://pre-rotation",
+      "evidenceDigest": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "evidenceMutable": false,
+      "sequence": "3",
+      "supersededBy": null,
+      "revokedAt": null
+    }
+  ]
+}

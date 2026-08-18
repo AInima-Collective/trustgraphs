@@ -155,6 +155,21 @@ export const DOCS_SECTIONS: DocSection[] = [
           { slug: 'build/composition/runbook', label: 'Runbook' },
         ],
       },
+      {
+        label: 'graph lineage',
+        collapsible: true,
+        items: [
+          {
+            slug: 'build/graph-lineage/architecture',
+            label: 'Architecture',
+          },
+          { slug: 'build/graph-lineage/runbook', label: 'Runbook' },
+          {
+            slug: 'build/graph-lineage/local-testing',
+            label: 'Local testing',
+          },
+        ],
+      },
     ],
   },
   {

@@ -20,6 +20,7 @@ import {
   OPTIMISM_ERC8004_REPUTATION_REGISTRY,
   erc8004ReputationRegistryAbi,
 } from './abis/erc8004ReputationRegistry'
+import { graphLineageRegistryAbi } from './abis/graphLineage'
 import { provingVaultAbi } from './abis/provingVault'
 import { trustgraphsFactoryAbi } from './abis/trustgraphsFactory'
 import {
@@ -72,6 +73,7 @@ const deploymentSummary = deploymentSummaryJson as {
   }
   weightedFactory?: { weighted_factory?: string }
   compositionFactory?: { composition_factory?: string }
+  graphLineage?: { registry?: string }
 }
 
 const dotenvFile = path.join(__dirname, '../.env')
@@ -191,6 +193,12 @@ const COMPOSITION_FACTORY =
     : process.env.TRUST_COMPOSE_FACTORY_ADDRESS_31337
   )?.trim() as Hex | undefined) ??
   (deploymentSummary.compositionFactory?.composition_factory as Hex | undefined)
+const GRAPH_LINEAGE_REGISTRY =
+  ((IS_PRODUCTION
+    ? process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_10
+    : process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_31337
+  )?.trim() as Hex | undefined) ??
+  (deploymentSummary.graphLineage?.registry as Hex | undefined)
 
 /**
  * Whether to discover trust-graph children from the factory. Discovery follows the deployment
@@ -370,6 +378,13 @@ export default createConfig({
         }),
   },
   contracts: {
+    graphLineageRegistry: {
+      abi: graphLineageRegistryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: GRAPH_LINEAGE_REGISTRY
+        ? { [CORE_CHAIN]: { address: GRAPH_LINEAGE_REGISTRY } }
+        : {},
+    },
     // Authenticated program/output-domain discovery. Only this explicitly configured registry can
     // create score bindings; catalog metadata and score-key shape are never discovery sources.
     instanceRegistry: {

@@ -1,6 +1,153 @@
 import { index, onchainTable, primaryKey } from 'ponder'
 
 /*///////////////////////////////////////////////////////////////
+       GRAPH LINEAGES / ADVISORY ENDORSEMENT PROVENANCE
+//////////////////////////////////////////////////////////////*/
+
+/** Stable actor identity, qualified by chain + canonical InstanceRegistry + instance id. */
+export const graphLineage = onchainTable(
+  'graph_lineage',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    chainId: t.text().notNull(),
+    registry: t.hex().notNull(),
+    instanceRegistry: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    familyId: t.hex().notNull(),
+    currentConfigurationId: t.hex(),
+    currentVersion: t.bigint().notNull(),
+    authority: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    displayName: t.text().notNull(),
+    metadataURI: t.text().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    qualifiedInstanceIdx: index().on(
+      t.chainId,
+      t.instanceRegistry,
+      t.instanceId
+    ),
+    familyIdx: index().on(t.familyId),
+    authorityIdx: index().on(t.authority),
+    controllerIdx: index().on(t.controller),
+  })
+)
+
+/** Append-only authenticated program/config/controller/authority history. */
+export const graphLineageConfiguration = onchainTable(
+  'graph_lineage_configuration',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    lineageId: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    programId: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    verifier: t.hex().notNull(),
+    registryOrAccumulator: t.hex().notNull(),
+    paramsHash: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    authority: t.hex().notNull(),
+    familyId: t.hex().notNull(),
+    methodId: t.hex().notNull(),
+    scopeHash: t.hex().notNull(),
+    identityDomain: t.hex().notNull(),
+    sourceLineagePolicyHash: t.hex().notNull(),
+    current: t.boolean().notNull(),
+    activatedAt: t.bigint().notNull(),
+    activatedBlock: t.bigint().notNull(),
+    activatedTxHash: t.hex().notNull(),
+    supersededAtBlock: t.bigint(),
+  }),
+  (t) => ({
+    lineageVersionIdx: index().on(t.lineageId, t.version),
+    currentIdx: index().on(t.current),
+    programIdx: index().on(t.programId),
+    familyIdx: index().on(t.familyId),
+    methodIdx: index().on(t.methodId),
+    scopeIdx: index().on(t.scopeHash),
+    controllerIdx: index().on(t.controller),
+  })
+)
+
+/** Exact accepted checkpoint identity published under one authenticated configuration. */
+export const graphLineageEpoch = onchainTable(
+  'graph_lineage_epoch',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    lineageId: t.hex().notNull(),
+    configurationId: t.hex().notNull(),
+    configurationVersion: t.bigint().notNull(),
+    checkpointId: t.bigint().notNull(),
+    freezeBlock: t.bigint().notNull(),
+    acceptedAtBlock: t.bigint().notNull(),
+    root: t.hex().notNull(),
+    blobSha256: t.hex().notNull(),
+    cidDigest: t.hex().notNull(),
+    cid: t.text().notNull(),
+    totalValue: t.numeric().notNull(),
+    programVKey: t.hex().notNull(),
+    publishedBlock: t.bigint().notNull(),
+    publishedTimestamp: t.bigint().notNull(),
+    publishedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    lineageCheckpointIdx: index().on(t.lineageId, t.checkpointId),
+    configurationIdx: index().on(t.configurationId),
+    rootIdx: index().on(t.root),
+    freezeIdx: index().on(t.freezeBlock),
+  })
+)
+
+/** Immutable claim plus explicit supersession and revocation history pointers. */
+export const graphEndorsement = onchainTable(
+  'graph_endorsement',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    registry: t.hex().notNull(),
+    issuerLineageId: t.hex().notNull(),
+    subjectLineageId: t.hex().notNull(),
+    issuerConfigurationId: t.hex().notNull(),
+    subjectConfigurationId: t.hex().notNull(),
+    scopeHash: t.hex().notNull(),
+    kind: t.integer().notNull(),
+    weight: t.numeric().notNull(),
+    validFrom: t.bigint().notNull(),
+    validUntil: t.bigint().notNull(),
+    evidenceURI: t.text().notNull(),
+    evidenceDigest: t.hex().notNull(),
+    evidenceMutable: t.boolean().notNull(),
+    sequence: t.bigint().notNull(),
+    supersedes: t.hex(),
+    supersededBy: t.hex(),
+    revokedAt: t.bigint(),
+    revocationRef: t.hex(),
+    issuedBlock: t.bigint().notNull(),
+    issuedTimestamp: t.bigint().notNull(),
+    issuedTxHash: t.hex().notNull(),
+    revokedBlock: t.bigint(),
+    revokedTxHash: t.hex(),
+  }),
+  (t) => ({
+    issuerScopeSequenceIdx: index().on(
+      t.issuerLineageId,
+      t.scopeHash,
+      t.sequence
+    ),
+    subjectScopeIdx: index().on(t.subjectLineageId, t.scopeHash),
+    kindIdx: index().on(t.kind),
+    validUntilIdx: index().on(t.validUntil),
+    supersededIdx: index().on(t.supersededBy),
+    revokedIdx: index().on(t.revokedAt),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
        AUTHENTICATED SCORE-PROGRAM / OUTPUT-DOMAIN BINDINGS
 //////////////////////////////////////////////////////////////*/
 
