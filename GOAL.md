@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-15): 26 issues closed, 16 remain.**
+> **Status (2026-08-18): 27 issues closed, 15 remain.**
 >
-> Closed after auditing `main` through `0a100da` and rerunning the focused regressions:
+> Closed after auditing `main` through `6f41055` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -69,13 +69,16 @@
 > - **#64** — authenticated source/proof provenance, atomic bounded TGCM capture, durable checkpoint
 >   recovery, timelocked policy rotation and adapter recovery, plus isolated composition factory and
 >   verifier registration (`0a100da`, PR #91)
+> - **#65** — typed trust-compose discovery, exact current/historical capture recovery, authenticated
+>   work-band pricing, durable proving/publication, independent transactional indexing, and paginated
+>   composition provenance APIs (`6f41055`, PR #92)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
 > is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63 and #64 closed → #65 → #66**; the shared #61 gate is closed; graph lineage
+> Trust-composition chain: **#63, #64, and #65 closed → #66**; the shared #61 gate is closed; graph lineage
 > **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
@@ -127,7 +130,7 @@ can proceed concurrently:
 | G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63/#64 closed → #65 → #66; #67 → #68          | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| J · trust composition             | #63/#64/#65 closed → #66; #67 → #68          | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
@@ -576,7 +579,8 @@ sources and 8,192 aggregate/union entries: its 412,097-byte witness executes in 
 with 7,328 KiB host peak RSS, and the SP1 mock Groth16 path verifies exact public values. The full
 Rust workspace, 610 Forge tests, 11 TypeScript composition tests, frontend suite, and aggregate
 parity task passed locally. Hosted Actions were billing-blocked before runner allocation. Atomic
-capture/factory wiring shipped in #64; operator/indexer integration continues in #65.
+capture/factory wiring shipped in #64; operator/indexer integration shipped in #65 and the
+frontend follows in #66.
 
 ### M4.3b · #64 — atomic source capture and control lifecycle
 
@@ -601,6 +605,33 @@ and composition SP1 guest build also passed locally. Trigger gas measured 677,31
 1,916,283 at eight. Hosted Actions were billing-blocked before runner allocation; the existing
 repository-wide Rust formatting/rustdoc debt was recorded separately and this PR changed no Rust
 source files.
+
+### M4.3c · #65 — trust-compose operator, pricing, publication, and indexer APIs
+
+**Closed in `6f41055` (PR #92).** The operator now discovers typed composition instances and
+reconstructs exact current or historical `TGCM` captures through cache, mirror, and calldata paths,
+requiring complete source-byte quorum and every frozen commitment before proving. Scheduling and
+quotes use authenticated entry counts, union accounts, blob bytes, and measured composition work
+bands rather than source count; caps fail closed, proving fees remain distinct from tank capacity
+and gas reimbursement, and source availability has its own durable retry/loss accounting. Historical
+republish rebuilds and validates byte-identical outputs before satisfying the configured publication
+policy, while restart, reorg, stale/unavailable source, malformed bytes, cap overflow, and repeated
+deterministic failure paths retain explicit recovery behavior.
+
+The indexer independently reproduces the policy, captured sources, two-stage Hamilton attribution,
+output commitments, proof provenance, and accepted on-chain state before transaction-scoped
+ingestion. Isolated composition tables and paginated/bulk APIs expose policy history, captured
+epochs, source evidence, exact and ideal attribution, disagreement, coverage, and proof bundles,
+while distinguishing cryptographically bound evidence from governance-admitted provenance. Program
+routing remains collision-free across TrustGraph, weighted, Hypercerts, Contributions, signer, and
+composition families. A single checkpoint-pin registration now updates both generic parameter
+history and composition policy history, preventing Ponder startup ambiguity.
+
+The focused suites passed with 103 operator-core tests, 42 zk/operator tests plus three explicit SP1
+release gates, 14 composition-core tests, 69 indexer tests, 624 Forge tests, Ponder codegen, frontend
+golden-vector coverage, and changed-file lint. Hosted Actions passed Rust tests/docs/fmt, Solidity,
+secret scan, the pinned SP1 guest build, and all six ZK parity families. The repository's pre-existing
+frontend strict-null typecheck findings remain outside this issue; no trust-compose error is present.
 
 ---
 
@@ -777,11 +808,11 @@ fixture, and independently reviewable child-issue criterion in #60 passes. Compl
 - **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
   no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
   gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** #63 and #64 closed; #65 → #66 for the remaining proven blend;
+- **Trust-composition track:** #63, #64, and #65 closed; #66 remains for the proven blend frontend;
   #67 → #68 for separate advisory graph reputation. The shared program-aware ingestion gate #61 is
   closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 16 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 15 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
