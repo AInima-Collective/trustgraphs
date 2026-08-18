@@ -27,6 +27,7 @@ trustgraph-prover = { path = "../prover" }
 pagerank-core = { path = "../../packages/pagerank-core" }
 contributions-core = { path = "../../packages/contributions-core" }
 weighted-prior-core = { path = "../../packages/weighted-prior-core" }
+composition-core = { path = "../../packages/composition-core" }
 zk-core = { path = "../../packages/zk-core" }
 
 alloy-primitives = { version = "1", features = ["serde"] }

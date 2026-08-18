@@ -12,17 +12,17 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: stable
+          version: v1.7.1
 
       - uses: actions/setup-node@v4
         name: Install Node.js
         with:
-          node-version: 21
+          node-version: 22
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10.18.3
 
       - name: Install Task
         uses: go-task/setup-task@v1

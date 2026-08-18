@@ -33,6 +33,10 @@ test('historical repair touches only the authenticated program table families', 
     scoreBackfillFamilies(program('hypercerts', 'hypercerts-node-v1')),
     ['hypercerts']
   )
+  assert.deepEqual(
+    scoreBackfillFamilies(program('trust-compose', 'trust-compose-account-v1')),
+    ['address-merkle', 'composition']
+  )
   assert.throws(
     () =>
       scoreBackfillFamilies(program('agent-reputation', 'erc8004-agent-v1')),
@@ -72,4 +76,36 @@ test('restart repair is idempotent and waits for every contributions surface', (
     discriminators.claim?.outputDomain,
     SCORE_OUTPUT_DOMAIN_IDS['contributions-claim-v1']
   )
+})
+
+test('composition restart never skips until its complete verified epoch exists', () => {
+  const composition = program('trust-compose', 'trust-compose-account-v1')
+  assert.equal(
+    canRepairScoreRowsOnRestart(composition, {
+      metadata: true,
+      entries: true,
+      contributionRound: false,
+      compositionEpoch: false,
+    }),
+    false
+  )
+  assert.equal(
+    canRepairScoreRowsOnRestart(composition, {
+      metadata: true,
+      entries: true,
+      contributionRound: false,
+      compositionEpoch: true,
+    }),
+    true
+  )
+})
+
+test('one-shot backfill source keeps composition behind full replay', async () => {
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(
+    new URL('../scripts/backfill-score-programs.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(source, /refusing discriminator-only backfill/)
+  assert.match(source, /capture, source blobs, proof, and accepted state/)
 })

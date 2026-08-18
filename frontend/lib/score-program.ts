@@ -49,11 +49,13 @@ export type ScoreIngestion =
   | 'address-merkle'
   | 'contributions'
   | 'hypercerts'
+  | 'composition'
   | 'not-enabled'
 export type ScoreApi =
   | 'merkle'
   | 'contributions'
   | 'hypercerts'
+  | 'compositions'
   | 'agent-reputation'
 export type ScoreProgramSourceKind =
   | 'instance-registered'
@@ -147,8 +149,8 @@ export const SCORE_KEY_DOMAINS: readonly ScoreKeyDomainDefinition[] = [
     name: 'trust-compose-account-v1',
     id: SCORE_OUTPUT_DOMAIN_IDS['trust-compose-account-v1'],
     keyEncoding: 'eip155-address',
-    tables: [],
-    apis: ['merkle'],
+    tables: ['offchain.merkle_entry', 'offchain.composition_attribution'],
+    apis: ['merkle', 'compositions'],
   },
   {
     name: 'erc8004-agent-v1',
@@ -268,14 +270,19 @@ export const SCORE_PROGRAMS: readonly ScoreProgramDefinition[] = [
     ['offchain.hypercerts_metadata', 'offchain.hypercerts_score'],
     ['hypercerts']
   ),
-  // Reserved by research/TRUSTGRAPHS_COMPOSITION.md. The production guest/indexer is not enabled.
   definition(
     'trust-compose',
     'trust-compose-account-v1',
     'eip155-address',
-    'not-enabled',
-    [],
-    ['merkle']
+    'composition',
+    [
+      'offchain.merkle_metadata',
+      'offchain.merkle_entry',
+      'offchain.composition_epoch',
+      'offchain.composition_source',
+      'offchain.composition_attribution',
+    ],
+    ['merkle', 'compositions']
   ),
   // Reserved for issue #62. Recognition is not enablement: ingestion fails until its own decoder,
   // table, API, verifier, and completeness adapter are implemented.

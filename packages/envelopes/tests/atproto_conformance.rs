@@ -590,38 +590,37 @@ fn adversarial_duplicate_entries_rejected() {
     assert!(err.contains("ascending"), "expected dup rejection, got: {err}");
 }
 
-/// 2e. Absence semantics: a complete, fail-closed range walk of a real repo PROVES that a
-/// given key does not exist. We walk the full collection (all 21 follows) and a tight range
-/// bracketing an absent key; the bracket returns nothing, while a present key is recovered —
-/// so non-existence is authenticated, not merely "not seen".
+/// 2e. Absence semantics: a complete, fail-closed range walk of a canonical repo tree PROVES
+/// that a given key does not exist. We walk the full tracked fixture and a tight range bracketing
+/// an absent key; the bracket returns nothing, while a present key is recovered — so
+/// non-existence is authenticated, not merely "not seen".
 #[test]
 fn absence_semantics_provable_nonexistence() {
-    let car_bytes = std::fs::read(fixture("test/fixtures/atproto/repos/atproto.car")).unwrap();
+    let car_bytes =
+        std::fs::read(fixture("test/fixtures/atproto/interop/car/two_deep_split.car")).unwrap();
     let car = Car::parse(&car_bytes).unwrap();
-    // decode the commit to get the data root
     let root = car.roots[0];
-    let commit = commit::decode_commit(car.get(&root).unwrap()).unwrap();
 
-    let lo = b"app.bsky.graph.follow/".to_vec();
-    let hi = b"app.bsky.graph.follow0".to_vec();
+    let lo = b"A".to_vec();
+    let hi = b"H".to_vec();
     let all: Vec<Vec<u8>> = Walker::range(&car, lo.clone(), hi.clone())
-        .run(&commit.data)
-        .expect("complete follow-range walk")
+        .run(&root)
+        .expect("complete canonical-tree range walk")
         .entries
         .into_iter()
         .map(|(k, _)| k)
         .collect();
-    assert_eq!(all.len(), 21, "ground truth: 21 follows");
+    assert_eq!(all.len(), 6, "ground truth: six canonical fixture keys");
 
-    // A key guaranteed absent (rkeys are 13-char TIDs; "zzzz…" sorts above them all).
-    let absent = b"app.bsky.graph.follow/zzzzzzzzzzzzz".to_vec();
+    // A key guaranteed absent between the fixture's C and E keys.
+    let absent = b"D0/000000".to_vec();
     assert!(!all.contains(&absent), "absent key must not be among walked keys");
 
     // Prove it via a tight authenticated bracket around the absent key: [absent, absent+\x00).
     let mut just_above = absent.clone();
     just_above.push(0x00);
     let bracket = Walker::range(&car, absent.clone(), just_above)
-        .run(&commit.data)
+        .run(&root)
         .expect("bracket walk is complete / fail-closed");
     assert!(bracket.entries.is_empty(), "authenticated bracket proves the key is absent");
 
@@ -629,7 +628,7 @@ fn absence_semantics_provable_nonexistence() {
     let present = all[0].clone();
     let mut p_above = present.clone();
     p_above.push(0x00);
-    let hit = Walker::range(&car, present.clone(), p_above).run(&commit.data).unwrap();
+    let hit = Walker::range(&car, present.clone(), p_above).run(&root).unwrap();
     assert_eq!(hit.entries.len(), 1, "present key is recovered by its bracket");
     assert_eq!(hit.entries[0].0, present);
 }

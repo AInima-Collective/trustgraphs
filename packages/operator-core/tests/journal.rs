@@ -174,10 +174,44 @@ fn every_record_survives_a_round_trip_through_the_file() {
             at: 8,
         })
         .unwrap();
+        j.append(Record::CompositionAvailabilityAttempt {
+            chain_id: 31_337,
+            instance_id: B256::from([0x44; 32]),
+            checkpoint_id: Some(9),
+            error: "source CID unavailable from durability quorum".into(),
+            at: 9,
+        })
+        .unwrap();
         j.records().to_vec()
     };
     let reopened = Journal::open(&path).unwrap();
     assert_eq!(reopened.records(), written.as_slice());
+}
+
+#[test]
+fn composition_availability_backoff_is_checkpoint_and_instance_scoped() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut journal = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    journal
+        .append(Record::CompositionAvailabilityAttempt {
+            chain_id: 31_337,
+            instance_id: B256::from([0x44; 32]),
+            checkpoint_id: Some(7),
+            error: "gateway quorum unavailable".into(),
+            at: 123,
+        })
+        .unwrap();
+    assert_eq!(
+        journal
+            .composition_availability_retry(31_337, B256::from([0x44; 32]), Some(7))
+            .unwrap()
+            .last_at,
+        123
+    );
+    assert!(journal
+        .composition_availability_retry(31_337, B256::from([0x44; 32]), Some(8))
+        .is_none());
+    assert!(journal.composition_availability_retry(10, B256::from([0x44; 32]), Some(7)).is_none());
 }
 
 #[test]

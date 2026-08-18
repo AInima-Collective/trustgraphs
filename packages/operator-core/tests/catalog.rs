@@ -3,9 +3,9 @@
 
 use alloy_primitives::{address, Address, B256, U256};
 use operator_core::catalog::{
-    scan, Catalog, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord, SignerSyncDescriptor, SkipCause, WeightedControllerParams,
-    WeightedCreatedParams,
+    scan, Catalog, ChainReader, CompositionControllerParams, ContributionsControllerParams,
+    ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor, SkipCause,
+    WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::types::Program;
@@ -46,6 +46,7 @@ struct FakeChain {
     controllers: BTreeMap<Address, ControllerParams>,
     contributions_controllers: BTreeMap<Address, ContributionsControllerParams>,
     weighted_controllers: BTreeMap<Address, WeightedControllerParams>,
+    composition_controllers: BTreeMap<Address, CompositionControllerParams>,
     weighted_created: BTreeMap<B256, WeightedCreatedParams>,
     registration_blocks: BTreeMap<B256, u64>,
     /// Instance ids whose reads blow up, to prove one flaky read does not stop the rest.
@@ -114,6 +115,15 @@ impl ChainReader for FakeChain {
         id: B256,
     ) -> Result<Option<WeightedCreatedParams>, Self::Error> {
         Ok(self.weighted_created.get(&id).cloned())
+    }
+    fn composition_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<CompositionControllerParams, Self::Error> {
+        self.composition_controllers
+            .get(&controller)
+            .cloned()
+            .ok_or_else(|| FakeError("no composition controller".into()))
     }
     fn snapshot_params_hash(&self, snapshot: Address) -> Result<B256, Self::Error> {
         self.snapshot_hashes.get(&snapshot).copied().ok_or_else(|| FakeError("no snapshot".into()))
@@ -339,6 +349,55 @@ fn add_weighted(chain: &mut FakeChain, seed: u8) -> B256 {
     id
 }
 
+fn composition_params(accumulator: Address) -> composition_core::Params {
+    let sample = composition_core::fixture::sample_input();
+    let capture =
+        composition_core::codec::parse_capture_manifest(&sample.manifest, sample.params.chain_id)
+            .unwrap();
+    let mut params = sample.params;
+    params.chain_id = 31_337;
+    params.accumulator = accumulator;
+    params.source_policy_root = composition_core::codec::source_policy_root(&capture.sources);
+    params.policy_manifest_sha256 = composition_core::codec::manifest_digest(
+        &composition_core::codec::policy_manifest_encoded(31_337, &capture.sources),
+    );
+    params
+}
+
+fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let accumulator = Address::from([seed.wrapping_add(0x20); 20]);
+    let controller = Address::from([seed.wrapping_add(0x40); 20]);
+    let params = composition_params(accumulator);
+    let hash = composition_core::codec::params_hash(&params);
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::Composition.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: accumulator,
+            params_hash: hash,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, hash);
+    chain.authorities.insert(id, controller);
+    chain.registration_blocks.insert(id, 99);
+    chain.composition_controllers.insert(
+        controller,
+        CompositionControllerParams {
+            instance_id: id,
+            snapshot,
+            version: 1,
+            current_params_hash: hash,
+            params,
+        },
+    );
+    id
+}
+
 fn scan_all(chain: &FakeChain) -> Catalog {
     scan(chain, Program::Trustgraphs, &Manifest::default()).unwrap()
 }
@@ -418,6 +477,34 @@ fn weighted_controller_disagreement_fails_closed() {
     chain.weighted_controllers.get_mut(&controller).unwrap().params.chain_id = 10;
 
     let catalog = scan(&chain, Program::Weighted, &Manifest::default()).unwrap();
+    assert!(catalog.get(id).is_none());
+    assert!(matches!(catalog.skipped[0].reason, SkipCause::ControllerInconsistent(_)));
+}
+
+#[test]
+fn composition_is_discovered_only_through_its_typed_controller_and_program_id() {
+    let mut chain = FakeChain::default();
+    let id = add_composition(&mut chain, 12);
+
+    let catalog = scan(&chain, Program::Composition, &Manifest::default()).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("chain-described composition instance");
+    assert_eq!(entry.program, Program::Composition);
+    assert_eq!(entry.created_block, 99);
+    assert!(entry.params.is_none());
+    assert!(entry.weighted_params.is_none());
+    let params = entry.composition_params.as_ref().expect("composition tuple");
+    assert_eq!(composition_core::codec::params_hash(params), entry.reconstructed_params_hash);
+}
+
+#[test]
+fn composition_controller_or_registry_drift_fails_closed() {
+    let mut chain = FakeChain::default();
+    let id = add_composition(&mut chain, 13);
+    let controller = chain.authorities[&id];
+    chain.composition_controllers.get_mut(&controller).unwrap().params.max_sources = 9;
+
+    let catalog = scan(&chain, Program::Composition, &Manifest::default()).unwrap();
     assert!(catalog.get(id).is_none());
     assert!(matches!(catalog.skipped[0].reason, SkipCause::ControllerInconsistent(_)));
 }

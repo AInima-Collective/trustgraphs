@@ -151,6 +151,9 @@ contract TrustComposeFactory {
             VERIFIER, paramsHash, IAttestationAccumulator(accumulatorAddress), address(this), address(this)
         );
         snapshot = address(merkleSnapshot);
+        // Composition indexers must authenticate the exact accepted checkpoint, params, verifier,
+        // codehash, and program key instead of inferring acceptance from a root-shaped event.
+        merkleSnapshot.enableStateProvenance();
         uint64 epochLength = args.epochLength < EPOCH_FLOOR ? EPOCH_FLOOR : args.epochLength;
         merkleSnapshot.setEpochLength(epochLength);
 

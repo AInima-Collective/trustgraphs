@@ -131,6 +131,7 @@ impl Default for Policy {
                 Program::Trustgraphs,
                 Program::Contributions,
                 Program::Weighted,
+                Program::Composition,
                 Program::Signer,
             ]),
             loss_budget: LossBudget::default(),

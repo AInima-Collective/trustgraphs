@@ -7,6 +7,7 @@ export type ScoreBackfillFamily =
   | 'address-merkle'
   | 'contributions'
   | 'hypercerts'
+  | 'composition'
 
 /** Pure, audited table plan shared by the repair CLI and tests. */
 export const scoreBackfillFamilies = (
@@ -19,6 +20,8 @@ export const scoreBackfillFamilies = (
       return ['address-merkle', 'contributions']
     case 'hypercerts':
       return ['hypercerts']
+    case 'composition':
+      return ['address-merkle', 'composition']
     case 'not-enabled':
       throw new Error(
         `refusing to backfill ${program.name}: its production ingestion is not enabled`
@@ -44,8 +47,14 @@ export const scoreRowDiscriminators = (program: ScoreProgramDefinition) => ({
 /** A replay may skip the untrusted blob fetch only when every program-owned root surface exists. */
 export const canRepairScoreRowsOnRestart = (
   program: ScoreProgramDefinition,
-  state: { metadata: boolean; entries: boolean; contributionRound: boolean }
+  state: {
+    metadata: boolean
+    entries: boolean
+    contributionRound: boolean
+    compositionEpoch?: boolean
+  }
 ) =>
   state.metadata &&
   state.entries &&
-  (program.ingestion !== 'contributions' || state.contributionRound)
+  (program.ingestion !== 'contributions' || state.contributionRound) &&
+  (program.ingestion !== 'composition' || state.compositionEpoch === true)

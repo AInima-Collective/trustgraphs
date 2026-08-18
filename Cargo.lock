@@ -1782,6 +1782,7 @@ name = "operator-core"
 version = "0.9.3"
 dependencies = [
  "alloy-primitives",
+ "composition-core",
  "contributions-core",
  "pagerank-core",
  "serde",

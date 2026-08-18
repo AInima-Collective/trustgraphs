@@ -150,17 +150,17 @@ mod tests {
 
     /// Serialize a minimal valid CAR: header {version: 1, roots: [root]} + one dag-cbor block.
     fn tiny_car() -> Vec<u8> {
-        let block_data = serde_ipld_dagcbor::to_vec(&ipld_core::ipld::Ipld::String(
-            "hello".to_string(),
-        ))
-        .unwrap();
+        let block_data =
+            serde_ipld_dagcbor::to_vec(&ipld_core::ipld::Ipld::String("hello".to_string()))
+                .unwrap();
         let cid = cid_dagcbor(&block_data);
         let header = serde_ipld_dagcbor::to_vec(&ipld_core::ipld::Ipld::Map(
             [
                 ("version".to_string(), ipld_core::ipld::Ipld::Integer(1)),
-                ("roots".to_string(), ipld_core::ipld::Ipld::List(vec![
-                    ipld_core::ipld::Ipld::Link(cid),
-                ])),
+                (
+                    "roots".to_string(),
+                    ipld_core::ipld::Ipld::List(vec![ipld_core::ipld::Ipld::Link(cid)]),
+                ),
             ]
             .into_iter()
             .collect(),

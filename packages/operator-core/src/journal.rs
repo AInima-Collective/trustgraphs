@@ -154,6 +154,16 @@ pub enum Record {
         required: u32,
         at: u64,
     },
+    /// A composition input could not be reconstructed from its exact content-addressed sources.
+    /// This is availability state, not a terminal proof failure: later retries use the same
+    /// checkpoint/commitments and cannot substitute different bytes.
+    CompositionAvailabilityAttempt {
+        chain_id: u64,
+        instance_id: B256,
+        checkpoint_id: Option<u64>,
+        error: String,
+        at: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,6 +201,13 @@ pub struct PublicationRetry {
     pub attempts: u32,
     pub last_at: u64,
     pub failures: Vec<String>,
+}
+
+/// Latest repairable source-availability failure for one composition checkpoint/preflight.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompositionAvailabilityRetry {
+    pub error: String,
+    pub last_at: u64,
 }
 
 /// Append-only JSONL, one file, fsynced at the points that matter.
@@ -336,6 +353,29 @@ impl Journal {
         matches!(self.status(key), Status::Untouched)
     }
 
+    pub fn composition_availability_retry(
+        &self,
+        chain_id: u64,
+        instance_id: B256,
+        checkpoint_id: Option<u64>,
+    ) -> Option<CompositionAvailabilityRetry> {
+        self.records.iter().rev().find_map(|record| match record {
+            Record::CompositionAvailabilityAttempt {
+                chain_id: recorded_chain,
+                instance_id: recorded_instance,
+                checkpoint_id: recorded_checkpoint,
+                error,
+                at,
+            } if *recorded_chain == chain_id
+                && *recorded_instance == instance_id
+                && *recorded_checkpoint == checkpoint_id =>
+            {
+                Some(CompositionAvailabilityRetry { error: error.clone(), last_at: *at })
+            }
+            _ => None,
+        })
+    }
+
     /// Why a fresh request was refused, phrased for whoever has to fix it.
     ///
     /// [`may_request`](Self::may_request) answers yes or no; this answers "and what do I do about
@@ -345,7 +385,7 @@ impl Journal {
     ///
     /// `last_applied_on_chain` is the instance's `lastAppliedCheckpoint` as the chain reports it
     /// right now, which is what separates the one cause you cannot guess from the rest — see
-    /// [`Self::contradicts_chain`].
+    /// the internal `contradicts_chain` check.
     pub fn refusal(&self, key: &WorkKey, last_applied_on_chain: Option<u64>) -> String {
         match self.status(key) {
             Status::Untouched => {

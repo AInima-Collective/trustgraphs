@@ -20,6 +20,8 @@ pub enum Program {
     Contributions,
     #[serde(rename = "trust-graph-weighted")]
     Weighted,
+    #[serde(rename = "trust-compose")]
+    Composition,
     Hypercerts,
     Signer,
 }
@@ -35,6 +37,7 @@ impl Program {
             Program::Trustgraphs => "trust-graph",
             Program::Contributions => "contributions",
             Program::Weighted => "trust-graph-weighted",
+            Program::Composition => "trust-compose",
             Program::Hypercerts => "hypercerts",
             Program::Signer => "signer-sync",
         }
@@ -45,6 +48,7 @@ impl Program {
             Program::Trustgraphs,
             Program::Contributions,
             Program::Weighted,
+            Program::Composition,
             Program::Hypercerts,
             Program::Signer,
         ]
@@ -68,6 +72,10 @@ impl Program {
             // The personalized prior program consumes the EAS accumulator only. Its common
             // journal-v3 lane-two words are constitutionally zero.
             Program::Weighted => Lanes { lane1: true, lane2: false },
+            // The composition accumulator freezes the complete TGCM digest in lane one. Its
+            // on-chain leaf count is only a source count; authenticated work shape is carried
+            // separately in `InstanceSize` and must never be inferred from this lane.
+            Program::Composition => Lanes { lane1: true, lane2: false },
             // Lane 1 is the EmptyLaneAccumulator: constant (0, 0) forever.
             Program::Hypercerts => Lanes { lane1: false, lane2: true },
             Program::Signer => Lanes { lane1: true, lane2: false },
@@ -97,6 +105,16 @@ mod tests {
         );
         assert_eq!(Program::from_id(Program::Weighted.id()), Some(Program::Weighted));
         assert_eq!(Program::Weighted.consumes(), super::Lanes { lane1: true, lane2: false });
+    }
+
+    #[test]
+    fn composition_has_a_collision_free_program_identity() {
+        assert_eq!(Program::Composition.name(), "trust-compose");
+        assert_eq!(Program::from_id(Program::Composition.id()), Some(Program::Composition));
+        assert_ne!(Program::Composition.id(), Program::Trustgraphs.id());
+        assert_ne!(Program::Composition.id(), Program::Contributions.id());
+        assert_ne!(Program::Composition.id(), Program::Hypercerts.id());
+        assert_eq!(Program::Composition.consumes(), super::Lanes { lane1: true, lane2: false });
     }
 }
 
@@ -169,6 +187,10 @@ pub enum InFlightState {
 pub struct VaultView {
     /// False when the cadence guard, the per-root cap, or an empty tank would pay nothing.
     pub eligible: bool,
+    /// Proving bounty offered for this root, in USD scaled by 1e8.
+    pub fee_usd: u128,
+    /// Nominal transaction-gas reimbursement offered for this root, in USD scaled by 1e8.
+    pub gas_usd: u128,
     /// Combined value the account can actually cover right now, in USD scaled by 1e8 — the same
     /// units `IProvingVault.Quote.payableUsd` reports. Named `_wei` in an earlier draft, which
     /// pre-loaded a 1e10 scale error into an adapter nobody had written yet.
@@ -177,11 +199,21 @@ pub struct VaultView {
     pub reason: u8,
 }
 
+impl VaultView {
+    /// What the contract promised for this claim, distinct from the tank's total capacity.
+    pub fn offered_usd(self) -> u128 {
+        self.fee_usd.saturating_add(self.gas_usd)
+    }
+}
+
 /// How big this instance's next proof would be, for the cycle-limit gate and the fee band.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceSize {
     pub leaf_count: u64,
     pub anchor_count: u64,
+    /// Exact program-authenticated cycle estimate when raw lane counts are not a work proxy.
+    /// Composition fills this only after fetching and validating every captured source blob.
+    pub authenticated_cycles: Option<u64>,
 }
 
 impl InstanceSize {
@@ -189,6 +221,9 @@ impl InstanceSize {
     /// prove at all. Being wrong here costs a skip, not money; being absent costs a timed-out
     /// request we paid for.
     pub fn estimated_cycles(&self, per_input_cycles: u64, base_cycles: u64) -> u64 {
+        if let Some(cycles) = self.authenticated_cycles {
+            return cycles;
+        }
         base_cycles.saturating_add(
             self.leaf_count.saturating_add(self.anchor_count).saturating_mul(per_input_cycles),
         )

@@ -83,6 +83,12 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function testFuzz_FactoryIsInertAfterCreate(address admin, bytes32 salt, bool withDistributor) public {
         // `address(factory)` is rejected outright — see test_FactoryRefusesToBeItsOwnAdmin.
         vm.assume(admin != address(factory));
+        // The property distinguishes inherited creation authority from authority deliberately
+        // assigned to the community admin. If those identities coincide, "deployer holds no role"
+        // and "admin holds the constitutional role" cannot both be true as address-level claims.
+        vm.assume(admin != address(snapshotDeployer));
+        vm.assume(admin != address(distributorDeployer));
+        vm.assume(admin != address(paramsControllerDeployer));
 
         TrustgraphsFactory.CreateArgs memory args = _args("fuzzed");
         args.admin = admin;

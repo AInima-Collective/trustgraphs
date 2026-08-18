@@ -4661,6 +4661,13 @@ export const merkleSnapshotAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'enableStateProvenance',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'epochLength',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
@@ -4670,6 +4677,47 @@ export const merkleSnapshotAbi = [
     inputs: [],
     name: 'epochOriginBlock',
     outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'getAcceptedCheckpoint',
+    outputs: [
+      {
+        name: 'state',
+        internalType: 'struct IMerkleSnapshot.MerkleState',
+        type: 'tuple',
+        components: [
+          { name: 'blockNumber', internalType: 'uint256', type: 'uint256' },
+          { name: 'timestamp', internalType: 'uint256', type: 'uint256' },
+          { name: 'root', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'ipfsHash', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'ipfsHashCid', internalType: 'string', type: 'string' },
+          { name: 'totalValue', internalType: 'uint256', type: 'uint256' },
+        ],
+      },
+      {
+        name: 'provenance',
+        internalType: 'struct IMerkleSnapshotProvenance.StateProvenance',
+        type: 'tuple',
+        components: [
+          { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
+          { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+          { name: 'acceptedAtBlock', internalType: 'uint64', type: 'uint64' },
+          { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'verifier', internalType: 'address', type: 'address' },
+          {
+            name: 'verifierCodehash',
+            internalType: 'bytes32',
+            type: 'bytes32',
+          },
+          { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -4772,6 +4820,32 @@ export const merkleSnapshotAbi = [
     inputs: [],
     name: 'getStateCount',
     outputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'stateIndex', internalType: 'uint256', type: 'uint256' }],
+    name: 'getStateProvenance',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct IMerkleSnapshotProvenance.StateProvenance',
+        type: 'tuple',
+        components: [
+          { name: 'stateIndex', internalType: 'uint256', type: 'uint256' },
+          { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+          { name: 'acceptedAtBlock', internalType: 'uint64', type: 'uint64' },
+          { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'verifier', internalType: 'address', type: 'address' },
+          {
+            name: 'verifierCodehash',
+            internalType: 'bytes32',
+            type: 'bytes32',
+          },
+          { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -4927,6 +5001,13 @@ export const merkleSnapshotAbi = [
     name: 'proposeConstitutionalTransfer',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'provenanceEnabled',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -5457,6 +5538,61 @@ export const merkleSnapshotAbi = [
   {
     type: 'event',
     anonymous: false,
+    inputs: [],
+    name: 'StateProvenanceEnabled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'stateIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'acceptedAtBlock',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: true,
+      },
+      {
+        name: 'paramsHash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'verifier',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'verifierCodehash',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'programVKey',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+    ],
+    name: 'StateProvenanceRecorded',
+  },
+  {
+    type: 'event',
+    anonymous: false,
     inputs: [
       {
         name: 'zkVerifier',
@@ -5558,6 +5694,11 @@ export const merkleSnapshotAbi = [
       { name: 'pendingSuccessor', internalType: 'address', type: 'address' },
     ],
     name: 'NotPendingConstitutionalSuccessor',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'stateCount', internalType: 'uint256', type: 'uint256' }],
+    name: 'ProvenanceEnableAfterState',
   },
   {
     type: 'error',

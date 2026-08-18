@@ -6,8 +6,9 @@ use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::{
-    CatalogEntry, ChainReader, ContributionsControllerParams, ControllerParams, CreatedParams,
-    RegistryRecord, SignerSyncDescriptor, WeightedControllerParams, WeightedCreatedParams,
+    CatalogEntry, ChainReader, CompositionControllerParams, ContributionsControllerParams,
+    ControllerParams, CreatedParams, RegistryRecord, SignerSyncDescriptor,
+    WeightedControllerParams, WeightedCreatedParams,
 };
 use operator_core::types::{CheckpointRef, Commitments};
 use pagerank_core::{Params, SelectionParams};
@@ -41,6 +42,16 @@ sol! {
         uint64 minWeight; uint64 maxWeight; bytes32 priorRoot; uint32 priorCount;
         bytes32 manifestSha256; bytes32 schemaUid; uint32 weightFieldIndex;
         address accumulator; uint64 chainId;
+    }
+
+    /// Mirror of `TrustComposeParamsCodec.Params` (isolated V1, 20 frozen words).
+    struct SolCompositionParams {
+        uint32 version; bytes32 programId; bytes32 scopeHash; bytes32 identityDomain;
+        bytes32 outputKind; bytes32 outputDomain; bytes32 admittedProgramId; uint64 weightScale;
+        uint128 outputPool; bytes32 sourcePolicyRoot; uint8 sourceCount;
+        bytes32 policyManifestSha256; uint8 maxSources; uint32 maxEntriesPerSource;
+        uint32 maxAggregateEntries; uint32 maxUnionAccounts; uint32 maxAggregateBlobBytes;
+        uint64 maxSourceAgeBlocks; address accumulator; uint64 chainId;
     }
 
     event InstanceCreated(
@@ -109,6 +120,16 @@ sol! {
         bytes32 previousParamsHash, bytes32 proposalId, bytes32 metadataDigest,
         SolWeightedParams params
     );
+
+    event InitialPolicyPublished(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 adapterSetHash, bytes32 metadataDigest, SolCompositionParams params
+    );
+    event PolicyActivated(
+        bytes32 indexed instanceId, uint64 indexed version, bytes32 indexed paramsHash,
+        bytes32 previousParamsHash, bytes32 proposalId, bytes32 adapterSetHash,
+        bytes32 metadataDigest, SolCompositionParams params
+    );
     struct SolPendingPrior {
         uint64 version; uint48 readyAt; bytes32 proposalId; bytes32 priorRoot;
         uint32 priorCount; bytes32 manifestSha256; bytes32 metadataDigest; bytes32 paramsHash;
@@ -169,6 +190,8 @@ sol! {
     function checkpointCount() external view returns (uint256);
     function getCheckpoint(uint256 id) external view returns (Checkpoint);
     function acc() external view returns (bytes32);
+    function getCaptureManifest(uint256 checkpointId) external view returns (bytes);
+    function currentCaptureManifest() external view returns (bytes);
 
     /// `AnchorRegistry`.
     function anchorAcc() external view returns (bytes32);
@@ -734,6 +757,29 @@ impl ChainReader for RpcCatalog<'_> {
         })
     }
 
+    fn composition_controller_params(
+        &self,
+        controller: Address,
+    ) -> Result<CompositionControllerParams> {
+        let call = |data: Vec<u8>| self.rpc.eth_call(controller, data);
+        let instance_id =
+            instanceIdCall::abi_decode_returns(&call(instanceIdCall {}.abi_encode())?)?;
+        let snapshot = snapshotCall::abi_decode_returns(&call(snapshotCall {}.abi_encode())?)?;
+        let version = versionCall::abi_decode_returns(&call(versionCall {}.abi_encode())?)?;
+        let current_params_hash = currentParamsHashCall::abi_decode_returns(&call(
+            currentParamsHashCall {}.abi_encode(),
+        )?)?;
+        let raw = call(getCurrentParamsCall {}.abi_encode())?;
+        let params = SolCompositionParams::abi_decode(&raw)?;
+        Ok(CompositionControllerParams {
+            instance_id,
+            snapshot,
+            version,
+            current_params_hash,
+            params: to_composition_params(&params),
+        })
+    }
+
     fn weighted_created_params(&self, id: B256) -> Result<Option<WeightedCreatedParams>> {
         let Some((created_block, tx)) = self.registered_in.get(&id).copied() else {
             return Ok(None);
@@ -832,6 +878,31 @@ fn to_weighted_params(p: &SolWeightedParams) -> weighted_prior_core::Params {
         manifest_sha256: p.manifestSha256,
         schema_uid: p.schemaUid,
         weight_field_index: p.weightFieldIndex,
+        accumulator: p.accumulator,
+        chain_id: p.chainId,
+    }
+}
+
+fn to_composition_params(p: &SolCompositionParams) -> composition_core::Params {
+    composition_core::Params {
+        version: p.version,
+        program_id: p.programId,
+        scope_hash: p.scopeHash,
+        identity_domain: p.identityDomain,
+        output_kind: p.outputKind,
+        output_domain: p.outputDomain,
+        admitted_program_id: p.admittedProgramId,
+        weight_scale: p.weightScale,
+        output_pool: p.outputPool,
+        source_policy_root: p.sourcePolicyRoot,
+        source_count: p.sourceCount,
+        policy_manifest_sha256: p.policyManifestSha256,
+        max_sources: p.maxSources,
+        max_entries_per_source: p.maxEntriesPerSource,
+        max_aggregate_entries: p.maxAggregateEntries,
+        max_union_accounts: p.maxUnionAccounts,
+        max_aggregate_blob_bytes: p.maxAggregateBlobBytes,
+        max_source_age_blocks: p.maxSourceAgeBlocks,
         accumulator: p.accumulator,
         chain_id: p.chainId,
     }
@@ -1143,6 +1214,28 @@ pub fn read_checkpoint(rpc: &Rpc, snapshot: Address, checkpoint_id: u64) -> Resu
     })
 }
 
+/// Recover the exact canonical TGCM preimage stored by the composition accumulator. A caller may
+/// request the current preflight view (`None`) or a durable historical checkpoint (`Some`).
+pub fn read_composition_manifest(
+    rpc: &Rpc,
+    accumulator: Address,
+    checkpoint_id: Option<u64>,
+) -> Result<Vec<u8>> {
+    let returned = match checkpoint_id {
+        Some(id) => rpc.eth_call(
+            accumulator,
+            getCaptureManifestCall { checkpointId: U256::from(id) }.abi_encode(),
+        )?,
+        None => rpc.eth_call(accumulator, currentCaptureManifestCall {}.abi_encode())?,
+    };
+    let manifest = match checkpoint_id {
+        Some(_) => getCaptureManifestCall::abi_decode_returns(&returned)?,
+        None => currentCaptureManifestCall::abi_decode_returns(&returned)?,
+    };
+    anyhow::ensure!(!manifest.is_empty(), "composition capture manifest is empty");
+    Ok(manifest.to_vec())
+}
+
 /// Find the proof-submission event for a checkpoint and read the exact state filed at that
 /// checkpoint's input-freeze block. `getStateAtBlock` is an at-or-before lookup, so equality is
 /// checked explicitly; otherwise an unknown checkpoint could be mistaken for an older root.
@@ -1223,6 +1316,69 @@ pub fn entry_at_params_hash(
             entry.name
         )
     })?;
+    if entry.program == operator_core::types::Program::Composition {
+        for log in rpc.logs(
+            controller,
+            PolicyActivated::SIGNATURE_HASH,
+            entry.created_block,
+            head,
+            10_000,
+        )? {
+            let event = PolicyActivated::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_composition_params(&event.params);
+            params
+                .validate()
+                .map_err(|error| anyhow!("invalid historical composition params: {error}"))?;
+            let reconstructed = composition_core::codec::params_hash(&params);
+            anyhow::ensure!(
+                reconstructed == params_hash,
+                "composition activation tuple encodes {reconstructed:#x}, but names {params_hash:#x}"
+            );
+            let mut historical = entry.clone();
+            historical.params = None;
+            historical.contributions_params = None;
+            historical.weighted_params = None;
+            historical.composition_params = Some(params);
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
+        }
+        for log in rpc.logs(
+            controller,
+            InitialPolicyPublished::SIGNATURE_HASH,
+            entry.created_block,
+            head,
+            10_000,
+        )? {
+            let event =
+                InitialPolicyPublished::decode_raw_log(log.topics.iter().copied(), &log.data)?;
+            if event.instanceId != entry.instance_id || event.paramsHash != params_hash {
+                continue;
+            }
+            let params = to_composition_params(&event.params);
+            params.validate().map_err(|error| anyhow!("invalid composition V1 params: {error}"))?;
+            let reconstructed = composition_core::codec::params_hash(&params);
+            anyhow::ensure!(
+                reconstructed == params_hash,
+                "composition V1 event tuple hash mismatch"
+            );
+            let mut historical = entry.clone();
+            historical.params = None;
+            historical.contributions_params = None;
+            historical.weighted_params = None;
+            historical.composition_params = Some(params);
+            historical.reconstructed_params_hash = reconstructed;
+            historical.params_version = Some(event.version);
+            return Ok(historical);
+        }
+        bail!(
+            "no composition policy publication/activation event for instance {:#x} and pinned hash {params_hash:#x}",
+            entry.instance_id
+        );
+    }
     if entry.program == operator_core::types::Program::Weighted {
         for log in
             rpc.logs(controller, PriorActivated::SIGNATURE_HASH, entry.created_block, head, 10_000)?
@@ -1241,6 +1397,7 @@ pub fn entry_at_params_hash(
             historical.params = None;
             historical.contributions_params = None;
             historical.weighted_params = Some(params);
+            historical.composition_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
@@ -1265,6 +1422,7 @@ pub fn entry_at_params_hash(
             historical.params = None;
             historical.contributions_params = None;
             historical.weighted_params = Some(params);
+            historical.composition_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
@@ -1298,6 +1456,7 @@ pub fn entry_at_params_hash(
             historical.params = None;
             historical.contributions_params = Some(params);
             historical.weighted_params = None;
+            historical.composition_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
@@ -1316,6 +1475,7 @@ pub fn entry_at_params_hash(
             historical.params = Some(params);
             historical.contributions_params = None;
             historical.weighted_params = None;
+            historical.composition_params = None;
             historical.reconstructed_params_hash = reconstructed;
             historical.params_version = Some(event.version);
             return Ok(historical);
