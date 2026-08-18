@@ -1,0 +1,87 @@
+{
+  "format": "trustgraphs-graph-reputation-golden-v1",
+  "scale": "1000000000000000000",
+  "damping": "850000000000000000",
+  "iterations": 128,
+  "fixture": {
+    "description": "Three sparse-prior roots and a three-member correlated cartel; ingress is root A's referral budget directed to the cartel.",
+    "rootWeights": [
+      "340000000000000000",
+      "330000000000000000",
+      "330000000000000000"
+    ],
+    "cartelFamilyId": "0x000000000000000000000000000000000000000000000000000000000000018f"
+  },
+  "cases": [
+    {
+      "name": "disconnected-cartel",
+      "mode": "disconnected",
+      "ingressWeight": "0",
+      "inputCommitment": "0x23a691aa0654a235b6b73e305543ffb7a253b41f056bf2557873a355b0b37f67",
+      "resultCommitment": "0xc1280a15f1a6d465c2be6a31313ba41804c983914164a9ecc0eaf08203cae845",
+      "residual": "18477896",
+      "scores": [
+        "333887269190338931",
+        "333304178811788088",
+        "332808551997872981",
+        "0",
+        "0",
+        "0"
+      ],
+      "cartelMass": "0"
+    },
+    {
+      "name": "ten-percent-trusted-ingress",
+      "mode": "ingress",
+      "ingressWeight": "100000000000000000",
+      "inputCommitment": "0x4e18751d6a6e5629e3033d296d58d20a10d9b9dafc3140fbd0c2c0d061484dd0",
+      "resultCommitment": "0x0fb9d0c41643a842b8651ea6e724e7527e3de2a252625efc82597c810b1d4115",
+      "residual": "19008838",
+      "scores": [
+        "288044602186060594",
+        "269854120672336354",
+        "278876002571570522",
+        "63450058139451734",
+        "53932549426302459",
+        "45842667004278337"
+      ],
+      "cartelMass": "163225274570032530"
+    },
+    {
+      "name": "dangling-and-unspent-return-to-prior",
+      "mode": "dangling",
+      "ingressWeight": "0",
+      "inputCommitment": "0x8ad83d4605810bc4cf39e82d0e8dffb6e0e6ee7e434ab3004a83fbce311d8ab2",
+      "resultCommitment": "0xb28a5cb8ceea365b7fd8385d25640a557d7457da4333d76a7c702e5497a4ec5a",
+      "residual": "0",
+      "scores": [
+        "330449995140441248",
+        "348819127223248130",
+        "320730877636310622",
+        "0",
+        "0",
+        "0"
+      ],
+      "cartelMass": "0",
+      "matrix": [
+        {
+          "spent": "100000000000000000",
+          "unused": "900000000000000000",
+          "referrals": [
+            {
+              "endorsementId": "0x0000000000000000000000000000000000000000000000000000000000000258",
+              "subjectLineageId": "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "weight": "100000000000000000",
+              "validUntil": "3000"
+            }
+          ]
+        },
+        { "spent": "0", "unused": "1000000000000000000", "referrals": [] },
+        { "spent": "0", "unused": "1000000000000000000", "referrals": [] },
+        { "spent": "0", "unused": "1000000000000000000", "referrals": [] },
+        { "spent": "0", "unused": "1000000000000000000", "referrals": [] },
+        { "spent": "0", "unused": "1000000000000000000", "referrals": [] }
+      ]
+    }
+  ]
+}

@@ -153,6 +153,80 @@ export type ReferralBudget = {
   unused: string
 }
 
+export type GraphRecommendation = {
+  lineageId: Hex
+  displayName: string
+  configurationId: Hex
+  epochId: Hex
+  score: string
+  rank: number
+  familyId: Hex
+  familyMass: string
+  recommendedWeight: string
+  manualWeight: string | null
+  manualDelta: string | null
+  eligible: boolean
+  eligibilityReason: string
+  probationEndsAt: string
+  evidenceMutable: boolean
+  nextReferralExpiry: string | null
+  overlap: {
+    family: boolean
+    method: boolean
+    controller: boolean
+    publisherAuthority: boolean
+  }
+  rootIngress: Array<{ rootLineageId: Hex; mass: string }>
+  paths: Array<{
+    rootLineageId: Hex
+    lineageIds: Hex[]
+    endorsementIds: Hex[]
+    strength: string
+  }>
+}
+
+export type GraphRecommendationResult = {
+  advisoryOnly: true
+  previousFinalizedEpochOnly: true
+  algorithm: {
+    version: number
+    scale: string
+    damping: string
+    iterations: number
+    residual: string
+    errorBound: string
+    converged: boolean
+  }
+  cutoff: {
+    chainId: string
+    registry: Address
+    scopeHash: Hex
+    block: string
+    timestamp: string
+    finalizedBlock: string
+  }
+  inputCommitment: Hex
+  resultCommitment: Hex
+  roots: Array<{ lineageId: Hex; weight: string }>
+  recommendations: GraphRecommendation[]
+  families: Array<{ familyId: Hex; mass: string }>
+  budgets: Array<{
+    issuerLineageId: Hex
+    spent: string
+    unused: string
+    referrals: Array<{
+      endorsementId: Hex
+      subjectLineageId: Hex
+      weight: string
+      validUntil: string
+    }>
+  }>
+  sensitivity: Array<{ omittedRoot: Hex; l1Distance: string | null }>
+  excluded: Array<{ lineageId: Hex; reason: string }>
+  nextExpiry: string | null
+  warnings: string[]
+}
+
 export const fetchGraphLineages = async (
   api: string,
   signal?: AbortSignal
@@ -212,4 +286,22 @@ export const fetchReferralDiagnostics = async (
     excluded: Array<{ endorsementId: Hex; status: string }>
     warning: string
   }>(response)
+}
+
+export const fetchGraphRecommendations = async (
+  api: string,
+  request: {
+    scopeHash: Hex
+    roots: Array<{ lineageId: Hex; weight: string }>
+    manualWeights?: Array<{ lineageId: Hex; weight: string }>
+  },
+  signal?: AbortSignal
+) => {
+  const response = await fetch(`${api}/graph-lineages/recommendations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+    signal,
+  })
+  return responseJson<GraphRecommendationResult>(response)
 }
