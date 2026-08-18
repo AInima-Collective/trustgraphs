@@ -5,8 +5,10 @@ import { type Address, type Hex, decodeFunctionData } from 'viem'
 import {
   type WeightedApiVersion,
   availabilityDiagnosis,
+  fetchBinaryInstances,
   fetchBinarySeeds,
   fetchWeightedEntries,
+  fetchWeightedInstances,
   fetchWeightedVersions,
 } from './api'
 import { weightedTrustgraphsFactoryAbi } from './contracts'
@@ -66,6 +68,26 @@ const originalFetch = globalThis.fetch
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input)
   calls.push(url)
+  if (url === `${API}/instances?limit=200&offset=0`) {
+    return Response.json({
+      instances: [
+        {
+          id: BINARY_INSTANCE,
+          name: 'Binary network',
+          trustedSeeds: [A, B, C],
+        },
+      ],
+      pagination: { total: 1 },
+    })
+  }
+  if (url === `${API}/weighted-priors?limit=200&offset=0`) {
+    return Response.json({
+      instances: [
+        { id: INSTANCE, name: 'Weighted network', currentVersion: '1' },
+      ],
+      page: { total: 1 },
+    })
+  }
   if (url === `${API}/instances/${BINARY_INSTANCE}`) {
     return Response.json({ instance: { trustedSeeds: [C, A, B] } })
   }
@@ -89,16 +111,27 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 
 const main = async () => {
   try {
+    const binaryInstances = await fetchBinaryInstances(API)
+    assert.deepEqual(
+      binaryInstances.map(({ id, name }) => ({ id, name })),
+      [{ id: BINARY_INSTANCE, name: 'Binary network' }]
+    )
+    const weightedInstances = await fetchWeightedInstances(API)
+    assert.deepEqual(
+      weightedInstances.map(({ id, name }) => ({ id, name })),
+      [{ id: INSTANCE, name: 'Weighted network' }]
+    )
+
     // Binary redeployment journey: the old instance supplies addresses only, and the output is a
     // visibly new weighted creation payload with deterministic equal weights.
     const seeds = await fetchBinarySeeds(API, BINARY_INSTANCE)
     const prefill = equalWeightCsv(seeds)
     assert.equal(prefill, `account,weight\n${A},1\n${B},1\n${C},1\n`)
+    assert.match(BINARY_REDEPLOYMENT_NOTICE, /separate weighted network/)
     assert.match(
       BINARY_REDEPLOYMENT_NOTICE,
-      /new trust-graph-weighted instance/
+      /old network and its history stay unchanged/
     )
-    assert.match(BINARY_REDEPLOYMENT_NOTICE, /does not convert.*in place/)
 
     const createArtifacts = await resolveAddressOnlyWeightedSource(
       parseWeightedSource(prefill, 'csv', 10n),
@@ -186,7 +219,7 @@ const main = async () => {
       () => rotationReview([], unavailable, rotationArtifacts),
       /Rotation review is disabled/
     )
-    assert.equal(calls.length, 3)
+    assert.equal(calls.length, 5)
 
     console.log(
       'weighted frontend E2E: create, binary prefill, pending diff, activation, and unavailable recovery: ok'

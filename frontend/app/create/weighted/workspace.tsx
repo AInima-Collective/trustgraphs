@@ -10,7 +10,8 @@ import {
   RotateCcw,
   Square,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
   type Hex,
@@ -40,11 +41,15 @@ import { getEnsCoinType } from '@/lib/ens-query'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 import {
+  type BinaryApiInstance,
   type WeightedApiEntry,
+  type WeightedApiInstance,
   type WeightedApiVersion,
   availabilityDiagnosis,
+  fetchBinaryInstances,
   fetchBinarySeeds,
   fetchWeightedEntries,
+  fetchWeightedInstances,
   fetchWeightedVersions,
 } from '@/lib/weighted-prior/api'
 import {
@@ -143,9 +148,17 @@ export const WeightedPriorWorkspace = () => {
   const [salt] = useState<Hex>(randomSalt)
 
   const [instanceId, setInstanceId] = useState('')
+  const [weightedInstances, setWeightedInstances] = useState<
+    WeightedApiInstance[]
+  >([])
   const [versions, setVersions] = useState<WeightedApiVersion[]>([])
   const [currentEntries, setCurrentEntries] = useState<WeightedApiEntry[]>([])
   const [binaryInstanceId, setBinaryInstanceId] = useState('')
+  const [binaryInstances, setBinaryInstances] = useState<BinaryApiInstance[]>(
+    []
+  )
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogProblem, setCatalogProblem] = useState<string | null>(null)
   const [gasEstimate, setGasEstimate] = useState<bigint | null>(null)
   const [simulatedPayload, setSimulatedPayload] = useState<Hex | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -177,6 +190,39 @@ export const WeightedPriorWorkspace = () => {
     () => ({ sourceUri, author, license, transform }),
     [sourceUri, author, license, transform]
   )
+
+  useEffect(() => {
+    if (mode === 'create') {
+      setCatalogLoading(false)
+      setCatalogProblem(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setCatalogLoading(true)
+    setCatalogProblem(null)
+    const load =
+      mode === 'redeploy'
+        ? fetchBinaryInstances(APIS.ponder, controller.signal).then(
+            setBinaryInstances
+          )
+        : fetchWeightedInstances(APIS.ponder, controller.signal).then(
+            setWeightedInstances
+          )
+    load
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setCatalogProblem(
+            error instanceof Error ? error.message : String(error)
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCatalogLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [mode])
 
   const createFields = useMemo(
     () => ({
@@ -372,7 +418,8 @@ export const WeightedPriorWorkspace = () => {
   }
 
   const ensureFresh = async () => {
-    if (!artifacts) throw new Error('Import a prior first.')
+    if (!artifacts)
+      throw new Error('Add and check some starting weights first.')
     if (artifacts.ensResolutions.length === 0) return artifacts
     const { anchor, resolve } = await ensContext()
     try {
@@ -602,21 +649,21 @@ export const WeightedPriorWorkspace = () => {
     <main className="max-w-5xl space-y-8" aria-labelledby="weighted-title">
       <header className="space-y-3">
         <h1 id="weighted-title" className="text-2xl">
-          Weighted-prior workspace
+          Weighted starting weights
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Import human CSV or JSON, resolve names outside consensus, inspect the
-          exact TGWP bytes, then create a new weighted instance or propose a
-          timelocked prior rotation.
+          Choose who gets a head start and how much. Paste a list or upload a
+          spreadsheet, check the shares, then create a weighted network. You can
+          also schedule a delayed update to an existing weighted network.
         </p>
         <div
           className="flex flex-wrap gap-2"
           role="group"
           aria-label="Weighted workflow"
         >
-          {modeButton('create', 'Create new weighted instance')}
-          {modeButton('rotate', 'Review a rotation')}
-          {modeButton('redeploy', 'Redeploy from binary')}
+          {modeButton('create', 'Create a weighted network')}
+          {modeButton('rotate', 'Update a weighted network')}
+          {modeButton('redeploy', 'Start from an existing network')}
         </div>
       </header>
 
@@ -645,38 +692,70 @@ export const WeightedPriorWorkspace = () => {
             <p className="text-sm">{BINARY_REDEPLOYMENT_NOTICE}</p>
           </div>
           <label htmlFor="binary-instance" className="text-sm font-medium">
-            Existing binary instance id
+            Network to copy starting accounts from
           </label>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
               id="binary-instance"
+              aria-describedby="binary-instance-help"
               value={binaryInstanceId}
               onChange={(event) => {
                 setBinaryInstanceId(event.target.value)
                 clearDerived()
               }}
-              placeholder="0x…"
-            />
+              disabled={catalogLoading}
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {catalogLoading
+                  ? 'Loading networks…'
+                  : binaryInstances.length
+                    ? 'Choose a network…'
+                    : 'No networks available'}
+              </option>
+              {binaryInstances.map((instance) => (
+                <option key={instance.id} value={instance.id}>
+                  {instance.name} — {short(instance.id)}
+                </option>
+              ))}
+            </select>
             <Button
               type="button"
               variant="outline"
               onClick={prefillBinary}
-              disabled={busy}
+              disabled={busy || !binaryInstanceId}
             >
-              Prefill equal weights
+              Use starting accounts
             </Button>
           </div>
+          <p
+            id="binary-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            These are the networks in the live{' '}
+            <Link href="/networks" className="underline underline-offset-4">
+              network directory
+            </Link>
+            . On a network page, the same ID is under Settings → Advanced →
+            Instance provenance.
+          </p>
+          {binaryInstanceId && (
+            <p className="break-all font-mono text-xs">
+              Instance ID: {binaryInstanceId}
+            </p>
+          )}
         </Card>
       )}
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-4">
           <label htmlFor="weighted-instance" className="text-sm font-medium">
-            Weighted instance id
+            Weighted network to update
           </label>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
               id="weighted-instance"
+              aria-describedby="weighted-instance-help"
               value={instanceId}
               onChange={(event) => {
                 setInstanceId(event.target.value)
@@ -684,17 +763,44 @@ export const WeightedPriorWorkspace = () => {
                 setCurrentEntries([])
                 clearDerived()
               }}
-              placeholder="0x…"
-            />
+              disabled={catalogLoading}
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {catalogLoading
+                  ? 'Loading weighted networks…'
+                  : weightedInstances.length
+                    ? 'Choose a weighted network…'
+                    : 'No weighted networks available'}
+              </option>
+              {weightedInstances.map((instance) => (
+                <option key={instance.id} value={instance.id}>
+                  {instance.name} — {short(instance.id)}
+                </option>
+              ))}
+            </select>
             <Button
               type="button"
               variant="outline"
               onClick={loadRotation}
-              disabled={busy}
+              disabled={busy || !instanceId}
             >
               Load history
             </Button>
           </div>
+          <p
+            id="weighted-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            This list comes from the weighted-network index. The full ID is also
+            shown after creation; weighted networks do not currently have a
+            Settings page.
+          </p>
+          {instanceId && (
+            <p className="break-all font-mono text-xs">
+              Instance ID: {instanceId}
+            </p>
+          )}
           {active && (
             <div className="text-sm space-y-1">
               <p>
@@ -761,9 +867,15 @@ export const WeightedPriorWorkspace = () => {
         </Card>
       )}
 
+      {catalogProblem && mode !== 'create' && (
+        <p className="text-sm text-destructive" role="alert">
+          Could not load available networks: {catalogProblem}
+        </p>
+      )}
+
       <section className="space-y-4" aria-labelledby="source-heading">
         <h2 id="source-heading" className="text-lg">
-          1. Import source and provenance
+          1. Add people and weights
         </h2>
         <Card type="outline" size="md" className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -907,7 +1019,7 @@ export const WeightedPriorWorkspace = () => {
         <>
           <section className="space-y-4" aria-labelledby="preview-heading">
             <h2 id="preview-heading" className="text-lg">
-              2. Review normalization, concentration, and day-zero behavior
+              2. Check how the weights are shared
             </h2>
             <div className="grid gap-4 sm:grid-cols-4">
               <Card type="outline" size="md">
@@ -923,7 +1035,9 @@ export const WeightedPriorWorkspace = () => {
                 </p>
               </Card>
               <Card type="outline" size="md">
-                <p className="text-xs text-muted-foreground">HHI</p>
+                <p className="text-xs text-muted-foreground">
+                  Concentration score (HHI)
+                </p>
                 <p className="text-xl">
                   {artifacts.concentration.hhiBps.toString()}
                 </p>
@@ -1053,7 +1167,7 @@ export const WeightedPriorWorkspace = () => {
 
           <section className="space-y-4" aria-labelledby="commitment-heading">
             <h2 id="commitment-heading" className="text-lg">
-              3. Verify and export exact commitments
+              3. Save and verify what will go onchain
             </h2>
             <Card type="outline" size="md" className="space-y-3">
               <dl className="grid gap-2 text-sm">
@@ -1074,7 +1188,9 @@ export const WeightedPriorWorkspace = () => {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">TGWP bytes</dt>
+                  <dt className="text-muted-foreground">
+                    Onchain data file (TGWP)
+                  </dt>
                   <dd>
                     {(artifacts.manifest.length - 2) / 2} bytes ·{' '}
                     <span className="font-mono">
@@ -1126,7 +1242,7 @@ export const WeightedPriorWorkspace = () => {
 
           <section className="space-y-4" aria-labelledby="sign-heading">
             <h2 id="sign-heading" className="text-lg">
-              4. Simulate exact payload, then sign
+              4. Preview the transaction, then sign
             </h2>
             {mode !== 'rotate' && (
               <Card

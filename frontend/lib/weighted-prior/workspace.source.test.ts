@@ -10,6 +10,17 @@ const source = readFileSync(
 // This structural contract keeps the critical accessible recovery controls attached to the real
 // client component without introducing a second, test-only rendering of the workflow.
 assert.match(source, /<main[^>]+aria-labelledby="weighted-title"/)
+assert.match(source, /Choose who gets a head start and how much/)
+assert.doesNotMatch(source, /Import human CSV or JSON/)
+assert.match(source, /<select\s+id="binary-instance"/)
+assert.match(source, /<select\s+id="weighted-instance"/)
+assert.match(source, /Settings → Advanced →\s+Instance provenance/)
+assert.match(
+  source,
+  /weighted networks do not currently have a\s+Settings page/
+)
+assert.match(source, /fetchBinaryInstances/)
+assert.match(source, /fetchWeightedInstances/)
 assert.match(source, /<label htmlFor="prior-format"/)
 assert.match(source, /<label htmlFor="prior-file"/)
 assert.match(source, /<label htmlFor="prior-source"/)
