@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ponder } from 'ponder:registry'
 import {
   compositionCapture,
@@ -549,35 +549,5 @@ ponder.on(
         txHash: event.transaction.hash,
       })
       .onConflictDoNothing()
-  }
-)
-
-ponder.on(
-  'compositionMerkleSnapshot:CheckpointParamsPinned',
-  async ({ event, context }) => {
-    const [instance] = await context.db.sql
-      .select()
-      .from(compositionInstance)
-      .where(eq(compositionInstance.snapshot, event.log.address))
-      .limit(1)
-    if (!instance) return
-    const [version] = await context.db.sql
-      .select()
-      .from(compositionPolicyVersion)
-      .where(
-        and(
-          eq(compositionPolicyVersion.instanceId, instance.id),
-          eq(compositionPolicyVersion.paramsHash, event.args.paramsHash)
-        )
-      )
-      .orderBy(desc(compositionPolicyVersion.version))
-      .limit(1)
-    if (!version || version.firstCheckpoint !== null) return
-    await context.db.update(compositionPolicyVersion, { id: version.id }).set({
-      firstCheckpoint: event.args.checkpointId,
-      firstCheckpointBlock: event.block.number,
-      firstCheckpointTimestamp: event.block.timestamp,
-      firstCheckpointTxHash: event.transaction.hash,
-    })
   }
 )
