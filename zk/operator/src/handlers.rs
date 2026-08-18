@@ -676,7 +676,12 @@ pub fn vault_quote(
         quoteCall { instanceId: instance_id, checkpointId: U256::from(checkpoint_id) }.abi_encode(),
     )?;
     let q = quoteCall::abi_decode_returns(&ret)?;
-    Ok(VaultView { eligible: q.eligible, payable_usd: q.payableUsd.to::<u128>(), reason: q.reason })
+    // LOCAL FIX (upstream bug?): `q.payableUsd` is the vault's whole-tank CAPACITY, but
+    // `submitAndClaim` offers `min(feeUsd + gasUsd, payable)` — using capacity as the operator's
+    // `minPayoutUsd` makes every funded paid submit revert `PayoutBelowMinimum(offer, capacity)`.
+    // Demand what the quote actually promises to pay for this root instead.
+    let offer = q.payableUsd.min(q.feeUsd + q.gasUsd);
+    Ok(VaultView { eligible: q.eligible, payable_usd: offer.to::<u128>(), reason: q.reason })
 }
 
 fn params_path(entry: &CatalogEntry) -> Result<String> {
