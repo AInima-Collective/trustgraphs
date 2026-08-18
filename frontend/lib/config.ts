@@ -57,6 +57,11 @@ export const TRUST_COMPOSE_CONFIG = (
     trustCompose?: { factory?: string }
   }
 ).trustCompose as { factory?: `0x${string}` | '' } | undefined
+export const GRAPH_LINEAGE_CONFIG = (
+  CONFIG as {
+    graphLineage?: { registry?: string }
+  }
+).graphLineage as { registry?: `0x${string}` | '' } | undefined
 export const SIGNER_SYNC_CONFIG = (
   CONFIG as {
     signerSync?: { verifier?: string; programVKey?: string }

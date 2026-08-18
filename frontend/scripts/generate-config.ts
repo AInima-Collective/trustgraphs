@@ -81,6 +81,14 @@ try {
       process.env.TRUST_COMPOSE_FACTORY_ADDRESS ||
       '',
   }
+  // The graph-of-graphs registry is a separate advisory plane. Rolling deployments may omit it;
+  // the provenance route then reports the feature as unavailable without affecting score pages.
+  configOutput.graphLineage = {
+    registry:
+      deployment.graphLineage?.registry ||
+      process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS ||
+      '',
+  }
 
   // Contract name mappings to contract addresses
   configOutput.contracts = {

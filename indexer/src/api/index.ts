@@ -8,6 +8,7 @@ import attestations from './attestations'
 import compositions from './compositions'
 import contributions from './contributions'
 import erc8004 from './erc8004'
+import graphLineages from './graph-lineages'
 import hypercerts from './hypercerts'
 import instances from './instances'
 import merkle from './merkle'
@@ -27,6 +28,7 @@ app.route('/attestations', attestations)
 app.route('/contributions', contributions)
 app.route('/compositions', compositions)
 app.route('/erc8004', erc8004)
+app.route('/graph-lineages', graphLineages)
 app.route('/hypercerts', hypercerts)
 app.route('/instances', instances)
 app.route('/merkle', merkle)
