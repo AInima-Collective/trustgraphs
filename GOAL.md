@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-18): 29 issues closed, 13 remain.**
+> **Status (2026-08-18): 30 issues closed, 13 remain.**
 >
-> Closed after auditing `main` through `0f7f2b3` and rerunning the focused regressions:
+> Closed after auditing `main` through `6bbd17e` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -78,14 +78,17 @@
 > - **#67** — stable graph lineage/configuration/epoch identities, authenticated append-only
 >   controller history, typed scoped endorsement lifecycle, interval-safe referral budgets,
 >   canonical indexing/APIs, and advisory provenance UI (`0f7f2b3`, PR #97)
+> - **#68** — deterministic scoped graph-reputation recommendations, exact sparse personalized
+>   propagation and attribution, bounded fail-closed finalized-epoch APIs, adversarial simulations,
+>   cross-language goldens, and a read-only sensitivity/provenance UI (`6bbd17e`, PR #99)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
 > is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63, #64, #65, #66, and #67 closed**; the shared #61 gate is closed;
-> graph-lineage computation **#68** remains parallel and advisory.
+> Trust-composition chain: **#63, #64, #65, #66, #67, and #68 closed**; the shared #61 gate is
+> closed. Governed automatic graph-reputation adjustment remains isolated as future **#98** work.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
 
@@ -136,7 +139,7 @@ can proceed concurrently:
 | G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63/#64/#65/#66/#67 closed; #68              | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| J · trust composition             | #63/#64/#65/#66/#67/#68 closed; future #98    | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
@@ -695,6 +698,30 @@ size and diff checks passed locally; hosted Solidity, Rust tests/docs/fmt, and s
 passed. The registry retains 9,103 bytes of EIP-170 runtime margin. No deployment or automatic
 composition policy is implied: the address is optional and #68 remains explicitly advisory.
 
+### M4.3f · #68 — advisory scoped graph-reputation recommendations
+
+**Closed in `6bbd17e` (PR #99).** The indexer now computes a deterministic, integer-only
+personalized reputation distribution over the previous finalized graph-lineage epoch. Sparse roots,
+positive referral mass, dangling and unspent mass, canonical Hamilton rounding, exact node/root
+attribution, family mass, budgets, strongest paths, and leave-one-root-out sensitivity all use
+domain-separated canonical commitments shared with an independent Rust core and golden vectors.
+Inputs fail closed on cutoff, lineage/configuration version, lifecycle, budget, and convergence
+violations; disconnected cartels remain at zero and the 10% ingress fixture reproduces its exact
+16.3225% result.
+
+The bounded read-only API resolves canonical finalized blocks and authenticated live lineage state,
+limits interactive roots and graph size, and exposes evidence mutability, expiry, controller/family/
+method overlap, trusted ingress, path provenance, and sensitivity without writing composition
+defaults or creating a transaction path. `/graph-reputation` keeps manual weights local and places
+them beside recommendations rather than applying them. Adversarial simulations cover cartels,
+clones, rings, compromised roots, rotation, expiry, and probation.
+
+Rust workspace tests/clippy/format, all 84 indexer tests, frontend tests/lint/build, Ponder codegen,
+and focused cross-language goldens passed locally. Hosted Rust, docs, format, secret scan, Foundry,
+all pinned guest builds, and all six SP1 host/guest parity lanes passed. Automatic composition
+adjustment remains deliberately out of scope; its governed caps, timelock, rollback, and golden
+requirements are tracked independently in #98.
+
 ---
 
 ## Milestone 5 — Agent product epics
@@ -870,9 +897,10 @@ fixture, and independently reviewable child-issue criterion in #60 passes. Compl
 - **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
   no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
   gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** #63, #64, #65, and #66 shipped the complete proven blend stack; #67
-  shipped the separate lineage/endorsement plane, and #68 remains for advisory graph-reputation
-  computation. The shared program-aware ingestion gate #61 is closed.
+- **Trust-composition track:** complete — #63, #64, #65, and #66 shipped the proven blend stack;
+  #67 shipped the separate lineage/endorsement plane, and #68 shipped advisory graph-reputation
+  computation. The shared program-aware ingestion gate #61 is closed; automatic adjustment is
+  isolated as future #98 work.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
