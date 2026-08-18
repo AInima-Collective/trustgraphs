@@ -7,6 +7,9 @@ Each section is owned by one spike track. Append, do not clobber.
 - **SP1 crypto / cost track** (§3) - owner: crypto spike, 2026-07-14: measured cycles + PGU
   for patched ecrecover / p256 / keccak / sha256 on SP1 6.3.1. Prover-network clearing
   price NOT measured (needs `NETWORK_PRIVATE_KEY` - pending Jake).
+- **Nostr / BIP340 schnorr track** (§4) - owner: buzz/nostr spike, 2026-08-16: measured
+  schnorr verify + full Nostr event verify on the same stack; bins vendored at
+  `research/nostr/`.
 
 ---
 
@@ -447,3 +450,57 @@ p256-patched N1 105,210/117,193, N100 10,467,337/11,318,359; memfill 1KiB 10,252
 **Not measured here:** prover-network clearing price per B-PGU (needs a live network request
 with `NETWORK_PRIVATE_KEY` - pending Jake); unpatched p256/keccak builds (dossier's 11.8M-cycle
 unpatched-p256 anchor stands unreplicated); proving wall-clock (execute-only spike).
+
+---
+
+## 4. Nostr / BIP340 schnorr (2026-08-16)
+
+Owner: the buzz/Nostr envelope spike ([`../BUZZ_NOSTR_PLAN.md`](../BUZZ_NOSTR_PLAN.md)).
+Harness: the §3 `spike/crypto` prototype rebuilt from git `9ea5006` plus two new guest bins
+(vendored with a reproduce recipe at [`../nostr/`](../nostr/)); same environment (SP1 v6.3.1,
+cargo-prove `8252c29`, `SP1_PROVER=mock`, linux/arm64), same patch tags
+(`patch-k256-13.4-sp1-6.0.0`, `patch-sha2-0.10.9-sp1-6.0.0`), same marginal `(N=100 − N=1)/99`
+method with committed results. The shared §3 rows (noop 1,182 cyc; ecrecover 27,282 cyc;
+sha256-64KiB 774,893 cyc absolute) reproduced exactly before the new bins were trusted.
+
+### 4.1 Results
+
+| op | cycles (marginal, per-op) | PGU (marginal, per-op) | PGU/cycle | patched vs unpatched |
+|---|---:|---:|---:|---|
+| BIP340 schnorr verify (k256::schnorr, patched) | **31,747** | **56,521** | 1.78 | **35.4× cycles / 19.6× PGU** |
+| BIP340 schnorr verify (unpatched) | 1,124,346 | 1,107,541 | 0.99 | baseline |
+| full Nostr event verify (patched): NIP-01 serialize (398 B) → sha256 id → schnorr | **48,858** | **75,696** | 1.55 | 24.0× cycles |
+| full Nostr event verify (unpatched) | 1,173,158 | — | — | baseline |
+
+Per-event overhead beyond the signature (serialize + hash + I/O at ~400-B events):
+~17.1k cycles. Larger events add the §3 sha256 rate (3.41 cyc/B, 11.4 PGU/B).
+
+### 4.2 Mechanism facts (from patch diffs, not docs)
+
+1. **The sp1-patches `k256` fork covers schnorr explicitly.** The
+   `patch-k256-13.4-sp1-*` diff modifies `schnorr.rs` + `schnorr/{signing,verifying}.rs`;
+   patched `verify_raw` computes the BIP340 tagged challenge via `sha2` (accelerated when
+   the sha2 patch is applied) and evaluates `R = lincomb(G, s, P, −e)` through
+   `sp1_lib::ecdsa::ProjectivePoint` — i.e. the secp256k1 add/double/decompress
+   precompiles. X-only key load rides hint-accelerated field `sqrt`/`inverse`. Succinct's
+   own `patch-testing/k256/program/bin/schnorr_verify.rs` proves this path in CI, but the
+   docs table only advertises ECDSA — treat schnorr as source-evidenced, and re-measure on
+   any patch-tag or SP1 major bump.
+2. **The sp1-patches C `secp256k1` fork does NOT accelerate schnorr.** Its zkvm cfg
+   re-routes only `verify_ecdsa`/`recover_ecdsa` into patched k256; `src/schnorr.rs` is
+   byte-identical to upstream and falls through to cross-compiled C libsecp256k1
+   (external `RISCV_GNU_TOOLCHAIN` build dependency, unaccelerated). Corollary:
+   rust-nostr's `Event::verify` (pinned `secp256k1 0.30` + `bitcoin_hashes`, neither
+   accelerated) is the ~1.1M-cycle class in-guest — host-side use only.
+3. **Canonicalization landmine.** The NIP-01 spec text ("all other characters must be
+   included verbatim", content-field-only escaping) diverges from both reference
+   implementations: `serde_json` (rust-nostr, hence buzz) and `JSON.stringify`
+   (nostr-tools) additionally emit `\u00XX` for ASCII control characters outside the
+   seven named escapes, and escape tag strings identically to content. A production
+   guest serializer must implement the serde_json semantics (what signers actually ran)
+   and deterministically skip raw-control-byte events.
+4. **Third-party cross-check:** CoW Protocol's multi-zkVM benchmark (SP1 v5.2.4, patched
+   k256 with `features=["schnorr"]`) lands at ~65.6k cycles marginal per signature
+   including a keccak-Merkle inclusion share — consistent with 31.7k for the bare verify.
+   No public project proving Nostr events in a zkVM was found (GitHub + NIPs repo
+   sweeps) — the ground is unoccupied.
