@@ -1,8 +1,13 @@
 # Trust composition creation and rotation runbook
 
-This runbook covers the onchain capture/control layer. Operator publication and API ingestion are
-implemented separately; until those are available, use it for local contract integration and
-review.
+This runbook covers the onchain capture/control layer. The browser workflow and durable provenance
+routes are documented in the [frontend guide](./frontend.md); operator publication and independent
+API recomputation are documented in the [operator/indexer guide](./operator-indexer.md).
+
+For the supported path, open `/create/composition`. The workspace performs the source provenance
+reads, exact V1 preview, adapter deployment, quote/cadence preflight, calldata simulation, and
+creation or rotation described below. The manual calls remain useful for recovery and independent
+verification.
 
 ## Admit sources
 

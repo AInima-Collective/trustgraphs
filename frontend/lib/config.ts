@@ -52,6 +52,11 @@ export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
 export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
   .weightedFactory as `0x${string}` | '' | undefined
+export const TRUST_COMPOSE_CONFIG = (
+  CONFIG as {
+    trustCompose?: { factory?: string }
+  }
+).trustCompose as { factory?: `0x${string}` | '' } | undefined
 export const SIGNER_SYNC_CONFIG = (
   CONFIG as {
     signerSync?: { verifier?: string; programVKey?: string }

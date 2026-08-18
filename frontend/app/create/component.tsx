@@ -174,6 +174,24 @@ export const CreateNetworkWizard = () => {
     </Card>
   )
 
+  const compositionWorkspaceCard = (
+    <Card type="accent" size="md" className="space-y-3">
+      <div className="space-y-1">
+        <h2 className="text-sm font-medium">
+          Need a governed blend of proved allocations?
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Select compatible complete distributions, preview exact quotas,
+          attribution and sensitivity, then create or rotate a separate
+          trust-compose instance with authenticated source provenance.
+        </p>
+      </div>
+      <ButtonLink href="/create/composition" variant="outline" size="sm">
+        Open composition workspace
+      </ButtonLink>
+    </Card>
+  )
+
   if (created) {
     return <SuccessStep created={created} />
   }
@@ -183,6 +201,7 @@ export const CreateNetworkWizard = () => {
       <div className="space-y-4">
         <h1 className="text-2xl">Create a network</h1>
         {weightedWorkspaceCard}
+        {compositionWorkspaceCard}
         <Card type="outline" size="md">
           <p className="text-sm">
             Networks cannot be created on {getTargetChainConfig().name} yet.
@@ -200,6 +219,7 @@ export const CreateNetworkWizard = () => {
         <h1 className="text-2xl">Create a network</h1>
 
         {weightedWorkspaceCard}
+        {compositionWorkspaceCard}
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
           {STEPS.map((label, index) => (
