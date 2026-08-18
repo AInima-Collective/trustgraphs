@@ -1,8 +1,8 @@
 # GOAL — Close the Open-Source Readiness Backlog
 
-> **Status (2026-08-18): 27 issues closed, 15 remain.**
+> **Status (2026-08-18): 28 issues closed, 14 remain.**
 >
-> Closed after auditing `main` through `6f41055` and rerunning the focused regressions:
+> Closed after auditing `main` through `60f9a77` and rerunning the focused regressions:
 >
 > - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
 >   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
@@ -72,14 +72,17 @@
 > - **#65** — typed trust-compose discovery, exact current/historical capture recovery, authenticated
 >   work-band pricing, durable proving/publication, independent transactional indexing, and paginated
 >   composition provenance APIs (`6f41055`, PR #92)
+> - **#66** — byte-exact composition preview, authenticated source/adapter preflight, governed
+>   creation and rotation, sensitivity/attribution analysis, and durable policy/epoch/proof
+>   provenance routes (`60f9a77`, PR #96)
 >
 > Remaining launch-risk issue: **#27**.
 > Remaining graph-native agent-delegation research: **#77**.
 > Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
 > ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
 > is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63, #64, and #65 closed → #66**; the shared #61 gate is closed; graph lineage
-> **#67 → #68** remains parallel and advisory.
+> Trust-composition chain: **#63, #64, #65, and #66 closed**; the shared #61 gate is closed; graph
+> lineage **#67 → #68** remains parallel and advisory.
 > Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
 > consumer; #72 and #73 evaluate the MPC target in parallel.
 
@@ -130,7 +133,7 @@ can proceed concurrently:
 | G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
 | H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
 | I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63/#64/#65 closed → #66; #67 → #68          | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
+| J · trust composition             | #63/#64/#65/#66 closed; #67 → #68            | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
 | K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
 
 D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
@@ -580,7 +583,7 @@ with 7,328 KiB host peak RSS, and the SP1 mock Groth16 path verifies exact publi
 Rust workspace, 610 Forge tests, 11 TypeScript composition tests, frontend suite, and aggregate
 parity task passed locally. Hosted Actions were billing-blocked before runner allocation. Atomic
 capture/factory wiring shipped in #64; operator/indexer integration shipped in #65 and the
-frontend follows in #66.
+frontend shipped in #66.
 
 ### M4.3b · #64 — atomic source capture and control lifecycle
 
@@ -632,6 +635,31 @@ release gates, 14 composition-core tests, 69 indexer tests, 624 Forge tests, Pon
 golden-vector coverage, and changed-file lint. Hosted Actions passed Rust tests/docs/fmt, Solidity,
 secret scan, the pinned SP1 guest build, and all six ZK parity families. The repository's pre-existing
 frontend strict-null typecheck findings remain outside this issue; no trust-compose error is present.
+
+### M4.3d · #66 — composition preview, creation, rotation, and provenance UX
+
+**Closed in `60f9a77` (PR #96).** `/create/composition` now filters same-chain address allocations
+to one authenticated program, cross-checks accepted source states onchain and through the indexer,
+defaults to exact equal weights, and reproduces production `TGCP`/`TGCM`, source-aware Hamilton
+quotas/attribution, output bytes/CID/root, measured work bands, pairwise overlap/correlation/
+disagreement, concentration/coverage, leave-one-out effects, and A/B/C simplex sensitivity in the
+browser. Reviewed append-only source adapters, source/family/controller overlap, freshness,
+availability, caps, conservative quote/cadence, and required-source no-fallback behavior all gate
+the exact simulated payload; a source refresh invalidates review while a wallet refusal does not.
+
+Creation leaves every factory-derived field zero and records the reviewed commitment anchor.
+Rotation exposes active/pending/cancelled/superseded history, owner cancellation, and permissionless
+post-delay activation using only the exact indexed manifest/adapter preimage. Durable composition,
+policy, and epoch routes separate cryptographic from governance provenance and provide complete
+evidence/capture/attribution downloads, address proofs, reorg-safe refresh, and locally anchored
+preview-to-landed byte comparison. Rolling deployments degrade explicitly to offline or read-only
+states without perturbing existing creation paths.
+
+The production A/B/C and TrustCompose goldens, new API/preflight/workflow/source tests, every
+existing frontend vector, strict composition TypeScript, frontend lint/build, 72 focused Forge
+regressions, and `composition-core` Rust tests passed locally. Hosted Actions passed Rust
+tests/docs/fmt, the full Solidity suite, and secret scanning. No production deployment is implied;
+an absent `trustCompose.factory` keeps signing unavailable.
 
 ---
 
@@ -808,11 +836,11 @@ fixture, and independently reviewable child-issue criterion in #60 passes. Compl
 - **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
   no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
   gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** #63, #64, and #65 closed; #66 remains for the proven blend frontend;
-  #67 → #68 for separate advisory graph reputation. The shared program-aware ingestion gate #61 is
-  closed.
+- **Trust-composition track:** #63, #64, #65, and #66 shipped the complete proven blend stack;
+  #67 → #68 remain for separate advisory graph reputation. The shared program-aware ingestion gate
+  #61 is closed.
 - **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
   consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
 
-The target is all 15 remaining issues, but the metric is accepted behavior with evidence—not an
+The target is all 14 remaining issues, but the metric is accepted behavior with evidence—not an
 empty issue list.
