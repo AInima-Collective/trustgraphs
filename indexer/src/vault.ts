@@ -22,6 +22,37 @@ import {
 } from 'ponder:schema'
 
 const ZERO = '0x0000000000000000000000000000000000000000' as const
+const ZERO_PROGRAM = `0x${'00'.repeat(32)}` as `0x${string}`
+
+/**
+ * M0 hazard-sweep note (GOAL clarification 2): every account/credit mutation in this file is an
+ * upsert, never a bare `.update()`. The vault ABI the indexer carries is events-only — there is no
+ * account getter to read a missing row back from — so a row that first enters our universe
+ * mid-life (a start block after its `AccountBound`, a rebound account, a replayed range) is
+ * materialized from the event itself with zero baselines: balances and totals mean "since
+ * observation began", exactly the semantics `Deposited` already established. `AccountBound`
+ * or a later `Deposited` refreshes snapshot/program when they are seen.
+ */
+const accountBaseline = (
+  event: { log: { address: `0x${string}` }; block: { timestamp: bigint } },
+  chainId: number,
+  instanceId: `0x${string}`
+) => ({
+  id: instanceId,
+  chainId: `${chainId}`,
+  vault: event.log.address,
+  snapshot: ZERO,
+  program: ZERO_PROGRAM,
+  ethBalance: 0n,
+  usdcBalance: 0n,
+  totalDepositedEth: 0n,
+  totalDepositedUsdc: 0n,
+  totalSpentEth: 0n,
+  totalSpentUsdc: 0n,
+  lastPaidBlock: 0n,
+  withdrawalReadyAt: 0n,
+  updatedAt: event.block.timestamp,
+})
 
 /** `AccountBound` is the first thing that happens to an instance, so it creates the row. */
 ponder.on('provingVault:AccountBound', async ({ event, context }) => {
@@ -72,20 +103,11 @@ ponder.on('provingVault:Deposited', async ({ event, context }) => {
   await context.db
     .insert(provingVaultAccount)
     .values({
-      id: instanceId,
-      chainId: `${context.chain.id}`,
-      vault: event.log.address,
-      snapshot: ZERO,
-      program: `0x${'00'.repeat(32)}` as `0x${string}`,
+      ...accountBaseline(event, context.chain.id, instanceId),
       ethBalance: isEth ? amount : 0n,
       usdcBalance: isEth ? 0n : amount,
       totalDepositedEth: isEth ? amount : 0n,
       totalDepositedUsdc: isEth ? 0n : amount,
-      totalSpentEth: 0n,
-      totalSpentUsdc: 0n,
-      lastPaidBlock: 0n,
-      withdrawalReadyAt: 0n,
-      updatedAt: event.block.timestamp,
     })
     .onConflictDoUpdate((row) => ({
       ethBalance: isEth ? row.ethBalance + amount : row.ethBalance,
@@ -129,9 +151,20 @@ ponder.on('provingVault:Claimed', async ({ event, context }) => {
     timestamp: event.block.timestamp,
   })
 
+  // Upsert, not update: a claim must never wedge the indexer for want of an account row (see the
+  // hazard-sweep note above). A fresh row means the bind predates observation; the spend still
+  // counts from a zero baseline.
   await context.db
-    .update(provingVaultAccount, { id: instanceId })
-    .set((row) => ({
+    .insert(provingVaultAccount)
+    .values({
+      ...accountBaseline(event, context.chain.id, instanceId),
+      ethBalance: -ethSpent,
+      usdcBalance: -usdcSpent,
+      totalSpentEth: ethSpent,
+      totalSpentUsdc: usdcSpent,
+      lastPaidBlock: event.block.number,
+    })
+    .onConflictDoUpdate((row) => ({
       ethBalance: row.ethBalance - ethSpent,
       usdcBalance: row.usdcBalance - usdcSpent,
       totalSpentEth: row.totalSpentEth + ethSpent,
@@ -187,9 +220,21 @@ ponder.on('provingVault:CreditAccrued', async ({ event, context }) => {
 
 ponder.on('provingVault:CreditWithdrawn', async ({ event, context }) => {
   const { account, token, amount } = event.args
+  // Upsert like `CreditAccrued` above: a withdrawal whose accrual predates observation records
+  // what we saw (withdrawn = amount from a zero baseline) instead of wedging on a missing row.
   await context.db
-    .update(provingVaultCredit, { id: creditId(account, token) })
-    .set((row) => ({
+    .insert(provingVaultCredit)
+    .values({
+      id: creditId(account, token),
+      chainId: `${context.chain.id}`,
+      account,
+      token,
+      accrued: 0n,
+      withdrawn: amount,
+      outstanding: -amount,
+      updatedAt: event.block.timestamp,
+    })
+    .onConflictDoUpdate((row) => ({
       withdrawn: row.withdrawn + amount,
       outstanding: row.outstanding - amount,
       updatedAt: event.block.timestamp,
@@ -205,25 +250,44 @@ ponder.on('provingVault:CreditWithdrawn', async ({ event, context }) => {
 // the whole notice period. So these handlers record the notice, and only `Executed` moves a
 // balance.
 
+// All three withdrawal handlers upsert (hazard-sweep note at the top of this file): the notice
+// state is carried entirely by the event, so a missing account row is materialized at baseline
+// rather than wedging the indexer.
+
 ponder.on('provingVault:WithdrawalRequested', async ({ event, context }) => {
   const { instanceId, readyAt } = event.args
-  await context.db.update(provingVaultAccount, { id: instanceId }).set({
-    withdrawalReadyAt: BigInt(readyAt),
-    updatedAt: event.block.timestamp,
-  })
+  await context.db
+    .insert(provingVaultAccount)
+    .values({
+      ...accountBaseline(event, context.chain.id, instanceId),
+      withdrawalReadyAt: BigInt(readyAt),
+    })
+    .onConflictDoUpdate({
+      withdrawalReadyAt: BigInt(readyAt),
+      updatedAt: event.block.timestamp,
+    })
 })
 
 ponder.on('provingVault:WithdrawalCancelled', async ({ event, context }) => {
   await context.db
-    .update(provingVaultAccount, { id: event.args.instanceId })
-    .set({ withdrawalReadyAt: 0n, updatedAt: event.block.timestamp })
+    .insert(provingVaultAccount)
+    .values(accountBaseline(event, context.chain.id, event.args.instanceId))
+    .onConflictDoUpdate({
+      withdrawalReadyAt: 0n,
+      updatedAt: event.block.timestamp,
+    })
 })
 
 ponder.on('provingVault:WithdrawalExecuted', async ({ event, context }) => {
   const { instanceId, ethAmount, usdcAmount } = event.args
   await context.db
-    .update(provingVaultAccount, { id: instanceId })
-    .set((row) => ({
+    .insert(provingVaultAccount)
+    .values({
+      ...accountBaseline(event, context.chain.id, instanceId),
+      ethBalance: -ethAmount,
+      usdcBalance: -usdcAmount,
+    })
+    .onConflictDoUpdate((row) => ({
       ethBalance: row.ethBalance - ethAmount,
       usdcBalance: row.usdcBalance - usdcAmount,
       withdrawalReadyAt: 0n,
