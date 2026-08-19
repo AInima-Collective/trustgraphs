@@ -109,12 +109,23 @@ ponder.on(
         `erc8004: Optimism registry owner changed to ${event.args.newOwner} at block ${event.block.number}`
       )
     }
-    await context.db.update(erc8004Registry, { id: registryId }).set({
-      owner: event.args.newOwner,
-      observedBlock: event.block.number,
-      observedTimestamp: event.block.timestamp,
-      observedTxHash: event.transaction.hash,
-    })
+    // M0 hazard sweep: the registry row is born from `Upgraded`. An ownership transfer whose
+    // `Upgraded` predates the start block has no row, and the row is not reconstructible here
+    // (`implementation` is notNull and not in this event) — log and skip the row update, but keep
+    // the append-only receipt so the transfer is not lost.
+    const registry = await context.db.find(erc8004Registry, { id: registryId })
+    if (registry) {
+      await context.db.update(erc8004Registry, { id: registryId }).set({
+        owner: event.args.newOwner,
+        observedBlock: event.block.number,
+        observedTimestamp: event.block.timestamp,
+        observedTxHash: event.transaction.hash,
+      })
+    } else {
+      console.warn(
+        `erc8004: ownership transfer for unobserved registry ${registryId} (Upgraded predates the start block?) — recording the event only`
+      )
+    }
     await context.db.insert(erc8004RegistryEvent).values({
       id: event.id,
       registryId,
@@ -282,14 +293,36 @@ ponder.on('erc8004IdentityRegistry:URIUpdated', async ({ event, context }) => {
     event.args.agentId
   )
   const eventPosition = position(event)
-  await context.db.update(erc8004Agent, { id: agentKey }).set({
-    agentURI: event.args.newURI,
-    updatedBlock: event.block.number,
-    updatedTransactionIndex: event.transaction.transactionIndex,
-    updatedLogIndex: event.log.logIndex,
-    updatedTimestamp: event.block.timestamp,
-    updatedTxHash: event.transaction.hash,
-  })
+  // M0 hazard sweep: upsert with first-observed defaults (the `Transfer` handler's precedent) so
+  // a URI update for an agent registered before the start block materializes the row instead of
+  // wedging. Owner/wallet stay unknown until an event that carries them arrives.
+  await context.db
+    .insert(erc8004Agent)
+    .values({
+      id: agentKey,
+      chainId: `${context.chain.id}`,
+      registry: event.log.address,
+      agentId: event.args.agentId,
+      owner: null,
+      agentWallet: null,
+      agentURI: event.args.newURI,
+      registeredBlock: event.block.number,
+      registeredTimestamp: event.block.timestamp,
+      registeredTxHash: event.transaction.hash,
+      updatedBlock: event.block.number,
+      updatedTransactionIndex: event.transaction.transactionIndex,
+      updatedLogIndex: event.log.logIndex,
+      updatedTimestamp: event.block.timestamp,
+      updatedTxHash: event.transaction.hash,
+    })
+    .onConflictDoUpdate({
+      agentURI: event.args.newURI,
+      updatedBlock: event.block.number,
+      updatedTransactionIndex: event.transaction.transactionIndex,
+      updatedLogIndex: event.log.logIndex,
+      updatedTimestamp: event.block.timestamp,
+      updatedTxHash: event.transaction.hash,
+    })
   await context.db.insert(erc8004AgentUriVersion).values({
     id: event.id,
     agentKey,
@@ -342,14 +375,35 @@ ponder.on('erc8004IdentityRegistry:MetadataSet', async ({ event, context }) => {
         ...eventPosition,
       })
     }
-    await context.db.update(erc8004Agent, { id: agentKey }).set({
-      agentWallet: nextWallet,
-      updatedBlock: event.block.number,
-      updatedTransactionIndex: event.transaction.transactionIndex,
-      updatedLogIndex: event.log.logIndex,
-      updatedTimestamp: event.block.timestamp,
-      updatedTxHash: event.transaction.hash,
-    })
+    // M0 hazard sweep: same first-observed upsert as `URIUpdated` above — a wallet claim for an
+    // agent registered before the start block materializes the row instead of wedging.
+    await context.db
+      .insert(erc8004Agent)
+      .values({
+        id: agentKey,
+        chainId: `${context.chain.id}`,
+        registry: event.log.address,
+        agentId: event.args.agentId,
+        owner: null,
+        agentWallet: nextWallet,
+        agentURI: '',
+        registeredBlock: event.block.number,
+        registeredTimestamp: event.block.timestamp,
+        registeredTxHash: event.transaction.hash,
+        updatedBlock: event.block.number,
+        updatedTransactionIndex: event.transaction.transactionIndex,
+        updatedLogIndex: event.log.logIndex,
+        updatedTimestamp: event.block.timestamp,
+        updatedTxHash: event.transaction.hash,
+      })
+      .onConflictDoUpdate({
+        agentWallet: nextWallet,
+        updatedBlock: event.block.number,
+        updatedTransactionIndex: event.transaction.transactionIndex,
+        updatedLogIndex: event.log.logIndex,
+        updatedTimestamp: event.block.timestamp,
+        updatedTxHash: event.transaction.hash,
+      })
   }
 
   await context.db.insert(erc8004AgentEvent).values({
