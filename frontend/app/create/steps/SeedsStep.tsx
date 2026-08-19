@@ -1,6 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 import { Hex } from 'viem'
 import { useAccount } from 'wagmi'
@@ -223,6 +224,21 @@ export const SeedsStep = ({
           vouch for. Everything else in your network is built on top of them: an
           account that hands out vouches carelessly pulls whoever it vouches for
           up with it.
+        </Note>
+        <Note>
+          Want these accounts to count unequally?{' '}
+          <Link
+            href={
+              data.seeds.length
+                ? `/create/weighted?accounts=${data.seeds.join(',')}`
+                : '/create/weighted'
+            }
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Give each one its own starting share
+          </Link>{' '}
+          in the weighted workspace. The accounts you have added here go with
+          you; that workspace creates its own kind of network.
         </Note>
         <Note>
           Anyone your starting accounts cannot reach, directly or through a
