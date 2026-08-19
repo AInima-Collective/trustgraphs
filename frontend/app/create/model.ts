@@ -36,6 +36,24 @@ export const IS_LOCAL_CHAIN = CHAIN === 'local'
 export const MAX_NAME_BYTES = 64
 export const MAX_SEEDS = 64
 
+/**
+ * The wizard's steps, by name rather than position. Everything that used to hardcode a step index
+ * (the chips, the per-step gate, the pinning side effect, the review screen's edit links) keys off
+ * these ids, so inserting or reordering a step is a change here and nowhere else.
+ */
+export const WIZARD_STEPS = [
+  { id: 'description', label: 'Description' },
+  { id: 'accounts', label: 'Starting accounts' },
+  { id: 'scoring', label: 'Scoring' },
+  { id: 'extras', label: 'Extras' },
+  { id: 'review', label: 'Review' },
+] as const
+
+export type WizardStepId = (typeof WIZARD_STEPS)[number]['id']
+
+export const wizardStepIndex = (id: WizardStepId): number =>
+  WIZARD_STEPS.findIndex((step) => step.id === id)
+
 /** One quintillion: the fixed-point unit every score is expressed in. */
 const ONE = 1_000_000_000_000_000_000n
 

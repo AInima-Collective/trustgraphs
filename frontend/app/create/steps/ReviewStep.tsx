@@ -47,6 +47,7 @@ import {
   FACTORY_ADDRESS,
   GOVERNED_FACTORY_ADDRESS,
   WizardData,
+  type WizardStepId,
   buildSignerSyncConfig,
   describeBlocks,
   effectiveBlocks,
@@ -86,7 +87,7 @@ export const ReviewStep = ({
   epochFloor: bigint
   metadataUri: string
   onCreated: (created: CreatedNetwork) => void
-  onJumpTo: (step: number) => void
+  onJumpTo: (step: WizardStepId) => void
   onSeedsChanged: (seeds: Hex[], seedNames: Record<string, string>) => void
 }) => {
   const publicClient = usePublicClient()
@@ -487,7 +488,7 @@ export const ReviewStep = ({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => onJumpTo(0)}
+          onClick={() => onJumpTo('description')}
         >
           Edit the description
         </Button>
@@ -495,7 +496,7 @@ export const ReviewStep = ({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => onJumpTo(1)}
+          onClick={() => onJumpTo('accounts')}
         >
           Edit the starting accounts
         </Button>
@@ -503,7 +504,7 @@ export const ReviewStep = ({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => onJumpTo(2)}
+          onClick={() => onJumpTo('scoring')}
         >
           Edit scoring
         </Button>
