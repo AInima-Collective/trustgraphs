@@ -5,7 +5,6 @@ import { type Address, type Hex, decodeFunctionData } from 'viem'
 import {
   type WeightedApiVersion,
   availabilityDiagnosis,
-  fetchBinaryInstances,
   fetchBinarySeeds,
   fetchWeightedEntries,
   fetchWeightedInstances,
@@ -68,18 +67,6 @@ const originalFetch = globalThis.fetch
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input)
   calls.push(url)
-  if (url === `${API}/instances?limit=200&offset=0`) {
-    return Response.json({
-      instances: [
-        {
-          id: BINARY_INSTANCE,
-          name: 'Binary network',
-          trustedSeeds: [A, B, C],
-        },
-      ],
-      pagination: { total: 1 },
-    })
-  }
   if (url === `${API}/weighted-priors?limit=200&offset=0`) {
     return Response.json({
       instances: [
@@ -111,11 +98,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 
 const main = async () => {
   try {
-    const binaryInstances = await fetchBinaryInstances(API)
-    assert.deepEqual(
-      binaryInstances.map(({ id, name }) => ({ id, name })),
-      [{ id: BINARY_INSTANCE, name: 'Binary network' }]
-    )
+    // The binary-network picker is fed by the app-wide runtime catalog (useNetworks), not a
+    // workspace fetch; only the weighted list is read here.
     const weightedInstances = await fetchWeightedInstances(API)
     assert.deepEqual(
       weightedInstances.map(({ id, name }) => ({ id, name })),
@@ -219,7 +203,7 @@ const main = async () => {
       () => rotationReview([], unavailable, rotationArtifacts),
       /Rotation review is disabled/
     )
-    assert.equal(calls.length, 5)
+    assert.equal(calls.length, 4)
 
     console.log(
       'weighted frontend E2E: create, binary prefill, pending diff, activation, and unavailable recovery: ok'

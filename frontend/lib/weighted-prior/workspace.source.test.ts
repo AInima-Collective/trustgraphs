@@ -12,15 +12,35 @@ const source = readFileSync(
 assert.match(source, /<main[^>]+aria-labelledby="weighted-title"/)
 assert.match(source, /Choose who gets a head start and how much/)
 assert.doesNotMatch(source, /Import human CSV or JSON/)
+
+// Both id inputs are pickers with a paste escape hatch, and every shown id is copyable
+// (GOAL M2, clarification 4). The binary picker reads the app-wide runtime catalog; the
+// weighted picker reads GET /weighted-priors.
 assert.match(source, /<select\s+id="binary-instance"/)
 assert.match(source, /<select\s+id="weighted-instance"/)
-assert.match(source, /Settings → Advanced →\s+Instance provenance/)
+assert.match(source, /useNetworks/)
+assert.match(source, /fetchWeightedInstances/)
+assert.match(source, /paste an instance ID instead/)
+assert.match(source, /Settings →\s+Advanced →\s+Instance provenance/)
 assert.match(
   source,
-  /weighted networks do not currently have a\s+Settings page/
+  /weighted networks do\s+not currently have a\s+Settings page/
 )
-assert.match(source, /fetchBinaryInstances/)
-assert.match(source, /fetchWeightedInstances/)
+assert.match(source, /CopyableText/)
+
+// A created weighted network is not a one-shot toast: the id renders copyable and links into
+// update mode, and deep links reopen it after a reload.
+assert.match(source, /Your weighted network is created/)
+assert.match(source, /Review it or schedule an update/)
+assert.match(source, /openForUpdate/)
+assert.match(source, /params\.get\('instance'\)/)
+assert.match(source, /params\.get\('accounts'\)/)
+
+// ENS handling is stated in plain words (clarification 3): resolved in the browser at a
+// finalized mainnet block, receipt-only, re-checked before simulate and before sign.
+assert.match(source, /resolved in your browser at a finalized/)
+assert.match(source, /re-checked before you\s+simulate and before you sign/)
+
 assert.match(source, /<label htmlFor="prior-format"/)
 assert.match(source, /<label htmlFor="prior-file"/)
 assert.match(source, /<label htmlFor="prior-source"/)
@@ -52,6 +72,12 @@ for (const setter of [
   )
 }
 
+// TGWP is a file format, not a user concept: it may appear in the verify/export section but
+// never ahead of the source section (clarification 3 keeps wire formats out of the lede).
+const firstTgwp = source.indexOf('TGWP')
+const sourceHeading = source.indexOf('id="source-heading"')
+assert.ok(firstTgwp > sourceHeading && sourceHeading > 0)
+
 console.log(
-  'weighted workspace accessibility, limits, recovery, and provenance controls: ok'
+  'weighted workspace accessibility, pickers, copyable ids, recovery, and provenance controls: ok'
 )

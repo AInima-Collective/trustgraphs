@@ -32,11 +32,6 @@ export interface WeightedApiEntry {
   normalizedWeight: string
 }
 
-export interface BinaryApiInstance {
-  id: Hex
-  name: string
-}
-
 export interface WeightedApiInstance {
   id: Hex
   name: string
@@ -63,31 +58,6 @@ export const fetchWeightedVersions = async (
   )
   return (await responseJson<{ versions: WeightedApiVersion[] }>(response))
     .versions
-}
-
-/** List every binary instance so the workspace can use names instead of asking for opaque IDs. */
-export const fetchBinaryInstances = async (
-  api: string,
-  signal?: AbortSignal
-): Promise<BinaryApiInstance[]> => {
-  const instances: BinaryApiInstance[] = []
-  for (let offset = 0; ; ) {
-    const response = await fetch(
-      `${api}/instances?limit=200&offset=${offset}`,
-      { signal }
-    )
-    const page = await responseJson<{
-      instances: BinaryApiInstance[]
-      pagination: { total: number }
-    }>(response)
-    instances.push(...page.instances)
-    if (
-      instances.length >= page.pagination.total ||
-      page.instances.length === 0
-    )
-      return instances
-    offset += page.instances.length
-  }
 }
 
 /** List every weighted instance available for review or rotation on the indexed chain. */

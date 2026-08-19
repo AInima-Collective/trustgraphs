@@ -33,20 +33,20 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { useNetworks } from '@/contexts/CatalogContext'
 import { APIS, WEIGHTED_FACTORY } from '@/lib/config'
 import { getEnsCoinType } from '@/lib/ens-query'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 import {
-  type BinaryApiInstance,
   type WeightedApiEntry,
   type WeightedApiInstance,
   type WeightedApiVersion,
   availabilityDiagnosis,
-  fetchBinaryInstances,
   fetchBinarySeeds,
   fetchWeightedEntries,
   fetchWeightedInstances,
@@ -154,14 +154,30 @@ export const WeightedPriorWorkspace = () => {
   const [versions, setVersions] = useState<WeightedApiVersion[]>([])
   const [currentEntries, setCurrentEntries] = useState<WeightedApiEntry[]>([])
   const [binaryInstanceId, setBinaryInstanceId] = useState('')
-  const [binaryInstances, setBinaryInstances] = useState<BinaryApiInstance[]>(
-    []
-  )
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogProblem, setCatalogProblem] = useState<string | null>(null)
   const [gasEstimate, setGasEstimate] = useState<bigint | null>(null)
   const [simulatedPayload, setSimulatedPayload] = useState<Hex | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [created, setCreated] = useState<{
+    instanceId: Hex | null
+    txHash: Hex
+  } | null>(null)
+  const [prefilled, setPrefilled] = useState<number | null>(null)
+
+  // The catalog is mounted app-wide and server-seeded, so the picker of standard networks costs
+  // no extra request. Networks that predate the factory carry no instance id and cannot be looked
+  // up by one, so they are not offered.
+  const networks = useNetworks()
+  const binaryChoices = useMemo(
+    () =>
+      networks.flatMap((network) =>
+        network.instanceId
+          ? [{ id: network.instanceId, name: network.name }]
+          : []
+      ),
+    [networks]
+  )
 
   const active = versions.find((version) => version.status === 'active')
   const pending = versions.find((version) => version.status === 'pending')
@@ -192,7 +208,7 @@ export const WeightedPriorWorkspace = () => {
   )
 
   useEffect(() => {
-    if (mode === 'create') {
+    if (mode !== 'rotate') {
       setCatalogLoading(false)
       setCatalogProblem(null)
       return
@@ -201,15 +217,8 @@ export const WeightedPriorWorkspace = () => {
     const controller = new AbortController()
     setCatalogLoading(true)
     setCatalogProblem(null)
-    const load =
-      mode === 'redeploy'
-        ? fetchBinaryInstances(APIS.ponder, controller.signal).then(
-            setBinaryInstances
-          )
-        : fetchWeightedInstances(APIS.ponder, controller.signal).then(
-            setWeightedInstances
-          )
-    load
+    fetchWeightedInstances(APIS.ponder, controller.signal)
+      .then(setWeightedInstances)
       .catch((error) => {
         if (!controller.signal.aborted) {
           setCatalogProblem(
@@ -257,6 +266,7 @@ export const WeightedPriorWorkspace = () => {
     setGasEstimate(null)
     setSimulatedPayload(null)
     setSuccess(null)
+    setCreated(null)
     setProblem(null)
     setFieldIssues([])
   }
@@ -269,15 +279,15 @@ export const WeightedPriorWorkspace = () => {
     )
     workerRef.current = worker
     const id = ++workerId.current
-    setPreview({ phase: 'Starting exact day-zero preview…' })
+    setPreview({ phase: 'Computing the exact day-zero scores…' })
     worker.onmessage = (
       message: MessageEvent<WeightedPreviewWorkerResponse>
     ) => {
       if (message.data.id !== id) return
       if (message.data.phase === 'starting') {
-        setPreview({ phase: 'Canonical commitments ready…' })
+        setPreview({ phase: 'Exact commitments ready…' })
       } else if (message.data.phase === 'iterating') {
-        setPreview({ phase: 'Running 40 exact weighted iterations…' })
+        setPreview({ phase: 'Running the 40 exact scoring rounds…' })
       } else if (message.data.phase === 'complete') {
         setPreview({
           phase: 'Complete',
@@ -358,9 +368,11 @@ export const WeightedPriorWorkspace = () => {
     }
   }
 
-  const loadRotation = async () => {
-    if (!isHex(instanceId) || instanceId.length !== 66) {
-      setProblem('Enter a 32-byte weighted instance id.')
+  const loadRotation = async (id: string = instanceId) => {
+    if (!isHex(id) || id.length !== 66) {
+      setProblem(
+        'Choose a weighted network from the list, or paste its 32-byte instance ID.'
+      )
       return
     }
     setBusy(true)
@@ -368,24 +380,19 @@ export const WeightedPriorWorkspace = () => {
     setVersions([])
     setCurrentEntries([])
     try {
-      const nextVersions = await fetchWeightedVersions(
-        APIS.ponder,
-        instanceId as Hex
-      )
+      const nextVersions = await fetchWeightedVersions(APIS.ponder, id as Hex)
       const nextActive = nextVersions.find(
         (version) => version.status === 'active'
       )
       if (!nextActive)
-        throw new Error('The indexer has no active prior version.')
+        throw new Error(
+          'The indexer has no active version for that network yet. A network created moments ago appears as soon as its creation is indexed.'
+        )
       setVersions(nextVersions)
       setCurrentEntries(
         nextActive.availability.status === 'unavailable'
           ? []
-          : await fetchWeightedEntries(
-              APIS.ponder,
-              instanceId as Hex,
-              nextActive.version
-            )
+          : await fetchWeightedEntries(APIS.ponder, id as Hex, nextActive.version)
       )
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -394,9 +401,45 @@ export const WeightedPriorWorkspace = () => {
     }
   }
 
+  // Deep links: /create/weighted?instance=0x… opens an existing weighted network in update mode
+  // (the directory and the creation success card link here); ?accounts=0x…,0x… carries the
+  // starting accounts over from the create wizard as an equal-weight prefill to edit.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const instance = params.get('instance')
+    if (instance && isHex(instance) && instance.length === 66) {
+      setMode('rotate')
+      setInstanceId(instance)
+      void loadRotation(instance)
+      return
+    }
+    const accounts = (params.get('accounts') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => isAddress(value, { strict: false }))
+    if (accounts.length) {
+      setFormat('csv')
+      setSourceBytes(null)
+      setSourceText(equalWeightCsv(accounts as Hex[]))
+      setPrefilled(accounts.length)
+    }
+    // Run once, against the URL the page opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** The rotate view for a network that was just created (or picked from a listing). */
+  const openForUpdate = (id: Hex) => {
+    setMode('rotate')
+    setInstanceId(id)
+    clearDerived()
+    void loadRotation(id)
+  }
+
   const prefillBinary = async () => {
     if (!isHex(binaryInstanceId) || binaryInstanceId.length !== 66) {
-      setProblem('Enter a 32-byte binary instance id.')
+      setProblem(
+        'Choose a network from the list, or paste its 32-byte instance ID.'
+      )
       return
     }
     setBusy(true)
@@ -530,10 +573,10 @@ export const WeightedPriorWorkspace = () => {
             args: [exact.manifest, exact.metadataDigest],
           },
           successMessage:
-            'Weighted prior proposed; the activation delay is now running.',
+            'Update proposed; the activation delay is now running.',
         })
         setSuccess(
-          'Pending rotation proposed. Reload the instance to review its activation time.'
+          'Update proposed. It can be activated once the delay has passed; the timing shows above.'
         )
         await loadRotation()
       } else {
@@ -544,7 +587,7 @@ export const WeightedPriorWorkspace = () => {
             functionName: 'createInstance',
             args: [weightedCreateArgs(createFields, exact)],
           },
-          successMessage: 'New weighted-prior instance created.',
+          successMessage: 'Weighted network created.',
         })
         let createdId: Hex | null = null
         for (const log of receipt.logs) {
@@ -565,11 +608,7 @@ export const WeightedPriorWorkspace = () => {
             // Another factory log.
           }
         }
-        setSuccess(
-          createdId
-            ? `Created new weighted instance ${createdId}.`
-            : `Creation confirmed in ${receipt.transactionHash}.`
-        )
+        setCreated({ instanceId: createdId, txHash: receipt.transactionHash })
       }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -587,13 +626,13 @@ export const WeightedPriorWorkspace = () => {
         throw new Error('Switch the wallet to the target chain first.')
       if (pending.availability.status === 'unavailable') {
         throw new Error(
-          'Recover and review the exact pending manifest before activation.'
+          'The exact bytes of the pending update cannot be recovered right now. Review them before activation.'
         )
       }
       if (
         BigInt(pending.readyAt ?? '0') > BigInt(Math.floor(Date.now() / 1000))
       ) {
-        throw new Error('The timelock has not reached its activation time yet.')
+        throw new Error('The activation delay has not finished yet.')
       }
       if (!publicClient || !address) throw new Error('Connect a wallet first.')
       await publicClient.simulateContract({
@@ -610,7 +649,7 @@ export const WeightedPriorWorkspace = () => {
           functionName: 'activatePrior',
           args: [BigInt(pending.version)],
         },
-        successMessage: `Weighted prior version ${pending.version} activated.`,
+        successMessage: `Version ${pending.version} is now active.`,
       })
       setSuccess(`Version ${pending.version} is active.`)
       await loadRotation()
@@ -649,12 +688,15 @@ export const WeightedPriorWorkspace = () => {
     <main className="max-w-5xl space-y-8" aria-labelledby="weighted-title">
       <header className="space-y-3">
         <h1 id="weighted-title" className="text-2xl">
-          Weighted starting weights
+          Weighted starting shares
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Choose who gets a head start and how much. Paste a list or upload a
-          spreadsheet, check the shares, then create a weighted network. You can
-          also schedule a delayed update to an existing weighted network.
+          Choose who gets a head start and how much. Your starting accounts
+          begin with shares of exactly the sizes you set (an account with
+          weight 10 starts with four times the share of one with weight 2.5),
+          and vouches still decide the final scores. Paste a list or upload a
+          spreadsheet, check the shares, then create a weighted network. You
+          can also schedule a delayed update to an existing weighted network.
         </p>
         <div
           className="flex flex-wrap gap-2"
@@ -698,24 +740,25 @@ export const WeightedPriorWorkspace = () => {
             <select
               id="binary-instance"
               aria-describedby="binary-instance-help"
-              value={binaryInstanceId}
+              value={
+                binaryChoices.some((choice) => choice.id === binaryInstanceId)
+                  ? binaryInstanceId
+                  : ''
+              }
               onChange={(event) => {
                 setBinaryInstanceId(event.target.value)
                 clearDerived()
               }}
-              disabled={catalogLoading}
               className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
             >
               <option value="">
-                {catalogLoading
-                  ? 'Loading networks…'
-                  : binaryInstances.length
-                    ? 'Choose a network…'
-                    : 'No networks available'}
+                {binaryChoices.length
+                  ? 'Choose a network…'
+                  : 'No networks available'}
               </option>
-              {binaryInstances.map((instance) => (
-                <option key={instance.id} value={instance.id}>
-                  {instance.name} — {short(instance.id)}
+              {binaryChoices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.name} · {short(choice.id)}
                 </option>
               ))}
             </select>
@@ -728,6 +771,17 @@ export const WeightedPriorWorkspace = () => {
               Use starting accounts
             </Button>
           </div>
+          <Input
+            aria-label="Or paste a network instance ID"
+            aria-describedby="binary-instance-help"
+            className="font-mono text-xs"
+            placeholder="0x… or paste an instance ID instead"
+            value={binaryInstanceId}
+            onChange={(event) => {
+              setBinaryInstanceId(event.target.value.trim())
+              clearDerived()
+            }}
+          />
           <p
             id="binary-instance-help"
             className="text-xs text-muted-foreground"
@@ -736,13 +790,14 @@ export const WeightedPriorWorkspace = () => {
             <Link href="/networks" className="underline underline-offset-4">
               network directory
             </Link>
-            . On a network page, the same ID is under Settings → Advanced →
-            Instance provenance.
+            . A network&apos;s ID is also in its page URL and under Settings →
+            Advanced → Instance provenance.
           </p>
           {binaryInstanceId && (
-            <p className="break-all font-mono text-xs">
-              Instance ID: {binaryInstanceId}
-            </p>
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={binaryInstanceId} alwaysShowCopyIcon />
+            </div>
           )}
         </Card>
       )}
@@ -756,7 +811,13 @@ export const WeightedPriorWorkspace = () => {
             <select
               id="weighted-instance"
               aria-describedby="weighted-instance-help"
-              value={instanceId}
+              value={
+                weightedInstances.some(
+                  (instance) => instance.id === instanceId
+                )
+                  ? instanceId
+                  : ''
+              }
               onChange={(event) => {
                 setInstanceId(event.target.value)
                 setVersions([])
@@ -775,31 +836,49 @@ export const WeightedPriorWorkspace = () => {
               </option>
               {weightedInstances.map((instance) => (
                 <option key={instance.id} value={instance.id}>
-                  {instance.name} — {short(instance.id)}
+                  {instance.name} · {short(instance.id)}
                 </option>
               ))}
             </select>
             <Button
               type="button"
               variant="outline"
-              onClick={loadRotation}
+              onClick={() => void loadRotation()}
               disabled={busy || !instanceId}
             >
               Load history
             </Button>
           </div>
+          <Input
+            aria-label="Or paste a weighted instance ID"
+            aria-describedby="weighted-instance-help"
+            className="font-mono text-xs"
+            placeholder="0x… or paste an instance ID instead"
+            value={instanceId}
+            onChange={(event) => {
+              setInstanceId(event.target.value.trim())
+              setVersions([])
+              setCurrentEntries([])
+              clearDerived()
+            }}
+          />
           <p
             id="weighted-instance-help"
             className="text-xs text-muted-foreground"
           >
-            This list comes from the weighted-network index. The full ID is also
-            shown after creation; weighted networks do not currently have a
-            Settings page.
+            This list comes from the weighted-network index; the same networks
+            appear in the{' '}
+            <Link href="/networks" className="underline underline-offset-4">
+              network directory
+            </Link>
+            . The full ID is also shown after creation; weighted networks do
+            not currently have a Settings page.
           </p>
           {instanceId && (
-            <p className="break-all font-mono text-xs">
-              Instance ID: {instanceId}
-            </p>
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={instanceId} alwaysShowCopyIcon />
+            </div>
           )}
           {active && (
             <div className="text-sm space-y-1">
@@ -835,7 +914,8 @@ export const WeightedPriorWorkspace = () => {
                 .
               </p>
               <p>
-                Exact manifest availability: {pending.availability.status} via{' '}
+                Exact bytes of the pending update:{' '}
+                {pending.availability.status} via{' '}
                 {pending.availability.provenance}.
               </p>
               {pendingDiagnosis && (
@@ -860,24 +940,31 @@ export const WeightedPriorWorkspace = () => {
                   pending.availability.status === 'unavailable'
                 }
               >
-                Activate after timelock
+                Activate after the delay
               </Button>
             </div>
           )}
         </Card>
       )}
 
-      {catalogProblem && mode !== 'create' && (
+      {catalogProblem && mode === 'rotate' && (
         <p className="text-sm text-destructive" role="alert">
-          Could not load available networks: {catalogProblem}
+          Could not load the weighted networks: {catalogProblem}
         </p>
       )}
 
       <section className="space-y-4" aria-labelledby="source-heading">
         <h2 id="source-heading" className="text-lg">
-          1. Add people and weights
+          1. Add starting accounts and weights
         </h2>
         <Card type="outline" size="md" className="space-y-4">
+          {prefilled !== null && (
+            <p className="text-xs text-muted-foreground" role="status">
+              {prefilled} starting {prefilled === 1 ? 'account' : 'accounts'}{' '}
+              came across from the create wizard, each with weight 1. Edit the
+              numbers to set their sizes.
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="prior-format" className="text-sm font-medium">
@@ -928,7 +1015,7 @@ export const WeightedPriorWorkspace = () => {
             </div>
           </div>
           <label htmlFor="prior-source" className="text-sm font-medium">
-            Prior source
+            Starting accounts and weights
           </label>
           <Textarea
             id="prior-source"
@@ -943,10 +1030,11 @@ export const WeightedPriorWorkspace = () => {
             }}
           />
           <p id="prior-source-help" className="text-xs text-muted-foreground">
-            Weights must be positive decimal strings: no signs, exponents,
-            floats, zero, or duplicate accounts. ENS names are replaced by
-            finalized-block addresses before any canonical or consensus bytes
-            are built.
+            One account per line with its weight: a plain positive number such
+            as 10 or 2.5, no signs, exponents, or duplicate accounts. ENS names
+            are resolved in your browser at a finalized Ethereum mainnet block,
+            recorded only in the provenance receipt, and re-checked before you
+            simulate and before you sign.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
@@ -982,7 +1070,7 @@ export const WeightedPriorWorkspace = () => {
                 setTransform(e.target.value)
                 clearDerived()
               }}
-              placeholder="Human description of transform"
+              placeholder="How this list was produced (optional)"
               aria-label="Transform description"
             />
           </div>
@@ -997,7 +1085,7 @@ export const WeightedPriorWorkspace = () => {
                 aria-hidden="true"
               />
             )}
-            Build exact artifacts
+            Build the exact list
           </Button>
           {fieldIssues.length > 0 && (
             <ul
@@ -1053,16 +1141,16 @@ export const WeightedPriorWorkspace = () => {
               500_000_000_000_000_000n ||
               artifacts.concentration.hhiBps > 2500n) && (
               <p className="text-sm text-warning" role="status">
-                This prior is highly concentrated. That is allowed, but it gives
-                a small set of accounts unusually strong persistent teleport
-                influence.
+                This list is highly concentrated. That is allowed, but it gives
+                a small set of accounts an unusually large head start, and a
+                head start set here never fades on its own.
               </p>
             )}
             <Card type="outline" size="md" className="space-y-3">
               <p className="text-sm">
-                Prior-only accounts receive day-zero score leaves even before
-                the first vouch. With no edges, the proven distribution is
-                byte-exactly this normalized prior.
+                Every account on this list has a score from day one, before any
+                vouches. Until the first vouch lands, the proven scoreboard is
+                exactly this list, normalized.
               </p>
               <div aria-live="polite" className="text-sm">
                 {preview?.phase}
@@ -1132,7 +1220,7 @@ export const WeightedPriorWorkspace = () => {
             </div>
             {rotationDiff && (
               <Card type="outline" size="md" className="space-y-2">
-                <h3 className="font-medium">Pending rotation diff</h3>
+                <h3 className="font-medium">What this update changes</h3>
                 <p className="text-sm">
                   {rotationDiff.added.length} added ·{' '}
                   {rotationDiff.removed.length} removed ·{' '}
@@ -1170,6 +1258,11 @@ export const WeightedPriorWorkspace = () => {
               3. Save and verify what will go onchain
             </h2>
             <Card type="outline" size="md" className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                These are the exact commitments your transaction will carry.
+                The downloads reproduce the bytes exactly, so anyone can verify
+                the network against them later.
+              </p>
               <dl className="grid gap-2 text-sm">
                 <div>
                   <dt className="text-muted-foreground">Prior root</dt>
@@ -1202,7 +1295,8 @@ export const WeightedPriorWorkspace = () => {
               {artifacts.ensResolutions.length > 0 && (
                 <div className="space-y-1 text-xs">
                   <p className="font-medium">
-                    Import-only ENS resolution receipts
+                    ENS resolution receipts (import only; the addresses are
+                    what goes onchain)
                   </p>
                   {artifacts.ensResolutions.map((record) => (
                     <p key={record.name} className="font-mono break-all">
@@ -1255,7 +1349,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-name"
                     className="text-sm font-medium"
                   >
-                    New instance name
+                    Network name
                   </label>
                   <Input
                     id="weighted-name"
@@ -1271,7 +1365,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-metadata"
                     className="text-sm font-medium"
                   >
-                    Presentation metadata URI
+                    Description URI
                   </label>
                   <Input
                     id="weighted-metadata"
@@ -1288,7 +1382,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-epoch"
                     className="text-sm font-medium"
                   >
-                    Requested epoch blocks
+                    Scoring round length (blocks)
                   </label>
                   <Input
                     id="weighted-epoch"
@@ -1301,9 +1395,9 @@ export const WeightedPriorWorkspace = () => {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground self-end">
-                  Factory floor:{' '}
-                  {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}.
-                  The factory raises shorter requests.
+                  The factory floor is{' '}
+                  {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}{' '}
+                  blocks; shorter requests are raised to it.
                 </p>
               </Card>
             )}
@@ -1355,13 +1449,58 @@ export const WeightedPriorWorkspace = () => {
                 >
                   <CheckCircle2 className="h-4 w-4" />{' '}
                   {mode === 'rotate'
-                    ? 'Sign timelocked proposal'
-                    : 'Create new weighted instance'}
+                    ? 'Sign the delayed update'
+                    : 'Create the weighted network'}
                 </Button>
               </div>
             </Card>
           </section>
         </>
+      )}
+
+      {created && (
+        <div aria-live="polite" role="status">
+          <Card type="outline" size="md" className="space-y-3 border-success">
+            <p className="text-sm">Your weighted network is created.</p>
+            {created.instanceId ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  This is its instance ID, the key that finds it everywhere. It
+                  stays visible in the{' '}
+                  <Link
+                    href="/networks"
+                    className="underline underline-offset-4"
+                  >
+                    network directory
+                  </Link>{' '}
+                  and in this workspace&apos;s update mode, so you do not have
+                  to save it, but a copy never hurts:
+                </p>
+                <CopyableText text={created.instanceId} alwaysShowCopyIcon />
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openForUpdate(created.instanceId!)}
+                  >
+                    Review it or schedule an update
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Creation confirmed in transaction{' '}
+                <span className="font-mono break-all">{created.txHash}</span>.
+                The new network appears in the{' '}
+                <Link href="/networks" className="underline underline-offset-4">
+                  network directory
+                </Link>{' '}
+                as soon as the indexer sees it.
+              </p>
+            )}
+          </Card>
+        </div>
       )}
 
       {(problem || success) && (
