@@ -33,6 +33,7 @@ This table is the authoritative list of programs: status, vkey, docs, and instan
 | **signer-sync** (Safe owner rotation)                    | **Built**            | `0x00ae498beaea90c508eb3462169d6c516e864672fcadf135bb8a36f5b3ce51f0` (its own `SignerJournal` shape)        | [architecture](../build/signer-sync/architecture.md) · [runbook](../build/signer-sync/runbook.md)                                                                                                                     | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`)       |
 | **hypercerts** (AT-proto graph)                          | **Built**            | `0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346` (journal v3; SP1 6.3.1)                | [architecture](../build/hypercerts/architecture.md) · [runbook](../build/hypercerts/runbook.md)                                                                                                                       | pilot on Ethereum mainnet planned (Sepolia rehearsal first)                                             |
 | **contributions** (rep-weighted funding split)           | **Built**            | `0x00ad63b643bf1af6995e0fd21e444db6d9b831375b601f951c1666f2e1a7231d` (journal v3; SP1 6.3.1)                | [architecture](../build/contributions/architecture.md) · [runbook](../build/contributions/runbook.md) · [interfaces](../build/contributions/interfaces.md) · [local testing](../build/contributions/local-testing.md) | local anvil dev (full round proven + paid out, wei-exact vs the golden fixture)                         |
+| **nostr-workspace** (Buzz/Nostr member graph)            | **Built; pilot pending** | `0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3` (journal v3; detached SP1 6.3.1 guest) | [architecture](../build/nostr-workspace/architecture.md) · [runbook](../build/nostr-workspace/runbook.md) · [local testing](../build/nostr-workspace/local-testing.md) · [verification](../build/nostr-workspace/verification.md) | two-epoch Anvil rehearsal; member-scoped non-synthetic pilot is S5                                    |
 
 **A note on vkeys.** A vkey identifies one exact guest binary. It rotates on any change to that
 guest's code or a shared crate it depends on, and even on toolchain changes, so deployment
@@ -51,6 +52,8 @@ Where each piece lives in the repository:
   guest, kept outside the legacy guest dependency graph.
 - `packages/composition-core` and `zk/composition-program` — isolated source-aware Hamilton
   composition semantics and guest, likewise kept outside every legacy guest dependency graph.
+- `packages/nostr-envelope`, `packages/nostr-workspace-core`, and `zk/nostr-program` — the isolated
+  Buzz/Nostr envelope, graph semantics, and detached conformance/production guests.
 - `zk/program` — one multi-bin guest crate: every program's zkVM binary, built together.
 - `zk/prover` — one host CLI (`trustgraph-prover`) with a subcommand group per program.
 - `test/golden/<program>.json` — one golden-vector file per program, enforcing four-way parity

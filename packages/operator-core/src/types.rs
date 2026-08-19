@@ -22,6 +22,8 @@ pub enum Program {
     Weighted,
     #[serde(rename = "trust-compose")]
     Composition,
+    #[serde(rename = "nostr-workspace")]
+    NostrWorkspace,
     Hypercerts,
     Signer,
 }
@@ -38,6 +40,7 @@ impl Program {
             Program::Contributions => "contributions",
             Program::Weighted => "trust-graph-weighted",
             Program::Composition => "trust-compose",
+            Program::NostrWorkspace => "nostr-workspace",
             Program::Hypercerts => "hypercerts",
             Program::Signer => "signer-sync",
         }
@@ -49,6 +52,7 @@ impl Program {
             Program::Contributions,
             Program::Weighted,
             Program::Composition,
+            Program::NostrWorkspace,
             Program::Hypercerts,
             Program::Signer,
         ]
@@ -76,6 +80,9 @@ impl Program {
             // on-chain leaf count is only a source count; authenticated work shape is carried
             // separately in `InstanceSize` and must never be inferred from this lane.
             Program::Composition => Lanes { lane1: true, lane2: false },
+            // The Nostr program consumes only authenticated Option-A/Option-C anchors. Lane one
+            // is an EmptyLaneAccumulator and must remain the constant zero pair.
+            Program::NostrWorkspace => Lanes { lane1: false, lane2: true },
             // Lane 1 is the EmptyLaneAccumulator: constant (0, 0) forever.
             Program::Hypercerts => Lanes { lane1: false, lane2: true },
             Program::Signer => Lanes { lane1: true, lane2: false },
@@ -115,6 +122,18 @@ mod tests {
         assert_ne!(Program::Composition.id(), Program::Contributions.id());
         assert_ne!(Program::Composition.id(), Program::Hypercerts.id());
         assert_eq!(Program::Composition.consumes(), super::Lanes { lane1: true, lane2: false });
+    }
+
+    #[test]
+    fn nostr_workspace_has_a_collision_free_lane_two_identity() {
+        assert_eq!(Program::NostrWorkspace.name(), "nostr-workspace");
+        assert_eq!(
+            serde_json::from_str::<Program>(r#""nostr-workspace""#).unwrap(),
+            Program::NostrWorkspace
+        );
+        assert_eq!(Program::from_id(Program::NostrWorkspace.id()), Some(Program::NostrWorkspace));
+        assert_ne!(Program::NostrWorkspace.id(), Program::Hypercerts.id());
+        assert_eq!(Program::NostrWorkspace.consumes(), super::Lanes { lane1: false, lane2: true });
     }
 }
 

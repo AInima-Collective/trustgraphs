@@ -1,0 +1,192 @@
+{
+  "format": "trustgraphs-buzz-live-seed-report-v1",
+  "sourceCorpus": "/tmp/tg-s0-live-export/live-source-corpus.json",
+  "relayUrl": "http://127.0.0.1:33300",
+  "channelId": "01915f7a-6b4c-7d2e-8f10-665544332211",
+  "receipts": [
+    {
+      "name": "vouch-same-second-a",
+      "eventId": "70ff8fe4cac2159790fc54f09d2ae37f5ce1fe33e94360bf2de332c3fb51ac1d",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "vouch-same-second-b",
+      "eventId": "b2ffba279da4e78185ab0fba4eb011bc65d18d24bf255f80f4cf8f8b9d8f59eb",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": "duplicate:"
+    },
+    {
+      "name": "vouch-bob-alice",
+      "eventId": "a237b9a17a9cb2caf868640e2cba4cbd44e6498d31a7cfda74ff008b138d636d",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "vouch-deleted-by-e-target",
+      "eventId": "edec1c106adeb9c4765d33293236e80406a931121c2f10ccd12cc7d9b020a3d3",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "delete-vouch-by-e",
+      "eventId": "0ddad6f5be5a956029acf4799ad2ef228455dacbfd8cb2ab8a6462054cfdcc93",
+      "kind": 5,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "vouch-deleted-by-a-target",
+      "eventId": "030d89d72e4f8d916b9bad519c79cb69d8b9811c397c96156a27d36966721525",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "delete-vouch-by-a",
+      "eventId": "3651777e55a5bb374403af1e097c889a64bf2b4747ba37c848b1015758af2b9b",
+      "kind": 5,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "oa-agent-vouch",
+      "eventId": "a6d0f3202d5988132f00d06de395039938f7ece01647aeed3c750e2d35a1fc70",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "self-vouch-inert",
+      "eventId": "eaadd58f2bd02022c891e8542fb0bdbad87c108294595b70e499f645721e492d",
+      "kind": 36382,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "nostr-evm-binding",
+      "eventId": "76f3c86c183cd7fd887c1b8dda2f057352ad3105065dc3586bd3d28925a5ff0c",
+      "kind": 36383,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "git-patch-root",
+      "eventId": "3147975426ffae74867bf193a8fec935bf52656ae48c4fde73bcb3f98652c43c",
+      "kind": 1617,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "git-status-merged",
+      "eventId": "1a4db0ad22cca420d6895012a58e401466695bb5aac967616a4e80c7f23f132f",
+      "kind": 1631,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "forum-post-alice",
+      "eventId": "b25202b790ab5896243b31cb9eea857f1d5060e65907e260f1067c6b86b8bdd6",
+      "kind": 45001,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "forum-upvote-live",
+      "eventId": "52d2821abf493cd4fbf39840a151161abacb7986a34c2205797e18fdf74bc88a",
+      "kind": 45002,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "forum-post-bob",
+      "eventId": "a43e2e6536ddf9c825f3c047f3443c60afb345ffbd220c768181c0656d395d05",
+      "kind": 45001,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "forum-upvote-revoked",
+      "eventId": "f60f3d37ea96dccd4a7861318695fe20cff2a239fa117202b08eb3a12209b33c",
+      "kind": 45002,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "forum-downvote-clears-upvote",
+      "eventId": "f4eeb011d30eb5a095669262ded03ccaf745a8d6c37d2b2f21d651eaf1299078",
+      "kind": 45002,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "job-request-completed",
+      "eventId": "a7f6c62cf16f4f4a616f4dc9732aeea6058ab3db67da5465256dd88e05113cb8",
+      "kind": 43001,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "job-result-completed",
+      "eventId": "6259509be26965293152088c066a4e7e29fec60f2a6320c5b7bcb8dd7e25abc3",
+      "kind": 43004,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "job-request-later-cancelled",
+      "eventId": "fc41f0aeb58401c5291c8912ce319caf6372abb989bcb66184df7579c560ccb3",
+      "kind": 43001,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "job-result-later-cancelled",
+      "eventId": "77c93c9d4f2e11c0288f0e0a052a1abbe9a2079297210bc716a30ffd27976d1a",
+      "kind": 43004,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "job-cancel-wins-terminal-order",
+      "eventId": "554c8eeb7a6221d3529277fcd4a4e232b032dad1cc8404640c63cfd8bef220e0",
+      "kind": 43005,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    },
+    {
+      "name": "self-log-head",
+      "eventId": "6d99e545342676ea072845c30a5c5328f117faed052c5128bdf81f3cff58f829",
+      "kind": 36384,
+      "httpStatus": 200,
+      "accepted": true,
+      "message": ""
+    }
+  ]
+}

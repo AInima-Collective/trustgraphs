@@ -453,27 +453,32 @@ unpatched-p256 anchor stands unreplicated); proving wall-clock (execute-only spi
 
 ---
 
-## 4. Nostr / BIP340 schnorr (2026-08-16)
+## 4. Nostr / BIP340 schnorr (corrected 2026-08-19)
 
-Owner: the buzz/Nostr envelope spike ([`../BUZZ_NOSTR_PLAN.md`](../BUZZ_NOSTR_PLAN.md)).
-Harness: the §3 `spike/crypto` prototype rebuilt from git `9ea5006` plus two new guest bins
-(vendored with a reproduce recipe at [`../nostr/`](../nostr/)); same environment (SP1 v6.3.1,
-cargo-prove `8252c29`, `SP1_PROVER=mock`, linux/arm64), same patch tags
-(`patch-k256-13.4-sp1-6.0.0`, `patch-sha2-0.10.9-sp1-6.0.0`), same marginal `(N=100 − N=1)/99`
-method with committed results. The shared §3 rows (noop 1,182 cyc; ecrecover 27,282 cyc;
-sha256-64KiB 774,893 cyc absolute) reproduced exactly before the new bins were trusted.
+Owner: the Buzz/Nostr envelope spike ([`../BUZZ_NOSTR_PLAN.md`](../BUZZ_NOSTR_PLAN.md)). Harness:
+the detached [`../nostr/sp1-bench/`](../nostr/sp1-bench/) workspace; SP1 v6.3.1, cargo-prove
+`8252c29`, `SP1_PROVER=mock`, linux/arm64, patch tags `patch-k256-13.4-sp1-6.0.0` and
+`patch-sha2-0.10.9-sp1-6.0.0`. Marginals are `(N=100 - N=1) / 99` with distinct valid cases and
+committed outputs. Complete raw output and reproduction instructions are in
+[`../nostr/README.md`](../nostr/README.md).
+
+The 2026-08-16 rows are retired: they used k256's message-level `Verifier`, which hashes the
+already-hashed Nostr event id. The corrected harness uses `PrehashVerifier`, asserts exact
+host-`serde_json`/guest serializer parity, and round-trips the source-derived live Buzz bundle.
 
 ### 4.1 Results
 
-| op | cycles (marginal, per-op) | PGU (marginal, per-op) | PGU/cycle | patched vs unpatched |
-|---|---:|---:|---:|---|
-| BIP340 schnorr verify (k256::schnorr, patched) | **31,747** | **56,521** | 1.78 | **35.4× cycles / 19.6× PGU** |
-| BIP340 schnorr verify (unpatched) | 1,124,346 | 1,107,541 | 0.99 | baseline |
-| full Nostr event verify (patched): NIP-01 serialize (398 B) → sha256 id → schnorr | **48,858** | **75,696** | 1.55 | 24.0× cycles |
-| full Nostr event verify (unpatched) | 1,173,158 | — | — | baseline |
+| op | cycles (marginal, per-op) | PGU (marginal, per-op) | PGU/cycle |
+|---|---:|---:|---:|
+| BIP-340 prehash verification | **30,842** | **55,182** | 1.79 |
+| complete Nostr event: NIP-01 serialize → SHA-256 id → prehash verify | **44,734** | **70,149** | 1.57 |
+| Buzz audit-entry hash and chain fold | **10,302** | **11,920** | 1.16 |
+| NIP-OA exact tagged hash + conditions + owner prehash verify | **35,964** | **61,246** | 1.70 |
 
-Per-event overhead beyond the signature (serialize + hash + I/O at ~400-B events):
-~17.1k cycles. Larger events add the §3 sha256 rate (3.41 cyc/B, 11.4 PGU/B).
+The 20,297-byte live Option-A bundle—30 audit rows, 35 signed events, three OA credentials—runs
+end to end in **2,519,703 cycles / 3,631,054 PGU**. The bin binds the TGNW data commitment,
+strictly decodes caps, folds the audit prefix, checks event coverage, and verifies every event and
+OA signature. Its graph semantics are intentionally outside this S0 envelope measurement.
 
 ### 4.2 Mechanism facts (from patch diffs, not docs)
 
@@ -496,11 +501,11 @@ Per-event overhead beyond the signature (serialize + hash + I/O at ~400-B events
    included verbatim", content-field-only escaping) diverges from both reference
    implementations: `serde_json` (rust-nostr, hence buzz) and `JSON.stringify`
    (nostr-tools) additionally emit `\u00XX` for ASCII control characters outside the
-   seven named escapes, and escape tag strings identically to content. A production
-   guest serializer must implement the serde_json semantics (what signers actually ran)
-   and deterministically skip raw-control-byte events.
-4. **Third-party cross-check:** CoW Protocol's multi-zkVM benchmark (SP1 v5.2.4, patched
-   k256 with `features=["schnorr"]`) lands at ~65.6k cycles marginal per signature
-   including a keccak-Merkle inclusion share — consistent with 31.7k for the bare verify.
+   seven named escapes, and escape tag strings identically to content. The corrected guest
+   implements the serde_json form and tests every control byte. U+0000 remains serializer-only
+   because Buzz's PostgreSQL `jsonb` path rejects that tag escape before storage.
+4. **Third-party context, not a replacement measurement:** CoW Protocol's multi-zkVM benchmark
+   (SP1 v5.2.4, patched k256 with `features=["schnorr"]`) exercises the patched schnorr machinery,
+   but its message contract and Merkle workload differ; it cannot validate a Nostr prehash cap.
    No public project proving Nostr events in a zkVM was found (GitHub + NIPs repo
    sweeps) — the ground is unoccupied.

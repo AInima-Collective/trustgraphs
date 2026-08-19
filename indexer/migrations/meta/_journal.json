@@ -36,6 +36,13 @@
       "when": 1786816444856,
       "tag": "0004_trust_compose",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787171781495,
+      "tag": "0005_curved_golden_guardian",
+      "breakpoints": true
     }
   ]
 }

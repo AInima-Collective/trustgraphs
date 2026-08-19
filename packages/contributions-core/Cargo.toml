@@ -20,3 +20,8 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 serde_json = { workspace = true }
 hex = { workspace = true }
+
+[lints.clippy]
+manual_is_multiple_of = "allow"
+manual_repeat_n = "allow"
+unnecessary_sort_by = "allow"

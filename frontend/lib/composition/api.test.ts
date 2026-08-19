@@ -77,8 +77,29 @@ const main = async () => {
               },
               scoreProgram: program,
             },
+            {
+              id: `0x${'91'.repeat(32)}`,
+              name: 'Nostr workspace',
+              chainId: candidate.chainId,
+              createdTimestamp: '101',
+              paramsHash: `0x${'92'.repeat(32)}`,
+              contracts: {
+                merkleSnapshot: `0x${'93'.repeat(20)}`,
+                trustgraphsParamsController: null,
+              },
+              scoreProgram: {
+                ...program,
+                programId: SCORE_PROGRAM_IDS['nostr-workspace'],
+                programName: 'nostr-workspace',
+                outputDomain: SCORE_OUTPUT_DOMAIN_IDS['nostr-member-v1'],
+                outputDomainName: 'nostr-member-v1',
+                keyEncoding: 'bytes32',
+                instanceId: `0x${'91'.repeat(32)}`,
+                paramsHash: `0x${'92'.repeat(32)}`,
+              },
+            },
           ],
-          pagination: { total: 1 },
+          pagination: { total: 2 },
         })
       }
       if (url === 'https://api.test/weighted-priors?limit=200&offset=0') {
@@ -112,6 +133,11 @@ const main = async () => {
     const catalog = await fetchCompositionCandidates('https://api.test')
     assert.equal(catalog.candidates.length, 1)
     assert.equal(catalog.candidates[0]!.snapshot, candidate.snapshot)
+    assert.equal(
+      catalog.candidates.some((row) => row.programName === 'nostr-workspace'),
+      false,
+      'bytes32 Nostr scores cannot be relabeled as address-keyed trust-compose inputs'
+    )
     assert.match(catalog.warnings[0]!, /not deployed/)
 
     const source = await fetchCompositionSource({

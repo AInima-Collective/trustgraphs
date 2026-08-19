@@ -12,7 +12,6 @@ use contributions_core::compute::{compute, GuestInput};
 use contributions_core::records::{encode_claim, encode_response, encode_valuation};
 use contributions_core::testutil::{edge, params, vouch};
 use contributions_core::{kind, Params};
-use pagerank_core::RawEdge;
 
 /// Deterministic LCG (numerical recipes constants).
 struct Rng(u64);

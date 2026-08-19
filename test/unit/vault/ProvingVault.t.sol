@@ -612,6 +612,12 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(composition, 8, 0), 3, "source count never selects a cheap band");
     }
 
+    function test_NostrWorkspaceUsesConservativeWorkBandNotAnchorCount() public view {
+        bytes32 nostr = keccak256("nostr-workspace");
+        assertEq(vault.bandOf(nostr, 0, 1), 3, "one community anchor can hide a full audit prefix");
+        assertEq(vault.bandOf(nostr, 0, 129), 3, "selected-head count never selects a cheap band");
+    }
+
     /// Size is the SUM of both lanes, for every program, because that is what the operator's
     /// cycle estimate sums. An earlier version banded trust-graph on `leafCount` alone: a
     /// two-lane instance with 900 edges and 400k anchors then priced at the CHEAPEST band for a

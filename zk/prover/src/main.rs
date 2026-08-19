@@ -25,7 +25,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use trustgraph_prover::programs;
-#[cfg(feature = "witness-atproto")]
+#[cfg(any(feature = "witness-atproto", feature = "witness-nostr"))]
 use trustgraph_prover::witness;
 
 #[derive(Parser)]
@@ -65,6 +65,12 @@ enum Program {
         #[command(subcommand)]
         cmd: programs::hypercerts::Command,
     },
+    /// Buzz/Nostr workspace root producer (mixed relay-audit and self-log envelope-2 inputs).
+    #[command(name = "nostr-workspace")]
+    NostrWorkspace {
+        #[command(subcommand)]
+        cmd: programs::nostr_workspace::Command,
+    },
     /// Contributions root producer (rep-weighted funding split over EAS contribution
     /// claims/responses/valuations -> journal-v2 merkle root).
     Contributions {
@@ -85,6 +91,14 @@ enum Program {
         #[command(subcommand)]
         cmd: witness::Command,
     },
+    /// Buzz/Nostr inspection, immutable export, anchoring, and offline checkpoint assembly.
+    /// Requires `--features witness-nostr`.
+    #[command(name = "nostr-witness")]
+    #[cfg(feature = "witness-nostr")]
+    NostrWitness {
+        #[command(subcommand)]
+        cmd: witness::nostr::Command,
+    },
 }
 
 fn main() -> Result<()> {
@@ -96,9 +110,12 @@ fn main() -> Result<()> {
         Program::Composition { cmd } => programs::composition::run(cmd),
         Program::Signer { cmd } => programs::signer::run(cmd),
         Program::Hypercerts { cmd } => programs::hypercerts::run(cmd),
+        Program::NostrWorkspace { cmd } => programs::nostr_workspace::run(cmd),
         Program::Contributions { cmd } => programs::contributions::run(cmd),
         Program::AtprotoConformance { cmd } => programs::atproto_conformance::run(cmd),
         #[cfg(feature = "witness-atproto")]
         Program::Witness { cmd } => witness::run(cmd),
+        #[cfg(feature = "witness-nostr")]
+        Program::NostrWitness { cmd } => witness::nostr::run(cmd),
     }
 }

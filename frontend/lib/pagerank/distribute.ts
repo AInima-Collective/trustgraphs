@@ -46,8 +46,7 @@ export const distributePoints = (
   const assigned: Array<[Hex, bigint]> = []
   const len = scaled.length
 
-  for (let i = 0; i < len; i++) {
-    const [addr, sc] = scaled[i]
+  for (const [i, [addr, sc]] of scaled.entries()) {
     let points: bigint
     if (i === len - 1) {
       points = remaining

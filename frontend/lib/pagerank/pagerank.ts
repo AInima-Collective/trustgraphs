@@ -65,7 +65,9 @@ const bfsDistances = (
   let head = 0
   while (head < queue.length) {
     const current = queue[head++]
-    const d = distances.get(current)!
+    if (current === undefined) break
+    const d = distances.get(current)
+    if (d === undefined) continue
     const edges = graph.outgoing.get(current)
     if (edges) {
       const neighbors = Array.from(edges.keys()).sort((a, b) =>

@@ -24,3 +24,6 @@ composition-core = { path = "../composition-core" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints.clippy]
+result_large_err = "allow"

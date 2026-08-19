@@ -5,7 +5,7 @@ silent: true
 # ZK program tasks (multi-program platform).
 #
 # Every task takes PROGRAM (values: trust-graph | trust-graph-weighted | trust-compose | signer |
-# hypercerts | contributions, default trust-graph). The prover CLI is invoked as
+# hypercerts | contributions | nostr-workspace, default trust-graph). The prover CLI is invoked as
 # `trustgraph-prover <program> <command>`, so PROGRAM is passed as the first positional arg. The
 # `trust-graph` and `signer` programs share one golden feed because signer reads the same trust-graph
 # attestations; every other program owns its vector file.
@@ -31,17 +31,19 @@ tasks:
         cd zk/program && cargo prove build
         cd ../weighted-program && cargo prove build
         cd ../composition-program && cargo prove build
+        cd ../nostr-program/program && cargo prove build --locked
       # sp1_build does NOT watch the path deps under packages/, so cargo will happily reuse a stale
       # ELF after you edit a core crate. Touching build.rs forces the directive re-emit, which is
       # what picks the freshly built ELFs up.
       - touch zk/prover/build.rs
       # The guests were just built explicitly, so skip build.rs's copy of that work rather than
-      # doing it twice. Three host artifacts, because `task demo` needs all three warm and cargo
-      # caches per feature set: the plain prover (vkey derivation, e2e), the prover with `fetch`
+      # doing it twice. Four host artifacts, because `task demo` and witness operations need them
+      # warm and cargo caches per feature set: the plain prover (vkey derivation, e2e), the prover with `fetch`
       # (the daemon shells `cargo run --features fetch -- contributions fetch` to reconstruct
       # round inputs from chain — cold, that's a multi-minute build in the middle of the prove
-      # loop), and the operator daemon itself (otherwise its first tick pays the same bill).
-      - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release && cargo build --release --features fetch'
+      # loop), the Nostr collection/anchor host, and the operator daemon itself (otherwise its
+      # first tick pays the same bill).
+      - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release && cargo build --release --features fetch && cargo build --release --features witness-nostr'
       - SP1_SKIP_PROGRAM_BUILD=true cargo build --release --manifest-path zk/operator/Cargo.toml
       - echo "✓ guests + host + operator built. Vkeys they produce - task demo:vkeys"
 
@@ -50,7 +52,7 @@ tasks:
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > test/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > test/golden/contributions.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
+      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > test/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > test/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > test/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
 
   vkey:
     desc: 'Print the SP1 program vkey for PROGRAM'
@@ -90,6 +92,20 @@ tasks:
     cmds:
       - cd zk/prover && cargo run --release -- {{.PROGRAM}} prove {{.INPUT}} {{if eq .GROTH16 "1"}}--groth16{{end}}
 
+  nostr-witness-smoke:
+    desc: 'S3 gate: deterministic Nostr export → Anvil anchor → offline assemble/execute/prove'
+    env:
+      SP1_SKIP_PROGRAM_BUILD: 'true'
+    cmds:
+      - scripts/nostr-witness-anvil-smoke.sh
+
+  nostr-workspace-e2e:
+    desc: 'S4 gate: two Nostr epochs → publish/submit → replay rejection → composition capture'
+    env:
+      SP1_SKIP_PROGRAM_BUILD: 'true'
+    cmds:
+      - scripts/nostr-workspace-two-epoch-e2e.sh
+
   parity:
     desc: 'Aggregate cross-language parity gate for PROGRAM'
     vars:
@@ -100,7 +116,7 @@ tasks:
         vars: { PROGRAM: '{{.PROGRAM}}' }
       - git diff --exit-code test/golden/
       # (b) Rust parity (canonical core + zk glue + program crates).
-      - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core -p weighted-prior-core -p composition-core
+      - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core -p weighted-prior-core -p composition-core -p nostr-envelope -p nostr-workspace-core
       # (c) Solidity golden vectors (both split suites).
       - forge test --match-path "test/unit/golden/*"
       # (d) The independent TypeScript composition oracle, then frontend TS ports.

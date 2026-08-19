@@ -13,6 +13,7 @@ import hypercerts from './hypercerts'
 import instances from './instances'
 import merkle from './merkle'
 import network from './network'
+import nostrWorkspace from './nostr-workspace'
 import scorePrograms from './score-programs'
 import vault from './vault'
 import weightedPriors from './weighted-priors'
@@ -33,6 +34,7 @@ app.route('/hypercerts', hypercerts)
 app.route('/instances', instances)
 app.route('/merkle', merkle)
 app.route('/network', network)
+app.route('/nostr-workspace', nostrWorkspace)
 app.route('/score-programs', scorePrograms)
 app.route('/vault', vault)
 app.route('/weighted-priors', weightedPriors)

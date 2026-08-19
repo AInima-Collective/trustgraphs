@@ -25,7 +25,10 @@ import {
   toSections,
 } from './directory'
 import { activeFixture, fixtureDirectory } from './directory.fixtures'
-import { parseScoreProgramProvenance } from './score-program'
+import {
+  type ScoreProgramProvenance,
+  parseScoreProgramProvenance,
+} from './score-program'
 
 /** Same window as the pages' `revalidate`. See CATALOG_REVALIDATE_SECONDS in catalog.server.ts. */
 const SUMMARY_REVALIDATE_SECONDS = 10
@@ -37,6 +40,8 @@ const SUMMARY_REVALIDATE_SECONDS = 10
  * noticing a slow page.
  */
 const SUMMARY_TIMEOUT_MS = 3_000
+const PROGRAM_CATALOG_PAGE_SIZE = 200
+const PROGRAM_CATALOG_MAX_ROWS = 10_000
 
 const UNREADABLE: ScoreboardSummary = {
   scored: null,
@@ -83,7 +88,103 @@ type HypercertsRootList = {
   }>
   scorePrograms: Record<string, unknown>
 }
+type NostrWorkspaceRootList = {
+  roots: Array<{
+    root: string
+    numNodes: number
+    timestamp: string
+    scoreProgram: unknown
+  }>
+}
+type ScoreProgramCatalogPage = {
+  bindings: Array<{ snapshot: unknown; scoreProgram: unknown }>
+  pagination: { limit: unknown; offset: unknown; total: unknown }
+}
+type NostrWorkspaceBinding = {
+  snapshot: string
+  scoreProgram: ScoreProgramProvenance
+}
 type NetworkPayload = { attestations: unknown[] }
+
+const boundedCatalogInteger = (value: unknown, label: string) => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`score-program catalog ${label} is malformed`)
+  }
+  return value
+}
+
+/**
+ * Discover Nostr workspaces only from authenticated InstanceRegistry bindings. The indexer returns
+ * newest bindings first; all pages are consumed so the directory cannot silently look complete
+ * after the first 200 rows.
+ */
+const readNostrWorkspaceBindings = async (): Promise<{
+  bindings: NostrWorkspaceBinding[]
+  error: string | null
+}> => {
+  const bindings: NostrWorkspaceBinding[] = []
+  const snapshots = new Set<string>()
+  let offset = 0
+
+  try {
+    for (;;) {
+      const page = await readJson<ScoreProgramCatalogPage>(
+        `/score-programs?program=nostr-workspace&limit=${PROGRAM_CATALOG_PAGE_SIZE}&offset=${offset}`
+      )
+      if (!page || !Array.isArray(page.bindings) || !page.pagination) {
+        throw new Error('score-program catalog response is malformed')
+      }
+      const returnedOffset = boundedCatalogInteger(
+        page.pagination.offset,
+        'offset'
+      )
+      const limit = boundedCatalogInteger(page.pagination.limit, 'limit')
+      const total = boundedCatalogInteger(page.pagination.total, 'total')
+      if (
+        returnedOffset !== offset ||
+        limit < 1 ||
+        limit > PROGRAM_CATALOG_PAGE_SIZE ||
+        total > PROGRAM_CATALOG_MAX_ROWS
+      ) {
+        throw new Error('score-program catalog pagination is inconsistent')
+      }
+
+      for (const row of page.bindings) {
+        if (
+          !row ||
+          typeof row !== 'object' ||
+          typeof row.snapshot !== 'string' ||
+          !/^0x[0-9a-fA-F]{40}$/.test(row.snapshot)
+        ) {
+          throw new Error('score-program catalog snapshot is malformed')
+        }
+        const snapshot = row.snapshot.toLowerCase()
+        if (snapshots.has(snapshot)) {
+          throw new Error('score-program catalog repeats a snapshot')
+        }
+        snapshots.add(snapshot)
+        bindings.push({
+          snapshot,
+          scoreProgram: parseScoreProgramProvenance(
+            row.scoreProgram,
+            'nostr-workspace'
+          ),
+        })
+      }
+
+      if (offset + page.bindings.length >= total) break
+      if (page.bindings.length === 0) {
+        throw new Error('score-program catalog ended before its declared total')
+      }
+      offset += page.bindings.length
+    }
+    return { bindings, error: null }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    console.error('[directory] Nostr workspace catalog unavailable:', reason)
+    return { bindings: [], error: reason }
+  }
+}
 
 /**
  * The latest proven scoreboard for one snapshot.
@@ -98,20 +199,28 @@ const readSummary = async (
   let summary: ScoreboardSummary
   try {
     const list =
-      program === 'hypercerts'
-        ? await readJson<HypercertsRootList>(
-            `/hypercerts/roots?snapshot=${encodeURIComponent(snapshot)}`
+      program === 'nostr-workspace'
+        ? await readJson<NostrWorkspaceRootList>(
+            `/nostr-workspace/roots?snapshot=${encodeURIComponent(snapshot)}&limit=1&offset=0`
           )
-        : await readJson<MerkleTreeList>(`/merkle/${snapshot}/all`)
+        : program === 'hypercerts'
+          ? await readJson<HypercertsRootList>(
+              `/hypercerts/roots?snapshot=${encodeURIComponent(snapshot)}`
+            )
+          : await readJson<MerkleTreeList>(`/merkle/${snapshot}/all`)
     const latest =
-      program === 'hypercerts'
-        ? (list as HypercertsRootList | null)?.roots?.[0]
-        : (list as MerkleTreeList | null)?.trees?.[0]
+      program === 'nostr-workspace'
+        ? (list as NostrWorkspaceRootList | null)?.roots?.[0]
+        : program === 'hypercerts'
+          ? (list as HypercertsRootList | null)?.roots?.[0]
+          : (list as MerkleTreeList | null)?.trees?.[0]
     if (!latest) return NEVER_PROVEN
     const provenance =
-      program === 'hypercerts'
-        ? (list as HypercertsRootList).scorePrograms[snapshot.toLowerCase()]
-        : (list as MerkleTreeList).scoreProgram
+      program === 'nostr-workspace'
+        ? (latest as NostrWorkspaceRootList['roots'][number]).scoreProgram
+        : program === 'hypercerts'
+          ? (list as HypercertsRootList).scorePrograms[snapshot.toLowerCase()]
+          : (list as MerkleTreeList).scoreProgram
     parseScoreProgramProvenance(provenance, program)
 
     // Guarded, not trusted. A missing or non-numeric `timestamp` yields NaN, which passes
@@ -177,7 +286,10 @@ export const loadDirectory = async (): Promise<Directory> => {
   const fixture = activeFixture()
   if (fixture) return fixtureDirectory(fixture)
 
-  const catalog = await getCatalog()
+  const [catalog, nostrCatalog] = await Promise.all([
+    getCatalog(),
+    readNostrWorkspaceBindings(),
+  ])
 
   const sources: Array<{
     program: DirectoryProgram
@@ -200,6 +312,14 @@ export const loadDirectory = async (): Promise<Directory> => {
       about: network.about,
       snapshot: network.contracts.merkleSnapshot,
     })),
+    ...nostrCatalog.bindings.map(({ snapshot, scoreProgram }) => ({
+      program: 'nostr-workspace' as const,
+      id: `${scoreProgram.instanceId}:${snapshot}`,
+      name: `Nostr workspace ${scoreProgram.instanceId.slice(0, 10)}…${scoreProgram.instanceId.slice(-6)}`,
+      about:
+        'Members and delegated agents scored from anchored Buzz/Nostr workspace history.',
+      snapshot,
+    })),
   ]
 
   const summaries = await Promise.all(
@@ -214,6 +334,7 @@ export const loadDirectory = async (): Promise<Directory> => {
     'trust-graph': [],
     contributions: [],
     hypercerts: [],
+    'nostr-workspace': [],
   }
 
   sources.forEach((source, index) => {
@@ -221,7 +342,10 @@ export const loadDirectory = async (): Promise<Directory> => {
       id: source.id,
       name: source.name,
       blurb: oneLine(source.about),
-      href: `/networks/${source.id}`,
+      href:
+        source.program === 'nostr-workspace'
+          ? `/nostr-workspaces/${source.snapshot}`
+          : `/networks/${source.id}`,
       summary: summaries[index] ?? UNREADABLE,
     })
   })
@@ -230,7 +354,8 @@ export const loadDirectory = async (): Promise<Directory> => {
 
   return {
     sections,
-    catalogError: catalog.error,
+    catalogError:
+      [catalog.error, nostrCatalog.error].filter(Boolean).join('; ') || null,
     total: sections.reduce((n, section) => n + section.rows.length, 0),
   }
 }

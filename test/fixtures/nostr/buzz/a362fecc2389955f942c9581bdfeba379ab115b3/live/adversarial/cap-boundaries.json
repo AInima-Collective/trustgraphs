@@ -1,0 +1,22 @@
+{
+  "format": "trustgraphs.nostr.tgnw-cap-boundaries.v1",
+  "cases": [
+    { "field": "bundleBytes", "maximum": 12582912, "firstRejected": 12582913 },
+    { "field": "selectedHeads", "maximum": 129, "firstRejected": 130 },
+    { "field": "auditEntries", "maximum": 4096, "firstRejected": 4097 },
+    { "field": "events", "maximum": 512, "firstRejected": 513 },
+    { "field": "encodedEventBytes", "maximum": 131072, "firstRejected": 131073 },
+    { "field": "contentBytes", "maximum": 65536, "firstRejected": 65537 },
+    { "field": "tagsPerEvent", "maximum": 64, "firstRejected": 65 },
+    { "field": "elementsPerTag", "maximum": 8, "firstRejected": 9 },
+    { "field": "tagStringBytes", "maximum": 1024, "firstRejected": 1025 },
+    { "field": "allTagStringBytes", "maximum": 16384, "firstRejected": 16385 },
+    { "field": "auditDetailBytes", "maximum": 4096, "firstRejected": 4097 },
+    { "field": "nip01SignatureChecks", "maximum": 640, "firstRejected": 641 },
+    { "field": "nipOaSignatureChecks", "maximum": 256, "firstRejected": 257 },
+    { "field": "pilotBundleBytes", "maximum": 4194304, "firstRejected": 4194305 },
+    { "field": "pilotAuditEntries", "maximum": 2048, "firstRejected": 2049 },
+    { "field": "pilotNipOaSignatureChecks", "maximum": 128, "firstRejected": 129 },
+    { "field": "pilotEstimatedPgu", "maximum": 400000000, "firstRejected": 400000001 }
+  ]
+}

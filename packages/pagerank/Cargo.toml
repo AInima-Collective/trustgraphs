@@ -18,6 +18,14 @@ js-sys = "0.3"
 [dev-dependencies]
 mockall = { workspace = true }
 
+[lints.clippy]
+expect_fun_call = "allow"
+map_entry = "allow"
+new_without_default = "allow"
+partialeq_to_none = "allow"
+unnecessary_get_then_check = "allow"
+unnecessary_sort_by = "allow"
+
 [profile.release]
 codegen-units = 1
 opt-level = "s"

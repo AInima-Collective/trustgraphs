@@ -3,433 +3,433 @@
 // wired into the frontend's contract config yet. Events only: the indexer never calls it.
 export const provingVaultAbi = [
   {
-    "type": "event",
-    "name": "AccountBound",
-    "inputs": [
+    type: 'event',
+    name: 'AccountBound',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "snapshot",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'snapshot',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "program",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      }
+        name: 'program',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "ClaimSkipped",
-    "inputs": [
+    type: 'event',
+    name: 'ClaimSkipped',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "checkpointId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
+        name: 'checkpointId',
+        type: 'uint256',
+        indexed: true,
+        internalType: 'uint256',
       },
       {
-        "name": "reason",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
-      }
+        name: 'reason',
+        type: 'uint8',
+        indexed: false,
+        internalType: 'uint8',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "Claimed",
-    "inputs": [
+    type: 'event',
+    name: 'Claimed',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "checkpointId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
+        name: 'checkpointId',
+        type: 'uint256',
+        indexed: true,
+        internalType: 'uint256',
       },
       {
-        "name": "recipient",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'recipient',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "submitter",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
+        name: 'submitter',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
       },
       {
-        "name": "feeUsd",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'feeUsd',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "gasUsd",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'gasUsd',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "ethSpent",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'ethSpent',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "usdcSpent",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'usdcSpent',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "CreditAccrued",
-    "inputs": [
+    type: 'event',
+    name: 'CreditAccrued',
+    inputs: [
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'token',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'amount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "CreditWithdrawn",
-    "inputs": [
+    type: 'event',
+    name: 'CreditWithdrawn',
+    inputs: [
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'token',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "to",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
+        name: 'to',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
       },
       {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'amount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "Deposited",
-    "inputs": [
+    type: 'event',
+    name: 'Deposited',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'token',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'from',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'amount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "FeeScheduleUpdated",
-    "inputs": [
+    type: 'event',
+    name: 'FeeScheduleUpdated',
+    inputs: [
       {
-        "name": "program",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'program',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "band",
-        "type": "uint8",
-        "indexed": true,
-        "internalType": "uint8"
+        name: 'band',
+        type: 'uint8',
+        indexed: true,
+        internalType: 'uint8',
       },
       {
-        "name": "usdPerRoot",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'usdPerRoot',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "GasParamsUpdated",
-    "inputs": [
+    type: 'event',
+    name: 'GasParamsUpdated',
+    inputs: [
       {
-        "name": "maxGasUnitsPerClaim",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'maxGasUnitsPerClaim',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "nominalGasUnits",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'nominalGasUnits',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "PolicyUpdated",
-    "inputs": [
+    type: 'event',
+    name: 'PolicyUpdated',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "minPaidIntervalBlocks",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
+        name: 'minPaidIntervalBlocks',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
       },
       {
-        "name": "maxPerRootUsd",
-        "type": "uint96",
-        "indexed": false,
-        "internalType": "uint96"
-      }
+        name: 'maxPerRootUsd',
+        type: 'uint96',
+        indexed: false,
+        internalType: 'uint96',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "PriceFeedUpdated",
-    "inputs": [
+    type: 'event',
+    name: 'PriceFeedUpdated',
+    inputs: [
       {
-        "name": "feed",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
+        name: 'feed',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
       },
       {
-        "name": "maxStaleness",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
+        name: 'maxStaleness',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleAdminChanged",
-    "inputs": [
+    type: 'event',
+    name: 'RoleAdminChanged',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "previousAdminRole",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'previousAdminRole',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "newAdminRole",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      }
+        name: 'newAdminRole',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleGranted",
-    "inputs": [
+    type: 'event',
+    name: 'RoleGranted',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "sender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
+        name: 'sender',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "RoleRevoked",
-    "inputs": [
+    type: 'event',
+    name: 'RoleRevoked',
+    inputs: [
       {
-        "name": "role",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'role',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "account",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
+        name: 'account',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
       },
       {
-        "name": "sender",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
+        name: 'sender',
+        type: 'address',
+        indexed: true,
+        internalType: 'address',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "WithdrawalCancelled",
-    "inputs": [
+    type: 'event',
+    name: 'WithdrawalCancelled',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      }
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "WithdrawalExecuted",
-    "inputs": [
+    type: 'event',
+    name: 'WithdrawalExecuted',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "to",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
+        name: 'to',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
       },
       {
-        "name": "ethAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'ethAmount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "usdcAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
+        name: 'usdcAmount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
+      },
     ],
-    "anonymous": false
+    anonymous: false,
   },
   {
-    "type": "event",
-    "name": "WithdrawalRequested",
-    "inputs": [
+    type: 'event',
+    name: 'WithdrawalRequested',
+    inputs: [
       {
-        "name": "instanceId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
       },
       {
-        "name": "ethAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'ethAmount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "usdcAmount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
+        name: 'usdcAmount',
+        type: 'uint256',
+        indexed: false,
+        internalType: 'uint256',
       },
       {
-        "name": "readyAt",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
+        name: 'readyAt',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
+      },
     ],
-    "anonymous": false
-  }
+    anonymous: false,
+  },
 ] as const

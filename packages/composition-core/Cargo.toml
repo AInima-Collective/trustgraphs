@@ -17,3 +17,6 @@ zk-core = { path = "../zk-core" }
 
 [dev-dependencies]
 proptest = "1.7"
+
+[lints.clippy]
+too_many_arguments = "allow"

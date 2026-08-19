@@ -24,5 +24,9 @@ hex = { workspace = true }
 # The legacy f64 implementation, for the off-chain fixed-point-vs-f64 diff harness (WP11 acceptance).
 pagerank = { path = "../pagerank" }
 
+[lints.clippy]
+manual_div_ceil = "allow"
+unnecessary_sort_by = "allow"
+
 # NOTE: this crate must also compile for the SP1 zkVM target (riscv32im-succinct-zkvm-elf).
 # It uses std (SP1 provides a std shim) but no platform-dependent or floating-point operations.

@@ -1,0 +1,2698 @@
+{
+  "id": "0331c66d-04b1-4a68-af1c-70312eb51748",
+  "prevId": "a15fadbf-dad2-49b9-8578-e7dc15281ce7",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "offchain.composition_attribution": {
+      "name": "composition_attribution",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceId": {
+          "name": "sourceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "exactValue": {
+          "name": "exactValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idealNumerator": {
+          "name": "idealNumerator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idealDenominator": {
+          "name": "idealDenominator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "roundingDeltaNumerator": {
+          "name": "roundingDeltaNumerator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "composition_attribution_merkleSnapshotContract_checkpointId_account_index": {
+          "name": "composition_attribution_merkleSnapshotContract_checkpointId_account_index",
+          "columns": [
+            {
+              "expression": "merkleSnapshotContract",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checkpointId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_attribution_root_index": {
+          "name": "composition_attribution_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_attribution_sourceId_account_index": {
+          "name": "composition_attribution_sourceId_account_index",
+          "columns": [
+            {
+              "expression": "sourceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "composition_attribution_merkleSnapshotContract_checkpointId_sourceId_account_pk": {
+          "name": "composition_attribution_merkleSnapshotContract_checkpointId_sourceId_account_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "checkpointId",
+            "sourceId",
+            "account"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.composition_epoch": {
+      "name": "composition_epoch",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instanceId": {
+          "name": "instanceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policyVersion": {
+          "name": "policyVersion",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "paramsHash": {
+          "name": "paramsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "captureManifestSha256": {
+          "name": "captureManifestSha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outputBlobSha256": {
+          "name": "outputBlobSha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outputCid": {
+          "name": "outputCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work": {
+          "name": "work",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metrics": {
+          "name": "metrics",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cryptographicProvenance": {
+          "name": "cryptographicProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "governanceProvenance": {
+          "name": "governanceProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifiedAt": {
+          "name": "verifiedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "composition_epoch_instanceId_checkpointId_index": {
+          "name": "composition_epoch_instanceId_checkpointId_index",
+          "columns": [
+            {
+              "expression": "instanceId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checkpointId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_epoch_merkleSnapshotContract_root_index": {
+          "name": "composition_epoch_merkleSnapshotContract_root_index",
+          "columns": [
+            {
+              "expression": "merkleSnapshotContract",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_epoch_paramsHash_index": {
+          "name": "composition_epoch_paramsHash_index",
+          "columns": [
+            {
+              "expression": "paramsHash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_epoch_timestamp_index": {
+          "name": "composition_epoch_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "composition_epoch_merkleSnapshotContract_checkpointId_pk": {
+          "name": "composition_epoch_merkleSnapshotContract_checkpointId_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "checkpointId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.composition_source": {
+      "name": "composition_source",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceId": {
+          "name": "sourceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "familyId": {
+          "name": "familyId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adapter": {
+          "name": "adapter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deploymentProvenance": {
+          "name": "deploymentProvenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stateIndex": {
+          "name": "stateIndex",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceCheckpointId": {
+          "name": "sourceCheckpointId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "freezeBlock": {
+          "name": "freezeBlock",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outputRoot": {
+          "name": "outputRoot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blobSha256": {
+          "name": "blobSha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cid": {
+          "name": "cid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weight": {
+          "name": "weight",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "maxAgeBlocks": {
+          "name": "maxAgeBlocks",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quota": {
+          "name": "quota",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entryCount": {
+          "name": "entryCount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blobBytes": {
+          "name": "blobBytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cryptographicallyBound": {
+          "name": "cryptographicallyBound",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "governanceAdmitted": {
+          "name": "governanceAdmitted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "composition_source_merkleSnapshotContract_checkpointId_position_index": {
+          "name": "composition_source_merkleSnapshotContract_checkpointId_position_index",
+          "columns": [
+            {
+              "expression": "merkleSnapshotContract",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checkpointId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_source_root_index": {
+          "name": "composition_source_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_source_snapshot_stateIndex_index": {
+          "name": "composition_source_snapshot_stateIndex_index",
+          "columns": [
+            {
+              "expression": "snapshot",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stateIndex",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "composition_source_familyId_index": {
+          "name": "composition_source_familyId_index",
+          "columns": [
+            {
+              "expression": "familyId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "composition_source_merkleSnapshotContract_checkpointId_sourceId_pk": {
+          "name": "composition_source_merkleSnapshotContract_checkpointId_sourceId_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "checkpointId",
+            "sourceId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.contribution_round": {
+      "name": "contribution_round",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHash": {
+          "name": "ipfsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHashCid": {
+          "name": "ipfsHashCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trustAcc": {
+          "name": "trustAcc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trustLeafCount": {
+          "name": "trustLeafCount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorAcc": {
+          "name": "anchorAcc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorCount": {
+          "name": "anchorCount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "paramsHash": {
+          "name": "paramsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "params": {
+          "name": "params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "roundStart": {
+          "name": "roundStart",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "roundEnd": {
+          "name": "roundEnd",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totalPool": {
+          "name": "totalPool",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numClaims": {
+          "name": "numClaims",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numRecipients": {
+          "name": "numRecipients",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verified": {
+          "name": "verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failureReason": {
+          "name": "failureReason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "programProvenance": {
+          "name": "programProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "contribution_round_root_index": {
+          "name": "contribution_round_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_round_ipfsHashCid_index": {
+          "name": "contribution_round_ipfsHashCid_index",
+          "columns": [
+            {
+              "expression": "ipfsHashCid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_round_timestamp_index": {
+          "name": "contribution_round_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "contribution_round_merkleSnapshotContract_root_pk": {
+          "name": "contribution_round_merkleSnapshotContract_root_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.contribution_score": {
+      "name": "contribution_score",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimUid": {
+          "name": "claimUid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scoreFp": {
+          "name": "scoreFp",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contributors": {
+          "name": "contributors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "contribution_score_root_index": {
+          "name": "contribution_score_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_score_claimUid_index": {
+          "name": "contribution_score_claimUid_index",
+          "columns": [
+            {
+              "expression": "claimUid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "contribution_score_merkleSnapshotContract_root_claimUid_pk": {
+          "name": "contribution_score_merkleSnapshotContract_root_claimUid_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root",
+            "claimUid"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.contribution_valuation_audit": {
+      "name": "contribution_valuation_audit",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimUid": {
+          "name": "claimUid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rater": {
+          "name": "rater",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discountFp": {
+          "name": "discountFp",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raterRepFp": {
+          "name": "raterRepFp",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "contribution_valuation_audit_root_index": {
+          "name": "contribution_valuation_audit_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_valuation_audit_claimUid_index": {
+          "name": "contribution_valuation_audit_claimUid_index",
+          "columns": [
+            {
+              "expression": "claimUid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_valuation_audit_rater_index": {
+          "name": "contribution_valuation_audit_rater_index",
+          "columns": [
+            {
+              "expression": "rater",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contribution_valuation_audit_status_index": {
+          "name": "contribution_valuation_audit_status_index",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "contribution_valuation_audit_merkleSnapshotContract_root_claimUid_rater_pk": {
+          "name": "contribution_valuation_audit_merkleSnapshotContract_root_claimUid_rater_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root",
+            "claimUid",
+            "rater"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.erc8004_endpoint_observation": {
+      "name": "erc8004_endpoint_observation",
+      "schema": "offchain",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "documentId": {
+          "name": "documentId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agentKey": {
+          "name": "agentKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "serviceName": {
+          "name": "serviceName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "httpStatus": {
+          "name": "httpStatus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checkedAt": {
+          "name": "checkedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "latencyMs": {
+          "name": "latencyMs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "erc8004_endpoint_observation_documentId_index": {
+          "name": "erc8004_endpoint_observation_documentId_index",
+          "columns": [
+            {
+              "expression": "documentId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_endpoint_observation_agentKey_checkedAt_index": {
+          "name": "erc8004_endpoint_observation_agentKey_checkedAt_index",
+          "columns": [
+            {
+              "expression": "agentKey",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checkedAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_endpoint_observation_status_index": {
+          "name": "erc8004_endpoint_observation_status_index",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.erc8004_registration_document": {
+      "name": "erc8004_registration_document",
+      "schema": "offchain",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "agentKey": {
+          "name": "agentKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uri": {
+          "name": "uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finalUri": {
+          "name": "finalUri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contentHash": {
+          "name": "contentHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "schemaVersion": {
+          "name": "schemaVersion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parsedJson": {
+          "name": "parsedJson",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetchedAt": {
+          "name": "fetchedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetchStatus": {
+          "name": "fetchStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "httpStatus": {
+          "name": "httpStatus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contentType": {
+          "name": "contentType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "byteLength": {
+          "name": "byteLength",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mutable": {
+          "name": "mutable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceBlock": {
+          "name": "sourceBlock",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceLogIndex": {
+          "name": "sourceLogIndex",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "erc8004_registration_document_agentKey_index": {
+          "name": "erc8004_registration_document_agentKey_index",
+          "columns": [
+            {
+              "expression": "agentKey",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_registration_document_agentKey_fetchedAt_index": {
+          "name": "erc8004_registration_document_agentKey_fetchedAt_index",
+          "columns": [
+            {
+              "expression": "agentKey",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fetchedAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_registration_document_contentHash_index": {
+          "name": "erc8004_registration_document_contentHash_index",
+          "columns": [
+            {
+              "expression": "contentHash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_registration_document_fetchStatus_index": {
+          "name": "erc8004_registration_document_fetchStatus_index",
+          "columns": [
+            {
+              "expression": "fetchStatus",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.erc8004_reputation_document": {
+      "name": "erc8004_reputation_document",
+      "schema": "offchain",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "subjectId": {
+          "name": "subjectId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "feedbackId": {
+          "name": "feedbackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uri": {
+          "name": "uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "finalUri": {
+          "name": "finalUri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expectedHash": {
+          "name": "expectedHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contentHash": {
+          "name": "contentHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hashStatus": {
+          "name": "hashStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parsedJson": {
+          "name": "parsedJson",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetchedAt": {
+          "name": "fetchedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetchStatus": {
+          "name": "fetchStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "httpStatus": {
+          "name": "httpStatus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contentType": {
+          "name": "contentType",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "byteLength": {
+          "name": "byteLength",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mutable": {
+          "name": "mutable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceBlock": {
+          "name": "sourceBlock",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceTransactionIndex": {
+          "name": "sourceTransactionIndex",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sourceLogIndex": {
+          "name": "sourceLogIndex",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "erc8004_reputation_document_subjectId_fetchedAt_index": {
+          "name": "erc8004_reputation_document_subjectId_fetchedAt_index",
+          "columns": [
+            {
+              "expression": "subjectId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fetchedAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_reputation_document_feedbackId_kind_index": {
+          "name": "erc8004_reputation_document_feedbackId_kind_index",
+          "columns": [
+            {
+              "expression": "feedbackId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_reputation_document_fetchStatus_index": {
+          "name": "erc8004_reputation_document_fetchStatus_index",
+          "columns": [
+            {
+              "expression": "fetchStatus",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "erc8004_reputation_document_hashStatus_index": {
+          "name": "erc8004_reputation_document_hashStatus_index",
+          "columns": [
+            {
+              "expression": "hashStatus",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.hypercerts_metadata": {
+      "name": "hypercerts_metadata",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHash": {
+          "name": "ipfsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHashCid": {
+          "name": "ipfsHashCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numNodes": {
+          "name": "numNodes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skippedDigest": {
+          "name": "skippedDigest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorAcc": {
+          "name": "anchorAcc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorCount": {
+          "name": "anchorCount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "programProvenance": {
+          "name": "programProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hypercerts_metadata_root_index": {
+          "name": "hypercerts_metadata_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hypercerts_metadata_ipfsHashCid_index": {
+          "name": "hypercerts_metadata_ipfsHashCid_index",
+          "columns": [
+            {
+              "expression": "ipfsHashCid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hypercerts_metadata_timestamp_index": {
+          "name": "hypercerts_metadata_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "hypercerts_metadata_merkleSnapshotContract_root_pk": {
+          "name": "hypercerts_metadata_merkleSnapshotContract_root_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.hypercerts_score": {
+      "name": "hypercerts_score",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nodeId": {
+          "name": "nodeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "did": {
+          "name": "did",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "boundAddress": {
+          "name": "boundAddress",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "hypercerts_score_root_index": {
+          "name": "hypercerts_score_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hypercerts_score_nodeId_index": {
+          "name": "hypercerts_score_nodeId_index",
+          "columns": [
+            {
+              "expression": "nodeId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hypercerts_score_boundAddress_index": {
+          "name": "hypercerts_score_boundAddress_index",
+          "columns": [
+            {
+              "expression": "boundAddress",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "hypercerts_score_timestamp_index": {
+          "name": "hypercerts_score_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "hypercerts_score_merkleSnapshotContract_root_nodeId_pk": {
+          "name": "hypercerts_score_merkleSnapshotContract_root_nodeId_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root",
+            "nodeId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.merkle_entry": {
+      "name": "merkle_entry",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account": {
+          "name": "account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHashCid": {
+          "name": "ipfsHashCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "merkle_entry_root_index": {
+          "name": "merkle_entry_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_entry_account_index": {
+          "name": "merkle_entry_account_index",
+          "columns": [
+            {
+              "expression": "account",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_entry_ipfsHashCid_index": {
+          "name": "merkle_entry_ipfsHashCid_index",
+          "columns": [
+            {
+              "expression": "ipfsHashCid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_entry_blockNumber_index": {
+          "name": "merkle_entry_blockNumber_index",
+          "columns": [
+            {
+              "expression": "blockNumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_entry_timestamp_index": {
+          "name": "merkle_entry_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_entry_account_timestamp_index": {
+          "name": "merkle_entry_account_timestamp_index",
+          "columns": [
+            {
+              "expression": "account",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "merkle_entry_merkleSnapshotContract_root_account_pk": {
+          "name": "merkle_entry_merkleSnapshotContract_root_account_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root",
+            "account"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.merkle_metadata": {
+      "name": "merkle_metadata",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHash": {
+          "name": "ipfsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHashCid": {
+          "name": "ipfsHashCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numAccounts": {
+          "name": "numAccounts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sources": {
+          "name": "sources",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "programProvenance": {
+          "name": "programProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "merkle_metadata_root_index": {
+          "name": "merkle_metadata_root_index",
+          "columns": [
+            {
+              "expression": "root",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_metadata_ipfsHashCid_index": {
+          "name": "merkle_metadata_ipfsHashCid_index",
+          "columns": [
+            {
+              "expression": "ipfsHashCid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_metadata_blockNumber_index": {
+          "name": "merkle_metadata_blockNumber_index",
+          "columns": [
+            {
+              "expression": "blockNumber",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "merkle_metadata_timestamp_index": {
+          "name": "merkle_metadata_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "merkle_metadata_merkleSnapshotContract_root_pk": {
+          "name": "merkle_metadata_merkleSnapshotContract_root_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.nostr_workspace_metadata": {
+      "name": "nostr_workspace_metadata",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHash": {
+          "name": "ipfsHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipfsHashCid": {
+          "name": "ipfsHashCid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "numNodes": {
+          "name": "numNodes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totalValue": {
+          "name": "totalValue",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skippedDigest": {
+          "name": "skippedDigest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorAcc": {
+          "name": "anchorAcc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anchorCount": {
+          "name": "anchorCount",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accessPolicy": {
+          "name": "accessPolicy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "epochTrustClass": {
+          "name": "epochTrustClass",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reducedRecomputeStatus": {
+          "name": "reducedRecomputeStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skipSummary": {
+          "name": "skipSummary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archiveProvenance": {
+          "name": "archiveProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programProvenance": {
+          "name": "programProvenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "nostr_workspace_metadata_checkpointId_index": {
+          "name": "nostr_workspace_metadata_checkpointId_index",
+          "columns": [
+            {
+              "expression": "checkpointId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_metadata_ipfsHashCid_index": {
+          "name": "nostr_workspace_metadata_ipfsHashCid_index",
+          "columns": [
+            {
+              "expression": "ipfsHashCid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_metadata_accessPolicy_index": {
+          "name": "nostr_workspace_metadata_accessPolicy_index",
+          "columns": [
+            {
+              "expression": "accessPolicy",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_metadata_timestamp_index": {
+          "name": "nostr_workspace_metadata_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "nostr_workspace_metadata_merkleSnapshotContract_root_pk": {
+          "name": "nostr_workspace_metadata_merkleSnapshotContract_root_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.nostr_workspace_score": {
+      "name": "nostr_workspace_score",
+      "schema": "offchain",
+      "columns": {
+        "merkleSnapshotContract": {
+          "name": "merkleSnapshotContract",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nodeId": {
+          "name": "nodeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nostrPubkey": {
+          "name": "nostrPubkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actorKind": {
+          "name": "actorKind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ownerNodeId": {
+          "name": "ownerNodeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "boundAddress": {
+          "name": "boundAddress",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blockNumber": {
+          "name": "blockNumber",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "programId": {
+          "name": "programId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outputDomain": {
+          "name": "outputDomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "nostr_workspace_score_nodeId_index": {
+          "name": "nostr_workspace_score_nodeId_index",
+          "columns": [
+            {
+              "expression": "nodeId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_score_ownerNodeId_index": {
+          "name": "nostr_workspace_score_ownerNodeId_index",
+          "columns": [
+            {
+              "expression": "ownerNodeId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_score_boundAddress_index": {
+          "name": "nostr_workspace_score_boundAddress_index",
+          "columns": [
+            {
+              "expression": "boundAddress",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_score_actorKind_index": {
+          "name": "nostr_workspace_score_actorKind_index",
+          "columns": [
+            {
+              "expression": "actorKind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "nostr_workspace_score_timestamp_index": {
+          "name": "nostr_workspace_score_timestamp_index",
+          "columns": [
+            {
+              "expression": "timestamp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "nostr_workspace_score_merkleSnapshotContract_root_nodeId_pk": {
+          "name": "nostr_workspace_score_merkleSnapshotContract_root_nodeId_pk",
+          "columns": [
+            "merkleSnapshotContract",
+            "root",
+            "nodeId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "offchain.skipped_node": {
+      "name": "skipped_node",
+      "schema": "offchain",
+      "columns": {
+        "checkpointId": {
+          "name": "checkpointId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nodeId": {
+          "name": "nodeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "epochObserved": {
+          "name": "epochObserved",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "validated": {
+          "name": "validated",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "skipped_node_checkpointId_index": {
+          "name": "skipped_node_checkpointId_index",
+          "columns": [
+            {
+              "expression": "checkpointId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "skipped_node_nodeId_index": {
+          "name": "skipped_node_nodeId_index",
+          "columns": [
+            {
+              "expression": "nodeId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "skipped_node_reason_index": {
+          "name": "skipped_node_reason_index",
+          "columns": [
+            {
+              "expression": "reason",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "skipped_node_checkpointId_nodeId_pk": {
+          "name": "skipped_node_checkpointId_nodeId_pk",
+          "columns": [
+            "checkpointId",
+            "nodeId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "offchain": "offchain"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

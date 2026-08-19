@@ -3,7 +3,7 @@
 //! Three programs share one page and they do not score the same thing. A trust-graph instance
 //! scores people who vouch for each other; a contributions round scores work claimed in a funding
 //! round; a hypercerts instance scores repositories and the accounts behind them. Rendering all
-//! three as identical cards (which is what shipped) asks a reader to notice a difference that
+//! four as identical cards (which is what shipped) asks a reader to notice a difference that
 //! nothing on the page tells them about.
 //!
 //! So the directory is SECTIONS, one per program, each with a sentence saying what it scores. A
@@ -11,11 +11,12 @@
 //!
 //! This module is types and pure shaping only. The reads live in `directory.server.ts`.
 
-/** The three programs that put instances on this page. Order is the order they render in. */
+/** The programs that put instances on this page. Order is the order they render in. */
 export const PROGRAM_ORDER = [
   'trust-graph',
   'contributions',
   'hypercerts',
+  'nostr-workspace',
 ] as const
 
 export type DirectoryProgram = (typeof PROGRAM_ORDER)[number]
@@ -97,6 +98,13 @@ export const SECTION_META: Record<
       'Accounts are scored on the impact claims and evaluations they have published.',
     nameLabel: 'Instance',
     scoredLabel: 'Accounts',
+  },
+  'nostr-workspace': {
+    title: 'Nostr workspaces',
+    standfirst:
+      'Members and delegated agents are scored from an anchored Buzz workspace history.',
+    nameLabel: 'Workspace',
+    scoredLabel: 'Members and agents',
   },
 }
 

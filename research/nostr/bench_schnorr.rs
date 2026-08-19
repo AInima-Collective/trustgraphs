@@ -5,7 +5,7 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
-use k256::schnorr::signature::Verifier;
+use k256::schnorr::signature::hazmat::PrehashVerifier;
 use k256::schnorr::{Signature, VerifyingKey};
 
 pub fn main() {
@@ -15,7 +15,7 @@ pub fn main() {
     for (msg, sig_bytes, pk_bytes) in &cases {
         let vk = VerifyingKey::from_bytes(pk_bytes).expect("xonly pubkey");
         let sig = Signature::try_from(sig_bytes.as_slice()).expect("sig");
-        vk.verify(msg, &sig).expect("schnorr verify");
+        vk.verify_prehash(msg, &sig).expect("schnorr prehash verify");
         for (i, b) in pk_bytes.iter().enumerate() {
             acc[i % 32] ^= b;
         }

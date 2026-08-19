@@ -1,10 +1,12 @@
-import { sql } from 'drizzle-orm'
+import { and, count, desc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import { scoreProgramBinding } from 'ponder:schema'
 
 import {
+  SCORE_PROGRAMS,
   type ScoreApi,
+  type ScoreProgramName,
   type ScoreProgramProvenance,
   parseScoreProgramProvenance,
   requireScoreApi,
@@ -157,6 +159,82 @@ export const requireEntryScoreProgram = (
 }
 
 const app = new Hono()
+
+const DEFAULT_CATALOG_LIMIT = 50
+const MAX_CATALOG_LIMIT = 200
+
+const catalogInteger = (
+  raw: string | undefined,
+  fallback: number,
+  maximum: number
+) => {
+  if (raw === undefined) return fallback
+  if (!/^(0|[1-9][0-9]*)$/.test(raw)) return null
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value)) return null
+  return Math.min(value, maximum)
+}
+
+/**
+ * List current and historical authenticated bindings for one known program. This is the discovery
+ * seam for non-factory programs: rows originate only in InstanceRegistry events, and unknown or
+ * conflicted identities never become catalog entries.
+ */
+app.get('/', async (c) => {
+  const requested = c.req.query('program') as ScoreProgramName | undefined
+  const program = SCORE_PROGRAMS.find(
+    (candidate) => candidate.name === requested
+  )
+  const limit = catalogInteger(
+    c.req.query('limit'),
+    DEFAULT_CATALOG_LIMIT,
+    MAX_CATALOG_LIMIT
+  )
+  const offset = catalogInteger(
+    c.req.query('offset'),
+    0,
+    Number.MAX_SAFE_INTEGER
+  )
+  if (!program) {
+    return c.json({ error: 'program must name a known score program' }, 400)
+  }
+  if (limit === null || offset === null) {
+    return c.json(
+      { error: 'limit and offset must be non-negative integers' },
+      400
+    )
+  }
+
+  const where = and(
+    eq(scoreProgramBinding.programId, program.programId),
+    eq(scoreProgramBinding.outputDomain, program.outputDomain),
+    eq(scoreProgramBinding.conflict, false)
+  )
+  const [bindings, totals] = await Promise.all([
+    db
+      .select()
+      .from(scoreProgramBinding)
+      .where(where)
+      .orderBy(
+        desc(scoreProgramBinding.sourceBlock),
+        desc(scoreProgramBinding.sourceLogIndex)
+      )
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ value: count(scoreProgramBinding.id) })
+      .from(scoreProgramBinding)
+      .where(where),
+  ])
+
+  return c.json({
+    bindings: bindings.map((binding) => ({
+      snapshot: binding.snapshot,
+      scoreProgram: serializeScoreProgramBinding(binding),
+    })),
+    pagination: { limit, offset, total: totals[0]?.value ?? 0 },
+  })
+})
 
 app.get('/:snapshot', async (c) => {
   try {

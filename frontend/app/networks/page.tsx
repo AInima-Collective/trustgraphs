@@ -136,7 +136,7 @@ const compactLine = (row: DirectoryRow, section: DirectorySection): string => {
 }
 
 const toView = (section: DirectorySection): DirectorySectionView => {
-  // Only the vouching program has vouches to count; the other two would be quoting a column that
+  // Only the vouching program has vouches to count; the others would be quoting a column that
   // means nothing to them.
   const withVouches = section.program === 'trust-graph'
 

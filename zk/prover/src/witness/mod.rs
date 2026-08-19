@@ -12,17 +12,25 @@
 //! a manifest of head digests and content hashes) and, as a soundness self-check, re-verifies each
 //! assembled witness with the very `envelopes` code the guest runs.
 
+#[cfg(feature = "witness-atproto")]
 pub mod atproto;
+#[cfg(feature = "witness-nostr")]
+pub mod nostr;
 
+#[cfg(feature = "witness-atproto")]
 use std::path::PathBuf;
 
+#[cfg(feature = "witness-atproto")]
 use anyhow::Result;
+#[cfg(feature = "witness-atproto")]
 use clap::Subcommand;
 
+#[cfg(feature = "witness-atproto")]
 use atproto::{FetchConfig, DEFAULT_ARCHIVE_DIR, DEFAULT_PLC_URL, DEFAULT_RELAY_URL};
 
 /// `witness` subcommands.
 #[derive(Subcommand)]
+#[cfg(feature = "witness-atproto")]
 pub enum Command {
     /// Fetch + archive the repo CAR and PLC audit log for each DID, write the bundle manifest, and
     /// print the head digests (the values the AnchorRegistry anchors). Reproducible offline after.
@@ -53,6 +61,7 @@ pub enum Command {
     },
 }
 
+#[cfg(feature = "witness-atproto")]
 pub fn run(cmd: Command) -> Result<()> {
     match cmd {
         Command::Fetch {

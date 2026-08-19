@@ -130,7 +130,6 @@ mod tests {
     fn p256_vector() {
         use p256::ecdsa::signature::hazmat::PrehashSigner;
         use p256::ecdsa::{Signature, SigningKey};
-        use p256::elliptic_curve::sec1::ToEncodedPoint;
 
         let sk_bytes = [7u8; 32];
         let sk = SigningKey::from_slice(&sk_bytes).unwrap();

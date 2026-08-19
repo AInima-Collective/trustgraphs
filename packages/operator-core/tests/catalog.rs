@@ -398,6 +398,42 @@ fn add_composition(chain: &mut FakeChain, seed: u8) -> B256 {
     id
 }
 
+fn add_nostr_workspace(chain: &mut FakeChain, seed: u8) -> (B256, ManifestEntry) {
+    let id = B256::from([seed; 32]);
+    let snapshot = Address::from([seed.wrapping_add(0x10); 20]);
+    let anchor_registry = Address::from([seed.wrapping_add(0x20); 20]);
+    let params_authority = Address::from([seed.wrapping_add(0x40); 20]);
+    let params_hash = B256::from([seed.wrapping_add(0x50); 32]);
+
+    chain.ids.push(id);
+    chain.records.insert(
+        id,
+        RegistryRecord {
+            program: Program::NostrWorkspace.id(),
+            snapshot,
+            verifier: Address::from([seed.wrapping_add(0x30); 20]),
+            registry_or_accumulator: anchor_registry,
+            params_hash,
+        },
+    );
+    chain.snapshot_hashes.insert(snapshot, params_hash);
+    chain.authorities.insert(id, params_authority);
+    chain.registration_blocks.insert(id, 111);
+
+    let manifest = ManifestEntry {
+        program: Program::NostrWorkspace,
+        snapshot,
+        params: "nostr-workspace.params.json".into(),
+        eas: None,
+        submit_to: None,
+        selection: None,
+        depends_on: vec![],
+        from_block: 0,
+        witness_manifests: vec!["archives/a.manifest.json".into()],
+    };
+    (id, manifest)
+}
+
 fn scan_all(chain: &FakeChain) -> Catalog {
     scan(chain, Program::Trustgraphs, &Manifest::default()).unwrap()
 }
@@ -510,6 +546,39 @@ fn composition_controller_or_registry_drift_fails_closed() {
 }
 
 #[test]
+fn nostr_workspace_joins_the_registry_tuple_to_immutable_witness_pointers() {
+    let mut chain = FakeChain::default();
+    let (id, manifest_entry) = add_nostr_workspace(&mut chain, 14);
+    let manifest = Manifest { entries: vec![manifest_entry.clone()] };
+    manifest.validate().unwrap();
+
+    let catalog = scan(&chain, Program::NostrWorkspace, &manifest).unwrap();
+    assert!(catalog.skipped.is_empty());
+    let entry = catalog.get(id).expect("registered and manifest-described Nostr instance");
+    let record = chain.records[&id];
+    assert_eq!(entry.program, Program::NostrWorkspace);
+    assert_eq!(entry.snapshot, record.snapshot);
+    assert_eq!(entry.submit_to, record.snapshot);
+    assert_eq!(entry.accumulator, record.registry_or_accumulator);
+    assert_eq!(entry.verifier, record.verifier);
+    assert_eq!(entry.reconstructed_params_hash, record.params_hash);
+    assert_eq!(entry.params_controller, chain.authorities.get(&id).copied());
+    assert_eq!(entry.created_block, 111);
+    assert_eq!(entry.manifest, Some(manifest_entry));
+}
+
+#[test]
+fn nostr_workspace_without_witness_description_fails_closed() {
+    let mut chain = FakeChain::default();
+    let (id, _) = add_nostr_workspace(&mut chain, 15);
+
+    let catalog = scan(&chain, Program::NostrWorkspace, &Manifest::default()).unwrap();
+    assert!(catalog.get(id).is_none());
+    assert_eq!(catalog.skipped.len(), 1);
+    assert_eq!(catalog.skipped[0].reason, SkipCause::Undescribable);
+}
+
+#[test]
 fn a_raw_snapshot_hash_bypass_fails_closed_without_blocking_healthy_instances() {
     let mut chain = FakeChain::default();
     let bad = add_healthy(&mut chain, 1);
@@ -613,6 +682,7 @@ fn a_manifest_covers_what_the_chain_cannot_describe() {
             selection: None,
             depends_on: vec![],
             from_block: 42,
+            witness_manifests: vec![],
         }],
     };
     manifest.validate().unwrap();
@@ -648,6 +718,7 @@ fn the_chain_wins_when_a_manifest_duplicates_a_registered_instance() {
             selection: None,
             depends_on: vec![],
             from_block: 0,
+            witness_manifests: vec![],
         }],
     };
     let catalog = scan(&chain, Program::Trustgraphs, &manifest).unwrap();
@@ -671,6 +742,7 @@ fn a_manifest_entry_that_cannot_work_is_rejected_at_load_time() {
         selection: None,
         depends_on: vec![],
         from_block: 0,
+        witness_manifests: vec![],
     };
     assert_eq!(base.validate(), Err(ManifestError::SignerNeedsSelection));
 

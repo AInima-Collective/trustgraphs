@@ -5,6 +5,7 @@ pub mod atproto_conformance;
 pub mod composition;
 pub mod contributions;
 pub mod hypercerts;
+pub mod nostr_workspace;
 pub mod signer;
 pub mod trust_graph;
 pub mod weighted;

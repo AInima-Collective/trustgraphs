@@ -11,9 +11,8 @@ import { type Hex, bytesToHex, sha256 as viemSha256 } from 'viem'
  */
 export const canonicalBlob = (scores: Array<[Hex, bigint]>): string => {
   let s = '{'
-  for (let i = 0; i < scores.length; i++) {
+  for (const [i, [addr, value]] of scores.entries()) {
     if (i > 0) s += ','
-    const [addr, value] = scores[i]
     s += '"' + addr.toLowerCase() + '":"' + value.toString() + '"'
   }
   s += '}'

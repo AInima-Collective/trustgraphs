@@ -14,6 +14,7 @@ crate-type = ["rlib"]
 # Guest-compiled: no floats, BTree-only, deterministic — same rules as every core crate.
 alloy-primitives = { workspace = true, features = ["serde"] }
 zk-core = { path = "../zk-core" }
+
 envelopes = { path = "../envelopes" }
 pagerank-core = { path = "../pagerank-core" }
 ipld-core = "0.4"
@@ -26,3 +27,9 @@ serde_json = { workspace = true }
 hex = { workspace = true }
 sha2 = { version = "0.10", default-features = false }
 zk-core = { path = "../zk-core" }
+
+[lints.clippy]
+doc_overindented_list_items = "allow"
+type_complexity = "allow"
+unnecessary_map_or = "allow"
+unnecessary_sort_by = "allow"

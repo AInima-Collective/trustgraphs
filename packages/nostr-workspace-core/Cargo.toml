@@ -1,0 +1,26 @@
+[package]
+name = "nostr-workspace-core"
+description = "The Nostr workspace program: authenticated Option-A/Option-C events to deterministic trust edges, scores, bindings, and journal v3"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+alloy-primitives = { workspace = true, features = ["serde"] }
+envelopes = { path = "../envelopes" }
+nostr-envelope = { path = "../nostr-envelope" }
+pagerank-core = { path = "../pagerank-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { version = "0.10", default-features = false }
+zk-core = { path = "../zk-core" }
+
+[dev-dependencies]
+hex = { workspace = true }
+k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
+serde_json = { workspace = true }

@@ -49,6 +49,20 @@ export const anchorRegistryAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'NODE_KIND_BUZZ_COMMUNITY',
+    outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'NODE_KIND_NOSTR',
+    outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'REGISTRAR_ROLE',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',

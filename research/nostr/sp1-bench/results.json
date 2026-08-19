@@ -1,0 +1,120 @@
+{
+  "format": "trustgraphs-nostr-sp1-bench-v1",
+  "sp1": "6.3.1",
+  "cargoProve": "8252c29",
+  "liveEventCount": 35,
+  "liveAuditCount": 30,
+  "liveOaCount": 3,
+  "liveBundleBytes": 20297,
+  "liveDataCommitment": "872093fcdc876464c5c98f4349e090bc86a70da8bef7ef105ccdb5a532033a5d",
+  "measurements": [
+    {
+      "label": "schnorr-prehash-N1",
+      "count": 1,
+      "cycles": 32985,
+      "pgu": 61837
+    },
+    {
+      "label": "schnorr-prehash-N100",
+      "count": 100,
+      "cycles": 3086394,
+      "pgu": 5524930
+    },
+    {
+      "label": "schnorr-prehash-live",
+      "count": 35,
+      "cycles": 1084335,
+      "pgu": 1943205
+    },
+    {
+      "label": "nostr-event-N1",
+      "count": 1,
+      "cycles": 46942,
+      "pgu": 78047
+    },
+    {
+      "label": "nostr-event-N100",
+      "count": 100,
+      "cycles": 4475646,
+      "pgu": 7022803
+    },
+    {
+      "label": "nostr-event-live",
+      "count": 35,
+      "cycles": 1616933,
+      "pgu": 2516403
+    },
+    {
+      "label": "buzz-audit-N1",
+      "count": 1,
+      "cycles": 10752,
+      "pgu": 15840
+    },
+    {
+      "label": "buzz-audit-N100",
+      "count": 100,
+      "cycles": 1030685,
+      "pgu": 1195966
+    },
+    {
+      "label": "buzz-audit-live",
+      "count": 30,
+      "cycles": 325355,
+      "pgu": 387604
+    },
+    {
+      "label": "nip-oa-N1",
+      "count": 1,
+      "cycles": 37438,
+      "pgu": 67658
+    },
+    {
+      "label": "nip-oa-N100",
+      "count": 100,
+      "cycles": 3597935,
+      "pgu": 6131040
+    },
+    {
+      "label": "nip-oa-live",
+      "count": 3,
+      "cycles": 108550,
+      "pgu": 188750
+    },
+    {
+      "label": "tgnw-option-a-live",
+      "count": 1,
+      "cycles": 2519703,
+      "pgu": 3631054
+    }
+  ],
+  "derived": [
+    {
+      "label": "schnorr-prehash",
+      "numerator": "schnorr-prehash-N100 - schnorr-prehash-N1",
+      "denominator": 99,
+      "cyclesPerOperation": 30842,
+      "pguPerOperation": 55182
+    },
+    {
+      "label": "nostr-event",
+      "numerator": "nostr-event-N100 - nostr-event-N1",
+      "denominator": 99,
+      "cyclesPerOperation": 44734,
+      "pguPerOperation": 70149
+    },
+    {
+      "label": "buzz-audit",
+      "numerator": "buzz-audit-N100 - buzz-audit-N1",
+      "denominator": 99,
+      "cyclesPerOperation": 10302,
+      "pguPerOperation": 11920
+    },
+    {
+      "label": "nip-oa",
+      "numerator": "nip-oa-N100 - nip-oa-N1",
+      "denominator": 99,
+      "cyclesPerOperation": 35964,
+      "pguPerOperation": 61246
+    }
+  ]
+}

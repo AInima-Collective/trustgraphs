@@ -50,6 +50,11 @@ pub struct ManifestEntry {
     /// First block to scan for this instance's logs. Zero works and is slow.
     #[serde(default)]
     pub from_block: u64,
+    /// Immutable `nostr-witness export` manifests selected for this instance. The operator passes
+    /// these to `nostr-witness assemble`; every path is rehashed, envelope-verified, and matched
+    /// against the complete checkpoint anchor log before a proof intent is persisted.
+    #[serde(default)]
+    pub witness_manifests: Vec<String>,
 }
 
 impl ManifestEntry {
@@ -82,6 +87,9 @@ impl ManifestEntry {
         {
             return Err(ManifestError::NeedsEas(self.program));
         }
+        if self.program == Program::NostrWorkspace && self.witness_manifests.is_empty() {
+            return Err(ManifestError::NostrNeedsWitnessManifests);
+        }
         Ok(())
     }
 }
@@ -98,6 +106,8 @@ pub enum ManifestError {
     SignerNeedsSelection,
     #[error("program {0:?} reconstructs edges from EAS attestations and needs `eas`")]
     NeedsEas(Program),
+    #[error("nostr-workspace needs at least one immutable witness manifest")]
+    NostrNeedsWitnessManifests,
 }
 
 /// The full manifest, as loaded from config.

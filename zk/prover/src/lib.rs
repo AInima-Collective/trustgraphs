@@ -20,7 +20,7 @@
 
 pub mod common;
 pub mod programs;
-#[cfg(feature = "witness-atproto")]
+#[cfg(any(feature = "witness-atproto", feature = "witness-nostr"))]
 pub mod witness;
 
 pub use common::{Execution, Proof};
