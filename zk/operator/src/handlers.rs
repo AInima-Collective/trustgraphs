@@ -287,6 +287,47 @@ pub fn build_input(
                     })?;
             std::fs::write(&input_path, serde_json::to_vec_pretty(&prepared.input)?)?;
         }
+        Program::NostrWorkspace => {
+            let manifest = entry.manifest.as_ref().ok_or_else(|| {
+                anyhow!("nostr-workspace {} has no archive manifest configuration", entry.name)
+            })?;
+            let checkpoint = checkpoint_id.to_string();
+            let snapshot = format!("{:#x}", entry.snapshot);
+            let recipient = format!("{recipient:#x}");
+            let from_block = entry.created_block.to_string();
+            let output = input_path.display().to_string();
+            let mut args = vec![
+                "run",
+                "-q",
+                "--release",
+                "--features",
+                "witness-nostr",
+                "--manifest-path",
+                "zk/prover/Cargo.toml",
+                "--",
+                "nostr-witness",
+                "assemble",
+                "--rpc",
+                &cfg.rpc,
+                "--snapshot",
+                &snapshot,
+                "--checkpoint",
+                &checkpoint,
+                "--params",
+                &params_path,
+                "--from-block",
+                &from_block,
+                "--recipient",
+                &recipient,
+                "--out",
+                &output,
+            ];
+            for path in &manifest.witness_manifests {
+                args.push("--manifest");
+                args.push(path);
+            }
+            run_tool("cargo", args)?;
+        }
         Program::Hypercerts => {
             bail!("hypercerts is out of scope for this operator (GOAL scope fence)")
         }
@@ -344,6 +385,35 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         }
         let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::composition::elf())?;
         let encoded = composition_core::codec::journal_encoded(&result.journal);
+        return Ok(Built {
+            program,
+            input_path: input_path.clone(),
+            public_values_hash: keccak256(&encoded),
+            vk_hash: parse_b256(&vk)?,
+            output_root: result.journal.output_root,
+            ipfs_hash: result.journal.ipfs_hash,
+            cid: result.cid,
+            total_value: result.journal.total_value,
+            skipped_digest: result.journal.skipped_digest,
+            recipient: result.journal.recipient,
+            blob: result.blob,
+            signers: Vec::new(),
+            target_threshold: U256::ZERO,
+        });
+    }
+    if program == Program::NostrWorkspace {
+        let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
+        let result = nostr_workspace_core::compute::compute(&input)
+            .map_err(|error| anyhow!("nostr-workspace native compute: {error:?}"))?;
+        if result.journal.recipient != recipient {
+            bail!(
+                "input names recipient {:#x}, config says {recipient:#x}",
+                result.journal.recipient
+            );
+        }
+        let vk =
+            trustgraph_prover::common::vkey(trustgraph_prover::programs::nostr_workspace::elf())?;
+        let encoded = pagerank_core::encode::journal_encoded(&result.journal);
         return Ok(Built {
             program,
             input_path: input_path.clone(),
@@ -602,6 +672,15 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
             (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
         }
+        Program::NostrWorkspace => {
+            let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
+            let result = nostr_workspace_core::compute::compute(&input)
+                .map_err(|error| anyhow!("nostr-workspace native compute: {error:?}"))?;
+            let native = pagerank_core::encode::journal_encoded(&result.journal);
+            let elf = trustgraph_prover::programs::nostr_workspace::elf();
+            trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
+            (trustgraph_prover::common::prove_values(elf, &input, cfg.prover.groth16)?, native)
+        }
         Program::Signer => {
             let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
             let native = pagerank_core::encode::signer_journal_encoded(
@@ -738,29 +817,44 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
     let dir = PathBuf::from(".trustgraph/operator").join(format!("{:#x}", entry.instance_id));
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("params.json");
-    let encoded = if entry.program == Program::Contributions {
-        serde_json::to_string_pretty(entry.contributions_params.as_ref().ok_or_else(|| {
-            anyhow!("no contributions params for {} and no manifest entry", entry.name)
-        })?)?
-    } else if entry.program == Program::Weighted {
-        serde_json::to_string_pretty(entry.weighted_params.as_ref().ok_or_else(|| {
-            anyhow!("no weighted params for {} and no manifest entry", entry.name)
-        })?)?
-    } else if entry.program == Program::Composition {
-        serde_json::to_string_pretty(
-            entry
-                .composition_params
-                .as_ref()
-                .ok_or_else(|| anyhow!("no composition params for {}", entry.name))?,
-        )?
-    } else {
-        serde_json::to_string_pretty(
-            entry
-                .params
-                .as_ref()
-                .ok_or_else(|| anyhow!("no params for {} and no manifest entry", entry.name))?,
-        )?
-    };
+    let encoded =
+        if entry.program == Program::Contributions {
+            serde_json::to_string_pretty(entry.contributions_params.as_ref().ok_or_else(|| {
+                anyhow!("no contributions params for {} and no manifest entry", entry.name)
+            })?)?
+        } else if entry.program == Program::Weighted {
+            serde_json::to_string_pretty(entry.weighted_params.as_ref().ok_or_else(|| {
+                anyhow!("no weighted params for {} and no manifest entry", entry.name)
+            })?)?
+        } else if entry.program == Program::Composition {
+            serde_json::to_string_pretty(
+                entry
+                    .composition_params
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("no composition params for {}", entry.name))?,
+            )?
+        } else if entry.program == Program::NostrWorkspace {
+            // Scoped archive paths stay in the operator manifest. The params preimage is likewise a
+            // local pointer, but `nostr-witness assemble` hashes it and requires equality with the
+            // checkpoint-pinned on-chain commitment before this file can reach native compute.
+            serde_json::to_string_pretty(&serde_json::from_str::<
+                nostr_workspace_core::params::Params,
+            >(&std::fs::read_to_string(
+                entry
+                    .manifest
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("no nostr-workspace manifest for {}", entry.name))?
+                    .params
+                    .as_str(),
+            )?)?)?
+        } else {
+            serde_json::to_string_pretty(
+                entry
+                    .params
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("no params for {} and no manifest entry", entry.name))?,
+            )?
+        };
     std::fs::write(&path, encoded)?;
     Ok(path.display().to_string())
 }

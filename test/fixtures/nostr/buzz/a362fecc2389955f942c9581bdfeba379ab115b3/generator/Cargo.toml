@@ -1,0 +1,26 @@
+[package]
+name = "trustgraphs-buzz-fixture-generator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+default-run = "trustgraphs-buzz-fixture-generator"
+
+[workspace]
+
+[dependencies]
+alloy-primitives = "1.0.0"
+anyhow = "1"
+buzz-audit = { git = "https://github.com/block/buzz.git", rev = "a362fecc2389955f942c9581bdfeba379ab115b3" }
+buzz-sdk = { git = "https://github.com/block/buzz.git", rev = "a362fecc2389955f942c9581bdfeba379ab115b3" }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+k256 = { version = "0.13", features = ["ecdsa"] }
+nostr = { version = "=0.44.7", features = ["nip44", "nip98"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["chrono", "json", "postgres", "runtime-tokio", "tls-none", "uuid"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["serde"] }

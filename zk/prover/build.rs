@@ -3,4 +3,5 @@ fn main() {
     sp1_build::build_program("../program");
     sp1_build::build_program("../weighted-program");
     sp1_build::build_program("../composition-program");
+    sp1_build::build_program("../nostr-program/program");
 }

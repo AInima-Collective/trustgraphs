@@ -3884,6 +3884,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "nostr-envelope"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "k256",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "nostr-workspace-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "envelopes",
+ "nostr-envelope",
+ "pagerank-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zk-core",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7549,6 +7574,7 @@ dependencies = [
  "composition-core",
  "contributions-core",
  "hex",
+ "nostr-workspace-core",
  "operator-core",
  "pagerank-core",
  "reqwest",
@@ -7576,6 +7602,8 @@ dependencies = [
  "hex",
  "hypercerts-core",
  "ipld-core",
+ "nostr-envelope",
+ "nostr-workspace-core",
  "pagerank-core",
  "serde",
  "serde_ipld_dagcbor",

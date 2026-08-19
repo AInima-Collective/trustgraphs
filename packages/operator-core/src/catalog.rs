@@ -290,6 +290,8 @@ pub fn scan<R: ChainReader>(
     for id in reader.instance_ids()? {
         let scanned = if program == Program::Signer {
             scan_signer(reader, id)
+        } else if program == Program::NostrWorkspace {
+            scan_nostr_workspace(reader, id, manifest)
         } else {
             scan_one(reader, program, id)
         };
@@ -349,6 +351,84 @@ pub fn scan<R: ChainReader>(
     }
 
     Ok(catalog)
+}
+
+/// Registered Nostr instances deliberately keep scoped witness bytes off chain. The registry
+/// authenticates the contract tuple while the operator manifest supplies only file pointers; the
+/// assembler rehashes and production-verifies every pointed archive before proof spend.
+fn scan_nostr_workspace<R: ChainReader>(
+    reader: &R,
+    id: B256,
+    manifest: &Manifest,
+) -> Result<Option<CatalogEntry>, Skipped> {
+    let record = reader.instance_record(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: Address::ZERO,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    if record.program != Program::NostrWorkspace.id() {
+        return Err(Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::OtherProgram(record.program),
+        });
+    }
+    let Some(manifest_entry) = manifest.entries.iter().find(|entry| {
+        entry.program == Program::NostrWorkspace && entry.snapshot == record.snapshot
+    }) else {
+        return Err(Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::Undescribable,
+        });
+    };
+    let snapshot_hash = reader.snapshot_params_hash(record.snapshot).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    if snapshot_hash != record.params_hash {
+        return Err(Skipped {
+            instance_id: id,
+            snapshot: record.snapshot,
+            reason: SkipCause::ParamsMismatch {
+                reconstructed: record.params_hash,
+                on_chain: snapshot_hash,
+            },
+        });
+    }
+    let created_block = reader.registration_block(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    let controller = reader.params_authority(id).map_err(|e| Skipped {
+        instance_id: id,
+        snapshot: record.snapshot,
+        reason: SkipCause::ReadFailed(e.to_string()),
+    })?;
+    Ok(Some(CatalogEntry {
+        instance_id: id,
+        parent_instance_id: None,
+        program: Program::NostrWorkspace,
+        snapshot: record.snapshot,
+        submit_to: record.snapshot,
+        accumulator: record.registry_or_accumulator,
+        verifier: record.verifier,
+        program_vkey: None,
+        selection: None,
+        params: None,
+        contributions_params: None,
+        weighted_params: None,
+        composition_params: None,
+        reconstructed_params_hash: record.params_hash,
+        params_controller: (controller != Address::ZERO).then_some(controller),
+        params_version: None,
+        eas: None,
+        created_block,
+        name: format!("nostr-workspace @ {id:#x}"),
+        manifest: Some(manifest_entry.clone()),
+    }))
 }
 
 /// Derive the signer program from the governed factory's helper event rather than requiring a

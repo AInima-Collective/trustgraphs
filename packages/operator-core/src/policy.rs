@@ -132,6 +132,7 @@ impl Default for Policy {
                 Program::Contributions,
                 Program::Weighted,
                 Program::Composition,
+                Program::NostrWorkspace,
                 Program::Signer,
             ]),
             loss_budget: LossBudget::default(),

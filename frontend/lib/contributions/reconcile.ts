@@ -102,10 +102,18 @@ export const reconcile = (
     const payload = decodeClaim(r.data)
     if (payload === null) continue
     const shares = new Map<string, bigint>()
+    let complete = true
     for (let i = 0; i < payload.contributors.length; i++) {
-      const a = payload.contributors[i].toLowerCase()
-      shares.set(a, (shares.get(a) ?? 0n) + BigInt(payload.shares[i]))
+      const contributor = payload.contributors[i]
+      const share = payload.shares[i]
+      if (contributor === undefined || share === undefined) {
+        complete = false
+        break
+      }
+      const a = contributor.toLowerCase()
+      shares.set(a, (shares.get(a) ?? 0n) + BigInt(share))
     }
+    if (!complete) continue
     let totalShares = 0n
     for (const v of shares.values()) totalShares += v
     // decodeClaim guarantees a nonzero share exists.

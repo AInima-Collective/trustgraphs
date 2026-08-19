@@ -84,7 +84,8 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 pub fn sample_input() -> GuestInput {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car")).unwrap();
+        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car"))
+            .unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
             "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
@@ -227,7 +228,15 @@ pub fn run(cmd: Command) -> Result<()> {
             common::out_dir(out_dir.as_ref(), OUT_DIR)?,
         ),
         #[cfg(feature = "witness-atproto")]
-        Command::Buildinput { archive_dir, seed_dids, params, snapshot, chain_id, recipient, out } => {
+        Command::Buildinput {
+            archive_dir,
+            seed_dids,
+            params,
+            snapshot,
+            chain_id,
+            recipient,
+            out,
+        } => {
             let out = match out {
                 Some(o) => std::path::PathBuf::from(o),
                 None => common::out_dir(None, OUT_DIR)?.join("hypercerts_input.json"),
@@ -406,7 +415,8 @@ fn write_bundle(
         );
     }
     let bundle = serde_json::json!({ "dids": dids, "bindings": bindings });
-    let p = common::write_out(out, "hypercerts_bundle.json", serde_json::to_string_pretty(&bundle)?)?;
+    let p =
+        common::write_out(out, "hypercerts_bundle.json", serde_json::to_string_pretty(&bundle)?)?;
     println!(
         "wrote {} ({} dids, {} bindings) — the indexer ingestion sidecar",
         p.display(),
@@ -439,8 +449,11 @@ fn cmd_execute(input: GuestInput, out: std::path::PathBuf) -> Result<()> {
     let blob_path = common::write_out(&out, "hypercerts_blob.json", &native.blob)?;
     println!("wrote {} ({} bytes) — pin at the cid above", blob_path.display(), native.blob.len());
     // The skippedDigest PREIMAGE: watchers audit every rule-Φ/record skip without recompute.
-    let skips_path =
-        common::write_out(&out, "hypercerts_skips.json", serde_json::to_string_pretty(&native.skips)?)?;
+    let skips_path = common::write_out(
+        &out,
+        "hypercerts_skips.json",
+        serde_json::to_string_pretty(&native.skips)?,
+    )?;
     println!("wrote {} ({} skip entries)", skips_path.display(), native.skips.len());
     write_bundle(&input, &native, &out)?;
     Ok(())

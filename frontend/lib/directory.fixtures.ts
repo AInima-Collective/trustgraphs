@@ -45,7 +45,7 @@ const summary = (
 })
 
 /**
- * Twelve vouching networks, a funding round and a repo-reputation instance.
+ * Twelve vouching networks, funding rounds, and two non-address-keyed program instances.
  *
  * Deliberately uneven: two have never been proven, one was proven an hour ago and one four months
  * ago, the score counts span three orders of magnitude, and the names run from four characters to
@@ -142,6 +142,12 @@ const MANY: Array<[DirectoryProgram, string, string, ScoreboardSummary]> = [
     'Repository work proven over AT-Protocol accounts.',
     summary(1_040, null, 4),
   ],
+  [
+    'nostr-workspace',
+    'Buzz Builders',
+    'Members and delegated agents scored from anchored Nostr workspace history.',
+    summary(36, null, 2),
+  ],
 ]
 
 const rowsFrom = (
@@ -151,6 +157,7 @@ const rowsFrom = (
     'trust-graph': [],
     contributions: [],
     hypercerts: [],
+    'nostr-workspace': [],
   }
   entries.forEach(([program, name, blurb, scoreboard], index) => {
     const id = `fixture-${index}-${name
@@ -161,7 +168,10 @@ const rowsFrom = (
       id,
       name,
       blurb,
-      href: `/networks/${id}`,
+      href:
+        program === 'nostr-workspace'
+          ? `/nostr-workspaces/${id}`
+          : `/networks/${id}`,
       summary: scoreboard,
     })
   })

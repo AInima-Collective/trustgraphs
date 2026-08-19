@@ -25,6 +25,7 @@ import {
 } from './composition-ingest'
 import { compositionCheckpointForEvent } from './composition-receipt'
 import { ingestContributionsScores } from './contributions'
+import { ingestNostrWorkspaceScores } from './nostr-workspace'
 import type { ScoreProgramProvenance } from './score-program'
 import {
   canRepairScoreRowsOnRestart,
@@ -211,11 +212,15 @@ const onMerkleRootUpdated = async ({
   const metadataTable =
     program.ingestion === 'hypercerts'
       ? offchainSchema.hypercertsMetadata
-      : offchainSchema.merkleMetadata
+      : program.ingestion === 'nostr-workspace'
+        ? offchainSchema.nostrWorkspaceMetadata
+        : offchainSchema.merkleMetadata
   const entryTable =
     program.ingestion === 'hypercerts'
       ? offchainSchema.hypercertsScore
-      : offchainSchema.merkleEntry
+      : program.ingestion === 'nostr-workspace'
+        ? offchainSchema.nostrWorkspaceScore
+        : offchainSchema.merkleEntry
 
   // If matching program-specific metadata and at least one score already exist, repair provenance
   // columns left by a pre-discriminator indexer and skip the untrusted blob fetch.
@@ -395,6 +400,18 @@ const onMerkleRootUpdated = async ({
       ipfsHash,
       ipfsHashCid,
       totalValue,
+      provenance
+    )
+  } else if (program.ingestion === 'nostr-workspace') {
+    await ingestNostrWorkspaceScores(
+      scores,
+      event,
+      context,
+      root,
+      ipfsHash,
+      ipfsHashCid,
+      totalValue,
+      outputBytes,
       provenance
     )
   } else {

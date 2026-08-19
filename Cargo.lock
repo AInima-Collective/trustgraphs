@@ -1568,6 +1568,7 @@ dependencies = [
  "elliptic-curve",
  "once_cell",
  "sha2",
+ "signature",
 ]
 
 [[package]]
@@ -1744,6 +1745,34 @@ name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+
+[[package]]
+name = "nostr-envelope"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "hex",
+ "k256",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "nostr-workspace-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "envelopes",
+ "hex",
+ "k256",
+ "nostr-envelope",
+ "pagerank-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zk-core",
+]
 
 [[package]]
 name = "num-bigint"

@@ -831,6 +831,111 @@ export const weightedPriorEntry = onchainTable(
   })
 )
 
+/*///////////////////////////////////////////////////////////////
+       ISOLATED TRUST-COMPOSE CATALOG, POLICY, AND CAPTURES
+//////////////////////////////////////////////////////////////*/
+
+export const compositionInstance = onchainTable(
+  'composition_instance',
+  (t) => ({
+    id: t.hex().primaryKey(),
+    chainId: t.text().notNull(),
+    factory: t.hex().notNull(),
+    controller: t.hex(),
+    creator: t.hex().notNull(),
+    admin: t.hex().notNull(),
+    name: t.text().notNull(),
+    metadataURI: t.text().notNull(),
+    accumulator: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    distributor: t.hex(),
+    distributorToken: t.hex(),
+    epochLength: t.bigint().notNull(),
+    programVKey: t.hex().notNull(),
+    currentVersion: t.bigint().notNull(),
+    currentParamsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    metadataDigest: t.hex().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    factoryIdx: index().on(t.factory),
+    controllerIdx: index().on(t.controller),
+    accumulatorIdx: index().on(t.accumulator),
+    snapshotIdx: index().on(t.snapshot),
+  })
+)
+
+export const compositionPolicyVersion = onchainTable(
+  'composition_policy_version',
+  (t) => ({
+    id: t.text().primaryKey(), // `${instanceId}-${version}`
+    instanceId: t.hex().notNull(),
+    controller: t.hex().notNull(),
+    version: t.bigint().notNull(),
+    status: t.text().notNull(), // pending | active | superseded | cancelled | inconsistent
+    paramsHash: t.hex().notNull(),
+    previousParamsHash: t.hex(),
+    params: t.json().notNull(),
+    proposalId: t.hex(),
+    sourcePolicyRoot: t.hex().notNull(),
+    sourceCount: t.integer().notNull(),
+    manifestSha256: t.hex().notNull(),
+    adapterSetHash: t.hex().notNull(),
+    metadataDigest: t.hex().notNull(),
+    policyManifest: t.hex(),
+    sources: t.json().notNull(),
+    adapters: t.json().notNull(),
+    readyAt: t.bigint(),
+    proposedBlock: t.bigint().notNull(),
+    proposedTimestamp: t.bigint().notNull(),
+    proposedTxHash: t.hex().notNull(),
+    activatedBlock: t.bigint(),
+    activatedTimestamp: t.bigint(),
+    activatedTxHash: t.hex(),
+    firstCheckpoint: t.bigint(),
+    firstCheckpointBlock: t.bigint(),
+    firstCheckpointTimestamp: t.bigint(),
+    firstCheckpointTxHash: t.hex(),
+    availability: t.text().notNull(),
+    availabilityError: t.text(),
+    verifiedAt: t.bigint(),
+  }),
+  (t) => ({
+    instanceVersionIdx: index().on(t.instanceId, t.version),
+    instanceStatusIdx: index().on(t.instanceId, t.status),
+    paramsHashIdx: index().on(t.instanceId, t.paramsHash),
+    availabilityIdx: index().on(t.availability),
+  })
+)
+
+export const compositionCapture = onchainTable(
+  'composition_capture',
+  (t) => ({
+    id: t.text().primaryKey(), // `${instanceId}-${checkpointId}`
+    instanceId: t.hex().notNull(),
+    accumulator: t.hex().notNull(),
+    checkpointId: t.bigint().notNull(),
+    policyVersion: t.bigint().notNull(),
+    adapterSetHash: t.hex().notNull(),
+    manifestSha256: t.hex().notNull(),
+    manifest: t.hex().notNull(),
+    sourceCheckpointIds: t.json().notNull(),
+    captureBlock: t.bigint().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    instanceCheckpointIdx: index().on(t.instanceId, t.checkpointId),
+    accumulatorIdx: index().on(t.accumulator),
+    policyIdx: index().on(t.instanceId, t.policyVersion),
+    digestIdx: index().on(t.manifestSha256),
+  })
+)
+
 export const merkleSnapshot = onchainTable(
   'merkle_snapshot',
   (t) => ({

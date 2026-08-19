@@ -130,6 +130,30 @@ export const DOCS_SECTIONS: DocSection[] = [
         ],
       },
       {
+        label: 'nostr-workspace',
+        collapsible: true,
+        items: [
+          {
+            slug: 'build/nostr-workspace/architecture',
+            label: 'Architecture',
+          },
+          { slug: 'build/nostr-workspace/runbook', label: 'Runbook' },
+          {
+            slug: 'build/nostr-workspace/local-testing',
+            label: 'Local testing',
+          },
+          {
+            slug: 'build/nostr-workspace/verification',
+            label: 'Verification',
+          },
+          {
+            slug: 'build/nostr-workspace/recovery',
+            label: 'Recovery',
+          },
+          { slug: 'build/nostr-workspace/pilot', label: 'Pilot status' },
+        ],
+      },
+      {
         label: 'contributions',
         collapsible: true,
         items: [

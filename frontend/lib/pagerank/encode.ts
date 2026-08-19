@@ -195,7 +195,9 @@ export const decodeWeight = (data: Hex, index: number): bigint | null => {
   if (bytes.length < end) return null
   let v = 0n
   for (let i = start; i < end; i++) {
-    v = (v << 8n) | BigInt(bytes[i])
+    const byte = bytes[i]
+    if (byte === undefined) return null
+    v = (v << 8n) | BigInt(byte)
   }
   return v
 }

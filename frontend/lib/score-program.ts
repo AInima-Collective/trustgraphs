@@ -10,6 +10,7 @@ export const SCORE_PROGRAM_IDS = {
   contributions: keccak256(stringToHex('contributions')),
   hypercerts: keccak256(stringToHex('hypercerts')),
   'trust-compose': keccak256(stringToHex('trust-compose')),
+  'nostr-workspace': keccak256(stringToHex('nostr-workspace')),
   'agent-reputation': keccak256(stringToHex('agent-reputation')),
 } as const satisfies Record<string, Hex>
 
@@ -37,6 +38,9 @@ export const SCORE_OUTPUT_DOMAIN_IDS = {
   'trust-compose-account-v1': keccak256(
     stringToHex('trustgraphs.output.trust-compose-account.v1')
   ),
+  'nostr-member-v1': keccak256(
+    stringToHex('trustgraphs.output.nostr-member.v1')
+  ),
   'erc8004-agent-v1': keccak256(
     stringToHex('trustgraphs.output.erc8004-agent.v1')
   ),
@@ -50,6 +54,7 @@ export type ScoreIngestion =
   | 'contributions'
   | 'hypercerts'
   | 'composition'
+  | 'nostr-workspace'
   | 'not-enabled'
 export type ScoreApi =
   | 'merkle'
@@ -57,6 +62,7 @@ export type ScoreApi =
   | 'hypercerts'
   | 'compositions'
   | 'agent-reputation'
+  | 'nostr-workspace'
 export type ScoreProgramSourceKind =
   | 'instance-registered'
   | 'instance-updated'
@@ -151,6 +157,16 @@ export const SCORE_KEY_DOMAINS: readonly ScoreKeyDomainDefinition[] = [
     keyEncoding: 'eip155-address',
     tables: ['offchain.merkle_entry', 'offchain.composition_attribution'],
     apis: ['merkle', 'compositions'],
+  },
+  {
+    name: 'nostr-member-v1',
+    id: SCORE_OUTPUT_DOMAIN_IDS['nostr-member-v1'],
+    keyEncoding: 'bytes32',
+    tables: [
+      'offchain.nostr_workspace_metadata',
+      'offchain.nostr_workspace_score',
+    ],
+    apis: ['nostr-workspace'],
   },
   {
     name: 'erc8004-agent-v1',
@@ -283,6 +299,14 @@ export const SCORE_PROGRAMS: readonly ScoreProgramDefinition[] = [
       'offchain.composition_attribution',
     ],
     ['merkle', 'compositions']
+  ),
+  definition(
+    'nostr-workspace',
+    'nostr-member-v1',
+    'bytes32',
+    'nostr-workspace',
+    ['offchain.nostr_workspace_metadata', 'offchain.nostr_workspace_score'],
+    ['nostr-workspace']
   ),
   // Reserved for issue #62. Recognition is not enablement: ingestion fails until its own decoder,
   // table, API, verifier, and completeness adapter are implemented.

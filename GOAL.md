@@ -1,908 +1,540 @@
-# GOAL — Close the Open-Source Readiness Backlog
+# GOAL — Ship the `nostr-workspace` Program
 
-> **Status (2026-08-18): 30 issues closed, 13 remain.**
->
-> Closed after auditing `main` through `6bbd17e` and rerunning the focused regressions:
->
-> - **#11** — bounded hook gas, dense hook storage, zero-address rejection, and
->   refund-safe reimbursement (`a6f89c5`, `c7ee5ec`)
-> - **#12** — admitted anchor relayers, immutable combined-count ingress capacity, shared
->   vault/operator limits, and auditable replacement-snapshot recovery (`f5d826a`)
-> - **#13** — snapshot-scoped claims and quote/settlement parity (`2d46090`)
-> - **#14** — constitutional authority floor and handoff, fail-closed accumulator history,
->   total pagination, and fixed epoch phase (`aa8e2b5`)
-> - **#15** — persistent deterministic-submit abandonment and fresh-checkpoint recovery
->   (`362e547`; empty-root/hook precursor in `a6f89c5`)
-> - **#16** — durable multi-target publication, restart-safe retry, and deterministic historical
->   repair (`131ecfd`)
-> - **#20** — atomic module-only Safe graduation, sealed owner execution, delayed member/recovery
->   routes, and live authority disclosure (`820b6f3`)
-> - **#21** — optional atomic signer-sync installation, zero-config discovery/operation, indexed
->   receipts and settings controls, plus isolated signer finality/loss budgets (`56326fd`)
-> - **#22** — atomic governed prepayment and payable initial policy (`f1ef43f`)
-> - **#28** — versioned canonical Contributions tuples, registry discovery, hard commitment checks,
->   and sidecar-free public reproduction (`3de8943`)
-> - **#29** — a nonzero epoch schedule is mandatory for direct deployments (`cf9808c`)
-> - **#34** — weighted-prior V1 semantics, exact normalization/commitment/availability model,
->   2,048-entry benchmark cap, cross-language fixture, and ordered implementation split
->   (`8bf7588`; children #52–#55)
-> - **#35** — allowlisted ERC-8004 identity/history indexing, hardened asynchronous registration
->   metadata, qualified bulk APIs, agent identity UI/lens, and byte-identical score/proof behavior
->   (`f6529a1`, PR #57; follow-ups #58–#62)
-> - **#36** — accepted normalized final-distribution composition, exact source-aware Hamilton
->   arithmetic, bounded/fail-closed provenance policy, reproducible goldens and simulations, plus a
->   separate advisory graph-reputation design (`860b257`, PR #69; children #63–#68)
-> - **#37** — accepted issuer-known/unlinkable private profile, band-only disclosure and leakage
->   oracle, replicated attested-TEE pilot, bounded four-party MPC target, and first private consumer
->   (`5526d6a`, PR #76; children #70–#75)
-> - **#38** — dedicated upkeep-agent runbook, human-signed EAS relay, notification-first voting
->   runner, and exact principal-overrides-delegate governance with indexed/UI receipts
->   (`d71ca82`, PR #78; graph-native research split to #77)
-> - **#52** — isolated weighted-prior core and SP1 guest, exact Hamilton/dangling-to-prior scoring,
->   TGWP validation, Rust/TypeScript/Solidity production goldens, actual guest rejection/parity
->   gates, sub-billion max benchmark, and byte-identical legacy guests (`6530bf5`, PR #79)
-> - **#53** — isolated weighted factory/controller, exact compact-manifest validation and calldata
->   recovery, O(1) commitment history, timelocked prior rotation, checkpoint pinning, max-row gas
->   gates, and stateful atomicity invariants (`f47173d`, PR #80)
-> - **#54** — isolated weighted operator routing, exact cache/mirror/calldata recovery, active and
->   pending pinning, historical checkpoint replay, reorg-safe prior indexing, and additive
->   commitment/entry APIs (`281cb68`, PR #81)
-> - **#55** — exact CSV/JSON/TGWP import and export, finalized-block ENS receipts and signing
->   freshness, asynchronous day-zero/concentration preview, weighted create/rotation/activation,
->   and explicit new-instance binary prefill (`339adc3`, PR #82)
-> - **#58** — pinned ERC-8004 Reputation Registry provenance, canonical raw feedback/revocation/
->   response replay, event-block verified-wallet attribution, bulk APIs, hardened asynchronous
->   descriptors, and a score/proof-isolated raw explorer (`62af08a`, PR #83)
-> - **#59** — hashed pinned-policy ERC-8004 experiment, independent exact replay, complete
->   exclusion/coverage/sensitivity evidence, adversarial ring/Sybil/rotation fixtures, isolated UI,
->   and a bounded no-go for production or proof integration (`1608411`, PR #84)
-> - **#60** — explicit deployed-history completeness no-go, conditional activation-scoped
->   cooperating-registry boundary, exact cross-language accumulator/checkpoint vectors,
->   adversarial omission/reorg/upgrade/recovery evidence, and a measured 16,384-event milestone cap
->   (`6d03320`, PR #89; children #86–#88)
-> - **#61** — registry-authenticated immutable score-program/output-domain bindings, explicit
->   decoder/table/API routing, fail-closed provenance validation, and audited restart/backfill and
->   rolling-deploy paths (`b725c32`, PR #85)
-> - **#63** — isolated strict trust-compose core/guest, exact TGCP/TGCM/params/journal commitments,
->   source-aware Hamilton attribution, cross-language production vectors and fail-closed gates,
->   plus measured 8-source / 8,192-entry proving bounds (`344cc08`, PR #90)
-> - **#64** — authenticated source/proof provenance, atomic bounded TGCM capture, durable checkpoint
->   recovery, timelocked policy rotation and adapter recovery, plus isolated composition factory and
->   verifier registration (`0a100da`, PR #91)
-> - **#65** — typed trust-compose discovery, exact current/historical capture recovery, authenticated
->   work-band pricing, durable proving/publication, independent transactional indexing, and paginated
->   composition provenance APIs (`6f41055`, PR #92)
-> - **#66** — byte-exact composition preview, authenticated source/adapter preflight, governed
->   creation and rotation, sensitivity/attribution analysis, and durable policy/epoch/proof
->   provenance routes (`60f9a77`, PR #96)
-> - **#67** — stable graph lineage/configuration/epoch identities, authenticated append-only
->   controller history, typed scoped endorsement lifecycle, interval-safe referral budgets,
->   canonical indexing/APIs, and advisory provenance UI (`0f7f2b3`, PR #97)
-> - **#68** — deterministic scoped graph-reputation recommendations, exact sparse personalized
->   propagation and attribution, bounded fail-closed finalized-epoch APIs, adversarial simulations,
->   cross-language goldens, and a read-only sensitivity/provenance UI (`6bbd17e`, PR #99)
->
-> Remaining launch-risk issue: **#27**.
-> Remaining graph-native agent-delegation research: **#77**.
-> Weighted-prior implementation chain: **#52, #53, #54, and #55 closed**.
-> ERC-8004 reputation chain: **#58, #59, #60, and #61 closed**; conditional implementation order
-> is **#86 → #87 → #88 → #62**, with both #59's policy no-go and upstream adoption preserved.
-> Trust-composition chain: **#63, #64, #65, #66, #67, and #68 closed**; the shared #61 gate is
-> closed. Governed automatic graph-reputation adjustment remains isolated as future **#98** work.
-> Private-profile chain: **#70 → #71** for the selected TEE pilot, **#70 → #74 → #75** for the first
-> consumer; #72 and #73 evaluate the MPC target in parallel.
+> **Status (2026-08-19): S0–S4 implemented and locally verified; S5 non-synthetic pilot pending.**
 
-Prepare Trustgraphs for public development by closing every issue whose acceptance criteria can be
-met with code, tests, documentation, or a recorded design decision, while keeping deployment-only
-and research work honest about their external gates.
+Build and pilot the Buzz/Nostr design in
+[`research/BUZZ_NOSTR_PLAN.md`](research/BUZZ_NOSTR_PLAN.md) as a new, isolated
+Trustgraphs program:
 
-This file replaces the completed pre-mainnet audit goal. The source of truth for scope is each GitHub
-issue. If this plan and an issue disagree, update the issue first or follow the issue.
+> **A Buzz workspace can anchor its signed Nostr history, prove deterministic trust scores over
+> vouches, merges, completed-job evidence, and forum upvotes, and publish the standard journal-v3
+> root without trusting the prover to select or compute the result.**
+
+The program is named **`nostr-workspace`**. Its core crate is
+`packages/nostr-workspace-core`, its isolated SP1 workspace is `zk/nostr-program`, its program id is
+`keccak256("nostr-workspace")`, and its output domain is
+`keccak256("trustgraphs.output.nostr-member.v1")`.
+
+This file is the execution spec. The research plan remains the design authority except where the
+implementation clarifications below make an underspecified or unsafe choice explicit. A material
+change to either document must update both or be recorded in
+[`research/DEVIATIONS.md`](research/DEVIATIONS.md) before code depending on it merges.
 
 ---
 
-## Closure rules
+## Outcome
 
-An issue closes only when all of the following hold:
+When this goal is complete:
 
-1. The complete issue is resolved, including its latest status comment. Fixing the original repro
-   is not enough when follow-up reliability work is explicitly in scope.
-2. Every code fix has a regression that fails before the fix and passes after it. Cross-language
-   encodings retain Rust/guest/Solidity/TypeScript parity and regenerated golden vectors.
-3. User-facing or operator-facing behavior is documented, including recovery and failure modes.
-4. The focused suite and every materially affected package suite pass. Contract, guest, or schema
-   changes also run the full relevant workspace suite.
-5. The closing comment names the commit or PR, summarizes the evidence, and records accepted risks.
-6. Research issues close only with a checked-in decision record, the required evidence/fixtures,
-   and independently reviewable implementation issues with ordered dependencies and acceptance
-   criteria.
+1. A pinned Buzz deployment exports a complete, versioned witness for an anchored community audit
+   head (Option A) and for any enabled self-committed member/agent logs (Option C).
+2. The shared envelope crate verifies the audit chain, witness commitment, NIP-01 ids and BIP-340
+   signatures, NIP-OA delegations, roster, replacement, and deletion rules with the same code
+   natively and inside SP1.
+3. `nostr-workspace-core` maps the accepted V1/G1/J1/F1 signals to a deterministic graph, computes
+   the standard fixed-point Trust-Aware PageRank distribution, emits dual-domain leaves for bound
+   members, and commits the ordinary 12-field journal-v3 public values.
+4. The prover, operator, contracts, indexer, frontend, and documentation recognize the new program
+   through authenticated program/instance metadata. Existing program semantics and vkeys do not
+   change.
+5. Two consecutive epochs from a real local or pilot Buzz workspace are anchored, proven, landed,
+   indexed, and independently reproduced by another authorized archive holder. The second epoch
+   exercises replacement, revocation/deletion, membership change, and carry/drop behavior.
 
-Do not close an issue because it is old, partially fixed, documented as a risk, or inconveniently
-broad. Split it only when the original issue's author agrees that the new children preserve its full
-scope.
-
----
-
-## Parallel execution map
-
-Run one branch/PR per numbered issue unless two issues share an inseparable invariant. These lanes
-can proceed concurrently:
-
-| Lane                              | Issues                                        | Purpose                                                         | Dependencies                                |
-| --------------------------------- | --------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
-| A · operator availability         | #16 closed                                    | Repair score-blob availability                                  | `131ecfd`                                   |
-| B · snapshot/vault hardening      | #12 and #14 closed                            | Bound hostile input growth and finish snapshot invariants       | `f5d826a`, `aa8e2b5`                        |
-| C · self-serve economics          | #22 closed                                    | Make app prepayment activate a payable proving policy           | `f1ef43f`                                   |
-| D · authority and production      | #20 closed → #27                              | Creator bypass removed; deploy and smoke-test production        | `820b6f3`; #12/#14/#22 prerequisites closed |
-| E · program self-service          | #21 and #28 closed                            | Factory signer-sync and reproducible Contributions params       | `56326fd`, `3de8943`                        |
-| F · decision closure              | #34, #36, and #37 closed                      | Close bounded research questions with evidence and child issues | accepted ADRs and child splits              |
-| G · agent product                 | #35 and #38 closed; #77                       | ERC-8004 enrichment, delegated action/voting, graph research    | shared agent UX only; avoid coupling proofs |
-| H · weighted-prior implementation | #52, #53, #54, and #55 closed                 | Core/guest, commitment lifecycle, operator/indexer, then UX     | complete in #34 ADR order                   |
-| I · ERC-8004 reputation           | #58/#59/#60/#61 closed; #86 → #87 → #88 → #62 | Cooperating input boundary, complete-era policy, then proof     | Upstream adoption; #59 no-go preserved      |
-| J · trust composition             | #63/#64/#65/#66/#67/#68 closed; future #98    | Proven blend stack plus separate advisory graph reputation      | shared #61 gate closed                      |
-| K · private profile               | #70 → #71; #70 → #74 → #75                    | Leakage oracle, TEE pilot, and unlinkable governance consumer   | #72/#73 evaluate the MPC target in parallel |
-
-D remains externally gated; G is now research-only. F is complete. H, J, and K are ordered
-internally; the program-aware ingestion gate shared by I and J is closed in #61. None blocks the
-core public repository release.
+The honest product statement is intentionally narrower than “public Nostr reputation.” A proof is
+publicly verifiable, but a member-scoped archive is reproducible only by members or other authorized
+archive holders. Option A proves correctness relative to the community-operated relay/exporter’s
+enumeration; it does not prove that an adversarial relay recorded every event it received.
 
 ---
 
-## Milestone 1 — Availability and paid proving
+## Normative baseline and pins
 
-**Complete.** These four issues removed the most immediate availability, payment, and snapshot
-invariant risks.
-
-### M1.1 · #15 — abandon deterministic submission failures and advance
-
-**Closed in `362e547`** (with the empty-root/hook precursor in `a6f89c5`). The journal now records
-terminal abandonment across restarts; estimate, simulation, and receipt reverts share one
-configurable counter; transient failures and reorgs do not consume it; and the planner waits for
-input movement before triggering/proving a fresh checkpoint.
-
-The three-strike circuit breaker in `zk/operator/src/run.rs` prevents wallet drain but deliberately
-holds for a human. It does not satisfy the issue's self-healing requirement, and simulation failures
-do not become strikes.
-
-- Add a persistent terminal `Abandoned` (or equivalently explicit) journal state keyed by
-  `(chain, instance, checkpoint)`.
-- Classify deterministic simulation reverts and reverted receipts consistently. Transient provider,
-  reorg, fee, and availability failures must remain retryable.
-- After the configured threshold, exclude the abandoned checkpoint from in-flight selection and
-  allow the planner to trigger/prove a newer checkpoint. Never reinterpret an invalid proof as a
-  valid root.
-- Emit an alert carrying the checkpoint, failure class, attempts, and recovery action.
-- Regression: a Ready checkpoint that deterministically fails N times produces `Trigger` for a new
-  checkpoint, survives restart, and does not resume submitting the abandoned proof.
-
-**Close when:** both the historical empty-root case and a different deterministic revert recover
-without a human, while transient failures and reorgs retain their safe retry behavior.
-
-### M1.2 · #16 — repair and harden blob publication
-
-**Closed in `131ecfd`.** The operator now journals publication attempts and successes against the
-exact CID and durability-policy hash, retries failed work across restarts with bounded alerting,
-and refuses submission until the configured minimum of independent Kubo-compatible targets has
-stored and served the canonical bytes. `operator republish` reconstructs historical checkpoint
-inputs and parameters, verifies the resulting root, digest, CID, recipient, and total against the
-landed state, then repairs every configured target without requiring prover or submitter secrets.
-
-The end-to-end operator test deliberately lands an unreadable CID, repairs it through a fresh local
-Kubo target, and passes the repaired bytes through the indexer's production Merkle-row derivation.
-It also verifies restart idempotence and subsequent-checkpoint progress. The focused Rust, frontend,
-and indexer suites pass; production and operator documentation now cover independent backup targets,
-minimum-success policy, retention, recovery, and the distinction between content identity and an
-availability guarantee.
-
-Pin-before-submit and CID/readability checks are already on `main`; failed pinning still has no
-repair path, and one Kubo node is not durable storage.
-
-- Add `operator republish --instance <id> --checkpoint <id>` (or an equivalent explicit command).
-  Reconstruct the canonical blob from checkpointed chain inputs, prove its digest/CID matches the
-  landed state, and reuse the existing pin/readability checks.
-- Support multiple pin targets or a pinning-service adapter with a configured minimum-success
-  policy. Do not submit a root unless the configured publication policy is met.
-- Persist failed publication work so a restart can retry it; make repeated failure visible without
-  flooding alerts.
-- Add an integration test that starts with an unreadable landed CID, republishes, and verifies the
-  indexer can ingest the repaired blob.
-- Document backup targets, retention expectations, republish procedure, and the fact that
-  content-addressing proves bytes but not availability.
-
-**Close when:** an operator can repair an old failed pin deterministically and production config no
-longer relies on one storage target.
-
-### M1.3 · #22 — a prepayment must create a payable policy
-
-**Closed in `f1ef43f`.** Governed creation now takes explicit initial paid cadence and 8-decimal
-USD cap terms, rejects every funded/disabled or unfunded/enabled mismatch, requires a priced
-initial band, and bounds the initial cadence and cap before deploying anything. The bootstrap Safe
-installs that policy after the deposit binds the vault account and before the wrapper removes itself
-as owner, so the one transaction is atomic.
-
-The wizard passes zero/zero for an unpaid network and, for prepayment, shows the effective cadence,
-combined fee/gas cap, current band-1 fee, conservative refresh estimate, and withdrawal notice
-before signing. Its exact USD parsing and estimate math have a focused regression. The governed
-factory regression exercises a real Safe and vault, verifies the installed policy, triggers the
-first checkpoint, and proves its quote is eligible rather than `PolicyDisabled`. All 97 factory
-tests, the full frontend test suite, the generated-ABI production build, focused lint, and Solidity
-build pass.
-
-The wizard and factory can deposit ETH, but a new vault account still has `maxPerRootUsd == 0`, so
-quotes return `PolicyDisabled` forever until an administrator uses an out-of-band script.
-
-- Add explicit initial `minPaidIntervalBlocks` and `maxPerRootUsd` inputs to governed creation, with
-  safe bounds and clear units. Zero means unpaid/curated and must not be presented as prepayment.
-- During bootstrap, have the new Safe call `ProvingVault.setPolicy` before bootstrap authority is
-  handed off. A nonzero prepayment with a zero policy must revert or be blocked by the UI.
-- Show the effective cadence, cap, fee band, estimated number of refreshes, and withdrawal limits
-  before signing. Keep the global fee schedule as a visible deployment prerequisite.
-- Regression: a prepaid app-created instance has a nonzero policy and its first valid checkpoint
-  quote is not `PolicyDisabled`; an unpaid instance remains valid.
-
-**Close when:** the one-transaction app path produces a funded, payable instance and the UI never
-accepts money into a disabled policy by accident.
-
-### M1.4 · #14 — finish the four MerkleSnapshot hardening findings
-
-**Closed in `aa8e2b5`.** The constitutional role now has a nonzero holder invariant and explicit
-two-step handoff whose successor inherits snapshot and vault emergency authority. Accumulator
-replacement is permitted only while both sides are pristine; dense checkpoint ids and monotonic
-freeze blocks are enforced independently, and the documented post-checkpoint recovery path is a
-replacement snapshot plus directory/vault migration. Both history views now return empty or
-clamped pages for every boundary and overflow-sized request. A changed nonzero epoch length anchors
-a fixed phase, while late permissionless triggers consume the current scheduled boundary without
-misstating the checkpoint's actual freeze block. The 532-test Forge suite, frontend suite, generated
-ABI checks, and size build pass; `MerkleSnapshot` retains 12,022 bytes of EIP-170 runtime margin.
-
-Treat the four findings as separate commits in one issue PR if that makes review easier:
-
-1. **Constitutional recovery.** Prevent the last constitutional holder from being revoked or
-   renouncing. Prefer a two-step transfer/recovery design with explicit events over an untracked
-   holder counter. Test single-holder and multi-holder transitions plus vault authority recovery.
-2. **Accumulator rotation.** Define a generation-aware migration boundary so a new accumulator
-   cannot reuse checkpoint IDs, overwrite checkpoint metadata, or file a state at a lower block.
-   If safe migration is deferred, fail closed by forbidding rotation after the first checkpoint and
-   document the redeploy/migrate path.
-3. **Pagination.** Return an empty array when `offset >= length`; avoid `offset + limit` overflow.
-   Test exact-end, past-end, zero-limit, and `type(uint256).max` for both views.
-4. **Fixed epoch phase.** Anchor epochs to a fixed origin/epoch number rather than sliding
-   `lastTriggerBlock` from the caller's chosen block. Permissionless callers may trigger a due epoch
-   but may not move every future boundary. Update the contract comments and runbook.
-
-**Close when:** all four findings have explicit invariants and regressions, and accumulator recovery
-semantics do not conflict with the input-ceiling recovery chosen for #12.
+- Product and protocol design:
+  [`research/BUZZ_NOSTR_PLAN.md`](research/BUZZ_NOSTR_PLAN.md), especially its §12 decision record.
+- Lane-2, rule-Φ, journal, and availability model:
+  [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](research/OFFCHAIN_ATTESTATIONS_ZK.md).
+- Program isolation and integration checklist:
+  [`docs/build/add-a-program.md`](docs/build/add-a-program.md).
+- Closest built precedent: `packages/envelopes/src/atproto/`,
+  `packages/hypercerts-core/`, and the Hypercerts prover/indexer/docs paths.
+- SP1 and crypto baseline: SP1 `=6.3.1`, patched `sha2` and `k256` tags already measured in
+  [`research/nostr/README.md`](research/nostr/README.md). Any SP1 or patch-tag change requires a new
+  benchmark, a reviewed lockfile diff, and a vkey-rotation decision.
+- Buzz reconnaissance baseline: `block/buzz@a362fecc2389955f942c9581bdfeba379ab115b3`
+  (2026-08-18). S0 may deliberately select a newer commit, but all fixtures and source assertions
+  must name one immutable SHA. Never build consensus behavior against moving `main`.
+- Nostr behavior is pinned to the selected Buzz release’s `rust-nostr` version plus the cited NIPs.
+  If Buzz behavior and generic NIP prose differ, the fixture records the difference and the program
+  either reproduces Buzz exactly or rejects the shape. It never guesses.
 
 ---
 
-## Milestone 2 — Hostile-input and authority boundaries
+## Implementation clarifications
 
-These are the security design gates for production deployment. Do not rush them for issue count.
+These close gaps found while checking the research plan against the current Trustgraphs and Buzz
+code. They are part of the goal, not optional polish.
 
-### M2.1 · #12 — make anchor ingress economically or administratively bounded
+### 1. Option A and Option C are one mixed input set
 
-**Closed in `f5d826a`.** `AnchorRegistry` now separates identity registration from finite proving
-capacity: only governance-admitted `ANCHORER_ROLE` relayers may append, every node count must
-increase, and address heads retain their owner signature. A one-shot reciprocal snapshot binding
-lets each append authenticate the current lane-1 count and reject, before mutation, when the next
-combined input would exceed an immutable deployment cap no higher than the shared 200,000
-vault/operator boundary. The operator reads the lower instance cap for 80% alerts, and the settings
-page shows its live headroom.
+`envelopeKind = 2` identifies the Nostr envelope on-chain. The versioned envelope witness carries
+an internal commitment variant (`buzz-audit-v1`, `self-log-v1`, and, only if activated at S0,
+`sidecar-head-v1`). Params contain an **allowed-variant bitmap**, not one singular
+`commitment_kind`: a community-node anchor may use A/A′ and a `did:nostr` node may use C.
 
-[`research/ANCHOR_INGRESS.md`](research/ANCHOR_INGRESS.md) records the accepted censorship/liveness
-tradeoff, mainnet attacker cost, the fact that mutable lane-1 ingress still needs its own gate or
-price, and the replacement-snapshot/directory/vault migration ceremony that composes with #14.
-Outsider Sybil registration, band inflation, admitted legitimate growth, exact exhaustion, live
-lane-1 consumption, binding, replay, and post-checkpoint rotation regressions pass. The complete
-541-test Forge suite, 86 operator-core tests, 32 operator tests, Hypercert/input-exporter tests,
-frontend tests/lint/production build, contract-size build, and the full root/signer/two-lane/
-Hypercert Anvil E2E pass. Accepted risk: admitted relayers control inclusion, and a compromised
-relayer can spend the configured finite capacity; multiple operators, role monitoring, revocation,
-and early migration are required.
+The same Nostr event can be committed by the workspace audit head and by its author’s self-log. It
+is verified once, deduplicated by event id before graph semantics, and assigned the strongest
+successfully verified provenance class. It never creates two edges or two units of weight.
 
-Today an untrusted node can grow `anchorCount`, move a funded instance into a more expensive band,
-and eventually push it past the operator's 200,000-input ceiling. Saturating `bandOf` alone is not a
-fix because it would pay for work the operator still refuses to prove.
+### 2. `dataCommitment` binds the exact witness bytes
 
-- Choose and document one v1 admission rule: priced/staked anchor writes, governance-admitted
-  writers, or a constitutionally bounded per-epoch/per-node allowance with Sybil-resistant identity.
-- Enforce the bound at ingress, before `anchorCount` changes. The vault and operator must derive
-  priceability from the same authenticated size.
-- Provide a constitutional recovery/reseed path that preserves an auditable link to prior history
-  and composes with #14's accumulator-generation rules.
-- Test band inflation, exhaustion, many attacker-controlled nodes, legitimate updates, limit
-  boundaries, and recovery. Include an attacker-cost analysis for the production chain.
+S0 freezes a deterministic, length-prefixed binary bundle format (`TGNW v1`). For every selected
+head, the guest recomputes `sha256(TGNW-envelope-bytes)` and requires equality with that anchor’s
+`dataCommitment`. A raw CIDv1 can use that SHA-256 digest, but the digest is not itself an
+availability proof or a public URL.
 
-**Close when:** an unaffiliated address cannot cheaply change another instance's proving band or
-permanently exhaust its accepted input capacity.
+Missing bytes for a trust-relevant `EventCreated` entry invalidate that head; the prover may not
+turn an omitted event into an “unknown kind” or discretionary event-level skip. Malformed bytes
+that are present and committed follow the closed deterministic skip rules. Every skip preimage is
+archived and reconstructs `skippedDigest` exactly.
 
-### M2.2 · #20 — factory governance must not have a 1-of-1 bypass
+### 3. Option A v1 is a bounded full-prefix proof
 
-**Closed in `820b6f3`.** Factory creation now enables exactly two delay-enforcing Safe modules,
-installs the owner-execution guard, swaps the bootstrap owner, and irreversibly seals the guard in
-one outer transaction. A valid creator signature cannot change snapshot settings, move Safe funds,
-remove the guard, enable a bypass module, delegatecall, or MultiSend. Member governance retains its
-1-block voting delay, 50,400-block vote, and 7,200-block execution delay; the initial recovery
-proposer can only queue an exact action for an immutable 14-day public delay, which the proposer or
-member-governed Safe may cancel and anyone may execute after maturity.
+The v1 guest re-folds audit sequence `1..=anchored_count` from genesis. This is the simplest claim
+that really matches the research plan, but its work is cumulative rather than “events this epoch.”
+S0 benchmarks **audit entries, relevant event bytes, and signatures**, not merely events per epoch,
+and fixes a pilot cap below the measured proving limit.
 
-[`GOVERNED_SAFE_AUTHORITY`](./research/GOVERNED_SAFE_AUTHORITY.md) records the guard, direct
-timelock, and staged-bootstrap comparison plus emergency/liveness rules and the accepted recovery
-risk. The create review refuses an older configured factory without this authority profile and
-shows owners, threshold, graduation, and both delays before signature. Network settings verify the
-live guard storage slot/sealed state, exact two-module set, Safe bindings, owners, threshold,
-proposer, and delays before displaying “Graduated.” The focused 13-test factory battery covers
-direct execution, value withdrawal, settings, Safe self-calls, guard removal, module addition,
-delegatecall, batching, module delay/cancellation, and the 14-day minimum. All 547 Forge regressions,
-the Rust workspace, frontend tests/lint/build, indexer tests, secret scan,
-sizes, and the root/signer/two-lane/Hypercerts rehearsal pass.
+The exporter reads the audit log and event rows (including soft-deleted/replaced relevant rows) from
+a consistent, read-only database snapshot. Before anchoring it must prove locally that:
 
-Accepted risk: the recovery proposer may queue arbitrary Safe calls or delegatecalls after 14 days;
-that disclosed constitutional route is necessary before the first score root and remains observable
-and cancellable. Production deployment must confirm the 57,601-block member veto path normally fits
-inside that window or increase the compiled recovery delay.
+- audit is enabled and the chain verifies;
+- every trust-relevant stored event older than the configured audit-settle window has exactly one
+  `EventCreated` entry;
+- every trust-relevant `EventCreated` entry through the chosen head has event bytes;
+- the roster and relay key match the instance configuration; and
+- the exact TGNW bundle passes the production envelope verifier and hashes to `dataCommitment`.
 
-Prior state: the governed factory created a Safe and a working Merkle governance module, but
-finished as a 1-of-1 creator-owned Safe. That signer could bypass graph voting and execution delay.
+An audit-worker write failure is therefore an anchoring health failure, not a silently skipped
+event. If the selected Buzz deployment cannot pass this gate, S0 either activates and fully
+specifies A′ under a pinned committer key or stops for a design amendment. It does not quietly
+weaken A.
 
-- Write a decision record comparing at least: Safe guard/modifier enforcement, timelock-owned
-  authority, and a staged bootstrap/graduation model. State emergency recovery and liveness rules.
-- Separate constitutional and operational authority from genesis or make the temporary bootstrap
-  state explicit, time-bounded, and impossible to market as decentralized governance.
-- Enforce the execution delay for owner-originated and module-originated calls to protected
-  settings, upgrade, withdrawal, and arbitrary Safe targets. Test bypasses through direct Safe
-  execution, enabled modules, delegatecall, batching, and guard removal.
-- Surface the current authority graph, delay, owners, threshold, and graduation state in the create
-  review and network settings.
+Incremental/recursive audit proofs or a proven persistent graph-state commitment are a later scale
+upgrade. A previous anchored head alone is not enough to reconstruct the full current graph.
 
-**Close when:** no single creator transaction can immediately change scoring truth, withdraw the
-proving tank, or bypass member-approved execution on a graduated network.
+### 4. The eligible node universe includes delegated agents
 
-### M2.3 · #27 — deploy the production creation path
+The relay-signed kind-13534 roster defines eligible human members. A separate agent node is
+eligible when a valid NIP-OA credential links its event key to an owner who is in that epoch’s
+roster; the profile kind 10100 may provide display metadata but is not the authority. This corrects
+the shorthand “roster = all nodes”: Buzz virtual agents need not appear in the active-member roster.
 
-This is external-state work, not a code-only closure. It follows #20 and the production-relevant
-parts of #12 and #14; #22's creation-time paid policy closed in `f1ef43f`.
+Agent and owner remain separate scored nodes. An invalid, expired, out-of-kind, self-owned, or
+ambiguous OA tag cannot create agent provenance. Owner aggregation is not in v1.
 
-- Deploy and verify the registry, vault/oracle configuration, base factory, governed factory,
-  deployer helpers, Safe dependencies, verifier, and timelocks/guards on the selected chain.
-- Grant the minimum registry roles, initialize fee bands/gas policy, set a production epoch floor,
-  and transfer every privileged role through the documented ceremony.
-- Run a real smoke test: create from the public app, discover through the production indexer,
-  attest, trigger, publish/prove, display the score blob, quote/pay the bounty, vote, and execute
-  after the enforced delay.
-- Generate `frontend/config.production.json` and indexer config from verified deployment artifacts;
-  remove placeholder endpoints. Publish addresses, bytecode hashes, start blocks, role holders, and
-  rollback instructions.
+### 5. Nostr state rules are exact, not approximately LWW
 
-**Close when:** the public `Create a network` CTA completes against production and its child instance
-is automatically discovered and operational end to end.
+- NIP-01 replaceable/addressable selection is greatest `created_at`, then **lowest event id** for a
+  timestamp tie, matching Buzz and NIP-01. Audit sequence must not reverse that result.
+- Program lifecycle ordering for ordinary non-replaceable events uses committed audit/log order;
+  an author-controlled timestamp is not a global clock.
+- Kind-5 deletion supports both `e` and `a` targets, checks that the deletion author owns the
+  target, honors the deletion timestamp bound for addressable versions, and never permits deletion
+  of another author’s event.
+- Every v1 event, including Option-C events, gets a valid NIP-01 id **and event signature**. The
+  self-log head signature is an additional completeness credential, not a replacement for event
+  signatures. Signature amortization is deferred until it has a separate, reviewed batch-signature
+  statement and NIP-OA compatibility proof.
 
----
+### 6. J1 is completed-job evidence, not requester acceptance
 
-## Milestone 3 — Reproducible and self-serve programs
+Buzz currently defines kinds 43001–43006 but does not freeze a job payload/reference contract. A
+request signed by a requester plus a result signed by an agent proves that a requested job received
+a claimed result; it does **not** prove that the requester accepted the work’s quality.
 
-### M3.1 · #28 — publish and reconstruct Contributions parameters
+S0 freezes a Trustgraphs-compatible J1 profile with exact `h`, `p`, and marked `e` tag cardinality,
+request/result linkage, content bounds, lifecycle resolution, and NIP-OA requirements. Until Buzz
+has a requester-signed result acknowledgement, J1 is named “completed-job evidence,” receives the
+lowest/capped starting weight, and is never described in UI or docs as an acceptance. A later
+requester-signed acknowledgement can define J2 without changing historical J1 semantics.
 
-**Closed in `3de8943`.** New Contributions deployments register a typed parameter controller that
-emits every complete canonical tuple and binds it to the instance ID, snapshot, EAS, and registry.
-Rotations atomically update the controller, snapshot, and registry commitments while preserving
-version history. The scanner, operator, indexer, and verifier tooling reconstruct from that public
-history and fail closed on any event/getter/controller/snapshot/registry mismatch; the prover now
-rejects a known mismatch before constructing an input. The Anvil acceptance test removes the local
-draft, gives the reproducer only RPC/registry/start-block inputs, rebuilds the checkpoint, submits a
-nonzero accepted root, and independently reproduces that exact root from chain history.
+### 7. One community anchor hides inner work from ordinary pricing
 
-- Introduce a Contributions deployer/factory or immutable parameter publisher that emits the full
-  canonical parameter tuple and binds it to the snapshot/instance ID.
-- Teach `instance_scan`, the operator, indexer, and verifier tooling to reconstruct the tuple from
-  chain history and require its hash to match `snapshot.paramsHash()`.
-- Change a known parameter mismatch from a warning to a pre-proving hard error.
-- Add a third-party reproduction test starting from only RPC URL, registry address, and start block;
-  it must rebuild inputs and reproduce the accepted root without a local params file.
+`AnchorRegistry.anchorCount` is one for a community head even when the bundle contains thousands
+of audit entries and signatures. Therefore `nostr-workspace` is conservatively placed in the
+vault’s top supported band, like `trust-compose`, rather than priced from `leafCount + anchorCount`.
+The operator authenticates and enforces exact bundle work limits (entries, relevant events, bytes,
+NIP-01 signatures, and OA signatures) before proving. Unknown/oversized work is refused before
+wallet or prover-network spend.
 
-**Close when:** a fresh machine can reproduce a Contributions result from public data alone.
-
-### M3.2 · #21 — make signer-sync an optional governed-factory module
-
-**Closed in `56326fd`.** Governed creation optionally installs a dedicated signer verifier/vkey and
-selection tuple, enables the module before sealing the Safe, and publishes a complete descriptor.
-Ponder/API and settings now expose live module state, receipts, staleness, failures, and a delayed
-member-governed pause/resume action. The operator derives signer work from the creation receipt,
-waits for landed score checkpoints, reconstructs historical pinned params, submits the complete
-owner receipt without IPFS/vault handling, and uses mutually isolated finality/loss-budget policy.
-The real-Safe integration creates once, discovers both modules, applies a signer proof and replaces
-the owner set; invalid program identities and unsafe selection policies roll the whole creation
-back. Verification: 553 Forge tests, 34 adapter tests, 88 operator-core tests, 25 indexer tests,
-frontend parity/lint/production build, Ponder codegen, and EIP-170 size checks.
-
-- Add optional signer-sync creation inputs: verifier/program identity, selection policy, and clearly
-  separated signer-sync snapshot/module addresses.
-- Deploy, enable, and announce `SignerSyncZkModule` in the governed creation transaction. Index the
-  event and expose it through catalog/API rather than hardcoding signer sync disabled.
-- Add network settings/status UI, rotation receipts, stale/failure diagnostics, and a deliberate
-  enable/disable path.
-- Schedule signer-sync work in the operator with separate loss budgets and finality handling.
-- Integration test: create once, discover both modules, land a signer proof, and update the Safe
-  owner set without a hand-edited config file.
-
-**Close when:** an outside user can enable, observe, and operate signer-sync from the standard
-factory/app path.
+The “no contract changes” statement means no semantic change to `AnchorRegistry`,
+`MerkleSnapshot`, or journal v3. A new params codec, verifier deployment, InstanceRegistry row, and
+explicit `ProvingVault` program/pricing branch are expected platform integration.
 
 ---
 
-## Milestone 4 — Research issues that can close with decisions
+## Non-negotiable invariants
 
-These tracks do not block publishing the repository. They do block any claim that the corresponding
-feature is implementation-ready.
-
-### M4.1 · #37 — private Trustgraph decision sprint (first research closure)
-
-**Closed in `5526d6a` (PR #76).** The accepted ADR fixes issuer-known blind enrollment, private
-target cards, positive replace/revoke semantics without comments, band-only member disclosure, 100
-fixed PageRank iterations without BFS/trust decay, exact padded capacity/leakage policy, and a
-non-binding unlinkable score-band governance consumer. The selected pilot is two reproducibly
-built attested AWS Nitro scorers with two-root agreement and 2-of-3 key release. The stronger target
-is four-party active MPC at `t=1`, but its confirmed independent operator set is honestly recorded
-as empty, so it cannot become the pilot yet. The machine-readable policy and public-trace oracle
-gate #70–#75, all assigned with explicit dependencies and exit/no-go criteria.
-
-This is the smallest research closure. Convert `research/PRIVACY_ARCHITECTURE.md` into an approved
-ADR that fixes:
-
-- credential issuer knowledge, private target resolution, member output granularity, comment policy,
-  and accepted metadata leakage;
-- pilot architecture (TEE-first, MPC-first, or parallel), exact trust/corruption assumptions, and
-  rollback/key-release requirements;
-- the first private consumer; and
-- named owner plus measurable entry/exit gate for every selected spike.
-
-**Close when:** the ADR is approved in the issue, owners accept the spikes, and the issue's four
-discussion outcomes are checked. Implementation remains in the new spike issues.
-
-### M4.2 · #34 — scalable weighted-prior specification
-
-**Closed in `8bf7588` (PR #56).** The accepted ADR fixes persistent personalized-prior semantics,
-prior-supported node/dangling behavior, exact decimal/Hamilton normalization, canonical CSV/JSON and
-`TGWP` bytes, compact calldata validation with chain-history recovery, timelocked rotation,
-governance/version/migration boundaries, and a constitutional 2,048-entry cap. Rust, TypeScript,
-and Solidity share a byte fixture; measured max-shape cost is 445,972,213 SP1 cycles and the compact
-2,048-entry EVM path is bounded at 3,694,644 gas under the documented method. Implementation is
-split in dependency order across #52–#55.
-
-- Lock the mathematical/product meaning, node universe, dangling behavior, normalization and exact
-  remainder rule, canonical CSV/JSON bytes, commitment, availability, rotation, governance, and
-  version/migration policy.
-- Benchmark representative graphs at hundreds, low thousands, and the proposed maximum across guest
-  cycles, witness size, calldata/gas, operator memory/time, and browser recomputation.
-- Add at least one Rust/TypeScript/Solidity canonical normalization/root fixture.
-- Choose a concrete entry cap and architecture from the evidence. Record explicit deferrals for
-  every remaining question and open ordered implementation issues.
-
-**Close when:** every exit criterion in #34 is evidenced in the repository or linked children.
-
-### M4.2a · #52 — weighted-prior core, guest, and production goldens
-
-**Closed in `6530bf5` (PR #79).** A separate `weighted-prior-core` and detached
-`trust-graph-weighted` SP1 guest implement TGWP V1 validation, persistent personalized-prior
-PageRank, dangling-to-prior behavior, and exact mass-conserving Hamilton apportionment without
-changing the binary-seed programs. Rust, TypeScript, and Solidity consume the promoted production
-golden, including literal equal-remainder/address-tie vectors. Actual guest runners byte-match
-empty, sparse, dangling, concentrated, tie, and max-size scenarios and reject every required
-manifest/binding failure. The 2,048-entry, degree-16, 40-iteration release fixture measures
-923,463,928 cycles under a strict sub-billion gate. Rebuilt trust-graph, signer-sync, Contributions,
-and Hypercerts ELF hashes exactly match the branch point, proving their vkeys did not rotate.
-Hosted Actions were billing-blocked before runner allocation; the Rust workspace, frontend, 575
-Forge tests, prover builds/checks, guest gates, formatting, lint, regeneration, and secret scan ran
-locally. Operator recovery and indexer integration are complete in dependency child #54, and the
-user-facing workflow is complete in #55.
-
-### M4.2b · #53 — weighted-prior commitment and rotation lifecycle
-
-**Closed in `f47173d` (PR #80).** A separate `trust-graph-weighted` factory, frozen 13-field params
-codec, compact TGWP validator, and typed controller create weighted instances without changing any
-binary-seed factory or controller. Creation and rotation validate the exact manifest chain,
-version, length, count, ordering, uniqueness, positivity, mass, root, and SHA-256 through the
-constitutional 2,048-row boundary, while contracts retain only O(1) commitments and versioned
-provenance metadata. Owner proposals and cancellations feed a factory-fixed delay; activation is
-permissionless, replay/version guarded, and atomically updates controller, snapshot, and registry.
-Already-triggered checkpoints keep their pinned hash. Events plus creation/proposal transaction
-input reconstruct every exact manifest, with a fail-closed recovery runbook. The real max-row
-`proposePrior` path measures 3,579,477 execution gas and 4,048,961 total L1 gas under the ADR method.
-A 128,000-call stateful invariant, max-size creation, malformed/fuzz/replay tests, full Forge suite,
-weighted Rust/TypeScript parity, lint, and size build pass; the weighted factory retains 12,145
-bytes of EIP-170 margin and the existing governed factory retains 2,598. Hosted Actions were again
-billing-blocked before runner allocation. Operator/indexer integration is complete in #54; UX
-is complete in #55.
-
-### M4.2c · #54 — weighted-prior operator recovery and indexer APIs
-
-**Closed in `281cb68` (PR #81).** The operator discovers the isolated weighted program from the
-registry, reconstructs checkpoint-pinned current or historical tuples, and routes only through the
-weighted core and guest. Exact TGWP bytes recover in cache, raw-CID mirror, then archival calldata
-order; every source is revalidated against chain/version/count/root/SHA commitments. Active and
-pending versions are retained under bounded cache policy, degraded mirrors retry and alert, and
-unavailable data disables proving. The indexer independently decodes and validates creation and
-proposal calldata into reorg-safe instance/version/entry history, keeping chain lifecycle separate
-from byte availability, and exposes additive paginated weighted APIs without changing binary
-instance responses. Full Rust and Forge suites, the actual operator/SP1 parity gate, Ponder
-codegen, 42 indexer tests, focused lint, formatting, and diff checks passed locally. Hosted Actions
-were billing-blocked before runner allocation. Weighted UX is complete in #55.
-
-### M4.2d · #55 — weighted-prior import, preview, creation, and redeployment UX
-
-**Closed in `339adc3` (PR #82).** `/create/weighted` accepts bounded human CSV/JSON and emits
-byte-tested canonical CSV/JSON, normalized TGWP, root, SHA-256, deterministic provenance, exports,
-and exact #53 calldata. Invalid decimals, duplicates after resolution, wrong chain, over-cap and
-oversized inputs retain editable state with field errors. ENS names resolve only at a recorded
-finalized Ethereum block, never enter consensus bytes, and are re-resolved immediately before
-simulation and signing; any change rebuilds all artifacts and clears approval. The asynchronous,
-cancellable preview shows normalized/day-zero shares, largest/top-10 concentration, HHI, roots,
-bytes and gas. Weighted creation, address-level timelocked rotation review/activation, unavailable
-manifest refusal, wrong-chain safeguards, and explicit equal-weight binary prefill all fail closed.
-The production #52 frontend golden, canonical/import/ENS tests, 2,048-entry worker benchmark,
-headless end-to-end workflow, accessibility/recovery guard, optimized Next build, and 15 weighted
-factory/controller tests passed locally. Hosted Actions again failed before runner allocation due
-account billing. No factory deployment is implied: absent `weightedFactory`, import/preview/export
-remain available and signing stays disabled.
-
-### M4.3 · #36 — composition and graph-reputation specification
-
-**Closed in `860b257` (PR #69).** The accepted V1 decision selects a normalized blend of complete,
-atomically captured source distributions with exact two-stage source-aware Hamilton apportionment,
-manual nonzero weights, fail-closed availability/freshness, and explicit governance-admitted
-provenance limits. The checked-in BigInt reference and goldens pin commitments, attribution,
-rounding, invalid/stale inputs, and post-trigger immutability. The simulator covers all 36 positive
-A/B/C 10%-grid policies, disagreement and leave-one-out sensitivity, compromised-source bounds,
-clone amplification, meta-referral cartels, and a conservative 8-source / 8,192-entry native cap.
-Graph reputation remains a separate scoped, curated-admission, advisory policy. Proven composition
-is split across #63–#66 (sharing #61), and lineage/vouch experimentation across #67–#68.
-
-- Build the reference rational blend and candidate integer apportionments; replay at least three
-  representative sources and publish simplex, disagreement, correlation, attribution, and
-  leave-one-out results.
-- Fix scope/output compatibility, apportionment, source/account/blob limits, freshness, failure
-  semantics, capture manifest, provenance trust boundary, nesting rule, and proving-price model.
-- Add golden fixtures for overlap, missing accounts, unequal pools, rounding, stale sources, wrong
-  blobs, and post-trigger source updates.
-- Finalize lineage authority, scoped/expiring vouches, Sybil assumption, caps, and advisory-only
-  launch policy. Open dependency-ordered implementation issues for `trust-compose`.
-
-**Close when:** every exit criterion in #36 is met; a detailed candidate report alone is not enough.
-
-### M4.3a · #63 — trust-compose core, SP1 guest, and production vectors
-
-**Closed in `344cc08` (PR #90).** The isolated `composition-core` validates exact canonical source
-blobs against CID/SHA-256/Merkle/total commitments, validates compact static `TGCP` policy and
-captured-state `TGCM` bytes, and performs checked uint128/two-stage source-aware Hamilton allocation
-with widened uint256 products. It emits canonical output bytes/CID/root plus a complete per-source
-attribution ledger. The detached SP1 6.3.1 guest and native adapter pin the new program identity,
-20-word params tuple, common 12-word journal, capture commitment, and instance binding without
-changing any legacy guest artifact.
-
-Independent TypeScript production vectors plus Rust and Solidity codecs/validators reproduce every
-research quota, attribution, source update, output commitment, journal digest, and proof. Positive
-guest scenarios cover overlap, missing accounts, unequal pools, reorder, exact reproduction,
-remainder ties, updates, and representative scale; native and guest rejection gates fail closed on
-commitment/source/program/freshness/quota/cap violations. The accepted maximum remains 8 required
-sources and 8,192 aggregate/union entries: its 412,097-byte witness executes in 222,311,301 cycles
-with 7,328 KiB host peak RSS, and the SP1 mock Groth16 path verifies exact public values. The full
-Rust workspace, 610 Forge tests, 11 TypeScript composition tests, frontend suite, and aggregate
-parity task passed locally. Hosted Actions were billing-blocked before runner allocation. Atomic
-capture/factory wiring shipped in #64; operator/indexer integration shipped in #65 and the
-frontend shipped in #66.
-
-### M4.3b · #64 — atomic source capture and control lifecycle
-
-**Closed in `0a100da` (PR #91).** Authenticated, factory-created source adapters now pin the exact
-registry row, controller, snapshot/verifier bytecode, SP1 vkey, program/family/output identity, and
-reviewed deployment provenance. Composition source snapshots explicitly opt into additive accepted-
-state provenance without changing the legacy snapshot ABI or gas-sensitive storage path. Every
-captured state is recoverable by never-reused source checkpoint ID, including same-block legacy
-state-slot replacement.
-
-The bounded accumulator pulls 2–8 required same-chain allocation sources and freezes exact canonical
-`TGCM` bytes, capture block, policy version, adapter-set hash, and source checkpoint IDs in one
-trigger transaction. Unavailable, empty, stale, future, overflowing, duplicated, cross-chain,
-composite, wrong-program, controller-rotated, and unauthenticated inputs fail closed. The isolated
-factory registers the dedicated verifier/vkey and leaves no factory authority behind; its two-step
-controller provides delayed proposal, cancellation, permissionless exact-preimage activation,
-append-only rollback, and adapter-only recovery.
-
-All Forge suites passed with zero failures, including 13 composition regressions and 54 proving-vault
-regressions. The Rust all-features workspace, independent 11-test TypeScript oracle, secret scan,
-and composition SP1 guest build also passed locally. Trigger gas measured 677,312 at two sources and
-1,916,283 at eight. Hosted Actions were billing-blocked before runner allocation; the existing
-repository-wide Rust formatting/rustdoc debt was recorded separately and this PR changed no Rust
-source files.
-
-### M4.3c · #65 — trust-compose operator, pricing, publication, and indexer APIs
-
-**Closed in `6f41055` (PR #92).** The operator now discovers typed composition instances and
-reconstructs exact current or historical `TGCM` captures through cache, mirror, and calldata paths,
-requiring complete source-byte quorum and every frozen commitment before proving. Scheduling and
-quotes use authenticated entry counts, union accounts, blob bytes, and measured composition work
-bands rather than source count; caps fail closed, proving fees remain distinct from tank capacity
-and gas reimbursement, and source availability has its own durable retry/loss accounting. Historical
-republish rebuilds and validates byte-identical outputs before satisfying the configured publication
-policy, while restart, reorg, stale/unavailable source, malformed bytes, cap overflow, and repeated
-deterministic failure paths retain explicit recovery behavior.
-
-The indexer independently reproduces the policy, captured sources, two-stage Hamilton attribution,
-output commitments, proof provenance, and accepted on-chain state before transaction-scoped
-ingestion. Isolated composition tables and paginated/bulk APIs expose policy history, captured
-epochs, source evidence, exact and ideal attribution, disagreement, coverage, and proof bundles,
-while distinguishing cryptographically bound evidence from governance-admitted provenance. Program
-routing remains collision-free across TrustGraph, weighted, Hypercerts, Contributions, signer, and
-composition families. A single checkpoint-pin registration now updates both generic parameter
-history and composition policy history, preventing Ponder startup ambiguity.
-
-The focused suites passed with 103 operator-core tests, 42 zk/operator tests plus three explicit SP1
-release gates, 14 composition-core tests, 69 indexer tests, 624 Forge tests, Ponder codegen, frontend
-golden-vector coverage, and changed-file lint. Hosted Actions passed Rust tests/docs/fmt, Solidity,
-secret scan, the pinned SP1 guest build, and all six ZK parity families. The repository's pre-existing
-frontend strict-null typecheck findings remain outside this issue; no trust-compose error is present.
-
-### M4.3d · #66 — composition preview, creation, rotation, and provenance UX
-
-**Closed in `60f9a77` (PR #96).** `/create/composition` now filters same-chain address allocations
-to one authenticated program, cross-checks accepted source states onchain and through the indexer,
-defaults to exact equal weights, and reproduces production `TGCP`/`TGCM`, source-aware Hamilton
-quotas/attribution, output bytes/CID/root, measured work bands, pairwise overlap/correlation/
-disagreement, concentration/coverage, leave-one-out effects, and A/B/C simplex sensitivity in the
-browser. Reviewed append-only source adapters, source/family/controller overlap, freshness,
-availability, caps, conservative quote/cadence, and required-source no-fallback behavior all gate
-the exact simulated payload; a source refresh invalidates review while a wallet refusal does not.
-
-Creation leaves every factory-derived field zero and records the reviewed commitment anchor.
-Rotation exposes active/pending/cancelled/superseded history, owner cancellation, and permissionless
-post-delay activation using only the exact indexed manifest/adapter preimage. Durable composition,
-policy, and epoch routes separate cryptographic from governance provenance and provide complete
-evidence/capture/attribution downloads, address proofs, reorg-safe refresh, and locally anchored
-preview-to-landed byte comparison. Rolling deployments degrade explicitly to offline or read-only
-states without perturbing existing creation paths.
-
-The production A/B/C and TrustCompose goldens, new API/preflight/workflow/source tests, every
-existing frontend vector, strict composition TypeScript, frontend lint/build, 72 focused Forge
-regressions, and `composition-core` Rust tests passed locally. Hosted Actions passed Rust
-tests/docs/fmt, the full Solidity suite, and secret scanning. No production deployment is implied;
-an absent `trustCompose.factory` keeps signing unavailable.
-
-### M4.3e · #67 — graph lineage identities and typed scoped endorsements
-
-**Closed in `0f7f2b3` (PR #97).** A separate domain-separated registry now identifies a continuing
-graph actor by chain, canonical `InstanceRegistry`, and instance ID rather than display name,
-snapshot, or Merkle root. Append-only configuration versions pin the authenticated program,
-contract tuple, params, controller/owner authority, family, method, scope, identity domain, and
-source policy; exact epoch identities additionally pin the accepted checkpoint, freeze and
-acceptance blocks, root, canonical blob/CID commitments, total, and program vkey. Live reads compare
-the underlying registry and controller, so rotations suspend old configurations and claims before
-the indexer observes them.
-
-Integrity, methodology, referral, agreement, and non-propagating warning records pin both parties'
-exact configuration versions plus scope, weight, finite 90-day-or-shorter validity, evidence,
-issuer/scope sequence, explicit supersession, and permanent revocation references. Only referrals
-enter adjacency. Their positive outgoing mass is bounded at `1e18` across the complete remaining
-validity interval, preventing future schedules or a transient subject rotation/rollback from later
-overlapping above budget; current spent and unused mass remain explicit.
-
-Ponder preserves current state and append-only configuration, epoch, endorsement, supersession, and
-revocation history. Bounded APIs confirm candidate-active records against the canonical contract
-and return `verification-unavailable`, never active, on RPC failure. The provenance UI separates
-actor from epoch identity and exposes authority/controller history, exact commitments, validity,
-evidence mutability, overlap/correlation signals, lifecycle links, and referral budgets. The local
-A→B→C→A fixture covers collisions, cycles, expiry, revocation, rotations, multiple scopes, mutable
-evidence, and every non-propagating kind without touching existing score/root/proof paths.
-
-All 631 Forge tests, 77 indexer tests, frontend tests/lint, Ponder codegen, production Next build,
-size and diff checks passed locally; hosted Solidity, Rust tests/docs/fmt, and secret scanning all
-passed. The registry retains 9,103 bytes of EIP-170 runtime margin. No deployment or automatic
-composition policy is implied: the address is optional and #68 remains explicitly advisory.
-
-### M4.3f · #68 — advisory scoped graph-reputation recommendations
-
-**Closed in `6bbd17e` (PR #99).** The indexer now computes a deterministic, integer-only
-personalized reputation distribution over the previous finalized graph-lineage epoch. Sparse roots,
-positive referral mass, dangling and unspent mass, canonical Hamilton rounding, exact node/root
-attribution, family mass, budgets, strongest paths, and leave-one-root-out sensitivity all use
-domain-separated canonical commitments shared with an independent Rust core and golden vectors.
-Inputs fail closed on cutoff, lineage/configuration version, lifecycle, budget, and convergence
-violations; disconnected cartels remain at zero and the 10% ingress fixture reproduces its exact
-16.3225% result.
-
-The bounded read-only API resolves canonical finalized blocks and authenticated live lineage state,
-limits interactive roots and graph size, and exposes evidence mutability, expiry, controller/family/
-method overlap, trusted ingress, path provenance, and sensitivity without writing composition
-defaults or creating a transaction path. `/graph-reputation` keeps manual weights local and places
-them beside recommendations rather than applying them. Adversarial simulations cover cartels,
-clones, rings, compromised roots, rotation, expiry, and probation.
-
-Rust workspace tests/clippy/format, all 84 indexer tests, frontend tests/lint/build, Ponder codegen,
-and focused cross-language goldens passed locally. Hosted Rust, docs, format, secret scan, Foundry,
-all pinned guest builds, and all six SP1 host/guest parity lanes passed. Automatic composition
-adjustment remains deliberately out of scope; its governed caps, timelock, rollback, and golden
-requirements are tracked independently in #98.
+1. **One canonical Rust implementation.** Serialization, audit folding, signatures, OA parsing,
+   replacement/deletion, edge semantics, params hashing, leaves, and journal encoding live in
+   `packages/`; host code assembles bytes but does not define consensus.
+2. **The guest re-folds the complete on-chain anchor log.** It asserts the checkpointed
+   `anchorAcc/anchorCount`, rejects unsupported envelope/node/commitment combinations, and applies
+   rule Φ inside the proven statement.
+3. **No discretionary omission.** Every committed relevant event is accepted, deterministically
+   skipped with a closed reason, or invalidates its whole head. Host filtering never decides graph
+   truth.
+4. **All relationship edges are content-backed.** G1 needs the referenced PR/patch root; J1 needs
+   the linked request and result; F1 needs the referenced post/comment; V1 needs one canonical
+   subject. Hint-only `p` tags never establish target authorship.
+5. **Every cheap signal is bounded.** Self-edges are inert; F1 counts only literal `"+"` and a
+   later `"-"` revokes that voter/target state; pair/type caps apply before type weights sum; J1 is
+   capped and discounted until requester acknowledgement exists.
+6. **Params and domains are versioned.** The relay key, community UUID, chain id, accepted
+   commitment variants, weights/caps, staleness, seed-set root, and every consensus limit entering
+   policy are covered by `paramsHash`. Output-domain reuse is forbidden.
+7. **Bounds exist in consensus and operations.** Event bytes, content bytes, tag count, tag
+   elements, tag-string bytes, audit-detail bytes, audit entries, events, and signatures have
+   explicit checked maxima. Unbounded allocation is a test failure.
+8. **Existing vkeys stay byte-identical.** `zk/nostr-program` is a detached workspace. Adding the
+   program must not edit existing core semantics or dependency graphs; CI records existing vkeys
+   before and after.
+9. **Secrets and member-scoped content stay scoped.** Relay/database credentials never enter
+   fixtures, manifests, journals, logs, score blobs, frontend responses, or public IPFS. A digest
+   may be public while its preimage remains access-controlled.
+10. **Trust claims remain precise.** Option A is relay/exporter-attested enumeration; Option C is
+    self-committed enumeration with admitted-relayer anchoring availability. A bogus high count by
+    an admitted relayer can deny later non-address anchors under the current registry; tests and
+    runbooks record this governance/availability risk rather than calling Option C fully
+    censorship-proof.
 
 ---
 
-## Milestone 5 — Agent product epics
+## Scope
 
-### M5.1 · #35 — ERC-8004 identity enrichment
+### In v1
 
-**Closed in `f6529a1` (PR #57).** The Optimism Identity Registry is allowlisted with pinned ABI,
-proxy implementation/version/owner provenance and monitored control-plane history. Ponder now
-reconstructs qualified owner, verified-wallet, URI, and event histories in canonical position order;
-a separate DNS/IP-pinned sidecar validates and sanitizes bounded HTTPS/IPFS/data registration
-documents without blocking chain ingestion. Bulk APIs decorate accounts and whole networks without
-N+1 reads, while the account page, member table, graph/inspector, induced agent-wallet lens, and
-durable agent route keep identity evidence distinct from existing scores. The two-agent Solidity
-fixture, 33 indexer tests, frontend production build and byte-identical PageRank/Hypercerts/
-Contributions vectors, Forge fixture/full-suite evidence, Rust workspace, Compose, and schema checks
-pass. Follow-up reputation work is dependency-ordered in #58–#62.
+- Envelope kind 2 with Buzz audit-chain A and self-log C; A′ only if S0 activates it.
+- V1 vouch kind 36382, G1 merged git status, J1 completed-job evidence, and F1 forum upvote.
+- Kind-13534 roster verification and OA-derived agent eligibility.
+- Separate member/agent scores plus the existing mutual Nostr↔EVM binding and dual-domain leaves.
+- Lane-2-only production guest, journal v3, params codec, verifier/instance deployment, paid/curated
+  operator support, authenticated score-program indexing, reduced-tier browser recomputation, and
+  trust-compose source compatibility.
+- Member-scoped pilot archive, with public archive supported as an instance deployment policy but
+  not required for the pilot.
 
-Deliver one vertical slice without feeding external agent data into proven Trustgraph scores:
+### Explicitly deferred
 
-- pinned official Identity Registry ABI and allowlisted Optimism/local deployments with proxy
-  implementation provenance;
-- local lifecycle fixture and reorg-safe ordered indexing of identity owner, verified wallet, URI,
-  and relation history;
-- an asynchronous SSRF-bounded metadata fetcher with byte/time/redirect/content-type limits,
-  backreference validation, content hashes, and timestamped endpoint observations;
-- bulk account/network APIs and a durable agent identity route; and
-- consistent evidence labels in account header, member table, graph, inspector, and verified-wallet
-  induced lens.
-
-**Close when:** all nine acceptance boxes in #35 pass and existing roots, vectors, recomputation, and
-proof paths remain byte-identical.
-
-### M5.2 · #38 — delegated actions with human override
-
-**Closed in `d71ca82` (PR #78).** The shipped module supports one revocable vote delegate per
-principal, proposal-pinned provisional votes, and exactly one final principal override with stored
-power and tally conservation. Events, Ponder history, and governance UI preserve the original
-agent, rationale, override, and transaction positions. The notification-first runner waits through
-the configured notice interval, votes late with its own key, recovers across restarts, and writes
-digest-bearing mode-0600 receipts; the operator runbook covers permissionless upkeep and incident
-response. EAS 1.3 typed signatures keep humans as attesters while a chain/contract/schema-bounded,
-zero-value, short-deadline relay pays gas. All 568 Forge tests, frontend/indexer suites, production
-frontend build, strict runner compile, CI-budget fuzzing, Rust tests, secret scan, code generation,
-and size checks pass. Stage 5 is isolated in #77; no deployment was attempted.
-
-Ship stages 1–4; split stage 5 into its own research issue:
-
-1. Upkeep-agent runbook for permissionless execute/claim/trigger/prover operations.
-2. EIP-712 EAS delegated-attestation signing, review, relay, expiry/replay protection, and gasless
-   vouch UX while keeping the human signer as attester.
-3. Notification/preemption voting loop with an observable intended-vote receipt.
-4. Audited principal-overrides-delegate voting: explicit delegate grant/revoke,
-   `castVoteAsDelegate`, proposal-pinned proof, exact tally replacement, events, indexer receipts,
-   frontend override, and quorum invariants.
-
-Before implementation, resolve one delegate versus scoped delegates, identical versus discounted
-quorum weight, event-only reason format, and notification requirements.
-
-**Close when:** stages 1–4 work end to end with malicious delegate, revocation, replay, double-vote,
-override, and tally-conservation tests; graph-level delegation research has its own issue.
-
-### M5.3 · #58 — raw ERC-8004 reputation evidence
-
-**Closed in `62af08a` (PR #83).** The official Optimism Reputation Registry proxy, implementation
-history, version, owner, identity binding, deployment block, ABI, and bytecode expectations are
-pinned and fail closed on drift. Ponder preserves the canonical feedback, revocation, and response
-stream with exact event provenance; reviewer attribution uses only verified-wallet history before
-the feedback position and explicitly represents unattributed or ambiguous evidence. A stable bulk
-API provides exact agent/reviewer/tag/unit/revocation/block filters and keyset pagination without
-N+1 reads. Optional descriptors remain asynchronous, bounded, hash-checked observations behind the
-#35 metadata boundary. The agent page exposes signed raw values, mutable external descriptors,
-responses, revocations, and attribution evidence without creating a global score or changing any
-TrustGraph edge, root, proof, or legacy golden. The rotation/revocation/response fixture, 598 Forge
-tests, 52 indexer tests, frontend tests/build, code generation, and focused lint/format checks pass;
-hosted jobs were billing-blocked before runner allocation.
-
-**Close when:** all raw-event, historical-attribution, bulk-query, metadata-boundary, fixture,
-operator-recovery, and no-score-coupling acceptance criteria in #58 pass. Complete.
-
-### M5.4 · #59 — pinned-policy ERC-8004 reputation experiment
-
-**Closed in `1608411` (PR #84).** One exact Optimism registry/cutoff, tag/unit/decimal policy,
-qualified-agent reviewer epoch/root, event-time wallet attribution rule, target universe, pair
-reconciliation, denominators, bounds, arithmetic, and ordering are canonically serialized and
-SHA-256 committed. The exact-BigInt simulator assigns one machine-readable reason to every excluded
-record and compares reviewer-weighted direct aggregation with Hamilton-apportioned, fixed-mass
-positive-edge propagation. A second implementation independently reproduces serialization,
-filtering, reconciliation, arithmetic, propagation, and ordering. The fixture covers repetition,
-responses, revocation, wallet rotation, self-feedback, an unadmitted Sybil clone, an admitted
-reciprocal ring, policy mismatch, explicit zero, and missing evidence. Only 9 of 28 declared pairs
-are observed, while the small #8/#9 ring captures 66.9419% of propagated target mass, so the report
-records a bounded no-go for production/proof integration. The dedicated experimental graph/table
-remains outside existing scores, vouch edges, roots, and proofs. Eleven experiment tests, strict
-research TypeScript, 52 indexer tests, frontend goldens/build/lint, and an HTTP route smoke pass;
-hosted jobs were billing-blocked before runner allocation.
-
-**Close when:** every policy, canonicalization, independent-golden, exclusion, coverage,
-adversarial-fixture, comparison, recommendation, UI-labeling, and isolation criterion in #59 pass.
-Complete.
-
-### M5.5 · #61 — authenticated score-program ingestion and APIs
-
-**Closed in `b725c32` (PR #85).** A single canonical registry now assigns stable program and
-semantic output-domain identifiers to address-keyed TrustGraph, weighted TrustGraph,
-Contributions recipients and claim UIDs, Hypercerts nodes, composition, and reserved ERC-8004
-agent subjects. Ponder folds only the configured governed `InstanceRegistry`, makes the first
-snapshot/program/domain/instance identity immutable, follows verifier/params rotations with exact
-event provenance, checks the live snapshot verifier before reading IPFS, and rejects unknown,
-conflicting, mismatched, or not-yet-enabled declarations. Ingestion, schema rows, APIs, directory,
-and frontend page dispatch use that authenticated declaration; key width is validation only and
-never selects a decoder. The nullable migration, dry-run-first transactional backfill, idempotent
-restart repair, and indexer-first rolling deployment are documented and tested. Fixtures cover a
-20-byte address and identical-looking Contributions claim, Hypercerts node, and future agent
-bytes32 subjects with isolated table/API routes. All 61 indexer tests, frontend tests and
-byte-identical goldens, focused lint, code generation, migration generation, and the production
-frontend build pass; hosted jobs were billing-blocked before runner allocation.
-
-**Close when:** every authenticated-source, collision, fail-closed routing, compatibility,
-provenance, restart/backfill, rolling-deploy, golden-parity, and operator-documentation acceptance
-criterion in #61 passes. Complete.
-
-### M5.6 · #60 — proof-complete external ERC-8004 registry inputs
-
-**Closed in `6d03320` (PR #89).** The accepted ADR records a no-go for a proof-complete claim over
-the existing Optimism registry history: event exports, signatures, CIDs, and individual receipt
-proofs authenticate supplied items but cannot prove non-omission. The only selected future path is
-activation-scoped cooperation from an official or separately named registry domain: reviewed proxy
-implementations synchronously append every admitted semantic event to an immutable global sidecar,
-import a complete frozen starting wallet state, bind implementation epochs and exact topic/data
-bytes, and freeze finalized fixed-count milestones. No pre-activation feedback becomes proven.
-
-The executable miniature freezes 18 TypeScript/Rust/Solidity vectors for the event fold, raw
-preimage fold, checkpoint, and event-time wallet attribution. Adversarial tests reject deletion,
-insertion, reordering, duplication, truncation, stale forks, missing preimages, unknown upgrades,
-and recovery crossing. The measured steady append is 51,674 execution gas; 16,384 records with
-256-byte data produce a 9,256,968-byte witness and 192,335,661 isolated SP1 cycles, establishing the
-maximum research milestone pending a complete-guest benchmark. The full 601-test Forge suite,
-focused 3-test Solidity gas/golden suite, six TypeScript adversarial tests, Rust golden test, prover
-library/example checks, formatting, and detached SP1 benchmarks pass; hosted jobs were
-billing-blocked before runner allocation. Implementation is independently ordered as #86 → #87 →
-#88 → #62, and #59's scoring-policy no-go remains in force.
-
-**Close when:** every boundary, candidate-comparison, threat-model, canonical-encoding,
-historical-attribution, fail-closed behavior, cost/exhaustion/recovery, precise-claim, executable
-fixture, and independently reviewable child-issue criterion in #60 passes. Complete.
+- Option B upstream event-set commitment and any Block/Buzz upstream dependency.
+- NIP-85 publication, kind-number coordination, and ERC-8004 explorer integration. These are S5
+  follow-ons and do not gate the proof pipeline.
+- Workflow approvals, reactions, encrypted DMs/memory/cost metrics, NIP-GS contribution bridging,
+  owner-aggregated agent identity, and a full browser-side envelope verifier.
+- Recursive audit checkpoints, persistent proven graph state, per-head subproof aggregation, and
+  public DA upgrades. The bounded full-prefix pilot produces the evidence used to design them.
+- A generic public-relay crawler or any claim of global Nostr completeness.
 
 ---
 
-## Release gates and issue-count target
+## Target additions
 
-### Core open-source release
+```text
+packages/envelopes/src/nostr/        event, audit, self-log, OA, replacement, TGNW verification
+packages/nostr-workspace-core/       params, binding, semantics, compute, golden exporter
+zk/nostr-program/                    detached conformance + production SP1 bins and lockfile
+zk/prover/src/programs/nostr_workspace.rs
+zk/prover/src/witness/nostr.rs       host-only exporter/archive support behind witness-nostr
+src/contracts/params/NostrWorkspaceParamsCodec.sol
+test/fixtures/nostr/buzz/<sha>/      pinned real Buzz conformance export + adversarial derivatives
+test/golden/nostr-workspace.json     Rust/guest/Solidity/TypeScript production vectors
+docs/build/nostr-workspace/          architecture, runbook, local testing, archive policy
+```
 
-- No known critical/high finding is presented as fixed when it is merely documented.
-- Fresh-clone setup, build, focused test commands, contribution guide, security policy, licensing,
-  generated artifacts, and secret scan are green.
-- Milestone 1 is complete, or any remaining item is explicitly labeled with impact and workaround.
-- Production is not implied until #27 closes.
+Existing generic registries, snapshot/verifier bytecode, journal encoding, PageRank machinery, and
+Merkle consumers are reused. Program dispatch, deployment, pricing, schema, API, and UI tables gain
+reviewed `nostr-workspace` rows rather than inferring the program from names or blob shape.
 
-### Production-with-value
+---
 
-- #20 is closed (#12 and #14 are complete prerequisites).
-- #16's configured publication durability policy is live.
-- #27's deployment ceremony and end-to-end smoke test pass.
+## Execution map
 
-### Honest closure target
+| Stage  | Purpose                                                             | Depends on           | May merge independently when                                     |
+| ------ | ------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------- |
+| **S0** | Freeze the real Buzz/Nostr contract and limits                      | accepted research    | conformance ADR + fixture + measured caps are committed          |
+| **S1** | Build envelope 2 and its conformance guest                          | S0                   | native/guest verification and adversarial suite agree            |
+| **S2** | Build `nostr-workspace-core`, production guest, and parity          | S1                   | V1/G1/J1/F1 compute and four-way bytes are frozen                |
+| **S3** | Build export, archive, anchor, and offline proving flows            | S0; integrates S1/S2 | a real Buzz bundle is reproducible offline and safe to anchor    |
+| **S4** | Integrate contracts, operator, indexer, frontend, composition, docs | S2 + S3              | two-epoch anvil e2e passes through production surfaces           |
+| **S5** | Pilot and harden                                                    | S4                   | authorized clean-room reproduction and operational sign-off pass |
 
-- **Decision track:** complete — #34, #36, and #37 have accepted ADRs and owned child splits.
-- **Production track:** #27 — deploy and exercise the now-guarded creation path.
-- **Feature track:** complete — #35 identity enrichment and #38 delegated actions are closed;
-  graph-native delegation research continues separately in #77.
-- **Weighted-prior track:** complete — #52, #53, #54, and #55 shipped the accepted #34 ADR in
-  reviewable trust-boundary order.
-- **ERC-8004 reputation track:** #58, #59, #60, and #61 closed. The current-history path is a
-  no-go; conditional activation-era implementation is ordered #86 → #87 → #88 → #62 and remains
-  gated by upstream adoption plus a future scoring-policy go.
-- **Trust-composition track:** complete — #63, #64, #65, and #66 shipped the proven blend stack;
-  #67 shipped the separate lineage/endorsement plane, and #68 shipped advisory graph-reputation
-  computation. The shared program-aware ingestion gate #61 is closed; automatic adjustment is
-  isolated as future #98 work.
-- **Private-profile track:** #70 → #71 for the selected TEE pilot and #70 → #74 → #75 for the first
-  consumer; #72 and #73 test the stronger MPC target without blocking the pilot fixture.
+S1 and the host-only portion of S3 may proceed in parallel after S0. Nothing consensus-facing may
+merge with placeholder kinds, an unpinned job schema, a zero `dataCommitment`, or unmeasured bounds.
 
-The target is all 13 remaining issues, but the metric is accepted behavior with evidence—not an
-empty issue list.
+---
+
+## S0 — Protocol freeze and real fixture
+
+Stand up the selected Buzz commit locally with audit enabled and create a workspace containing two
+humans, one OA-delegated agent, a relay-signed roster, and real events for every v1 rule and binding
+path. Export source-derived bytes; do not hand-author a JSON fixture that can agree with our own
+mistake.
+
+Freeze in a short ADR under `test/fixtures/nostr/buzz/<sha>/README.md`:
+
+- the exact audit hash preimage, including community UUID bytes, big-endian sequence, RFC3339
+  microsecond timestamp form, optional-field presence bytes, canonical recursive JSON, and genesis;
+- all audit actions at the pin, the precise `EventCreated` detail shape, queue/write failure
+  behavior, replacement retention, and which relevant rows require direct database export;
+- NIP-01 serialization bytes against the pinned `rust-nostr`, including every ASCII control byte,
+  Unicode, empty strings, tag strings, maximum integers, and adversarial escaping;
+- roster signature/key source and exact tag grammar; relay NIP-11 `self` is a cross-check, not a
+  dynamically trusted key;
+- NIP-OA grammar and published vectors, with boundary cases for every clause;
+- exact G1 root kinds/tags, F1 target/content behavior, and the Trustgraphs J1 profile;
+- an exact address-binding carrier kind/schema and exact Option-C head-event kind/schema after a
+  collision sweep; and
+- Buzz ingest limits plus stricter circuit caps, expressed in both bytes and counts.
+
+The fixture must contain valid and invalid variants for duplicate `auth` tags, OA window edges,
+same-second replacement ties, `e` and `a` deletions, wrong-author deletion, missing referenced
+objects, `+`→`-` vote state, self edges, an audit gap, a changed bundle byte, a duplicate A+C event,
+and an agent whose OA owner is not in the roster.
+
+Benchmark marginal and whole-fixture cycles/PGU for audit hashing, NIP-01 verification, OA
+verification, and the combined envelope. Set hard v1 caps and a conservative operator work model
+from measured PGU. Re-run the existing schnorr benchmark if any pinned crypto input changed.
+
+**S0 exit:** the pinned local Buzz export round-trips through an independent host verifier;
+serializer bytes match Buzz/rust-nostr for the entire corpus; J1, the Option-C head, and the binding
+carrier have no unspecified kind/tag/content fields; the full-prefix pilot ceiling fits the agreed
+proving and archive budgets. If any of those is false, implementation stops here and the research
+plan is amended.
+
+---
+
+## S1 — Envelope 2 and conformance guest
+
+Add `packages/envelopes/src/nostr/` with small auditable modules and no host-only dependencies.
+Implement:
+
+1. Strict TGNW v1 decoding with checked lengths and canonical re-encoding.
+2. Community and `did:nostr` node-id derivation with fixed lowercase/UUID rules.
+3. Full Buzz audit-prefix verification, sequence/previous-hash invariants, relevant-event coverage,
+   exact anchored head/count checks, and bundle `dataCommitment` verification.
+4. Option-C self-log fold and signed head-event verification, including instance/domain binding and
+   exact owner/event-author equality.
+5. NIP-01 canonical serialization, SHA-256 id, patched `k256::schnorr` verification, and strict
+   key/signature parsing for every relevant event.
+6. NIP-OA extraction, exact-preimage signature verification, closed condition parsing, and
+   event-kind/time enforcement.
+7. Relay-signed roster verification, OA-derived agent eligibility, protocol replacement, kind-5
+   tombstones, deterministic event ordering, and the closed error/skip taxonomy.
+
+Add native fixture tests plus a conformance bin in the detached `zk/nostr-program` workspace. The
+guest commits `(nodeId, head, count, dataCommitment, acceptedEventsDigest, skippedDigest)` and fails
+on any mismatch. Tests mutate every signed/hashed field independently and cover allocation/cap
+boundaries. Fuzz/property tests assert canonical encode/decode idempotence, order independence where
+promised, and no panic for any bounded witness.
+
+**S1 exit:** the real Buzz fixture verifies byte-identically natively and in SP1; every adversarial
+derivative has the expected hard-fail or skip result; a missing committed relevant event cannot
+produce a root; the measured whole-envelope cost remains inside S0’s cap.
+
+---
+
+## S2 — Program semantics, production guest, and four-way parity
+
+Add `packages/nostr-workspace-core` as the only source of graph truth. Freeze and test:
+
+- V1: one addressable vouch state per `(author, subject)`, strict 0–100 weight grammar, weight zero
+  and valid tombstone revocation.
+- G1: merged status 1631 author → authenticated root-event author, accepted root-kind allowlist,
+  mandatory two-sided presence, no hint-author fallback, no self edge.
+- J1: requester → OA-valid agent only when the exact linked request/result lifecycle resolves to a
+  completed result with no later cancel/error; low starting weight and per-pair/epoch cap; UI label
+  “completed-job evidence.”
+- F1: voter → authenticated post/comment author; literal `+` is the only positive state, `-`
+  clears it, malformed/arbitrary content is inert, per-pair cap applies.
+- Event-id deduplication across A/C followed by strongest-provenance selection, per-type LWW/state,
+  type weights, caps, then deterministic summation into one pair edge.
+- Current roster plus OA-authorized-agent eligibility, self-edge exclusion, seeds, fixed-point
+  PageRank, point distribution, score blob, member/agent metadata, EIP-712 address binding, and
+  dual-domain leaves.
+
+Freeze the params ABI and its validation. At minimum it covers rank parameters, canonical
+community UUID, relay pubkey, chain id, allowed commitment variants, four type weights, provenance
+multiplier(s), F1/J1 caps, rule-Φ staleness, seed-set root, and any moderation flag that is truly in
+v1. Starting weights require checked-in sensitivity/adversarial evidence and default to the
+dark-launch/discount posture; they are not picked solely to make the demo look balanced.
+
+Add the production SP1 bin in `zk/nostr-program`, the prover
+`nostr-workspace {vkey|paramshash|execute|prove}` group, the golden exporter,
+`NostrWorkspaceParamsCodec.sol`, Solidity golden tests, and the reduced-tier TypeScript recompute
+port. The browser recomputes semantics/root/journal from authenticated envelope-verified rows; it
+does not claim to re-verify BIP-340 or audit-chain bytes.
+
+Golden/adversarial vectors include every rule alone and in conflict, mixed A+C duplicates,
+replacement/deletion, OA failure, roster removal, binding/rebinding/unbinding, and a colliding
+32-byte key from another program domain.
+
+**S2 exit:** native Rust equals the production guest; Rust/guest/Solidity/TypeScript reproduce the
+frozen params, journal, skip digest, leaves, root, and score blob; `task zk:parity
+PROGRAM=nostr-workspace` is green; all previously shipped program vkeys equal their pre-S2 values.
+
+---
+
+## S3 — Exporter, archive, anchoring, and offline proof input
+
+Add `zk/prover/src/witness/nostr.rs` behind `witness-nostr` plus a small operational command surface
+that separates privileged collection from offline proving:
+
+1. `inspect` verifies the selected Buzz SHA/schema, relay key, audit-enabled state, queue/worker
+   health, database coverage, and configured caps without writing an anchor.
+2. `export` captures a consistent audit prefix and all required event rows, builds canonical TGNW,
+   runs the production envelope verifier, writes a content digest/CID and redacted manifest, and
+   stores the bundle under `(community, count, head)`.
+3. `anchor` reads only a previously verified immutable manifest, rehashes the bundle, checks the
+   on-chain node/role/count/capacity state, simulates, and submits envelope kind 2. Re-running is
+   idempotent and never invents a higher count.
+4. `assemble` reconstructs the complete checkpoint anchor log and selected A/C bundles into the
+   production `GuestInput`; `execute` and `prove` are network- and credential-free from there.
+
+Option C gets a deterministic log/head builder and recovery/export story. The guest, exporter, and
+anchor command agree on the exact signed head preimage. A/C duplicate events are visible in the
+manifest and resolved only by core consensus code.
+
+Archive configuration distinguishes `public`, `member-scoped`, and `private-operator` access. The
+pilot uses member-scoped storage. Public manifests contain hashes, counts, program/schema versions,
+and provenance, never credentials or plaintext from a scoped bundle. Republish/repair verifies the
+same digest before replacing storage and cannot change an already anchored preimage.
+
+**S3 exit:** a fresh checkout with the pinned fixture can export, anchor to anvil, assemble offline,
+execute, and prove; a second authorized process reproduces identical TGNW and `GuestInput` bytes;
+audit gaps, stale relay keys, partial snapshots, altered archives, oversized inputs, stale counts,
+and missing credentials all fail before anchor or proving spend.
+
+---
+
+## S4 — Platform and product integration
+
+Wire the built program through every authenticated platform seam:
+
+- register node-kind policy 2 (`did:nostr`) and 3 (`buzz:community`) in deployment/runbook code;
+- deploy `EmptyLaneAccumulator`, `AnchorRegistry`, `MerkleSnapshot`, a labeled
+  `SP1JournalVerifier`, and the reciprocal binding in the established lane-2 order;
+- register the exact `(program, snapshot, verifier, registry, paramsHash)` in `InstanceRegistry`;
+- add conservative top-band `ProvingVault` pricing and operator exact-work preflight;
+- add `Program::NostrWorkspace` to operator-core, catalog/params reads, scheduler, durable
+  witness/proof/publication recovery, and the detached prover ELF map;
+- add the score-program/output-domain row, schemas/migrations, anchor/score/binding/agent
+  provenance, paginated APIs, and fail-closed program dispatch in the indexer;
+- add a typed frontend instance view for members, agents, owner provenance, scores/proofs, epoch
+  trust class, skip summary, archive access policy, and reduced-recompute status without exposing
+  scoped event content;
+- prove that a registered `nostr-workspace` output can be captured as a `trust-compose` source
+  without domain confusion; and
+- add architecture, runbook, local-testing, verification, program-index, production, and recovery
+  documentation with the trust/availability limitations stated beside the happy path.
+
+Extend the main e2e with two checkpoints. Epoch one contains all four signals and one bound member.
+Epoch two changes a vouch, applies a valid deletion, changes membership, flips a forum vote, adds or
+resolves a job lifecycle, withholds one C bundle within rule Φ, and lands a different reproducible
+root. Include a twin-instance replay rejection and an unknown-program/domain rejection.
+
+**S4 exit:** the two-epoch path runs anchor → checkpoint → offline input → SP1 execution/proof →
+publish → `submitProof` → authenticated index/API/frontend → trust-compose capture. Restart tests
+cover export, proving, publication, submission, and indexing boundaries. No existing program’s
+tests, vkey, APIs, or tables regress.
+
+---
+
+## S5 — Pilot and hardening
+
+Run the member-scoped pilot against a non-synthetic Buzz workspace pinned to the supported source
+profile. Before the first anchor, record the relay key, community id, roles, caps, params, archive
+policy, deploy transaction set, vkey, program/output domains, and a rollback/disable procedure.
+
+The pilot must:
+
+- land at least two consecutive epochs, including one real Groth16 proof if the configured SP1
+  environment supports it;
+- stay below the measured audit/event/signature/byte ceilings with at least 2× operational margin;
+- reproduce one landed epoch byte-for-byte from a clean checkout operated by a second authorized
+  archive holder;
+- demonstrate alerting and recovery for audit lag/gap, archive loss, relay-key mismatch, invalid
+  self-log, oversized work, proof failure, reverted submission, and indexer replay;
+- publish the full `skippedDigest` preimage and redacted provenance for each epoch; and
+- receive a focused security review of canonical encodings, signature/delegation validation,
+  completeness/omission paths, bounds, secret handling, and cross-program/domain isolation.
+
+**S5 exit:** pilot evidence and accepted risks are checked in or linked from the runbook; an
+authorized third party can reproduce the root without the original prover; the operator can recover
+from every tested failure without changing consensus inputs; docs make no public-availability,
+requester-acceptance, relay-honesty, or “fully trustless Option C” claim that the implementation does
+not establish.
+
+---
+
+## Optional S5 follow-ons — never release blockers
+
+- Publish proven score projections as NIP-85 kind-30382 assertions under a distinct
+  per-(instance, program-version) service key after freezing the score→0–100 normalization and
+  proof-provenance tags.
+- Coordinate experimental kind 36382 and the binding/head kinds with Block and the wider Nostr
+  registry. Coordination may cause a versioned future migration; it does not rewrite v1 history.
+- Offer Option B upstream only after the pilot demonstrates value.
+- Point the ERC-8004 explorer at proof-backed agent nodes without merging ERC-8004 identity into
+  Nostr identity.
+
+---
+
+## Verification matrix
+
+Every milestone runs the focused suites it introduces and the materially affected existing suites.
+Before S4/S5 exit, CI and release evidence include:
+
+```text
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo test --manifest-path zk/nostr-program/Cargo.toml
+task zk:parity PROGRAM=nostr-workspace
+forge test
+pnpm --dir indexer test
+pnpm --dir frontend test
+pnpm --dir frontend lint
+pnpm --dir frontend build
+task e2e
+```
+
+The detached prover/operator builds and the real SP1 execute/prove path run separately with their
+documented features. Generated ABIs, Ponder/Drizzle code, deployment artifacts, vkey tables, golden
+vectors, and fixture provenance are committed in the same change that alters them.
+
+Every bug or counterexample becomes a minimal committed regression. Security-sensitive expected
+failures may not be waived by snapshotting a new output.
+
+---
+
+## Done when
+
+This goal is complete only when all of the following are true:
+
+1. S0–S5 have met their exit criteria; optional follow-ons remain optional.
+2. A complete anchored Buzz audit prefix and mixed A/C witness can be independently re-folded,
+   verified, scored, and matched to a landed journal/root by an authorized archive holder.
+3. V1/G1/J1/F1, roster/OA eligibility, A+C deduplication, replacement/deletion, rule Φ, address
+   binding, and dual-domain leaves have adversarial regressions in native and guest code.
+4. Four-way consensus parity and the full affected test/build matrix are green, and every prior
+   production vkey is unchanged.
+5. Operator pricing and limits account for inner witness work rather than the single outer anchor;
+   no oversized or unauthenticated bundle reaches proving spend.
+6. The program is discoverable only through authenticated InstanceRegistry and score-program
+   bindings, is consumable by trust-compose, and fails closed across wrong program/output domains.
+7. The runbook lets a new authorized operator deploy, export, anchor, prove, publish, reproduce,
+   rotate params, diagnose skips, and recover archives without oral knowledge or secret leakage.
+8. The documented trust statement matches reality: prover correctness is cryptographic;
+   workspace enumeration is relay/exporter-attested for A; C is self-committed but relayer-gated for
+   on-chain availability; member-scoped data is not publicly reproducible.

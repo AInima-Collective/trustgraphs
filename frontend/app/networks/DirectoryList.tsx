@@ -2,7 +2,7 @@
 //!
 //! A directory is a list, so this renders a list: one hairline-ruled line per network, name and one
 //! line of what it is for on the left, the figures right-aligned and tabular on the right. No cards,
-//! no fills, no badges. The three programs are told apart by the heading they sit under, because a
+//! no fills, no badges. The programs are told apart by the heading they sit under, because a
 //! badge in a mixed list asks a reader to notice a difference, and a heading tells them.
 //!
 //! THE REFLOW: below `lg` the same row re-reads as three lines — name, blurb, then one mono line of

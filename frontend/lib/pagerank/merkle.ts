@@ -33,11 +33,16 @@ export const buildTree = (leaves: Hex[]): Hex[] => {
   if (n === 1) return sorted
   const size = 2 * n - 1
   const tree: Hex[] = new Array(size).fill(ZERO_HASH)
-  for (let i = 0; i < n; i++) {
-    tree[size - 1 - i] = sorted[i]
+  for (const [i, leaf] of sorted.entries()) {
+    tree[size - 1 - i] = leaf
   }
   for (let i = n - 2; i >= 0; i--) {
-    tree[i] = hashPair(tree[2 * i + 1], tree[2 * i + 2])
+    const left = tree[2 * i + 1]
+    const right = tree[2 * i + 2]
+    if (left === undefined || right === undefined) {
+      throw new Error('invalid Merkle tree shape')
+    }
+    tree[i] = hashPair(left, right)
   }
   return tree
 }
@@ -46,7 +51,9 @@ export const buildTree = (leaves: Hex[]): Hex[] => {
 export const merkleRoot = (leaves: Hex[]): Hex => {
   if (leaves.length === 0) return ZERO_HASH
   const tree = buildTree(leaves)
-  return tree[0]
+  const root = tree[0]
+  if (root === undefined) throw new Error('non-empty Merkle tree has no root')
+  return root
 }
 
 /** A Merkle proof (sibling hashes leaf→root, OZ format) for a leaf in a built tree. */
@@ -68,7 +75,9 @@ export const proofFor = (tree: Hex[], leaf: Hex): Hex[] | null => {
   while (i > 0) {
     const sibling = i % 2 === 1 ? i + 1 : i - 1
     if (sibling < tree.length) {
-      proof.push(tree[sibling])
+      const siblingHash = tree[sibling]
+      if (siblingHash === undefined) return null
+      proof.push(siblingHash)
     }
     i = Math.floor((i - 1) / 2)
   }

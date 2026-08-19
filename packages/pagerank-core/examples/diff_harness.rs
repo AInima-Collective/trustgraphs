@@ -34,7 +34,6 @@ impl Lcg {
 
 struct Graph {
     edges: Vec<(u64, u64, u64)>, // (from, to, weight)
-    n: u64,
     seeds: Vec<u64>,
 }
 
@@ -47,7 +46,7 @@ fn gen_graph(seed: u64, n: u64, m: u64) -> Graph {
         let weight = lcg.next(100) + 1; // 1..=100
         edges.push((from, to, weight));
     }
-    Graph { edges, n, seeds: vec![1, 2] }
+    Graph { edges, seeds: vec![1, 2] }
 }
 
 fn legacy_points(g: &Graph) -> HashMap<Address, U256> {

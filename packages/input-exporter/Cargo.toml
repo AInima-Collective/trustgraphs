@@ -42,3 +42,6 @@ clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 # nothing extra — the reconstruction core is tested with synthetic data (no RPC)
+
+[lints.clippy]
+unnecessary_cast = "allow"

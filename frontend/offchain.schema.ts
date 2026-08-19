@@ -150,6 +150,116 @@ export const merkleEntry = offchainSchema.table(
   ]
 )
 
+/*///////////////////////////////////////////////////////////////
+       TRUST-COMPOSE — only rows that fully reproduce the proof
+//////////////////////////////////////////////////////////////*/
+
+export const compositionEpoch = offchainSchema.table(
+  'composition_epoch',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    instanceId: t.text().notNull(),
+    checkpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    policyVersion: t.bigint({ mode: 'bigint' }).notNull(),
+    paramsHash: t.text().notNull(),
+    captureManifestSha256: t.text().notNull(),
+    outputBlobSha256: t.text().notNull(),
+    outputCid: t.text().notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    work: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    metrics: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    cryptographicProvenance: t
+      .jsonb()
+      .notNull()
+      .$type<Record<string, unknown>>(),
+    governanceProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    verifiedAt: t.bigint({ mode: 'bigint' }).notNull(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.checkpointId] }),
+    index().on(t.instanceId, t.checkpointId),
+    index().on(t.merkleSnapshotContract, t.root),
+    index().on(t.paramsHash),
+    index().on(t.timestamp),
+  ]
+)
+
+export const compositionSource = offchainSchema.table(
+  'composition_source',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    checkpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceId: t.text().notNull(),
+    position: t.integer().notNull(),
+    snapshot: t.text().notNull(),
+    familyId: t.text().notNull(),
+    programId: t.text().notNull(),
+    adapter: t.text().notNull(),
+    deploymentProvenance: t.text().notNull(),
+    stateIndex: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceCheckpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    freezeBlock: t.bigint({ mode: 'bigint' }).notNull(),
+    outputRoot: t.text().notNull(),
+    blobSha256: t.text().notNull(),
+    cid: t.text().notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    weight: t.bigint({ mode: 'bigint' }).notNull(),
+    maxAgeBlocks: t.bigint({ mode: 'bigint' }).notNull(),
+    quota: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    entryCount: t.integer().notNull(),
+    blobBytes: t.integer().notNull(),
+    cryptographicallyBound: t.boolean().notNull(),
+    governanceAdmitted: t.boolean().notNull(),
+  }),
+  (t) => [
+    primaryKey({
+      columns: [t.merkleSnapshotContract, t.checkpointId, t.sourceId],
+    }),
+    index().on(t.merkleSnapshotContract, t.checkpointId, t.position),
+    index().on(t.root),
+    index().on(t.snapshot, t.stateIndex),
+    index().on(t.familyId),
+  ]
+)
+
+export const compositionAttribution = offchainSchema.table(
+  'composition_attribution',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    checkpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    sourceId: t.text().notNull(),
+    account: t.text().notNull(),
+    exactValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    idealNumerator: t.text().notNull(),
+    idealDenominator: t.text().notNull(),
+    roundingDeltaNumerator: t.text().notNull(),
+  }),
+  (t) => [
+    primaryKey({
+      columns: [
+        t.merkleSnapshotContract,
+        t.checkpointId,
+        t.sourceId,
+        t.account,
+      ],
+    }),
+    index().on(t.merkleSnapshotContract, t.checkpointId, t.account),
+    index().on(t.root),
+    index().on(t.sourceId, t.account),
+  ]
+)
+
 // skippedNode — the rule-Φ / deterministic-skip audit trail for lane 2 (OFFCHAIN_ATTESTATIONS_ZK §4.3,
 // MULTI_PROGRAM_PLATFORM §5). The guest commits only a 32-byte `skippedDigest` on-chain (a submitProof
 // argument bound into the journal); the PREIMAGE — which nodes were skipped, and why — is NOT on-chain.
@@ -246,6 +356,72 @@ export const hypercertsScore = offchainSchema.table(
     index().on(t.root),
     index().on(t.nodeId),
     index().on(t.boundAddress),
+    index().on(t.timestamp),
+  ]
+)
+
+/*///////////////////////////////////////////////////////////////
+        NOSTR WORKSPACE — proof-bound member/agent projection
+//////////////////////////////////////////////////////////////*/
+
+export const nostrWorkspaceMetadata = offchainSchema.table(
+  'nostr_workspace_metadata',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    checkpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    ipfsHash: t.text().notNull(),
+    ipfsHashCid: t.text().notNull(),
+    numNodes: t.integer().notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    skippedDigest: t.text().notNull(),
+    anchorAcc: t.text().notNull(),
+    anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
+    accessPolicy: t.text().notNull(),
+    epochTrustClass: t.text().notNull(),
+    reducedRecomputeStatus: t.text().notNull(),
+    skipSummary: t.jsonb().notNull().$type<Record<string, number>>(),
+    archiveProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text().notNull(),
+    outputDomain: t.text().notNull(),
+    programProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
+    index().on(t.checkpointId),
+    index().on(t.ipfsHashCid),
+    index().on(t.accessPolicy),
+    index().on(t.timestamp),
+  ]
+)
+
+export const nostrWorkspaceScore = offchainSchema.table(
+  'nostr_workspace_score',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    nodeId: t.text().notNull(),
+    value: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    nostrPubkey: t.text(),
+    actorKind: t.text().notNull(), // member | agent
+    ownerNodeId: t.text(),
+    boundAddress: t.text(),
+    proof: t.jsonb().notNull().$type<string[]>(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text().notNull(),
+    outputDomain: t.text().notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.nodeId] }),
+    index().on(t.nodeId),
+    index().on(t.ownerNodeId),
+    index().on(t.boundAddress),
+    index().on(t.actorKind),
     index().on(t.timestamp),
   ]
 )

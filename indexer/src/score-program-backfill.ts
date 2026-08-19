@@ -7,6 +7,7 @@ export type ScoreBackfillFamily =
   | 'address-merkle'
   | 'contributions'
   | 'hypercerts'
+  | 'nostr-workspace'
   | 'composition'
 
 /** Pure, audited table plan shared by the repair CLI and tests. */
@@ -20,6 +21,8 @@ export const scoreBackfillFamilies = (
       return ['address-merkle', 'contributions']
     case 'hypercerts':
       return ['hypercerts']
+    case 'nostr-workspace':
+      return ['nostr-workspace']
     case 'composition':
       return ['address-merkle', 'composition']
     case 'not-enabled':

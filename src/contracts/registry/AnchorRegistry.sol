@@ -39,6 +39,10 @@ contract AnchorRegistry is AccessControl {
     ///         self-registration by a tx from that address. Other kinds (e.g. 1: DID) register
     ///         through REGISTRAR_ROLE until/unless a permissionless rule activates by governance.
     uint8 public constant NODE_KIND_ADDRESS = 0;
+    /// @notice Node kind 2: `did:nostr:<32-byte x-only pubkey>`.
+    uint8 public constant NODE_KIND_NOSTR = 2;
+    /// @notice Node kind 3: one pinned Buzz workspace/community UUID.
+    uint8 public constant NODE_KIND_BUZZ_COMMUNITY = 3;
 
     /// @notice Frozen envelope-0 head-signature domain tag:
     ///         `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")` (must match

@@ -50,13 +50,19 @@ const word = (data: Uint8Array, slot: number): Uint8Array | null => {
 /** Decode a clean `uint8` word (upper 31 bytes zero). */
 const wordAsU8 = (w: Uint8Array): number | null => {
   for (let i = 0; i < 31; i++) if (w[i] !== 0) return null
-  return w[31]
+  return w[31] ?? null
 }
 
 /** Decode a clean `uint32` word. */
 const wordAsU32 = (w: Uint8Array): number | null => {
   for (let i = 0; i < 28; i++) if (w[i] !== 0) return null
-  return w[28] * 0x1000000 + w[29] * 0x10000 + w[30] * 0x100 + w[31]
+  const a = w[28]
+  const b = w[29]
+  const c = w[30]
+  const d = w[31]
+  if (a === undefined || b === undefined || c === undefined || d === undefined)
+    return null
+  return a * 0x1000000 + b * 0x10000 + c * 0x100 + d
 }
 
 /** Decode a clean `address` word (upper 12 bytes zero). */

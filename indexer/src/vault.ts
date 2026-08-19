@@ -45,7 +45,11 @@ ponder.on('provingVault:AccountBound', async ({ event, context }) => {
       updatedAt: event.block.timestamp,
     })
     // A migration re-emits this with a new snapshot; the balances must survive it.
-    .onConflictDoUpdate(() => ({ snapshot, program, updatedAt: event.block.timestamp }))
+    .onConflictDoUpdate(() => ({
+      snapshot,
+      program,
+      updatedAt: event.block.timestamp,
+    }))
 })
 
 ponder.on('provingVault:Deposited', async ({ event, context }) => {
@@ -86,15 +90,27 @@ ponder.on('provingVault:Deposited', async ({ event, context }) => {
     .onConflictDoUpdate((row) => ({
       ethBalance: isEth ? row.ethBalance + amount : row.ethBalance,
       usdcBalance: isEth ? row.usdcBalance : row.usdcBalance + amount,
-      totalDepositedEth: isEth ? row.totalDepositedEth + amount : row.totalDepositedEth,
-      totalDepositedUsdc: isEth ? row.totalDepositedUsdc : row.totalDepositedUsdc + amount,
+      totalDepositedEth: isEth
+        ? row.totalDepositedEth + amount
+        : row.totalDepositedEth,
+      totalDepositedUsdc: isEth
+        ? row.totalDepositedUsdc
+        : row.totalDepositedUsdc + amount,
       updatedAt: event.block.timestamp,
     }))
 })
 
 ponder.on('provingVault:Claimed', async ({ event, context }) => {
-  const { instanceId, checkpointId, recipient, submitter, feeUsd, gasUsd, ethSpent, usdcSpent } =
-    event.args
+  const {
+    instanceId,
+    checkpointId,
+    recipient,
+    submitter,
+    feeUsd,
+    gasUsd,
+    ethSpent,
+    usdcSpent,
+  } = event.args
 
   await context.db.insert(provingVaultClaim).values({
     id: event.id,
@@ -191,9 +207,10 @@ ponder.on('provingVault:CreditWithdrawn', async ({ event, context }) => {
 
 ponder.on('provingVault:WithdrawalRequested', async ({ event, context }) => {
   const { instanceId, readyAt } = event.args
-  await context.db
-    .update(provingVaultAccount, { id: instanceId })
-    .set({ withdrawalReadyAt: BigInt(readyAt), updatedAt: event.block.timestamp })
+  await context.db.update(provingVaultAccount, { id: instanceId }).set({
+    withdrawalReadyAt: BigInt(readyAt),
+    updatedAt: event.block.timestamp,
+  })
 })
 
 ponder.on('provingVault:WithdrawalCancelled', async ({ event, context }) => {

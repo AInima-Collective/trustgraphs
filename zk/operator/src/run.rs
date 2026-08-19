@@ -49,6 +49,7 @@ fn supported() -> BTreeSet<Program> {
         Program::Contributions,
         Program::Weighted,
         Program::Composition,
+        Program::NostrWorkspace,
         Program::Signer,
     ])
 }
@@ -756,6 +757,26 @@ fn build_state(
             // that progress. Use the conservative measured maximum for the planner's cheap gate.
             Some(crate::composition::BAND_4_CYCLES)
         }
+    } else if program == Program::NostrWorkspace {
+        let manifest = proving_entry.manifest.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("nostr-workspace {} has no operator manifest", proving_entry.name)
+        })?;
+        let params: nostr_workspace_core::params::Params = serde_json::from_str(
+            &std::fs::read_to_string(&manifest.params).with_context(|| {
+                format!("reading Nostr params preimage {}", manifest.params)
+            })?,
+        )?;
+        params
+            .validate()
+            .map_err(|error| anyhow::anyhow!("invalid Nostr params: {error:?}"))?;
+        let reconstructed = nostr_workspace_core::params_hash(&params);
+        anyhow::ensure!(
+            reconstructed == reconstructed_params_hash,
+            "Nostr params file hashes to {reconstructed:#x}, checkpoint/catalog pins {reconstructed_params_hash:#x}"
+        );
+        // `max_estimated_pgu` is consensus-authenticated and intentionally conservative. Exact
+        // archive bytes/counts/signatures are revalidated by assemble before the journal Intent.
+        Some(params.max_estimated_pgu)
     } else {
         None
     };
@@ -1415,6 +1436,7 @@ fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
         (Program::Contributions, trustgraph_prover::programs::contributions::elf()),
         (Program::Weighted, trustgraph_prover::programs::weighted::elf()),
         (Program::Composition, trustgraph_prover::programs::composition::elf()),
+        (Program::NostrWorkspace, trustgraph_prover::programs::nostr_workspace::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {
         let s = trustgraph_prover::common::vkey(vk)?;

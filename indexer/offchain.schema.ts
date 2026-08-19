@@ -361,6 +361,72 @@ export const hypercertsScore = offchainSchema.table(
 )
 
 /*///////////////////////////////////////////////////////////////
+        NOSTR WORKSPACE — proof-bound member/agent projection
+//////////////////////////////////////////////////////////////*/
+
+export const nostrWorkspaceMetadata = offchainSchema.table(
+  'nostr_workspace_metadata',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    checkpointId: t.bigint({ mode: 'bigint' }).notNull(),
+    ipfsHash: t.text().notNull(),
+    ipfsHashCid: t.text().notNull(),
+    numNodes: t.integer().notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    skippedDigest: t.text().notNull(),
+    anchorAcc: t.text().notNull(),
+    anchorCount: t.bigint({ mode: 'bigint' }).notNull(),
+    accessPolicy: t.text().notNull(),
+    epochTrustClass: t.text().notNull(),
+    reducedRecomputeStatus: t.text().notNull(),
+    skipSummary: t.jsonb().notNull().$type<Record<string, number>>(),
+    archiveProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text().notNull(),
+    outputDomain: t.text().notNull(),
+    programProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root] }),
+    index().on(t.checkpointId),
+    index().on(t.ipfsHashCid),
+    index().on(t.accessPolicy),
+    index().on(t.timestamp),
+  ]
+)
+
+export const nostrWorkspaceScore = offchainSchema.table(
+  'nostr_workspace_score',
+  (t) => ({
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    nodeId: t.text().notNull(),
+    value: t.numeric({ precision: 78, scale: 0, mode: 'bigint' }).notNull(),
+    nostrPubkey: t.text(),
+    actorKind: t.text().notNull(), // member | agent
+    ownerNodeId: t.text(),
+    boundAddress: t.text(),
+    proof: t.jsonb().notNull().$type<string[]>(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    programId: t.text().notNull(),
+    outputDomain: t.text().notNull(),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.merkleSnapshotContract, t.root, t.nodeId] }),
+    index().on(t.nodeId),
+    index().on(t.ownerNodeId),
+    index().on(t.boundAddress),
+    index().on(t.actorKind),
+    index().on(t.timestamp),
+  ]
+)
+
+/*///////////////////////////////////////////////////////////////
           CONTRIBUTIONS PROGRAM — derived scoring (M3)
 //////////////////////////////////////////////////////////////*/
 
