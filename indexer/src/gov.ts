@@ -8,6 +8,10 @@ import {
 } from 'ponder:schema'
 import type { Address } from 'viem'
 
+import {
+  ensureMerkleGovModuleRow,
+  readMerkleGovModuleRow,
+} from './gov-module-shared'
 import { merkleGovModuleAbi } from '../../frontend/lib/contract-abis'
 
 // Helper type for proposal actions
@@ -33,104 +37,22 @@ const eventPosition = (event: any) => ({
  * the module from that later event, then replays the constructor's earlier
  * `MerkleSnapshotContractUpdated` log. That log therefore arrives before any setup handler can have
  * inserted the row. Reading the contract at the event block gives us the transaction's complete
- * post-state and makes the birth row independent of log order.
+ * post-state and makes the birth row independent of log order. The read-back itself lives in
+ * src/gov-module-shared.ts, shared with the discovery handler (src/governed.ts).
  */
 async function insertMerkleGovModule(context: any, address: Address) {
-  const [
-    avatar,
-    target,
-    merkleSnapshotContract,
-    currentMerkleRoot,
-    ipfsHash,
-    ipfsHashCid,
-    totalVotingPower,
-    proposalCount,
-    votingDelay,
-    votingPeriod,
-    quorum,
-  ] = await Promise.all([
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'avatar',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'target',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'merkleSnapshotContract',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'currentMerkleRoot',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'ipfsHash',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'ipfsHashCid',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'totalVotingPower',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'proposalCount',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'votingDelay',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'votingPeriod',
-    }),
-    context.client.readContract({
-      address,
-      abi: merkleGovModuleAbi,
-      functionName: 'quorum',
-    }),
-  ])
-
-  await context.db
-    .insert(merkleGovModule)
-    .values({
-      address,
-      avatar,
-      target,
-      merkleSnapshot: merkleSnapshotContract,
-      currentMerkleRoot,
-      ipfsHash,
-      ipfsHashCid,
-      totalVotingPower,
-      proposalCount,
-      votingDelay,
-      votingPeriod,
-      quorum,
-    })
-    .onConflictDoNothing()
-
-  return proposalCount as bigint
+  const row = await readMerkleGovModuleRow(context.client, address)
+  await context.db.insert(merkleGovModule).values(row).onConflictDoNothing()
+  return row.proposalCount
 }
 
 async function ensureMerkleGovModule(context: any, address: Address) {
-  const existing = await context.db.find(merkleGovModule, { address })
-  if (existing) return
-  await insertMerkleGovModule(context, address)
+  await ensureMerkleGovModuleRow(
+    context.db,
+    context.client,
+    merkleGovModule,
+    address
+  )
 }
 
 async function updateMerkleGovModule(
@@ -190,8 +112,14 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           })
           .onConflictDoNothing()
       }
-    } catch {
-      // Contract may not be deployed yet
+    } catch (error) {
+      // A statically configured address that cannot be read is stale: the summary file names a
+      // module that is not deployed (yet) on this chain. Say so instead of hiding it — a silent
+      // catch here once masked a wedged deployment for a whole session.
+      console.warn(
+        `gov: setup could not read merkleGovModule ${address} — stale deployment_summary.json address?`,
+        error
+      )
     }
   }
 })

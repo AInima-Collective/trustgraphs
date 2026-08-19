@@ -1,11 +1,9 @@
 import { ponder } from 'ponder:registry'
 import { gnosisSafe, merkleGovModule } from 'ponder:schema'
 
+import { readMerkleGovModuleRow } from './gov-module-shared'
 import { revalidateNetwork } from './utils'
-import {
-  gnosisSafeAbi,
-  merkleGovModuleAbi,
-} from '../../frontend/lib/contract-abis'
+import { gnosisSafeAbi } from '../../frontend/lib/contract-abis'
 
 /**
  * A governed factory transaction creates its Safe and module before emitting the discovery event.
@@ -47,105 +45,18 @@ ponder.on(
         timestamp: event.block.timestamp,
       })
 
-    const [
-      avatar,
-      target,
-      merkleSnapshotContract,
-      currentMerkleRoot,
-      ipfsHash,
-      ipfsHashCid,
-      totalVotingPower,
-      proposalCount,
-      votingDelay,
-      votingPeriod,
-      quorum,
-    ] = await Promise.all([
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'avatar',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'target',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'merkleSnapshotContract',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'currentMerkleRoot',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'ipfsHash',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'ipfsHashCid',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'totalVotingPower',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'proposalCount',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'votingDelay',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'votingPeriod',
-      }),
-      context.client.readContract({
-        address: moduleAddress,
-        abi: merkleGovModuleAbi,
-        functionName: 'quorum',
-      }),
-    ])
+    // Shared read-back (src/gov-module-shared.ts): the same materialization gov.ts's ensure path
+    // uses, so a row born here and a row born from an out-of-order constructor log are identical.
+    // Upsert rather than insert: the module's constructor `MerkleSnapshotContractUpdated` log can
+    // legitimately arrive before this discovery event, in which case gov.ts already materialized
+    // the row and this refresh is a no-op with the same values.
+    const { address: _moduleRowAddress, ...moduleState } =
+      await readMerkleGovModuleRow(context.client, moduleAddress)
 
     await context.db
       .insert(merkleGovModule)
-      .values({
-        address: moduleAddress,
-        avatar,
-        target,
-        merkleSnapshot: merkleSnapshotContract,
-        currentMerkleRoot,
-        ipfsHash,
-        ipfsHashCid,
-        totalVotingPower,
-        proposalCount,
-        votingDelay,
-        votingPeriod,
-        quorum,
-      })
-      .onConflictDoUpdate({
-        avatar,
-        target,
-        merkleSnapshot: merkleSnapshotContract,
-        currentMerkleRoot,
-        ipfsHash,
-        ipfsHashCid,
-        totalVotingPower,
-        proposalCount,
-        votingDelay,
-        votingPeriod,
-        quorum,
-      })
+      .values({ address: moduleAddress, ...moduleState })
+      .onConflictDoUpdate(moduleState)
 
     await revalidateNetwork()
   }
