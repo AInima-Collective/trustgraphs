@@ -215,6 +215,12 @@ ponder.on(
     const history = await context.db.find(parameterVersion, {
       id: `${instanceId}-${live.version}`,
     })
+    // Safe because: `InstanceCreated` (which inserts the `instance` row, src/factory.ts) precedes
+    // `ParamsControllerCreated` from the same statically configured factory contract in the same
+    // createInstance transaction. Ponder replays one contract's logs in logIndex order and a start
+    // block cannot split a transaction, so the row always exists here. Do not "generalize" this
+    // into an ensure — a missing row would mean the factory's event order changed, and that
+    // contract bug should be loud, not papered over with a partial read-back.
     await context.db.update(instance, { id: instanceId }).set({
       paramsController: controller,
       paramsVersion: live.version,

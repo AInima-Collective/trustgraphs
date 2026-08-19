@@ -264,6 +264,12 @@ ponder.on(
 ponder.on(
   'trustComposeFactory:TrustComposeParamsControllerCreated',
   async ({ event, context }) => {
+    // Safe because: `TrustComposeInstanceCreated` (which inserts this row above) and this event
+    // are emitted by the same statically configured factory contract in the same createInstance
+    // transaction, discovery-before-children order. Ponder replays one contract's logs in
+    // logIndex order and a start block cannot split a transaction, so the row always exists here.
+    // Do not "generalize" this into an ensure that reads back partial instance state — if the row
+    // is ever missing, the factory's event order changed and that contract bug should be loud.
     await context.db
       .update(compositionInstance, { id: event.args.instanceId })
       .set({ controller: event.args.controller })
@@ -469,8 +475,15 @@ ponder.on(
     const policy = await context.db.find(compositionPolicyVersion, {
       id: `${event.args.instanceId}-${event.args.version}`,
     })
-    if (!policy || !sameHex(policy.proposalId ?? '', event.args.proposalId))
-      throw new Error('composition cancellation has no matching proposal')
+    if (!policy || !sameHex(policy.proposalId ?? '', event.args.proposalId)) {
+      // M0 hazard sweep: a cancellation can reference a proposal outside our universe (proposed
+      // before the start block) or a version row recorded without a proposal id — log and skip
+      // rather than wedge the indexer; the contract remains the authority on proposal state.
+      console.warn(
+        `composition: cancellation ${event.args.proposalId} for ${event.args.instanceId} v${event.args.version} has no matching observed proposal — skipping`
+      )
+      return
+    }
     await context.db
       .update(compositionPolicyVersion, { id: policy.id })
       .set({ status: 'cancelled' })

@@ -60,7 +60,16 @@ ponder.on(
   async ({ event, context }) => {
     const module = event.log.address
     const row = await context.db.find(signerSyncModule, { address: module })
-    if (!row) return
+    if (!row) {
+      // M0 hazard sweep: the module row is born from the deployer's `SignerSyncModuleConfigured` —
+      // the very event that discovers this child — so a missing row means the configuration
+      // predates the start block. The row is not reconstructible here (instanceId comes only from
+      // the deployer event), so log and skip; never skip silently.
+      console.warn(
+        `signer-sync: rotation on unobserved module ${module} (configured before the start block?) — skipping`
+      )
+      return
+    }
 
     await context.db.insert(signerSyncRotation).values({
       id: event.id,
@@ -92,10 +101,19 @@ ponder.on(
   'governedSignerSyncModule:SignerSyncPausedUpdated',
   async ({ event, context }) => {
     const module = event.log.address
+    // M0 hazard sweep: find before update — a pause flip on a module whose configuration predates
+    // the start block must log-and-skip (the row is not reconstructible without the deployer
+    // event), not wedge the indexer on a bare update.
+    const row = await context.db.find(signerSyncModule, { address: module })
+    if (!row) {
+      console.warn(
+        `signer-sync: pause update on unobserved module ${module} (configured before the start block?) — skipping`
+      )
+      return
+    }
     await context.db
       .update(signerSyncModule, { address: module })
       .set({ paused: event.args.paused })
-    const row = await context.db.find(signerSyncModule, { address: module })
-    if (row) await revalidateNetwork(row.instanceId)
+    await revalidateNetwork(row.instanceId)
   }
 )
