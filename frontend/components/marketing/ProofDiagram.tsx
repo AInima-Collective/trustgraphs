@@ -324,9 +324,15 @@ export function ProofDiagram({
         <div className="hidden md:block" aria-hidden="true" />
       </div>
 
+      {/* The summary of both rows, so it gets air above it rather than sitting
+       * a `gap-4` under the rejected row as if it belonged to that row alone.
+       * `max-w-prose` broke a 73-character sentence at 65, orphaning "its
+       * rules." onto a line of its own; released from that cap it sets as one
+       * line wherever there is room, and balances into even lines where there
+       * is not. */}
       <figcaption
         className={cn(
-          'max-w-prose',
+          'max-w-prose text-balance md:mt-4 md:max-w-none',
           inverse ? 'text-ink-fg/65' : 'text-text-muted'
         )}
       >
