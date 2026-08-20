@@ -15,6 +15,7 @@ import {WeightedPriorParamsController} from "contracts/factory/WeightedPriorPara
 import {WeightedPriorParamsControllerDeployer} from "contracts/factory/WeightedInstanceDeployers.sol";
 import {WeightedTrustgraphsFactory} from "contracts/factory/WeightedTrustgraphsFactory.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {WeightedPriorParamsCodec} from "contracts/params/WeightedPriorParamsCodec.sol";
 import {WeightedPriorValidator} from "contracts/params/WeightedPriorValidator.sol";
@@ -209,6 +210,36 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(params.manifestSha256, sha256(args.manifest));
         assertEq(controller.getPendingPrior().version, 0);
         assertEq(controller.versionCommitment(1).priorCount, 2048);
+    }
+
+    function test_AttachDistributorDeploysAFundOwnedByTheVerifiedAuthority() public {
+        WeightedTrustgraphsFactory.CreateArgs memory args = _args("fundless weighted", 2);
+        args.admin = address(0xA11CE);
+        Created memory created = _create(args);
+        assertEq(created.distributor, address(0), "created without a fund");
+
+        vm.prank(address(0x57AA));
+        address distributor = factory.attachDistributor(created.instanceId, args.admin, address(0));
+        assertEq(MerkleFundDistributor(payable(distributor)).owner(), args.admin, "fund owner is the authority");
+        assertEq(MerkleFundDistributor(payable(distributor)).merkleSnapshot(), created.snapshot);
+        assertEq(factory.distributorOf(created.instanceId), distributor);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                WeightedTrustgraphsFactory.DistributorAlreadyAttached.selector, created.instanceId, distributor
+            )
+        );
+        factory.attachDistributor(created.instanceId, args.admin, address(0));
+
+        WeightedTrustgraphsFactory.CreateArgs memory second = _args("gated weighted", 2);
+        second.admin = args.admin;
+        Created memory again = _create(second);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                WeightedTrustgraphsFactory.NotInstanceAuthority.selector, again.instanceId, address(0x57AA)
+            )
+        );
+        factory.attachDistributor(again.instanceId, address(0x57AA), address(0));
     }
 
     function test_WeightedContractsHaveExplicitEip170Headroom() public view {
