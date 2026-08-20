@@ -37,16 +37,35 @@ proportionally to the proven values.
 configure → contribute/evaluate → trigger → prove → submit → fund → claim → (sweep)
 ```
 
-Env used below (dev values; every address is in
-`.docker/deployment_summary.json` under the `program: "contributions"`
-network):
+Env used below (dev values; the dev round's addresses are in
+`.docker/contributions_round_dev_deploy.json`, and any round's are served by the
+indexer's `GET /contributions/instances`):
 
 ```bash
 export RPC_URL=http://127.0.0.1:8545
-SNAP=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' .docker/deployment_summary.json)
+SNAP=$(jq -r '.merkle_snapshot' .docker/contributions_round_dev_deploy.json)
 export CONTRIBUTIONS_MERKLE_SNAPSHOT=$SNAP
 export EAS_ADDRESS=$(jq -r '.eas.eas' .docker/deployment_summary.json)
 ```
+
+### 0. Create the round (the parent network's authority)
+
+A round is created in ONE transaction through `ContributionsFactory.createInstance`,
+by a holder of the PARENT trust network's `CONSTITUTIONAL_ROLE` (for a governed
+network, that means a proposal). The factory registers the three schemas
+(adopting any squatted identical record), deploys the resolver, the mirror
+(bound in the same transaction — the M6-1 guard), the two-lane snapshot, the
+payout distributor (fee 0, fee recipient = the round admin), and the typed
+params controller, then registers the round and publishes params version 1.
+From the app: the parent network's **Settings → Contribution cycles → Start a
+contribution round**. From a script: `script/CreateDevContributionsRound.s.sol`
+is the dev-shaped example.
+
+Cost, honestly: creation deploys seven contracts and registers three schemas —
+about **9.4M gas** measured (`ContributionsFactory.t.sol`,
+`test_CreateInstanceGasRecorded`). On Ethereum mainnet that is roughly 0.01 ETH
+per 1 gwei of gas price (about 0.1 ETH at 10 gwei, plus proof costs later); on
+a dev chain it is free. Budget accordingly — this is a per-round cost.
 
 ### 1. Configure (operational)
 
@@ -165,8 +184,10 @@ task contributions:fund-round AMOUNT=<base units> [DEADLINE=<unix ts>]
 
 ERC-20 `approve` + `distribute(token, amount, expectedRoot[, claimDeadline])`
 with the proven root pinned — a root rotation between read and send reverts
-`UnexpectedMerkleRoot` instead of paying against the wrong split. The fee
-(3% dev default) goes to the fee recipient at distribution time. With
+`UnexpectedMerkleRoot` instead of paying against the wrong split. A
+factory-created round has **no fee at creation** (the round admin can set one,
+and the fee recipient is the admin); when set, the fee goes to the fee
+recipient at distribution time. With
 `claimDeadline` set, claims close strictly after it and the remainder becomes
 sweepable; without it, claims stay open forever (and quantization dust is
 stranded by design).
@@ -222,13 +243,13 @@ filters, and wei-exact expected outputs for every step.
 
 | power | holder | notes |
 |---|---|---|
-| `CONSTITUTIONAL_ROLE` (snapshot) | deployer (dev) / constitutional admin | verifier, pre-checkpoint input wiring, epoch schedule, hooks, and two-step authority handoff; final holder cannot disappear |
-| Contributions controller owner | deployer (dev) / operational admin | typed `updateParams` — per-round window + params rotation |
+| `CONSTITUTIONAL_ROLE` (snapshot) | the round admin (the creating parent authority, unless it named another) | verifier, pre-checkpoint input wiring, epoch schedule, hooks, and two-step authority handoff; final holder cannot disappear |
+| Contributions controller owner | the round admin | typed `updateParams` — per-round window + params rotation |
 | `OPERATIONAL_ROLE` (snapshot) | Contributions controller only | atomically applies the typed tuple's hash; no EOA raw-hash bypass |
-| resolver owner | deployer | one-shot `setSchemas` allowlist (already consumed at deploy) |
-| mirror binder | deployer | one-shot `bindSnapshot` (consumed at deploy; only the bound snapshot can checkpoint the mirror) |
-| distributor owner | deployer | fee config, pause, allowlist toggle |
-| fee recipient | deployer (dev) | receives the fee at each `distribute` |
+| resolver schema admin | the factory (one-shot, consumed inside the creating transaction) | `setSchemas` allowlist |
+| mirror binder | the factory (one-shot, consumed inside the creating transaction) | `bindSnapshot`; only the bound snapshot can checkpoint the mirror |
+| distributor owner | the round admin | fee config, pause, allowlist toggle |
+| fee recipient | the round admin (fee is 0 at creation) | receives the fee at each `distribute` once one is set |
 | `trigger` / prove / `submitProof` | **anyone** | permissionless; epoch gate paces triggers, the vkey gates proofs |
 | `distribute` | anyone (dev: allowlist disabled) | the caller funds the round and is the sweep beneficiary |
 | `claim` / `sweep` | anyone | funds always go to the leaf account / the funder respectively |

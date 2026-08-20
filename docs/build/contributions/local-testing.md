@@ -147,15 +147,26 @@ cast rpc anvil_setBalance $DEPLOYER 0x21e19e0c9bab2400000 --rpc-url http://127.0
 CI=true pnpm deploy:contracts
 ```
 
-This stands up the whole contributions instance (`DeployContributionsInstance.s.sol`): the
-resolver + 3 schemas + the one-shot schema allowlist, `TrustAccumulatorMirror` (bound to the
-snapshot via the one-shot `bindSnapshot`, so only `trigger()` can mint checkpoints), a dev
-mock-gateway `SP1JournalVerifier` (no `CONTRIBUTIONS_PROGRAM_VKEY` set), `MerkleSnapshot`,
-`MerkleFundDistributor` (3% fee, fee recipient = deployer), and the `TestUSDC` pool token
-(1,000,000 tUSDC minted to the deployer). It provisions `params.contributions.json` from
-`test/e2e/params.contributions.template.json` if absent and writes the registered schema UIDs
-back into it. Addresses land in `.docker/deployment_summary.json` under the
-`program: "contributions"` network.
+This stands up the contributions ROUND FACTORY and creates the demo round through it, the same
+one-transaction path a community's authority uses from the app:
+
+1. `DeployContributionsFactory.s.sol` — the shared contributions `SP1JournalVerifier` (a dev
+   placeholder vkey over the mock gateway when `CONTRIBUTIONS_PROGRAM_VKEY` is unset; the factory
+   refuses a zero vkey), the `ContributionsParamsControllerDeployer`, the `ContributionsFactory`
+   itself, and its append-only `REGISTRAR_ROLE` grant. Written to
+   `.docker/contributions_factory_deploy.json` → `deployment_summary.json` under
+   `contributionsFactory`.
+2. `CreateDevContributionsRound.s.sol` — `factory.createInstance` against dev network 0 (the
+   deployer holds its constitutional role at this point in the chain): resolver + 3 schemas +
+   one-shot allowlist, `TrustAccumulatorMirror` (bound via the one-shot `bindSnapshot`, so only
+   `trigger()` can mint checkpoints), `MerkleSnapshot`, `MerkleFundDistributor` (fee 0,
+   fee recipient = the admin — the factory convention), and the typed params controller. It
+   provisions `params.contributions.json` from `test/e2e/params.contributions.template.json` if
+   absent; the file is READ-only now (schema UIDs are factory-derived, never written back).
+
+There is no `program: "contributions"` entry in the networks config any more: the indexer
+catalogs the round from the factory's `ContributionsInstanceCreated` event and serves it at
+`GET /contributions/instances`, which is where the frontend reads it.
 
 ### 3. Start the frontend, then the indexer (in that order)
 
@@ -234,7 +245,7 @@ Give ponder ~10s after `submit-proof`, then confirm the indexer independently re
 proven root from its own tables (`verified: true`) and served the golden per-claim scores:
 
 ```bash
-SNAP=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' .docker/deployment_summary.json)
+SNAP=$(jq -r '.merkle_snapshot' .docker/contributions_round_dev_deploy.json)
 
 curl -s http://127.0.0.1:65421/contributions/$SNAP/round | jq '{verified, numClaims, numRecipients, totalValue}'
 # → {"verified": true, "numClaims": 4, "numRecipients": 5, "totalValue": "5000000000"}
@@ -273,24 +284,24 @@ task contributions:fund-round AMOUNT=5000000000    # 5,000 tUSDC; approve + 3-ar
 task contributions:claim-payouts INDEX=0           # all six personas via the proof-bundle API
 ```
 
-Every claim pays `mulDiv(amountFunded − feeAmount, value, totalMerkleValue)` with
-`feeAmount = 3% = 150000000` exactly. Expected final tUSDC balances:
+Every claim pays `mulDiv(amountFunded − feeAmount, value, totalMerkleValue)`. A factory-created
+round is born with **fee 0** (fee recipient = the round admin; the admin can set a fee later), so
+`feeAmount = 0` and each persona's claim equals its merkle value exactly:
 
-| persona | merkle value | claimed (× 0.97, floor) |
+| persona | merkle value | claimed (fee 0) |
 |---|---|---|
-| ALICE | 3509435528 | **3404152462** |
-| BOB | 1184138552 | **1148614395** |
-| CAROL | 206730620 | **200528701** |
-| DAVE | 94160282 | **91335473** |
-| SEED | 5535018 | **5368967** |
+| ALICE | 3509435528 | **3509435528** |
+| BOB | 1184138552 | **1184138552** |
+| CAROL | 206730620 | **206730620** |
+| DAVE | 94160282 | **94160282** |
+| SEED | 5535018 | **5535018** |
 | EVE | — | **0** (no leaf) |
 
-Fee recipient (= deployer in dev) gains exactly `150000000`; `2` base units of quantization
-dust stay in the distributor (this round has no deadline, so its dust is never sweepable — a
-deliberate property of the open-ended overload).
+No fee moves (fee 0 at creation); any quantization dust stays in the distributor (this round has
+no deadline, so its dust is never sweepable — a deliberate property of the open-ended overload).
 
 ```bash
-TOKEN=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.poolToken' .docker/deployment_summary.json)
+TOKEN=$(jq -r '.usdc' .docker/proving_vault_deploy.json)
 cast call $TOKEN "balanceOf(address)(uint256)" 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --rpc-url http://127.0.0.1:8545
 # → 3404152462   (ALICE)
 ```
@@ -325,8 +336,8 @@ split 99% of the pool 60/40):
  "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266":"17355018"}
 ```
 
-Claims: CAROL **2880902880**, BOB **1920601920**, SEED **16834367** (each value × 0.97,
-floored). Then close the window and sweep:
+Claims: CAROL **2970002970**, BOB **1980001980**, SEED **17355018** (fee 0, so each claim is its
+merkle value exactly). Then close the window and sweep:
 
 ```bash
 cast rpc evm_setNextBlockTimestamp $((DEADLINE + 1)) --rpc-url http://127.0.0.1:8545
@@ -336,8 +347,8 @@ cast rpc anvil_mine 1 --rpc-url http://127.0.0.1:8545
 task contributions:claim-payouts INDEX=1 AS=DAVE    # ← reverts, as designed
 
 task contributions:sweep INDEX=1
-# swept = 4850000000 − 4818339167 = 31660833 back to the funder
-# (DAVE's unclaimed 31660831 + 2 dust)
+# swept = 5000000000 − 4967357968 = 32640032 back to the funder
+# (exactly DAVE's unclaimed value; fee 0, no dust this round)
 ```
 
 ### 9. Third-party re-derivation (audited by construction)
@@ -371,10 +382,12 @@ task contributions:prove-round ID=<checkpoint>
 - **`NEXT_PUBLIC_TG_REVIEW_FIXTURES` must stay OFF** (unset). It exists only for building and
   reviewing screens without live data; with it set to `1`, the pages read built-in review
   fixtures instead of the live API.
-- **Trigger reverts `EpochNotElapsed`?** `CONTRIBUTIONS_EPOCH_LENGTH` (default 10 blocks in dev)
-  paces `trigger()`. Mine blocks (`cast rpc anvil_mine 10`) or wait.
+- **Trigger reverts `EpochNotElapsed`?** The round's epoch length (a `createInstance` argument,
+  clamped to the factory's floor — 1 block on dev) paces `trigger()`. Mine blocks
+  (`cast rpc anvil_mine 10`) or wait.
 - **Trigger reverts `NotSnapshot`?** The mirror's one-shot `bindSnapshot` is missing — only
-  possible with a hand-rolled deploy; `DeployContributionsInstance` binds it for you. This is the
+  possible with a hand-rolled deploy; `ContributionsFactory.createInstance` binds it in the
+  creating transaction (as the legacy `DeployContributionsInstance` script did). This is the
   guard that makes `trigger()` the sole checkpoint mint, so both lanes are always frozen together
   (a directly-minted mirror checkpoint would otherwise leave the contribution lane at `(0,0)` and
   admit a contributions-blind proof — see [`research/audits/2026-07-M6.md`](../../../research/audits/2026-07-M6.md) M6-1).
