@@ -121,6 +121,10 @@ contract WeightedTrustgraphsFactoryTest is Test {
         assertEq(EASIndexerResolver(payable(created.resolver)).boundSchema(), created.schemaUid);
         assertEq(EASIndexerResolver(payable(created.resolver)).snapshot(), created.snapshot);
         assertEq(MerkleSnapshot(created.snapshot).epochLength(), EPOCH_FLOOR);
+        assertTrue(
+            MerkleSnapshot(created.snapshot).provenanceEnabled(),
+            "factory mints must open the composition-source window before the first root"
+        );
         assertEq(registry.paramsAuthority(created.instanceId), created.controller);
         assertEq(controller.owner(), args.admin);
         assertEq(controller.activationDelay(), ACTIVATION_DELAY);

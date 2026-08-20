@@ -195,6 +195,43 @@ export const fetchCompositionCandidates = async (
   }
 }
 
+export type SourceEligibility = {
+  status: 'ready' | 'awaiting-root' | 'enableable' | 'locked' | 'unknown'
+  detail: string | null
+}
+
+/**
+ * Classify a candidate's on-chain compose-source eligibility so the picker can say up front why a
+ * network is not selectable, instead of erroring after a click. `enableStateProvenance()` is
+ * one-way and only callable while a snapshot has zero accepted states, which is what makes the
+ * 'locked' verdict permanent rather than a retry-later condition.
+ */
+export const classifySourceEligibility = (
+  provenanceEnabled: boolean,
+  stateCount: bigint
+): SourceEligibility => {
+  if (provenanceEnabled && stateCount > 0n) return { status: 'ready', detail: null }
+  if (provenanceEnabled) {
+    return {
+      status: 'awaiting-root',
+      detail:
+        'Provenance history is on. This network can be added once its first accepted score root lands.',
+    }
+  }
+  if (stateCount === 0n) {
+    return {
+      status: 'enableable',
+      detail:
+        "Not selectable yet: this network's accepted-state provenance is off. Its constitutional authority can still enable it, but only before the first accepted score root lands.",
+    }
+  }
+  return {
+    status: 'locked',
+    detail:
+      'Permanently ineligible: a score root landed before accepted-state provenance was enabled, and the history can only be started before the first root.',
+  }
+}
+
 export type CompositionSourceChainState = {
   provenanceEnabled: boolean
   stateIndex: bigint

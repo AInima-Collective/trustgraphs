@@ -8,10 +8,14 @@ scale normalizes into its governed quota.
 ## Select and authenticate sources
 
 The workspace reads candidates from the ordinary and weighted instance catalogs, then permits only
-same-chain address allocation sources with one identical authenticated program ID. Selecting a
-source cross-checks the indexer's canonical `/merkle/:snapshot/current` entries against onchain
-`provenanceEnabled`, `getStateCount`, `getStateAtIndex`, and `getStateProvenance` reads. A mismatch,
-missing blob, stale state, empty output, or unavailable route blocks preview and signing.
+same-chain address allocation sources with one identical authenticated program ID. The picker
+pre-reads each candidate's `provenanceEnabled` and `getStateCount` from the chain and states why a
+candidate is not selectable: waiting on its first accepted root, provenance still enableable by its
+constitutional authority, or permanently ineligible because a root landed before provenance was
+enabled. Selecting a source cross-checks the indexer's canonical `/merkle/:snapshot/current`
+entries against onchain `provenanceEnabled`, `getStateCount`, `getStateAtIndex`, and
+`getStateProvenance` reads. A mismatch, missing blob, stale state, empty output, or unavailable
+route blocks preview and signing.
 
 The default publisher family is a visible suggestion derived from program/controller identity. It
 is a governed label, not a proof that publishers are independent. Shared families and near-clone

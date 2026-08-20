@@ -167,6 +167,11 @@ contract WeightedTrustgraphsFactory {
             VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
         );
         snapshot = address(merkleSnapshot);
+        // Enable the accepted-state provenance history now, while zero states exist — the only
+        // moment it is possible (the window closes forever at the first accepted root, and the
+        // constitutional role may end up behind a governed Safe that cannot act until a root
+        // lands). This is what lets the instance serve as a composition source later.
+        merkleSnapshot.enableStateProvenance();
         indexerResolver.bindSnapshot(snapshot);
 
         uint64 epochLength = args.epochLength < EPOCH_FLOOR ? EPOCH_FLOOR : args.epochLength;

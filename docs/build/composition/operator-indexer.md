@@ -49,9 +49,9 @@ A composition root is not served unless the indexer independently reproduces:
 - output canonical bytes, SHA-256, raw CID, root, and total; and
 - the snapshot's accepted checkpoint provenance (params, verifier, codehash, and program key).
 
-Any mismatch or unavailable blob stops ingestion before generic score rows become visible. The
-composition factory enables snapshot state provenance at creation so this accepted-state check is
-mandatory rather than inferred from a root event.
+Any mismatch or unavailable blob stops ingestion before generic score rows become visible. Every
+factory enables snapshot state provenance at creation so this accepted-state check is mandatory
+rather than inferred from a root event.
 
 ## Bulk APIs
 

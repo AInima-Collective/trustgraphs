@@ -8,6 +8,7 @@ import {
 import {
   CompositionApiUnavailableError,
   type CompositionCandidate,
+  classifySourceEligibility,
   fetchCompositionBundle,
   fetchCompositionCandidates,
   fetchCompositionSource,
@@ -211,6 +212,22 @@ const main = async () => {
 
     const unavailable = new CompositionApiUnavailableError('not deployed', 404)
     assert.equal(unavailable.status, 404)
+
+    // Eligibility classification: 'locked' is a permanent verdict (enableStateProvenance is
+    // one-way and pre-first-root only), the other non-ready states are recoverable.
+    assert.deepEqual(classifySourceEligibility(true, 3n), {
+      status: 'ready',
+      detail: null,
+    })
+    assert.equal(classifySourceEligibility(true, 0n).status, 'awaiting-root')
+    assert.equal(classifySourceEligibility(false, 0n).status, 'enableable')
+    const locked = classifySourceEligibility(false, 1n)
+    assert.equal(locked.status, 'locked')
+    assert.match(locked.detail ?? '', /Permanently ineligible/)
+    assert.match(
+      classifySourceEligibility(false, 0n).detail ?? '',
+      /before the first accepted score root/
+    )
   } finally {
     globalThis.fetch = originalFetch
   }

@@ -39,6 +39,8 @@ import {
   type CompositionCandidate,
   type CompositionInstance,
   type CompositionPolicy,
+  type SourceEligibility,
+  classifySourceEligibility,
   fetchCompositionCandidates,
   fetchCompositionInstances,
   fetchCompositionOverview,
@@ -124,6 +126,12 @@ export const CompositionWorkspace = () => {
   const [mode, setMode] = useState<Mode>('create')
   const [catalog, setCatalog] = useState<CompositionCandidate[]>([])
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([])
+  // Keyed by lowercase snapshot address. Read from the chain, not the indexer: eligibility is an
+  // on-chain fact (provenanceEnabled + state count) and the picker must say up front why a
+  // candidate is not selectable instead of erroring after a click.
+  const [eligibility, setEligibility] = useState<
+    Record<string, SourceEligibility>
+  >({})
   const [apiUnavailable, setApiUnavailable] = useState(false)
   const [sources, setSources] = useState<CompositionSource[]>([])
   const [loadingSource, setLoadingSource] = useState<Hex | null>(null)
@@ -261,6 +269,46 @@ export const CompositionWorkspace = () => {
   useEffect(() => {
     void loadCatalog()
   }, [])
+
+  // A read failure degrades to 'unknown' (candidate stays clickable; the selection path still
+  // verifies) so an RPC hiccup never blanks the whole picker.
+  useEffect(() => {
+    if (!publicClient || catalog.length === 0) return
+    let cancelled = false
+    void (async () => {
+      const entries = await Promise.all(
+        catalog.map(async (candidate): Promise<[string, SourceEligibility]> => {
+          try {
+            const [provenanceOn, stateCount] = await Promise.all([
+              publicClient.readContract({
+                address: candidate.snapshot,
+                abi: compositionSourceSnapshotAbi,
+                functionName: 'provenanceEnabled',
+              }),
+              publicClient.readContract({
+                address: candidate.snapshot,
+                abi: compositionSourceSnapshotAbi,
+                functionName: 'getStateCount',
+              }),
+            ])
+            return [
+              candidate.snapshot.toLowerCase(),
+              classifySourceEligibility(provenanceOn, stateCount),
+            ]
+          } catch {
+            return [
+              candidate.snapshot.toLowerCase(),
+              { status: 'unknown', detail: null },
+            ]
+          }
+        })
+      )
+      if (!cancelled) setEligibility(Object.fromEntries(entries))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [catalog, publicClient])
 
   // Rotate mode picks the instance from the indexer's composition list instead of asking for a
   // bytes32 nobody has memorized. Unavailability degrades to the paste field, not an error.
@@ -1092,6 +1140,12 @@ export const CompositionWorkspace = () => {
               sources.length > 0 &&
               (candidate.chainId !== sources[0]!.chainId.toString() ||
                 candidate.programId !== sources[0]!.programId)
+            const sourceEligibility =
+              eligibility[candidate.snapshot.toLowerCase()]
+            const ineligible =
+              sourceEligibility !== undefined &&
+              sourceEligibility.status !== 'ready' &&
+              sourceEligibility.status !== 'unknown'
             return (
               <Card
                 key={candidate.instanceId}
@@ -1112,7 +1166,8 @@ export const CompositionWorkspace = () => {
                     variant={selected ? 'default' : 'outline'}
                     disabled={
                       !!loadingSource ||
-                      (!selected && (incompatible || sources.length >= 8))
+                      (!selected &&
+                        (incompatible || ineligible || sources.length >= 8))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -1128,6 +1183,11 @@ export const CompositionWorkspace = () => {
                 <p className="break-all font-mono text-xs">
                   {candidate.snapshot}
                 </p>
+                {!selected && sourceEligibility?.detail && (
+                  <p className="text-xs text-muted-foreground">
+                    {sourceEligibility.detail}
+                  </p>
+                )}
               </Card>
             )
           })}

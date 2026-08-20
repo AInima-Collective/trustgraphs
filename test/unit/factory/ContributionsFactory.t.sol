@@ -337,6 +337,10 @@ contract ContributionsFactoryTest is Test {
         assertEq(reconstructed, controller.currentParamsHash());
         assertEq(controller.currentParamsHash(), MerkleSnapshot(c.snapshot).paramsHash());
         assertEq(controller.currentParamsHash(), record.paramsHash);
+        assertTrue(
+            MerkleSnapshot(c.snapshot).provenanceEnabled(),
+            "the composition-source window must open at mint: no later actor can ever open it"
+        );
         assertTrue(controller.versionOnePublished(), "version 1 must be published in the creating tx");
 
         // The event's params are the FINAL tuple: derived UIDs filled, hash reproduces the pin.

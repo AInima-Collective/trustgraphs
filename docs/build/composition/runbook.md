@@ -41,9 +41,15 @@ Every source must be a same-chain, non-composition instance registered in `Insta
 
 - an immutable program-specific verifier exposing nonzero `programVKey()`;
 - a nonzero per-instance params controller;
-- a `MerkleSnapshot` whose constitutional authority called `enableStateProvenance()` before its
-  first accepted state; and
+- a `MerkleSnapshot` with `enableStateProvenance()` called before its first accepted state; and
 - at least one accepted, nonempty allocation output.
+
+Every current factory (trust graph, weighted, contributions, and trust-compose itself) and the
+direct `DeployNetwork` script enable state provenance inside the creating transaction, so anything
+minted through them is admissible by construction. Only snapshots deployed before this behavior
+existed need the manual constitutional call, and it is only possible while the snapshot still has
+zero accepted states: once a root lands, the window is closed permanently and the network can
+never serve as a composition source.
 
 For each source, call `CompositionSourceAdapterFactory.create` with the source registry and
 instance ID, a canonical nonzero source ID, nonzero family ID, `keccak256("allocation")`, and the

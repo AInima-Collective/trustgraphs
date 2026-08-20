@@ -24,6 +24,11 @@ assert.match(workspace, /requireCompatibleCandidate/)
 assert.match(workspace, /provenanceEnabled/)
 assert.match(workspace, /getStateAtIndex/)
 assert.match(workspace, /getStateProvenance/)
+// The picker pre-reads eligibility from the chain and says why a candidate is not selectable
+// (including the permanent 'locked' verdict) instead of erroring after a click.
+assert.match(workspace, /classifySourceEligibility/)
+assert.match(workspace, /getStateCount/)
+assert.match(workspace, /sourceEligibility\?\.detail/)
 assert.match(workspace, /exactEqualWeights/)
 assert.match(workspace, /computeCompositionPreview/)
 assert.match(workspace, /compositionSimplex/)

@@ -124,6 +124,10 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             MerkleSnapshot(snapshot).hasRole(MerkleSnapshot(snapshot).CONSTITUTIONAL_ROLE(), safe),
             "Safe must hold constitutional authority"
         );
+        assertTrue(
+            MerkleSnapshot(snapshot).provenanceEnabled(),
+            "governed mints must open the composition-source window: the sealed Safe can never open it later"
+        );
 
         MerkleGovModule gov = MerkleGovModule(module);
         assertEq(gov.owner(), safe, "Safe must own governance settings");

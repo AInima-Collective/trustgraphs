@@ -365,6 +365,13 @@ contract TrustgraphsFactory {
         );
         snapshot = address(merkleSnapshot);
 
+        //        Enable the accepted-state provenance history now, while zero states exist — the
+        //        only moment it is possible. The window closes forever at the first accepted root,
+        //        and after this transaction the constitutional role may sit behind a governed Safe
+        //        that cannot act until a root lands. This is what lets the instance serve as a
+        //        composition source later; recording is additive and never blocks acceptance.
+        merkleSnapshot.enableStateProvenance();
+
         //        Bind the accumulator to that snapshot, in the same transaction. `trigger()` is
         //        then the ONLY way to mint a checkpoint here, which is what makes the epoch
         //        schedule below binding rather than advisory (issue #10). This factory is the

@@ -299,6 +299,11 @@ contract ContributionsFactory {
             SNAPSHOT_DEPLOYER.deploy(VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this));
         snapshot = address(merkleSnapshot);
 
+        //        Enable the accepted-state provenance history now, while zero states exist — the
+        //        only moment it is possible (the window closes forever at the first accepted
+        //        root). Recording is additive and never blocks acceptance.
+        merkleSnapshot.enableStateProvenance();
+
         //        Journal v2 wiring: slot A (acc, leafCount) = the parent's trust accumulator via
         //        the mirror; slot B (anchorAcc, anchorCount) = the contribution log via the
         //        resolver's IAnchorRegistry aliases. One `trigger()` freezes both lanes at once.
