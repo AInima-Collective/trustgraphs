@@ -186,6 +186,83 @@ const readNostrWorkspaceBindings = async (): Promise<{
   }
 }
 
+type WeightedPriorListPage = {
+  instances: Array<{ id: unknown; name: unknown; snapshot: unknown }>
+  page: { limit: unknown; offset: unknown; total: unknown }
+}
+
+/**
+ * Weighted networks, from the indexer's own list (`GET /weighted-priors`).
+ *
+ * This is the persistent surface a created weighted instance gets (GOAL M2): without it the
+ * instance id appears once, in a toast, and is unfindable after a reload. Weighted instances have
+ * no seed-file fallback (they postdate the shipped seed), so an unreachable indexer degrades to an
+ * absent section plus the shared catalog warning; a 404 means the route is not deployed on this
+ * indexer yet, which is an empty section, not an error.
+ */
+const readWeightedInstances = async (): Promise<{
+  rows: Array<{ id: string; name: string; snapshot: string }>
+  error: string | null
+}> => {
+  const rows: Array<{ id: string; name: string; snapshot: string }> = []
+  const seen = new Set<string>()
+  let offset = 0
+
+  try {
+    for (;;) {
+      const page = await readJson<WeightedPriorListPage>(
+        `/weighted-priors?limit=${PROGRAM_CATALOG_PAGE_SIZE}&offset=${offset}`
+      )
+      if (page === null) return { rows: [], error: null }
+      if (!Array.isArray(page.instances) || !page.page) {
+        throw new Error('weighted network list response is malformed')
+      }
+      const returnedOffset = boundedCatalogInteger(page.page.offset, 'offset')
+      const limit = boundedCatalogInteger(page.page.limit, 'limit')
+      const total = boundedCatalogInteger(page.page.total, 'total')
+      if (
+        returnedOffset !== offset ||
+        limit < 1 ||
+        limit > PROGRAM_CATALOG_PAGE_SIZE ||
+        total > PROGRAM_CATALOG_MAX_ROWS
+      ) {
+        throw new Error('weighted network list pagination is inconsistent')
+      }
+
+      for (const row of page.instances) {
+        if (
+          !row ||
+          typeof row !== 'object' ||
+          typeof row.id !== 'string' ||
+          !/^0x[0-9a-fA-F]{64}$/.test(row.id) ||
+          typeof row.name !== 'string' ||
+          typeof row.snapshot !== 'string' ||
+          !/^0x[0-9a-fA-F]{40}$/.test(row.snapshot)
+        ) {
+          throw new Error('weighted network list row is malformed')
+        }
+        const id = row.id.toLowerCase()
+        if (seen.has(id)) {
+          throw new Error('weighted network list repeats a row')
+        }
+        seen.add(id)
+        rows.push({ id: row.id, name: row.name, snapshot: row.snapshot })
+      }
+
+      if (offset + page.instances.length >= total) break
+      if (page.instances.length === 0) {
+        throw new Error('weighted network list ended before its declared total')
+      }
+      offset += page.instances.length
+    }
+    return { rows, error: null }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    console.error('[directory] weighted network catalog unavailable:', reason)
+    return { rows: [], error: reason }
+  }
+}
+
 /**
  * The latest proven scoreboard for one snapshot.
  *
@@ -286,9 +363,10 @@ export const loadDirectory = async (): Promise<Directory> => {
   const fixture = activeFixture()
   if (fixture) return fixtureDirectory(fixture)
 
-  const [catalog, nostrCatalog] = await Promise.all([
+  const [catalog, nostrCatalog, weightedCatalog] = await Promise.all([
     getCatalog(),
     readNostrWorkspaceBindings(),
+    readWeightedInstances(),
   ])
 
   const sources: Array<{
@@ -304,6 +382,16 @@ export const loadDirectory = async (): Promise<Directory> => {
       name: network.name,
       about: network.about,
       snapshot: network.contracts.merkleSnapshot,
+    })),
+    // Weighted instances have no page of their own yet; the row's blurb carries a recognizable
+    // fragment of the instance id, and the row links into the workspace's update view, where the
+    // full id is shown copyable.
+    ...weightedCatalog.rows.map((row) => ({
+      program: 'trust-graph-weighted' as const,
+      id: row.id,
+      name: row.name,
+      about: `Weighted instance ${row.id.slice(0, 10)}…${row.id.slice(-8)}`,
+      snapshot: row.snapshot,
     })),
     ...VISIBLE_HYPERCERTS_NETWORKS.map((network) => ({
       program: 'hypercerts' as const,
@@ -332,6 +420,7 @@ export const loadDirectory = async (): Promise<Directory> => {
 
   const grouped: Record<DirectoryProgram, DirectoryRow[]> = {
     'trust-graph': [],
+    'trust-graph-weighted': [],
     contributions: [],
     hypercerts: [],
     'nostr-workspace': [],
@@ -345,7 +434,9 @@ export const loadDirectory = async (): Promise<Directory> => {
       href:
         source.program === 'nostr-workspace'
           ? `/nostr-workspaces/${source.snapshot}`
-          : `/networks/${source.id}`,
+          : source.program === 'trust-graph-weighted'
+            ? `/create/weighted?instance=${source.id}`
+            : `/networks/${source.id}`,
       summary: summaries[index] ?? UNREADABLE,
     })
   })
@@ -355,7 +446,9 @@ export const loadDirectory = async (): Promise<Directory> => {
   return {
     sections,
     catalogError:
-      [catalog.error, nostrCatalog.error].filter(Boolean).join('; ') || null,
+      [catalog.error, nostrCatalog.error, weightedCatalog.error]
+        .filter(Boolean)
+        .join('; ') || null,
     total: sections.reduce((n, section) => n + section.rows.length, 0),
   }
 }

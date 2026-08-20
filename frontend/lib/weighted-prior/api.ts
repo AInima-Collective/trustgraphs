@@ -32,6 +32,11 @@ export interface WeightedApiEntry {
   normalizedWeight: string
 }
 
+export interface WeightedApiInstance {
+  id: Hex
+  name: string
+}
+
 const responseJson = async <T>(response: Response): Promise<T> => {
   const body = await response.json().catch(() => null)
   if (!response.ok) {
@@ -53,6 +58,28 @@ export const fetchWeightedVersions = async (
   )
   return (await responseJson<{ versions: WeightedApiVersion[] }>(response))
     .versions
+}
+
+/** List every weighted instance available for review or rotation on the indexed chain. */
+export const fetchWeightedInstances = async (
+  api: string,
+  signal?: AbortSignal
+): Promise<WeightedApiInstance[]> => {
+  const instances: WeightedApiInstance[] = []
+  for (let offset = 0; ; ) {
+    const response = await fetch(
+      `${api}/weighted-priors?limit=200&offset=${offset}`,
+      { signal }
+    )
+    const page = await responseJson<{
+      instances: WeightedApiInstance[]
+      page: { total: number }
+    }>(response)
+    instances.push(...page.instances)
+    if (instances.length >= page.page.total || page.instances.length === 0)
+      return instances
+    offset += page.instances.length
+  }
 }
 
 export const fetchWeightedEntries = async (
