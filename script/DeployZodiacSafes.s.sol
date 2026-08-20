@@ -168,8 +168,10 @@ contract DeployZodiacSafes is Common {
             )
         );
 
-        // Deploy Merkle Gov Module
+        // Deploy Merkle Gov Module. Construction is silent (indexer discovery ordering); this
+        // standalone deployment has no discovery event to wait behind, so announce immediately.
         MerkleGovModule merkleGovModule = new MerkleGovModule(deployer, safeProxy, safeProxy, address(merkleSnapshot));
+        merkleGovModule.publishInitialSnapshotBinding();
         // Add the merkle gov module as a hook to the merkle snapshot.
         merkleSnapshot.addHook(IMerkleSnapshotHook(address(merkleGovModule)));
 

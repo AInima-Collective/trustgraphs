@@ -10,6 +10,7 @@ import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
+import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "contracts/zodiac/SignerSyncZkModule.sol";
 
 /// @title MerkleSnapshotDeployer
@@ -91,6 +92,27 @@ contract GovernedAuthorityDeployer {
     {
         guard = new SafeExecutionGuard(safe, bootstrapper);
         recovery = new DelayedRecoveryModule(safe, recoveryProposer, recoveryDelay);
+    }
+}
+
+/// @title MerkleGovModuleDeployer
+/// @notice Holds `MerkleGovModule`'s creation code — the governed wrappers' single biggest
+///         initcode line item — outside every governed factory's runtime bytecode, so ONE deployed
+///         singleton preserves EIP-170 headroom for all three wrappers at once.
+/// @dev    Safe for the `MerkleSnapshotDeployer` reason: every authority (owner, avatar, target)
+///         is an explicit constructor argument, nothing is derived from `msg.sender`, so this
+///         permissionless helper never holds any power over what it creates. Construction is
+///         SILENT (see `MerkleGovModule.initialBindingPublished`): the calling wrapper emits its
+///         discovery event first and then calls `publishInitialSnapshotBinding()` on the module,
+///         so a streaming indexer never sees a child log before the event that teaches it the
+///         child exists.
+contract MerkleGovModuleDeployer {
+    /// @notice Deploy a `MerkleGovModule` owned/avatared/targeted as given, bound to `snapshot`.
+    function deploy(address owner, address avatar, address target, address snapshot)
+        external
+        returns (MerkleGovModule)
+    {
+        return new MerkleGovModule(owner, avatar, target, snapshot);
     }
 }
 

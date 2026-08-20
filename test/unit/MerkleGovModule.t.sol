@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 // Safe contracts
 import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
@@ -1061,6 +1062,52 @@ contract MerkleGovModuleTest is Test {
         assertEq(freshGov.ipfsHash(), bytes32(0));
         assertEq(freshGov.ipfsHashCid(), "");
         assertEq(freshGov.totalVotingPower(), 0);
+    }
+
+    function test_ConstructionIsSilentAndInitialBindingPublishesExactlyOnce() public {
+        vm.recordLogs();
+        MerkleGovModule freshGov = new MerkleGovModule(owner, address(safe), address(safe), address(merkleSnapshot));
+        Vm.Log[] memory constructionLogs = vm.getRecordedLogs();
+        // Ownable's OwnershipTransferred is the one construction log, and no indexer handler
+        // subscribes to it. Nothing an indexer consumes may be emitted before discovery — above
+        // all not the snapshot-binding announcement.
+        bytes32 ownership = keccak256("OwnershipTransferred(address,address)");
+        for (uint256 i = 0; i < constructionLogs.length; i++) {
+            if (constructionLogs[i].emitter != address(freshGov)) continue;
+            assertEq(
+                constructionLogs[i].topics[0],
+                ownership,
+                "construction must emit nothing an indexer could dispatch pre-discovery"
+            );
+        }
+        // The binding and state pull still happened silently.
+        assertEq(freshGov.merkleSnapshotContract(), address(merkleSnapshot));
+        assertEq(freshGov.currentMerkleRoot(), merkleRoot);
+        assertFalse(freshGov.initialBindingPublished());
+
+        // Anyone may publish, once, and the announcement carries previous = address(0).
+        vm.expectEmit(true, true, false, true, address(freshGov));
+        emit MerkleGovModule.MerkleSnapshotContractUpdated(address(0), address(merkleSnapshot));
+        vm.prank(address(0xD15C));
+        freshGov.publishInitialSnapshotBinding();
+        assertTrue(freshGov.initialBindingPublished());
+
+        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        freshGov.publishInitialSnapshotBinding();
+    }
+
+    function test_SnapshotRotationSupersedesTheInitialBindingAnnouncement() public {
+        MerkleGovModule freshGov = new MerkleGovModule(owner, address(safe), address(safe), address(merkleSnapshot));
+        MockMerkleSnapshotNoStates emptySnapshot = new MockMerkleSnapshotNoStates();
+
+        vm.expectEmit(true, true, false, true, address(freshGov));
+        emit MerkleGovModule.MerkleSnapshotContractUpdated(address(merkleSnapshot), address(emptySnapshot));
+        vm.prank(owner);
+        freshGov.setMerkleSnapshotContract(address(emptySnapshot));
+
+        // A later "initial" announcement would be stale and out of order; rotation consumed it.
+        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        freshGov.publishInitialSnapshotBinding();
     }
 
     function test_SetMerkleSnapshotContractGracefullyHandlesNoMerkleStates() public {
