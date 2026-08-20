@@ -5,7 +5,6 @@ import { Command } from 'commander'
 
 import {
   ContractDeployment,
-  ContributionsInstanceDeploy,
   EnvName,
   EnvOverrides,
   IEnv,
@@ -149,6 +148,12 @@ abstract class EnvBase implements IEnv {
       // born in one transaction. The base factory remains the canonical event/catalog source.
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
+      ),
+      // The contributions round factory (absent until `DeployContributionsFactory` has run).
+      // The indexer reads `contributionsFactory.contributions_factory` and discovers every
+      // round's resolver / snapshot / distributor from its creation events.
+      contributionsFactory: readJsonIfFileExists(
+        '.docker/contributions_factory_deploy.json'
       ),
       // The chain's ProvingVault, as a bare address string — `indexer/ponder.config.ts` reads
       // `summary.provingVault` and disables the source entirely when it is absent, so omitting it
@@ -454,22 +459,47 @@ export class DevEnv extends EnvBase {
             process.env.DEV_SEED_MAX_PER_ROOT_USD || '0',
           ],
         },
-        // Deploy the WHOLE contributions instance: ContributionResolver + three
-        // schemas, TrustAccumulatorMirror over network 0's trust accumulator (journal slot A),
-        // its own SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = dev scaffolding with a
-        // MockSP1Gateway), contrib MerkleSnapshot + MerkleFundDistributor, and the TestUSDC pool
-        // token. Must run AFTER Network so network_deploy_dev_0.json (with the trust resolver
-        // address) exists. paramsHash is computed on-chain from the contributions params file +
-        // the freshly registered schema UIDs, same pattern as DeployNetwork.
+        // The contributions ROUND factory (network-creation GOAL M6). One per chain: the shared
+        // contributions SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = a nonzero dev
+        // placeholder, valid only against the mock gateway), the controller deployer, the factory
+        // (reusing the base factory's snapshot/distributor deployer singletons), and the
+        // append-only registrar grant. Replaces the per-instance DeployContributionsInstance
+        // script in this chain.
         {
-          name: 'Contributions',
+          name: 'Contributions Factory',
           script:
-            'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
-          sig: 'run(string,string,string,string,string,string,string)',
+            'script/DeployContributionsFactory.s.sol:DeployContributionsFactory',
+          sig: 'run(string,string,string,string,string,string,uint64)',
+          args: () => [
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            // The same gateway the root/signer verifiers were pointed at. Without this the
+            // script falls back to the SP1_VERIFIER_GATEWAY env var — Succinct's real per-chain
+            // address, no code on a plain anvil — and the contributions verifier immutably
+            // reverts every submitProof while the trust instance (built over the mock) works.
+            gatewayAddress(),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            readJsonKey('.docker/factory_deploy.json', 'snapshot_deployer'),
+            readJsonKey('.docker/factory_deploy.json', 'distributor_deployer'),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+          ],
+        },
+        // The dev demo round, created THROUGH the factory by the parent network's authority (the
+        // deployer, which CreateDevInstances named network 0's admin — so this must run before
+        // DeployTimelocks hands that role off). The indexer discovers the round from the
+        // factory's creation event; nothing is written into the networks config any more.
+        {
+          name: 'Contributions Round',
+          script:
+            'script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound',
+          sig: 'run(string,string,string,string,string,string)',
           args: () => {
-            // Provision the contributions params file from its committed template if absent
-            // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
-            // writes the registered schema UIDs back into it, so it is local state, not tracked.
+            // Provision the round-params file from its committed template if absent (same
+            // convention as `cp test/e2e/params.template.json params.json`). Only the tunable
+            // knobs are read; the factory derives the schema UIDs and never writes back.
             const paramsFile =
               process.env.CONTRIBUTIONS_PARAMS_JSON ||
               'params.contributions.json'
@@ -480,23 +510,23 @@ export class DevEnv extends EnvBase {
               )
             }
             return [
-              'dev',
-              readJsonKey('.docker/eas_deploy.json', 'eas'),
-              readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+              readJsonKey(
+                '.docker/contributions_factory_deploy.json',
+                'contributions_factory'
+              ),
               readJsonKey(
                 'config/network_deploy_dev_0.json',
-                'contracts.eas_indexer_resolver'
+                'contracts.merkle_snapshot'
               ),
               paramsFile,
-              // The same gateway the root/signer verifiers were pointed at. Without this the
-              // script falls back to the SP1_VERIFIER_GATEWAY env var — Succinct's real per-chain
-              // address, no code on a plain anvil — and the contributions verifier immutably
-              // reverts every submitProof while the trust instance (built over the mock) works.
-              gatewayAddress(),
-              readJsonKey(
-                '.docker/instance_registry_deploy.json',
-                'instance_registry'
-              ),
+              'Demo Co-op Contributions',
+              // The intended payout token (presentation only): the local TestUSDC when the
+              // vault step deployed one, else unset.
+              readJsonKeyIfFileExists<string>(
+                '.docker/proving_vault_deploy.json',
+                'usdc'
+              ) || '',
+              'dev',
             ]
           },
         },
@@ -572,66 +602,11 @@ export class DevEnv extends EnvBase {
         // Replace the networks config file with the template.
         fs.copyFileSync(networksConfigTemplateFile, this.networksConfigFile)
         this.updateNetworksConfigWithDeployments('dev')
-        this.updateContributionsNetworkConfig()
+        // Contributions rounds no longer live in the networks config: the indexer catalogs them
+        // from ContributionsFactory's creation event and the frontend reads its
+        // /contributions/instances route.
       },
     })
-  }
-
-  /**
-   * Fill the `program: "contributions"` template entry in the networks config with the
-   * contracts + schemas from the contributions instance deploy
-   * (`script/DeployContributionsInstance.s.sol`). The entry then flows into
-   * `.docker/deployment_summary.json` via `generateDeploymentSummary`, which is where the
-   * indexer + frontend aggregate it from.
-   */
-  updateContributionsNetworkConfig = (): void => {
-    const deploy = readJsonIfFileExists<ContributionsInstanceDeploy>(
-      '.docker/contributions_instance_dev_deploy.json'
-    )
-    if (!deploy) {
-      return
-    }
-
-    const networks = readJson<(Network & { program?: string })[]>(
-      this.networksConfigFile
-    )
-    const network = networks.find((n) => n.program === 'contributions')
-    if (!network) {
-      throw new Error(
-        `No program: "contributions" entry in ${this.networksConfigFile} (template) to fill from the contributions deploy.`
-      )
-    }
-
-    network.id = deploy.instance_id
-    network.contracts = {
-      merkleSnapshot: deploy.contracts.merkle_snapshot,
-      contributionResolver: deploy.contracts.contribution_resolver,
-      trustAccumulatorMirror: deploy.contracts.trust_accumulator_mirror,
-      trustAccumulator: deploy.contracts.trust_accumulator,
-      merkleFundDistributor: deploy.contracts.fund_distributor,
-      zkVerifier: deploy.contracts.zk_verifier,
-      poolToken: deploy.contracts.pool_token,
-      paramsController: deploy.contracts.params_controller,
-    } as unknown as Network['contracts']
-    network.schemas = [
-      deploy.schemas.claim,
-      deploy.schemas.response,
-      deploy.schemas.valuation,
-    ].map((schema) => ({
-      ...schema,
-      fields: schema.schema.split(',').map((field) => {
-        const [type, name] = field.split(' ')
-        return {
-          name,
-          type,
-        }
-      }),
-    }))
-
-    fs.writeFileSync(
-      this.networksConfigFile,
-      JSON.stringify(networks, null, 2) + '\n'
-    )
   }
 
   async uploadToIpfs(file: string, apiKey?: string): Promise<string> {
