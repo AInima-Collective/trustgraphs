@@ -3,13 +3,31 @@
 This is the administrator procedure for an already-created `trust-graph-weighted` instance. It
 does not apply to binary-seed `trust-graph` controllers.
 
+## Deploy the factory
+
+Weighted instances are created through `WeightedTrustgraphsFactory`, deployed once per chain by
+`script/DeployWeightedTrustgraphsFactory.s.sol` together with its own verifier (an
+`SP1JournalVerifier` pinned to the `trust-graph-weighted` guest's vkey, never the trust-graph root
+verifier) and its `REGISTRAR_ROLE` grant on the instance registry.
+
+On a local dev stack this is automatic: `pnpm deploy:contracts` (or `task demo:deploy`, which also
+derives the vkeys) runs the `Weighted ZK Verifier` and `Weighted Factory` steps and writes
+`.docker/zk_verifier_weighted_deploy.json` and `.docker/weighted_factory_deploy.json`. The pipeline
+fails closed when `SP1_WEIGHTED_PROGRAM_VKEY` is unset
+(`cargo run -p trustgraph-prover -- trust-graph-weighted vkey`).
+
+On a real chain, run the same two scripts by hand; the exact commands, the epoch floor and
+activation delay arguments, and their fail-closed floors are in
+[production.md](../production.md#deploy-the-weighted-and-compose-factories). The activation delay
+is immutable and is the review window between `proposePrior` and the earliest `activatePrior`.
+
 ## Import, preview, and create in the app
 
 Open `/create/weighted`. The workspace remains useful for import, exact preview, and export even
 when the current deployment has no weighted factory address; transaction buttons stay disabled in
 that state. A configured `weightedFactory` comes from
-`deployment_summary.weightedFactory.weighted_factory` or `WEIGHTED_FACTORY_ADDRESS` during frontend
-config generation.
+`deployment_summary.weightedFactory.weighted_factory` (written by the deploy step above) or
+`WEIGHTED_FACTORY_ADDRESS` during frontend config generation.
 
 The importer accepts at most 2 MiB and 1–2,048 entries:
 
