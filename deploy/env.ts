@@ -47,6 +47,25 @@ function requireProdBytes32(name: string): string {
   return v
 }
 
+/**
+ * Read a REQUIRED guest vkey for a per-program verifier/factory deploy step; fail closed (throw)
+ * if it is unset or zero. `DeployZkVerifier` falls back to `SP1_PROGRAM_VKEY` (the trust-graph
+ * ROOT program) whenever its vkey argument is zero, so letting an unset weighted/composition vkey
+ * through would silently pin the wrong program's verifier — a factory whose instances no proof of
+ * their own program can ever satisfy.
+ */
+function requireProgramVkey(name: string, program: string): string {
+  const value = process.env[name]
+  if (!value || /^0x0{64}$/i.test(value)) {
+    throw new Error(
+      `${name} must be set to the ${program} guest vkey (got ${value ?? 'unset'}). ` +
+        `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey — or use ` +
+        `\`task demo:deploy\`, which derives every vkey from this checkout's guests.`
+    )
+  }
+  return value
+}
+
 /** Require an explicit, nonzero uint64 deployment value instead of silently choosing policy. */
 function requireProdUint64(name: string): string {
   const value = process.env[name]
@@ -149,6 +168,19 @@ abstract class EnvBase implements IEnv {
       // born in one transaction. The base factory remains the canonical event/catalog source.
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
+      ),
+      // The weighted-prior factory (absent until `DeployWeightedTrustgraphsFactory` has run).
+      // Both consumers read `weightedFactory.weighted_factory`: the frontend generator puts it in
+      // config so `/create/weighted` can transact, and the indexer discovers every weighted
+      // instance's controller/resolver/snapshot from the factory's creation events.
+      weightedFactory: readJsonIfFileExists(
+        '.docker/weighted_factory_deploy.json'
+      ),
+      // The trust-compose factory (absent until `DeployTrustComposeFactory` has run). One summary
+      // key for both consumers: the frontend generator and the indexer both read
+      // `trustComposeFactory.trust_compose_factory`.
+      trustComposeFactory: readJsonIfFileExists(
+        '.docker/trust_compose_factory_deploy.json'
       ),
       // The chain's ProvingVault, as a bare address string — `indexer/ponder.config.ts` reads
       // `summary.provingVault` and disables the source entirely when it is absent, so omitting it
@@ -430,6 +462,93 @@ export class DevEnv extends EnvBase {
             'script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [readJsonKey('.docker/factory_deploy.json', 'factory')],
+        },
+        // Deploy the WEIGHTED verifier adapter (bound to the trust-graph-weighted guest's vkey —
+        // a different program than the root). Own output file (`zk_verifier_weighted_deploy.json`)
+        // so the root verifier's artifact is untouched.
+        {
+          name: 'Weighted ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            gatewayAddress(),
+            requireProgramVkey(
+              'SP1_WEIGHTED_PROGRAM_VKEY',
+              'trust-graph-weighted'
+            ),
+            'weighted',
+          ],
+        },
+        // The weighted-prior creation seam: the isolated `trust-graph-weighted` factory the
+        // `/create/weighted` workspace calls. Same shape as Factory above (deployers + registrar
+        // grant), plus the immutable prior-rotation review delay.
+        {
+          name: 'Weighted Factory',
+          script:
+            'script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory',
+          sig: 'run(string,string,string,string,uint64,uint48,string)',
+          args: () => [
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            readJsonKey(
+              '.docker/zk_verifier_weighted_deploy.json',
+              'zk_verifier'
+            ),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+            // Seconds between proposePrior and the earliest activatePrior. Short locally so a dev
+            // rotation loop is never waiting on the review window; the script fails closed on
+            // anything under a day for a non-dev chain.
+            process.env.WEIGHTED_PRIOR_ACTIVATION_DELAY || '300',
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
+          ],
+        },
+        // Deploy the COMPOSITION verifier adapter (bound to the trust-compose guest's vkey). Own
+        // output file (`zk_verifier_composition_deploy.json`), same reasoning as above.
+        {
+          name: 'Composition ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            gatewayAddress(),
+            requireProgramVkey('SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose'),
+            'composition',
+          ],
+        },
+        // The trust-compose creation seam: the isolated `trust-compose` factory the
+        // `/create/composition` workspace calls, plus the `CompositionSourceAdapterFactory` whose
+        // reviewed adapters are the only source identities the accumulator accepts. The factory
+        // constructor cross-checks the vkey below against the verifier's own `programVKey()`.
+        {
+          name: 'Trust Compose Factory',
+          script:
+            'script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory',
+          sig: 'run(string,bytes32,string,uint64,uint48,string)',
+          args: () => [
+            readJsonKey(
+              '.docker/zk_verifier_composition_deploy.json',
+              'zk_verifier'
+            ),
+            requireProgramVkey('SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+            // Seconds between proposePolicy and the earliest activatePolicy; same dev-short /
+            // prod-fail-closed policy as the weighted delay above.
+            process.env.COMPOSE_POLICY_ACTIVATION_DELAY || '300',
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
+          ],
         },
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
         // exercises the same path a community will. Still writes
