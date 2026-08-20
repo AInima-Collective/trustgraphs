@@ -1,10 +1,11 @@
 //! What the `/networks` directory is a list OF.
 //!
-//! Three programs share one page and they do not score the same thing. A trust-graph instance
-//! scores people who vouch for each other; a contributions round scores work claimed in a funding
-//! round; a hypercerts instance scores repositories and the accounts behind them. Rendering all
-//! four as identical cards (which is what shipped) asks a reader to notice a difference that
-//! nothing on the page tells them about.
+//! Several programs share one page and they do not score the same thing. A trust-graph instance
+//! scores people who vouch for each other; a weighted instance does the same but its starting
+//! accounts hold creation-time shares; a contributions round scores work claimed in a funding
+//! round; a hypercerts instance scores published work. Rendering them all as identical cards
+//! (which is what shipped) asks a reader to notice a difference that nothing on the page tells
+//! them about.
 //!
 //! So the directory is SECTIONS, one per program, each with a sentence saying what it scores. A
 //! section with nothing in it is omitted rather than rendered empty.
@@ -14,6 +15,7 @@
 /** The programs that put instances on this page. Order is the order they render in. */
 export const PROGRAM_ORDER = [
   'trust-graph',
+  'trust-graph-weighted',
   'contributions',
   'hypercerts',
   'nostr-workspace',
@@ -79,6 +81,15 @@ export const SECTION_META: Record<
     nameLabel: 'Network',
     // The canonical blob contains only value > 0 entries, so `numAccounts` uses
     // the same set as both the network roster and the live vouch count.
+    scoredLabel: 'Scored accounts',
+  },
+  // The persistent surface for weighted instances (GOAL M2): before this section a created
+  // weighted network's id appeared once, in a toast, and was unfindable after a reload.
+  'trust-graph-weighted': {
+    title: 'Weighted networks',
+    standfirst:
+      'Starting accounts hold shares of fixed sizes chosen at creation; vouches still decide the final scores.',
+    nameLabel: 'Network',
     scoredLabel: 'Scored accounts',
   },
   contributions: {
