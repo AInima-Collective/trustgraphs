@@ -168,6 +168,16 @@ abstract class EnvBase implements IEnv {
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
       ),
+      // Governed wrappers for the weighted / compose programs (absent until their deploy scripts
+      // have run). The indexer reads `governedWeightedFactory.governed_weighted_factory` and
+      // `governedComposeFactory.governed_compose_factory` to discover wrapper-created instances;
+      // the frontend generator exposes both so the workspaces can offer create-with-governance.
+      governedWeightedFactory: readJsonIfFileExists(
+        '.docker/governed_weighted_factory_deploy.json'
+      ),
+      governedComposeFactory: readJsonIfFileExists(
+        '.docker/governed_compose_factory_deploy.json'
+      ),
       // The weighted-prior factory (absent until `DeployWeightedTrustgraphsFactory` has run).
       // Both consumers read `weightedFactory.weighted_factory`: the frontend generator puts it in
       // config so `/create/weighted` can transact, and the indexer discovers every weighted
@@ -553,6 +563,33 @@ export class DevEnv extends EnvBase {
               '.docker/proving_vault_deploy.json',
               'proving_vault'
             ) || '',
+          ],
+        },
+        // Governed wrapper for the weighted factory: one transaction bootstraps a Safe, creates
+        // the weighted instance through the base factory (admin = the Safe), installs the shared
+        // gov module via the deployer, and seals authority. Reads every singleton (Safe factory,
+        // authority / signer-sync / gov-module deployers) from the trust-graph governed factory's
+        // artifact so the chain keeps one address per helper.
+        {
+          name: 'Governed Weighted Factory',
+          script:
+            'script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey('.docker/weighted_factory_deploy.json', 'weighted_factory'),
+          ],
+        },
+        // Governed wrapper for the trust-compose factory; same shape and shared singletons.
+        {
+          name: 'Governed Compose Factory',
+          script:
+            'script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey(
+              '.docker/trust_compose_factory_deploy.json',
+              'trust_compose_factory'
+            ),
           ],
         },
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
