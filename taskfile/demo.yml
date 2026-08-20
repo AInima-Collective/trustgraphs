@@ -130,6 +130,10 @@ tasks:
         export SP1_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-graph vkey)
         export SP1_SIGNER_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- signer vkey)
         export CONTRIBUTIONS_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- contributions vkey)
+        # The weighted and compose factory steps fail closed without their own program's vkey
+        # (DeployZkVerifier's zero-vkey fallback is the ROOT vkey, which would pin the wrong guest).
+        export SP1_WEIGHTED_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-graph-weighted vkey)
+        export SP1_COMPOSITION_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-compose vkey)
         cd ../..
         # Give the one seeded network the same reachable anvil seed as `demo:create`. Use demo-local
         # params so the deploy never mutates a developer's params.json.
@@ -146,6 +150,12 @@ tasks:
           DEV_SEED_MAX_PER_ROOT_USD={{.MAX_PER_ROOT_USD}} \
           pnpm deploy:contracts
       - task: addresses
+      - |
+        # The indexer reads .docker/deployment_summary.json ONCE, at startup (ponder.config.ts
+        # imports it), so a redeploy's new addresses — including the weighted and compose factory
+        # sources — are invisible to an indexer that is already running.
+        echo "→ if the indexer was already running, restart it (pnpm indexer start):"
+        echo "  it reads .docker/deployment_summary.json only at startup"
 
   fund:
     desc: "Top up Demo Co-op's proving tank after deployment"
