@@ -8,7 +8,6 @@
  */
 import { type Hex } from 'viem'
 
-import deploymentSummaryJson from '../../.docker/deployment_summary.json'
 import * as contributionsLibNs from '../../frontend/lib/contributions'
 import {
   type ContributionsParams,
@@ -26,41 +25,10 @@ const { consentMultFp, paramsHash } = contributionsLib
 const { fpMul, mulDiv } = ((fixedNs as any).default ??
   fixedNs) as typeof fixedNs
 
-/*///////////////////////////////////////////////////////////////
-              Instance discovery (deployment summary)
-//////////////////////////////////////////////////////////////*/
-
-export interface ContributionsDeployedNetwork {
-  id?: string
-  program?: string
-  contracts?: {
-    merkleSnapshot?: string
-    contributionResolver?: string
-    trustAccumulator?: string
-    trustAccumulatorMirror?: string
-    merkleFundDistributor?: string
-    poolToken?: string
-  }
-}
-
-// Presence-gated exactly like the ponder.config sources: a box without a contributions deploy
-// (or whose summary was rewritten by a later `pnpm deploy:contracts`) simply has no instances.
-export const CONTRIBUTIONS_INSTANCES = (
-  (deploymentSummaryJson as { networks?: ContributionsDeployedNetwork[] })
-    .networks ?? []
-).filter(
-  (n) =>
-    n.program === 'contributions' &&
-    n.contracts?.merkleSnapshot &&
-    n.contracts?.contributionResolver &&
-    n.contracts?.trustAccumulator
-)
-
-/** The contributions instance owning this merkleSnapshot address, if any. */
-export const contributionsInstanceForSnapshot = (snapshot: string) =>
-  CONTRIBUTIONS_INSTANCES.find(
-    (n) => n.contracts!.merkleSnapshot!.toLowerCase() === snapshot.toLowerCase()
-  )
+// Instance discovery used to live here as a build-time CONTRIBUTIONS_INSTANCES import from
+// deployment_summary.json. It is now the `contributions_instance` DB table, populated from
+// `ContributionsFactory.ContributionsInstanceCreated` (src/contributions-factory.ts) and served
+// by GET /contributions/instances — rounds appear with no config edit and no restart.
 
 /**
  * One fold-log row (the `accumulator_record` table's shape, minus provenance columns) — exactly a

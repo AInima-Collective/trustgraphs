@@ -10,7 +10,7 @@
 // `lib/schemas.ts` re-exports `registerSchemas` from here, so existing
 // call-sites are unchanged and `SchemaManager` still owns encode and decode.
 
-import { VISIBLE_CONTRIBUTIONS_NETWORKS, VISIBLE_SEED_NETWORKS } from './config'
+import { VISIBLE_SEED_NETWORKS } from './config'
 import { NetworkSchema } from './types'
 
 // It used to be a `const` built from the static network list at import time, which meant a network
@@ -44,11 +44,8 @@ export const schemaForUid = (uid: string) => {
   return schema
 }
 
-// Seed: the networks shipped in `config/networks.<env>.json`. Contributions instances attest
-// through the same EAS + SchemaManager flow, so their schemas (claim / response / valuation) join
-// the vouching schemas here; they are not factory-minted in v1 and stay static.
-registerSchemas(
-  [...VISIBLE_SEED_NETWORKS, ...VISIBLE_CONTRIBUTIONS_NETWORKS].flatMap(
-    (network) => network.schemas
-  )
-)
+// Seed: the networks shipped in `config/networks.<env>.json`. Contribution rounds are
+// factory-minted, so their schemas (claim / response / valuation) register at runtime when a
+// round's data loads (`useContributionsData`), the same way catalog networks register through
+// `registerNetworks`.
+registerSchemas(VISIBLE_SEED_NETWORKS.flatMap((network) => network.schemas))

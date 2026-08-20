@@ -11,6 +11,7 @@ import {
   trustComposeFactoryAbi,
   trustComposeParamsControllerAbi,
 } from './abis/composition'
+import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
 import {
   OPTIMISM_ERC8004_IDENTITY_REGISTRY,
@@ -76,6 +77,7 @@ const deploymentSummary = deploymentSummaryJson as {
   // what frontend/scripts/generate-config.ts reads (`trustComposeFactory.trust_compose_factory`),
   // written by `DeployTrustComposeFactory` via deploy/env.ts.
   trustComposeFactory?: { trust_compose_factory?: string }
+  contributionsFactory?: { contributions_factory?: string }
   graphLineage?: { registry?: string }
 }
 
@@ -198,6 +200,14 @@ const COMPOSITION_FACTORY =
   (deploymentSummary.trustComposeFactory?.trust_compose_factory as
     | Hex
     | undefined)
+const CONTRIBUTIONS_FACTORY =
+  ((IS_PRODUCTION
+    ? process.env.CONTRIBUTIONS_FACTORY_ADDRESS_10
+    : process.env.CONTRIBUTIONS_FACTORY_ADDRESS_31337
+  )?.trim() as Hex | undefined) ??
+  (deploymentSummary.contributionsFactory?.contributions_factory as
+    | Hex
+    | undefined)
 const GRAPH_LINEAGE_REGISTRY =
   ((IS_PRODUCTION
     ? process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_10
@@ -249,6 +259,10 @@ const COMPOSITION_CONTROLLER_CREATED = getAbiItem({
 const COMPOSITION_INSTANCE_CREATED = getAbiItem({
   abi: trustComposeFactoryAbi,
   name: 'TrustComposeInstanceCreated',
+})
+const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
+  abi: contributionsFactoryAbi,
+  name: 'ContributionsInstanceCreated',
 })
 
 /**
@@ -326,6 +340,16 @@ const compositionChildren = (parameter: 'snapshot' | 'accumulator') =>
   factory({
     address: COMPOSITION_FACTORY!,
     event: COMPOSITION_INSTANCE_CREATED,
+    parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const contributionsChildren = (
+  parameter: 'resolver' | 'snapshot' | 'distributor'
+) =>
+  factory({
+    address: CONTRIBUTIONS_FACTORY!,
+    event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
   })
@@ -623,6 +647,42 @@ export default createConfig({
               ),
             },
           }
+        : {},
+    },
+    // The contributions ROUND factory (D3). When it is deployed, the chain is the contributions
+    // catalog: every round's resolver / snapshot / distributor is discovered from
+    // `ContributionsInstanceCreated` through the three factory() sources below, and the
+    // `contributions_instance` table (src/contributions-factory.ts) replaces the build-time
+    // CONTRIBUTIONS_INSTANCES import from deployment_summary.json.
+    contributionsFactory: {
+      abi: contributionsFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: CONTRIBUTIONS_FACTORY } }
+        : {},
+    },
+    // Factory-discovered round children. Same ABIs and same handlers as their static siblings
+    // above (`contributionResolver`, `programSnapshot`, `programFundDistributor`) — separate
+    // sources only because Ponder's `address` is either a static list or a factory, never both.
+    factoryContributionResolver: {
+      abi: contributionResolverAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('resolver') } }
+        : {},
+    },
+    contributionsMerkleSnapshot: {
+      abi: merkleSnapshotAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('snapshot') } }
+        : {},
+    },
+    contributionsFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('distributor') } }
         : {},
     },
     merkleGovModule: {

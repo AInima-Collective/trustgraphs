@@ -46,8 +46,13 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { foundry } from 'viem/chains'
 
-import { CONTRIBUTIONS_NETWORKS, SEED_NETWORKS } from '../lib/config'
+import { SEED_NETWORKS } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
+import {
+  fetchContributionsInstances,
+  toContributionsNetwork,
+} from '../lib/contributions-catalog'
+import type { ContributionsNetwork, Network } from '../lib/types'
 import { easAddress } from '../lib/contracts'
 import {
   fetchContributionsPayout,
@@ -91,20 +96,29 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? process.argv[i + 1] : undefined
 }
 
-const network = CONTRIBUTIONS_NETWORKS[0]
-if (!network) {
-  console.error(
-    'no program:"contributions" network in the config — deploy first'
-  )
-  process.exit(1)
-}
+// Resolved at startup from the indexer's runtime round catalog (rounds are factory-minted; the
+// static config entry is gone). `main` populates both before dispatching.
+let network!: ContributionsNetwork
+let trustNetwork: Network | undefined
 
-// The trust network whose accumulator feeds journal slot A (the mirror wraps its resolver).
-const trustNetwork = SEED_NETWORKS.find(
-  (n) =>
-    n.contracts.easIndexerResolver?.toLowerCase() ===
-    network.contracts.trustAccumulator?.toLowerCase()
-)
+const resolveRound = async () => {
+  const rows = await fetchContributionsInstances()
+  const row = rows[0]
+  if (!row) {
+    console.error(
+      'no contributions round on the indexer — run pnpm deploy:contracts (Contributions Round step) first'
+    )
+    process.exit(1)
+  }
+  network = toContributionsNetwork(row)
+  // Display-only back-link for `status`; the seed entries carry no instanceId, so the demo keeps
+  // matching by the accumulator address here.
+  trustNetwork = SEED_NETWORKS.find(
+    (n) =>
+      n.contracts.easIndexerResolver?.toLowerCase() ===
+      network.contracts.trustAccumulator?.toLowerCase()
+  )
+}
 
 const schemaUid = (key: string): Hex => {
   const schema = network.schemas.find((s) => s.key === key)
@@ -219,6 +233,7 @@ const rate = (as: Persona, claimUid: Hex, score: number) => {
 const main = async () => {
   const phase = process.argv[2]
   const state = loadState()
+  await resolveRound()
 
   switch (phase) {
     // The fixture's trust lane: SEED→ALICE 100, SEED→BOB 80, SEED→CAROL 60, SEED→DAVE 90,

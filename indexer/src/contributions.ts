@@ -6,6 +6,7 @@ import {
   contributionClaimContributor,
   contributionResponse,
   contributionValuation,
+  contributionsInstance,
   contributionsParameterVersion,
 } from 'ponder:schema'
 import { type Hex, decodeAbiParameters, decodeFunctionData } from 'viem'
@@ -14,7 +15,6 @@ import * as offchainSchema from '../offchain.schema'
 import { offchainDb } from './api/db'
 import {
   applyDiscountStatus,
-  contributionsInstanceForSnapshot,
   contributionsParamsHash,
   deriveAudit,
   deriveScores,
@@ -174,9 +174,12 @@ const recomputeSuperseded = async (
   }
 }
 
-ponder.on(
-  'contributionResolver:AttestationAttested',
-  async ({ event, context }: any) => {
+/**
+ * One fold-log attestation, from either resolver source (the static summary-configured list or
+ * the factory-discovered children — same ABI, same handler; the ponder.config comment explains
+ * why they are two sources).
+ */
+const onContributionAttested = async ({ event, context }: any) => {
     const { eas, uid } = event.args
     const resolver = event.log.address as Hex
     const attestation = await context.client.readContract({
@@ -322,12 +325,10 @@ ponder.on(
         )
       }
     }
-  }
-)
+}
 
-ponder.on(
-  'contributionResolver:AttestationRevoked',
-  async ({ event, context }: any) => {
+/** One fold-log revocation, from either resolver source (see `onContributionAttested`). */
+const onContributionRevoked = async ({ event, context }: any) => {
     const { eas, uid } = event.args
     const resolver = event.log.address as Hex
     const attestation = await context.client.readContract({
@@ -408,7 +409,17 @@ ponder.on(
         }
       }
     }
-  }
+}
+
+ponder.on('contributionResolver:AttestationAttested', onContributionAttested)
+ponder.on(
+  'factoryContributionResolver:AttestationAttested',
+  onContributionAttested
+)
+ponder.on('contributionResolver:AttestationRevoked', onContributionRevoked)
+ponder.on(
+  'factoryContributionResolver:AttestationRevoked',
+  onContributionRevoked
 )
 
 /*///////////////////////////////////////////////////////////////
@@ -484,12 +495,6 @@ export async function ingestContributionsScores(
   provenance: ScoreProgramProvenance
 ): Promise<void> {
   const snapshot = event.log.address as Hex
-  const instance = contributionsInstanceForSnapshot(snapshot)
-  if (!instance) {
-    throw new Error(
-      `contributions ingestion refused: authenticated snapshot ${snapshot} has no input-contract configuration`
-    )
-  }
 
   const base = {
     merkleSnapshotContract: snapshot.toLowerCase(),
@@ -527,6 +532,26 @@ export async function ingestContributionsScores(
       failureReason: reason,
       ...partial,
     })
+  }
+
+  // 0. The round's input contracts, from the `contributions_instance` row the factory's creation
+  //    event materialized (src/contributions-factory.ts) — the DB replacement for the retired
+  //    build-time CONTRIBUTIONS_INSTANCES import. Refusing (an unverified round row) rather than
+  //    throwing keeps a mis-set-up chain from wedging the indexer.
+  const instances = await context.db.sql
+    .select({
+      trustAccumulator: contributionsInstance.trustAccumulator,
+      resolver: contributionsInstance.resolver,
+    })
+    .from(contributionsInstance)
+    .where(eq(contributionsInstance.snapshot, snapshot.toLowerCase() as Hex))
+    .limit(1)
+  const instance = instances[0]
+  if (!instance) {
+    await refuse(
+      'authenticated snapshot has no contributions_instance row (was this round created through ContributionsFactory?)'
+    )
+    return
   }
 
   // 1. The checkpoint this proof consumed, from the submitProof calldata of the same tx.
@@ -647,14 +672,10 @@ export async function ingestContributionsScores(
   // 4. The two input streams, from the indexer's own fold log, truncated to the checkpoint.
   const trustEdges = await loadFoldLog(
     context,
-    instance.contracts!.trustAccumulator!,
+    instance.trustAccumulator,
     trustLeafCount
   )
-  const records = await loadFoldLog(
-    context,
-    instance.contracts!.contributionResolver!,
-    anchorCount
-  )
+  const records = await loadFoldLog(context, instance.resolver, anchorCount)
   if (
     BigInt(trustEdges.length) !== trustLeafCount ||
     BigInt(records.length) !== anchorCount

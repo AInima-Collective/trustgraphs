@@ -735,6 +735,65 @@ export const contributionsParameterVersion = onchainTable(
   })
 )
 
+/**
+ * The contributions-round catalog, built from `ContributionsFactory.ContributionsInstanceCreated`
+ * — the discovery event that replaced the build-time `CONTRIBUTIONS_INSTANCES` import from
+ * `deployment_summary.json`. One row per round; the parent link (`parentInstanceId`) is the
+ * `instance` table's id, which is how the frontend hangs rounds on their trust network.
+ */
+export const contributionsInstance = onchainTable(
+  'contributions_instance',
+  (t) => ({
+    // keccak256(abi.encode(creator, name, salt)) — the registry key.
+    id: t.hex().primaryKey(),
+    // The factory that minted it, kept for provenance across a factory redeploy.
+    factory: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    // The PARENT trust-graph instance (the `instance` table's id) this round is scored against.
+    parentInstanceId: t.hex().notNull(),
+    creator: t.hex().notNull(),
+    admin: t.hex().notNull(),
+    name: t.text().notNull(),
+    metadataURI: t.text().notNull(),
+    // The resolved presentation blob, or null when absent/unreachable. Never consensus-relevant.
+    metadata: t.json(),
+    // The parent's accumulator (its EASIndexerResolver) — journal slot A's ultimate source.
+    trustAccumulator: t.hex().notNull(),
+    // The round's read-only TrustAccumulatorMirror over `trustAccumulator`.
+    mirror: t.hex().notNull(),
+    // The round's ContributionResolver == its contribution accumulator (journal slot B).
+    resolver: t.hex().notNull(),
+    snapshot: t.hex().notNull(),
+    // Always present: a round exists to pay out, so the factory creates one unconditionally.
+    distributor: t.hex().notNull(),
+    // The token the round intends to pay out in; presentation only. Null when unset.
+    distributorToken: t.hex(),
+    // The EFFECTIVE epoch length in blocks, after the factory's floor was applied.
+    epochLength: t.bigint().notNull(),
+    claimSchemaUid: t.hex().notNull(),
+    responseSchemaUid: t.hex().notNull(),
+    valuationSchemaUid: t.hex().notNull(),
+    paramsHash: t.hex().notNull(),
+    params: t.json().notNull(),
+    // Denormalized round window + pool so lists sort/filter without unpacking the JSON.
+    roundStart: t.bigint().notNull(),
+    roundEnd: t.bigint().notNull(),
+    totalPool: t.bigint().notNull(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    parentIdx: index().on(t.parentInstanceId),
+    factoryIdx: index().on(t.factory),
+    creatorIdx: index().on(t.creator),
+    snapshotIdx: index().on(t.snapshot),
+    resolverIdx: index().on(t.resolver),
+    createdTimestampIdx: index().on(t.createdTimestamp),
+    roundEndIdx: index().on(t.roundEnd),
+  })
+)
+
 /*///////////////////////////////////////////////////////////////
        ISOLATED WEIGHTED-PRIOR CATALOG AND VERSION HISTORY
 //////////////////////////////////////////////////////////////*/

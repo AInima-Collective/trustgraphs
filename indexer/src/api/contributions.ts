@@ -21,7 +21,7 @@
  *   GET /contributions/:snapshot/audit/:claimUID           audit view at the current root
  *   GET /contributions/:snapshot/:root/audit/:claimUID     …at an explicit root
  */
-import { asc, eq, inArray } from 'drizzle-orm'
+import { asc, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
@@ -29,6 +29,7 @@ import {
   contributionClaimContributor,
   contributionResponse,
   contributionValuation,
+  contributionsInstance,
 } from 'ponder:schema'
 import { type Hex } from 'viem'
 
@@ -40,10 +41,6 @@ import {
 } from './score-programs'
 import { lower } from './utils'
 import * as offchainSchema from '../../offchain.schema'
-import {
-  CONTRIBUTIONS_INSTANCES,
-  contributionsInstanceForSnapshot,
-} from '../contributions-shared'
 import {
   SCORE_OUTPUT_DOMAIN_IDS,
   requireScoreKeyDomain,
@@ -129,14 +126,62 @@ const latestRound = async (snapshot?: string) =>
     orderBy: (t, { desc }) => desc(t.timestamp),
   })
 
+/**
+ * One row of the round catalog (`contributions_instance` — populated from
+ * `ContributionsFactory.ContributionsInstanceCreated`), serialized for the discovery route and
+ * the internal lookups below.
+ */
+const instanceRow = (row: typeof contributionsInstance.$inferSelect) => ({
+  id: row.id,
+  chainId: row.chainId,
+  factory: row.factory,
+  parentInstanceId: row.parentInstanceId,
+  creator: row.creator,
+  admin: row.admin,
+  name: row.name,
+  metadataURI: row.metadataURI,
+  metadata: row.metadata ?? null,
+  contracts: {
+    merkleSnapshot: row.snapshot,
+    contributionResolver: row.resolver,
+    trustAccumulatorMirror: row.mirror,
+    trustAccumulator: row.trustAccumulator,
+    merkleFundDistributor: row.distributor,
+    distributorToken: row.distributorToken,
+  },
+  schemaUids: {
+    claim: row.claimSchemaUid,
+    response: row.responseSchemaUid,
+    valuation: row.valuationSchemaUid,
+  },
+  epochLength: row.epochLength,
+  paramsHash: row.paramsHash,
+  params: row.params,
+  roundStart: row.roundStart,
+  roundEnd: row.roundEnd,
+  totalPool: row.totalPool,
+  createdBlock: row.createdBlock,
+  createdTimestamp: row.createdTimestamp,
+  createdTxHash: row.createdTxHash,
+})
+
+/** Every known round, newest first, optionally scoped to one parent instance id. */
+const listInstances = async (parent?: string) =>
+  db
+    .select()
+    .from(contributionsInstance)
+    .where(
+      parent
+        ? eq(lower(contributionsInstance.parentInstanceId), parent.toLowerCase())
+        : undefined
+    )
+    .orderBy(desc(contributionsInstance.createdTimestamp))
+
 /** Resolve the snapshot: explicit param, else the box's single contributions instance. */
-const resolveSnapshot = (snapshotQ?: string): string | null => {
+const resolveSnapshot = async (snapshotQ?: string): Promise<string | null> => {
   if (snapshotQ) return snapshotQ
-  const only =
-    CONTRIBUTIONS_INSTANCES.length === 1
-      ? CONTRIBUTIONS_INSTANCES[0]
-      : undefined
-  return only?.contracts?.merkleSnapshot ?? null
+  const rows = await db.select().from(contributionsInstance).limit(2)
+  return rows.length === 1 ? rows[0]!.snapshot : null
 }
 
 /** Resolve `root` ("current" ⇒ latest round row) for a snapshot. Throws if not found. */
@@ -209,6 +254,35 @@ const roundSummary = (round: ResolvedRound) => ({
   scoreProgram: round.scoreProgram,
 })
 
+// GET /contributions/instances — the round catalog: every factory-created contributions
+// instance (newest first), optionally scoped to one parent trust network (?parent=0x…).
+// This is the discovery surface that retired the static CONTRIBUTIONS_NETWORKS config: the
+// frontend resolves rounds (and their parent link, by parentInstanceId) from here.
+app.get('/instances', async (c) => {
+  const rows = await listInstances(c.req.query('parent'))
+  return c.json({ instances: rows.map(instanceRow) })
+})
+
+// GET /contributions/instances/:id — one round by instance id or snapshot address.
+app.get('/instances/:id', async (c) => {
+  const { id } = c.req.param()
+  const needle = id.toLowerCase()
+  const rows = await db
+    .select()
+    .from(contributionsInstance)
+    .where(
+      needle.length === 42
+        ? eq(lower(contributionsInstance.snapshot), needle)
+        : eq(lower(contributionsInstance.id), needle)
+    )
+    .limit(1)
+  const row = rows[0]
+  if (!row) {
+    return c.json({ error: 'No contributions instance with this id' }, 404)
+  }
+  return c.json(instanceRow(row))
+})
+
 // GET /contributions/rounds — discovery: known rounds (newest first), optionally per snapshot.
 app.get('/rounds', async (c) => {
   const snapshot = c.req.query('snapshot')
@@ -243,7 +317,7 @@ app.get('/rounds', async (c) => {
 
 // GET /contributions/round — the round summary at the current (or ?root=) root.
 app.get('/round', async (c) => {
-  const snapshot = resolveSnapshot(c.req.query('snapshot'))
+  const snapshot = await resolveSnapshot(c.req.query('snapshot'))
   if (!snapshot) {
     return c.json(
       { error: 'snapshot is required (no single contributions instance)' },
@@ -290,14 +364,19 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
     }
     throw error
   }
-  const instance = contributionsInstanceForSnapshot(snapshot)
+  const instanceRows = await db
+    .select({ resolver: contributionsInstance.resolver })
+    .from(contributionsInstance)
+    .where(eq(lower(contributionsInstance.snapshot), snapshot.toLowerCase()))
+    .limit(1)
+  const instance = instanceRows[0]
   if (!instance) {
     return {
       status: 404 as const,
       body: { error: 'No contributions instance for this snapshot' },
     }
   }
-  const resolver = instance.contracts!.contributionResolver!.toLowerCase()
+  const resolver = instance.resolver.toLowerCase()
 
   // The round is optional here: before any proven root the claims list still serves the live
   // attested state (scores null). An unverified round serves claims but refuses its scores.
@@ -424,7 +503,7 @@ const serveClaims = async (snapshot: string, rootQ: string) => {
 
 // GET /contributions/claims — claims + scores at the current (or ?root=) root.
 app.get('/claims', async (c) => {
-  const snapshot = resolveSnapshot(c.req.query('snapshot'))
+  const snapshot = await resolveSnapshot(c.req.query('snapshot'))
   if (!snapshot) {
     return c.json(
       { error: 'snapshot is required (no single contributions instance)' },
