@@ -11,10 +11,13 @@ import {
  * A governed factory transaction creates its Safe and module before emitting the discovery event.
  * Reading the finished contracts here avoids depending on constructor/setup event ordering and
  * makes a browser-created network immediately usable without editing deployment_summary.json.
+ *
+ * ONE handler, registered for every governed wrapper: the trust-graph, weighted, and compose
+ * wrappers emit the same `GovernedInstanceCreated(instanceId, creator, safe, merkleGovModule,
+ * snapshot)` signature by construction, and everything below reads the finished contracts rather
+ * than wrapper-specific arguments.
  */
-ponder.on(
-  'governedTrustgraphsFactory:GovernedInstanceCreated',
-  async ({ event, context }) => {
+const onGovernedInstanceCreated = async ({ event, context }: any) => {
     const { safe, merkleGovModule: moduleAddress } = event.args
 
     const [owners, threshold] = await Promise.all([
@@ -148,5 +151,17 @@ ponder.on(
       })
 
     await revalidateNetwork()
-  }
+}
+
+ponder.on(
+  'governedTrustgraphsFactory:GovernedInstanceCreated',
+  onGovernedInstanceCreated
+)
+ponder.on(
+  'governedWeightedTrustgraphsFactory:GovernedInstanceCreated',
+  onGovernedInstanceCreated
+)
+ponder.on(
+  'governedTrustComposeFactory:GovernedInstanceCreated',
+  onGovernedInstanceCreated
 )
