@@ -7,9 +7,11 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
 import { Switch } from '@/components/Switch'
+import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { cn } from '@/lib/utils'
 
 import {
+  GOVERNED_FACTORY_ADDRESS,
   WizardData,
   describeBlocks,
   effectiveBlocks,
@@ -63,6 +65,9 @@ export const AddOnsStep = ({
   const signerSyncError = showErrors ? signerSyncProblem(data) : null
   const signerSyncAvailable = isSignerSyncAvailable()
   const paidCadence = effectiveBlocks(data.tuning.cadence, epochFloor)
+  // The live governance profile the review screen also reads; stated here so nobody reaches the
+  // last step before learning a Safe is part of the deal.
+  const authority = useAuthorityProfile(GOVERNED_FACTORY_ADDRESS)
 
   return (
     <div className="space-y-6">
@@ -86,6 +91,36 @@ export const AddOnsStep = ({
             onClick={() => onChange({ withFund: !data.withFund })}
           />
         </div>
+      </Card>
+
+      {/* Not an option, a statement: every wizard creation installs governance, and the person
+          deciding on extras should learn that here, not on the review screen. */}
+      <Card type="detail" size="md" className="space-y-2">
+        <div className="text-sm">Governance comes included</div>
+        <p className="text-xs text-muted-foreground max-w-xl">
+          Every network created here starts governed; there is no toggle. The
+          same transaction creates a DAO Safe, a shared onchain account that
+          owns the network and its fund. Your wallet becomes the Safe&apos;s
+          only recorded owner, but a permanently sealed guard disables
+          owner-signed transactions: members direct the Safe through delayed
+          trust-weighted voting, and your wallet keeps a slow, visible
+          recovery role.
+        </p>
+        <p className="text-xs text-muted-foreground max-w-xl">
+          {authority.valid
+            ? `Read live from the factory: ${describeBlocks(
+                authority.memberVotingDelay ?? 0n
+              )} before voting starts, ${describeBlocks(
+                authority.memberVotingPeriod ?? 0n
+              )} to vote, ${describeBlocks(
+                authority.memberExecutionDelay ?? 0n
+              )} before the Safe executes a passed proposal, and a ${
+                Number(authority.recoveryDelay ?? 0n) / 86_400
+              }-day recovery delay.`
+            : authority.loading
+              ? 'Reading the live voting profile from the factory…'
+              : 'The live voting profile could not be read. The review step blocks creation until the factory exposes it.'}
+        </p>
       </Card>
 
       <Card type="detail" size="md">
@@ -296,11 +331,20 @@ export const AddOnsStep = ({
 
       {!data.withFund && (
         <Note>
-          A fund can only be included while the network is being created. Adding
-          one afterwards means deploying it separately, so turn it on now if you
-          think you will want it.
+          Skipping the fund closes no doors: a network created without one can
+          attach a fund later from its settings page, under Features. The
+          network&apos;s authority (the DAO Safe) must own the attached fund,
+          so for a governed network that later step is a proposal.
         </Note>
       )}
+
+      <Note>
+        Looking for contribution rounds, where members submit work and rate
+        each other for a shared pool? They are not a creation-time choice: a
+        round needs a live network to hang from. Once your network exists, its
+        authority starts a round from the network&apos;s settings page, under
+        Features.
+      </Note>
     </div>
   )
 }

@@ -73,12 +73,23 @@ try {
     deployment.weightedFactory?.weighted_factory ||
     process.env.WEIGHTED_FACTORY_ADDRESS ||
     ''
+  // The governed wrapper for the weighted factory. Absent means this deployment cannot offer
+  // "create with governance" on the weighted workspace; the ungoverned path keeps working.
+  configOutput.governedWeightedFactory =
+    deployment.governedWeightedFactory?.governed_weighted_factory ||
+    process.env.GOVERNED_WEIGHTED_FACTORY_ADDRESS ||
+    ''
   // trust-compose is additive and may roll out after the existing factory/indexer. An absent
-  // address keeps the workspace in explicit read-only preview mode.
+  // address keeps the workspace in explicit read-only preview mode. The governed wrapper follows
+  // the same rule for the composition workspace's "create with governance" choice.
   configOutput.trustCompose = {
     factory:
       deployment.trustComposeFactory?.trust_compose_factory ||
       process.env.TRUST_COMPOSE_FACTORY_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedComposeFactory?.governed_compose_factory ||
+      process.env.GOVERNED_COMPOSE_FACTORY_ADDRESS ||
       '',
   }
   // The contributions round factory. Additive like trust-compose: an absent address keeps the

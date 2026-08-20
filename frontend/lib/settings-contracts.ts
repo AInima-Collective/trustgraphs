@@ -50,3 +50,17 @@ export const gnosisSafeAuthorityReadAbi = parseAbi([
   'function getModulesPaginated(address start, uint256 pageSize) view returns (address[] array, address next)',
   'function getStorageAt(uint256 offset, uint256 length) view returns (bytes)',
 ])
+
+/**
+ * The post-creation fund attachment surface, identical on all three base factories
+ * (`TrustgraphsFactory`, `WeightedTrustgraphsFactory`, `TrustComposeFactory`). Hand-audited
+ * against the Solidity: permissionless to call, but `owner` must hold the instance's
+ * constitutional role right now, so value can only be routed to the network's live authority.
+ */
+export const factoryAttachDistributorAbi = parseAbi([
+  'function attachDistributor(bytes32 instanceId, address owner, address distributorToken) returns (address distributor)',
+  'event DistributorAttached(bytes32 indexed instanceId, address distributor, address distributorToken)',
+  'error UnknownInstance(bytes32 instanceId)',
+  'error NotInstanceAuthority(bytes32 instanceId, address owner)',
+  'error DistributorAlreadyAttached(bytes32 instanceId, address distributor)',
+])

@@ -78,6 +78,26 @@ const firstTgwp = source.indexOf('TGWP')
 const sourceHeading = source.indexOf('id="source-heading"')
 assert.ok(firstTgwp > sourceHeading && sourceHeading > 0)
 
+// Creation-time features (GOAL M4/M5): governance and the shared fund are explicit choices with
+// plain-words copy, the voting profile is read live from the wrapper factory, the compounded
+// activation delay is stated, and signer-sync is honestly not offered.
+assert.match(source, /Create with governance/)
+assert.match(source, /A Safe is a shared onchain account/)
+assert.match(source, /useAuthorityProfile/)
+assert.match(source, /read live from the governed factory/)
+assert.match(source, /activation delay of/)
+assert.match(source, /PRIOR_ACTIVATION_DELAY/)
+assert.match(source, /Score-selected Safe signers are not offered/)
+assert.match(source, /Add a shared fund/)
+assert.match(source, /withDistributor: withFund/)
+assert.match(source, /Pay for score refreshes up front\?/)
+assert.match(source, /DISABLED_SIGNER_SYNC/)
+
+// Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
+// the governed wrapper the base factory emits the creation event and the Safe is the creator.
+assert.match(source, /parseEventLogs/)
+assert.doesNotMatch(source, /log\.address\.toLowerCase\(\)\s*[!=]==\s*WEIGHTED_FACTORY_ADDRESS/)
+
 console.log(
   'weighted workspace accessibility, pickers, copyable ids, recovery, and provenance controls: ok'
 )
