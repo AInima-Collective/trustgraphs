@@ -24,7 +24,8 @@ use crate::chain::{
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{
-    alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
+    action_key, alert, write_status, InstanceStatus, Logger, Narration, PublicSettings,
+    Status as OpsStatus,
 };
 use crate::tx::Sender;
 
@@ -139,6 +140,10 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     let mut seen_anchors: BTreeMap<(B256, u64), Anchor> = BTreeMap::new();
     let mut pending_settles: BTreeMap<WorkKey, PendingSettle> = BTreeMap::new();
 
+    // The log narrates changes; the heartbeat file carries steady state. This remembers what has
+    // already been said so a healthy tick is one line, not one line per instance per lane.
+    let mut narration = Narration::default();
+
     let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
@@ -163,6 +168,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             &mut scan,
             &mut seen_anchors,
             &mut pending_settles,
+            &mut narration,
             &logger,
             dry_run,
         ) {
@@ -289,6 +295,7 @@ fn tick(
     scan: &mut RegistryScan,
     seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
     pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
+    narration: &mut Narration,
     logger: &Logger,
     dry_run: bool,
 ) -> Result<()> {
@@ -366,18 +373,68 @@ fn tick(
         .flat_map(|(_, catalog)| catalog.entries.iter().map(|entry| entry.instance_id))
         .collect::<BTreeSet<_>>();
 
+    // Ids some lane recognizes as its own: an entry, or a skip with a substantive cause (the
+    // deeper checks only run once the program matches). A cross-lane `OtherProgram` skip for a
+    // recognized id is routing, not an anomaly — every instance is expected to be "another
+    // program's" in every lane but its own.
+    let recognized = catalogs
+        .iter()
+        .flat_map(|(_, catalog)| {
+            catalog.entries.iter().map(|entry| entry.instance_id).chain(
+                catalog
+                    .skipped
+                    .iter()
+                    .filter(|s| !matches!(s.reason, SkipCause::OtherProgram(_)))
+                    .map(|s| s.instance_id),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let mut skipped_now: BTreeSet<B256> = BTreeSet::new();
+
     for (program, catalog) in &catalogs {
-        // Say what was skipped. A silently shorter list is indistinguishable from a healthy one.
+        // Say what was skipped — when it changes, not once per lane per tick. A silently shorter
+        // list is indistinguishable from a healthy one, but the same skip re-announced every tick
+        // buries the line that matters; the heartbeat file carries the steady state.
         for s in &catalog.skipped {
+            let lane_key = format!("skip/{}/{:#x}", program.name(), s.instance_id);
+            let unclaimed_key = format!("skip/unclaimed/{:#x}", s.instance_id);
+            if let SkipCause::OtherProgram(owner) = &s.reason {
+                if recognized.contains(&s.instance_id) {
+                    // Routing. Its own lane tells this instance's story; end any old one here.
+                    narration.clear(&lane_key);
+                    continue;
+                }
+                // No lane claims it (an unknown program id, or its lane is disabled). One line,
+                // lane-less: every lane says this at once and naming one would be arbitrary.
+                skipped_now.insert(s.instance_id);
+                let reason = format!(
+                    "no supported program claims this instance (registered program {owner:#x})"
+                );
+                if narration.changed(&unclaimed_key, &reason) {
+                    logger.event(
+                        "instance_skipped",
+                        json!({
+                            "instance": format!("{:#x}", s.instance_id),
+                            "program": serde_json::Value::Null,
+                            "reason": reason,
+                        }),
+                    );
+                }
+                continue;
+            }
+            skipped_now.insert(s.instance_id);
+            narration.clear(&unclaimed_key);
             let reason = s.reason.to_string();
-            logger.event(
-                "instance_skipped",
-                json!({
-                    "instance": format!("{:#x}", s.instance_id),
-                    "program": program.name(),
-                    "reason": reason.clone(),
-                }),
-            );
+            if narration.changed(&lane_key, &reason) {
+                logger.event(
+                    "instance_skipped",
+                    json!({
+                        "instance": format!("{:#x}", s.instance_id),
+                        "program": program.name(),
+                        "reason": reason.clone(),
+                    }),
+                );
+            }
             if matches!(&s.reason, SkipCause::ControllerInconsistent(_)) {
                 let text = format!(
                     "parameter-control bypass/inconsistency for {:#x} ({}): {}",
@@ -391,6 +448,23 @@ fn tick(
         }
 
         for entry in &catalog.entries {
+            // A lane that lists the instance ends any skip story about it. Log the recovery so
+            // the earlier `instance_skipped` line has a closing bracket.
+            let was_skipped =
+                narration.clear(&format!("skip/{}/{:#x}", program.name(), entry.instance_id));
+            let was_unclaimed =
+                narration.clear(&format!("skip/unclaimed/{:#x}", entry.instance_id));
+            if was_skipped || was_unclaimed {
+                logger.event(
+                    "instance_recovered",
+                    json!({
+                        "instance": format!("{:#x}", entry.instance_id),
+                        "name": entry.name,
+                        "program": program.name(),
+                    }),
+                );
+            }
+
             // Weighted prior bytes are checkpoint-critical data. Keep the active version warm on
             // every tick and prefetch a pending proposal before its timelock can activate. A
             // failure is loud but per-instance; proving still re-runs the same fail-closed
@@ -410,18 +484,30 @@ fn tick(
                 for (status, version) in warm {
                     match crate::weighted::recover_for_entry(cfg, rpc, &version) {
                         Ok(recovered) => {
-                            logger.event(
-                                "weighted_manifest_pinned",
-                                json!({
-                                    "instance": format!("{:#x}", entry.instance_id),
-                                    "version": version.params_version,
-                                    "status": status,
-                                    "bytes": recovered.bytes.len(),
-                                    "source": recovered.source.to_string(),
-                                    "degraded_sources": crate::weighted::degraded_source_count(&recovered),
-                                }),
-                            );
                             let degraded = crate::weighted::degraded_source_count(&recovered);
+                            // The keep-warm runs every tick; the same pin re-confirmed is not
+                            // news. A new version, source, or degradation is.
+                            if narration.changed(
+                                &format!("weighted/{:#x}/{status}", entry.instance_id),
+                                &format!(
+                                    "{:?}/{}/{}/{degraded}",
+                                    version.params_version,
+                                    recovered.source,
+                                    recovered.bytes.len()
+                                ),
+                            ) {
+                                logger.event(
+                                    "weighted_manifest_pinned",
+                                    json!({
+                                        "instance": format!("{:#x}", entry.instance_id),
+                                        "version": version.params_version,
+                                        "status": status,
+                                        "bytes": recovered.bytes.len(),
+                                        "source": recovered.source.to_string(),
+                                        "degraded_sources": degraded,
+                                    }),
+                                );
+                            }
                             if degraded > 0 {
                                 let text = format!(
                                     "{}: {status} weighted manifest recovered from {} but {} earlier source(s) are degraded; retry interval {}s",
@@ -519,7 +605,19 @@ fn tick(
                 )
             };
             let action = plan(&state, &policy, spend);
-            logger.action(&format!("{:#x}", entry.instance_id), &action);
+            // Log the decision when the instance's STATE changes (see `action_key`), not every
+            // tick: `idle/quiet` repeated forever is what the heartbeat file is for, and a
+            // rising confirmation count is progress inside one state, not a new one.
+            if narration
+                .changed(&format!("decision/{:#x}", entry.instance_id), &action_key(&action))
+            {
+                logger.action(
+                    &format!("{:#x}", entry.instance_id),
+                    &entry.name,
+                    program.name(),
+                    &action,
+                );
+            }
 
             if matches!(action, Action::Idle(operator_core::types::IdleReason::Proving { .. })) {
                 in_flight_now += 1;
@@ -578,6 +676,20 @@ fn tick(
             });
         }
     }
+
+    // One line per tick, always. Now that steady state is change-logged, this is the log's
+    // liveness pulse: a quiet healthy daemon prints exactly this and nothing else.
+    logger.event(
+        "tick",
+        json!({
+            "head": head,
+            "instances": statuses.len(),
+            "idle": statuses.iter().filter(|s| matches!(s.action, Action::Idle(_))).count(),
+            "proving": in_flight_now,
+            "skipped": skipped_now.len(),
+            "alerts": alerts_raised.len(),
+        }),
+    );
 
     write_status(
         &PathBuf::from(&cfg.ops.status_path),
@@ -762,13 +874,10 @@ fn build_state(
             anyhow::anyhow!("nostr-workspace {} has no operator manifest", proving_entry.name)
         })?;
         let params: nostr_workspace_core::params::Params = serde_json::from_str(
-            &std::fs::read_to_string(&manifest.params).with_context(|| {
-                format!("reading Nostr params preimage {}", manifest.params)
-            })?,
+            &std::fs::read_to_string(&manifest.params)
+                .with_context(|| format!("reading Nostr params preimage {}", manifest.params))?,
         )?;
-        params
-            .validate()
-            .map_err(|error| anyhow::anyhow!("invalid Nostr params: {error:?}"))?;
+        params.validate().map_err(|error| anyhow::anyhow!("invalid Nostr params: {error:?}"))?;
         let reconstructed = nostr_workspace_core::params_hash(&params);
         anyhow::ensure!(
             reconstructed == reconstructed_params_hash,

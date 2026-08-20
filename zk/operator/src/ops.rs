@@ -1,9 +1,11 @@
 //! Logs, heartbeat, alerts. The parts an on-call human reads at 3am.
 
 use anyhow::Result;
-use operator_core::types::Action;
+use operator_core::policy::BudgetBreach;
+use operator_core::types::{Action, HoldReason, IdleReason, SkipReason};
 use serde::Serialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Structured JSON to stdout, one object per line. `log_format = "text"` gets a human line
@@ -27,11 +29,104 @@ impl Logger {
         }
     }
 
-    pub fn action(&self, instance: &str, action: &Action) {
+    pub fn action(&self, instance: &str, name: &str, program: &str, action: &Action) {
         self.event(
             "decision",
-            json!({ "instance": instance, "action": serde_json::to_value(action).unwrap_or(json!(null)) }),
+            json!({
+                "instance": instance,
+                "name": name,
+                "program": program,
+                "action": serde_json::to_value(action).unwrap_or(json!(null)),
+            }),
         );
+    }
+}
+
+/// What the log has already said, so it is not said again every tick.
+///
+/// The log narrates changes; the heartbeat file carries steady state. Without this, a healthy
+/// daemon prints the same skip and idle lines every tick and the one line that matters scrolls
+/// away. Per-run on purpose: a restart re-announces everything once, which is what a fresh
+/// reader wants.
+#[derive(Default)]
+pub struct Narration {
+    said: BTreeMap<String, String>,
+}
+
+impl Narration {
+    /// True when `value` differs from what was last said on this channel — and records it.
+    pub fn changed(&mut self, key: &str, value: &str) -> bool {
+        if self.said.get(key).map(String::as_str) == Some(value) {
+            return false;
+        }
+        self.said.insert(key.to_string(), value.to_string());
+        true
+    }
+
+    /// Forget a channel. True when there was something to forget, so the caller can log the
+    /// recovery; a relapse afterwards is a change again and re-logs.
+    pub fn clear(&mut self, key: &str) -> bool {
+        self.said.remove(key).is_some()
+    }
+}
+
+/// An action's identity for change-logging: the state the daemon is in, not the numbers inside
+/// it. `AwaitFinality`'s rising confirmation count, a wiggling basefee, or a rolling spend must
+/// not re-announce the same state every tick — but a new checkpoint id or a different hold is a
+/// genuine transition.
+pub fn action_key(action: &Action) -> String {
+    match action {
+        Action::Idle(IdleReason::Quiet) => "idle/quiet".into(),
+        Action::Idle(IdleReason::EpochNotElapsed { boundary, .. }) => {
+            format!("idle/epoch_not_elapsed/{boundary}")
+        }
+        Action::Idle(IdleReason::SubsidyCadence { boundary, .. }) => {
+            format!("idle/subsidy_cadence/{boundary}")
+        }
+        Action::Idle(IdleReason::Proving { checkpoint_id }) => {
+            format!("idle/proving/{checkpoint_id}")
+        }
+        Action::Idle(IdleReason::Superseded { checkpoint_id }) => {
+            format!("idle/superseded/{checkpoint_id}")
+        }
+        Action::Idle(IdleReason::PublicationBackoff { checkpoint_id, .. }) => {
+            format!("idle/publication_backoff/{checkpoint_id}")
+        }
+        Action::Idle(IdleReason::AwaitingNewInputs { checkpoint_id }) => {
+            format!("idle/awaiting_new_inputs/{checkpoint_id}")
+        }
+        Action::Trigger => "trigger".into(),
+        Action::AwaitFinality { checkpoint_id, .. } => format!("await_finality/{checkpoint_id}"),
+        Action::Prove { checkpoint_id } => format!("prove/{checkpoint_id}"),
+        Action::Publish { checkpoint_id } => format!("publish/{checkpoint_id}"),
+        Action::Submit { checkpoint_id } => format!("submit/{checkpoint_id}"),
+        Action::Hold(HoldReason::Paused) => "hold/paused".into(),
+        Action::Hold(HoldReason::Basefee { .. }) => "hold/basefee".into(),
+        Action::Hold(HoldReason::VerifierRotated { on_chain, expected }) => {
+            format!("hold/verifier_rotated/{on_chain:#x}/{expected:#x}")
+        }
+        Action::Hold(HoldReason::RotationPending) => "hold/rotation_pending".into(),
+        Action::Hold(HoldReason::LossBudget(BudgetBreach::Instance { .. })) => {
+            "hold/loss_budget/instance".into()
+        }
+        Action::Hold(HoldReason::LossBudget(BudgetBreach::Global { .. })) => {
+            "hold/loss_budget/global".into()
+        }
+        Action::Hold(HoldReason::RequestOutcomeUnknown { checkpoint_id }) => {
+            format!("hold/request_outcome_unknown/{checkpoint_id}")
+        }
+        Action::Hold(HoldReason::Unfunded { reason }) => format!("hold/unfunded/{reason}"),
+        Action::Skip(SkipReason::UnsupportedProgram(p)) => {
+            format!("skip/unsupported_program/{}", p.name())
+        }
+        Action::Skip(SkipReason::TooLarge { .. }) => "skip/too_large".into(),
+        Action::Skip(SkipReason::ParamsMismatch { on_chain, reconstructed }) => {
+            format!("skip/params_mismatch/{on_chain:#x}/{reconstructed:#x}")
+        }
+        Action::Skip(SkipReason::UnpinnedCheckpoint { checkpoint_id }) => {
+            format!("skip/unpinned_checkpoint/{checkpoint_id}")
+        }
+        Action::Skip(SkipReason::Undescribable) => "skip/undescribable".into(),
     }
 }
 
@@ -129,5 +224,51 @@ pub fn alert(logger: &Logger, webhook: Option<&str>, text: &str) {
         .send()
     {
         logger.event("alert_delivery_failed", json!({ "error": e.to_string() }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn narration_says_each_thing_once_until_it_changes() {
+        let mut n = Narration::default();
+        assert!(n.changed("skip/0xabc", "read failed"));
+        assert!(!n.changed("skip/0xabc", "read failed"), "steady state repeats silently");
+        assert!(n.changed("skip/0xabc", "params mismatch"), "a different reason is news");
+        assert!(n.clear("skip/0xabc"), "clearing a said thing reports the recovery");
+        assert!(!n.clear("skip/0xabc"), "clearing silence is not a recovery");
+        assert!(n.changed("skip/0xabc", "params mismatch"), "a relapse after recovery is news");
+    }
+
+    /// The wiggly numbers inside a state must not make every tick look like a transition.
+    #[test]
+    fn action_key_ignores_progress_but_not_identity() {
+        let a = Action::AwaitFinality { checkpoint_id: 7, confirmations: 1, required: 5 };
+        let b = Action::AwaitFinality { checkpoint_id: 7, confirmations: 2, required: 5 };
+        assert_eq!(action_key(&a), action_key(&b), "confirmations rising is not a new state");
+        let c = Action::AwaitFinality { checkpoint_id: 8, confirmations: 0, required: 5 };
+        assert_ne!(action_key(&a), action_key(&c), "a new checkpoint is");
+
+        let x = Action::Hold(HoldReason::Basefee { basefee_wei: 10, cap_wei: 5 });
+        let y = Action::Hold(HoldReason::Basefee { basefee_wei: 11, cap_wei: 5 });
+        assert_eq!(action_key(&x), action_key(&y), "a wiggling basefee is one hold");
+        assert_ne!(action_key(&x), action_key(&Action::Idle(IdleReason::Quiet)));
+
+        let g = Action::Hold(HoldReason::LossBudget(BudgetBreach::Global {
+            spent_cents: 100,
+            cap_cents: 50,
+        }));
+        let g2 = Action::Hold(HoldReason::LossBudget(BudgetBreach::Global {
+            spent_cents: 120,
+            cap_cents: 50,
+        }));
+        let i = Action::Hold(HoldReason::LossBudget(BudgetBreach::Instance {
+            spent_cents: 100,
+            cap_cents: 50,
+        }));
+        assert_eq!(action_key(&g), action_key(&g2), "a rolling spend is one breach");
+        assert_ne!(action_key(&g), action_key(&i), "which budget broke matters");
     }
 }
