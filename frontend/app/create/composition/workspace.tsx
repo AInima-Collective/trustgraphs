@@ -28,6 +28,7 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import {
@@ -36,6 +37,7 @@ import {
   type CompositionInstance,
   type CompositionPolicy,
   fetchCompositionCandidates,
+  fetchCompositionInstances,
   fetchCompositionOverview,
   fetchCompositionSource,
   requireCompatibleCandidate,
@@ -116,6 +118,8 @@ export const CompositionWorkspace = () => {
   const [instanceId, setInstanceId] = useState('')
   const [instance, setInstance] = useState<CompositionInstance | null>(null)
   const [policies, setPolicies] = useState<CompositionPolicy[]>([])
+  const [rotateChoices, setRotateChoices] = useState<CompositionInstance[]>([])
+  const [rotateChoicesLoading, setRotateChoicesLoading] = useState(false)
   const [preview, setPreview] = useState<CompositionPreview | null>(null)
   const [previewConfig, setPreviewConfig] = useState<CompositionConfig | null>(
     null
@@ -217,6 +221,23 @@ export const CompositionWorkspace = () => {
   useEffect(() => {
     void loadCatalog()
   }, [])
+
+  // Rotate mode picks the instance from the indexer's composition list instead of asking for a
+  // bytes32 nobody has memorized. Unavailability degrades to the paste field, not an error.
+  useEffect(() => {
+    if (mode !== 'rotate') return
+    const controller = new AbortController()
+    setRotateChoicesLoading(true)
+    fetchCompositionInstances(APIS.ponder, controller.signal)
+      .then(setRotateChoices)
+      .catch(() => {
+        if (!controller.signal.aborted) setRotateChoices([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRotateChoicesLoading(false)
+      })
+    return () => controller.abort()
+  }, [mode])
 
   const setSelected = (next: CompositionSource[], reason?: string) => {
     setSources(next)
@@ -411,7 +432,9 @@ export const CompositionWorkspace = () => {
   const loadRotation = async () => {
     setProblem(null)
     if (!isHex(instanceId) || instanceId.length !== 66) {
-      return setProblem('Enter a 32-byte composition instance id.')
+      return setProblem(
+        'Choose a composition from the list, or paste its 32-byte instance ID.'
+      )
     }
     setBusy(true)
     try {
@@ -800,18 +823,66 @@ export const CompositionWorkspace = () => {
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-3">
-          <h2 className="font-medium">Existing policy controller</h2>
-          <div className="flex gap-2">
-            <Input
-              value={instanceId}
+          <h2 className="font-medium">Composition to update</h2>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              id="composition-instance"
+              aria-describedby="composition-instance-help"
+              value={
+                rotateChoices.some((choice) => choice.id === instanceId)
+                  ? instanceId
+                  : ''
+              }
               onChange={(event) => setInstanceId(event.target.value)}
-              placeholder="0x… composition instance id"
-              aria-label="Composition instance id"
-            />
-            <Button type="button" onClick={loadRotation} disabled={busy}>
+              disabled={rotateChoicesLoading}
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {rotateChoicesLoading
+                  ? 'Loading compositions…'
+                  : rotateChoices.length
+                    ? 'Choose a composition…'
+                    : 'No compositions available'}
+              </option>
+              {rotateChoices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.name} · {short(choice.id)}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              onClick={loadRotation}
+              disabled={busy || !instanceId}
+            >
               Load history
             </Button>
           </div>
+          <Input
+            value={instanceId}
+            onChange={(event) => setInstanceId(event.target.value.trim())}
+            placeholder="0x… or paste an instance ID instead"
+            aria-label="Or paste a composition instance ID"
+            aria-describedby="composition-instance-help"
+            className="font-mono text-xs"
+          />
+          <p
+            id="composition-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            These are the compositions the indexer knows. Each one also shows
+            this ID on its provenance page under{' '}
+            <Link href="/compositions" className="underline underline-offset-4">
+              /compositions
+            </Link>
+            .
+          </p>
+          {instanceId && (
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={instanceId} alwaysShowCopyIcon />
+            </div>
+          )}
           {instance && (
             <p className="text-sm">
               {instance.name} · controller {short(instance.controller ?? '')} ·
