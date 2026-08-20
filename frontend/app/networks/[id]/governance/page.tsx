@@ -12,7 +12,10 @@ import { CreateProposalForm } from '@/components/CreateProposalForm'
 import { Modal } from '@/components/Modal'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
-import { VoteDelegationPanel } from '@/components/VoteDelegationPanel'
+import {
+  VoteDelegationPanel,
+  VoteDelegationStatus,
+} from '@/components/VoteDelegationPanel'
 import { useNetwork } from '@/contexts/NetworkContext'
 import {
   ProposalAction,
@@ -111,6 +114,7 @@ function GovernancePageContent() {
   const { network } = useNetwork()
   const pushBreadcrumb = usePushBreadcrumb()
   const createModal = useRouteModal('new')
+  const delegateModal = useRouteModal('delegate')
   const searchParams = useSearchParams()
   const prefillFingerprint =
     searchParams.get('actionDraft') ?? searchParams.get('scoringDraft')
@@ -264,6 +268,17 @@ function GovernancePageContent() {
               : `${votingPeriod.toLocaleString()} blocks`}
           </div>
         </div>
+        {/* An active delegate reinterprets every proposal below ("if I do
+            nothing, my agent votes"), so it is stated here rather than left
+            inside the modal that configures it. */}
+        {merkleGovAddress && isConnected && (
+          <VoteDelegationStatus
+            currentDelegate={currentVoteDelegate}
+            isLoading={isLoadingVoteDelegate}
+            onManage={delegateModal.open}
+          />
+        )}
+
         <Link
           href={`/networks/${network.id}/settings?tab=advanced`}
           className="ml-auto self-end text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-text"
@@ -271,17 +286,6 @@ function GovernancePageContent() {
           Voting rules and contracts
         </Link>
       </div>
-
-      {merkleGovAddress && (
-        <VoteDelegationPanel
-          networkId={network.id}
-          module={merkleGovAddress}
-          principal={address}
-          currentDelegate={currentVoteDelegate}
-          isLoading={isLoadingVoteDelegate || isSettingVoteDelegate}
-          onSetDelegate={setVoteDelegate}
-        />
-      )}
 
       {error && (
         <div className="border border-destructive/50 bg-destructive/10 p-3 rounded-md">
@@ -375,6 +379,24 @@ function GovernancePageContent() {
           prefill={scoringPrefill}
         />
       </Modal>
+
+      {merkleGovAddress && (
+        <Modal
+          isOpen={delegateModal.isOpen}
+          onClose={delegateModal.close}
+          title="Agent voting"
+        >
+          <VoteDelegationPanel
+            networkId={network.id}
+            module={merkleGovAddress}
+            principal={address}
+            currentDelegate={currentVoteDelegate}
+            isLoading={isLoadingVoteDelegate || isSettingVoteDelegate}
+            onSetDelegate={setVoteDelegate}
+            onDone={delegateModal.close}
+          />
+        </Modal>
+      )}
     </div>
   )
 }
