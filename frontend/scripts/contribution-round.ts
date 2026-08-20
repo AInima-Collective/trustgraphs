@@ -49,6 +49,7 @@ import { foundry } from 'viem/chains'
 import { SEED_NETWORKS } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
 import {
+  type ContributionsInstanceRow,
   fetchContributionsInstances,
   toContributionsNetwork,
 } from '../lib/contributions-catalog'
@@ -58,7 +59,7 @@ import {
   fetchContributionsPayout,
   fetchContributionsRound,
 } from '../lib/contributions-api'
-import { SchemaManager } from '../lib/schemas'
+import { SchemaManager, registerSchemas } from '../lib/schemas'
 
 const RPC = process.env.RPC_URL ?? 'http://127.0.0.1:8545'
 const STATE_FILE = path.resolve(
@@ -96,21 +97,124 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? process.argv[i + 1] : undefined
 }
 
-// Resolved at startup from the indexer's runtime round catalog (rounds are factory-minted; the
-// static config entry is gone). `main` populates both before dispatching.
+// Resolved at startup (rounds are factory-minted; the static config entry is gone). The catalog
+// of record is the indexer's /contributions/instances route, but `task demo` runs without an
+// indexer by design (taskfile/demo.yml) — and even with one up, the round this deploy just minted
+// sits behind Ponder's finality window at seed time. So the deploy artifact written by
+// CreateDevContributionsRound.s.sol both identifies WHICH round to seed (never "newest row") and
+// stands in for the catalog when the indexer cannot answer. `main` populates both before
+// dispatching.
 let network!: ContributionsNetwork
 let trustNetwork: Network | undefined
 
+const ROUND_ARTIFACT = path.resolve(
+  __dirname,
+  '../../.docker/contributions_round_dev_deploy.json'
+)
+
+/** Shape written by `script/CreateDevContributionsRound.s.sol`. The uid/accumulator fields are
+ * optional because an artifact from before they were recorded may still be on disk. */
+type RoundArtifact = {
+  name?: string
+  instance_id: Hex
+  parent_instance_id: Hex
+  merkle_snapshot: Hex
+  contribution_resolver: Hex
+  trust_accumulator_mirror: Hex
+  fund_distributor: Hex
+  params_controller?: Hex
+  trust_accumulator?: Hex
+  pool_token?: Hex | ''
+  claim_schema_uid?: Hex
+  response_schema_uid?: Hex
+  valuation_schema_uid?: Hex
+}
+
+const loadRoundArtifact = (): RoundArtifact | undefined => {
+  try {
+    return JSON.parse(fs.readFileSync(ROUND_ARTIFACT, 'utf8')) as RoundArtifact
+  } catch {
+    return undefined
+  }
+}
+
+/** The artifact reshaped as a catalog row, or undefined when it predates the enriched fields.
+ * Only what the seeding phases read is real; the round window and pool figures live on chain and
+ * on the indexer, not here. */
+const artifactRow = (a: RoundArtifact): ContributionsInstanceRow | undefined => {
+  if (
+    !a.trust_accumulator ||
+    !a.claim_schema_uid ||
+    !a.response_schema_uid ||
+    !a.valuation_schema_uid
+  ) {
+    return undefined
+  }
+  return {
+    id: a.instance_id,
+    chainId: String(foundry.id),
+    factory: zeroAddress,
+    parentInstanceId: a.parent_instance_id,
+    creator: zeroAddress,
+    admin: zeroAddress,
+    name: a.name ?? 'Contribution round',
+    metadataURI: '',
+    metadata: null,
+    contracts: {
+      merkleSnapshot: a.merkle_snapshot,
+      contributionResolver: a.contribution_resolver,
+      trustAccumulatorMirror: a.trust_accumulator_mirror,
+      trustAccumulator: a.trust_accumulator,
+      merkleFundDistributor: a.fund_distributor,
+      distributorToken: a.pool_token || null,
+    },
+    schemaUids: {
+      claim: a.claim_schema_uid,
+      response: a.response_schema_uid,
+      valuation: a.valuation_schema_uid,
+    },
+    epochLength: '0',
+    paramsHash: `0x${'0'.repeat(64)}`,
+    roundStart: '0',
+    roundEnd: '0',
+    totalPool: '0',
+    createdTimestamp: '0',
+  }
+}
+
 const resolveRound = async () => {
-  const rows = await fetchContributionsInstances()
-  const row = rows[0]
+  const artifact = loadRoundArtifact()
+  let row: ContributionsInstanceRow | undefined
+  try {
+    const rows = await fetchContributionsInstances()
+    row =
+      // The round THIS deploy minted, when the catalog has caught up to it…
+      rows.find(
+        (r) => r.id.toLowerCase() === artifact?.instance_id?.toLowerCase()
+      ) ??
+      // …the artifact when it has not (or the catalog holds a previous chain's rounds)…
+      (artifact ? artifactRow(artifact) : undefined) ??
+      // …and the newest row for a hand-run driver with no local deploy at all.
+      rows[0]
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    row = artifact ? artifactRow(artifact) : undefined
+    if (row) {
+      console.log(`(no indexer — ${reason}; using ${ROUND_ARTIFACT})`)
+    }
+  }
   if (!row) {
     console.error(
-      'no contributions round on the indexer — run pnpm deploy:contracts (Contributions Round step) first'
+      'no contributions round found: the indexer has no rounds (or is unreachable) and ' +
+        `${ROUND_ARTIFACT} is missing or predates the enriched artifact — ` +
+        'run pnpm deploy:contracts (Contributions Round step) first'
     )
     process.exit(1)
   }
   network = toContributionsNetwork(row)
+  // What `useContributionsData` does when a round loads in the app: rounds are factory-minted, so
+  // their claim/response/valuation schemas are not in the static seed the registry boots from.
+  registerSchemas(network.schemas)
   // Display-only back-link for `status`; the seed entries carry no instanceId, so the demo keeps
   // matching by the accumulator address here.
   trustNetwork = SEED_NETWORKS.find(

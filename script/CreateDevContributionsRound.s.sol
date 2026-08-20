@@ -91,14 +91,38 @@ contract CreateDevContributionsRound is Common {
         console.log("  mirror:     ", mirror);
         console.log("  distributor:", distributor);
 
-        // A human-readable artifact only. Nothing consumes it: discovery is the creation event.
+        // The deploy-time record of this factory-minted round. The app's catalog of record is the
+        // indexer's /contributions/instances route (built from the creation event); this file is
+        // what the operator-side tooling reads when no indexer is running — taskfile/demo.yml and
+        // taskfile/contributions.yml explicitly work without one, and the round seed driver
+        // (frontend/scripts/contribution-round.ts) falls back to it. The schema UIDs are derived
+        // exactly as the factory derives them: keccak256(schema string ‖ resolver ‖ revocable).
+        IInstanceRegistry registry = factory.INSTANCE_REGISTRY();
         string memory _json = "json";
+        _json.serialize("name", name);
         _json.serialize("instance_id", vm.toString(instanceId));
         _json.serialize("parent_instance_id", vm.toString(parentInstanceId));
         _json.serialize("merkle_snapshot", Strings.toChecksumHexString(snapshot));
         _json.serialize("contribution_resolver", Strings.toChecksumHexString(resolver));
         _json.serialize("trust_accumulator_mirror", Strings.toChecksumHexString(mirror));
-        string memory finalJson = _json.serialize("fund_distributor", Strings.toChecksumHexString(distributor));
+        _json.serialize("fund_distributor", Strings.toChecksumHexString(distributor));
+        _json.serialize("params_controller", Strings.toChecksumHexString(registry.paramsAuthority(instanceId)));
+        _json.serialize(
+            "trust_accumulator",
+            Strings.toChecksumHexString(registry.getInstance(parentInstanceId).registryOrAccumulator)
+        );
+        _json.serialize(
+            "pool_token", distributorToken == address(0) ? "" : Strings.toChecksumHexString(distributorToken)
+        );
+        _json.serialize(
+            "claim_schema_uid", vm.toString(keccak256(abi.encodePacked(factory.CLAIM_SCHEMA(), resolver, true)))
+        );
+        _json.serialize(
+            "response_schema_uid", vm.toString(keccak256(abi.encodePacked(factory.RESPONSE_SCHEMA(), resolver, true)))
+        );
+        string memory finalJson = _json.serialize(
+            "valuation_schema_uid", vm.toString(keccak256(abi.encodePacked(factory.VALUATION_SCHEMA(), resolver, true)))
+        );
         vm.writeFile(string.concat(root, "/.docker/contributions_round_", outLabel, "_deploy.json"), finalJson);
     }
 

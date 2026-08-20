@@ -168,6 +168,14 @@ There is no `program: "contributions"` entry in the networks config any more: th
 catalogs the round from the factory's `ContributionsInstanceCreated` event and serves it at
 `GET /contributions/instances`, which is where the frontend reads it.
 
+The creation script also writes the round's full deploy-time record — contracts, typed params
+controller, parent accumulator, pool token, and the factory-derived schema UIDs — to
+`.docker/contributions_round_dev_deploy.json`. That artifact is what the operator-side tasks
+(`contributions:*`, `demo:*`) and the seed driver read, so seeding and proving work with **no
+indexer running at all** — and, with one running, the seed driver still targets the round this
+deploy minted rather than whatever the catalog (which trails Ponder's finality window) lists
+first.
+
 ### 3. Start the frontend, then the indexer (in that order)
 
 ```bash

@@ -13,6 +13,10 @@ version: '3'
 vars:
   RPC_URL: 'http://localhost:8545'
   DEPLOYMENT_FILE: '.docker/deployment_summary.json'
+  # The dev round's deploy-time record (CreateDevContributionsRound.s.sol). Rounds are
+  # factory-minted, so they have no entry in the deployment summary's networks list — the
+  # operator tasks read this artifact instead.
+  ROUND_FILE: '.docker/contributions_round_dev_deploy.json'
   PARAMS_FILE: 'params.contributions.json'
   SUBMIT_ENV: '.docker/contributions_round_submit.env'
   IPFS_API: 'http://127.0.0.1:5001'
@@ -29,6 +33,7 @@ tasks:
     desc: 'Seed the 6-persona contribution round (the worked-example fixture) on local anvil'
     preconditions:
       - test -f {{.DEPLOYMENT_FILE}}
+      - test -f {{.ROUND_FILE}}
       - test -f {{.PARAMS_FILE}}
     cmds:
       - echo "== 1/4 trust lane (six fixture vouches) =="
@@ -53,12 +58,13 @@ tasks:
   open-round-window:
     desc: 'Set round_start/round_end bracketing now and publish the full tuple on chain'
     preconditions:
+      - test -f {{.ROUND_FILE}}
       - test -f {{.PARAMS_FILE}}
       - test -n "$FUNDED_KEY"
     cmds:
       - |
         set -e
-        CONTROLLER=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.paramsController' {{.DEPLOYMENT_FILE}})
+        CONTROLLER=$(jq -r .params_controller {{.ROUND_FILE}})
         LATEST_TS=$(cast block latest -f timestamp --rpc-url {{.RPC_URL}})
         ROUND_START=$((LATEST_TS + 1))
         ROUND_END=$((ROUND_START + 604800))
@@ -81,11 +87,13 @@ tasks:
   # ──────────────────────────────────────────────────────────────────────────
   trigger:
     desc: 'Freeze both accumulators into a new checkpoint (permissionless, epoch-gated)'
+    preconditions:
+      - test -f {{.ROUND_FILE}}
     cmds:
       - |
         set -e
-        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
-        MIRROR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.trustAccumulatorMirror' {{.DEPLOYMENT_FILE}})
+        SNAPSHOT=$(jq -r .merkle_snapshot {{.ROUND_FILE}})
+        MIRROR=$(jq -r .trust_accumulator_mirror {{.ROUND_FILE}})
         cast send "$SNAPSHOT" "trigger()" --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
         ID=$(( $(cast call "$MIRROR" "checkpointCount()(uint256)" --rpc-url {{.RPC_URL}}) - 1 ))
         echo "checkpoint id: $ID"
@@ -96,11 +104,13 @@ tasks:
   # proving).
   prove-round:
     desc: 'Reconstruct input from chain, execute + mock-prove the guest, pin the blob'
+    preconditions:
+      - test -f {{.ROUND_FILE}}
     cmds:
       - |
         set -e
-        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
-        MIRROR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.trustAccumulatorMirror' {{.DEPLOYMENT_FILE}})
+        SNAPSHOT=$(jq -r .merkle_snapshot {{.ROUND_FILE}})
+        MIRROR=$(jq -r .trust_accumulator_mirror {{.ROUND_FILE}})
         EAS=$(jq -r '.eas.eas' {{.DEPLOYMENT_FILE}})
         VOUCH_UID=$(jq -r '.networks[0].schemas[] | select(.key=="vouching") | .uid' {{.DEPLOYMENT_FILE}})
         ID={{.ID | default ""}}
@@ -142,7 +152,7 @@ tasks:
       - |
         set -e
         . ./{{.SUBMIT_ENV}}
-        SNAPSHOT=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleSnapshot' {{.DEPLOYMENT_FILE}})
+        SNAPSHOT=$(jq -r .merkle_snapshot {{.ROUND_FILE}})
         PROOF="0x$(od -An -v -tx1 {{.OUT_DIR}}/contributions_proof.bin | tr -d ' \n')"
         cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
           "$CHECKPOINT_ID" "$OUTPUT_ROOT" "$IPFS_HASH" "$CID" "$TOTAL_VALUE" \
@@ -175,7 +185,7 @@ tasks:
     cmds:
       - |
         set -e
-        DISTRIBUTOR=$(jq -r '.networks[] | select(.program=="contributions") | .contracts.merkleFundDistributor' {{.DEPLOYMENT_FILE}})
+        DISTRIBUTOR=$(jq -r .fund_distributor {{.ROUND_FILE}})
         cast send "$DISTRIBUTOR" "sweep(uint256)" {{.INDEX}} \
           --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" > /dev/null
         echo "swept distribution {{.INDEX}}"
