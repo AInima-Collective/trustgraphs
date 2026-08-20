@@ -35,6 +35,69 @@ pnpm deploy:contracts
 This deploys EAS + resolvers, the `SP1JournalVerifier`, `MerkleSnapshot` (with the accumulator and
 the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the reward distributor.
 
+### Deploy the weighted and compose factories
+
+The `/create/weighted` and `/create/composition` workspaces transact against two isolated
+factories: `WeightedTrustgraphsFactory` (`trust-graph-weighted`) and `TrustComposeFactory`
+(`trust-compose`). The dev pipeline deploys both automatically as part of `pnpm deploy:contracts`.
+On a real chain, run their scripts by hand after the chain's `InstanceRegistry`, EAS, and
+(optionally) `ProvingVault` exist.
+
+Each factory needs its own verifier, pinned to its own guest program. Compute the vkeys from the
+exact prover build you will operate:
+
+```bash
+export SP1_WEIGHTED_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-graph-weighted vkey)
+export SP1_COMPOSITION_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-compose vkey)
+
+forge script script/DeployZkVerifier.s.sol:DeployZkVerifier \
+  --sig 'run(string,bytes32,string)' \
+  "$SP1_VERIFIER_GATEWAY" "$SP1_WEIGHTED_PROGRAM_VKEY" weighted \
+  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
+
+forge script script/DeployZkVerifier.s.sol:DeployZkVerifier \
+  --sig 'run(string,bytes32,string)' \
+  "$SP1_VERIFIER_GATEWAY" "$SP1_COMPOSITION_PROGRAM_VKEY" composition \
+  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
+```
+
+Then the factories. Both take an epoch floor in blocks (a mainnet block is ~12 s, so 216000 is
+about 30 days) and an activation delay in seconds: the immutable review window between proposing a
+new prior or policy and the earliest activation, during which proving operators re-verify the
+proposed bytes. The scripts refuse an epoch floor under ~1 day of blocks or a delay under 1 day on
+a non-dev chain, so a dev default cannot reach production by accident. The trailing argument is the
+chain's `ProvingVault` (pass `""` for no prepay path).
+
+```bash
+forge script script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory \
+  --sig 'run(string,string,string,string,uint64,uint48,string)' \
+  "$EAS" "$SCHEMA_REGISTRAR" \
+  "$(jq -r .zk_verifier .docker/zk_verifier_weighted_deploy.json)" \
+  "$INSTANCE_REGISTRY" 216000 172800 "$PROVING_VAULT" \
+  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
+
+forge script script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory \
+  --sig 'run(string,bytes32,string,uint64,uint48,string)' \
+  "$(jq -r .zk_verifier .docker/zk_verifier_composition_deploy.json)" \
+  "$SP1_COMPOSITION_PROGRAM_VKEY" \
+  "$INSTANCE_REGISTRY" 216000 172800 "$PROVING_VAULT" \
+  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
+```
+
+The compose script also deploys the `CompositionSourceAdapterFactory` (the registry of reviewed
+source adapters) and passes the composition vkey into the factory constructor, which cross-checks
+it against the verifier's own `programVKey()` and reverts on a mismatch. Both scripts grant the new
+factory `REGISTRAR_ROLE` on the instance registry, which needs the registry's admin key: at
+bootstrap that is the deployer, and once registry admin has moved to the operational timelock, set
+`GRANT_REGISTRAR=false` and make the grant a governance action instead.
+
+Finally, wire the consumers. The indexer reads `weightedFactory.weighted_factory` and
+`trustComposeFactory.trust_compose_factory` from `.docker/deployment_summary.json`, or the explicit
+`WEIGHTED_FACTORY_ADDRESS_10` / `TRUST_COMPOSE_FACTORY_ADDRESS_10` environment variables in
+production. The frontend picks both up from the same summary keys during `config:generate`
+(`WEIGHTED_FACTORY_ADDRESS` / `TRUST_COMPOSE_FACTORY_ADDRESS` are the env overrides). The indexer
+reads the summary once at startup, so restart it after the factories land.
+
 ### Run the prover
 
 The `{account → score}` root is produced by a permissionless SP1 proof — anyone can post `(root, proof)`

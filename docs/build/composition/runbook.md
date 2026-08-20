@@ -9,6 +9,32 @@ reads, exact V1 preview, adapter deployment, quote/cadence preflight, calldata s
 creation or rotation described below. The manual calls remain useful for recovery and independent
 verification.
 
+## Deploy the factory
+
+Compositions are created through `TrustComposeFactory`, deployed once per chain by
+`script/DeployTrustComposeFactory.s.sol` together with its own verifier (an `SP1JournalVerifier`
+pinned to the `trust-compose` guest's vkey), the `CompositionSourceAdapterFactory` used in "Admit
+sources" below, and its `REGISTRAR_ROLE` grant on the instance registry. The factory constructor
+cross-checks the vkey it is given against the verifier's own `programVKey()` and reverts on a
+mismatch.
+
+On a local dev stack this is automatic: `pnpm deploy:contracts` (or `task demo:deploy`, which also
+derives the vkeys) runs the `Composition ZK Verifier` and `Trust Compose Factory` steps and writes
+`.docker/zk_verifier_composition_deploy.json` and `.docker/trust_compose_factory_deploy.json`. The
+pipeline fails closed when `SP1_COMPOSITION_PROGRAM_VKEY` is unset
+(`cargo run -p trustgraph-prover -- trust-compose vkey`).
+
+On a real chain, run the same two scripts by hand; the exact commands, the epoch floor and
+activation delay arguments, and their fail-closed floors are in
+[production.md](../production.md#deploy-the-weighted-and-compose-factories). The activation delay
+is immutable and is the review window between `proposePolicy` and the earliest `activatePolicy`.
+
+The frontend reads the factory address from
+`deployment_summary.trustComposeFactory.trust_compose_factory` (or `TRUST_COMPOSE_FACTORY_ADDRESS`)
+during config generation; without it the workspace stays in read-only preview mode. The indexer
+reads the same summary key, or the per-chain address variables named in the
+[operator/indexer guide](./operator-indexer.md).
+
 ## Admit sources
 
 Every source must be a same-chain, non-composition instance registered in `InstanceRegistry` with:
