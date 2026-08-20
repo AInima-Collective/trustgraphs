@@ -1,7 +1,9 @@
 # GOAL — Network creation, done properly
 
-> **Status (2026-08-19): spec written, build not started.** Every claim below was verified against
-> `main` (a45e9b3) during the 2026-08-19 diagnosis session; file:line anchors are from that commit.
+> **Status (2026-08-20): BUILT.** All milestones M0–M7 landed on the `network-creation` branch via
+> five parallel lanes plus integration; M8 close-out recorded in the closing commit (verification
+> matrix results in its message). File:line anchors below are from the diagnosis commit (a45e9b3)
+> and describe the *pre-program* code; the residuals live in TODO.md §"Network creation".
 
 Make creating a trustgraph network — of any program, with any supported feature — something a
 stranger can do from the app without wedging the platform, without reading the codebase, and

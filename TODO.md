@@ -1,9 +1,23 @@
-## Network creation follow up work
-- UX for network creation is not yet great, the new options (weighted prior workspace / composition workspace) should exist in flow, or be parallel paths. The sections to "open composition / weighted prior workspace" are viewable on all steps of the wizard when creating a normal workspace. Let's improve this.
-- Allow creating networks with additional features like governance, contributions, reward distributions etc. (some of this is supported, but let's review.)
-- On weighted prior workspace, the copy is not ELI5: "Import human CSV or JSON, resolve names outside consensus, inspect the exact TGWP bytes, then create a new weighted instance or propose a timelocked prior rotation."
-- Where to find Existing binary instance id / Weighted instance id? These are referenced when creating a "weighted prior workspace", but it's unclear where to find them.
-- When creating a new network there are indexer errors. The transaction succeeds onchain, but frontend gets a 500 when navigating to the new network.
+## Network creation (program closed; see GOAL.md)
+All five reported problems were fixed by the network-creation program: /create is a three-path
+chooser and the wizard shows only its own steps; every creation lane exposes governance, funds,
+and prepay (governed wrappers for weighted + compose; contributions rounds start from the network
+page via ContributionsFactory); the weighted workspace copy passes the plain-reader test; instance
+ids come from pickers with copyable surfaces; and creating a network no longer crashes the indexer
+(ensure-pattern sweep + silent gov-module construction).
+
+Residuals:
+- Operator walkthrough on a real machine: click through all five creation lanes from the app with
+  a wallet (in-sandbox verification covered contracts, deploy pipeline, indexer discovery, and
+  cast-level creation for standard / governed / governed-weighted / contributions).
+- ponder 0.16.2 upstream bug: `getIntervals` crashes at startup when the interval-query count is
+  ≡1 mod 200 (drizzle `unionAll` with a single query) — the merged config triggers it. node_modules
+  on this box carries a local dist patch (single-query batches call `.execute()` directly); after
+  any `pnpm install`, re-apply or upgrade ponder past the fix.
+- Weighted/compose rotations on a GOVERNED instance need a proposal-builder (the workspace states
+  the compounded delays but still signs from the connected wallet).
+- Weighted/compose instances have no settings page yet, so attach-a-fund for them has no button
+  (the trust-graph Features tab has one).
 
 ## Governance
 - Design Actions UI system, build a similar system to DAO DAO (both for proposing / encoding actions and viewing proposals)
