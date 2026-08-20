@@ -95,6 +95,11 @@ const THEMES = ['dark', 'light']
 const ROUTES = [
   { name: 'home', path: '/' },
   { name: 'networks', path: '/networks' },
+  // The three creation lanes. Wallet-gated actions render their disconnected
+  // state, which is exactly the copy a first-time visitor reads.
+  { name: 'create-chooser', path: '/create' },
+  { name: 'create-weighted', path: '/create/weighted' },
+  { name: 'create-composition', path: '/create/composition' },
   { name: 'faq', path: '/faq' },
   // The docs are a public surface too. Four cells cover the four genres the
   // renderer has to get right: the index, a Learn prose page, the algorithm
