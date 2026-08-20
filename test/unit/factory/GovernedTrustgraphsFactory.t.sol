@@ -8,7 +8,11 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 import {Vm} from "forge-std/Vm.sol";
 
 import {GovernedTrustgraphsFactory} from "contracts/factory/GovernedTrustgraphsFactory.sol";
-import {GovernedAuthorityDeployer, SignerSyncModuleDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {
+    GovernedAuthorityDeployer,
+    MerkleGovModuleDeployer,
+    SignerSyncModuleDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
@@ -56,6 +60,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     GnosisSafeProxyFactory internal safeFactory;
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
+    MerkleGovModuleDeployer internal govModuleDeployer;
     DeployZodiacSafesHarness internal zodiacHarness;
 
     address internal creator = address(0xA11CE);
@@ -88,8 +93,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         safeFactory = new GnosisSafeProxyFactory();
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
+        govModuleDeployer = new MerkleGovModuleDeployer();
         governedFactory = new GovernedTrustgraphsFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer
+            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
         );
         zodiacHarness = new DeployZodiacSafesHarness();
     }
@@ -526,6 +532,53 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             _noSigner()
         );
         vm.stopPrank();
+    }
+
+    function test_GovernedContractsHaveExplicitEip170Headroom() public view {
+        assertLt(address(governedFactory).code.length, 24_576);
+        assertLt(address(govModuleDeployer).code.length, 24_576);
+        assertLt(address(authorityDeployer).code.length, 24_576);
+        assertLt(address(signerSyncDeployer).code.length, 24_576);
+        assertGt(24_576 - address(governedFactory).code.length, 3_000, "governed factory runtime margin");
+        assertGt(24_576 - address(govModuleDeployer).code.length, 3_000, "gov module deployer runtime margin");
+    }
+
+    function test_DiscoveryEventPrecedesEveryGovModuleLog() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("ordered-discovery");
+        vm.recordLogs();
+        vm.prank(creator);
+        (,, address module,) = _createGoverned(args, _unpaidPolicy());
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // OwnershipTransferred (Ownable's constructor log) is the ONE module log allowed before
+        // discovery: no indexer handler subscribes to it. Every handler-consumed module event —
+        // the snapshot-binding announcement above all — must follow GovernedInstanceCreated.
+        bytes32 ownership = keccak256("OwnershipTransferred(address,address)");
+        uint256 discoveryIndex = type(uint256).max;
+        uint256 bindingIndex = type(uint256).max;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (
+                logs[i].emitter == address(governedFactory)
+                    && logs[i].topics[0] == GovernedTrustgraphsFactory.GovernedInstanceCreated.selector
+            ) discoveryIndex = i;
+            if (logs[i].emitter != module) continue;
+            if (logs[i].topics[0] == MerkleGovModule.MerkleSnapshotContractUpdated.selector) {
+                assertEq(bindingIndex, type(uint256).max, "the binding is announced exactly once");
+                bindingIndex = i;
+            } else if (discoveryIndex == type(uint256).max) {
+                assertEq(logs[i].topics[0], ownership, "pre-discovery module logs must be unconsumed ones only");
+            }
+        }
+        assertTrue(discoveryIndex != type(uint256).max, "GovernedInstanceCreated must be emitted");
+        assertTrue(bindingIndex != type(uint256).max, "the snapshot binding must be announced");
+        assertLt(
+            discoveryIndex,
+            bindingIndex,
+            "an indexer must learn the module exists before its binding announcement"
+        );
+        assertTrue(MerkleGovModule(module).initialBindingPublished(), "one-shot publisher consumed");
+        vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
+        MerkleGovModule(module).publishInitialSnapshotBinding();
     }
 
     function test_DemoHandoffMakesSafeTheScoringAuthority() public {

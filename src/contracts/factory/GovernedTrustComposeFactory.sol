@@ -5,7 +5,7 @@ import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
-import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
+import {TrustComposeFactory} from "contracts/factory/TrustComposeFactory.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -22,25 +22,27 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
-/// @title GovernedTrustgraphsFactory
-/// @notice Creates a factory trust graph and a module-only DAO Safe as one transaction, with member
-///         governance plus delayed recovery installed as every execution route from genesis.
-/// @dev The base factory remains the canonical instance creator. This wrapper temporarily owns a
-///      fresh one-owner Safe, has that Safe call `TrustgraphsFactory.createInstance`, installs the
-///      snapshot-specific governance module, a 14-day recovery module, and a permanently sealed
-///      owner-execution guard. The caller remains the Safe owner and recovery proposer for visible
-///      identity/recovery, but cannot execute a Safe transaction directly. Targets therefore see
-///      the Safe — never this wrapper or the creator EOA — as `msg.sender`, and no creator-only
-///      zero-delay path exists after the creation transaction.
-contract GovernedTrustgraphsFactory {
+/// @title GovernedTrustComposeFactory
+/// @notice Creates a trust-compose instance and a module-only DAO Safe as one transaction — the
+///         `GovernedTrustgraphsFactory` shape applied to the `trust-compose` program.
+/// @dev The base `TrustComposeFactory` remains the canonical instance creator and the only holder
+///      of `REGISTRAR_ROLE`; this wrapper temporarily owns a fresh one-owner Safe, has that Safe
+///      call `createInstance` (so the Safe is the creator AND the admin), installs the
+///      snapshot-specific governance module through the shared `MerkleGovModuleDeployer`, a 14-day
+///      recovery module, and a permanently sealed owner-execution guard, then swaps itself out.
+///      `MerkleGovModule` is program-agnostic: the score-leaf encoding is identical across
+///      trust-graph, weighted, and compose cores, and the hook only needs the constitutional role
+///      the base factory grants the Safe. Emits the SAME `GovernedInstanceCreated`/
+///      `GovernedAuthorityInstalled` signatures as every governed wrapper. Signer-sync is plumbed
+///      (the deployer fails closed on a program-vkey mismatch) but no compose signer guest exists,
+///      so the app does not offer it here.
+contract GovernedTrustComposeFactory {
     address internal constant SENTINEL_OWNERS = address(0x1);
     uint48 public constant RECOVERY_DELAY = 14 days;
     uint256 public constant MEMBER_VOTING_DELAY = 1;
     uint256 public constant MEMBER_VOTING_PERIOD = 50_400;
     uint256 public constant MEMBER_EXECUTION_DELAY = 7_200;
-    /// @notice Creation-time guardrail. The DAO may deliberately raise its cap later through the
-    ///         vault, but the one-click wizard may not accidentally authorize more than $10,000
-    ///         (8-decimal oracle USD) for one root.
+    /// @notice Creation-time guardrail; the DAO may deliberately raise its cap later.
     uint96 public constant MAX_INITIAL_MAX_PER_ROOT_USD = 10_000e8;
 
     struct InitialPolicy {
@@ -48,8 +50,9 @@ contract GovernedTrustgraphsFactory {
         uint96 maxPerRootUsd;
     }
 
-    /// @notice Optional score-selected Safe owner rotation. The signer guest is distinct from the
-    ///         score-root guest and therefore names its own verifier and immutable program vkey.
+    /// @notice Optional score-selected Safe owner rotation. Accepted and installed when supplied,
+    ///         but the deployer refuses any verifier whose program vkey is not the supplied one —
+    ///         and no compose signer guest exists yet, so the app does not offer this path.
     struct SignerSyncConfig {
         bool enabled;
         address verifier;
@@ -69,7 +72,7 @@ contract GovernedTrustgraphsFactory {
         address signerSyncModule;
     }
 
-    TrustgraphsFactory public immutable FACTORY;
+    TrustComposeFactory public immutable FACTORY;
     GnosisSafeProxyFactory public immutable SAFE_FACTORY;
     address public immutable SAFE_SINGLETON;
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
@@ -110,7 +113,7 @@ contract GovernedTrustgraphsFactory {
     );
 
     constructor(
-        TrustgraphsFactory factory_,
+        TrustComposeFactory factory_,
         GnosisSafeProxyFactory safeFactory_,
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
@@ -136,13 +139,11 @@ contract GovernedTrustgraphsFactory {
         return _authorities[instanceId];
     }
 
-    /// @notice Create one DAO-governed trust graph. `requested.admin` is deliberately ignored:
-    ///         the newly-created Safe is the instance admin, controller owner and fund owner.
-    /// @param requested The canonical factory arguments; its effective epoch bounds paid cadence.
-    /// @param policy Initial vault terms. Must be zero/zero without value and fully enabled with it.
-    /// @notice Create one governed trust graph with optional ZK-proven Safe owner rotation.
+    /// @notice Create one DAO-governed trust-compose instance. `requested.admin` is deliberately
+    ///         ignored: the newly-created Safe is the instance admin, controller owner, and fund
+    ///         owner.
     function createGovernedInstance(
-        TrustgraphsFactory.CreateArgs calldata requested,
+        TrustComposeFactory.CreateArgs calldata requested,
         InitialPolicy calldata policy,
         SignerSyncConfig calldata signerSync
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
@@ -161,9 +162,9 @@ contract GovernedTrustgraphsFactory {
                 revert InitialCapTooHigh(policy.maxPerRootUsd, MAX_INITIAL_MAX_PER_ROOT_USD);
             }
             bytes32 program = FACTORY.PROGRAM();
-            // Ask the vault which band a newborn (empty) instance of this program lands in
-            // rather than assuming band 1: flat-banded programs (trust-compose) start at band 3,
-            // and an unrecognised program answers 0 (unpriced) and must refuse the prepay path.
+            // The vault decides the newborn band, never a hardcoded literal: trust-compose is
+            // flat-banded at 3 (a small source counter can hide the maximum authenticated work),
+            // which a copied "band 1" literal would silently misprice.
             uint8 initialBand = vault.bandOf(program, 0, 0);
             uint256 initialFeeUsd = initialBand == 0 ? 0 : vault.feePerRootUsd(program, initialBand);
             if (initialFeeUsd == 0) revert InitialFeeUnpriced(program, initialBand);
@@ -175,7 +176,7 @@ contract GovernedTrustgraphsFactory {
         GnosisSafe safe = _createBootstrapSafe(msg.sender, requested.name, requested.salt);
         safeAddress = address(safe);
 
-        TrustgraphsFactory.CreateArgs memory args = requested;
+        TrustComposeFactory.CreateArgs memory args = requested;
         args.admin = safeAddress;
 
         if (msg.value != 0) {
@@ -183,7 +184,7 @@ contract GovernedTrustgraphsFactory {
             if (!funded) revert SafeFundingFailed();
         }
 
-        _execSafe(safe, address(FACTORY), msg.value, abi.encodeCall(TrustgraphsFactory.createInstance, (args)));
+        _execSafe(safe, address(FACTORY), msg.value, abi.encodeCall(TrustComposeFactory.createInstance, (args)));
 
         // The Safe is the actual factory caller, hence part of the canonical instance id.
         instanceId = FACTORY.computeInstanceId(safeAddress, args.name, args.salt);
@@ -191,10 +192,9 @@ contract GovernedTrustgraphsFactory {
         snapshot = record.snapshot;
         if (snapshot == address(0)) revert InstanceDiscoveryFailed(instanceId);
 
-        // The base factory's deposit bound the vault account to `snapshot`, and the Safe has held
-        // that snapshot's constitutional role since `createInstance` returned. Install the paid
-        // policy through the Safe before replacing this wrapper as its bootstrap owner. Thus one
-        // transaction either creates a funded, payable instance or creates nothing at all.
+        // The base factory's deposit bound the vault account to this instance, and the Safe has
+        // held the snapshot's constitutional role since `createInstance` returned. Install the
+        // paid policy through the Safe before graduating out of the bootstrap ownership.
         if (msg.value != 0) {
             _execSafe(
                 safe,
@@ -206,10 +206,8 @@ contract GovernedTrustgraphsFactory {
             );
         }
 
-        // Deployed through the shared singleton (EIP-170) and constructed SILENTLY: the module's
-        // snapshot-binding announcement is published after this wrapper's discovery event below,
-        // so an indexer discovering the module from `GovernedInstanceCreated` never sees one of
-        // its logs before the event that teaches it the module exists.
+        // Deployed through the shared singleton (EIP-170) and constructed SILENTLY; its
+        // snapshot-binding announcement is published after this wrapper's discovery event below.
         MerkleGovModule module = GOV_MODULE_DEPLOYER.deploy(safeAddress, safeAddress, safeAddress, snapshot);
         merkleGovModule = address(module);
         if (
@@ -257,7 +255,7 @@ contract GovernedTrustgraphsFactory {
         );
         executionGuard.seal();
 
-        Authority memory authority = Authority({
+        _authorities[instanceId] = Authority({
             safe: safeAddress,
             governanceModule: merkleGovModule,
             recoveryModule: address(recoveryModule),
@@ -266,7 +264,6 @@ contract GovernedTrustgraphsFactory {
             recoveryDelay: RECOVERY_DELAY,
             signerSyncModule: address(signerModule)
         });
-        _authorities[instanceId] = authority;
 
         emit GovernedInstanceCreated(instanceId, msg.sender, safeAddress, merkleGovModule, snapshot);
         emit GovernedAuthorityInstalled(
@@ -280,8 +277,7 @@ contract GovernedTrustgraphsFactory {
             address(signerModule)
         );
         // Emitted after the discovery events above so ordered indexers have already materialized
-        // the module's row when its snapshot-binding announcement arrives (the
-        // `publishInitialVersion()` discipline).
+        // the module's row when its snapshot-binding announcement arrives.
         module.publishInitialSnapshotBinding();
     }
 

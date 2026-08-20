@@ -471,9 +471,15 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         // Keeping a per-program `if` even though the arithmetic is now shared is deliberate: an
         // unrecognised program must fall through to the unpriced band, not inherit a default.
         uint64 n = leafCount + anchorCount; // both are uint64 counters; the sum cannot realistically wrap
+        // `trust-graph-weighted` is sized like trust-graph: its guest proves the same fixed-point
+        // PageRank over the same accumulator-committed edge log, plus a prior manifest whose size
+        // is bounded at creation — so the on-chain counters ARE the work, unlike the flat-banded
+        // programs below. Without this arm the program answered 0 (unpriced) and every
+        // governed-weighted prepay path was dead on arrival (research/DEVIATIONS.md).
         if (
-            program == keccak256("trust-graph") || program == keccak256("signer-sync")
-                || program == keccak256("contributions") || program == keccak256("hypercerts")
+            program == keccak256("trust-graph") || program == keccak256("trust-graph-weighted")
+                || program == keccak256("signer-sync") || program == keccak256("contributions")
+                || program == keccak256("hypercerts")
         ) {
             if (n <= 1_000) return 1;
             if (n <= 20_000) return 2;

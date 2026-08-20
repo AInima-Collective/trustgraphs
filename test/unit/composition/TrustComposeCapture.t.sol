@@ -15,6 +15,7 @@ import {
     TrustComposeParamsControllerDeployer
 } from "contracts/factory/TrustComposeInstanceDeployers.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {TrustComposeParamsCodec} from "contracts/params/TrustComposeParamsCodec.sol";
 import {TrustComposeValidator} from "contracts/params/TrustComposeValidator.sol";
@@ -362,6 +363,36 @@ contract TrustComposeCaptureTest is Test {
         assertLt(twoGas, 3_500_000);
         assertLt(eightGas, 9_000_000);
         assertGt(eightGas, twoGas);
+    }
+
+    function test_AttachDistributorDeploysAFundOwnedByTheVerifiedAuthority() public {
+        _createSources(2, true);
+        (bytes32 instanceId, MerkleSnapshot snapshot,,) = _createComposition(2, MAX_AGE);
+        assertEq(factory.distributorOf(instanceId), address(0), "created without a fund");
+
+        vm.prank(address(0x57AA));
+        address distributor = factory.attachDistributor(instanceId, address(this), address(0));
+        assertEq(MerkleFundDistributor(payable(distributor)).owner(), address(this), "fund owner is the authority");
+        assertEq(MerkleFundDistributor(payable(distributor)).merkleSnapshot(), address(snapshot));
+        assertEq(factory.distributorOf(instanceId), distributor);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(TrustComposeFactory.DistributorAlreadyAttached.selector, instanceId, distributor)
+        );
+        factory.attachDistributor(instanceId, address(this), address(0));
+
+        // The authority gate, on an instance that has no fund yet.
+        (bytes32 gatedInstanceId,,,) = _createComposition(2, MAX_AGE);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TrustComposeFactory.NotInstanceAuthority.selector, gatedInstanceId, address(0x57AA)
+            )
+        );
+        factory.attachDistributor(gatedInstanceId, address(0x57AA), address(0));
+
+        // Wrong-program ids are refused: the source instances are weighted, not compose.
+        vm.expectRevert(abi.encodeWithSelector(TrustComposeFactory.UnknownInstance.selector, bytes32(uint256(1))));
+        factory.attachDistributor(bytes32(uint256(1)), address(this), address(0));
     }
 
     function test_FactoryAndDeployersRetainNoAuthorityAndHaveEip170Headroom() public {

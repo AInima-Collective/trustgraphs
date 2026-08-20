@@ -208,6 +208,13 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Whether the module is initialized
     bool private _initialized;
 
+    /// @notice Whether the initial snapshot binding has been announced (or superseded by a
+    ///         rotation). Construction is deliberately SILENT: a streaming indexer discovers this
+    ///         module from its factory's discovery event, and a constructor log would precede that
+    ///         event inside the creating block — the exact ordering that wedged the indexer.
+    ///         `publishInitialSnapshotBinding()` emits the announcement after discovery instead.
+    bool public initialBindingPublished;
+
     /*///////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -219,7 +226,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         _transferOwnership(_owner);
         avatar = _avatar;
         target = _target;
-        _setMerkleSnapshotContract(_merkleSnapshot);
+        _setMerkleSnapshotContract(_merkleSnapshot, false);
     }
 
     /// @notice Sets up the module for factory deployment
@@ -233,7 +240,18 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         _transferOwnership(_owner);
         avatar = _avatar;
         target = _target;
-        _setMerkleSnapshotContract(_merkleSnapshot);
+        _setMerkleSnapshotContract(_merkleSnapshot, false);
+    }
+
+    /// @notice Announce the constructor-bound snapshot to streaming indexers. One-shot and
+    ///         permissionless, mirroring the typed controllers' `publishInitialVersion()`: the
+    ///         creating factory calls it AFTER its own discovery event so ordered indexers have
+    ///         already materialized this module's row when the announcement arrives. A snapshot
+    ///         rotation supersedes it (rotation makes its own announcement).
+    function publishInitialSnapshotBinding() external {
+        if (initialBindingPublished) revert AlreadyInitialized();
+        initialBindingPublished = true;
+        emit MerkleSnapshotContractUpdated(address(0), merkleSnapshotContract);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -513,7 +531,10 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice Update merkle snapshot contract
     function setMerkleSnapshotContract(address newContract) external onlyOwner {
-        _setMerkleSnapshotContract(newContract);
+        // A rotation announces itself; a later "initial" announcement would be stale and
+        // out of order, so the one-shot publisher is consumed here too.
+        initialBindingPublished = true;
+        _setMerkleSnapshotContract(newContract, true);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -694,7 +715,10 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     }
 
     /// @notice Internal function to set the merkle snapshot contract and update the relevant state
-    function _setMerkleSnapshotContract(address newContract) internal {
+    /// @param emitEvent False only during construction/setUp: the state is bound and pulled
+    ///        silently, and `publishInitialSnapshotBinding()` emits the announcement after the
+    ///        factory's discovery event (discovery before children — see the field's docs).
+    function _setMerkleSnapshotContract(address newContract, bool emitEvent) internal {
         if (newContract == address(0)) revert InvalidAddress();
 
         address previousContract = merkleSnapshotContract;
@@ -721,6 +745,6 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
                 }
             }
         }
-        emit MerkleSnapshotContractUpdated(previousContract, newContract);
+        if (emitEvent) emit MerkleSnapshotContractUpdated(previousContract, newContract);
     }
 }
