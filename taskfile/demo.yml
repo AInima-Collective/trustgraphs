@@ -130,6 +130,10 @@ tasks:
         export SP1_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-graph vkey)
         export SP1_SIGNER_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- signer vkey)
         export CONTRIBUTIONS_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- contributions vkey)
+        # The weighted and compose factory steps fail closed without their own program's vkey
+        # (DeployZkVerifier's zero-vkey fallback is the ROOT vkey, which would pin the wrong guest).
+        export SP1_WEIGHTED_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-graph-weighted vkey)
+        export SP1_COMPOSITION_PROGRAM_VKEY=$(SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true cargo run -q --release -- trust-compose vkey)
         cd ../..
         # Give the one seeded network the same reachable anvil seed as `demo:create`. Use demo-local
         # params so the deploy never mutates a developer's params.json.
@@ -146,6 +150,12 @@ tasks:
           DEV_SEED_MAX_PER_ROOT_USD={{.MAX_PER_ROOT_USD}} \
           pnpm deploy:contracts
       - task: addresses
+      - |
+        # The indexer reads .docker/deployment_summary.json ONCE, at startup (ponder.config.ts
+        # imports it), so a redeploy's new addresses — including the weighted and compose factory
+        # sources — are invisible to an indexer that is already running.
+        echo "→ if the indexer was already running, restart it (pnpm indexer start):"
+        echo "  it reads .docker/deployment_summary.json only at startup"
 
   fund:
     desc: "Top up Demo Co-op's proving tank after deployment"
@@ -349,32 +359,25 @@ tasks:
     desc: "A contributions round over the demo network's own trust graph"
     cmds:
       - |
-        # A contributions instance is its own snapshot + verifier + distributor, reading rep from a
-        # trust accumulator through a TrustAccumulatorMirror. The main deploy already stands one up
-        # over Demo Co-op; this task is for an additional network created with `demo:create`.
-        # From the chain, not from `.trustgraph/create-instance.json`: that file is last-write-wins
-        # scratch, so any other `CreateInstance` run since clobbers it and this silently wires the
-        # round to a DIFFERENT network's graph. It did exactly that once.
-        RESOLVER=$(task --silent demo:resolver NAME='{{.NAME}}')
-        : "${RESOLVER:?no instance yet — run: task demo:create}"
-        EAS=$(jq -r .eas              .docker/eas_deploy.json)
-        REGISTRAR=$(jq -r .schema_registrar .docker/eas_deploy.json)
+        # Rounds are factory-minted (one transaction by the parent network's authority; the
+        # indexer discovers them from the creation event). The main deploy already mints one over
+        # Demo Co-op; this task is for an additional network created with `demo:create`. The
+        # parent is resolved on-chain — the script scans the registry for the snapshot address —
+        # not from `.trustgraph/create-instance.json`: that file is last-write-wins scratch, so
+        # any other `CreateInstance` run since clobbers it and this silently wires the round to a
+        # DIFFERENT network's graph. It did exactly that once.
+        SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
+        : "${SNAP:?no instance yet — run: task demo:create}"
+        FAC=$(jq -r .contributions_factory .docker/contributions_factory_deploy.json)
         PARAMS=${CONTRIBUTIONS_PARAMS_JSON:-params.contributions.demo.json}
         [ -f "$PARAMS" ] || cp test/e2e/params.contributions.template.json "$PARAMS"
-        # The gateway THIS stack verifies against, read off the deployed trust verifier — the dev
-        # MockSP1Gateway here, the real one on a fork. Never the SP1_VERIFIER_GATEWAY env var: on a
-        # plain anvil that names Succinct's mainnet address, which has no code, and a verifier
-        # constructed over it immutably reverts every submitProof.
-        GATEWAY=$(cast call "$(jq -r .zk_verifier .docker/zk_verifier_deploy.json)" \
-          'gateway()(address)' --rpc-url {{.RPC}})
-        CONTRIBUTIONS_PROGRAM_VKEY=$(cd zk/prover && SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
-          cargo run -q --release -- contributions vkey) \
-        forge script script/DeployContributionsInstance.s.sol:DeployContributionsInstance \
-          --sig 'run(string,string,string,string,string,string,string)' \
-          'demo' "$EAS" "$REGISTRAR" "$RESOLVER" "$PARAMS" "$GATEWAY" \
-          "$(jq -r .instance_registry .docker/instance_registry_deploy.json)" \
+        USDC=$(jq -r '.usdc // empty' .docker/proving_vault_deploy.json 2>/dev/null)
+        forge script script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound \
+          --sig 'run(string,string,string,string,string,string)' \
+          "$FAC" "$SNAP" "$PARAMS" '{{.NAME}} Contributions' "$USDC" 'demo' \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
-        echo "  ✓ contributions instance over the demo network's graph"
+        echo "  ✓ contributions round over {{.NAME}}'s graph"
+        echo "    artifact: .docker/contributions_round_demo_deploy.json"
 
   config:
     desc: 'Write the operator config'
@@ -386,13 +389,11 @@ tasks:
         CHAIN=$(cast chain-id --rpc-url {{.RPC}})
         : "${REG:?}" "${VAULT:?}" "${FUNDED_KEY:?}"
 
-        # Contributions is registry-discoverable and publishes its full tuple through the typed
-        # params authority. Curate its registered id; no manifest or local params path is needed.
-        CONTRIB_ID=$(jq -r '.instance_id // empty' .docker/contributions_instance_dev_deploy.json 2>/dev/null)
-        CURATED="[]"
-        if [ -n "$CONTRIB_ID" ]; then
-          CURATED="[\"$CONTRIB_ID\"]"
-        fi
+        # Rounds are registry-discoverable and publish their full tuple through the typed params
+        # authority. Curate every factory-minted round this box deployed (the dev round from the
+        # main deploy, plus any `demo:contributions` round); no manifest or params path is needed.
+        CURATED=$(jq -sc '[.[] | .instance_id | select(. != null)]' \
+          .docker/contributions_round_*_deploy.json 2>/dev/null || echo '[]')
 
         # The heredoc below is UNQUOTED on purpose: recipient is a command substitution that has
         # to run. That means BACKTICKS RUN TOO, including inside the comments being written into
@@ -470,10 +471,10 @@ tasks:
         export SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true
         SNAP=$(task --silent demo:snapshot NAME='{{.NAME}}')
         # The round's snapshot too: the same daemon loop lands both roots (the trust instance from
-        # the registry, the round from the config's manifest entry), so the loop is not done until
-        # both are on chain. Absent — a deploy without contributions — it degrades to trust alone.
-        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
-          .docker/deployment_summary.json 2>/dev/null)
+        # the registry, the factory-minted round from its deploy artifact), so the loop is not done
+        # until both are on chain. Absent — a deploy without a round — it degrades to trust alone.
+        CSNAP=$(jq -r '.merkle_snapshot // empty' \
+          .docker/contributions_round_dev_deploy.json 2>/dev/null)
 
         # The last thing the daemon did, WITH the reason when it failed. Printing only
         # `"event":"action_failed"` — as this did — turns every distinct failure into the same
@@ -540,9 +541,9 @@ tasks:
     desc: 'Fund the proven round and pay the contributors (skips itself without an indexer)'
     cmds:
       - |
-        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
-          .docker/deployment_summary.json 2>/dev/null)
-        [ -n "$CSNAP" ] || { echo "  no contributions instance in this deploy — nothing to pay"; exit 0; }
+        CSNAP=$(jq -r '.merkle_snapshot // empty' \
+          .docker/contributions_round_dev_deploy.json 2>/dev/null)
+        [ -n "$CSNAP" ] || { echo "  no contributions round in this deploy — nothing to pay"; exit 0; }
 
         # Fund and claim drive the payout page's exact seams, and both of those read the round
         # API: fund pins expectedRoot from it, claim fetches each persona's merkle bundle from it.
@@ -574,8 +575,7 @@ tasks:
         task contributions:fund-round AMOUNT={{.FUND_AMOUNT}}
         # The index of the distribution the fund JUST created, from the chain rather than a
         # guessed 0 — re-running against a long-lived chain creates index 1, 2, …
-        DIST=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleFundDistributor' \
-          .docker/deployment_summary.json)
+        DIST=$(jq -r .fund_distributor .docker/contributions_round_dev_deploy.json)
         IDX=$(( $(cast call "$DIST" 'getDistributionCount()(uint256)' --rpc-url {{.RPC}}) - 1 ))
         task contributions:claim-payouts INDEX=$IDX
         # The claims are transactions too — mine them past the finality window so the app shows
@@ -654,14 +654,15 @@ tasks:
         # is the fixture's top contributor (anvil account 1), so her pool-token balance is the one
         # number that proves the whole path — claims, valuations, proof, root, fund, merkle claim
         # — moved real value. Zero here with a landed round just means `payout` was skipped.
-        CSNAP=$(jq -r '(.networks // [])[] | select(.program=="contributions") | .contracts.merkleSnapshot // empty' \
-          .docker/deployment_summary.json 2>/dev/null)
+        CSNAP=$(jq -r '.merkle_snapshot // empty' \
+          .docker/contributions_round_dev_deploy.json 2>/dev/null)
         if [ -n "$CSNAP" ]; then
-          contrib() { jq -r "(.networks // [])[] | select(.program==\"contributions\") | .contracts.$1" .docker/deployment_summary.json; }
+          contrib() { jq -r ".$1 // empty" .docker/contributions_round_dev_deploy.json; }
           echo
           echo "  round landed  $(cast call "$CSNAP" 'hasAppliedCheckpoint()(bool)' --rpc-url $R) (checkpoint $(cast call "$CSNAP" 'lastAppliedCheckpoint()(uint256)' --rpc-url $R))"
-          echo "  round funded  $(cast call "$(contrib merkleFundDistributor)" 'getDistributionCount()(uint256)' --rpc-url $R) distribution(s)"
-          echo "  ALICE holds   $(cast call "$(contrib poolToken)" 'balanceOf(address)(uint256)' 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --rpc-url $R) tUSDC base units"
+          echo "  round funded  $(cast call "$(contrib fund_distributor)" 'getDistributionCount()(uint256)' --rpc-url $R) distribution(s)"
+          POOL=$(contrib pool_token)
+          [ -n "$POOL" ] && echo "  ALICE holds   $(cast call "$POOL" 'balanceOf(address)(uint256)' 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --rpc-url $R) tUSDC base units"
           if curl -s -o /dev/null -m 5 "{{.PONDER}}/" 2>/dev/null; then
             echo "  round API     $(curl -s -m 10 "{{.PONDER}}/contributions/$CSNAP/round" | jq -c '{verified, numClaims, numRecipients, totalValue}' 2>/dev/null || echo unreachable)"
           fi

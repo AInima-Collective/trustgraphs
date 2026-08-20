@@ -18,6 +18,7 @@ import {
   getContributionAttestations,
   getTrustAttestations,
 } from '@/lib/contributions-view'
+import { registerSchemas } from '@/lib/schema-registry'
 import { ContributionsNetwork } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
 import { ponderQueryFns } from '@/queries/ponder'
@@ -68,6 +69,11 @@ export const roundPhase = ({
  * `lib/contributions/`), and the pool token metadata.
  */
 export const useContributionsData = (network: ContributionsNetwork) => {
+  // Rounds are factory-minted, so their schemas are not in the build-time registry: teach the
+  // decode/encode surfaces (SchemaManager) about this round's three schemas as soon as any round
+  // screen mounts. Idempotent by uid.
+  registerSchemas(network.schemas)
+
   const claimSchema = contributionsSchema(network, 'contribution-claim')
   const responseSchema = contributionsSchema(network, 'contribution-response')
   const valuationSchema = contributionsSchema(network, 'contribution-valuation')

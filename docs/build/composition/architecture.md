@@ -18,10 +18,13 @@ onchain capture and control plane make those inputs authoritative.
 
 `MerkleSnapshot` also exposes an additive `IMerkleSnapshotProvenance` interface. A snapshot meant
 to become a composition source constitutionally opts in once, before its first accepted state.
-Every subsequently accepted state records its checkpoint ID, acceptance block, pinned params
-hash, verifier address, verifier runtime code hash, and optional `programVKey()`. The opt-in cannot
-be disabled. Snapshots that do not opt in retain the legacy proof-submission storage/gas path; the
-existing `MerkleState` struct and `IMerkleSnapshot` consumer ABI are unchanged.
+Every factory and the direct `DeployNetwork` script perform this opt-in inside the creating
+transaction, since no later actor can (a governed instance's constitutional Safe cannot act before
+its first root, and after the first root the window is closed forever). Every subsequently
+accepted state records its checkpoint ID, acceptance block, pinned params hash, verifier address,
+verifier runtime code hash, and optional `programVKey()`. The opt-in cannot be disabled.
+Pre-existing snapshots that never opted in retain the legacy proof-submission storage/gas path;
+the existing `MerkleState` struct and `IMerkleSnapshot` consumer ABI are unchanged.
 
 ## Atomic capture
 

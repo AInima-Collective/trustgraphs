@@ -2,7 +2,6 @@ import CONFIG from '../config.json'
 import networks from '../networks.json'
 import {
   AnyNetwork,
-  ContributionsNetwork,
   HypercertsNetwork,
   Network,
 } from './types'
@@ -37,26 +36,33 @@ export const VISIBLE_HYPERCERTS_NETWORKS = HYPERCERTS_NETWORKS.filter(
   (network) => !network.hidden
 )
 
-// The contributions-program instances (claim / respond / rate / payout round pages).
-// Static: contributions instances are not factory-minted in v1.
-export const CONTRIBUTIONS_NETWORKS = ALL_NETWORKS.filter(
-  (network): network is ContributionsNetwork =>
-    network.program === 'contributions'
-)
-export const VISIBLE_CONTRIBUTIONS_NETWORKS = CONTRIBUTIONS_NETWORKS.filter(
-  (network) => !network.hidden
-)
+// Contribution rounds are NOT here any more: they are factory-minted
+// (`ContributionsFactory`) and read at runtime from the indexer's round catalog —
+// `lib/contributions-catalog.ts` / `useContributionsRounds`. There is no static fallback list,
+// because a round only renders meaningfully with its indexed claims anyway.
 
 export const CHAIN = CONFIG.chain
 export const APIS = CONFIG.apis
 export const CONTRACT_CONFIG = CONFIG.contracts
 export const WEIGHTED_FACTORY = (CONFIG as { weightedFactory?: string })
   .weightedFactory as `0x${string}` | '' | undefined
+// The governed wrapper for the weighted factory. Absent/empty means the weighted workspace does
+// not offer "create with governance" on this deployment; the ungoverned path keeps working.
+export const GOVERNED_WEIGHTED_FACTORY = (
+  CONFIG as { governedWeightedFactory?: string }
+).governedWeightedFactory as `0x${string}` | '' | undefined
+// The contributions ROUND factory. Absent/empty on a deployment that has not stood it up; the
+// "start a contribution round" flow then explains the feature is not available here.
+export const CONTRIBUTIONS_FACTORY = (
+  CONFIG as { contributionsFactory?: string }
+).contributionsFactory as `0x${string}` | '' | undefined
 export const TRUST_COMPOSE_CONFIG = (
   CONFIG as {
-    trustCompose?: { factory?: string }
+    trustCompose?: { factory?: string; governedFactory?: string }
   }
-).trustCompose as { factory?: `0x${string}` | '' } | undefined
+).trustCompose as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
 export const GRAPH_LINEAGE_CONFIG = (
   CONFIG as {
     graphLineage?: { registry?: string }

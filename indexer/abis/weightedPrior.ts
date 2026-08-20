@@ -6,7 +6,9 @@ const PARAMS =
 export const weightedTrustgraphsFactoryAbi = parseAbi([
   `event WeightedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address resolver,bytes32 schemaUid,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 metadataDigest,${PARAMS} params)`,
   'event WeightedParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
+  'event DistributorAttached(bytes32 indexed instanceId,address distributor,address distributorToken)',
   `function createInstance((string name,string metadataURI,${PARAMS} params,bytes manifest,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt) args) payable returns (bytes32 instanceId,address snapshot,address resolver,address distributor,bytes32 schemaUid)`,
+  'function attachDistributor(bytes32 instanceId,address owner,address distributorToken) returns (address distributor)',
 ])
 
 export const weightedPriorParamsControllerAbi = parseAbi([

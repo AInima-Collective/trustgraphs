@@ -155,6 +155,7 @@ const rowsFrom = (
 ): Record<DirectoryProgram, DirectoryRow[]> => {
   const grouped: Record<DirectoryProgram, DirectoryRow[]> = {
     'trust-graph': [],
+    'trust-graph-weighted': [],
     contributions: [],
     hypercerts: [],
     'nostr-workspace': [],

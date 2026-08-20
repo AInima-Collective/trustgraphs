@@ -104,7 +104,9 @@ const CANONICAL_VOUCH_SCHEMA = 'string comment,uint256 confidence'
  * consensus-relevant, so an unreachable gateway must leave the instance indexed and renderable
  * (name, addresses and params all come from the event) rather than wedge the indexer.
  */
-const fetchMetadata = async (metadataURI: string): Promise<unknown | null> => {
+export const fetchMetadata = async (
+  metadataURI: string
+): Promise<unknown | null> => {
   if (!metadataURI) return null
 
   let url: string

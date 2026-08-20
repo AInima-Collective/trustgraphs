@@ -22,7 +22,24 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
+import {
+    CompositionSourceAdapter,
+    CompositionSourceAdapterFactory
+} from "contracts/composition/CompositionSourceAdapter.sol";
+
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
+
+/// @notice Adapter admission authenticates `programVKey()`, which the shared mock deliberately
+///         lacks; this is the smallest verifier a composition source can be minted against.
+contract ProgramKeyedVerifier is IZkVerifier {
+    bytes32 public immutable programVKey;
+
+    constructor(bytes32 programVKey_) {
+        programVKey = programVKey_;
+    }
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
 
 /// @title TrustgraphsFactoryTest
 /// @notice M1's core battery: the properties that make one transaction a whole, safe instance —
@@ -56,6 +73,45 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(address(snapshot.zkVerifier()), address(verifier), "shared verifier");
         assertEq(address(snapshot.anchorRegistry()), address(0), "v1 instances are lane-1 only");
         assertEq(snapshot.epochLength(), EPOCH_FLOOR, "epoch schedule set in the same tx");
+        assertTrue(
+            snapshot.provenanceEnabled(),
+            "the composition-source window must open at mint: no later actor can ever open it"
+        );
+    }
+
+    /// The defect this guards against: no mint path enabled provenance, and nothing after creation
+    /// can ever flip it (constitutional-only, pre-first-root-only), so no factory-minted network
+    /// could ever be admitted as a composition source. A fresh mint must pass adapter admission
+    /// with zero manual steps.
+    function test_FreshMintIsAdmissibleAsCompositionSource() public {
+        ProgramKeyedVerifier sourceVerifier = new ProgramKeyedVerifier(keccak256("source vkey"));
+        TrustgraphsFactory sourceFactory = new TrustgraphsFactory(
+            IEAS(address(eas)),
+            registrar,
+            IZkVerifier(address(sourceVerifier)),
+            IInstanceRegistry(address(registry)),
+            snapshotDeployer,
+            distributorDeployer,
+            paramsControllerDeployer,
+            EPOCH_FLOOR,
+            vault
+        );
+        bytes32 registrarRole = registry.REGISTRAR_ROLE();
+        vm.prank(registryAdmin);
+        registry.grantRole(registrarRole, address(sourceFactory));
+
+        (bytes32 instanceId, address snapshot,,,) = sourceFactory.createInstance(_args("composable"));
+
+        CompositionSourceAdapter adapter = new CompositionSourceAdapterFactory().create(
+            IInstanceRegistry(address(registry)),
+            instanceId,
+            bytes32(uint256(1)),
+            keccak256("weighted-allocation-v1"),
+            keccak256("allocation"),
+            keccak256("reviewed deployment packet")
+        );
+        assertEq(adapter.snapshot(), snapshot, "adapter pinned the minted snapshot");
+        assertEq(adapter.programVKey(), keccak256("source vkey"), "adapter authenticated the program key");
     }
 
     /// GROUND RULE 3, no-distributor path: after `createInstance` returns, the factory holds no role

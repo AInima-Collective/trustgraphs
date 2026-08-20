@@ -24,6 +24,11 @@ assert.match(workspace, /requireCompatibleCandidate/)
 assert.match(workspace, /provenanceEnabled/)
 assert.match(workspace, /getStateAtIndex/)
 assert.match(workspace, /getStateProvenance/)
+// The picker pre-reads eligibility from the chain and says why a candidate is not selectable
+// (including the permanent 'locked' verdict) instead of erroring after a click.
+assert.match(workspace, /classifySourceEligibility/)
+assert.match(workspace, /getStateCount/)
+assert.match(workspace, /sourceEligibility\?\.detail/)
 assert.match(workspace, /exactEqualWeights/)
 assert.match(workspace, /computeCompositionPreview/)
 assert.match(workspace, /compositionSimplex/)
@@ -41,6 +46,28 @@ assert.match(truthCopy, /separate trust-compose program/)
 assert.match(workspace, /Publisher\/controller family/)
 assert.match(workspace, /Pairwise support\/correlation\/disagreement/)
 assert.match(workspace, /Per-account exact attribution/)
+
+// Creation-time features (GOAL M4/M5): governance and the shared fund are explicit choices with
+// plain-words copy, the voting profile is read live from the wrapper factory, the compounded
+// activation timelock is stated, and signer-sync is honestly not offered.
+assert.match(workspace, /Create with governance/)
+assert.match(workspace, /A Safe is a shared onchain account/)
+assert.match(workspace, /useAuthorityProfile/)
+assert.match(workspace, /read live from the governed factory/)
+assert.match(workspace, /POLICY_ACTIVATION_DELAY/)
+assert.match(workspace, /Score-selected Safe signers are not offered/)
+assert.match(workspace, /Add a shared fund/)
+assert.match(workspace, /withDistributor: withFund/)
+assert.match(workspace, /Pay for score refreshes up front\?/)
+assert.match(workspace, /DISABLED_SIGNER_SYNC/)
+
+// Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
+// the governed wrapper the base factory emits the creation event and the Safe is the creator.
+assert.match(workspace, /parseEventLogs/)
+assert.doesNotMatch(
+  workspace,
+  /log\.address\.toLowerCase\(\)\s*[!=]==\s*factory\.toLowerCase\(\)/
+)
 
 assert.match(create, /href="\/create\/composition"/)
 assert.match(catalog, /href="\/create\/composition"/)

@@ -5,12 +5,12 @@ import { notFound, redirect } from 'next/navigation'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
-import { getNetwork } from '@/lib/catalog.server'
+import { getCatalog, getNetwork } from '@/lib/catalog.server'
 import {
-  VISIBLE_CONTRIBUTIONS_NETWORKS,
   VISIBLE_HYPERCERTS_NETWORKS,
   VISIBLE_SEED_NETWORKS,
 } from '@/lib/config'
+import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
 import { ponderClient } from '@/lib/ponder'
@@ -34,14 +34,13 @@ export const revalidate = 10
 export async function generateStaticParams() {
   // Build-time prerender list only. It is deliberately the STATIC seed plus the other programs —
   // the indexer is not a build dependency, and every network it knows about that is missing here
-  // is rendered on demand instead.
-  return [
-    ...VISIBLE_SEED_NETWORKS,
-    ...VISIBLE_HYPERCERTS_NETWORKS,
-    ...VISIBLE_CONTRIBUTIONS_NETWORKS,
-  ].map((network) => ({
-    id: network.id,
-  }))
+  // is rendered on demand instead. Contribution rounds are factory-minted, so they are always
+  // on-demand: the runtime round catalog is their only source.
+  return [...VISIBLE_SEED_NETWORKS, ...VISIBLE_HYPERCERTS_NETWORKS].map(
+    (network) => ({
+      id: network.id,
+    })
+  )
 }
 
 export async function generateMetadata({
@@ -50,12 +49,10 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const network = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
-    (candidate) => candidate.id === id
-  )
-  if (!network) return {}
+  const { round } = await fetchContributionsNetwork(id)
+  if (!round) return {}
 
-  const title = `${network.name} contribution round`
+  const title = `${round.name} contribution round`
   return {
     title,
     ...socialCard({
@@ -80,15 +77,18 @@ export default async function NetworkPageServer({
   const hypercertsNetwork = VISIBLE_HYPERCERTS_NETWORKS.find(
     (network) => network.id === id
   )
-  const contributionsNetwork = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
-    (network) => network.id === id
-  )
-  const staticProgramNetwork = hypercertsNetwork ?? contributionsNetwork
-  if (staticProgramNetwork) {
+  // Contribution rounds come from the RUNTIME round catalog (the indexer's
+  // /contributions/instances, built from ContributionsFactory's creation event): a round created
+  // a minute ago renders here with no config edit and no rebuild.
+  const { round: contributionsNetwork } = hypercertsNetwork
+    ? { round: null }
+    : await fetchContributionsNetwork(id)
+  const programNetwork = hypercertsNetwork ?? contributionsNetwork
+  if (programNetwork) {
     let scoreProgram
     try {
       scoreProgram = await getScoreProgram(
-        staticProgramNetwork.contracts.merkleSnapshot
+        programNetwork.contracts.merkleSnapshot
       )
     } catch (error) {
       return (
@@ -98,7 +98,7 @@ export default async function NetworkPageServer({
         />
       )
     }
-    // Dispatch comes from authenticated registry provenance. The static row supplies only the
+    // Dispatch comes from authenticated registry provenance. The catalog row supplies only the
     // page slug, copy, and program-specific contract addresses, and must agree with it.
     if (scoreProgram.programName === 'hypercerts' && hypercertsNetwork) {
       return (
@@ -108,7 +108,8 @@ export default async function NetworkPageServer({
       )
     }
     if (scoreProgram.programName === 'contributions' && contributionsNetwork) {
-      const trustNetwork = trustNetworkFor(contributionsNetwork)
+      const { networks } = await getCatalog()
+      const trustNetwork = trustNetworkFor(contributionsNetwork, networks)
       if (trustNetwork) {
         redirect(`/networks/${trustNetwork.id}/contributions`)
       }

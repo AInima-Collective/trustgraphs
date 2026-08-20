@@ -6,7 +6,9 @@ export const COMPOSITION_PARAMS =
 export const trustComposeFactoryAbi = parseAbi([
   `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${COMPOSITION_PARAMS} params)`,
   'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
+  'event DistributorAttached(bytes32 indexed instanceId,address distributor,address distributorToken)',
   `function createInstance((string name,string metadataURI,${COMPOSITION_PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt) args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
+  'function attachDistributor(bytes32 instanceId,address owner,address distributorToken) returns (address distributor)',
 ])
 
 export const trustComposeParamsControllerAbi = parseAbi([

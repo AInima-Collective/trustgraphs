@@ -20,11 +20,15 @@ Program context: [`../concepts/networks-and-programs.md`](../concepts/networks-a
 the factory is what turns "adding an instance costs only a deployment" into "adding an instance
 costs only a transaction."
 
-For explicit, non-uniform starting shares, use the separate
-[`/create/weighted`](/create/weighted) workspace and the
-[weighted-prior runbook](./weighted-prior/runbook.md). That path creates a
-`trust-graph-weighted` instance with different consensus semantics; it does not mutate or migrate a
-binary-seed instance in place.
+In the app, `/create` opens on a three-path chooser. **Standard network** is this page's wizard.
+**Weighted starting shares** is the separate [`/create/weighted`](/create/weighted) workspace
+([weighted-prior runbook](./weighted-prior/runbook.md)): it creates a `trust-graph-weighted`
+instance where each starting account gets its own size of head start; it does not mutate or migrate
+a binary-seed instance in place. **Compose proved scoreboards** is the
+[`/create/composition`](/create/composition) workspace
+([composition runbook](./composition/runbook.md)): it blends the proven scoreboards of existing
+networks at exact percentages. Every path can create Safe-owned (§6) and fund-carrying instances,
+and any network can start contribution rounds later (§6.3).
 
 ## 1. The create call
 
@@ -440,6 +444,60 @@ enablement, pause state, checkpoint staleness, the last signer receipt and opera
 Pause/resume is prepared as a normal delayed member-governance proposal calling `setPaused(bool)`;
 there is no creator-only control path.
 
+### 6.1 The same guarantee for weighted and compose networks
+
+Governance is not a trust-graph-only feature. `GovernedWeightedTrustgraphsFactory` and
+`GovernedTrustComposeFactory` wrap the weighted and compose base factories with the identical
+Safe-from-genesis shape: bootstrap Safe → base-factory `createInstance` with the Safe as admin →
+gov module, recovery module and sealed guard → the creator wallet keeps a visible but powerless
+owner seat. All three wrappers emit the **same** `GovernedInstanceCreated(instanceId, creator,
+safe, merkleGovModule, snapshot)` signature, so the indexer runs one discovery handler for every
+governed program.
+
+Three implementation facts worth knowing:
+
+- The wrappers share singletons. The Safe factory/singleton, the authority deployer, the
+  signer-sync deployer, and the `MerkleGovModuleDeployer` are deployed once (by
+  `DeployGovernedTrustgraphsFactory`) and read from its artifact by the other two deploy scripts —
+  one address per helper per chain.
+- The gov module is born silent. Its constructor emits nothing; the wrapper calls
+  `publishInitialSnapshotBinding()` **after** its own discovery event, so a streaming indexer has
+  the module's row before the module's first announcement arrives (the ordering that used to wedge
+  the indexer — [`../../research/DEVIATIONS.md`](../../research/DEVIATIONS.md) #34).
+- The prepay guardrail band comes from the vault, not a constant. `ProvingVault.bandOf` prices
+  `trust-graph-weighted` with sized bands like trust-graph, and each wrapper asks the vault for its
+  own program's band (DEVIATIONS #33).
+
+Signer-sync config is accepted by all three wrappers but only offered in the app for trust-graph
+networks: the only signer guest proves the trust-graph selection pipeline. Passing an enabled
+config with a wrong vkey fails closed at the deployer.
+
+### 6.2 Adding a fund after creation
+
+`withDistributor` at creation is a convenience, not a deadline. Each base factory exposes
+
+```solidity
+function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
+    external returns (address distributor);
+```
+
+It deploys a `MerkleFundDistributor` for an existing instance through the same deployer creation
+uses (fee 0, owner as named — the factory requires the owner to be the snapshot's current
+constitutional holder, so on a governed network attaching a fund is a Safe action) and emits
+`DistributorAttached(instanceId, distributor, distributorToken)`, which is how the indexer
+discovers it with no config edit. The app offers this from the network's Features tab.
+
+### 6.3 Contribution rounds
+
+Contribution rounds are **not** a creation-time checkbox: a round needs a live parent network, so
+its home is the parent's page. `ContributionsFactory.createInstance` creates the full round —
+schemas, resolver, accumulator mirror, snapshot, distributor, params controller, registration — in
+one transaction, gated on the caller holding the parent snapshot's `CONSTITUTIONAL_ROLE` (a
+proposal, on a governed network). Anyone can create a trust network; only a network's authority can
+hang a contribution round on it. See
+[`./contributions/runbook.md`](./contributions/runbook.md) for the flow and the honest mainnet gas
+number.
+
 ## 7. The frozen identity: params schema v2
 
 Three things are load-bearing across the prover, the indexer, the frontend and any third party
@@ -509,6 +567,13 @@ forge script script/DeployFactory.s.sol:DeployFactory \
   <eas> <schemaRegistrar> <zkVerifier> <instanceRegistry> <epochFloorBlocks> …
 forge script script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory \
   --sig 'run(string)' <factory> …
+# the other program factories and their governed wrappers (full arguments in docs/build/production.md
+# and each program's runbook):
+forge script script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory …
+forge script script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory …
+forge script script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory --sig 'run(string)' <weightedFactory> …
+forge script script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory --sig 'run(string)' <trustComposeFactory> …
+forge script script/DeployContributionsFactory.s.sol:DeployContributionsFactory …
 ```
 
 `DeployFactory` also grants the factory `REGISTRAR_ROLE` on the registry (skip with

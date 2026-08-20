@@ -15,6 +15,7 @@ import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 import {
   EMPTY_WIZARD_DATA,
   FACTORY_ADDRESS,
+  WIZARD_STEPS,
   WizardData,
   buildCreateArgs,
   fundTokenProblem,
@@ -26,6 +27,7 @@ import {
   randomSalt,
   signerSyncProblem,
   urlProblem,
+  wizardStepIndex,
 } from './model'
 import { pinMetadata } from './pin'
 import { AddOnsStep } from './steps/AddOnsStep'
@@ -36,19 +38,78 @@ import { SuccessStep } from './steps/SuccessStep'
 import { TuningStep } from './steps/TuningStep'
 import { Note } from './ui'
 
-const STEPS = [
-  'Description',
-  'Starting accounts',
-  'Scoring',
-  'Extras',
-  'Review',
-]
+/**
+ * The three ways to create, offered BEFORE any wizard state exists. The first wizard screen's
+ * Continue pins metadata to IPFS, so someone who actually wants weighted shares or a composition
+ * must be able to turn off here, before anything is saved or sent anywhere.
+ */
+const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
+  <div className="space-y-8 max-w-3xl">
+    <div className="space-y-2">
+      <h1 className="text-2xl">Create a network</h1>
+      <p className="text-sm text-muted-foreground max-w-2xl">
+        There are three kinds of network. Nothing is saved or sent while you
+        choose.
+      </p>
+    </div>
+
+    <div className="space-y-4">
+      <Card type="accent" size="md" className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium">Standard network</h2>
+          <p className="text-sm text-muted-foreground">
+            Members vouch for each other and scores follow; every starting
+            account you list counts equally.
+          </p>
+        </div>
+        {isFactoryAvailable() ? (
+          <Button type="button" size="sm" onClick={onStandard}>
+            Start a standard network
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        ) : (
+          <p className="text-sm">
+            Standard networks cannot be created on{' '}
+            {getTargetChainConfig().name} yet.
+          </p>
+        )}
+      </Card>
+
+      <Card type="accent" size="md" className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium">Weighted starting shares</h2>
+          <p className="text-sm text-muted-foreground">
+            Give each starting account its own size of head start; vouches
+            still decide the final scores.
+          </p>
+        </div>
+        <ButtonLink href="/create/weighted" variant="outline" size="sm">
+          Choose weighted shares
+        </ButtonLink>
+      </Card>
+
+      <Card type="accent" size="md" className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium">Compose proved scoreboards</h2>
+          <p className="text-sm text-muted-foreground">
+            Blend the proven scoreboards of existing networks into one, at
+            exact percentages you choose.
+          </p>
+        </div>
+        <ButtonLink href="/create/composition" variant="outline" size="sm">
+          Open the composition workspace
+        </ButtonLink>
+      </Card>
+    </div>
+  </div>
+)
 
 export const CreateNetworkWizard = () => {
   const { isConnected } = useAccount()
   const chainId = useChainId()
   const { switchChain, isPending: switching } = useSwitchChain()
 
+  const [path, setPath] = useState<'standard' | null>(null)
   const [step, setStep] = useState(0)
   const [showErrors, setShowErrors] = useState(false)
   const [data, setData] = useState<WizardData>(EMPTY_WIZARD_DATA)
@@ -97,17 +158,18 @@ export const CreateNetworkWizard = () => {
 
   /** What is stopping the person leaving the step they are on. */
   const stepProblem = (index: number): string | null => {
-    if (index === 0) {
+    const id = WIZARD_STEPS[index]?.id
+    if (id === 'description') {
       return (
         nameProblem(data.name) ||
         urlProblem(data.image) ||
         urlProblem(data.applicationUrl)
       )
     }
-    if (index === 1) {
+    if (id === 'accounts') {
       return data.seeds.length ? null : 'Add at least one starting account.'
     }
-    if (index === 3) {
+    if (id === 'extras') {
       return (
         fundTokenProblem(data) || prepayProblem(data) || signerSyncProblem(data)
       )
@@ -138,11 +200,14 @@ export const CreateNetworkWizard = () => {
       setShowErrors(true)
       return
     }
-    if (step === 0 && !(await savePresentation())) {
+    if (
+      WIZARD_STEPS[step]?.id === 'description' &&
+      !(await savePresentation())
+    ) {
       return
     }
     setShowErrors(false)
-    setStep((current) => Math.min(current + 1, STEPS.length - 1))
+    setStep((current) => Math.min(current + 1, WIZARD_STEPS.length - 1))
   }
 
   const back = () => {
@@ -153,78 +218,41 @@ export const CreateNetworkWizard = () => {
   const skipPinning = () => {
     setPinned({ uri: '', fingerprint })
     setPinError(null)
-    setStep(1)
+    setStep(wizardStepIndex('accounts'))
   }
-
-  const weightedWorkspaceCard = (
-    <Card type="accent" size="md" className="space-y-3">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">
-          Need exact weighted starting shares?
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Use the weighted-prior workspace to import CSV or JSON, preview
-          concentration and day-zero scores, create a separate weighted
-          instance, or review a timelocked rotation.
-        </p>
-      </div>
-      <ButtonLink href="/create/weighted" variant="outline" size="sm">
-        Open weighted-prior workspace
-      </ButtonLink>
-    </Card>
-  )
-
-  const compositionWorkspaceCard = (
-    <Card type="accent" size="md" className="space-y-3">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium">
-          Need a governed blend of proved allocations?
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Select compatible complete distributions, preview exact quotas,
-          attribution and sensitivity, then create or rotate a separate
-          trust-compose instance with authenticated source provenance.
-        </p>
-      </div>
-      <ButtonLink href="/create/composition" variant="outline" size="sm">
-        Open composition workspace
-      </ButtonLink>
-    </Card>
-  )
 
   if (created) {
     return <SuccessStep created={created} />
   }
 
-  if (!isFactoryAvailable()) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-2xl">Create a network</h1>
-        {weightedWorkspaceCard}
-        {compositionWorkspaceCard}
-        <Card type="outline" size="md">
-          <p className="text-sm">
-            Networks cannot be created on {getTargetChainConfig().name} yet.
-          </p>
-        </Card>
-      </div>
-    )
+  // The chooser also covers the no-factory case: the standard path explains why it is closed while
+  // the weighted and composition paths stay reachable. `path` can only become 'standard' through
+  // the chooser's button, which is not rendered when the factory is missing.
+  if (path === null || !isFactoryAvailable()) {
+    return <PathChooser onStandard={() => setPath('standard')} />
   }
 
   const wrongChain = isConnected && chainId !== getTargetChainId()
+  const stepId = WIZARD_STEPS[step]?.id
 
   return (
     <div className="space-y-8 max-w-3xl">
       <div className="space-y-4">
-        <h1 className="text-2xl">Create a network</h1>
-
-        {weightedWorkspaceCard}
-        {compositionWorkspaceCard}
+        <div className="space-y-1">
+          <h1 className="text-2xl">Create a standard network</h1>
+          <button
+            type="button"
+            onClick={() => setPath(null)}
+            className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            Choose a different kind of network
+          </button>
+        </div>
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">
-          {STEPS.map((label, index) => (
+          {WIZARD_STEPS.map(({ id, label }, index) => (
             <button
-              key={label}
+              key={id}
               type="button"
               // Going back is always safe; going forward has to pass each screen in turn.
               disabled={index > step}
@@ -253,7 +281,7 @@ export const CreateNetworkWizard = () => {
             Connect the wallet that will create this network and become the DAO
             Safe&apos;s visible owner and delayed recovery proposer. A sealed
             guard disables owner-signed execution; members govern the Safe, and
-            the Safe—not this wallet—owns the network contracts.
+            the Safe, not this wallet, owns the network contracts.
           </p>
           <WalletConnectionButton />
         </Card>
@@ -277,16 +305,16 @@ export const CreateNetworkWizard = () => {
         </Card>
       )}
 
-      {step === 0 && (
+      {stepId === 'description' && (
         <IdentityStep data={data} onChange={onChange} showErrors={showErrors} />
       )}
-      {step === 1 && (
+      {stepId === 'accounts' && (
         <SeedsStep data={data} onChange={onChange} showErrors={showErrors} />
       )}
-      {step === 2 && (
+      {stepId === 'scoring' && (
         <TuningStep data={data} onChange={onChange} epochFloor={epochFloor} />
       )}
-      {step === 3 && (
+      {stepId === 'extras' && (
         <AddOnsStep
           data={data}
           onChange={onChange}
@@ -294,7 +322,7 @@ export const CreateNetworkWizard = () => {
           epochFloor={epochFloor}
         />
       )}
-      {step === 4 && (
+      {stepId === 'review' && (
         <ReviewStep
           data={data}
           args={args}
@@ -302,14 +330,14 @@ export const CreateNetworkWizard = () => {
           metadataUri={metadataUri}
           onCreated={setCreated}
           onSeedsChanged={(seeds, seedNames) => onChange({ seeds, seedNames })}
-          onJumpTo={(index) => {
+          onJumpTo={(id) => {
             setShowErrors(false)
-            setStep(index)
+            setStep(wizardStepIndex(id))
           }}
         />
       )}
 
-      {pinError && step === 0 && (
+      {pinError && stepId === 'description' && (
         <Card type="outline" size="md" className="border-destructive space-y-3">
           <p className="text-sm text-destructive">{pinError}</p>
           <Note>
@@ -332,7 +360,7 @@ export const CreateNetworkWizard = () => {
         </Card>
       )}
 
-      {step < STEPS.length - 1 && (
+      {step < WIZARD_STEPS.length - 1 && (
         <div className="flex flex-row items-center gap-2 pt-2 border-t border-border">
           <Button
             type="button"
@@ -355,7 +383,7 @@ export const CreateNetworkWizard = () => {
         </div>
       )}
 
-      {step === STEPS.length - 1 && (
+      {step === WIZARD_STEPS.length - 1 && (
         <div className="pt-2 border-t border-border">
           <Button type="button" variant="ghost" onClick={back}>
             <ArrowLeft className="h-4 w-4" />

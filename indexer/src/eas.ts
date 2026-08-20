@@ -57,9 +57,27 @@ const onRevoked = async ({ event, context }: any) => {
     functionName: 'getAttestation',
     args: [uid],
   })
+  // M0 hazard sweep: ensure-by-readback. The full attestation was just read from the EAS
+  // contract, so a revocation whose attest marker predates the start block (or was folded by a
+  // resolver we began watching mid-life) materializes the complete row instead of wedging on a
+  // bare update. The revoke-fold accumulator record below needs the same data either way.
   await context.db
-    .update(easAttestation, { uid })
-    .set({ revocationTime: attestation.revocationTime })
+    .insert(easAttestation)
+    .values({
+      uid,
+      schema: attestation.schema,
+      resolver: event.log.address,
+      attester: attestation.attester,
+      recipient: attestation.recipient,
+      ref: attestation.refUID,
+      revocable: attestation.revocable,
+      expirationTime: attestation.expirationTime,
+      revocationTime: attestation.revocationTime,
+      data: attestation.data,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+    })
+    .onConflictDoUpdate({ revocationTime: attestation.revocationTime })
 
   // The revoke fold (kind 1): same leaf ABI, folded at the revoke block's timestamp, data
   // preimage = the original attestation payload (see accumulatorRecord note above).

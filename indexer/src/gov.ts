@@ -6,7 +6,12 @@ import {
   merkleGovVoteDelegate,
   merkleGovVoteDelegationEvent,
 } from 'ponder:schema'
+import type { Address } from 'viem'
 
+import {
+  ensureMerkleGovModuleRow,
+  readMerkleGovModuleRow,
+} from './gov-module-shared'
 import { merkleGovModuleAbi } from '../../frontend/lib/contract-abis'
 
 // Helper type for proposal actions
@@ -25,101 +30,50 @@ const eventPosition = (event: any) => ({
   txHash: event.transaction.hash,
 })
 
-// Setup: Initialize the module state from the contract
-ponder.on('merkleGovModule:setup', async ({ context }) => {
-  for (const merkleGovModuleAddress of context.contracts.merkleGovModule
-    .address || []) {
-    try {
-      // Read all relevant state from the contract
-      const [
-        avatar,
-        target,
-        merkleSnapshotContract,
-        currentMerkleRoot,
-        ipfsHash,
-        ipfsHashCid,
-        totalVotingPower,
-        proposalCount,
-        votingDelay,
-        votingPeriod,
-        quorum,
-      ] = await Promise.all([
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'avatar',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'target',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'merkleSnapshotContract',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'currentMerkleRoot',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'ipfsHash',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'ipfsHashCid',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'totalVotingPower',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'proposalCount',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'votingDelay',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'votingPeriod',
-        }),
-        context.client.readContract({
-          address: merkleGovModuleAddress,
-          abi: merkleGovModuleAbi,
-          functionName: 'quorum',
-        }),
-      ])
+/**
+ * Read and insert a module's complete state at the block Ponder is processing.
+ *
+ * A governed factory deploys the module before it emits `GovernedInstanceCreated`. Ponder discovers
+ * the module from that later event, then replays the constructor's earlier
+ * `MerkleSnapshotContractUpdated` log. That log therefore arrives before any setup handler can have
+ * inserted the row. Reading the contract at the event block gives us the transaction's complete
+ * post-state and makes the birth row independent of log order. The read-back itself lives in
+ * src/gov-module-shared.ts, shared with the discovery handler (src/governed.ts).
+ */
+async function insertMerkleGovModule(context: any, address: Address) {
+  const row = await readMerkleGovModuleRow(context.client, address)
+  await context.db.insert(merkleGovModule).values(row).onConflictDoNothing()
+  return row.proposalCount
+}
 
-      await context.db.insert(merkleGovModule).values({
-        address: merkleGovModuleAddress,
-        avatar,
-        target,
-        merkleSnapshot: merkleSnapshotContract,
-        currentMerkleRoot,
-        ipfsHash,
-        ipfsHashCid,
-        totalVotingPower,
-        proposalCount,
-        votingDelay,
-        votingPeriod,
-        quorum,
-      })
+async function ensureMerkleGovModule(context: any, address: Address) {
+  await ensureMerkleGovModuleRow(
+    context.db,
+    context.client,
+    merkleGovModule,
+    address
+  )
+}
+
+async function updateMerkleGovModule(
+  context: any,
+  address: Address,
+  set: Record<string, unknown>
+) {
+  await ensureMerkleGovModule(context, address)
+  await context.db.update(merkleGovModule, { address }).set(set)
+}
+
+// Setup: Initialize statically configured modules and recover any proposals that predate indexing.
+ponder.on('merkleGovModule:setup', async ({ context }) => {
+  for (const address of context.contracts.merkleGovModule.address || []) {
+    try {
+      const proposalCount = await insertMerkleGovModule(context, address)
 
       // Index any existing proposals
       for (let i = 1n; i <= proposalCount; i++) {
         const [proposal, , actions] = await context.client.readContract({
-          address: merkleGovModuleAddress,
+          address,
           abi: merkleGovModuleAbi,
           functionName: 'getProposal',
           args: [i],
@@ -133,30 +87,39 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           operation: action.operation,
         }))
 
-        await context.db.insert(merkleGovModuleProposal).values({
-          module: merkleGovModuleAddress,
-          id: proposal.id,
-          proposer: proposal.proposer,
-          title: proposal.title,
-          description: proposal.description,
-          startBlock: proposal.startBlock,
-          endBlock: proposal.endBlock,
-          yesVotes: proposal.yesVotes,
-          noVotes: proposal.noVotes,
-          abstainVotes: proposal.abstainVotes,
-          executed: proposal.executed,
-          cancelled: proposal.cancelled,
-          merkleRoot: proposal.merkleRoot,
-          totalVotingPower: proposal.totalVotingPower,
-          quorumFraction: proposal.quorumFraction,
-          actions: formattedActions,
-          // Use current block for setup (we don't have the original block)
-          blockNumber: 0n,
-          timestamp: 0n,
-        })
+        await context.db
+          .insert(merkleGovModuleProposal)
+          .values({
+            module: address,
+            id: proposal.id,
+            proposer: proposal.proposer,
+            title: proposal.title,
+            description: proposal.description,
+            startBlock: proposal.startBlock,
+            endBlock: proposal.endBlock,
+            yesVotes: proposal.yesVotes,
+            noVotes: proposal.noVotes,
+            abstainVotes: proposal.abstainVotes,
+            executed: proposal.executed,
+            cancelled: proposal.cancelled,
+            merkleRoot: proposal.merkleRoot,
+            totalVotingPower: proposal.totalVotingPower,
+            quorumFraction: proposal.quorumFraction,
+            actions: formattedActions,
+            // Use current block for setup (we don't have the original block)
+            blockNumber: 0n,
+            timestamp: 0n,
+          })
+          .onConflictDoNothing()
       }
-    } catch {
-      // Contract may not be deployed yet
+    } catch (error) {
+      // A statically configured address that cannot be read is stale: the summary file names a
+      // module that is not deployed (yet) on this chain. Say so instead of hiding it — a silent
+      // catch here once masked a wedged deployment for a whole session.
+      console.warn(
+        `gov: setup could not read merkleGovModule ${address} — stale deployment_summary.json address?`,
+        error
+      )
     }
   }
 })
@@ -211,9 +174,9 @@ const proposalCreated = async ({ event, context }: any) => {
   })
 
   // Update proposal count on the module
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ proposalCount: proposalId })
+  await updateMerkleGovModule(context, event.log.address, {
+    proposalCount: proposalId,
+  })
 }
 
 ponder.on('merkleGovModule:ProposalCreated', proposalCreated)
@@ -396,9 +359,9 @@ ponder.on('governedMerkleGovModule:ProposalCancelled', proposalCancelled)
 const quorumUpdated = async ({ event, context }: any) => {
   const { newQuorum } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ quorum: newQuorum })
+  await updateMerkleGovModule(context, event.log.address, {
+    quorum: newQuorum,
+  })
 }
 
 ponder.on('merkleGovModule:QuorumUpdated', quorumUpdated)
@@ -408,9 +371,9 @@ ponder.on('governedMerkleGovModule:QuorumUpdated', quorumUpdated)
 const votingDelayUpdated = async ({ event, context }: any) => {
   const { newDelay } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ votingDelay: newDelay })
+  await updateMerkleGovModule(context, event.log.address, {
+    votingDelay: newDelay,
+  })
 }
 
 ponder.on('merkleGovModule:VotingDelayUpdated', votingDelayUpdated)
@@ -420,9 +383,9 @@ ponder.on('governedMerkleGovModule:VotingDelayUpdated', votingDelayUpdated)
 const votingPeriodUpdated = async ({ event, context }: any) => {
   const { newPeriod } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ votingPeriod: newPeriod })
+  await updateMerkleGovModule(context, event.log.address, {
+    votingPeriod: newPeriod,
+  })
 }
 
 ponder.on('merkleGovModule:VotingPeriodUpdated', votingPeriodUpdated)
@@ -432,9 +395,9 @@ ponder.on('governedMerkleGovModule:VotingPeriodUpdated', votingPeriodUpdated)
 const merkleSnapshotContractUpdated = async ({ event, context }: any) => {
   const { newContract } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ merkleSnapshot: newContract })
+  await updateMerkleGovModule(context, event.log.address, {
+    merkleSnapshot: newContract,
+  })
 }
 
 ponder.on(
@@ -450,7 +413,7 @@ ponder.on(
 const merkleRootUpdated = async ({ event, context }: any) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
 
-  await context.db.update(merkleGovModule, { address: event.log.address }).set({
+  await updateMerkleGovModule(context, event.log.address, {
     currentMerkleRoot: root,
     ipfsHash,
     ipfsHashCid,
@@ -465,9 +428,9 @@ ponder.on('governedMerkleGovModule:MerkleRootUpdated', merkleRootUpdated)
 const avatarSet = async ({ event, context }: any) => {
   const { newAvatar } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ avatar: newAvatar })
+  await updateMerkleGovModule(context, event.log.address, {
+    avatar: newAvatar,
+  })
 }
 
 ponder.on('merkleGovModule:AvatarSet', avatarSet)
@@ -477,9 +440,9 @@ ponder.on('governedMerkleGovModule:AvatarSet', avatarSet)
 const targetSet = async ({ event, context }: any) => {
   const { newTarget } = event.args
 
-  await context.db
-    .update(merkleGovModule, { address: event.log.address })
-    .set({ target: newTarget })
+  await updateMerkleGovModule(context, event.log.address, {
+    target: newTarget,
+  })
 }
 
 ponder.on('merkleGovModule:TargetSet', targetSet)

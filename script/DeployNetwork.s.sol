@@ -156,6 +156,12 @@ contract DeployScript is Common {
             IZkVerifier(zkVerifier), paramsHash, IAttestationAccumulator(address(deployed.resolver)), deployer, deployer
         );
 
+        // Enable the accepted-state provenance history now, while zero states exist — the only
+        // moment it is possible (the window closes forever at the first accepted root). Without
+        // it the network can never serve as a composition source; recording is additive and
+        // never blocks acceptance.
+        deployed.snapshot.enableStateProvenance();
+
         // A direct deployment must never leave the lane unscheduled: otherwise whoever proves
         // first chooses epoch boundaries and multiple settled states may share one block.
         deployed.snapshot.setEpochLength(epochLength);

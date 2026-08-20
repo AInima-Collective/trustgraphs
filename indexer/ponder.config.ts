@@ -11,6 +11,7 @@ import {
   trustComposeFactoryAbi,
   trustComposeParamsControllerAbi,
 } from './abis/composition'
+import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
 import {
   OPTIMISM_ERC8004_IDENTITY_REGISTRY,
@@ -71,8 +72,17 @@ const deploymentSummary = deploymentSummaryJson as {
     governed_factory?: string
     signer_sync_deployer?: string
   }
+  /** Governed wrappers for the weighted / compose programs. They share the governed factory's
+   *  Safe singletons and helper deployers and emit the SAME `GovernedInstanceCreated` signature,
+   *  so their children ride the existing governed child sources. */
+  governedWeightedFactory?: { governed_weighted_factory?: string }
+  governedComposeFactory?: { governed_compose_factory?: string }
   weightedFactory?: { weighted_factory?: string }
-  compositionFactory?: { composition_factory?: string }
+  // One summary key per factory, agreed by both consumers: this matches the contract name and
+  // what frontend/scripts/generate-config.ts reads (`trustComposeFactory.trust_compose_factory`),
+  // written by `DeployTrustComposeFactory` via deploy/env.ts.
+  trustComposeFactory?: { trust_compose_factory?: string }
+  contributionsFactory?: { contributions_factory?: string }
   graphLineage?: { registry?: string }
 }
 
@@ -179,6 +189,21 @@ const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
 const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | Hex
   | undefined
+const GOVERNED_WEIGHTED_FACTORY = deploymentSummary.governedWeightedFactory
+  ?.governed_weighted_factory as Hex | undefined
+const GOVERNED_COMPOSE_FACTORY = deploymentSummary.governedComposeFactory
+  ?.governed_compose_factory as Hex | undefined
+/**
+ * Every governed wrapper on this chain. All three emit the same
+ * `GovernedInstanceCreated(instanceId, creator, safe, merkleGovModule, snapshot)` signature, so
+ * one `factory()` source with an address ARRAY discovers every wrapper's Safe and gov module and
+ * `gov.ts`/`safe.ts` handlers apply unchanged.
+ */
+const GOVERNED_WRAPPERS = [
+  GOVERNED_FACTORY,
+  GOVERNED_WEIGHTED_FACTORY,
+  GOVERNED_COMPOSE_FACTORY,
+].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
 const WEIGHTED_FACTORY =
@@ -192,7 +217,17 @@ const COMPOSITION_FACTORY =
     ? process.env.TRUST_COMPOSE_FACTORY_ADDRESS_10
     : process.env.TRUST_COMPOSE_FACTORY_ADDRESS_31337
   )?.trim() as Hex | undefined) ??
-  (deploymentSummary.compositionFactory?.composition_factory as Hex | undefined)
+  (deploymentSummary.trustComposeFactory?.trust_compose_factory as
+    | Hex
+    | undefined)
+const CONTRIBUTIONS_FACTORY =
+  ((IS_PRODUCTION
+    ? process.env.CONTRIBUTIONS_FACTORY_ADDRESS_10
+    : process.env.CONTRIBUTIONS_FACTORY_ADDRESS_31337
+  )?.trim() as Hex | undefined) ??
+  (deploymentSummary.contributionsFactory?.contributions_factory as
+    | Hex
+    | undefined)
 const GRAPH_LINEAGE_REGISTRY =
   ((IS_PRODUCTION
     ? process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_10
@@ -245,6 +280,10 @@ const COMPOSITION_INSTANCE_CREATED = getAbiItem({
   abi: trustComposeFactoryAbi,
   name: 'TrustComposeInstanceCreated',
 })
+const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
+  abi: contributionsFactoryAbi,
+  name: 'ContributionsInstanceCreated',
+})
 
 /**
  * A `factory()` address source for one of `InstanceCreated`'s child-contract arguments. Children
@@ -279,7 +318,9 @@ const migratedParamsControllers = () =>
 
 const governedChildren = (parameter: 'safe' | 'merkleGovModule') =>
   factory({
-    address: GOVERNED_FACTORY!,
+    // All governed wrappers share one child source: the discovery event signature is identical
+    // across the trust-graph, weighted, and compose wrappers by construction.
+    address: GOVERNED_WRAPPERS,
     event: GOVERNED_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -309,6 +350,26 @@ const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
     startBlock: CORE_START_BLOCK,
   })
 
+/**
+ * Fund distributors attached to an existing instance after creation
+ * (`attachDistributor`). One source covers all three base factories: the
+ * `DistributorAttached(instanceId, distributor, distributorToken)` signature is identical by
+ * construction, and `factory()` takes an address array.
+ */
+const BASE_FACTORIES = [
+  TRUSTGRAPHS_FACTORY,
+  WEIGHTED_FACTORY,
+  COMPOSITION_FACTORY,
+].filter((address): address is Hex => address !== undefined)
+
+const attachedDistributors = () =>
+  factory({
+    address: BASE_FACTORIES,
+    event: getAbiItem({ abi: trustgraphsFactoryAbi, name: 'DistributorAttached' }),
+    parameter: 'distributor',
+    startBlock: CORE_START_BLOCK,
+  })
+
 const compositionControllers = () =>
   factory({
     address: COMPOSITION_FACTORY!,
@@ -317,10 +378,22 @@ const compositionControllers = () =>
     startBlock: CORE_START_BLOCK,
   })
 
-const compositionChildren = (parameter: 'snapshot' | 'accumulator') =>
+const compositionChildren = (
+  parameter: 'snapshot' | 'accumulator' | 'distributor'
+) =>
   factory({
     address: COMPOSITION_FACTORY!,
     event: COMPOSITION_INSTANCE_CREATED,
+    parameter,
+    startBlock: CORE_START_BLOCK,
+  })
+
+const contributionsChildren = (
+  parameter: 'resolver' | 'snapshot' | 'distributor'
+) =>
+  factory({
+    address: CONTRIBUTIONS_FACTORY!,
+    event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
   })
@@ -485,6 +558,23 @@ export default createConfig({
         ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
         : {},
     },
+    // The weighted/compose governed wrappers. Same event surface as the trust-graph wrapper by
+    // construction (`GovernedInstanceCreated` / `GovernedAuthorityInstalled` are byte-identical
+    // signatures), so they reuse its ABI and `governed.ts` registers ONE handler for all three.
+    governedWeightedTrustgraphsFactory: {
+      abi: governedTrustgraphsFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: GOVERNED_WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: GOVERNED_WEIGHTED_FACTORY } }
+        : {},
+    },
+    governedTrustComposeFactory: {
+      abi: governedTrustgraphsFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: GOVERNED_COMPOSE_FACTORY
+        ? { [CORE_CHAIN]: { address: GOVERNED_COMPOSE_FACTORY } }
+        : {},
+    },
     signerSyncModuleDeployer: {
       abi: signerSyncModuleDeployerAbi,
       startBlock: CORE_START_BLOCK,
@@ -557,6 +647,32 @@ export default createConfig({
             }
           : {},
     },
+    // The weighted / compose programs' creation-time fund distributors (M5: the create paths
+    // expose `withDistributor`), plus the funds attached to any instance later through
+    // `attachDistributor`. Same ABI and the same merkle.ts handlers as `merkleFundDistributor`;
+    // separate sources only because each parent factory event names the child differently.
+    weightedMerkleFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: WEIGHTED_FACTORY
+        ? { [CORE_CHAIN]: { address: weightedChildren('distributor') } }
+        : {},
+    },
+    compositionMerkleFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: COMPOSITION_FACTORY
+        ? { [CORE_CHAIN]: { address: compositionChildren('distributor') } }
+        : {},
+    },
+    attachedMerkleFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain:
+        BASE_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: attachedDistributors() } }
+          : {},
+    },
     // The non-factory programs' snapshots (contributions, hypercerts). Same ABI and same handlers
     // as `merkleSnapshot` (src/merkle.ts, src/anchor.ts register both); a separate source only
     // because Ponder's `address` is either a static list or a factory, never both.
@@ -620,6 +736,42 @@ export default createConfig({
           }
         : {},
     },
+    // The contributions ROUND factory (D3). When it is deployed, the chain is the contributions
+    // catalog: every round's resolver / snapshot / distributor is discovered from
+    // `ContributionsInstanceCreated` through the three factory() sources below, and the
+    // `contributions_instance` table (src/contributions-factory.ts) replaces the build-time
+    // CONTRIBUTIONS_INSTANCES import from deployment_summary.json.
+    contributionsFactory: {
+      abi: contributionsFactoryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: CONTRIBUTIONS_FACTORY } }
+        : {},
+    },
+    // Factory-discovered round children. Same ABIs and same handlers as their static siblings
+    // above (`contributionResolver`, `programSnapshot`, `programFundDistributor`) — separate
+    // sources only because Ponder's `address` is either a static list or a factory, never both.
+    factoryContributionResolver: {
+      abi: contributionResolverAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('resolver') } }
+        : {},
+    },
+    contributionsMerkleSnapshot: {
+      abi: merkleSnapshotAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('snapshot') } }
+        : {},
+    },
+    contributionsFundDistributor: {
+      abi: merkleFundDistributorAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: CONTRIBUTIONS_FACTORY
+        ? { [CORE_CHAIN]: { address: contributionsChildren('distributor') } }
+        : {},
+    },
     merkleGovModule: {
       abi: merkleGovModuleAbi,
       startBlock: IS_PRODUCTION ? PROD_START_BLOCK : 'latest',
@@ -638,13 +790,14 @@ export default createConfig({
     governedMerkleGovModule: {
       abi: merkleGovModuleAbi,
       startBlock: CORE_START_BLOCK,
-      chain: GOVERNED_FACTORY
-        ? {
-            [CORE_CHAIN]: {
-              address: governedChildren('merkleGovModule'),
-            },
-          }
-        : {},
+      chain:
+        GOVERNED_WRAPPERS.length > 0
+          ? {
+              [CORE_CHAIN]: {
+                address: governedChildren('merkleGovModule'),
+              },
+            }
+          : {},
     },
     governedSignerSyncModule: {
       abi: signerSyncZkModuleAbi,
@@ -675,13 +828,14 @@ export default createConfig({
     governedGnosisSafe: {
       abi: gnosisSafeAbi,
       startBlock: CORE_START_BLOCK,
-      chain: GOVERNED_FACTORY
-        ? {
-            [CORE_CHAIN]: {
-              address: governedChildren('safe'),
-            },
-          }
-        : {},
+      chain:
+        GOVERNED_WRAPPERS.length > 0
+          ? {
+              [CORE_CHAIN]: {
+                address: governedChildren('safe'),
+              },
+            }
+          : {},
     },
   },
 })

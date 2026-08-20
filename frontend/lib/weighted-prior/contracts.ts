@@ -1,15 +1,38 @@
 import { type Address, type Hex, encodeFunctionData, parseAbi } from 'viem'
 
+import type { InitialProvingPolicy } from '../proving-prepay'
+import {
+  DISABLED_SIGNER_SYNC,
+  GOVERNED_WRAPPER_ERRORS,
+  INITIAL_POLICY_TUPLE,
+  SIGNER_SYNC_TUPLE,
+} from '../governed-wrapper'
 import type { WeightedImportArtifacts } from './import'
 
 const PARAMS =
   '(uint32 version,uint64 dampingFp,uint64 toleranceFp,uint32 maxIterations,uint64 minWeight,uint64 maxWeight,bytes32 priorRoot,uint32 priorCount,bytes32 manifestSha256,bytes32 schemaUid,uint32 weightFieldIndex,address accumulator,uint64 chainId)'
 
+/** `WeightedTrustgraphsFactory.CreateArgs`, shared by the base and governed creation paths. */
+const CREATE_ARGS = `(string name,string metadataURI,${PARAMS} params,bytes manifest,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
+
 export const weightedTrustgraphsFactoryAbi = parseAbi([
   `event WeightedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address resolver,bytes32 schemaUid,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 metadataDigest,${PARAMS} params)`,
   'event WeightedParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
-  `function createInstance((string name,string metadataURI,${PARAMS} params,bytes manifest,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt) args) payable returns (bytes32 instanceId,address snapshot,address resolver,address distributor,bytes32 schemaUid)`,
+  `function createInstance(${CREATE_ARGS} args) payable returns (bytes32 instanceId,address snapshot,address resolver,address distributor,bytes32 schemaUid)`,
   'function EPOCH_FLOOR() view returns (uint64)',
+  'function PRIOR_ACTIVATION_DELAY() view returns (uint48)',
+])
+
+/**
+ * `GovernedWeightedTrustgraphsFactory` (hand-audited against the Solidity, the lane-E pattern):
+ * the same `CreateArgs` plus the wrapper's `InitialPolicy` and `SignerSyncConfig`. `requested.admin`
+ * is deliberately ignored by the wrapper — the new one-owner Safe becomes the instance admin.
+ * The profile reads and the `GovernedInstanceCreated` event live in `lib/governed-wrapper.ts`.
+ */
+export const governedWeightedTrustgraphsFactoryAbi = parseAbi([
+  'event GovernedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed safe,address merkleGovModule,address snapshot)',
+  `function createGovernedInstance(${CREATE_ARGS} requested,${INITIAL_POLICY_TUPLE} policy,${SIGNER_SYNC_TUPLE} signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
+  ...GOVERNED_WRAPPER_ERRORS,
 ])
 
 export const weightedPriorParamsControllerAbi = parseAbi([
@@ -76,6 +99,21 @@ export const weightedCreatePayload = (
     abi: weightedTrustgraphsFactoryAbi,
     functionName: 'createInstance',
     args: [weightedCreateArgs(fields, artifacts)],
+  })
+
+/**
+ * Calldata for the governed creation path. Signer-sync is plumbed in the wrapper but not offered
+ * for weighted networks (no weighted signer guest exists), so it is always the disabled config.
+ */
+export const weightedGovernedCreatePayload = (
+  fields: WeightedCreationFields,
+  artifacts: WeightedImportArtifacts,
+  policy: InitialProvingPolicy
+): Hex =>
+  encodeFunctionData({
+    abi: governedWeightedTrustgraphsFactoryAbi,
+    functionName: 'createGovernedInstance',
+    args: [weightedCreateArgs(fields, artifacts), policy, DISABLED_SIGNER_SYNC],
   })
 
 export const weightedRotationPayload = (

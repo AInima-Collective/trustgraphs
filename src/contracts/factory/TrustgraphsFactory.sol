@@ -104,6 +104,12 @@ contract TrustgraphsFactory {
     /// @notice Discovery link for the typed parameter control plane. `InstanceCreated` stays frozen.
     event ParamsControllerCreated(bytes32 indexed instanceId, address indexed controller);
 
+    /// @notice A fund distributor was attached to an existing instance after creation.
+    ///         `InstanceCreated` stays frozen; this event is the additive discovery source for
+    ///         late-attached funds. `distributorToken` is presentation only, exactly like the
+    ///         creation-time field: the distributor is multi-token.
+    event DistributorAttached(bytes32 indexed instanceId, address distributor, address distributorToken);
+
     /// @notice The one vouching schema every factory instance uses. Uniform on purpose: a
     ///         creator-customizable schema would fork `weightFieldIndex` and multiply the surface
     ///         every consumer (guest, indexer, frontend) has to handle.
@@ -175,6 +181,10 @@ contract TrustgraphsFactory {
     ///         this rather than rejected — see `createInstance`.
     uint64 public immutable EPOCH_FLOOR;
 
+    /// @notice The one fund distributor this factory knows per instance: the creation-time one,
+    ///         or the one `attachDistributor` deployed later. Zero means "none yet".
+    mapping(bytes32 instanceId => address distributor) public distributorOf;
+
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -215,6 +225,12 @@ contract TrustgraphsFactory {
     error InvalidSeed(address seed);
     /// @notice Lane 2 (off-chain envelopes) is not part of the v1 factory bundle.
     error Lane2NotSupported();
+    /// @notice `attachDistributor` was asked about an id this factory's program never registered.
+    error UnknownInstance(bytes32 instanceId);
+    /// @notice The proposed fund owner does not hold the instance's constitutional role.
+    error NotInstanceAuthority(bytes32 instanceId, address owner);
+    /// @notice The instance already has a factory-known fund distributor.
+    error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
 
     /// @param eas The chain's EAS contract.
     /// @param schemaRegistrar The shared schema registrar.
@@ -349,6 +365,13 @@ contract TrustgraphsFactory {
         );
         snapshot = address(merkleSnapshot);
 
+        //        Enable the accepted-state provenance history now, while zero states exist — the
+        //        only moment it is possible. The window closes forever at the first accepted root,
+        //        and after this transaction the constitutional role may sit behind a governed Safe
+        //        that cannot act until a root lands. This is what lets the instance serve as a
+        //        composition source later; recording is additive and never blocks acceptance.
+        merkleSnapshot.enableStateProvenance();
+
         //        Bind the accumulator to that snapshot, in the same transaction. `trigger()` is
         //        then the ONLY way to mint a checkpoint here, which is what makes the epoch
         //        schedule below binding rather than advisory (issue #10). This factory is the
@@ -376,6 +399,7 @@ contract TrustgraphsFactory {
         //        that turning a fee on never routes value to a stranger.
         if (args.withDistributor) {
             distributor = address(DISTRIBUTOR_DEPLOYER.deploy(admin, snapshot, admin, 0, false));
+            distributorOf[instanceId] = distributor;
         }
 
         // --- 7. The directory entry. Presentation-free by design: name/metadata live in the -----
@@ -418,6 +442,34 @@ contract TrustgraphsFactory {
         // the instance row when they attach its separately-discovered controller.
         emit ParamsControllerCreated(instanceId, address(controller));
         controller.publishInitialVersion();
+    }
+
+    /// @notice Attach a fund distributor to an instance created without one. Permissionless to
+    ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
+    ///         must hold the instance's constitutional role right now, so the caller can route
+    ///         value only to the instance's own live authority (for a governed instance that is
+    ///         its Safe). Same terms as the creation-time path: fee 0, `feeRecipient = owner`.
+    /// @param instanceId The instance to attach a fund to (this factory's program only).
+    /// @param owner The fund's owner; verified against the snapshot's CONSTITUTIONAL_ROLE.
+    /// @param distributorToken The token the community intends to distribute. Presentation only,
+    ///        recorded in the event exactly like `CreateArgs.distributorToken`.
+    function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
+        external
+        returns (address distributor)
+    {
+        // An unregistered id reverts inside the registry (`InstanceNotFound`); this factory only
+        // adds the program check so it never serves another program's instance.
+        IInstanceRegistry.Instance memory record = INSTANCE_REGISTRY.getInstance(instanceId);
+        if (record.program != PROGRAM) revert UnknownInstance(instanceId);
+        address existing = distributorOf[instanceId];
+        if (existing != address(0)) revert DistributorAlreadyAttached(instanceId, existing);
+        MerkleSnapshot snapshot = MerkleSnapshot(record.snapshot);
+        if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
+            revert NotInstanceAuthority(instanceId, owner);
+        }
+        distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
+        distributorOf[instanceId] = distributor;
+        emit DistributorAttached(instanceId, distributor, distributorToken);
     }
 
     /// @notice The directory key for a would-be instance. Mixing the creator in makes label

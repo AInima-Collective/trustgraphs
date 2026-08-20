@@ -16,8 +16,10 @@ import {
   encodeFunctionData,
   erc20Abi,
   formatUnits,
+  isAddress,
   keccak256,
   parseEther,
+  parseEventLogs,
   parseUnits,
   stringToBytes,
   zeroAddress,
@@ -61,7 +63,11 @@ import {
 } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
-import { contributionsRoundsFor } from '@/lib/network-nav'
+import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import {
+  contributionsRoundsFor,
+  sortRoundsNewestActiveFirst,
+} from '@/lib/network-nav'
 import {
   type PublicOperatorAction,
   operatorStatusQuery,
@@ -69,6 +75,7 @@ import {
 import {
   delayedRecoveryModuleReadAbi,
   erc20MetadataReadAbi,
+  factoryAttachDistributorAbi,
   gnosisSafeAuthorityReadAbi,
   priceFeedReadAbi,
   provingVaultReadAbi,
@@ -311,6 +318,180 @@ const ContractAddress = ({ value }: { value: string | undefined }) => {
         </a>
       )}
     </span>
+  )
+}
+
+/** The factory's named attach errors, in the words this page uses. */
+const explainAttachFundError = (error: unknown): string => {
+  const text = String(error instanceof Error ? error.message : (error ?? ''))
+  if (text.includes('NotInstanceAuthority')) {
+    return "That owner does not hold this network's constitutional role right now. Use the current authority; for a governed network that is its Safe."
+  }
+  if (text.includes('DistributorAlreadyAttached')) {
+    return 'This network already has a fund. Reload the page to see it.'
+  }
+  if (text.includes('UnknownInstance')) {
+    return 'This factory does not know this network, so it cannot attach a fund to it.'
+  }
+  return parseErrorMessage(error)
+}
+
+/**
+ * The attach-a-fund action for a network created without one (GOAL M5): a permissionless
+ * `attachDistributor` call on the network's base factory. The owner must hold the instance's
+ * constitutional role RIGHT NOW (the contract checks), so it defaults to the current authority.
+ */
+const AttachFundSection = ({
+  instanceId,
+  factoryAddress,
+  defaultOwner,
+  defaultOwnerIsSafe,
+  connectedAddress,
+}: {
+  instanceId: string
+  factoryAddress: string | undefined
+  defaultOwner: string | undefined
+  defaultOwnerIsSafe: boolean
+  connectedAddress: string | undefined
+}) => {
+  const [ownerInput, setOwnerInput] = useState('')
+  const [tokenInput, setTokenInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [attached, setAttached] = useState<{ distributor?: string } | null>(
+    null
+  )
+
+  const effectiveOwner = ownerInput.trim() || defaultOwner || ''
+
+  const attach = async () => {
+    setAttachError(null)
+    if (!factoryAddress) {
+      setAttachError('No factory is configured on this deployment.')
+      return
+    }
+    if (!isAddress(effectiveOwner, { strict: false })) {
+      setAttachError(
+        "Enter the fund owner's address. It must hold this network's constitutional role right now."
+      )
+      return
+    }
+    const token = tokenInput.trim()
+    if (token && !isAddress(token, { strict: false })) {
+      setAttachError("That doesn't look like a token address.")
+      return
+    }
+    setBusy(true)
+    try {
+      const [receipt] = await txToast({
+        tx: {
+          address: factoryAddress as Hex,
+          abi: factoryAttachDistributorAbi,
+          functionName: 'attachDistributor',
+          args: [
+            instanceId as Hex,
+            effectiveOwner as Hex,
+            (token || zeroAddress) as Hex,
+          ],
+        },
+        successMessage: 'Fund attached.',
+      })
+      // Topic-keyed receipt scan, the creation-flow pattern: never filter by emitting address.
+      const [event] = parseEventLogs({
+        abi: factoryAttachDistributorAbi,
+        eventName: 'DistributorAttached',
+        logs: receipt.logs,
+      })
+      setAttached({ distributor: event?.args.distributor })
+    } catch (error) {
+      setAttachError(explainAttachFundError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (attached) {
+    return (
+      <div className="space-y-2 pt-4" role="status">
+        <p className="text-sm">
+          The fund is attached
+          {attached.distributor ? ' at this address:' : '.'}
+        </p>
+        {attached.distributor && (
+          <ContractAddress value={attached.distributor} />
+        )}
+        <p className="text-xs text-muted-foreground">
+          It appears on this page as soon as the indexer catches up; reload in
+          a moment. Anyone can then top it up, and the owner sends payouts.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3 pt-4">
+      <p className="text-xs text-muted-foreground">
+        This network was created without a shared fund, and that closed no
+        doors: you can attach one now. A fund is a pot anyone can top up,
+        split between members by trust score when its owner sends a payout.
+        Anyone may pay the gas for this step, but the fund&apos;s owner must
+        hold this network&apos;s constitutional role right now; the contract
+        checks that before anything is deployed. For a governed network the
+        authority is its Safe, so the Safe owns the fund and payouts happen
+        through member governance.
+      </p>
+      <div className="space-y-1">
+        <Label htmlFor="attach-fund-owner">Fund owner</Label>
+        <Input
+          id="attach-fund-owner"
+          className="font-mono text-xs"
+          value={ownerInput}
+          placeholder={defaultOwner || '0x...'}
+          onChange={(event) => setOwnerInput(event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {defaultOwner
+            ? defaultOwnerIsSafe
+              ? "Defaults to this network's Safe, the current constitutional authority."
+              : "Defaults to your connected wallet, which holds this network's constitutional role."
+            : "Paste the address that holds this network's constitutional role."}
+        </p>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="attach-fund-token">
+          Expected payout token (optional)
+        </Label>
+        <Input
+          id="attach-fund-token"
+          className="font-mono text-xs"
+          value={tokenInput}
+          placeholder="Leave blank for ETH"
+          onChange={(event) => setTokenInput(event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Only a label for the payout screen. The fund holds anything and can
+          pay out something else later.
+        </p>
+      </div>
+      {attachError && (
+        <p className="text-sm text-error" role="alert">
+          {attachError}
+        </p>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        onClick={attach}
+        disabled={busy || !connectedAddress || !factoryAddress}
+      >
+        {busy ? 'Attaching the fund...' : 'Attach a fund'}
+      </Button>
+      {!connectedAddress && (
+        <p className="text-xs text-muted-foreground">
+          Connect a wallet to send the transaction.
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -646,7 +827,13 @@ export const SettingsPage = ({
     timestamp: rootTimestamp,
   } = useNetwork()
   const { address: connectedAddress } = useAccount()
-  const contributionRound = contributionsRoundsFor(network)[0]
+  // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
+  // parentInstanceId link; the newest active one fronts the card and every round lists below.
+  const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const contributionRounds = sortRoundsNewestActiveFirst(
+    contributionsRoundsFor(network, allRounds)
+  )
+  const contributionRound = contributionRounds[0]
   const instanceId = network.instanceId ?? instance?.id ?? ''
   const snapshotAddress = network.contracts.merkleSnapshot
   const resolverAddress = network.contracts.easIndexerResolver
@@ -2503,12 +2690,14 @@ export const SettingsPage = ({
                 />
                 <SettingsCard
                   title="Contribution cycles"
-                  description="Community-scored work whose ratings are weighted by this network."
+                  description="Members submit work, respond to being named on it, and rate each other. Ratings are weighted by this network's trust scores, and each round's pool splits accordingly."
                 >
-                  <SettingRow label="Status">
-                    {contributionRound ? 'Configured' : 'Not configured'}
+                  <SettingRow label="Rounds">
+                    {contributionRounds.length === 0
+                      ? 'None yet'
+                      : `${contributionRounds.length}`}
                   </SettingRow>
-                  <SettingRow label="Active round">
+                  <SettingRow label="Latest round">
                     {contributionRound?.name ?? 'None'}
                   </SettingRow>
                   <SettingRow label="Round snapshot">
@@ -2516,13 +2705,30 @@ export const SettingsPage = ({
                       value={contributionRound?.contracts.merkleSnapshot}
                     />
                   </SettingRow>
-                  <SettingRow label="Management">
+                  <SettingRow label="Who can start one">
                     {connectedAddress
-                      ? connectedIsOperational
-                        ? 'Operational access connected'
-                        : 'Requires operational role'
+                      ? connectedIsConstitutional
+                        ? 'You: your wallet holds this network’s constitutional role'
+                        : 'Only this network’s authority (its constitutional role)'
                       : 'Connect to check access'}
                   </SettingRow>
+                  <div className="flex flex-wrap gap-3 pt-4">
+                    <ButtonLink
+                      href={`/networks/${network.id}/contributions/new`}
+                      size="sm"
+                    >
+                      Start a contribution round
+                    </ButtonLink>
+                    {contributionRound && (
+                      <ButtonLink
+                        href={`/networks/${network.id}/contributions`}
+                        variant="outline"
+                        size="sm"
+                      >
+                        View rounds
+                      </ButtonLink>
+                    )}
+                  </div>
                 </SettingsCard>
 
                 <SettingsCard
@@ -2560,6 +2766,22 @@ export const SettingsPage = ({
                         Fund rewards
                       </ButtonLink>
                     </div>
+                  )}
+                  {/* Networks that predate the factory carry no instance id, so the factory
+                      cannot serve them; they keep the read-only state honestly. */}
+                  {!distributorAddress && instanceId && (
+                    <AttachFundSection
+                      instanceId={instanceId}
+                      factoryAddress={factoryAddress}
+                      defaultOwner={
+                        authoritySafe ||
+                        (connectedIsConstitutional
+                          ? connectedAddress
+                          : undefined)
+                      }
+                      defaultOwnerIsSafe={!!authoritySafe}
+                      connectedAddress={connectedAddress}
+                    />
                   )}
                 </SettingsCard>
 

@@ -193,6 +193,12 @@ ponder.on(
   'weightedTrustgraphsFactory:WeightedParamsControllerCreated',
   async ({ event, context }) => {
     const { instanceId, controller } = event.args
+    // Safe because: `WeightedInstanceCreated` (which inserts this row above) precedes this event
+    // from the same statically configured factory contract in the same createInstance transaction,
+    // discovery-before-children order. Ponder replays one contract's logs in logIndex order and a
+    // start block cannot split a transaction, so the row always exists here. Do not "generalize"
+    // this into an ensure — a missing row would mean the factory's event order changed, and that
+    // contract bug should be loud.
     await context.db
       .update(weightedPriorInstance, { id: instanceId })
       .set({ controller })

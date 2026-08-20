@@ -19,21 +19,43 @@ import {
   MAX_SOURCE_AGE_BLOCKS,
   WEIGHT_SCALE,
 } from './core'
+import {
+  DISABLED_SIGNER_SYNC,
+  GOVERNED_WRAPPER_ERRORS,
+  INITIAL_POLICY_TUPLE,
+  SIGNER_SYNC_TUPLE,
+} from '../governed-wrapper'
 import { ZERO_ADDRESS, ZERO_HASH } from '../pagerank/words'
+import type { InitialProvingPolicy } from '../proving-prepay'
 
 const PARAMS =
   '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
+/** `TrustComposeFactory.CreateArgs`, shared by the base and governed creation paths. */
+const CREATE_ARGS = `(string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
+
 export const trustComposeFactoryAbi = parseAbi([
   `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${PARAMS} params)`,
   'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
-  `function createInstance((string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt) args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
+  `function createInstance(${CREATE_ARGS} args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
   'function computeInstanceId(address creator,string name,bytes32 salt) pure returns (bytes32)',
   'function validateCreation((uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId) params,bytes manifest) view',
   'function EPOCH_FLOOR() view returns (uint64)',
   'function POLICY_ACTIVATION_DELAY() view returns (uint48)',
   'function SOURCE_ADAPTER_FACTORY() view returns (address)',
   'function VAULT() view returns (address)',
+])
+
+/**
+ * `GovernedTrustComposeFactory` (hand-audited against the Solidity, the lane-E pattern): the same
+ * `CreateArgs` plus the wrapper's `InitialPolicy` and `SignerSyncConfig`. `requested.admin` is
+ * deliberately ignored by the wrapper — the new one-owner Safe becomes the instance admin. The
+ * profile reads and the `GovernedInstanceCreated` event live in `lib/governed-wrapper.ts`.
+ */
+export const governedTrustComposeFactoryAbi = parseAbi([
+  'event GovernedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed safe,address merkleGovModule,address snapshot)',
+  `function createGovernedInstance(${CREATE_ARGS} requested,${INITIAL_POLICY_TUPLE} policy,${SIGNER_SYNC_TUPLE} signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
+  ...GOVERNED_WRAPPER_ERRORS,
 ])
 
 export const trustComposeParamsControllerAbi = parseAbi([
@@ -186,6 +208,26 @@ export const compositionCreatePayload = (
     abi: trustComposeFactoryAbi,
     functionName: 'createInstance',
     args: [compositionCreateArgs(fields, config, preview)],
+  })
+
+/**
+ * Calldata for the governed creation path. Signer-sync is plumbed in the wrapper but not offered
+ * for compositions (no compose signer guest exists), so it is always the disabled config.
+ */
+export const compositionGovernedCreatePayload = (
+  fields: CompositionCreationFields,
+  config: CompositionConfig,
+  preview: CompositionPreview,
+  policy: InitialProvingPolicy
+): Hex =>
+  encodeFunctionData({
+    abi: governedTrustComposeFactoryAbi,
+    functionName: 'createGovernedInstance',
+    args: [
+      compositionCreateArgs(fields, config, preview),
+      policy,
+      DISABLED_SIGNER_SYNC,
+    ],
   })
 
 export const compositionAdapterPayload = (source: CompositionSource): Hex =>

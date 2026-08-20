@@ -10,15 +10,17 @@ import {
   RotateCcw,
   Square,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
   type Hex,
-  decodeEventLog,
   getAddress,
   isAddress,
   isHex,
   keccak256,
+  parseEther,
+  parseEventLogs,
   zeroAddress,
 } from 'viem'
 import {
@@ -32,24 +34,41 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
+import { Switch } from '@/components/Switch'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
-import { APIS, WEIGHTED_FACTORY } from '@/lib/config'
+import { useNetworks } from '@/contexts/CatalogContext'
+import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
 import { getEnsCoinType } from '@/lib/ens-query'
+import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
+import {
+  DEFAULT_MAX_PER_ROOT_USD,
+  type InitialProvingPolicy,
+  initialPolicyForCreation,
+  initialPolicyProblem,
+} from '@/lib/proving-prepay'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
+
+import { describeBlocks } from '../model'
 import {
   type WeightedApiEntry,
+  type WeightedApiInstance,
   type WeightedApiVersion,
   availabilityDiagnosis,
   fetchBinarySeeds,
   fetchWeightedEntries,
+  fetchWeightedInstances,
   fetchWeightedVersions,
 } from '@/lib/weighted-prior/api'
 import {
+  governedWeightedTrustgraphsFactoryAbi,
   weightedCreateArgs,
   weightedCreatePayload,
+  weightedGovernedCreatePayload,
   weightedPriorParamsControllerAbi,
   weightedRotationPayload,
   weightedTrustgraphsFactoryAbi,
@@ -84,6 +103,11 @@ type Format = 'csv' | 'json'
 
 const WEIGHTED_FACTORY_ADDRESS = (WEIGHTED_FACTORY || '') as Address
 const FACTORY_AVAILABLE = isAddress(WEIGHTED_FACTORY_ADDRESS, {
+  strict: false,
+})
+const GOVERNED_WEIGHTED_FACTORY_ADDRESS = (GOVERNED_WEIGHTED_FACTORY ||
+  '') as Address
+const GOVERNED_AVAILABLE = isAddress(GOVERNED_WEIGHTED_FACTORY_ADDRESS, {
   strict: false,
 })
 
@@ -141,14 +165,47 @@ export const WeightedPriorWorkspace = () => {
   const [transform, setTransform] = useState('')
   const [epochLength, setEpochLength] = useState('0')
   const [salt] = useState<Hex>(randomSalt)
+  // Creation-time features (GOAL M4/M5). The fund and governance are structural: they can only
+  // be chosen here, so both are explicit switches rather than hidden defaults.
+  const [withFund, setWithFund] = useState(false)
+  const [fundToken, setFundToken] = useState<'eth' | 'other'>('eth')
+  const [fundTokenAddress, setFundTokenAddress] = useState('')
+  const [withGovernance, setWithGovernance] = useState(false)
+  const [prepayEth, setPrepayEth] = useState('')
+  const [maxPerRootUsd, setMaxPerRootUsd] = useState(DEFAULT_MAX_PER_ROOT_USD)
 
   const [instanceId, setInstanceId] = useState('')
+  const [weightedInstances, setWeightedInstances] = useState<
+    WeightedApiInstance[]
+  >([])
   const [versions, setVersions] = useState<WeightedApiVersion[]>([])
   const [currentEntries, setCurrentEntries] = useState<WeightedApiEntry[]>([])
   const [binaryInstanceId, setBinaryInstanceId] = useState('')
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogProblem, setCatalogProblem] = useState<string | null>(null)
   const [gasEstimate, setGasEstimate] = useState<bigint | null>(null)
   const [simulatedPayload, setSimulatedPayload] = useState<Hex | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [created, setCreated] = useState<{
+    instanceId: Hex | null
+    txHash: Hex
+    safe: Hex | null
+  } | null>(null)
+  const [prefilled, setPrefilled] = useState<number | null>(null)
+
+  // The catalog is mounted app-wide and server-seeded, so the picker of standard networks costs
+  // no extra request. Networks that predate the factory carry no instance id and cannot be looked
+  // up by one, so they are not offered.
+  const networks = useNetworks()
+  const binaryChoices = useMemo(
+    () =>
+      networks.flatMap((network) =>
+        network.instanceId
+          ? [{ id: network.instanceId, name: network.name }]
+          : []
+      ),
+    [networks]
+  )
 
   const active = versions.find((version) => version.status === 'active')
   const pending = versions.find((version) => version.status === 'pending')
@@ -172,11 +229,98 @@ export const WeightedPriorWorkspace = () => {
     functionName: 'EPOCH_FLOOR',
     query: { enabled: FACTORY_AVAILABLE },
   })
+  // The delay the base factory installs on every prior update, for the compounded-delay copy in
+  // the governance section: under governance an update waits through voting, execution, AND this.
+  const { data: priorActivationDelay } = useReadContract({
+    address: FACTORY_AVAILABLE ? WEIGHTED_FACTORY_ADDRESS : zeroAddress,
+    abi: weightedTrustgraphsFactoryAbi,
+    functionName: 'PRIOR_ACTIVATION_DELAY',
+    query: { enabled: FACTORY_AVAILABLE },
+  })
+  // The wrapper's live governance profile, checked the way the main wizard's review screen checks
+  // it: creation with governance is disabled unless the sealed-authority profile reads back sound.
+  const authority = useAuthorityProfile(
+    GOVERNED_AVAILABLE ? GOVERNED_WEIGHTED_FACTORY_ADDRESS : undefined
+  )
 
   const provenance = useMemo(
     () => ({ sourceUri, author, license, transform }),
     [sourceUri, author, license, transform]
   )
+
+  useEffect(() => {
+    if (mode !== 'rotate') {
+      setCatalogLoading(false)
+      setCatalogProblem(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setCatalogLoading(true)
+    setCatalogProblem(null)
+    fetchWeightedInstances(APIS.ponder, controller.signal)
+      .then(setWeightedInstances)
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setCatalogProblem(
+            error instanceof Error ? error.message : String(error)
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCatalogLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [mode])
+
+  const fundIssue: string | null =
+    withFund && fundToken === 'other'
+      ? !fundTokenAddress.trim()
+        ? 'Paste the address of the token you plan to pay out.'
+        : !isAddress(fundTokenAddress.trim(), { strict: false })
+          ? "That doesn't look like a token address."
+          : null
+      : null
+
+  // The optional refresh prepayment (governed creations only: it rides as transaction value and
+  // the wrapper installs the paid policy on the new network's proving tank atomically).
+  const prepayIssue: string | null = (() => {
+    if (!withGovernance) return null
+    const trimmed = prepayEth.trim()
+    if (!trimmed) return null
+    if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
+      return 'Enter an amount like 0.5, or leave it blank.'
+    }
+    if (Number(trimmed) === 0) {
+      return 'Leave it blank rather than entering zero.'
+    }
+    return initialPolicyProblem(prepayEth, maxPerRootUsd)
+  })()
+  const prepayWei =
+    withGovernance && prepayEth.trim() && !prepayIssue
+      ? parseEther(prepayEth.trim())
+      : 0n
+  const effectiveEpoch = useMemo(() => {
+    const requested = BigInt(epochLength || '0')
+    const floor = (epochFloor as bigint | undefined) ?? 0n
+    return requested < floor ? floor : requested
+  }, [epochFloor, epochLength])
+  const initialPolicy = useMemo<InitialProvingPolicy | null>(() => {
+    try {
+      return initialPolicyForCreation(prepayWei, effectiveEpoch, maxPerRootUsd)
+    } catch {
+      return null
+    }
+  }, [effectiveEpoch, maxPerRootUsd, prepayWei])
+
+  const governanceIssue: string | null = !withGovernance
+    ? null
+    : !GOVERNED_AVAILABLE
+      ? 'Create with governance is not available on this deployment.'
+      : !authority.loading && !authority.valid
+        ? 'The configured governed factory does not expose the sealed guard, member-delay, and 14-day recovery profile this app requires, so creating with governance is disabled here.'
+        : null
 
   const createFields = useMemo(
     () => ({
@@ -187,21 +331,46 @@ export const WeightedPriorWorkspace = () => {
       maxIterations: 40,
       minWeight: 0n,
       maxWeight: 100n,
-      admin: address ? getAddress(address) : zeroAddress,
+      // Under governance the wrapper replaces the admin with the new DAO Safe; keeping zero here
+      // makes it impossible to mistake the connected wallet for the lasting authority.
+      admin: withGovernance
+        ? zeroAddress
+        : address
+          ? getAddress(address)
+          : zeroAddress,
       epochLength: BigInt(epochLength || '0'),
-      withDistributor: false,
-      distributorToken: zeroAddress,
+      withDistributor: withFund,
+      distributorToken:
+        withFund &&
+        fundToken === 'other' &&
+        isAddress(fundTokenAddress.trim(), { strict: false })
+          ? (fundTokenAddress.trim().toLowerCase() as Address)
+          : zeroAddress,
       salt,
     }),
-    [address, epochLength, metadataURI, name, salt]
+    [
+      address,
+      epochLength,
+      fundToken,
+      fundTokenAddress,
+      metadataURI,
+      name,
+      salt,
+      withFund,
+      withGovernance,
+    ]
   )
 
   const transactionPayload = useMemo(() => {
     if (!artifacts) return null
-    return mode === 'rotate'
-      ? weightedRotationPayload(artifacts)
-      : weightedCreatePayload(createFields, artifacts)
-  }, [artifacts, createFields, mode])
+    if (mode === 'rotate') return weightedRotationPayload(artifacts)
+    if (withGovernance) {
+      return initialPolicy
+        ? weightedGovernedCreatePayload(createFields, artifacts, initialPolicy)
+        : null
+    }
+    return weightedCreatePayload(createFields, artifacts)
+  }, [artifacts, createFields, initialPolicy, mode, withGovernance])
 
   const clearDerived = () => {
     workerRef.current?.terminate()
@@ -211,6 +380,7 @@ export const WeightedPriorWorkspace = () => {
     setGasEstimate(null)
     setSimulatedPayload(null)
     setSuccess(null)
+    setCreated(null)
     setProblem(null)
     setFieldIssues([])
   }
@@ -223,15 +393,15 @@ export const WeightedPriorWorkspace = () => {
     )
     workerRef.current = worker
     const id = ++workerId.current
-    setPreview({ phase: 'Starting exact day-zero preview…' })
+    setPreview({ phase: 'Computing the exact day-zero scores…' })
     worker.onmessage = (
       message: MessageEvent<WeightedPreviewWorkerResponse>
     ) => {
       if (message.data.id !== id) return
       if (message.data.phase === 'starting') {
-        setPreview({ phase: 'Canonical commitments ready…' })
+        setPreview({ phase: 'Exact commitments ready…' })
       } else if (message.data.phase === 'iterating') {
-        setPreview({ phase: 'Running 40 exact weighted iterations…' })
+        setPreview({ phase: 'Running the 40 exact scoring rounds…' })
       } else if (message.data.phase === 'complete') {
         setPreview({
           phase: 'Complete',
@@ -312,9 +482,11 @@ export const WeightedPriorWorkspace = () => {
     }
   }
 
-  const loadRotation = async () => {
-    if (!isHex(instanceId) || instanceId.length !== 66) {
-      setProblem('Enter a 32-byte weighted instance id.')
+  const loadRotation = async (id: string = instanceId) => {
+    if (!isHex(id) || id.length !== 66) {
+      setProblem(
+        'Choose a weighted network from the list, or paste its 32-byte instance ID.'
+      )
       return
     }
     setBusy(true)
@@ -322,24 +494,19 @@ export const WeightedPriorWorkspace = () => {
     setVersions([])
     setCurrentEntries([])
     try {
-      const nextVersions = await fetchWeightedVersions(
-        APIS.ponder,
-        instanceId as Hex
-      )
+      const nextVersions = await fetchWeightedVersions(APIS.ponder, id as Hex)
       const nextActive = nextVersions.find(
         (version) => version.status === 'active'
       )
       if (!nextActive)
-        throw new Error('The indexer has no active prior version.')
+        throw new Error(
+          'The indexer has no active version for that network yet. A network created moments ago appears as soon as its creation is indexed.'
+        )
       setVersions(nextVersions)
       setCurrentEntries(
         nextActive.availability.status === 'unavailable'
           ? []
-          : await fetchWeightedEntries(
-              APIS.ponder,
-              instanceId as Hex,
-              nextActive.version
-            )
+          : await fetchWeightedEntries(APIS.ponder, id as Hex, nextActive.version)
       )
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -348,9 +515,45 @@ export const WeightedPriorWorkspace = () => {
     }
   }
 
+  // Deep links: /create/weighted?instance=0x… opens an existing weighted network in update mode
+  // (the directory and the creation success card link here); ?accounts=0x…,0x… carries the
+  // starting accounts over from the create wizard as an equal-weight prefill to edit.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const instance = params.get('instance')
+    if (instance && isHex(instance) && instance.length === 66) {
+      setMode('rotate')
+      setInstanceId(instance)
+      void loadRotation(instance)
+      return
+    }
+    const accounts = (params.get('accounts') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => isAddress(value, { strict: false }))
+    if (accounts.length) {
+      setFormat('csv')
+      setSourceBytes(null)
+      setSourceText(equalWeightCsv(accounts as Hex[]))
+      setPrefilled(accounts.length)
+    }
+    // Run once, against the URL the page opened with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** The rotate view for a network that was just created (or picked from a listing). */
+  const openForUpdate = (id: Hex) => {
+    setMode('rotate')
+    setInstanceId(id)
+    clearDerived()
+    void loadRotation(id)
+  }
+
   const prefillBinary = async () => {
     if (!isHex(binaryInstanceId) || binaryInstanceId.length !== 66) {
-      setProblem('Enter a 32-byte binary instance id.')
+      setProblem(
+        'Choose a network from the list, or paste its 32-byte instance ID.'
+      )
       return
     }
     setBusy(true)
@@ -372,7 +575,8 @@ export const WeightedPriorWorkspace = () => {
   }
 
   const ensureFresh = async () => {
-    if (!artifacts) throw new Error('Import a prior first.')
+    if (!artifacts)
+      throw new Error('Add and check some starting weights first.')
     if (artifacts.ensResolutions.length === 0) return artifacts
     const { anchor, resolve } = await ensContext()
     try {
@@ -420,9 +624,32 @@ export const WeightedPriorWorkspace = () => {
           })
         )
         setSimulatedPayload(keccak256(weightedRotationPayload(exact)))
+      } else if (withGovernance) {
+        if (governanceIssue) throw new Error(governanceIssue)
+        if (fundIssue || prepayIssue)
+          throw new Error(fundIssue ?? prepayIssue ?? '')
+        if (!initialPolicy)
+          throw new Error('Fix the refresh prepayment fields first.')
+        const args = weightedCreateArgs(createFields, exact)
+        const governedCall = {
+          account: address,
+          address: GOVERNED_WEIGHTED_FACTORY_ADDRESS,
+          abi: governedWeightedTrustgraphsFactoryAbi,
+          functionName: 'createGovernedInstance',
+          args: [args, initialPolicy, DISABLED_SIGNER_SYNC],
+          ...(prepayWei > 0n ? { value: prepayWei } : {}),
+        } as const
+        await publicClient.simulateContract(governedCall)
+        setGasEstimate(await publicClient.estimateContractGas(governedCall))
+        setSimulatedPayload(
+          keccak256(
+            weightedGovernedCreatePayload(createFields, exact, initialPolicy)
+          )
+        )
       } else {
         if (!FACTORY_AVAILABLE)
           throw new Error('No weighted factory is configured.')
+        if (fundIssue) throw new Error(fundIssue)
         const args = weightedCreateArgs(createFields, exact)
         await publicClient.simulateContract({
           account: address,
@@ -458,12 +685,19 @@ export const WeightedPriorWorkspace = () => {
       if (wrongChain)
         throw new Error('Switch the wallet to the target chain first.')
       const exact = await ensureFresh()
-      const payloadHash = keccak256(
+      const exactPayload =
         mode === 'rotate'
           ? weightedRotationPayload(exact)
-          : weightedCreatePayload(createFields, exact)
-      )
-      if (payloadHash !== simulatedPayload) {
+          : withGovernance
+            ? initialPolicy
+              ? weightedGovernedCreatePayload(
+                  createFields,
+                  exact,
+                  initialPolicy
+                )
+              : null
+            : weightedCreatePayload(createFields, exact)
+      if (!exactPayload || keccak256(exactPayload) !== simulatedPayload) {
         throw new Error(
           'The exact payload changed. Simulate it again before signing.'
         )
@@ -483,46 +717,54 @@ export const WeightedPriorWorkspace = () => {
             args: [exact.manifest, exact.metadataDigest],
           },
           successMessage:
-            'Weighted prior proposed; the activation delay is now running.',
+            'Update proposed; the activation delay is now running.',
         })
         setSuccess(
-          'Pending rotation proposed. Reload the instance to review its activation time.'
+          'Update proposed. It can be activated once the delay has passed; the timing shows above.'
         )
         await loadRotation()
       } else {
         const [receipt] = await txToast({
-          tx: {
-            address: WEIGHTED_FACTORY_ADDRESS,
-            abi: weightedTrustgraphsFactoryAbi,
-            functionName: 'createInstance',
-            args: [weightedCreateArgs(createFields, exact)],
-          },
-          successMessage: 'New weighted-prior instance created.',
+          tx: withGovernance
+            ? ({
+                address: GOVERNED_WEIGHTED_FACTORY_ADDRESS,
+                abi: governedWeightedTrustgraphsFactoryAbi,
+                functionName: 'createGovernedInstance',
+                args: [
+                  weightedCreateArgs(createFields, exact),
+                  initialPolicy!,
+                  DISABLED_SIGNER_SYNC,
+                ],
+                ...(prepayWei > 0n ? { value: prepayWei } : {}),
+              } as any)
+            : {
+                address: WEIGHTED_FACTORY_ADDRESS,
+                abi: weightedTrustgraphsFactoryAbi,
+                functionName: 'createInstance',
+                args: [weightedCreateArgs(createFields, exact)],
+              },
+          successMessage: withGovernance
+            ? 'Weighted network created; its Safe holds it from the first block.'
+            : 'Weighted network created.',
         })
-        let createdId: Hex | null = null
-        for (const log of receipt.logs) {
-          if (
-            log.address.toLowerCase() !== WEIGHTED_FACTORY_ADDRESS.toLowerCase()
-          )
-            continue
-          try {
-            const event = decodeEventLog({
-              abi: weightedTrustgraphsFactoryAbi,
-              data: log.data,
-              topics: log.topics,
-            })
-            if (event.eventName === 'WeightedInstanceCreated') {
-              createdId = event.args.instanceId
-            }
-          } catch {
-            // Another factory log.
-          }
-        }
-        setSuccess(
-          createdId
-            ? `Created new weighted instance ${createdId}.`
-            : `Creation confirmed in ${receipt.transactionHash}.`
-        )
+        // One receipt-scanning path for both creation lanes, keyed by event topic rather than by
+        // emitting address: under the governed wrapper the BASE factory emits the creation event
+        // and the new Safe is the creator, so address filtering would find nothing.
+        const [createdEvent] = parseEventLogs({
+          abi: weightedTrustgraphsFactoryAbi,
+          eventName: 'WeightedInstanceCreated',
+          logs: receipt.logs,
+        })
+        const [governedEvent] = parseEventLogs({
+          abi: governedWeightedTrustgraphsFactoryAbi,
+          eventName: 'GovernedInstanceCreated',
+          logs: receipt.logs,
+        })
+        setCreated({
+          instanceId: createdEvent?.args.instanceId ?? null,
+          txHash: receipt.transactionHash,
+          safe: governedEvent?.args.safe ?? null,
+        })
       }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -540,13 +782,13 @@ export const WeightedPriorWorkspace = () => {
         throw new Error('Switch the wallet to the target chain first.')
       if (pending.availability.status === 'unavailable') {
         throw new Error(
-          'Recover and review the exact pending manifest before activation.'
+          'The exact bytes of the pending update cannot be recovered right now. Review them before activation.'
         )
       }
       if (
         BigInt(pending.readyAt ?? '0') > BigInt(Math.floor(Date.now() / 1000))
       ) {
-        throw new Error('The timelock has not reached its activation time yet.')
+        throw new Error('The activation delay has not finished yet.')
       }
       if (!publicClient || !address) throw new Error('Connect a wallet first.')
       await publicClient.simulateContract({
@@ -563,7 +805,7 @@ export const WeightedPriorWorkspace = () => {
           functionName: 'activatePrior',
           args: [BigInt(pending.version)],
         },
-        successMessage: `Weighted prior version ${pending.version} activated.`,
+        successMessage: `Version ${pending.version} is now active.`,
       })
       setSuccess(`Version ${pending.version} is active.`)
       await loadRotation()
@@ -602,21 +844,24 @@ export const WeightedPriorWorkspace = () => {
     <main className="max-w-5xl space-y-8" aria-labelledby="weighted-title">
       <header className="space-y-3">
         <h1 id="weighted-title" className="text-2xl">
-          Weighted-prior workspace
+          Weighted starting shares
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Import human CSV or JSON, resolve names outside consensus, inspect the
-          exact TGWP bytes, then create a new weighted instance or propose a
-          timelocked prior rotation.
+          Choose who gets a head start and how much. Your starting accounts
+          begin with shares of exactly the sizes you set (an account with
+          weight 10 starts with four times the share of one with weight 2.5),
+          and vouches still decide the final scores. Paste a list or upload a
+          spreadsheet, check the shares, then create a weighted network. You
+          can also schedule a delayed update to an existing weighted network.
         </p>
         <div
           className="flex flex-wrap gap-2"
           role="group"
           aria-label="Weighted workflow"
         >
-          {modeButton('create', 'Create new weighted instance')}
-          {modeButton('rotate', 'Review a rotation')}
-          {modeButton('redeploy', 'Redeploy from binary')}
+          {modeButton('create', 'Create a weighted network')}
+          {modeButton('rotate', 'Update a weighted network')}
+          {modeButton('redeploy', 'Start from an existing network')}
         </div>
       </header>
 
@@ -645,56 +890,152 @@ export const WeightedPriorWorkspace = () => {
             <p className="text-sm">{BINARY_REDEPLOYMENT_NOTICE}</p>
           </div>
           <label htmlFor="binary-instance" className="text-sm font-medium">
-            Existing binary instance id
+            Network to copy starting accounts from
           </label>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
               id="binary-instance"
-              value={binaryInstanceId}
+              aria-describedby="binary-instance-help"
+              value={
+                binaryChoices.some((choice) => choice.id === binaryInstanceId)
+                  ? binaryInstanceId
+                  : ''
+              }
               onChange={(event) => {
                 setBinaryInstanceId(event.target.value)
                 clearDerived()
               }}
-              placeholder="0x…"
-            />
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {binaryChoices.length
+                  ? 'Choose a network…'
+                  : 'No networks available'}
+              </option>
+              {binaryChoices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.name} · {short(choice.id)}
+                </option>
+              ))}
+            </select>
             <Button
               type="button"
               variant="outline"
               onClick={prefillBinary}
-              disabled={busy}
+              disabled={busy || !binaryInstanceId}
             >
-              Prefill equal weights
+              Use starting accounts
             </Button>
           </div>
+          <Input
+            aria-label="Or paste a network instance ID"
+            aria-describedby="binary-instance-help"
+            className="font-mono text-xs"
+            placeholder="0x… or paste an instance ID instead"
+            value={binaryInstanceId}
+            onChange={(event) => {
+              setBinaryInstanceId(event.target.value.trim())
+              clearDerived()
+            }}
+          />
+          <p
+            id="binary-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            These are the networks in the live{' '}
+            <Link href="/networks" className="underline underline-offset-4">
+              network directory
+            </Link>
+            . A network&apos;s ID is also in its page URL and under Settings →
+            Advanced → Instance provenance.
+          </p>
+          {binaryInstanceId && (
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={binaryInstanceId} alwaysShowCopyIcon />
+            </div>
+          )}
         </Card>
       )}
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-4">
           <label htmlFor="weighted-instance" className="text-sm font-medium">
-            Weighted instance id
+            Weighted network to update
           </label>
-          <div className="flex gap-2">
-            <Input
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
               id="weighted-instance"
-              value={instanceId}
+              aria-describedby="weighted-instance-help"
+              value={
+                weightedInstances.some(
+                  (instance) => instance.id === instanceId
+                )
+                  ? instanceId
+                  : ''
+              }
               onChange={(event) => {
                 setInstanceId(event.target.value)
                 setVersions([])
                 setCurrentEntries([])
                 clearDerived()
               }}
-              placeholder="0x…"
-            />
+              disabled={catalogLoading}
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {catalogLoading
+                  ? 'Loading weighted networks…'
+                  : weightedInstances.length
+                    ? 'Choose a weighted network…'
+                    : 'No weighted networks available'}
+              </option>
+              {weightedInstances.map((instance) => (
+                <option key={instance.id} value={instance.id}>
+                  {instance.name} · {short(instance.id)}
+                </option>
+              ))}
+            </select>
             <Button
               type="button"
               variant="outline"
-              onClick={loadRotation}
-              disabled={busy}
+              onClick={() => void loadRotation()}
+              disabled={busy || !instanceId}
             >
               Load history
             </Button>
           </div>
+          <Input
+            aria-label="Or paste a weighted instance ID"
+            aria-describedby="weighted-instance-help"
+            className="font-mono text-xs"
+            placeholder="0x… or paste an instance ID instead"
+            value={instanceId}
+            onChange={(event) => {
+              setInstanceId(event.target.value.trim())
+              setVersions([])
+              setCurrentEntries([])
+              clearDerived()
+            }}
+          />
+          <p
+            id="weighted-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            This list comes from the weighted-network index; the same networks
+            appear in the{' '}
+            <Link href="/networks" className="underline underline-offset-4">
+              network directory
+            </Link>
+            . The full ID is also shown after creation; weighted networks do
+            not currently have a Settings page.
+          </p>
+          {instanceId && (
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={instanceId} alwaysShowCopyIcon />
+            </div>
+          )}
           {active && (
             <div className="text-sm space-y-1">
               <p>
@@ -729,7 +1070,8 @@ export const WeightedPriorWorkspace = () => {
                 .
               </p>
               <p>
-                Exact manifest availability: {pending.availability.status} via{' '}
+                Exact bytes of the pending update:{' '}
+                {pending.availability.status} via{' '}
                 {pending.availability.provenance}.
               </p>
               {pendingDiagnosis && (
@@ -754,18 +1096,31 @@ export const WeightedPriorWorkspace = () => {
                   pending.availability.status === 'unavailable'
                 }
               >
-                Activate after timelock
+                Activate after the delay
               </Button>
             </div>
           )}
         </Card>
       )}
 
+      {catalogProblem && mode === 'rotate' && (
+        <p className="text-sm text-destructive" role="alert">
+          Could not load the weighted networks: {catalogProblem}
+        </p>
+      )}
+
       <section className="space-y-4" aria-labelledby="source-heading">
         <h2 id="source-heading" className="text-lg">
-          1. Import source and provenance
+          1. Add starting accounts and weights
         </h2>
         <Card type="outline" size="md" className="space-y-4">
+          {prefilled !== null && (
+            <p className="text-xs text-muted-foreground" role="status">
+              {prefilled} starting {prefilled === 1 ? 'account' : 'accounts'}{' '}
+              came across from the create wizard, each with weight 1. Edit the
+              numbers to set their sizes.
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="prior-format" className="text-sm font-medium">
@@ -816,7 +1171,7 @@ export const WeightedPriorWorkspace = () => {
             </div>
           </div>
           <label htmlFor="prior-source" className="text-sm font-medium">
-            Prior source
+            Starting accounts and weights
           </label>
           <Textarea
             id="prior-source"
@@ -831,10 +1186,11 @@ export const WeightedPriorWorkspace = () => {
             }}
           />
           <p id="prior-source-help" className="text-xs text-muted-foreground">
-            Weights must be positive decimal strings: no signs, exponents,
-            floats, zero, or duplicate accounts. ENS names are replaced by
-            finalized-block addresses before any canonical or consensus bytes
-            are built.
+            One account per line with its weight: a plain positive number such
+            as 10 or 2.5, no signs, exponents, or duplicate accounts. ENS names
+            are resolved in your browser at a finalized Ethereum mainnet block,
+            recorded only in the provenance receipt, and re-checked before you
+            simulate and before you sign.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
@@ -870,7 +1226,7 @@ export const WeightedPriorWorkspace = () => {
                 setTransform(e.target.value)
                 clearDerived()
               }}
-              placeholder="Human description of transform"
+              placeholder="How this list was produced (optional)"
               aria-label="Transform description"
             />
           </div>
@@ -885,7 +1241,7 @@ export const WeightedPriorWorkspace = () => {
                 aria-hidden="true"
               />
             )}
-            Build exact artifacts
+            Build the exact list
           </Button>
           {fieldIssues.length > 0 && (
             <ul
@@ -907,7 +1263,7 @@ export const WeightedPriorWorkspace = () => {
         <>
           <section className="space-y-4" aria-labelledby="preview-heading">
             <h2 id="preview-heading" className="text-lg">
-              2. Review normalization, concentration, and day-zero behavior
+              2. Check how the weights are shared
             </h2>
             <div className="grid gap-4 sm:grid-cols-4">
               <Card type="outline" size="md">
@@ -923,7 +1279,9 @@ export const WeightedPriorWorkspace = () => {
                 </p>
               </Card>
               <Card type="outline" size="md">
-                <p className="text-xs text-muted-foreground">HHI</p>
+                <p className="text-xs text-muted-foreground">
+                  Concentration score (HHI)
+                </p>
                 <p className="text-xl">
                   {artifacts.concentration.hhiBps.toString()}
                 </p>
@@ -939,16 +1297,16 @@ export const WeightedPriorWorkspace = () => {
               500_000_000_000_000_000n ||
               artifacts.concentration.hhiBps > 2500n) && (
               <p className="text-sm text-warning" role="status">
-                This prior is highly concentrated. That is allowed, but it gives
-                a small set of accounts unusually strong persistent teleport
-                influence.
+                This list is highly concentrated. That is allowed, but it gives
+                a small set of accounts an unusually large head start, and a
+                head start set here never fades on its own.
               </p>
             )}
             <Card type="outline" size="md" className="space-y-3">
               <p className="text-sm">
-                Prior-only accounts receive day-zero score leaves even before
-                the first vouch. With no edges, the proven distribution is
-                byte-exactly this normalized prior.
+                Every account on this list has a score from day one, before any
+                vouches. Until the first vouch lands, the proven scoreboard is
+                exactly this list, normalized.
               </p>
               <div aria-live="polite" className="text-sm">
                 {preview?.phase}
@@ -1018,7 +1376,7 @@ export const WeightedPriorWorkspace = () => {
             </div>
             {rotationDiff && (
               <Card type="outline" size="md" className="space-y-2">
-                <h3 className="font-medium">Pending rotation diff</h3>
+                <h3 className="font-medium">What this update changes</h3>
                 <p className="text-sm">
                   {rotationDiff.added.length} added ·{' '}
                   {rotationDiff.removed.length} removed ·{' '}
@@ -1053,9 +1411,14 @@ export const WeightedPriorWorkspace = () => {
 
           <section className="space-y-4" aria-labelledby="commitment-heading">
             <h2 id="commitment-heading" className="text-lg">
-              3. Verify and export exact commitments
+              3. Save and verify what will go onchain
             </h2>
             <Card type="outline" size="md" className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                These are the exact commitments your transaction will carry.
+                The downloads reproduce the bytes exactly, so anyone can verify
+                the network against them later.
+              </p>
               <dl className="grid gap-2 text-sm">
                 <div>
                   <dt className="text-muted-foreground">Prior root</dt>
@@ -1074,7 +1437,9 @@ export const WeightedPriorWorkspace = () => {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">TGWP bytes</dt>
+                  <dt className="text-muted-foreground">
+                    Onchain data file (TGWP)
+                  </dt>
                   <dd>
                     {(artifacts.manifest.length - 2) / 2} bytes ·{' '}
                     <span className="font-mono">
@@ -1086,7 +1451,8 @@ export const WeightedPriorWorkspace = () => {
               {artifacts.ensResolutions.length > 0 && (
                 <div className="space-y-1 text-xs">
                   <p className="font-medium">
-                    Import-only ENS resolution receipts
+                    ENS resolution receipts (import only; the addresses are
+                    what goes onchain)
                   </p>
                   {artifacts.ensResolutions.map((record) => (
                     <p key={record.name} className="font-mono break-all">
@@ -1126,7 +1492,7 @@ export const WeightedPriorWorkspace = () => {
 
           <section className="space-y-4" aria-labelledby="sign-heading">
             <h2 id="sign-heading" className="text-lg">
-              4. Simulate exact payload, then sign
+              4. Preview the transaction, then sign
             </h2>
             {mode !== 'rotate' && (
               <Card
@@ -1139,7 +1505,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-name"
                     className="text-sm font-medium"
                   >
-                    New instance name
+                    Network name
                   </label>
                   <Input
                     id="weighted-name"
@@ -1155,7 +1521,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-metadata"
                     className="text-sm font-medium"
                   >
-                    Presentation metadata URI
+                    Description URI
                   </label>
                   <Input
                     id="weighted-metadata"
@@ -1172,7 +1538,7 @@ export const WeightedPriorWorkspace = () => {
                     htmlFor="weighted-epoch"
                     className="text-sm font-medium"
                   >
-                    Requested epoch blocks
+                    Scoring round length (blocks)
                   </label>
                   <Input
                     id="weighted-epoch"
@@ -1185,10 +1551,268 @@ export const WeightedPriorWorkspace = () => {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground self-end">
-                  Factory floor:{' '}
-                  {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}.
-                  The factory raises shorter requests.
+                  The factory floor is{' '}
+                  {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}{' '}
+                  blocks; shorter requests are raised to it.
                 </p>
+              </Card>
+            )}
+
+            {mode !== 'rotate' && (
+              <Card type="outline" size="md" className="space-y-4">
+                <div className="flex flex-row items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Add a shared fund</p>
+                    <p className="text-xs text-muted-foreground max-w-xl">
+                      A shared fund lets your community put money in one place
+                      and split it by trust score. Anyone can top it up, and
+                      each member claims their own share. Skip this if your
+                      community only wants scores.
+                    </p>
+                  </div>
+                  <Switch
+                    size="md"
+                    enabled={withFund}
+                    onClick={() => {
+                      setWithFund(!withFund)
+                      setSimulatedPayload(null)
+                    }}
+                  />
+                </div>
+                {withFund && (
+                  <div className="space-y-3 border-t border-border pt-3">
+                    <p className="text-sm">What do you expect to pay out?</p>
+                    <div className="flex flex-row flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant={fundToken === 'eth' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setFundToken('eth')
+                          setSimulatedPayload(null)
+                        }}
+                      >
+                        ETH
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={fundToken === 'other' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setFundToken('other')
+                          setSimulatedPayload(null)
+                        }}
+                      >
+                        Another token
+                      </Button>
+                    </div>
+                    {fundToken === 'other' && (
+                      <Input
+                        aria-label="Token address"
+                        placeholder="0x..."
+                        className="max-w-md font-mono text-xs"
+                        value={fundTokenAddress}
+                        onChange={(e) => {
+                          setFundTokenAddress(e.target.value)
+                          setSimulatedPayload(null)
+                        }}
+                      />
+                    )}
+                    {fundIssue && (
+                      <p className="text-xs text-destructive" role="alert">
+                        {fundIssue}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      This only decides what the payout screen shows first. The
+                      fund holds anything and can pay out something else later.{' '}
+                      {withGovernance
+                        ? 'The new DAO Safe owns the fund, so payouts happen through member governance.'
+                        : 'Your wallet owns the fund: money only moves when you send a payout, and each member claims their share themselves.'}
+                    </p>
+                  </div>
+                )}
+                {!withFund && (
+                  <p className="text-xs text-muted-foreground">
+                    Skipping this closes no doors: the network&apos;s authority
+                    can attach a fund later with the factory&apos;s
+                    attachDistributor call, though this workspace does not
+                    offer that button yet.
+                  </p>
+                )}
+              </Card>
+            )}
+
+            {mode !== 'rotate' && (
+              <Card type="outline" size="md" className="space-y-4">
+                <div className="flex flex-row items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Create with governance</p>
+                    <p className="text-xs text-muted-foreground max-w-xl">
+                      Hand the new network to a DAO Safe instead of your
+                      wallet. A Safe is a shared onchain account; one is
+                      created for you in the same transaction and owns the
+                      network from the first block. Your wallet becomes the
+                      Safe&apos;s only recorded owner, but a permanently sealed
+                      guard disables owner-signed transactions: members direct
+                      the Safe through delayed trust-weighted voting, and your
+                      wallet keeps only a slow, visible recovery role.
+                    </p>
+                  </div>
+                  <Switch
+                    size="md"
+                    enabled={withGovernance}
+                    readOnly={!GOVERNED_AVAILABLE}
+                    onClick={() => {
+                      if (!GOVERNED_AVAILABLE) return
+                      setWithGovernance(!withGovernance)
+                      setPrepayEth('')
+                      setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+                      setSimulatedPayload(null)
+                      setGasEstimate(null)
+                    }}
+                  />
+                </div>
+                {!GOVERNED_AVAILABLE && (
+                  <p className="text-xs text-muted-foreground">
+                    Create with governance is not available on this deployment,
+                    so a network created here is owned by your wallet.
+                  </p>
+                )}
+                {withGovernance && (
+                  <div className="space-y-3 border-t border-border pt-3 text-sm">
+                    {authority.valid ? (
+                      <>
+                        <p>
+                          Member voting, read live from the governed factory:{' '}
+                          {describeBlocks(authority.memberVotingDelay ?? 0n)}{' '}
+                          before voting starts, then{' '}
+                          {describeBlocks(authority.memberVotingPeriod ?? 0n)}{' '}
+                          to vote and{' '}
+                          {describeBlocks(authority.memberExecutionDelay ?? 0n)}{' '}
+                          before the Safe executes a passed proposal.
+                        </p>
+                        <p>
+                          Recovery: your wallet may publish one exact Safe
+                          action but cannot execute it early. Anyone may
+                          execute it after{' '}
+                          {describeSeconds(authority.recoveryDelay)}, and the
+                          member-governed Safe can cancel it or replace the
+                          proposer.
+                        </p>
+                        <p>
+                          Updates to the starting shares take longer under
+                          governance: a proposed update must first pass a
+                          member vote (the delays above), and the network&apos;s
+                          own activation delay of{' '}
+                          {describeSeconds(
+                            priorActivationDelay as number | undefined
+                          )}{' '}
+                          runs after that before the new shares apply.
+                        </p>
+                      </>
+                    ) : authority.loading ? (
+                      <p className="text-muted-foreground">
+                        Reading the live voting profile…
+                      </p>
+                    ) : (
+                      <p className="text-destructive" role="alert">
+                        {governanceIssue}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Score-selected Safe signers are not offered for weighted
+                      networks: the only signer verifier today proves the
+                      standard trust-graph pipeline.
+                    </p>
+
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <p className="text-sm font-medium">
+                        Pay for score refreshes up front?
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Scores only refresh if somebody does the work, and that
+                        costs gas and proving time. Put ETH in during creation
+                        to fund the first refreshes, or leave it blank. The ETH
+                        lands in the new network&apos;s proving tank, and the
+                        DAO Safe controls it afterwards.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="w-32"
+                          inputMode="decimal"
+                          placeholder="0.5"
+                          aria-label="Refresh prepayment in ETH"
+                          value={prepayEth}
+                          onChange={(e) => {
+                            setPrepayEth(e.target.value)
+                            setSimulatedPayload(null)
+                          }}
+                        />
+                        <span className="text-sm opacity-60">
+                          ETH (optional)
+                        </span>
+                      </div>
+                      {prepayEth.trim() && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <label
+                              className="text-xs text-muted-foreground"
+                              htmlFor="weighted-max-refresh"
+                            >
+                              Maximum per refresh
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm opacity-60">$</span>
+                              <Input
+                                id="weighted-max-refresh"
+                                className="w-32"
+                                inputMode="decimal"
+                                value={maxPerRootUsd}
+                                onChange={(e) => {
+                                  setMaxPerRootUsd(e.target.value)
+                                  setSimulatedPayload(null)
+                                }}
+                              />
+                              <span className="text-sm opacity-60">USD</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Covers the proving fee and gas together; creation
+                              is capped at $10,000.
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">
+                              Paid no more often than
+                            </div>
+                            <div className="text-sm">
+                              every {effectiveEpoch.toLocaleString()} blocks,
+                              the scoring round length
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              This starts equal to the score schedule. The DAO
+                              Safe can change it later.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {prepayIssue && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {prepayIssue}
+                        </p>
+                      )}
+                      {prepayEth.trim() && !prepayIssue && (
+                        <p className="text-xs text-muted-foreground">
+                          Before anything is sent, the simulation checks that
+                          this chain has priced the weighted proving band and
+                          that your cap covers that fee. Creation is atomic:
+                          the ETH and the paid policy either both land or
+                          neither does.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
             {!isConnected && <WalletConnectionButton />}
@@ -1222,7 +1846,13 @@ export const WeightedPriorWorkspace = () => {
                       ? !active ||
                         !!pending ||
                         active.availability.status === 'unavailable'
-                      : !FACTORY_AVAILABLE || !name.trim())
+                      : !FACTORY_AVAILABLE ||
+                        !name.trim() ||
+                        !!fundIssue ||
+                        !!prepayIssue ||
+                        !!governanceIssue ||
+                        (withGovernance &&
+                          (authority.loading || !initialPolicy)))
                   }
                 >
                   {busy ? (
@@ -1239,13 +1869,69 @@ export const WeightedPriorWorkspace = () => {
                 >
                   <CheckCircle2 className="h-4 w-4" />{' '}
                   {mode === 'rotate'
-                    ? 'Sign timelocked proposal'
-                    : 'Create new weighted instance'}
+                    ? 'Sign the delayed update'
+                    : withGovernance
+                      ? 'Create the weighted network with its Safe'
+                      : 'Create the weighted network'}
                 </Button>
               </div>
             </Card>
           </section>
         </>
+      )}
+
+      {created && (
+        <div aria-live="polite" role="status">
+          <Card type="outline" size="md" className="space-y-3 border-success">
+            <p className="text-sm">Your weighted network is created.</p>
+            {created.instanceId ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  This is its instance ID, the key that finds it everywhere. It
+                  stays visible in the{' '}
+                  <Link
+                    href="/networks"
+                    className="underline underline-offset-4"
+                  >
+                    network directory
+                  </Link>{' '}
+                  and in this workspace&apos;s update mode, so you do not have
+                  to save it, but a copy never hurts:
+                </p>
+                <CopyableText text={created.instanceId} alwaysShowCopyIcon />
+                {created.safe && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      Its DAO Safe, the shared account that owns the network
+                      and its fund from the first block:
+                    </p>
+                    <CopyableText text={created.safe} alwaysShowCopyIcon />
+                  </div>
+                )}
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openForUpdate(created.instanceId!)}
+                  >
+                    Review it or schedule an update
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Creation confirmed in transaction{' '}
+                <span className="font-mono break-all">{created.txHash}</span>.
+                The new network appears in the{' '}
+                <Link href="/networks" className="underline underline-offset-4">
+                  network directory
+                </Link>{' '}
+                as soon as the indexer sees it.
+              </p>
+            )}
+          </Card>
+        </div>
       )}
 
       {(problem || success) && (

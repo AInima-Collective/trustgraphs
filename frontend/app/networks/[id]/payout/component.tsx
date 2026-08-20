@@ -175,7 +175,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   }
 
   const handleApprove = async () => {
-    if (!connectedAddress || !publicClient) return
+    if (!connectedAddress || !publicClient || !poolToken) return
     setError(null)
     setIsDistributing(true)
     try {
@@ -206,7 +206,8 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   }
 
   const handleDistribute = async () => {
-    if (!connectedAddress || !publicClient || !expectedRoot) return
+    if (!connectedAddress || !publicClient || !expectedRoot || !poolToken)
+      return
     setError(null)
     setIsDistributing(true)
     try {

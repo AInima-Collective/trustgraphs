@@ -7,9 +7,8 @@
 //! gov module and no fund distributor until someone deploys them, so offering those tabs would
 //! route people to a page that can only tell them the feature does not exist here.
 
-import { CONTRIBUTIONS_NETWORKS, SEED_NETWORKS } from './config'
-import { ContributionsNetwork, Network } from './types'
 import { isHexEqual } from './utils'
+import { ContributionsNetwork, Network } from './types'
 
 export type NetworkTab = {
   href: string
@@ -29,29 +28,59 @@ export type NetworkTab = {
 }
 
 /**
- * The contributions rounds scored against THIS trust network.
+ * The contribution rounds scored against THIS trust network, from a runtime rounds list
+ * (the indexer's `/contributions/instances` catalog — `lib/contributions-catalog.ts` /
+ * `useContributionsRounds`).
  *
- * A contributions instance proves stage-1 reputation over a sibling trust network's
- * `AttestationAccumulator`, and that accumulator is the trust network's `easIndexerResolver`
- * (the accumulator is a mixin folded into it). That shared address is the only link between the
- * two instances, so it is what the lookup matches on.
+ * The link is the factory's first-class parent reference: a round's `parentInstanceId` is the
+ * trust network's registry instance id, recorded at creation. Address equality against the
+ * parent's accumulator is deliberately NOT used any more — two networks can wrap the same
+ * accumulator, and the creation event is authoritative about which one the round belongs to.
  */
 export const contributionsRoundsFor = (
-  network: Network
+  network: Network,
+  rounds: readonly ContributionsNetwork[]
 ): ContributionsNetwork[] =>
-  CONTRIBUTIONS_NETWORKS.filter(
-    (round) =>
-      !round.hidden &&
-      isHexEqual(
-        round.contracts.trustAccumulator,
-        network.contracts.easIndexerResolver
+  network.instanceId
+    ? rounds.filter(
+        (round) =>
+          !round.hidden &&
+          round.parentInstanceId &&
+          isHexEqual(round.parentInstanceId, network.instanceId!)
       )
-  )
+    : []
 
-/** Sub-pages of an address-keyed trust-graph network, including its contributions experience. */
-export const trustgraphsTabs = (network: Network): NetworkTab[] => {
+/**
+ * Newest-active first: rounds whose window is open sort before closed/upcoming ones, and within
+ * each group the newest creation wins. This is the presentation default — contracts allow any
+ * number of live rounds per parent.
+ */
+export const sortRoundsNewestActiveFirst = (
+  rounds: readonly ContributionsNetwork[],
+  nowSeconds: number = Math.floor(Date.now() / 1000)
+): ContributionsNetwork[] => {
+  const isOpen = (round: ContributionsNetwork) =>
+    round.roundStart !== undefined &&
+    round.roundEnd !== undefined &&
+    Number(round.roundStart) <= nowSeconds &&
+    nowSeconds <= Number(round.roundEnd)
+  return [...rounds].sort((a, b) => {
+    const openDelta = Number(isOpen(b)) - Number(isOpen(a))
+    if (openDelta !== 0) return openDelta
+    return Number(b.createdTimestamp ?? 0) - Number(a.createdTimestamp ?? 0)
+  })
+}
+
+/**
+ * Sub-pages of an address-keyed trust-graph network, including its contributions experience.
+ * `contributionRounds` is this network's runtime rounds list (`contributionsRoundsFor`); callers
+ * without one pass nothing and simply do not offer the Contributions tab.
+ */
+export const trustgraphsTabs = (
+  network: Network,
+  contributionRounds: readonly ContributionsNetwork[] = []
+): NetworkTab[] => {
   const base = `/networks/${network.id}`
-  const contributionRounds = contributionsRoundsFor(network)
 
   return [
     { href: base, label: 'Overview', icon: 'overview' as const, exact: true },
@@ -92,22 +121,21 @@ export const trustgraphsTabs = (network: Network): NetworkTab[] => {
 }
 
 /**
- * The trust network a round's reputation is proven against — `contributionsRoundsFor` reversed.
- *
- * Resolved against the SEED rather than the runtime catalog because both sides of this link are
- * static in v1: contributions instances are not factory-minted, so the network a round was
- * deployed against is one of the shipped ones. A round whose network is not in the seed simply
- * gets no back-link.
+ * The trust network a round's reputation is proven against — `contributionsRoundsFor` reversed,
+ * resolved against a runtime networks list (`useNetworks()` / `getCatalog()`) by the same
+ * first-class parent link. A round whose parent is not in the list gets no back-link.
  */
 export const trustNetworkFor = (
-  round: ContributionsNetwork
+  round: ContributionsNetwork,
+  networks: readonly Network[]
 ): Network | undefined =>
-  SEED_NETWORKS.find((network) =>
-    isHexEqual(
-      network.contracts.easIndexerResolver,
-      round.contracts.trustAccumulator
-    )
-  )
+  round.parentInstanceId
+    ? networks.find(
+        (network) =>
+          network.instanceId &&
+          isHexEqual(network.instanceId, round.parentInstanceId!)
+      )
+    : undefined
 
 /**
  * The two reachable contributions surfaces, plus the trust network that scores the raters.
@@ -115,10 +143,10 @@ export const trustNetworkFor = (
  * until M5 retires the legacy payout URL.
  */
 export const contributionsTabs = (
-  network: ContributionsNetwork
+  network: ContributionsNetwork,
+  trustNetwork?: Network
 ): NetworkTab[] => {
   const base = `/networks/${network.id}`
-  const trustNetwork = trustNetworkFor(network)
 
   return [
     { href: base, label: 'Round', icon: 'overview' as const, exact: true },

@@ -12,7 +12,7 @@ import type { WeightedImportArtifacts } from './import'
 import { weightedRotationDiff } from './preview'
 
 export const BINARY_REDEPLOYMENT_NOTICE =
-  'This creates a new trust-graph-weighted instance. It does not convert the binary instance in place, preserve its checkpoint history, or change its semantics.'
+  "This makes a separate weighted network using the old network's starting accounts. The old network and its history stay unchanged."
 
 export const createReview = (
   fields: WeightedCreationFields,

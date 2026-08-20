@@ -5,7 +5,6 @@ import { Command } from 'commander'
 
 import {
   ContractDeployment,
-  ContributionsInstanceDeploy,
   EnvName,
   EnvOverrides,
   IEnv,
@@ -45,6 +44,25 @@ function requireProdBytes32(name: string): string {
     )
   }
   return v
+}
+
+/**
+ * Read a REQUIRED guest vkey for a per-program verifier/factory deploy step; fail closed (throw)
+ * if it is unset or zero. `DeployZkVerifier` falls back to `SP1_PROGRAM_VKEY` (the trust-graph
+ * ROOT program) whenever its vkey argument is zero, so letting an unset weighted/composition vkey
+ * through would silently pin the wrong program's verifier — a factory whose instances no proof of
+ * their own program can ever satisfy.
+ */
+function requireProgramVkey(name: string, program: string): string {
+  const value = process.env[name]
+  if (!value || /^0x0{64}$/i.test(value)) {
+    throw new Error(
+      `${name} must be set to the ${program} guest vkey (got ${value ?? 'unset'}). ` +
+        `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey, or use ` +
+        `\`task demo:deploy\`, which derives every vkey from this checkout's guests.`
+    )
+  }
+  return value
 }
 
 /** Require an explicit, nonzero uint64 deployment value instead of silently choosing policy. */
@@ -149,6 +167,35 @@ abstract class EnvBase implements IEnv {
       // born in one transaction. The base factory remains the canonical event/catalog source.
       governedFactory: readJsonIfFileExists(
         '.docker/governed_factory_deploy.json'
+      ),
+      // Governed wrappers for the weighted / compose programs (absent until their deploy scripts
+      // have run). The indexer reads `governedWeightedFactory.governed_weighted_factory` and
+      // `governedComposeFactory.governed_compose_factory` to discover wrapper-created instances;
+      // the frontend generator exposes both so the workspaces can offer create-with-governance.
+      governedWeightedFactory: readJsonIfFileExists(
+        '.docker/governed_weighted_factory_deploy.json'
+      ),
+      governedComposeFactory: readJsonIfFileExists(
+        '.docker/governed_compose_factory_deploy.json'
+      ),
+      // The weighted-prior factory (absent until `DeployWeightedTrustgraphsFactory` has run).
+      // Both consumers read `weightedFactory.weighted_factory`: the frontend generator puts it in
+      // config so `/create/weighted` can transact, and the indexer discovers every weighted
+      // instance's controller/resolver/snapshot from the factory's creation events.
+      weightedFactory: readJsonIfFileExists(
+        '.docker/weighted_factory_deploy.json'
+      ),
+      // The trust-compose factory (absent until `DeployTrustComposeFactory` has run). One summary
+      // key for both consumers: the frontend generator and the indexer both read
+      // `trustComposeFactory.trust_compose_factory`.
+      trustComposeFactory: readJsonIfFileExists(
+        '.docker/trust_compose_factory_deploy.json'
+      ),
+      // The contributions round factory (absent until `DeployContributionsFactory` has run).
+      // The indexer reads `contributionsFactory.contributions_factory` and discovers every
+      // round's resolver / snapshot / distributor from its creation events.
+      contributionsFactory: readJsonIfFileExists(
+        '.docker/contributions_factory_deploy.json'
       ),
       // The chain's ProvingVault, as a bare address string — `indexer/ponder.config.ts` reads
       // `summary.provingVault` and disables the source entirely when it is absent, so omitting it
@@ -431,6 +478,120 @@ export class DevEnv extends EnvBase {
           sig: 'run(string)',
           args: () => [readJsonKey('.docker/factory_deploy.json', 'factory')],
         },
+        // Deploy the WEIGHTED verifier adapter (bound to the trust-graph-weighted guest's vkey —
+        // a different program than the root). Own output file (`zk_verifier_weighted_deploy.json`)
+        // so the root verifier's artifact is untouched.
+        {
+          name: 'Weighted ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            gatewayAddress(),
+            requireProgramVkey(
+              'SP1_WEIGHTED_PROGRAM_VKEY',
+              'trust-graph-weighted'
+            ),
+            'weighted',
+          ],
+        },
+        // The weighted-prior creation seam: the isolated `trust-graph-weighted` factory the
+        // `/create/weighted` workspace calls. Same shape as Factory above (deployers + registrar
+        // grant), plus the immutable prior-rotation review delay.
+        {
+          name: 'Weighted Factory',
+          script:
+            'script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory',
+          sig: 'run(string,string,string,string,uint64,uint48,string)',
+          args: () => [
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            readJsonKey(
+              '.docker/zk_verifier_weighted_deploy.json',
+              'zk_verifier'
+            ),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+            // Seconds between proposePrior and the earliest activatePrior. Short locally so a dev
+            // rotation loop is never waiting on the review window; the script fails closed on
+            // anything under a day for a non-dev chain.
+            process.env.WEIGHTED_PRIOR_ACTIVATION_DELAY || '300',
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
+          ],
+        },
+        // Deploy the COMPOSITION verifier adapter (bound to the trust-compose guest's vkey). Own
+        // output file (`zk_verifier_composition_deploy.json`), same reasoning as above.
+        {
+          name: 'Composition ZK Verifier',
+          script: 'script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            gatewayAddress(),
+            requireProgramVkey('SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose'),
+            'composition',
+          ],
+        },
+        // The trust-compose creation seam: the isolated `trust-compose` factory the
+        // `/create/composition` workspace calls, plus the `CompositionSourceAdapterFactory` whose
+        // reviewed adapters are the only source identities the accumulator accepts. The factory
+        // constructor cross-checks the vkey below against the verifier's own `programVKey()`.
+        {
+          name: 'Trust Compose Factory',
+          script:
+            'script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory',
+          sig: 'run(string,bytes32,string,uint64,uint48,string)',
+          args: () => [
+            readJsonKey(
+              '.docker/zk_verifier_composition_deploy.json',
+              'zk_verifier'
+            ),
+            requireProgramVkey('SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+            // Seconds between proposePolicy and the earliest activatePolicy; same dev-short /
+            // prod-fail-closed policy as the weighted delay above.
+            process.env.COMPOSE_POLICY_ACTIVATION_DELAY || '300',
+            readJsonKeyIfFileExists<string>(
+              '.docker/proving_vault_deploy.json',
+              'proving_vault'
+            ) || '',
+          ],
+        },
+        // Governed wrapper for the weighted factory: one transaction bootstraps a Safe, creates
+        // the weighted instance through the base factory (admin = the Safe), installs the shared
+        // gov module via the deployer, and seals authority. Reads every singleton (Safe factory,
+        // authority / signer-sync / gov-module deployers) from the trust-graph governed factory's
+        // artifact so the chain keeps one address per helper.
+        {
+          name: 'Governed Weighted Factory',
+          script:
+            'script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey('.docker/weighted_factory_deploy.json', 'weighted_factory'),
+          ],
+        },
+        // Governed wrapper for the trust-compose factory; same shape and shared singletons.
+        {
+          name: 'Governed Compose Factory',
+          script:
+            'script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey(
+              '.docker/trust_compose_factory_deploy.json',
+              'trust_compose_factory'
+            ),
+          ],
+        },
         // The dev-seed networks, created THROUGH the factory — one catalog, and the local stack
         // exercises the same path a community will. Still writes
         // `config/network_deploy_dev_<i>.json` (a derived artifact now) because the Safe, timelock
@@ -454,22 +615,47 @@ export class DevEnv extends EnvBase {
             process.env.DEV_SEED_MAX_PER_ROOT_USD || '0',
           ],
         },
-        // Deploy the WHOLE contributions instance: ContributionResolver + three
-        // schemas, TrustAccumulatorMirror over network 0's trust accumulator (journal slot A),
-        // its own SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = dev scaffolding with a
-        // MockSP1Gateway), contrib MerkleSnapshot + MerkleFundDistributor, and the TestUSDC pool
-        // token. Must run AFTER Network so network_deploy_dev_0.json (with the trust resolver
-        // address) exists. paramsHash is computed on-chain from the contributions params file +
-        // the freshly registered schema UIDs, same pattern as DeployNetwork.
+        // The contributions ROUND factory (network-creation GOAL M6). One per chain: the shared
+        // contributions SP1JournalVerifier (CONTRIBUTIONS_PROGRAM_VKEY; unset = a nonzero dev
+        // placeholder, valid only against the mock gateway), the controller deployer, the factory
+        // (reusing the base factory's snapshot/distributor deployer singletons), and the
+        // append-only registrar grant. Replaces the per-instance DeployContributionsInstance
+        // script in this chain.
         {
-          name: 'Contributions',
+          name: 'Contributions Factory',
           script:
-            'script/DeployContributionsInstance.s.sol:DeployContributionsInstance',
-          sig: 'run(string,string,string,string,string,string,string)',
+            'script/DeployContributionsFactory.s.sol:DeployContributionsFactory',
+          sig: 'run(string,string,string,string,string,string,uint64)',
+          args: () => [
+            readJsonKey('.docker/eas_deploy.json', 'eas'),
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            // The same gateway the root/signer verifiers were pointed at. Without this the
+            // script falls back to the SP1_VERIFIER_GATEWAY env var — Succinct's real per-chain
+            // address, no code on a plain anvil — and the contributions verifier immutably
+            // reverts every submitProof while the trust instance (built over the mock) works.
+            gatewayAddress(),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            readJsonKey('.docker/factory_deploy.json', 'snapshot_deployer'),
+            readJsonKey('.docker/factory_deploy.json', 'distributor_deployer'),
+            process.env.FACTORY_EPOCH_FLOOR || '1',
+          ],
+        },
+        // The dev demo round, created THROUGH the factory by the parent network's authority (the
+        // deployer, which CreateDevInstances named network 0's admin — so this must run before
+        // DeployTimelocks hands that role off). The indexer discovers the round from the
+        // factory's creation event; nothing is written into the networks config any more.
+        {
+          name: 'Contributions Round',
+          script:
+            'script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound',
+          sig: 'run(string,string,string,string,string,string)',
           args: () => {
-            // Provision the contributions params file from its committed template if absent
-            // (same convention as `cp test/e2e/params.template.json params.json`). The deploy
-            // writes the registered schema UIDs back into it, so it is local state, not tracked.
+            // Provision the round-params file from its committed template if absent (same
+            // convention as `cp test/e2e/params.template.json params.json`). Only the tunable
+            // knobs are read; the factory derives the schema UIDs and never writes back.
             const paramsFile =
               process.env.CONTRIBUTIONS_PARAMS_JSON ||
               'params.contributions.json'
@@ -480,23 +666,23 @@ export class DevEnv extends EnvBase {
               )
             }
             return [
-              'dev',
-              readJsonKey('.docker/eas_deploy.json', 'eas'),
-              readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+              readJsonKey(
+                '.docker/contributions_factory_deploy.json',
+                'contributions_factory'
+              ),
               readJsonKey(
                 'config/network_deploy_dev_0.json',
-                'contracts.eas_indexer_resolver'
+                'contracts.merkle_snapshot'
               ),
               paramsFile,
-              // The same gateway the root/signer verifiers were pointed at. Without this the
-              // script falls back to the SP1_VERIFIER_GATEWAY env var — Succinct's real per-chain
-              // address, no code on a plain anvil — and the contributions verifier immutably
-              // reverts every submitProof while the trust instance (built over the mock) works.
-              gatewayAddress(),
-              readJsonKey(
-                '.docker/instance_registry_deploy.json',
-                'instance_registry'
-              ),
+              'Demo Co-op Contributions',
+              // The intended payout token (presentation only): the local TestUSDC when the
+              // vault step deployed one, else unset.
+              readJsonKeyIfFileExists<string>(
+                '.docker/proving_vault_deploy.json',
+                'usdc'
+              ) || '',
+              'dev',
             ]
           },
         },
@@ -572,66 +758,11 @@ export class DevEnv extends EnvBase {
         // Replace the networks config file with the template.
         fs.copyFileSync(networksConfigTemplateFile, this.networksConfigFile)
         this.updateNetworksConfigWithDeployments('dev')
-        this.updateContributionsNetworkConfig()
+        // Contributions rounds no longer live in the networks config: the indexer catalogs them
+        // from ContributionsFactory's creation event and the frontend reads its
+        // /contributions/instances route.
       },
     })
-  }
-
-  /**
-   * Fill the `program: "contributions"` template entry in the networks config with the
-   * contracts + schemas from the contributions instance deploy
-   * (`script/DeployContributionsInstance.s.sol`). The entry then flows into
-   * `.docker/deployment_summary.json` via `generateDeploymentSummary`, which is where the
-   * indexer + frontend aggregate it from.
-   */
-  updateContributionsNetworkConfig = (): void => {
-    const deploy = readJsonIfFileExists<ContributionsInstanceDeploy>(
-      '.docker/contributions_instance_dev_deploy.json'
-    )
-    if (!deploy) {
-      return
-    }
-
-    const networks = readJson<(Network & { program?: string })[]>(
-      this.networksConfigFile
-    )
-    const network = networks.find((n) => n.program === 'contributions')
-    if (!network) {
-      throw new Error(
-        `No program: "contributions" entry in ${this.networksConfigFile} (template) to fill from the contributions deploy.`
-      )
-    }
-
-    network.id = deploy.instance_id
-    network.contracts = {
-      merkleSnapshot: deploy.contracts.merkle_snapshot,
-      contributionResolver: deploy.contracts.contribution_resolver,
-      trustAccumulatorMirror: deploy.contracts.trust_accumulator_mirror,
-      trustAccumulator: deploy.contracts.trust_accumulator,
-      merkleFundDistributor: deploy.contracts.fund_distributor,
-      zkVerifier: deploy.contracts.zk_verifier,
-      poolToken: deploy.contracts.pool_token,
-      paramsController: deploy.contracts.params_controller,
-    } as unknown as Network['contracts']
-    network.schemas = [
-      deploy.schemas.claim,
-      deploy.schemas.response,
-      deploy.schemas.valuation,
-    ].map((schema) => ({
-      ...schema,
-      fields: schema.schema.split(',').map((field) => {
-        const [type, name] = field.split(' ')
-        return {
-          name,
-          type,
-        }
-      }),
-    }))
-
-    fs.writeFileSync(
-      this.networksConfigFile,
-      JSON.stringify(networks, null, 2) + '\n'
-    )
   }
 
   async uploadToIpfs(file: string, apiKey?: string): Promise<string> {

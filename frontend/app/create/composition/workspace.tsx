@@ -11,11 +11,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   type Address,
   type Hex,
-  decodeEventLog,
   getAddress,
   isAddress,
   isHex,
   keccak256,
+  parseEther,
+  parseEventLogs,
   zeroAddress,
 } from 'viem'
 import {
@@ -28,14 +29,20 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
+import { Switch } from '@/components/Switch'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
+import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import {
   CompositionApiUnavailableError,
   type CompositionCandidate,
   type CompositionInstance,
   type CompositionPolicy,
+  type SourceEligibility,
+  classifySourceEligibility,
   fetchCompositionCandidates,
+  fetchCompositionInstances,
   fetchCompositionOverview,
   fetchCompositionSource,
   requireCompatibleCandidate,
@@ -44,11 +51,13 @@ import {
   compositionAdapterPayload,
   compositionCreateArgs,
   compositionCreatePayload,
+  compositionGovernedCreatePayload,
   compositionMetadataDigest,
   compositionProposalPayload,
   compositionSourceAdapterFactoryAbi,
   compositionSourceSnapshotAbi,
   compositionVaultAbi,
+  governedTrustComposeFactoryAbi,
   trustComposeFactoryAbi,
   trustComposeParamsControllerAbi,
 } from '@/lib/composition/contracts'
@@ -72,13 +81,25 @@ import {
 } from '@/lib/composition/preflight'
 import { anchorCompositionPreview } from '@/lib/composition/workflow'
 import { APIS, TRUST_COMPOSE_CONFIG } from '@/lib/config'
+import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
+import {
+  DEFAULT_MAX_PER_ROOT_USD,
+  type InitialProvingPolicy,
+  initialPolicyForCreation,
+  initialPolicyProblem,
+} from '@/lib/proving-prepay'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
+
+import { describeBlocks } from '../model'
 
 type Mode = 'create' | 'rotate'
 
 const factory = (TRUST_COMPOSE_CONFIG?.factory || '') as Address
 const factoryAvailable = isAddress(factory, { strict: false })
+const governedFactory = (TRUST_COMPOSE_CONFIG?.governedFactory ||
+  '') as Address
+const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
   const bytes = new Uint8Array(32)
@@ -105,6 +126,12 @@ export const CompositionWorkspace = () => {
   const [mode, setMode] = useState<Mode>('create')
   const [catalog, setCatalog] = useState<CompositionCandidate[]>([])
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([])
+  // Keyed by lowercase snapshot address. Read from the chain, not the indexer: eligibility is an
+  // on-chain fact (provenanceEnabled + state count) and the picker must say up front why a
+  // candidate is not selectable instead of erroring after a click.
+  const [eligibility, setEligibility] = useState<
+    Record<string, SourceEligibility>
+  >({})
   const [apiUnavailable, setApiUnavailable] = useState(false)
   const [sources, setSources] = useState<CompositionSource[]>([])
   const [loadingSource, setLoadingSource] = useState<Hex | null>(null)
@@ -113,9 +140,19 @@ export const CompositionWorkspace = () => {
   const [outputPool, setOutputPool] = useState('1000000000000000000000000')
   const [epochLength, setEpochLength] = useState('0')
   const [salt] = useState<Hex>(randomWord)
+  // Creation-time features (GOAL M4/M5). The fund and governance are structural: they can only
+  // be chosen here, so both are explicit switches rather than hidden defaults.
+  const [withFund, setWithFund] = useState(false)
+  const [fundToken, setFundToken] = useState<'eth' | 'other'>('eth')
+  const [fundTokenAddress, setFundTokenAddress] = useState('')
+  const [withGovernance, setWithGovernance] = useState(false)
+  const [prepayEth, setPrepayEth] = useState('')
+  const [maxPerRootUsd, setMaxPerRootUsd] = useState(DEFAULT_MAX_PER_ROOT_USD)
   const [instanceId, setInstanceId] = useState('')
   const [instance, setInstance] = useState<CompositionInstance | null>(null)
   const [policies, setPolicies] = useState<CompositionPolicy[]>([])
+  const [rotateChoices, setRotateChoices] = useState<CompositionInstance[]>([])
+  const [rotateChoicesLoading, setRotateChoicesLoading] = useState(false)
   const [preview, setPreview] = useState<CompositionPreview | null>(null)
   const [previewConfig, setPreviewConfig] = useState<CompositionConfig | null>(
     null
@@ -132,6 +169,7 @@ export const CompositionWorkspace = () => {
   const [success, setSuccess] = useState<{
     message: string
     instanceId?: Hex
+    safe?: Hex
   } | null>(null)
 
   const { data: sourceAdapterFactory } = useReadContract({
@@ -152,6 +190,20 @@ export const CompositionWorkspace = () => {
     functionName: 'EPOCH_FLOOR',
     query: { enabled: factoryAvailable },
   })
+  // The timelock the base factory installs on every policy rotation, for the compounded-delay
+  // copy in the governance section: under governance a rotation waits through voting, execution,
+  // AND this.
+  const { data: policyActivationDelay } = useReadContract({
+    address: factoryAvailable ? factory : zeroAddress,
+    abi: trustComposeFactoryAbi,
+    functionName: 'POLICY_ACTIVATION_DELAY',
+    query: { enabled: factoryAvailable },
+  })
+  // The wrapper's live governance profile, checked the way the main wizard's review screen checks
+  // it: creation with governance is disabled unless the sealed-authority profile reads back sound.
+  const authority = useAuthorityProfile(
+    governedAvailable ? governedFactory : undefined
+  )
   const vaultAddress = vault as Address | undefined
   const vaultAvailable = !!vaultAddress && vaultAddress !== zeroAddress
   const { data: conservativeFee } = useReadContract({
@@ -217,6 +269,63 @@ export const CompositionWorkspace = () => {
   useEffect(() => {
     void loadCatalog()
   }, [])
+
+  // A read failure degrades to 'unknown' (candidate stays clickable; the selection path still
+  // verifies) so an RPC hiccup never blanks the whole picker.
+  useEffect(() => {
+    if (!publicClient || catalog.length === 0) return
+    let cancelled = false
+    void (async () => {
+      const entries = await Promise.all(
+        catalog.map(async (candidate): Promise<[string, SourceEligibility]> => {
+          try {
+            const [provenanceOn, stateCount] = await Promise.all([
+              publicClient.readContract({
+                address: candidate.snapshot,
+                abi: compositionSourceSnapshotAbi,
+                functionName: 'provenanceEnabled',
+              }),
+              publicClient.readContract({
+                address: candidate.snapshot,
+                abi: compositionSourceSnapshotAbi,
+                functionName: 'getStateCount',
+              }),
+            ])
+            return [
+              candidate.snapshot.toLowerCase(),
+              classifySourceEligibility(provenanceOn, stateCount),
+            ]
+          } catch {
+            return [
+              candidate.snapshot.toLowerCase(),
+              { status: 'unknown', detail: null },
+            ]
+          }
+        })
+      )
+      if (!cancelled) setEligibility(Object.fromEntries(entries))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [catalog, publicClient])
+
+  // Rotate mode picks the instance from the indexer's composition list instead of asking for a
+  // bytes32 nobody has memorized. Unavailability degrades to the paste field, not an error.
+  useEffect(() => {
+    if (mode !== 'rotate') return
+    const controller = new AbortController()
+    setRotateChoicesLoading(true)
+    fetchCompositionInstances(APIS.ponder, controller.signal)
+      .then(setRotateChoices)
+      .catch(() => {
+        if (!controller.signal.aborted) setRotateChoices([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRotateChoicesLoading(false)
+      })
+    return () => controller.abort()
+  }, [mode])
 
   const setSelected = (next: CompositionSource[], reason?: string) => {
     setSources(next)
@@ -367,22 +476,14 @@ export const CompositionWorkspace = () => {
         },
         successMessage: `Authenticated adapter deployed for ${source.name}.`,
       })
-      let adapter: Address | null = null
-      for (const log of receipt.logs) {
-        if (log.address.toLowerCase() !== sourceAdapterFactory.toLowerCase())
-          continue
-        try {
-          const event = decodeEventLog({
-            abi: compositionSourceAdapterFactoryAbi,
-            data: log.data,
-            topics: log.topics,
-          })
-          if (event.eventName === 'SourceAdapterCreated')
-            adapter = event.args.adapter
-        } catch {
-          // Ignore other factory logs in the same receipt.
-        }
-      }
+      // Topic-keyed like every other receipt scan here (the adapter factory is called directly
+      // today, but event-shape matching survives any future wrapping).
+      const [adapterEvent] = parseEventLogs({
+        abi: compositionSourceAdapterFactoryAbi,
+        eventName: 'SourceAdapterCreated',
+        logs: receipt.logs,
+      })
+      const adapter: Address | null = adapterEvent?.args.adapter ?? null
       if (!adapter)
         throw new Error('Adapter receipt did not contain SourceAdapterCreated.')
       setSources((current) =>
@@ -411,7 +512,9 @@ export const CompositionWorkspace = () => {
   const loadRotation = async () => {
     setProblem(null)
     if (!isHex(instanceId) || instanceId.length !== 66) {
-      return setProblem('Enter a 32-byte composition instance id.')
+      return setProblem(
+        'Choose a composition from the list, or paste its 32-byte instance ID.'
+      )
     }
     setBusy(true)
     try {
@@ -428,34 +531,109 @@ export const CompositionWorkspace = () => {
     }
   }
 
+  const fundIssue: string | null =
+    withFund && fundToken === 'other'
+      ? !fundTokenAddress.trim()
+        ? 'Paste the address of the token you plan to pay out.'
+        : !isAddress(fundTokenAddress.trim(), { strict: false })
+          ? "That doesn't look like a token address."
+          : null
+      : null
+
+  // The optional refresh prepayment (governed creations only: it rides as transaction value and
+  // the wrapper installs the paid policy on the new composition's proving tank atomically).
+  const prepayIssue: string | null = (() => {
+    if (!withGovernance) return null
+    const trimmed = prepayEth.trim()
+    if (!trimmed) return null
+    if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
+      return 'Enter an amount like 0.5, or leave it blank.'
+    }
+    if (Number(trimmed) === 0) {
+      return 'Leave it blank rather than entering zero.'
+    }
+    return initialPolicyProblem(prepayEth, maxPerRootUsd)
+  })()
+  const prepayWei =
+    withGovernance && prepayEth.trim() && !prepayIssue
+      ? parseEther(prepayEth.trim())
+      : 0n
+  const effectiveEpoch = useMemo(() => {
+    const requested = BigInt(epochLength || '0')
+    const floor = (epochFloor as bigint | undefined) ?? 0n
+    return requested < floor ? floor : requested
+  }, [epochFloor, epochLength])
+  const initialPolicy = useMemo<InitialProvingPolicy | null>(() => {
+    try {
+      return initialPolicyForCreation(prepayWei, effectiveEpoch, maxPerRootUsd)
+    } catch {
+      return null
+    }
+  }, [effectiveEpoch, maxPerRootUsd, prepayWei])
+
+  const governanceIssue: string | null = !withGovernance
+    ? null
+    : !governedAvailable
+      ? 'Create with governance is not available on this deployment.'
+      : !authority.loading && !authority.valid
+        ? 'The configured governed factory does not expose the sealed guard, member-delay, and 14-day recovery profile this app requires, so creating with governance is disabled here.'
+        : null
+
   const createFields = {
     name,
     metadataURI,
-    admin: address ? getAddress(address) : zeroAddress,
+    // Under governance the wrapper replaces the admin with the new DAO Safe; keeping zero here
+    // makes it impossible to mistake the connected wallet for the lasting authority.
+    admin: withGovernance
+      ? zeroAddress
+      : address
+        ? getAddress(address)
+        : zeroAddress,
     epochLength: BigInt(epochLength || '0'),
-    withDistributor: false,
-    distributorToken: zeroAddress,
+    withDistributor: withFund,
+    distributorToken:
+      withFund &&
+      fundToken === 'other' &&
+      isAddress(fundTokenAddress.trim(), { strict: false })
+        ? (fundTokenAddress.trim().toLowerCase() as Address)
+        : zeroAddress,
     salt,
   }
 
   const payload = useMemo(() => {
     if (!preview || !previewConfig) return null
     try {
-      return mode === 'create'
-        ? compositionCreatePayload(createFields, previewConfig, preview)
-        : compositionProposalPayload(previewConfig, preview)
+      if (mode !== 'create') {
+        return compositionProposalPayload(previewConfig, preview)
+      }
+      if (withGovernance) {
+        return initialPolicy
+          ? compositionGovernedCreatePayload(
+              createFields,
+              previewConfig,
+              preview,
+              initialPolicy
+            )
+          : null
+      }
+      return compositionCreatePayload(createFields, previewConfig, preview)
     } catch {
       return null
     }
   }, [
     address,
     epochLength,
+    fundToken,
+    fundTokenAddress,
+    initialPolicy,
     metadataURI,
     mode,
     name,
     preview,
     previewConfig,
     salt,
+    withFund,
+    withGovernance,
   ])
 
   const preflight = useMemo(
@@ -549,13 +727,32 @@ export const CompositionWorkspace = () => {
       if (mode === 'create') {
         if (!factoryAvailable)
           throw new Error('No trust-compose factory is configured.')
-        await publicClient.simulateContract({
-          account: address,
-          address: factory,
-          abi: trustComposeFactoryAbi,
-          functionName: 'createInstance',
-          args: [compositionCreateArgs(createFields, previewConfig, preview)],
-        })
+        if (fundIssue || prepayIssue || governanceIssue)
+          throw new Error(fundIssue ?? prepayIssue ?? governanceIssue ?? '')
+        if (withGovernance) {
+          if (!initialPolicy)
+            throw new Error('Fix the refresh prepayment fields first.')
+          await publicClient.simulateContract({
+            account: address,
+            address: governedFactory,
+            abi: governedTrustComposeFactoryAbi,
+            functionName: 'createGovernedInstance',
+            args: [
+              compositionCreateArgs(createFields, previewConfig, preview),
+              initialPolicy,
+              DISABLED_SIGNER_SYNC,
+            ],
+            ...(prepayWei > 0n ? { value: prepayWei } : {}),
+          })
+        } else {
+          await publicClient.simulateContract({
+            account: address,
+            address: factory,
+            abi: trustComposeFactoryAbi,
+            functionName: 'createInstance',
+            args: [compositionCreateArgs(createFields, previewConfig, preview)],
+          })
+        }
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
         if (pending)
@@ -597,34 +794,50 @@ export const CompositionWorkspace = () => {
       }
       if (mode === 'create') {
         const [receipt] = await txToast({
-          tx: {
-            address: factory,
-            abi: trustComposeFactoryAbi,
-            functionName: 'createInstance',
-            args: [compositionCreateArgs(createFields, previewConfig, preview)],
-          },
-          successMessage: 'Governed composition instance created.',
+          tx: withGovernance
+            ? ({
+                address: governedFactory,
+                abi: governedTrustComposeFactoryAbi,
+                functionName: 'createGovernedInstance',
+                args: [
+                  compositionCreateArgs(createFields, previewConfig, preview),
+                  initialPolicy!,
+                  DISABLED_SIGNER_SYNC,
+                ],
+                ...(prepayWei > 0n ? { value: prepayWei } : {}),
+              } as any)
+            : {
+                address: factory,
+                abi: trustComposeFactoryAbi,
+                functionName: 'createInstance',
+                args: [
+                  compositionCreateArgs(createFields, previewConfig, preview),
+                ],
+              },
+          successMessage: withGovernance
+            ? 'Composition created; its Safe holds it from the first block.'
+            : 'Governed composition instance created.',
         })
-        let created: Hex | undefined
-        for (const log of receipt.logs) {
-          if (log.address.toLowerCase() !== factory.toLowerCase()) continue
-          try {
-            const event = decodeEventLog({
-              abi: trustComposeFactoryAbi,
-              data: log.data,
-              topics: log.topics,
-            })
-            if (event.eventName === 'TrustComposeInstanceCreated')
-              created = event.args.instanceId
-          } catch {
-            // Ignore other factory logs.
-          }
-        }
+        // One receipt-scanning path for both creation lanes, keyed by event topic rather than by
+        // emitting address: under the governed wrapper the BASE factory emits the creation event
+        // and the new Safe is the creator, so address filtering would find nothing.
+        const [createdEvent] = parseEventLogs({
+          abi: trustComposeFactoryAbi,
+          eventName: 'TrustComposeInstanceCreated',
+          logs: receipt.logs,
+        })
+        const [governedEvent] = parseEventLogs({
+          abi: governedTrustComposeFactoryAbi,
+          eventName: 'GovernedInstanceCreated',
+          logs: receipt.logs,
+        })
+        const created = createdEvent?.args.instanceId
         setSuccess({
           message: created
             ? 'Creation confirmed. The durable provenance route will populate after indexing.'
             : `Creation confirmed in ${receipt.transactionHash}.`,
           instanceId: created,
+          safe: governedEvent?.args.safe,
         })
         if (created) {
           localStorage.setItem(
@@ -795,23 +1008,80 @@ export const CompositionWorkspace = () => {
               Open composition provenance
             </Link>
           )}
+          {success.safe && (
+            <div className="mt-2 space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Its DAO Safe, the shared account that owns the composition and
+                its fund from the first block:
+              </p>
+              <CopyableText text={success.safe} alwaysShowCopyIcon />
+            </div>
+          )}
         </Card>
       )}
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-3">
-          <h2 className="font-medium">Existing policy controller</h2>
-          <div className="flex gap-2">
-            <Input
-              value={instanceId}
+          <h2 className="font-medium">Composition to update</h2>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+              id="composition-instance"
+              aria-describedby="composition-instance-help"
+              value={
+                rotateChoices.some((choice) => choice.id === instanceId)
+                  ? instanceId
+                  : ''
+              }
               onChange={(event) => setInstanceId(event.target.value)}
-              placeholder="0x… composition instance id"
-              aria-label="Composition instance id"
-            />
-            <Button type="button" onClick={loadRotation} disabled={busy}>
+              disabled={rotateChoicesLoading}
+              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
+            >
+              <option value="">
+                {rotateChoicesLoading
+                  ? 'Loading compositions…'
+                  : rotateChoices.length
+                    ? 'Choose a composition…'
+                    : 'No compositions available'}
+              </option>
+              {rotateChoices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.name} · {short(choice.id)}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              onClick={loadRotation}
+              disabled={busy || !instanceId}
+            >
               Load history
             </Button>
           </div>
+          <Input
+            value={instanceId}
+            onChange={(event) => setInstanceId(event.target.value.trim())}
+            placeholder="0x… or paste an instance ID instead"
+            aria-label="Or paste a composition instance ID"
+            aria-describedby="composition-instance-help"
+            className="font-mono text-xs"
+          />
+          <p
+            id="composition-instance-help"
+            className="text-xs text-muted-foreground"
+          >
+            These are the compositions the indexer knows. Each one also shows
+            this ID on its provenance page under{' '}
+            <Link href="/compositions" className="underline underline-offset-4">
+              /compositions
+            </Link>
+            .
+          </p>
+          {instanceId && (
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-muted-foreground">Instance ID:</span>
+              <CopyableText text={instanceId} alwaysShowCopyIcon />
+            </div>
+          )}
           {instance && (
             <p className="text-sm">
               {instance.name} · controller {short(instance.controller ?? '')} ·
@@ -870,6 +1140,12 @@ export const CompositionWorkspace = () => {
               sources.length > 0 &&
               (candidate.chainId !== sources[0]!.chainId.toString() ||
                 candidate.programId !== sources[0]!.programId)
+            const sourceEligibility =
+              eligibility[candidate.snapshot.toLowerCase()]
+            const ineligible =
+              sourceEligibility !== undefined &&
+              sourceEligibility.status !== 'ready' &&
+              sourceEligibility.status !== 'unknown'
             return (
               <Card
                 key={candidate.instanceId}
@@ -890,7 +1166,8 @@ export const CompositionWorkspace = () => {
                     variant={selected ? 'default' : 'outline'}
                     disabled={
                       !!loadingSource ||
-                      (!selected && (incompatible || sources.length >= 8))
+                      (!selected &&
+                        (incompatible || ineligible || sources.length >= 8))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -906,6 +1183,11 @@ export const CompositionWorkspace = () => {
                 <p className="break-all font-mono text-xs">
                   {candidate.snapshot}
                 </p>
+                {!selected && sourceEligibility?.detail && (
+                  <p className="text-xs text-muted-foreground">
+                    {sourceEligibility.detail}
+                  </p>
+                )}
               </Card>
             )
           })}
@@ -1054,6 +1336,263 @@ export const CompositionWorkspace = () => {
               />
             </label>
           )}
+
+          {mode === 'create' && (
+            <Card type="outline" size="md" className="space-y-4">
+              <div className="flex flex-row items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Add a shared fund</p>
+                  <p className="text-xs text-muted-foreground max-w-xl">
+                    A shared fund lets your community put money in one place
+                    and split it by the composed scores. Anyone can top it up,
+                    and each member claims their own share. Skip this if you
+                    only want the scoreboard.
+                  </p>
+                </div>
+                <Switch
+                  size="md"
+                  enabled={withFund}
+                  onClick={() => {
+                    setWithFund(!withFund)
+                    setSimulatedPayloadHash(null)
+                  }}
+                />
+              </div>
+              {withFund && (
+                <div className="space-y-3 border-t border-border pt-3">
+                  <p className="text-sm">What do you expect to pay out?</p>
+                  <div className="flex flex-row flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={fundToken === 'eth' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setFundToken('eth')
+                        setSimulatedPayloadHash(null)
+                      }}
+                    >
+                      ETH
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={fundToken === 'other' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setFundToken('other')
+                        setSimulatedPayloadHash(null)
+                      }}
+                    >
+                      Another token
+                    </Button>
+                  </div>
+                  {fundToken === 'other' && (
+                    <Input
+                      aria-label="Token address"
+                      placeholder="0x..."
+                      className="max-w-md font-mono text-xs"
+                      value={fundTokenAddress}
+                      onChange={(event) => {
+                        setFundTokenAddress(event.target.value)
+                        setSimulatedPayloadHash(null)
+                      }}
+                    />
+                  )}
+                  {fundIssue && (
+                    <p className="text-xs text-destructive" role="alert">
+                      {fundIssue}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This only decides what the payout screen shows first. The
+                    fund holds anything and can pay out something else later.{' '}
+                    {withGovernance
+                      ? 'The new DAO Safe owns the fund, so payouts happen through member governance.'
+                      : 'Your wallet owns the fund: money only moves when you send a payout, and each member claims their share themselves.'}
+                  </p>
+                </div>
+              )}
+              {!withFund && (
+                <p className="text-xs text-muted-foreground">
+                  Skipping this closes no doors: the composition&apos;s
+                  authority can attach a fund later with the factory&apos;s
+                  attachDistributor call, though this workspace does not offer
+                  that button yet.
+                </p>
+              )}
+            </Card>
+          )}
+
+          {mode === 'create' && (
+            <Card type="outline" size="md" className="space-y-4">
+              <div className="flex flex-row items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Create with governance</p>
+                  <p className="text-xs text-muted-foreground max-w-xl">
+                    Hand the new composition to a DAO Safe instead of your
+                    wallet. A Safe is a shared onchain account; one is created
+                    for you in the same transaction and owns the composition
+                    from the first block. Your wallet becomes the Safe&apos;s
+                    only recorded owner, but a permanently sealed guard
+                    disables owner-signed transactions: members direct the
+                    Safe through delayed voting, and your wallet keeps only a
+                    slow, visible recovery role.
+                  </p>
+                </div>
+                <Switch
+                  size="md"
+                  enabled={withGovernance}
+                  readOnly={!governedAvailable}
+                  onClick={() => {
+                    if (!governedAvailable) return
+                    setWithGovernance(!withGovernance)
+                    setPrepayEth('')
+                    setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+                    setSimulatedPayloadHash(null)
+                  }}
+                />
+              </div>
+              {!governedAvailable && (
+                <p className="text-xs text-muted-foreground">
+                  Create with governance is not available on this deployment,
+                  so a composition created here is owned by your wallet.
+                </p>
+              )}
+              {withGovernance && (
+                <div className="space-y-3 border-t border-border pt-3 text-sm">
+                  {authority.valid ? (
+                    <>
+                      <p>
+                        Member voting, read live from the governed factory:{' '}
+                        {describeBlocks(authority.memberVotingDelay ?? 0n)}{' '}
+                        before voting starts, then{' '}
+                        {describeBlocks(authority.memberVotingPeriod ?? 0n)} to
+                        vote and{' '}
+                        {describeBlocks(authority.memberExecutionDelay ?? 0n)}{' '}
+                        before the Safe executes a passed proposal.
+                      </p>
+                      <p>
+                        Recovery: your wallet may publish one exact Safe action
+                        but cannot execute it early. Anyone may execute it
+                        after {describeSeconds(authority.recoveryDelay)}, and
+                        the member-governed Safe can cancel it or replace the
+                        proposer.
+                      </p>
+                      <p>
+                        Policy rotations take longer under governance: a
+                        proposed rotation must first pass a member vote (the
+                        delays above), and the composition&apos;s own
+                        activation timelock of{' '}
+                        {describeSeconds(
+                          policyActivationDelay as number | undefined
+                        )}{' '}
+                        runs after that before the new policy applies.
+                      </p>
+                    </>
+                  ) : authority.loading ? (
+                    <p className="text-muted-foreground">
+                      Reading the live voting profile…
+                    </p>
+                  ) : (
+                    <p className="text-destructive" role="alert">
+                      {governanceIssue}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Score-selected Safe signers are not offered for
+                    compositions: the only signer verifier today proves the
+                    standard trust-graph pipeline.
+                  </p>
+
+                  <div className="space-y-3 border-t border-border pt-3">
+                    <p className="text-sm font-medium">
+                      Pay for score refreshes up front?
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Composed scores only refresh if somebody does the work,
+                      and that costs gas and proving time. Put ETH in during
+                      creation to fund the first refreshes, or leave it blank.
+                      The ETH lands in the new composition&apos;s proving tank,
+                      and the DAO Safe controls it afterwards.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        className="w-32"
+                        inputMode="decimal"
+                        placeholder="0.5"
+                        aria-label="Refresh prepayment in ETH"
+                        value={prepayEth}
+                        onChange={(event) => {
+                          setPrepayEth(event.target.value)
+                          setSimulatedPayloadHash(null)
+                        }}
+                      />
+                      <span className="text-sm opacity-60">
+                        ETH (optional)
+                      </span>
+                    </div>
+                    {prepayEth.trim() && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <label
+                            className="text-xs text-muted-foreground"
+                            htmlFor="composition-max-refresh"
+                          >
+                            Maximum per refresh
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm opacity-60">$</span>
+                            <Input
+                              id="composition-max-refresh"
+                              className="w-32"
+                              inputMode="decimal"
+                              value={maxPerRootUsd}
+                              onChange={(event) => {
+                                setMaxPerRootUsd(event.target.value)
+                                setSimulatedPayloadHash(null)
+                              }}
+                            />
+                            <span className="text-sm opacity-60">USD</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Covers the proving fee and gas together; creation
+                            is capped at $10,000.
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            Paid no more often than
+                          </div>
+                          <div className="text-sm">
+                            every {effectiveEpoch.toLocaleString()} blocks, the
+                            epoch length
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            This starts equal to the epoch schedule. The DAO
+                            Safe can change it later.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {prepayIssue && (
+                      <p className="text-xs text-destructive" role="alert">
+                        {prepayIssue}
+                      </p>
+                    )}
+                    {prepayEth.trim() && !prepayIssue && (
+                      <p className="text-xs text-muted-foreground">
+                        Before anything is sent, the simulation checks that
+                        this chain has priced the trust-compose proving band
+                        (flat band 3) and that your cap covers that fee.
+                        Creation is atomic: the ETH and the paid policy either
+                        both land or neither does.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
           <Button
             type="button"
             onClick={buildPreview}
@@ -1300,7 +1839,15 @@ export const CompositionWorkspace = () => {
                 type="button"
                 variant="outline"
                 onClick={simulate}
-                disabled={busy || !payload || preflight.blocked}
+                disabled={
+                  busy ||
+                  !payload ||
+                  preflight.blocked ||
+                  !!fundIssue ||
+                  !!prepayIssue ||
+                  !!governanceIssue ||
+                  (mode === 'create' && withGovernance && authority.loading)
+                }
               >
                 Simulate exact payload
               </Button>
@@ -1310,7 +1857,9 @@ export const CompositionWorkspace = () => {
                 disabled={busy || !simulatedPayloadHash || !payload}
               >
                 {mode === 'create'
-                  ? 'Create governed composition'
+                  ? withGovernance
+                    ? 'Create the composition with its Safe'
+                    : 'Create governed composition'
                   : 'Propose timelocked rotation'}
               </Button>
             </div>

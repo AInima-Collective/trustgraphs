@@ -153,16 +153,33 @@ ponder.on(
       event.args.newOwner.toLowerCase() !==
         OPTIMISM_ERC8004_REPUTATION_REGISTRY.expectedOwner.toLowerCase()
     ) {
-      throw new Error(
+      // M0 hazard sweep: scream, do not wedge. An owner change is a valid chain event even when it
+      // is alarming; the Identity Registry handler (src/erc8004.ts) already treats the same drift
+      // as a loud log, and a throw here would crash-loop the indexer forever on one log.
+      console.error(
         `erc8004 reputation: Optimism owner changed to ${event.args.newOwner} at block ${event.block.number}`
       )
     }
-    await context.db.update(erc8004ReputationRegistry, { id: registryId }).set({
-      owner: event.args.newOwner,
-      observedBlock: event.block.number,
-      observedTimestamp: event.block.timestamp,
-      observedTxHash: event.transaction.hash,
+    // M0 hazard sweep: the registry row is born from `Upgraded`; if that predates the start block
+    // the row is not reconstructible here (implementation/version are notNull and not in this
+    // event) — log and skip the row update, but keep the append-only receipt.
+    const registry = await context.db.find(erc8004ReputationRegistry, {
+      id: registryId,
     })
+    if (registry) {
+      await context.db
+        .update(erc8004ReputationRegistry, { id: registryId })
+        .set({
+          owner: event.args.newOwner,
+          observedBlock: event.block.number,
+          observedTimestamp: event.block.timestamp,
+          observedTxHash: event.transaction.hash,
+        })
+    } else {
+      console.warn(
+        `erc8004 reputation: ownership transfer for unobserved registry ${registryId} (Upgraded predates the start block?) — recording the event only`
+      )
+    }
     await context.db.insert(erc8004ReputationRegistryEvent).values({
       id: event.id,
       registryId,
@@ -284,9 +301,12 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      throw new Error(
-        `erc8004 reputation: revocation references unknown ${feedbackId}`
+      // M0 hazard sweep: feedback that predates the start block (or a foreign registry window) is
+      // out of our universe — log and skip instead of wedging the indexer on its revocation.
+      console.warn(
+        `erc8004 reputation: revocation references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
       )
+      return
     }
     await context.db.update(erc8004Feedback, { id: feedbackId }).set({
       revoked: true,
@@ -321,9 +341,11 @@ ponder.on(
     const position = eventPosition(event)
     const feedback = await context.db.find(erc8004Feedback, { id: feedbackId })
     if (!feedback) {
-      throw new Error(
-        `erc8004 reputation: response references unknown ${feedbackId}`
+      // M0 hazard sweep: same out-of-universe rule as `FeedbackRevoked` above — log and skip.
+      console.warn(
+        `erc8004 reputation: response references unobserved ${feedbackId} (feedback predates the start block?) — skipping`
       )
+      return
     }
     await context.db.update(erc8004Feedback, { id: feedbackId }).set({
       responseCount: feedback.responseCount + 1,

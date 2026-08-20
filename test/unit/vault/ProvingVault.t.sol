@@ -618,6 +618,22 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(nostr, 0, 129), 3, "selected-head count never selects a cheap band");
     }
 
+    /// The weighted program's on-chain counters ARE its work (same accumulator-committed edge log
+    /// as trust-graph), so it is sized, not flat. Before this arm existed the program answered 0
+    /// (unpriced) and every governed-weighted prepay path was dead on arrival.
+    function test_WeightedTrustGraphIsSizedLikeTrustGraph() public view {
+        bytes32 weighted = keccak256("trust-graph-weighted");
+        assertEq(vault.bandOf(weighted, 0, 0), 1, "a newborn weighted instance is the cheapest sized band");
+        assertEq(vault.bandOf(weighted, 1_000, 0), 1);
+        assertEq(vault.bandOf(weighted, 1_001, 0), 2);
+        assertEq(vault.bandOf(weighted, 20_000, 0), 2);
+        assertEq(vault.bandOf(weighted, 20_001, 0), 3);
+        assertEq(vault.bandOf(weighted, 10_000_000, 0), 0, "oversized is unpriced, never cheap");
+        assertEq(
+            vault.bandOf(weighted, 900, 400_000), 0, "both lanes count toward the band, exactly like trust-graph"
+        );
+    }
+
     /// Size is the SUM of both lanes, for every program, because that is what the operator's
     /// cycle estimate sums. An earlier version banded trust-graph on `leafCount` alone: a
     /// two-lane instance with 900 edges and 400k anchors then priced at the CHEAPEST band for a

@@ -32,8 +32,10 @@ cargo run --manifest-path zk/operator/Cargo.toml -- republish \
 ## Indexer boundary
 
 Configure the factory with `TRUST_COMPOSE_FACTORY_ADDRESS_10` on Optimism or
-`TRUST_COMPOSE_FACTORY_ADDRESS_31337` locally. Ponder discovers each controller, accumulator, and
-snapshot from factory events. Policy manifests and adapter lists are recovered from their creation
+`TRUST_COMPOSE_FACTORY_ADDRESS_31337` locally; a generated
+`deployment_summary.trustComposeFactory.trust_compose_factory` (written by the
+`DeployTrustComposeFactory` pipeline step) is also accepted. Ponder discovers each controller,
+accumulator, and snapshot from factory events. Policy manifests and adapter lists are recovered from their creation
 or proposal transaction calldata; adapter identities and nonzero deployment-provenance digests are
 recorded as governance-admitted provenance.
 
@@ -47,9 +49,9 @@ A composition root is not served unless the indexer independently reproduces:
 - output canonical bytes, SHA-256, raw CID, root, and total; and
 - the snapshot's accepted checkpoint provenance (params, verifier, codehash, and program key).
 
-Any mismatch or unavailable blob stops ingestion before generic score rows become visible. The
-composition factory enables snapshot state provenance at creation so this accepted-state check is
-mandatory rather than inferred from a root event.
+Any mismatch or unavailable blob stops ingestion before generic score rows become visible. Every
+factory enables snapshot state provenance at creation so this accepted-state check is mandatory
+rather than inferred from a root event.
 
 ## Bulk APIs
 

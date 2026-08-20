@@ -565,6 +565,31 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'event',
+    name: 'DistributorAttached',
+    inputs: [
+      {
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'distributor',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
+      {
+        name: 'distributorToken',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'InstanceCreated',
     inputs: [
       {

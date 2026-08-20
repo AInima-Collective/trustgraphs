@@ -6,7 +6,11 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
 import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
-import {GovernedAuthorityDeployer, SignerSyncModuleDeployer} from "contracts/factory/InstanceDeployers.sol";
+import {
+    GovernedAuthorityDeployer,
+    MerkleGovModuleDeployer,
+    SignerSyncModuleDeployer
+} from "contracts/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
@@ -70,6 +74,7 @@ contract GovernedTrustgraphsFactory {
     address public immutable SAFE_SINGLETON;
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
     SignerSyncModuleDeployer public immutable SIGNER_SYNC_DEPLOYER;
+    MerkleGovModuleDeployer public immutable GOV_MODULE_DEPLOYER;
 
     mapping(bytes32 instanceId => Authority authority) private _authorities;
 
@@ -109,11 +114,13 @@ contract GovernedTrustgraphsFactory {
         GnosisSafeProxyFactory safeFactory_,
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
-        SignerSyncModuleDeployer signerSyncDeployer_
+        SignerSyncModuleDeployer signerSyncDeployer_,
+        MerkleGovModuleDeployer govModuleDeployer_
     ) {
         if (
             address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)
                 || address(authorityDeployer_) == address(0) || address(signerSyncDeployer_) == address(0)
+                || address(govModuleDeployer_) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -122,6 +129,7 @@ contract GovernedTrustgraphsFactory {
         SAFE_SINGLETON = safeSingleton_;
         AUTHORITY_DEPLOYER = authorityDeployer_;
         SIGNER_SYNC_DEPLOYER = signerSyncDeployer_;
+        GOV_MODULE_DEPLOYER = govModuleDeployer_;
     }
 
     function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
@@ -153,8 +161,12 @@ contract GovernedTrustgraphsFactory {
                 revert InitialCapTooHigh(policy.maxPerRootUsd, MAX_INITIAL_MAX_PER_ROOT_USD);
             }
             bytes32 program = FACTORY.PROGRAM();
-            uint256 initialFeeUsd = vault.feePerRootUsd(program, 1);
-            if (initialFeeUsd == 0) revert InitialFeeUnpriced(program, 1);
+            // Ask the vault which band a newborn (empty) instance of this program lands in
+            // rather than assuming band 1: flat-banded programs (trust-compose) start at band 3,
+            // and an unrecognised program answers 0 (unpriced) and must refuse the prepay path.
+            uint8 initialBand = vault.bandOf(program, 0, 0);
+            uint256 initialFeeUsd = initialBand == 0 ? 0 : vault.feePerRootUsd(program, initialBand);
+            if (initialFeeUsd == 0) revert InitialFeeUnpriced(program, initialBand);
             if (policy.maxPerRootUsd < initialFeeUsd) {
                 revert InitialCapBelowFee(policy.maxPerRootUsd, initialFeeUsd);
             }
@@ -194,7 +206,11 @@ contract GovernedTrustgraphsFactory {
             );
         }
 
-        MerkleGovModule module = new MerkleGovModule(safeAddress, safeAddress, safeAddress, snapshot);
+        // Deployed through the shared singleton (EIP-170) and constructed SILENTLY: the module's
+        // snapshot-binding announcement is published after this wrapper's discovery event below,
+        // so an indexer discovering the module from `GovernedInstanceCreated` never sees one of
+        // its logs before the event that teaches it the module exists.
+        MerkleGovModule module = GOV_MODULE_DEPLOYER.deploy(safeAddress, safeAddress, safeAddress, snapshot);
         merkleGovModule = address(module);
         if (
             module.votingDelay() != MEMBER_VOTING_DELAY || module.votingPeriod() != MEMBER_VOTING_PERIOD
@@ -263,6 +279,10 @@ contract GovernedTrustgraphsFactory {
             RECOVERY_DELAY,
             address(signerModule)
         );
+        // Emitted after the discovery events above so ordered indexers have already materialized
+        // the module's row when its snapshot-binding announcement arrives (the
+        // `publishInitialVersion()` discipline).
+        module.publishInitialSnapshotBinding();
     }
 
     function _createBootstrapSafe(address creator, string calldata name, bytes32 salt)

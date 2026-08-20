@@ -5,8 +5,12 @@ import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
+import { getContributionsCatalog } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
-import { contributionsRoundsFor } from '@/lib/network-nav'
+import {
+  contributionsRoundsFor,
+  sortRoundsNewestActiveFirst,
+} from '@/lib/network-nav'
 
 import { RewardsPage } from '../claims/component'
 
@@ -54,7 +58,11 @@ export default async function RewardsPageServer({
     notFound()
   }
 
-  const contributionRound = contributionsRoundsFor(network)[0]
+  // Rounds come from the runtime round catalog; the newest active one fronts the rewards view.
+  const { rounds } = await getContributionsCatalog(network.instanceId)
+  const contributionRound = sortRoundsNewestActiveFirst(
+    contributionsRoundsFor(network, rounds)
+  )[0]
   if (!network.contracts.merkleFundDistributor && !contributionRound) {
     notFound()
   }

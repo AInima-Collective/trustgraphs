@@ -116,9 +116,11 @@ const main = async () => {
       [2n, 'active'],
     ]
   )
-  assert.match(BINARY_REDEPLOYMENT_NOTICE, /new trust-graph-weighted instance/)
-  assert.match(BINARY_REDEPLOYMENT_NOTICE, /does not convert.*in place/)
-  assert.match(BINARY_REDEPLOYMENT_NOTICE, /preserve.*history/)
+  assert.match(BINARY_REDEPLOYMENT_NOTICE, /separate weighted network/)
+  assert.match(
+    BINARY_REDEPLOYMENT_NOTICE,
+    /old network and its history stay unchanged/
+  )
 
   console.log(
     'weighted create, pending rotation, activation, unavailable diagnosis, and binary prefill workflow: ok'
