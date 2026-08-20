@@ -2432,6 +2432,11 @@ export const governedTrustgraphsFactoryAbi = [
         internalType: 'contract SignerSyncModuleDeployer',
         type: 'address',
       },
+      {
+        name: 'govModuleDeployer_',
+        internalType: 'contract MerkleGovModuleDeployer',
+        type: 'address',
+      },
     ],
     stateMutability: 'nonpayable',
   },
@@ -2456,6 +2461,19 @@ export const governedTrustgraphsFactoryAbi = [
       {
         name: '',
         internalType: 'contract TrustgraphsFactory',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'GOV_MODULE_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract MerkleGovModuleDeployer',
         type: 'address',
       },
     ],
@@ -3742,6 +3760,13 @@ export const merkleGovModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'initialBindingPublished',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'ipfsHash',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
@@ -3878,6 +3903,13 @@ export const merkleGovModuleAbi = [
     ],
     name: 'proposeWithVote',
     outputs: [{ name: 'proposalId', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'publishInitialSnapshotBinding',
+    outputs: [],
     stateMutability: 'nonpayable',
   },
   {
@@ -8007,6 +8039,19 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'owner', internalType: 'address', type: 'address' },
+      { name: 'distributorToken', internalType: 'address', type: 'address' },
+    ],
+    name: 'attachDistributor',
+    outputs: [
+      { name: 'distributor', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
       { name: 'creator', internalType: 'address', type: 'address' },
       { name: 'name', internalType: 'string', type: 'string' },
       { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
@@ -8105,6 +8150,15 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'distributorOf',
+    outputs: [
+      { name: 'distributor', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
       {
         name: 'params',
@@ -8146,6 +8200,31 @@ export const trustgraphsFactoryAbi = [
     name: 'validateParams',
     outputs: [],
     stateMutability: 'pure',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'distributor',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'distributorToken',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'DistributorAttached',
   },
   {
     type: 'event',
@@ -8312,6 +8391,14 @@ export const trustgraphsFactoryAbi = [
   },
   { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
   { type: 'error', inputs: [], name: 'DerivedFieldNotZero' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'distributor', internalType: 'address', type: 'address' },
+    ],
+    name: 'DistributorAlreadyAttached',
+  },
   { type: 'error', inputs: [], name: 'EmptyName' },
   { type: 'error', inputs: [], name: 'InvalidAdmin' },
   {
@@ -8455,6 +8542,14 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'error',
     inputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'owner', internalType: 'address', type: 'address' },
+    ],
+    name: 'NotInstanceAuthority',
+  },
+  {
+    type: 'error',
+    inputs: [
       { name: 'factorFp', internalType: 'uint256', type: 'uint256' },
       { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
     ],
@@ -8485,6 +8580,11 @@ export const trustgraphsFactoryAbi = [
     type: 'error',
     inputs: [{ name: 'count', internalType: 'uint256', type: 'uint256' }],
     name: 'TooManyTrustedSeeds',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'instanceId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'UnknownInstance',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
   { type: 'error', inputs: [], name: 'ZeroEpochFloor' },
