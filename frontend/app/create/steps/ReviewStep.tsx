@@ -21,6 +21,7 @@ import {
 
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { useEnsResolver } from '@/hooks/useEns'
 import { PROVING_VAULT } from '@/lib/config'
 import {
@@ -148,51 +149,16 @@ export const ReviewStep = ({
     initialPolicy.maxPerRootUsd
   )
 
-  const { data: authorityPreview, isLoading: authorityLoading } =
-    useReadContracts({
-      contracts: GOVERNED_FACTORY_ADDRESS
-        ? [
-            {
-              address: GOVERNED_FACTORY_ADDRESS,
-              abi: governedTrustgraphsFactoryAbi,
-              functionName: 'MEMBER_VOTING_DELAY',
-            },
-            {
-              address: GOVERNED_FACTORY_ADDRESS,
-              abi: governedTrustgraphsFactoryAbi,
-              functionName: 'MEMBER_VOTING_PERIOD',
-            },
-            {
-              address: GOVERNED_FACTORY_ADDRESS,
-              abi: governedTrustgraphsFactoryAbi,
-              functionName: 'MEMBER_EXECUTION_DELAY',
-            },
-            {
-              address: GOVERNED_FACTORY_ADDRESS,
-              abi: governedTrustgraphsFactoryAbi,
-              functionName: 'RECOVERY_DELAY',
-            },
-          ]
-        : [],
-      query: { enabled: !!GOVERNED_FACTORY_ADDRESS },
-    })
-  const memberVotingDelay = authorityPreview?.[0]?.result as bigint | undefined
-  const memberVotingPeriod = authorityPreview?.[1]?.result as bigint | undefined
-  const memberExecutionDelay = authorityPreview?.[2]?.result as
-    | bigint
-    | undefined
-  const recoveryDelay = authorityPreview?.[3]?.result as bigint | undefined
-  const authorityProfileValid =
-    authorityPreview?.length === 4 &&
-    authorityPreview.every((read) => read.status === 'success') &&
-    memberVotingDelay !== undefined &&
-    memberVotingDelay > 0n &&
-    memberVotingPeriod !== undefined &&
-    memberVotingPeriod > 0n &&
-    memberExecutionDelay !== undefined &&
-    memberExecutionDelay > 0n &&
-    recoveryDelay !== undefined &&
-    recoveryDelay >= 14n * 86_400n
+  // The live governance profile, via the shared hook (all three governed wrappers expose the
+  // identical read surface, so the weighted and composition workspaces run this same check).
+  const {
+    loading: authorityLoading,
+    memberVotingDelay,
+    memberVotingPeriod,
+    memberExecutionDelay,
+    recoveryDelay,
+    valid: authorityProfileValid,
+  } = useAuthorityProfile(GOVERNED_FACTORY_ADDRESS)
 
   // Simulation runs the same validation before the wallet asks for a signature.
   const {
@@ -450,13 +416,15 @@ export const ReviewStep = ({
           upgrades, delegatecalls, and batches.
         </SummaryRow>
         <SummaryRow label="Safe owners and threshold">
-          Your connected wallet starts as the only recorded owner (1 of 1), but
-          the owner execution route is disabled. Owners cannot remove the guard
-          or add a bypass module directly.
+          The DAO Safe is a shared onchain account; it, not any wallet, owns
+          the network contracts and the fund. Your connected wallet starts as
+          the Safe&apos;s only recorded owner (1 of 1), but the owner execution
+          route is disabled. Owners cannot remove the guard or add a bypass
+          module directly.
         </SummaryRow>
         <SummaryRow label="Member governance delay">
           {authorityProfileValid
-            ? `${describeBlocks(memberVotingDelay)} before voting, then ${describeBlocks(memberVotingPeriod)} to vote and ${describeBlocks(memberExecutionDelay)} before execution.`
+            ? `${describeBlocks(memberVotingDelay ?? 0n)} before voting, then ${describeBlocks(memberVotingPeriod ?? 0n)} to vote and ${describeBlocks(memberExecutionDelay ?? 0n)} before execution.`
             : 'Unavailable — creation is disabled.'}
         </SummaryRow>
         <SummaryRow label="Recovery delay">
