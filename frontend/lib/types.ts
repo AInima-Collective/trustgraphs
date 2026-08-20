@@ -150,7 +150,27 @@ export type HypercertsNetwork = {
  */
 export type ContributionsNetwork = {
   program: 'contributions'
+  /** The `/networks/[id]` path segment — the round's factory `instanceId`. */
   id: string
+  /**
+   * `keccak256(abi.encode(creator, name, salt))` — present iff this round came from the runtime
+   * contributions catalog (`lib/contributions-catalog.ts`). Same value as `id` for those rows.
+   */
+  instanceId?: Hex
+  /**
+   * The PARENT trust network's registry instance id, from the factory's creation event. This is
+   * the round ↔ network link (never address equality): rounds render on the parent whose
+   * `instanceId` matches.
+   */
+  parentInstanceId?: Hex
+  /** The round's admin (the parent authority that created it), catalog rows only. */
+  admin?: Hex
+  /** Unix seconds of the creating transaction (catalog rows only). */
+  createdTimestamp?: string
+  /** Round window + pool, denormalized from the creation params (catalog rows only). */
+  roundStart?: string
+  roundEnd?: string
+  totalPool?: string
   name: string
   hidden?: boolean
   link?: {
@@ -174,9 +194,13 @@ export type ContributionsNetwork = {
     trustAccumulatorMirror: Hex
     trustAccumulator: Hex
     merkleFundDistributor: Hex
-    zkVerifier: Hex
-    /** The round's pool ERC20 (TestUSDC locally, 6 decimals). */
-    poolToken: Hex
+    /** The shared contributions verifier. Optional: catalog rows read it from chain instead. */
+    zkVerifier?: Hex
+    /**
+     * The round's intended payout ERC20 (the creation event's `distributorToken`). Optional and
+     * presentation only — the distributor is multi-token; funding pickers default to it.
+     */
+    poolToken?: Hex
   }
   /** The three contribution schemas (claim / response / valuation), from the deployment. */
   schemas: NetworkSchema[]
