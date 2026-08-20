@@ -81,6 +81,12 @@ try {
       process.env.TRUST_COMPOSE_FACTORY_ADDRESS ||
       '',
   }
+  // The contributions round factory. Additive like trust-compose: an absent address keeps the
+  // "start a contribution round" flow in explicit not-available mode.
+  configOutput.contributionsFactory =
+    deployment.contributionsFactory?.contributions_factory ||
+    process.env.CONTRIBUTIONS_FACTORY_ADDRESS ||
+    ''
   // The graph-of-graphs registry is a separate advisory plane. Rolling deployments may omit it;
   // the provenance route then reports the feature as unavailable without affecting score pages.
   configOutput.graphLineage = {

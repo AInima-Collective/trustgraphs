@@ -61,7 +61,11 @@ import {
 } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
-import { contributionsRoundsFor } from '@/lib/network-nav'
+import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import {
+  contributionsRoundsFor,
+  sortRoundsNewestActiveFirst,
+} from '@/lib/network-nav'
 import {
   type PublicOperatorAction,
   operatorStatusQuery,
@@ -646,7 +650,13 @@ export const SettingsPage = ({
     timestamp: rootTimestamp,
   } = useNetwork()
   const { address: connectedAddress } = useAccount()
-  const contributionRound = contributionsRoundsFor(network)[0]
+  // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
+  // parentInstanceId link; the newest active one fronts the card and every round lists below.
+  const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const contributionRounds = sortRoundsNewestActiveFirst(
+    contributionsRoundsFor(network, allRounds)
+  )
+  const contributionRound = contributionRounds[0]
   const instanceId = network.instanceId ?? instance?.id ?? ''
   const snapshotAddress = network.contracts.merkleSnapshot
   const resolverAddress = network.contracts.easIndexerResolver
@@ -2503,12 +2513,14 @@ export const SettingsPage = ({
                 />
                 <SettingsCard
                   title="Contribution cycles"
-                  description="Community-scored work whose ratings are weighted by this network."
+                  description="Members submit work, respond to being named on it, and rate each other. Ratings are weighted by this network's trust scores, and each round's pool splits accordingly."
                 >
-                  <SettingRow label="Status">
-                    {contributionRound ? 'Configured' : 'Not configured'}
+                  <SettingRow label="Rounds">
+                    {contributionRounds.length === 0
+                      ? 'None yet'
+                      : `${contributionRounds.length}`}
                   </SettingRow>
-                  <SettingRow label="Active round">
+                  <SettingRow label="Latest round">
                     {contributionRound?.name ?? 'None'}
                   </SettingRow>
                   <SettingRow label="Round snapshot">
@@ -2516,13 +2528,30 @@ export const SettingsPage = ({
                       value={contributionRound?.contracts.merkleSnapshot}
                     />
                   </SettingRow>
-                  <SettingRow label="Management">
+                  <SettingRow label="Who can start one">
                     {connectedAddress
-                      ? connectedIsOperational
-                        ? 'Operational access connected'
-                        : 'Requires operational role'
+                      ? connectedIsConstitutional
+                        ? 'You: your wallet holds this network’s constitutional role'
+                        : 'Only this network’s authority (its constitutional role)'
                       : 'Connect to check access'}
                   </SettingRow>
+                  <div className="flex flex-wrap gap-3 pt-4">
+                    <ButtonLink
+                      href={`/networks/${network.id}/contributions/new`}
+                      size="sm"
+                    >
+                      Start a contribution round
+                    </ButtonLink>
+                    {contributionRound && (
+                      <ButtonLink
+                        href={`/networks/${network.id}/contributions`}
+                        variant="outline"
+                        size="sm"
+                      >
+                        View rounds
+                      </ButtonLink>
+                    )}
+                  </div>
                 </SettingsCard>
 
                 <SettingsCard
