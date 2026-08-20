@@ -59,7 +59,7 @@ function requireProgramVkey(name: string, program: string): string {
   if (!value || /^0x0{64}$/i.test(value)) {
     throw new Error(
       `${name} must be set to the ${program} guest vkey (got ${value ?? 'unset'}). ` +
-        `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey — or use ` +
+        `Compute it with: cargo run -p trustgraph-prover -- ${program} vkey, or use ` +
         `\`task demo:deploy\`, which derives every vkey from this checkout's guests.`
     )
   }
