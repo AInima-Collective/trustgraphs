@@ -72,7 +72,10 @@ const deploymentSummary = deploymentSummaryJson as {
     signer_sync_deployer?: string
   }
   weightedFactory?: { weighted_factory?: string }
-  compositionFactory?: { composition_factory?: string }
+  // One summary key per factory, agreed by both consumers: this matches the contract name and
+  // what frontend/scripts/generate-config.ts reads (`trustComposeFactory.trust_compose_factory`),
+  // written by `DeployTrustComposeFactory` via deploy/env.ts.
+  trustComposeFactory?: { trust_compose_factory?: string }
   graphLineage?: { registry?: string }
 }
 
@@ -192,7 +195,9 @@ const COMPOSITION_FACTORY =
     ? process.env.TRUST_COMPOSE_FACTORY_ADDRESS_10
     : process.env.TRUST_COMPOSE_FACTORY_ADDRESS_31337
   )?.trim() as Hex | undefined) ??
-  (deploymentSummary.compositionFactory?.composition_factory as Hex | undefined)
+  (deploymentSummary.trustComposeFactory?.trust_compose_factory as
+    | Hex
+    | undefined)
 const GRAPH_LINEAGE_REGISTRY =
   ((IS_PRODUCTION
     ? process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_10
