@@ -92,6 +92,10 @@ const onAnchorsCheckpointed = async ({
 
 ponder.on('merkleSnapshot:AnchorsCheckpointed', onAnchorsCheckpointed)
 ponder.on('programSnapshot:AnchorsCheckpointed', onAnchorsCheckpointed)
+ponder.on(
+  'contributionsMerkleSnapshot:AnchorsCheckpointed',
+  onAnchorsCheckpointed
+)
 
 /*///////////////////////////////////////////////////////////////
     STUB — skippedNode ingestion (off-chain prover/witness pipeline)

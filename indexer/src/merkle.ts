@@ -179,6 +179,13 @@ ponder.on('compositionMerkleSnapshot:setup', async ({ context }) => {
   )
 })
 
+ponder.on('contributionsMerkleSnapshot:setup', async ({ context }) => {
+  await backfillSnapshotStates(
+    context,
+    staticAddresses(context.contracts.contributionsMerkleSnapshot.address)
+  )
+})
+
 const onMerkleRootUpdated = async ({
   event,
   context,
@@ -501,6 +508,10 @@ ponder.on(
   'compositionMerkleSnapshot:MerkleProofSubmitted',
   onMerkleProofSubmitted
 )
+ponder.on(
+  'contributionsMerkleSnapshot:MerkleProofSubmitted',
+  onMerkleProofSubmitted
+)
 
 /** Attach a parameter version to the first checkpoint that actually pins it. */
 const onCheckpointParamsPinned = async ({
@@ -578,6 +589,10 @@ ponder.on(
   'compositionMerkleSnapshot:CheckpointParamsPinned',
   onCheckpointParamsPinned
 )
+ponder.on(
+  'contributionsMerkleSnapshot:CheckpointParamsPinned',
+  onCheckpointParamsPinned
+)
 
 /**
  * `SnapshotTriggered` — the moment a checkpoint froze. Between this event and the matching
@@ -605,11 +620,13 @@ ponder.on('merkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('programSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('weightedMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 ponder.on('compositionMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
+ponder.on('contributionsMerkleSnapshot:SnapshotTriggered', onSnapshotTriggered)
 
 ponder.on('merkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('programSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('weightedMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 ponder.on('compositionMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
+ponder.on('contributionsMerkleSnapshot:MerkleRootUpdated', onMerkleRootUpdated)
 
 async function insertMerkleData(
   scores: ScoreBlob,
@@ -875,6 +892,17 @@ ponder.on('merkleFundDistributor:setup', async ({ context }) => {
 ponder.on('programFundDistributor:setup', async ({ context }) => {
   for (const address of staticAddresses(
     context.contracts.programFundDistributor.address
+  )) {
+    await insertDistributorConfig(context, address)
+  }
+})
+
+// Factory-discovered round distributors get their row at birth from the creation event
+// (src/contributions-factory.ts); this setup is the same static-list no-op the other factory
+// sources have, kept for shape parity.
+ponder.on('contributionsFundDistributor:setup', async ({ context }) => {
+  for (const address of staticAddresses(
+    context.contracts.contributionsFundDistributor.address
   )) {
     await insertDistributorConfig(context, address)
   }
@@ -1182,3 +1210,32 @@ ponder.on('merkleFundDistributor:Swept', onSwept)
 ponder.on('programFundDistributor:Swept', onSwept)
 ponder.on('merkleFundDistributor:Claimed', onClaimed)
 ponder.on('programFundDistributor:Claimed', onClaimed)
+
+// Factory-discovered contributions-round distributors: the same handlers, third source.
+ponder.on(
+  'contributionsFundDistributor:OwnershipTransferStarted',
+  onOwnershipTransferStarted
+)
+ponder.on(
+  'contributionsFundDistributor:OwnershipTransferred',
+  onOwnershipTransferred
+)
+ponder.on('contributionsFundDistributor:FeeRecipientSet', onFeeRecipientSet)
+ponder.on('contributionsFundDistributor:FeePercentageSet', onFeePercentageSet)
+ponder.on(
+  'contributionsFundDistributor:MerkleSnapshotUpdated',
+  onMerkleSnapshotUpdated
+)
+ponder.on(
+  'contributionsFundDistributor:DistributorAllowanceUpdated',
+  onDistributorAllowanceUpdated
+)
+ponder.on(
+  'contributionsFundDistributor:DistributorAllowlistUpdated',
+  onDistributorAllowlistUpdated
+)
+ponder.on('contributionsFundDistributor:Paused', onPaused)
+ponder.on('contributionsFundDistributor:Unpaused', onUnpaused)
+ponder.on('contributionsFundDistributor:Distributed', onDistributed)
+ponder.on('contributionsFundDistributor:Swept', onSwept)
+ponder.on('contributionsFundDistributor:Claimed', onClaimed)
