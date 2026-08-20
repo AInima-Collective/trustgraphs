@@ -153,9 +153,14 @@ ponder.on(
       )
       .limit(1)
     if (!binding) {
-      throw new Error(
-        `score binding fold refused params update for unknown instance ${args.instanceId}`
+      // M0 hazard sweep: a params-hash rotation for an instance whose registration predates the
+      // start block is out-of-universe. The fold is event-sourced provenance — synthesizing a
+      // binding from current chain state would forge history — so log and skip (there is no
+      // binding id to hang even a receipt on), and never wedge the indexer on a valid chain.
+      console.warn(
+        `score binding: params-hash update for unobserved instance ${args.instanceId} (registered before the start block?) — skipping`
       )
+      return
     }
 
     const { accepted, reason } = decideParamsHashRotation(
