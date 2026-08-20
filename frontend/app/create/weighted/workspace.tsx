@@ -15,11 +15,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
   type Hex,
-  decodeEventLog,
   getAddress,
   isAddress,
   isHex,
   keccak256,
+  parseEther,
+  parseEventLogs,
   zeroAddress,
 } from 'viem'
 import {
@@ -35,13 +36,24 @@ import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
+import { Switch } from '@/components/Switch'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetworks } from '@/contexts/CatalogContext'
-import { APIS, WEIGHTED_FACTORY } from '@/lib/config'
+import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
+import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
 import { getEnsCoinType } from '@/lib/ens-query'
+import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
+import {
+  DEFAULT_MAX_PER_ROOT_USD,
+  type InitialProvingPolicy,
+  initialPolicyForCreation,
+  initialPolicyProblem,
+} from '@/lib/proving-prepay'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
+
+import { describeBlocks } from '../model'
 import {
   type WeightedApiEntry,
   type WeightedApiInstance,
@@ -53,8 +65,10 @@ import {
   fetchWeightedVersions,
 } from '@/lib/weighted-prior/api'
 import {
+  governedWeightedTrustgraphsFactoryAbi,
   weightedCreateArgs,
   weightedCreatePayload,
+  weightedGovernedCreatePayload,
   weightedPriorParamsControllerAbi,
   weightedRotationPayload,
   weightedTrustgraphsFactoryAbi,
@@ -89,6 +103,11 @@ type Format = 'csv' | 'json'
 
 const WEIGHTED_FACTORY_ADDRESS = (WEIGHTED_FACTORY || '') as Address
 const FACTORY_AVAILABLE = isAddress(WEIGHTED_FACTORY_ADDRESS, {
+  strict: false,
+})
+const GOVERNED_WEIGHTED_FACTORY_ADDRESS = (GOVERNED_WEIGHTED_FACTORY ||
+  '') as Address
+const GOVERNED_AVAILABLE = isAddress(GOVERNED_WEIGHTED_FACTORY_ADDRESS, {
   strict: false,
 })
 
@@ -146,6 +165,14 @@ export const WeightedPriorWorkspace = () => {
   const [transform, setTransform] = useState('')
   const [epochLength, setEpochLength] = useState('0')
   const [salt] = useState<Hex>(randomSalt)
+  // Creation-time features (GOAL M4/M5). The fund and governance are structural: they can only
+  // be chosen here, so both are explicit switches rather than hidden defaults.
+  const [withFund, setWithFund] = useState(false)
+  const [fundToken, setFundToken] = useState<'eth' | 'other'>('eth')
+  const [fundTokenAddress, setFundTokenAddress] = useState('')
+  const [withGovernance, setWithGovernance] = useState(false)
+  const [prepayEth, setPrepayEth] = useState('')
+  const [maxPerRootUsd, setMaxPerRootUsd] = useState(DEFAULT_MAX_PER_ROOT_USD)
 
   const [instanceId, setInstanceId] = useState('')
   const [weightedInstances, setWeightedInstances] = useState<
@@ -162,6 +189,7 @@ export const WeightedPriorWorkspace = () => {
   const [created, setCreated] = useState<{
     instanceId: Hex | null
     txHash: Hex
+    safe: Hex | null
   } | null>(null)
   const [prefilled, setPrefilled] = useState<number | null>(null)
 
@@ -201,6 +229,19 @@ export const WeightedPriorWorkspace = () => {
     functionName: 'EPOCH_FLOOR',
     query: { enabled: FACTORY_AVAILABLE },
   })
+  // The delay the base factory installs on every prior update, for the compounded-delay copy in
+  // the governance section: under governance an update waits through voting, execution, AND this.
+  const { data: priorActivationDelay } = useReadContract({
+    address: FACTORY_AVAILABLE ? WEIGHTED_FACTORY_ADDRESS : zeroAddress,
+    abi: weightedTrustgraphsFactoryAbi,
+    functionName: 'PRIOR_ACTIVATION_DELAY',
+    query: { enabled: FACTORY_AVAILABLE },
+  })
+  // The wrapper's live governance profile, checked the way the main wizard's review screen checks
+  // it: creation with governance is disabled unless the sealed-authority profile reads back sound.
+  const authority = useAuthorityProfile(
+    GOVERNED_AVAILABLE ? GOVERNED_WEIGHTED_FACTORY_ADDRESS : undefined
+  )
 
   const provenance = useMemo(
     () => ({ sourceUri, author, license, transform }),
@@ -233,6 +274,54 @@ export const WeightedPriorWorkspace = () => {
     return () => controller.abort()
   }, [mode])
 
+  const fundIssue: string | null =
+    withFund && fundToken === 'other'
+      ? !fundTokenAddress.trim()
+        ? 'Paste the address of the token you plan to pay out.'
+        : !isAddress(fundTokenAddress.trim(), { strict: false })
+          ? "That doesn't look like a token address."
+          : null
+      : null
+
+  // The optional refresh prepayment (governed creations only: it rides as transaction value and
+  // the wrapper installs the paid policy on the new network's proving tank atomically).
+  const prepayIssue: string | null = (() => {
+    if (!withGovernance) return null
+    const trimmed = prepayEth.trim()
+    if (!trimmed) return null
+    if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
+      return 'Enter an amount like 0.5, or leave it blank.'
+    }
+    if (Number(trimmed) === 0) {
+      return 'Leave it blank rather than entering zero.'
+    }
+    return initialPolicyProblem(prepayEth, maxPerRootUsd)
+  })()
+  const prepayWei =
+    withGovernance && prepayEth.trim() && !prepayIssue
+      ? parseEther(prepayEth.trim())
+      : 0n
+  const effectiveEpoch = useMemo(() => {
+    const requested = BigInt(epochLength || '0')
+    const floor = (epochFloor as bigint | undefined) ?? 0n
+    return requested < floor ? floor : requested
+  }, [epochFloor, epochLength])
+  const initialPolicy = useMemo<InitialProvingPolicy | null>(() => {
+    try {
+      return initialPolicyForCreation(prepayWei, effectiveEpoch, maxPerRootUsd)
+    } catch {
+      return null
+    }
+  }, [effectiveEpoch, maxPerRootUsd, prepayWei])
+
+  const governanceIssue: string | null = !withGovernance
+    ? null
+    : !GOVERNED_AVAILABLE
+      ? 'Create with governance is not available on this deployment.'
+      : !authority.loading && !authority.valid
+        ? 'The configured governed factory does not expose the sealed guard, member-delay, and 14-day recovery profile this app requires, so creating with governance is disabled here.'
+        : null
+
   const createFields = useMemo(
     () => ({
       name,
@@ -242,21 +331,46 @@ export const WeightedPriorWorkspace = () => {
       maxIterations: 40,
       minWeight: 0n,
       maxWeight: 100n,
-      admin: address ? getAddress(address) : zeroAddress,
+      // Under governance the wrapper replaces the admin with the new DAO Safe; keeping zero here
+      // makes it impossible to mistake the connected wallet for the lasting authority.
+      admin: withGovernance
+        ? zeroAddress
+        : address
+          ? getAddress(address)
+          : zeroAddress,
       epochLength: BigInt(epochLength || '0'),
-      withDistributor: false,
-      distributorToken: zeroAddress,
+      withDistributor: withFund,
+      distributorToken:
+        withFund &&
+        fundToken === 'other' &&
+        isAddress(fundTokenAddress.trim(), { strict: false })
+          ? (fundTokenAddress.trim().toLowerCase() as Address)
+          : zeroAddress,
       salt,
     }),
-    [address, epochLength, metadataURI, name, salt]
+    [
+      address,
+      epochLength,
+      fundToken,
+      fundTokenAddress,
+      metadataURI,
+      name,
+      salt,
+      withFund,
+      withGovernance,
+    ]
   )
 
   const transactionPayload = useMemo(() => {
     if (!artifacts) return null
-    return mode === 'rotate'
-      ? weightedRotationPayload(artifacts)
-      : weightedCreatePayload(createFields, artifacts)
-  }, [artifacts, createFields, mode])
+    if (mode === 'rotate') return weightedRotationPayload(artifacts)
+    if (withGovernance) {
+      return initialPolicy
+        ? weightedGovernedCreatePayload(createFields, artifacts, initialPolicy)
+        : null
+    }
+    return weightedCreatePayload(createFields, artifacts)
+  }, [artifacts, createFields, initialPolicy, mode, withGovernance])
 
   const clearDerived = () => {
     workerRef.current?.terminate()
@@ -510,9 +624,32 @@ export const WeightedPriorWorkspace = () => {
           })
         )
         setSimulatedPayload(keccak256(weightedRotationPayload(exact)))
+      } else if (withGovernance) {
+        if (governanceIssue) throw new Error(governanceIssue)
+        if (fundIssue || prepayIssue)
+          throw new Error(fundIssue ?? prepayIssue ?? '')
+        if (!initialPolicy)
+          throw new Error('Fix the refresh prepayment fields first.')
+        const args = weightedCreateArgs(createFields, exact)
+        const governedCall = {
+          account: address,
+          address: GOVERNED_WEIGHTED_FACTORY_ADDRESS,
+          abi: governedWeightedTrustgraphsFactoryAbi,
+          functionName: 'createGovernedInstance',
+          args: [args, initialPolicy, DISABLED_SIGNER_SYNC],
+          ...(prepayWei > 0n ? { value: prepayWei } : {}),
+        } as const
+        await publicClient.simulateContract(governedCall)
+        setGasEstimate(await publicClient.estimateContractGas(governedCall))
+        setSimulatedPayload(
+          keccak256(
+            weightedGovernedCreatePayload(createFields, exact, initialPolicy)
+          )
+        )
       } else {
         if (!FACTORY_AVAILABLE)
           throw new Error('No weighted factory is configured.')
+        if (fundIssue) throw new Error(fundIssue)
         const args = weightedCreateArgs(createFields, exact)
         await publicClient.simulateContract({
           account: address,
@@ -548,12 +685,19 @@ export const WeightedPriorWorkspace = () => {
       if (wrongChain)
         throw new Error('Switch the wallet to the target chain first.')
       const exact = await ensureFresh()
-      const payloadHash = keccak256(
+      const exactPayload =
         mode === 'rotate'
           ? weightedRotationPayload(exact)
-          : weightedCreatePayload(createFields, exact)
-      )
-      if (payloadHash !== simulatedPayload) {
+          : withGovernance
+            ? initialPolicy
+              ? weightedGovernedCreatePayload(
+                  createFields,
+                  exact,
+                  initialPolicy
+                )
+              : null
+            : weightedCreatePayload(createFields, exact)
+      if (!exactPayload || keccak256(exactPayload) !== simulatedPayload) {
         throw new Error(
           'The exact payload changed. Simulate it again before signing.'
         )
@@ -581,34 +725,46 @@ export const WeightedPriorWorkspace = () => {
         await loadRotation()
       } else {
         const [receipt] = await txToast({
-          tx: {
-            address: WEIGHTED_FACTORY_ADDRESS,
-            abi: weightedTrustgraphsFactoryAbi,
-            functionName: 'createInstance',
-            args: [weightedCreateArgs(createFields, exact)],
-          },
-          successMessage: 'Weighted network created.',
+          tx: withGovernance
+            ? ({
+                address: GOVERNED_WEIGHTED_FACTORY_ADDRESS,
+                abi: governedWeightedTrustgraphsFactoryAbi,
+                functionName: 'createGovernedInstance',
+                args: [
+                  weightedCreateArgs(createFields, exact),
+                  initialPolicy!,
+                  DISABLED_SIGNER_SYNC,
+                ],
+                ...(prepayWei > 0n ? { value: prepayWei } : {}),
+              } as any)
+            : {
+                address: WEIGHTED_FACTORY_ADDRESS,
+                abi: weightedTrustgraphsFactoryAbi,
+                functionName: 'createInstance',
+                args: [weightedCreateArgs(createFields, exact)],
+              },
+          successMessage: withGovernance
+            ? 'Weighted network created; its Safe holds it from the first block.'
+            : 'Weighted network created.',
         })
-        let createdId: Hex | null = null
-        for (const log of receipt.logs) {
-          if (
-            log.address.toLowerCase() !== WEIGHTED_FACTORY_ADDRESS.toLowerCase()
-          )
-            continue
-          try {
-            const event = decodeEventLog({
-              abi: weightedTrustgraphsFactoryAbi,
-              data: log.data,
-              topics: log.topics,
-            })
-            if (event.eventName === 'WeightedInstanceCreated') {
-              createdId = event.args.instanceId
-            }
-          } catch {
-            // Another factory log.
-          }
-        }
-        setCreated({ instanceId: createdId, txHash: receipt.transactionHash })
+        // One receipt-scanning path for both creation lanes, keyed by event topic rather than by
+        // emitting address: under the governed wrapper the BASE factory emits the creation event
+        // and the new Safe is the creator, so address filtering would find nothing.
+        const [createdEvent] = parseEventLogs({
+          abi: weightedTrustgraphsFactoryAbi,
+          eventName: 'WeightedInstanceCreated',
+          logs: receipt.logs,
+        })
+        const [governedEvent] = parseEventLogs({
+          abi: governedWeightedTrustgraphsFactoryAbi,
+          eventName: 'GovernedInstanceCreated',
+          logs: receipt.logs,
+        })
+        setCreated({
+          instanceId: createdEvent?.args.instanceId ?? null,
+          txHash: receipt.transactionHash,
+          safe: governedEvent?.args.safe ?? null,
+        })
       }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -1401,6 +1557,264 @@ export const WeightedPriorWorkspace = () => {
                 </p>
               </Card>
             )}
+
+            {mode !== 'rotate' && (
+              <Card type="outline" size="md" className="space-y-4">
+                <div className="flex flex-row items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Add a shared fund</p>
+                    <p className="text-xs text-muted-foreground max-w-xl">
+                      A shared fund lets your community put money in one place
+                      and split it by trust score. Anyone can top it up, and
+                      each member claims their own share. Skip this if your
+                      community only wants scores.
+                    </p>
+                  </div>
+                  <Switch
+                    size="md"
+                    enabled={withFund}
+                    onClick={() => {
+                      setWithFund(!withFund)
+                      setSimulatedPayload(null)
+                    }}
+                  />
+                </div>
+                {withFund && (
+                  <div className="space-y-3 border-t border-border pt-3">
+                    <p className="text-sm">What do you expect to pay out?</p>
+                    <div className="flex flex-row flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant={fundToken === 'eth' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setFundToken('eth')
+                          setSimulatedPayload(null)
+                        }}
+                      >
+                        ETH
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={fundToken === 'other' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setFundToken('other')
+                          setSimulatedPayload(null)
+                        }}
+                      >
+                        Another token
+                      </Button>
+                    </div>
+                    {fundToken === 'other' && (
+                      <Input
+                        aria-label="Token address"
+                        placeholder="0x..."
+                        className="max-w-md font-mono text-xs"
+                        value={fundTokenAddress}
+                        onChange={(e) => {
+                          setFundTokenAddress(e.target.value)
+                          setSimulatedPayload(null)
+                        }}
+                      />
+                    )}
+                    {fundIssue && (
+                      <p className="text-xs text-destructive" role="alert">
+                        {fundIssue}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      This only decides what the payout screen shows first. The
+                      fund holds anything and can pay out something else later.{' '}
+                      {withGovernance
+                        ? 'The new DAO Safe owns the fund, so payouts happen through member governance.'
+                        : 'Your wallet owns the fund: money only moves when you send a payout, and each member claims their share themselves.'}
+                    </p>
+                  </div>
+                )}
+                {!withFund && (
+                  <p className="text-xs text-muted-foreground">
+                    Skipping this closes no doors: the network&apos;s authority
+                    can attach a fund later with the factory&apos;s
+                    attachDistributor call, though this workspace does not
+                    offer that button yet.
+                  </p>
+                )}
+              </Card>
+            )}
+
+            {mode !== 'rotate' && (
+              <Card type="outline" size="md" className="space-y-4">
+                <div className="flex flex-row items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Create with governance</p>
+                    <p className="text-xs text-muted-foreground max-w-xl">
+                      Hand the new network to a DAO Safe instead of your
+                      wallet. A Safe is a shared onchain account; one is
+                      created for you in the same transaction and owns the
+                      network from the first block. Your wallet becomes the
+                      Safe&apos;s only recorded owner, but a permanently sealed
+                      guard disables owner-signed transactions: members direct
+                      the Safe through delayed trust-weighted voting, and your
+                      wallet keeps only a slow, visible recovery role.
+                    </p>
+                  </div>
+                  <Switch
+                    size="md"
+                    enabled={withGovernance}
+                    readOnly={!GOVERNED_AVAILABLE}
+                    onClick={() => {
+                      if (!GOVERNED_AVAILABLE) return
+                      setWithGovernance(!withGovernance)
+                      setPrepayEth('')
+                      setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+                      setSimulatedPayload(null)
+                      setGasEstimate(null)
+                    }}
+                  />
+                </div>
+                {!GOVERNED_AVAILABLE && (
+                  <p className="text-xs text-muted-foreground">
+                    Create with governance is not available on this deployment,
+                    so a network created here is owned by your wallet.
+                  </p>
+                )}
+                {withGovernance && (
+                  <div className="space-y-3 border-t border-border pt-3 text-sm">
+                    {authority.valid ? (
+                      <>
+                        <p>
+                          Member voting, read live from the governed factory:{' '}
+                          {describeBlocks(authority.memberVotingDelay ?? 0n)}{' '}
+                          before voting starts, then{' '}
+                          {describeBlocks(authority.memberVotingPeriod ?? 0n)}{' '}
+                          to vote and{' '}
+                          {describeBlocks(authority.memberExecutionDelay ?? 0n)}{' '}
+                          before the Safe executes a passed proposal.
+                        </p>
+                        <p>
+                          Recovery: your wallet may publish one exact Safe
+                          action but cannot execute it early. Anyone may
+                          execute it after{' '}
+                          {describeSeconds(authority.recoveryDelay)}, and the
+                          member-governed Safe can cancel it or replace the
+                          proposer.
+                        </p>
+                        <p>
+                          Updates to the starting shares take longer under
+                          governance: a proposed update must first pass a
+                          member vote (the delays above), and the network&apos;s
+                          own activation delay of{' '}
+                          {describeSeconds(
+                            priorActivationDelay as number | undefined
+                          )}{' '}
+                          runs after that before the new shares apply.
+                        </p>
+                      </>
+                    ) : authority.loading ? (
+                      <p className="text-muted-foreground">
+                        Reading the live voting profile…
+                      </p>
+                    ) : (
+                      <p className="text-destructive" role="alert">
+                        {governanceIssue}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Score-selected Safe signers are not offered for weighted
+                      networks: the only signer verifier today proves the
+                      standard trust-graph pipeline.
+                    </p>
+
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <p className="text-sm font-medium">
+                        Pay for score refreshes up front?
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Scores only refresh if somebody does the work, and that
+                        costs gas and proving time. Put ETH in during creation
+                        to fund the first refreshes, or leave it blank. The ETH
+                        lands in the new network&apos;s proving tank, and the
+                        DAO Safe controls it afterwards.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="w-32"
+                          inputMode="decimal"
+                          placeholder="0.5"
+                          aria-label="Refresh prepayment in ETH"
+                          value={prepayEth}
+                          onChange={(e) => {
+                            setPrepayEth(e.target.value)
+                            setSimulatedPayload(null)
+                          }}
+                        />
+                        <span className="text-sm opacity-60">
+                          ETH (optional)
+                        </span>
+                      </div>
+                      {prepayEth.trim() && (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <label
+                              className="text-xs text-muted-foreground"
+                              htmlFor="weighted-max-refresh"
+                            >
+                              Maximum per refresh
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm opacity-60">$</span>
+                              <Input
+                                id="weighted-max-refresh"
+                                className="w-32"
+                                inputMode="decimal"
+                                value={maxPerRootUsd}
+                                onChange={(e) => {
+                                  setMaxPerRootUsd(e.target.value)
+                                  setSimulatedPayload(null)
+                                }}
+                              />
+                              <span className="text-sm opacity-60">USD</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Covers the proving fee and gas together; creation
+                              is capped at $10,000.
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">
+                              Paid no more often than
+                            </div>
+                            <div className="text-sm">
+                              every {effectiveEpoch.toLocaleString()} blocks,
+                              the scoring round length
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              This starts equal to the score schedule. The DAO
+                              Safe can change it later.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {prepayIssue && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {prepayIssue}
+                        </p>
+                      )}
+                      {prepayEth.trim() && !prepayIssue && (
+                        <p className="text-xs text-muted-foreground">
+                          Before anything is sent, the simulation checks that
+                          this chain has priced the weighted proving band and
+                          that your cap covers that fee. Creation is atomic:
+                          the ETH and the paid policy either both land or
+                          neither does.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
             {!isConnected && <WalletConnectionButton />}
             {!FACTORY_AVAILABLE && mode !== 'rotate' && (
               <p className="text-sm text-warning">
@@ -1432,7 +1846,13 @@ export const WeightedPriorWorkspace = () => {
                       ? !active ||
                         !!pending ||
                         active.availability.status === 'unavailable'
-                      : !FACTORY_AVAILABLE || !name.trim())
+                      : !FACTORY_AVAILABLE ||
+                        !name.trim() ||
+                        !!fundIssue ||
+                        !!prepayIssue ||
+                        !!governanceIssue ||
+                        (withGovernance &&
+                          (authority.loading || !initialPolicy)))
                   }
                 >
                   {busy ? (
@@ -1450,7 +1870,9 @@ export const WeightedPriorWorkspace = () => {
                   <CheckCircle2 className="h-4 w-4" />{' '}
                   {mode === 'rotate'
                     ? 'Sign the delayed update'
-                    : 'Create the weighted network'}
+                    : withGovernance
+                      ? 'Create the weighted network with its Safe'
+                      : 'Create the weighted network'}
                 </Button>
               </div>
             </Card>
@@ -1477,6 +1899,15 @@ export const WeightedPriorWorkspace = () => {
                   to save it, but a copy never hurts:
                 </p>
                 <CopyableText text={created.instanceId} alwaysShowCopyIcon />
+                {created.safe && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      Its DAO Safe, the shared account that owns the network
+                      and its fund from the first block:
+                    </p>
+                    <CopyableText text={created.safe} alwaysShowCopyIcon />
+                  </div>
+                )}
                 <div>
                   <Button
                     type="button"
