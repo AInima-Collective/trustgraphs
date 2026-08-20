@@ -1,16 +1,11 @@
 import { notFound } from 'next/navigation'
 
-import { VISIBLE_CONTRIBUTIONS_NETWORKS } from '@/lib/config'
+import { CatalogUnavailable } from '@/components/CatalogUnavailable'
+import { getContributionsNetwork } from '@/lib/contributions-catalog.server'
 
 import { RatePage } from './component'
 
-export const revalidate = 3_600 // 1 hour
-
-export async function generateStaticParams() {
-  return VISIBLE_CONTRIBUTIONS_NETWORKS.map((network) => ({
-    id: network.id,
-  }))
-}
+export const revalidate = 10
 
 export default async function RatePageServer({
   params,
@@ -19,12 +14,15 @@ export default async function RatePageServer({
 }) {
   const { id } = await params
 
-  const network = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
-    (network) => network.id === id
-  )
-  if (!network) {
+  // Rounds are resolved from the runtime round catalog (they are factory-minted at any moment);
+  // the static config list is gone.
+  const { round, error } = await getContributionsNetwork(id)
+  if (!round) {
+    if (error) {
+      return <CatalogUnavailable reason={error} networkId={id} />
+    }
     notFound()
   }
 
-  return <RatePage network={network} />
+  return <RatePage network={round} />
 }

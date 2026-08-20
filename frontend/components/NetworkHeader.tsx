@@ -4,7 +4,8 @@ import { Link as LinkIcon } from 'lucide-react'
 
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
-import { NetworkTab, trustgraphsTabs } from '@/lib/network-nav'
+import { useContributionsRounds } from '@/hooks/useContributionsRounds'
+import { contributionsRoundsFor, NetworkTab, trustgraphsTabs } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -35,6 +36,12 @@ export function NetworkHeader({
 }) {
   const { name, link } = network
 
+  // Default (trust-graph) tab set: the Contributions tab is gated on the network actually having
+  // rounds, which live in the indexer's runtime round catalog — resolved here so every screen
+  // that shares this header agrees. Skipped entirely when the caller passed explicit tabs.
+  const trustNetwork = tabs ? undefined : (network as Network)
+  const { rounds } = useContributionsRounds(trustNetwork?.instanceId)
+
   return (
     <div className={cn('flex flex-col items-start gap-4', className)}>
       <h1 className="text-4xl font-bold">{name}</h1>
@@ -61,7 +68,13 @@ export function NetworkHeader({
       )}
 
       <NetworkNav
-        tabs={tabs ?? trustgraphsTabs(network as Network)}
+        tabs={
+          tabs ??
+          trustgraphsTabs(
+            network as Network,
+            contributionsRoundsFor(network as Network, rounds)
+          )
+        }
         className="w-full mt-2"
       />
     </div>

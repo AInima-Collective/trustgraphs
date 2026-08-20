@@ -35,6 +35,8 @@ import {
   trustgraphsTabs,
 } from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
+import { useNetworks } from '@/contexts/CatalogContext'
+import { cn } from '@/lib/utils'
 
 import {
   RoundPhase,
@@ -583,9 +585,15 @@ const ClaimCard = ({
 export const ContributionsNetworkPage = ({
   network,
   hostNetwork,
+  siblingRounds = [],
 }: {
   network: ContributionsNetwork
   hostNetwork?: Network
+  /**
+   * Every round hung on the same trust network (newest active first), when the caller resolved
+   * them. More than one renders the round switcher; contracts allow any number of live rounds.
+   */
+  siblingRounds?: ContributionsNetwork[]
 }) => {
   const { address: connectedAddress, isConnected } = useAccount()
   const { createAttestation, createAttestations, isCreating } = useAttestation()
@@ -608,7 +616,10 @@ export const ContributionsNetworkPage = ({
     valuationSchema,
   } = useContributionsData(network)
 
-  const trustNetwork = hostNetwork ?? trustNetworkFor(network)
+  // The parent link is the factory's first-class reference: resolve it against the runtime
+  // catalog when the caller did not already hand us the host network.
+  const catalogNetworks = useNetworks()
+  const trustNetwork = hostNetwork ?? trustNetworkFor(network, catalogNetworks)
   const [now, setNow] = useState<number | null>(null)
   const [feedSort, setFeedSort] = useState<FeedSort>('unrated')
   const [drafts, setDrafts] = useState<Map<string, number>>(new Map())
@@ -915,11 +926,46 @@ export const ContributionsNetworkPage = ({
           network={trustNetwork ?? network}
           tabs={
             trustNetwork
-              ? trustgraphsTabs(trustNetwork)
+              ? trustgraphsTabs(
+                  trustNetwork,
+                  siblingRounds.length > 0 ? siblingRounds : [network]
+                )
               : contributionsTabs(network)
           }
           className="w-full"
         />
+
+        {siblingRounds.length > 1 && (
+          <nav aria-label="Contribution rounds" className="max-w-3xl">
+            <p className="tg-label mb-2">Rounds</p>
+            <ul className="flex flex-wrap gap-2">
+              {siblingRounds.map((round) => {
+                const isCurrent =
+                  round.id.toLowerCase() === network.id.toLowerCase()
+                return (
+                  <li key={round.id}>
+                    <a
+                      href={
+                        trustNetwork
+                          ? `/networks/${trustNetwork.id}/contributions?round=${round.id}`
+                          : `/networks/${round.id}`
+                      }
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className={cn(
+                        'inline-flex items-center rounded-full border px-3 py-1 text-sm transition-colors',
+                        isCurrent
+                          ? 'border-text text-text'
+                          : 'border-hairline text-text-muted hover:text-text'
+                      )}
+                    >
+                      {round.name}
+                    </a>
+                  </li>
+                )
+              })}
+            </ul>
+          </nav>
+        )}
 
         <div className="max-w-3xl">
           {trustNetwork ? (

@@ -4,8 +4,12 @@ import { notFound } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { getNetwork } from '@/lib/catalog.server'
 import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
+import { loadContributionsCatalog } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
-import { contributionsRoundsFor } from '@/lib/network-nav'
+import {
+  contributionsRoundsFor,
+  sortRoundsNewestActiveFirst,
+} from '@/lib/network-nav'
 
 import { ContributionsNetworkPage } from '../contributions'
 
@@ -22,7 +26,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params
   const { network } = await getNetwork(id)
-  if (!network || contributionsRoundsFor(network).length === 0) return {}
+  if (!network) return {}
+  const { rounds } = await loadContributionsCatalog(network.instanceId)
+  if (contributionsRoundsFor(network, rounds).length === 0) return {}
 
   return {
     title: `${network.name} contributions`,
@@ -37,10 +43,13 @@ export async function generateMetadata({
 
 export default async function ContributionsPageServer({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ round?: string }>
 }) {
   const { id } = await params
+  const { round: requestedRound } = await searchParams
   const { network, catalogError } = await getNetwork(id)
 
   if (!network) {
@@ -50,11 +59,35 @@ export default async function ContributionsPageServer({
     notFound()
   }
 
-  // Contributions are a capability of the trust network, not a second network
-  // destination. V1 configures one active round per trust graph; its program
-  // contracts remain separate even though its UX now lives here.
-  const round = contributionsRoundsFor(network)[0]
+  // Contributions are a capability of the trust network, not a second network destination. The
+  // rounds come from the RUNTIME round catalog (rounds are created from this network's settings
+  // page at any moment), linked to this network by the factory's parentInstanceId. The newest
+  // active round renders by default; ?round= picks a sibling.
+  const { rounds: allRounds, error: roundsError } =
+    await loadContributionsCatalog(network.instanceId)
+  const rounds = sortRoundsNewestActiveFirst(
+    contributionsRoundsFor(network, allRounds)
+  )
+  if (rounds.length === 0) {
+    if (roundsError) {
+      return <CatalogUnavailable reason={roundsError} networkId={id} />
+    }
+    notFound()
+  }
+  const requested = requestedRound
+    ? rounds.find(
+        (candidate) =>
+          candidate.id.toLowerCase() === requestedRound.toLowerCase()
+      )
+    : undefined
+  const round = requested ?? rounds[0]
   if (!round) notFound()
 
-  return <ContributionsNetworkPage network={round} hostNetwork={network} />
+  return (
+    <ContributionsNetworkPage
+      network={round}
+      hostNetwork={network}
+      siblingRounds={rounds}
+    />
+  )
 }

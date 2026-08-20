@@ -1,19 +1,15 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 
-import { VISIBLE_CONTRIBUTIONS_NETWORKS } from '@/lib/config'
+import { CatalogUnavailable } from '@/components/CatalogUnavailable'
+import { getCatalog } from '@/lib/catalog.server'
+import { getContributionsNetwork } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
 
 import { PayoutPage } from '../payout/component'
 
-export const revalidate = 3_600 // 1 hour
-
-export async function generateStaticParams() {
-  return VISIBLE_CONTRIBUTIONS_NETWORKS.map((network) => ({
-    id: network.id,
-  }))
-}
+export const revalidate = 10
 
 export async function generateMetadata({
   params,
@@ -21,12 +17,10 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const network = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
-    (candidate) => candidate.id === id
-  )
-  if (!network) return {}
+  const { round } = await getContributionsNetwork(id)
+  if (!round) return {}
 
-  const title = `Claim your ${network.name} share`
+  const title = `Claim your ${round.name} share`
   return {
     title,
     ...socialCard({
@@ -44,17 +38,21 @@ export default async function ClaimPageServer({
 }) {
   const { id } = await params
 
-  const network = VISIBLE_CONTRIBUTIONS_NETWORKS.find(
-    (network) => network.id === id
-  )
-  if (!network) {
+  // Rounds are resolved from the runtime round catalog (they are factory-minted at any moment);
+  // the static config list is gone.
+  const { round, error } = await getContributionsNetwork(id)
+  if (!round) {
+    if (error) {
+      return <CatalogUnavailable reason={error} networkId={id} />
+    }
     notFound()
   }
 
-  const trustNetwork = trustNetworkFor(network)
+  const { networks } = await getCatalog()
+  const trustNetwork = trustNetworkFor(round, networks)
   if (trustNetwork) {
     redirect(`/networks/${trustNetwork.id}/rewards`)
   }
 
-  return <PayoutPage network={network} />
+  return <PayoutPage network={round} />
 }
