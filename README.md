@@ -126,26 +126,26 @@ gitignored `.trustgraph/` directory, one subdirectory per program.
 
 | Path | What lives there |
 |---|---|
-| `src/contracts/` | Solidity: EAS resolvers + attestation accumulator, `MerkleSnapshot`, the SP1 journal verifier (a *journal* is a proof's public output record), governance/reward/Zodiac modules |
-| `packages/` | Rust cores — `zk-core` (shared encodings), `pagerank-core`, `weighted-prior-core`, `composition-core`, `hypercerts-core`, `contributions-core`, `envelopes` (atproto verification), `input-exporter` |
-| `zk/program` · `zk/weighted-program` · `zk/composition-program` · `zk/prover` | the legacy multi-bin and isolated SP1 guests, plus the `trustgraph-prover` host CLI |
-| `frontend/` · `indexer/` | Next.js app and Ponder indexer (with a browser port of the algorithm for client-side recompute) |
+| [`contracts/`](./contracts/) | Foundry codebase: production Solidity, contract tests, scripts, and TypeScript deployment helpers |
+| [`crates/`](./crates/) | Root Cargo workspace: canonical Rust cores, shared encodings, and host-side tools |
+| [`packages/`](./packages/) | pnpm workspaces: Next.js frontend, Ponder indexer, EAS offchain client, and relay |
+| [`zk/`](./zk/) | Detached SP1 guest and host workspaces, including the prover and operator |
+| [`tests/`](./tests/) | Cross-codebase end-to-end scripts, protocol fixtures, and golden vectors |
 | `docs/` | product docs — `learn/` (plain-language intros), `concepts/` ([`networks-and-programs.md`](./docs/concepts/networks-and-programs.md) index, the algorithm), `build/` ([`setup.md`](./docs/build/setup.md), [`production.md`](./docs/build/production.md), per-program `architecture`/`runbook`/`local-testing`), `verify/` (epoch reproduction) |
 | `research/` | design provenance — why the architecture is what it is (`ZK_ARCHITECTURE.md`, program plans, the [`DEVIATIONS.md`](./research/DEVIATIONS.md) log, `archive/` for superseded designs) |
-| `test/` | Solidity suites, golden vectors (`test/golden/`), atproto fixtures (`test/fixtures/atproto/`), the `task e2e` script |
 | `paper/` | the governance research paper |
 
 Cross-language parity is enforced per program with *golden vectors* — committed
 input/output byte captures that lock the native Rust, SP1 guest, Solidity, and TypeScript
 implementations to identical bytes (`task zk:parity PROGRAM=<name>`). Each program owns a
-`test/golden/<program>.json`, except signer-sync, which shares `trust-graph.json` (same
+`tests/golden/<program>.json`, except signer-sync, which shares `trust-graph.json` (same
 attestation feed; its vectors live under that file's `signer` key).
 
 ## Contributing
 
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the dev setup, the test matrix expected green
 before a PR, and the copy-and-voice rules for anything a user reads. The short version:
-`packages/` cores are the single source of truth for every byte, and an encoding change
+`crates/` cores are the single source of truth for every byte, and an encoding change
 without regenerated golden vectors in the same PR is a CI failure.
 
 ## License

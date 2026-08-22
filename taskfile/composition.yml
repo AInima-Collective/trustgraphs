@@ -4,7 +4,7 @@ tasks:
   contracts:
     desc: "Run trust-compose capture, lifecycle, validator, golden, and snapshot regressions"
     cmds:
-      - forge test --match-path 'test/unit/composition/TrustComposeCapture.t.sol'
-      - forge test --match-path 'test/unit/TrustComposeValidator.t.sol'
-      - forge test --match-path 'test/unit/golden/TrustComposeGoldenVectors.t.sol'
-      - forge test --match-path 'test/unit/MerkleSnapshot.t.sol'
+      - forge test --match-path 'contracts/test/unit/composition/TrustComposeCapture.t.sol'
+      - forge test --match-path 'contracts/test/unit/TrustComposeValidator.t.sol'
+      - forge test --match-path 'contracts/test/unit/golden/TrustComposeGoldenVectors.t.sol'
+      - forge test --match-path 'contracts/test/unit/MerkleSnapshot.t.sol'

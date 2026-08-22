@@ -10,20 +10,20 @@ UI remain separate child issues.
 
 The implementation deliberately isolates the new program from every legacy guest:
 
-- `packages/composition-core` is the exact Rust consensus core. It validates complete canonical
+- `crates/composition-core` is the exact Rust consensus core. It validates complete canonical
   source blobs and their CID/SHA-256/Merkle/total commitments, validates the frozen capture and
   static policy, performs two-stage uint128 Hamilton allocation with uint256 products, and emits
   the canonical output blob/CID/root plus per-source attribution.
 - `zk/composition-program` is the dedicated SP1 6.3.1 guest. `zk/prover/src/programs/composition.rs`
   is its native adapter and refuses any guest/native journal difference.
-- `src/contracts/params/TrustComposeParamsCodec.sol` and `TrustComposeValidator.sol` freeze the
+- `contracts/src/params/TrustComposeParamsCodec.sol` and `TrustComposeValidator.sol` freeze the
   policy/params boundary.
 - `CompositionSourceAdapter`, `CompositionSourceAccumulator`, `TrustComposeParamsController`, and
   `TrustComposeFactory` authenticate source deployments/proofs, freeze exact `TGCM` bytes in one
   trigger transaction, govern complete policy rotations, and register isolated composition
   instances. The [contract architecture](../../docs/build/composition/architecture.md) and
   [runbook](../../docs/build/composition/runbook.md) define the operational boundary.
-- `production.ts` and `test/golden/trust-compose.json` independently pin every byte consumed by
+- `production.ts` and `tests/golden/trust-compose.json` independently pin every byte consumed by
   Rust, SP1, and Solidity.
 
 V1 fixes `keccak256("trust-compose")` as the program ID, `eip155-address` as the identity domain,
@@ -50,8 +50,8 @@ Run the production gates from the repository root:
 cargo test -p composition-core
 node --import tsx --test \
   research/composition/reference.test.ts research/composition/production.test.ts
-forge test --match-path 'test/unit/TrustCompose*.t.sol'
-forge test --match-path 'test/unit/golden/TrustComposeGoldenVectors.t.sol'
+forge test --match-path 'contracts/test/unit/TrustCompose*.t.sol'
+forge test --match-path 'contracts/test/unit/golden/TrustComposeGoldenVectors.t.sol'
 SP1_SKIP_PROGRAM_BUILD=true cargo run --manifest-path zk/prover/Cargo.toml \
   --release --example trust_compose_guest_scenarios
 SP1_SKIP_PROGRAM_BUILD=true cargo run --manifest-path zk/prover/Cargo.toml \
@@ -96,7 +96,7 @@ overflow.
 node --import tsx --test research/composition/reference.test.ts
 pnpm exec tsc research/composition/*.ts --noEmit \
   --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --strict \
-  --types node --typeRoots indexer/node_modules/@types
+  --types node --typeRoots packages/indexer/node_modules/@types
 pnpm exec tsx research/composition/simulate.ts
 pnpm exec tsx research/composition/export-fixture.ts
 pnpm exec tsx research/composition/export-production-fixture.ts
@@ -113,7 +113,7 @@ update after trigger.
 `production.ts` freezes the implementation boundary for issue #63: the compact static `TGCP`
 source-policy manifest/root, exact captured `TGCM` bytes, program/output/identity domains, params
 tuple, common 12-word journal, output leaf/proof, and post-trigger capture. Its generated
-`test/golden/trust-compose.json` is the independent TypeScript target for Rust, SP1, and Solidity.
+`tests/golden/trust-compose.json` is the independent TypeScript target for Rust, SP1, and Solidity.
 
 `simulate.ts` is the A/B/C weight-simplex explorer and adversarial/scaling harness. It prints all
 36 positive 10%-grid policies; pairwise overlap, correlation, and Jensen-Shannon disagreement;

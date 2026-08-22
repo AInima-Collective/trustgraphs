@@ -58,7 +58,7 @@ network, that means a proposal). The factory registers the three schemas
 payout distributor (fee 0, fee recipient = the round admin), and the typed
 params controller, then registers the round and publishes params version 1.
 From the app: the parent network's **Settings → Contribution cycles → Start a
-contribution round**. From a script: `script/CreateDevContributionsRound.s.sol`
+contribution round**. From a script: `contracts/script/CreateDevContributionsRound.s.sol`
 is the dev-shaped example.
 
 Cost, honestly: creation deploys seven contracts and registers three schemas —
@@ -118,7 +118,7 @@ input construction or proving.
 Users act through the frontend screens (contribute / respond / rate on the
 contributions network page); everything is a plain EAS attestation against the
 three registered schemas. The seed driver
-(`frontend/scripts/contribution-round.ts`) drives the same code path headless.
+(`packages/frontend/scripts/contribution-round.ts`) drives the same code path headless.
 
 ### 3. Trigger (permissionless, epoch-gated)
 

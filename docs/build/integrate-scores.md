@@ -26,7 +26,7 @@ Three consumption paths, strongest first:
 
 ### What the snapshot exposes
 
-`MerkleSnapshot` (`src/contracts/merkle/MerkleSnapshot.sol`) keeps the full history of proven
+`MerkleSnapshot` (`contracts/src/merkle/MerkleSnapshot.sol`) keeps the full history of proven
 states:
 
 ```solidity
@@ -140,12 +140,12 @@ Existing on-chain consumers to crib from:
 
 ## 2. HTTP: the indexer's score and proof routes
 
-The Ponder indexer (`indexer/`) watches the chain, fetches each root's canonical score blob from
+The Ponder indexer (`packages/indexer/`) watches the chain, fetches each root's canonical score blob from
 IPFS by the CID committed in the proof, and serves scores *with their proofs*. It is a convenience,
 never a second source of truth: **every bundle carries the proof and the root, so a consumer can
 verify against the chain and ignore the endpoint's honesty entirely.** The indexer holds itself to
 the same rule: it rebuilds each tree with the guest-identical merkle code and refuses to serve
-entries whose recomputed root does not match the on-chain root (`indexer/src/merkle.ts`).
+entries whose recomputed root does not match the on-chain root (`packages/indexer/src/merkle.ts`).
 
 All routes are GET. `:snapshot` is the network's `MerkleSnapshot` address, the stable handle a
 consumer should key on (find it via `/instances` or the `InstanceCreated` event).
@@ -224,17 +224,17 @@ Ponder client protocol, for queries these routes don't cover.
 
 ## 3. In-browser: recompute the scores yourself
 
-`frontend/lib/pagerank` is a TypeScript port of the canonical Rust core
-(`packages/pagerank-core`): fixed-point Trust-Aware PageRank, the byte encodings, the OZ merkle
+`packages/frontend/lib/pagerank` is a TypeScript port of the canonical Rust core
+(`crates/pagerank-core`): fixed-point Trust-Aware PageRank, the byte encodings, the OZ merkle
 tree, and the CID construction. It is held byte-identical to the Rust guest by shared golden
-vectors (`../../test/golden/trust-graph.json`, exercised by `frontend/lib/pagerank/golden.test.ts`
+vectors (`../../tests/golden/trust-graph.json`, exercised by `packages/frontend/lib/pagerank/golden.test.ts`
 and the Solidity golden suites), so what it computes is what the zk proof proves.
 
 That gives an app a third option: don't just check membership, recompute the scores and compare
 the root.
 
 ```ts
-import { compute } from '@/lib/pagerank'   // frontend/lib/pagerank
+import { compute } from '@/lib/pagerank'   // packages/frontend/lib/pagerank
 
 const result = compute({ edges, params })
 // result.journal.outputRoot — compare with snapshot.getLatestState().root on chain
@@ -256,7 +256,7 @@ that you can't. The from-nothing version of this exercise (public data only, no 
 [`../verify/reproduce-an-epoch.md`](../verify/reproduce-an-epoch.md).
 
 One honest caveat: the port lives in this repo as an app library; it is not published as an npm
-package today. Vendoring the `frontend/lib/pagerank` directory (it depends only on `viem`) is the
+package today. Vendoring the `packages/frontend/lib/pagerank` directory (it depends only on `viem`) is the
 current way to use it outside this frontend.
 
 ## Choosing a path

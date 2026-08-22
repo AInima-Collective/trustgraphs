@@ -11,8 +11,8 @@ rpc_port="${TRUSTGRAPHS_ANVIL_PORT:-18547}"
 rpc_url="http://127.0.0.1:$rpc_port"
 dev_key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 dev_address="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-params="$repo_dir/test/fixtures/nostr/params.json"
-source_corpus="$repo_dir/test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/source-corpus.json"
+params="$repo_dir/tests/fixtures/nostr/params.json"
+source_corpus="$repo_dir/tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/source-corpus.json"
 community="01915f7a-6b4c-7d2e-8f10-112233445566"
 a_head="b3fb658ab799cdb4ed09da4f5d9cd5c2dce8bd53639e50be19f1b60300822bbe"
 c_head="6659cc9bc90ece1ec3d7180096c9c80805c31c4b75fdfb7e67d294e3450ce10e"
@@ -50,9 +50,9 @@ deploy() {
     | awk '/Deployed to:/{print $3}'
 }
 
-empty_lane="$(deploy src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)"
-registry="$(deploy src/contracts/registry/AnchorRegistry.sol:AnchorRegistry --constructor-args "$dev_address" 200000)"
-snapshot="$(deploy src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
+empty_lane="$(deploy contracts/src/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)"
+registry="$(deploy contracts/src/registry/AnchorRegistry.sol:AnchorRegistry --constructor-args "$dev_address" 200000)"
+snapshot="$(deploy contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
   0x0000000000000000000000000000000000000001 \
   0xaf83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd \
   "$empty_lane" "$dev_address" "$dev_address")"

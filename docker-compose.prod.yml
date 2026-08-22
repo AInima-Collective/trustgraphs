@@ -44,7 +44,7 @@ services:
   ponder:
     image: node:22-alpine
     container_name: ponder
-    working_dir: /app/indexer
+    working_dir: /app/packages/indexer
     init: true
     volumes:
       - .:/app
@@ -73,7 +73,7 @@ services:
   ponder-server:
     image: node:22-alpine
     container_name: ponder-server
-    working_dir: /app/indexer
+    working_dir: /app/packages/indexer
     init: true
     volumes:
       - .:/app
@@ -104,7 +104,7 @@ services:
   erc8004-metadata:
     image: node:22-alpine
     container_name: erc8004-metadata
-    working_dir: /app/indexer
+    working_dir: /app/packages/indexer
     init: true
     volumes:
       - .:/app

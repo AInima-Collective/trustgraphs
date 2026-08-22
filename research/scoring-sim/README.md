@@ -3,8 +3,8 @@
 The measurements behind [`../SCORING_NEXT_STEPS.md`](../SCORING_NEXT_STEPS.md). Pure `python3`,
 no dependencies, no network except one dataset download.
 
-`tg.py` is an integer-faithful port of `packages/pagerank-core/src/pagerank.rs::calculate_generic`,
-written from the Rust rather than from any other model. It reproduces `test/golden/trust-graph.json`
+`tg.py` is an integer-faithful port of `crates/pagerank-core/src/pagerank.rs::calculate_generic`,
+written from the Rust rather than from any other model. It reproduces `tests/golden/trust-graph.json`
 byte-for-byte, which is the check that makes every other number here worth reading:
 
 ```

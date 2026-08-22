@@ -17,7 +17,7 @@ tasks:
       - test -n "{{.VOUCHING_SCHEMA_UID}}"
     cmds:
       - |
-        forge script script/EASAttest.s.sol:EASAttest \
+        forge script contracts/script/EASAttest.s.sol:EASAttest \
           --sig "vouch(string,string,string,string,uint256)" \
           "{{.EAS_ADDR}}" \
           "{{.VOUCHING_SCHEMA_UID}}" \
@@ -35,7 +35,7 @@ tasks:
       vars: [INPUT, STATEMENT_SCHEMA_UID]
     cmds:
       - |
-        forge script script/EASAttest.s.sol:EASAttest \
+        forge script contracts/script/EASAttest.s.sol:EASAttest \
           --sig "attestWithMilliEth(string,string,string,string,uint256)" \
           "{{.EAS_ADDR}}" \
           "{{.STATEMENT_SCHEMA_UID}}" \
@@ -51,7 +51,7 @@ tasks:
         sh: task get-rpc
     cmds:
       - |
-        forge script script/Governance.s.sol:Governance \
+        forge script contracts/script/Governance.s.sol:Governance \
           --sig "queryVotingPower(string,string)" \
           "{{.VOTING_POWER_ADDR}}" \
           "{{.WALLET_ADDRESS}}" \
@@ -69,7 +69,7 @@ tasks:
     cmds:
       - |
         echo "Using merkle snapshot: {{.MERKLE_SNAPSHOT_ADDR}}"
-        forge script script/Merkler.s.sol:Merkler \
+        forge script contracts/script/Merkler.s.sol:Merkler \
           --sig "updateMerkle(string)" \
           "{{.MERKLE_SNAPSHOT_ADDR}}" \
           --rpc-url {{.RPC_URL}} \
@@ -88,7 +88,7 @@ tasks:
     cmds:
       - |
         echo "Using reward distributor: {{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
-        forge script script/Merkler.s.sol:Merkler \
+        forge script contracts/script/Merkler.s.sol:Merkler \
           --sig "queryContractState(string,uint256)" \
           "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}" \
           "{{.DISTRIBUTION_INDEX}}" \
@@ -110,7 +110,7 @@ tasks:
       - |
         echo "Using reward distributor: {{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}"
         echo "Using distribution index: {{.DISTRIBUTION_INDEX}}"
-        forge script script/Merkler.s.sol:Merkler \
+        forge script contracts/script/Merkler.s.sol:Merkler \
           --sig "claimRewards(string,uint256)" \
           "{{.MERKLE_FUND_DISTRIBUTOR_ADDRESS}}" \
           "{{.DISTRIBUTION_INDEX}}" \
@@ -128,7 +128,7 @@ tasks:
     cmds:
       - |
         echo "Querying rewards balance for: {{.WALLET_ADDRESS}}"
-        forge script script/Merkler.s.sol:Merkler \
+        forge script contracts/script/Merkler.s.sol:Merkler \
           --sig "queryBalance(string)" \
           "{{.WALLET_ADDRESS}}" \
           --rpc-url {{.RPC_URL}}

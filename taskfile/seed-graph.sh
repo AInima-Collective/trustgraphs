@@ -58,12 +58,12 @@ echo "  edges now:    $BEFORE"
 if [ "$DRY_RUN" = "1" ]; then
   echo
   echo "would run:"
-  echo "  forge script script/SeedGraph.s.sol:SeedGraph --sig 'run(address,bytes32,address)' \\"
+  echo "  forge script contracts/script/SeedGraph.s.sol:SeedGraph --sig 'run(address,bytes32,address)' \\"
   echo "    $EAS $INSTANCE_SCHEMA $INSTANCE_SEED --rpc-url $RPC --broadcast"
   exit 0
 fi
 
-forge script script/SeedGraph.s.sol:SeedGraph --sig 'run(address,bytes32,address)' \
+forge script contracts/script/SeedGraph.s.sol:SeedGraph --sig 'run(address,bytes32,address)' \
   "$EAS" "$INSTANCE_SCHEMA" "$INSTANCE_SEED" --rpc-url "$RPC" --broadcast >/dev/null \
   || die "forge script failed — is the seed one of anvil accounts 0-9, and is anvil on $RPC?"
 

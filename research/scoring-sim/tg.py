@@ -1,4 +1,4 @@
-"""Faithful integer port of packages/pagerank-core/src/pagerank.rs::calculate_generic.
+"""Faithful integer port of crates/pagerank-core/src/pagerank.rs::calculate_generic.
 
 Written from the Rust, not from the memo's toy. All arithmetic is integer at scale S=1e18,
 same operation order, same truncation points.

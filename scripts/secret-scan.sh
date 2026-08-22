@@ -22,7 +22,7 @@ ALLOW=(
   dbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97
   2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6
   # Fixture-only throwaway generated with the atproto hypercerts test fixture
-  # (test/fixtures/atproto/hypercerts/fixtures/meta.json): it signed the fixture's link.evm
+  # (tests/fixtures/atproto/hypercerts/fixtures/meta.json): it signed the fixture's link.evm
   # EIP-712 binding for 0xD030e5..., which the guest tests verify. It controls no funds and no
   # real identity; it is committed so the fixture's signatures are reproducible.
   b9b280a1522bdcb9d608975e9c17b2e1237e8ea8dc616c2532d3e893617dc75a

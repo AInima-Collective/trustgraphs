@@ -112,7 +112,7 @@ ENS can resolve DNS names imported through DNSSEC, including names such as `.xyz
 their subnames. Name detection should therefore treat a string with a non-empty label on each
 side of a dot as a *candidate*, then use ENSIP-15 normalization as the validity check.
 
-The spike adds this pure boundary in `frontend/lib/ens.ts` and moves the existing attestation and
+The spike adds this pure boundary in `packages/frontend/lib/ens.ts` and moves the existing attestation and
 account-route prototype onto it. This is classification, not validation: a candidate still has to
 normalize and successfully resolve.
 
@@ -133,9 +133,9 @@ operators.
 
 | Area | What is already good | Gap to close |
 | --- | --- | --- |
-| `frontend/lib/wagmi.ts` | Mainnet is included alongside the application chain. | Mainnet uses a default public RPC and all ENS calls omit the OP coin type. Add a production `RPC_URL_1` path and keep resolution on L1. |
-| `frontend/hooks/useEns.ts` | Uses wagmi/viem, bounded concurrency of ten, and TanStack Query. | It layers an outer query cache, inner wagmi query cache, and custom `localStorage` cache; invokes a side effect from `useMemo`; does not distinguish failures; and fetches unused avatars. |
-| `frontend/components/Address.tsx` | Falls back to the address and makes the full address copyable/available in a tooltip. | Links use a mutable ENS alias instead of the canonical address. Very long names need the same deliberate truncation treatment as addresses. |
+| `packages/frontend/lib/wagmi.ts` | Mainnet is included alongside the application chain. | Mainnet uses a default public RPC and all ENS calls omit the OP coin type. Add a production `RPC_URL_1` path and keep resolution on L1. |
+| `packages/frontend/hooks/useEns.ts` | Uses wagmi/viem, bounded concurrency of ten, and TanStack Query. | It layers an outer query cache, inner wagmi query cache, and custom `localStorage` cache; invokes a side effect from `useMemo`; does not distinguish failures; and fetches unused avatars. |
+| `packages/frontend/components/Address.tsx` | Falls back to the address and makes the full address copyable/available in a tooltip. | Links use a mutable ENS alias instead of the canonical address. Very long names need the same deliberate truncation treatment as addresses. |
 | `CreateAttestationModal` | Shows the resolved address beside the entered name. | The classifier was `.eth`-only and submission can reuse cached resolution. A changed result is silently accepted rather than requiring review. |
 | `NetworkContext` + `NetworkGraph` | Names hydrate progressively and do not block graph data. | Both layers launch batch resolution. Differently ordered address arrays can produce different outer query keys, so the work can run twice. The graph should consume names already attached by the context. |
 | Account and attestation server pages | Prefetch small reverse-name sets for hydration. | Account-name paths are cached as mutable aliases and non-`.eth` names were cast to `Hex` after detection failed. Use canonical address links and redirect resolved aliases. |
@@ -157,7 +157,7 @@ submit -> uncached live lookup ---------------------+-> compare -> encode addres
 
 ### 1. Pure input boundary
 
-Keep `frontend/lib/ens.ts` independent of React and wagmi:
+Keep `packages/frontend/lib/ens.ts` independent of React and wagmi:
 
 ```ts
 isPotentialEnsName(input: string): boolean
@@ -180,7 +180,7 @@ do after a failed lookup.
 
 ### 2. One query definition per operation
 
-Add a non-React `frontend/lib/ens-query.ts` that owns:
+Add a non-React `packages/frontend/lib/ens-query.ts` that owns:
 
 - registry chain ID `1`;
 - the target coin type;

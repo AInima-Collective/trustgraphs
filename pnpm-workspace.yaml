@@ -1,8 +1,5 @@
 packages:
-  - frontend
-  - indexer
-  - packages/eas-offchain-client
-  - services/eas-offchain-relay
+  - packages/*
 
 onlyBuiltDependencies:
   - '@tailwindcss/oxide'

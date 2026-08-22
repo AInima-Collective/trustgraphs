@@ -33,7 +33,7 @@ and any network can start contribution rounds later (§6.3).
 ## 1. The create call
 
 `TrustgraphsFactory.createInstance` is the canonical deployment and catalog seam
-(`src/contracts/factory/TrustgraphsFactory.sol`). It is permissionless and payable:
+(`contracts/src/factory/TrustgraphsFactory.sol`). It is permissionless and payable:
 
 ```solidity
 function createInstance(CreateArgs calldata args)
@@ -352,7 +352,7 @@ native-gnark`) is the real thing.
 - `SP1_VERIFIER_GATEWAY` names Succinct's real per-chain deployment, which has **no code** on a
   plain anvil — so `submitProof` used to revert inside the verifier before any of its own checks
   ran. The dev deploy now stands up a `MockSP1Gateway` for you (`DeployMockGateway`, wired into
-  `deploy/env.ts`); set `DEV_MOCK_SP1_GATEWAY=false` on a mainnet fork, where the real gateway is
+  `contracts/deploy/env.ts`); set `DEV_MOCK_SP1_GATEWAY=false` on a mainnet fork, where the real gateway is
   part of forked state and the script refuses to stub over it. `task instances:dev-mock-gateway`
   remains for patching a stack that was deployed before this existed.
 
@@ -360,7 +360,7 @@ native-gnark`) is the real thing.
 
 For a DAO the right owner of a network is the DAO, not a deployer wallet, and it should be the
 owner from the first block. That is what `GovernedTrustgraphsFactory.createGovernedInstance` does
-(`src/contracts/factory/GovernedTrustgraphsFactory.sol`), and it is the path the create wizard in the
+(`contracts/src/factory/GovernedTrustgraphsFactory.sol`), and it is the path the create wizard in the
 app uses:
 
 ```solidity
@@ -547,7 +547,7 @@ constant so only the new field moves — a proof whose params differ **solely** 
 refused by the instance it was otherwise built for.
 
 Consequences, all already applied: golden vectors regenerated
-(`../../test/golden/trust-graph.json`); the program vkeys rotated (current values in
+(`../../tests/golden/trust-graph.json`); the program vkeys rotated (current values in
 [`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md)); `params.json`
 gained `accumulator` and `chain_id`; `input-exporter` fills both from the connection it is actually
 reading and **errors** if the file names a different instance.
@@ -561,19 +561,19 @@ network: a creator only ever sends §1's one transaction.
 proving commits to), one block on a devnet so a local proving loop is never waiting on the schedule.
 
 ```bash
-forge script script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry --sig 'run(string,string)' '' '' …
-forge script script/DeployFactory.s.sol:DeployFactory \
+forge script contracts/script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry --sig 'run(string,string)' '' '' …
+forge script contracts/script/DeployFactory.s.sol:DeployFactory \
   --sig 'run(string,string,string,string,uint64)' \
   <eas> <schemaRegistrar> <zkVerifier> <instanceRegistry> <epochFloorBlocks> …
-forge script script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory \
+forge script contracts/script/DeployGovernedTrustgraphsFactory.s.sol:DeployGovernedTrustgraphsFactory \
   --sig 'run(string)' <factory> …
 # the other program factories and their governed wrappers (full arguments in docs/build/production.md
 # and each program's runbook):
-forge script script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory …
-forge script script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory …
-forge script script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory --sig 'run(string)' <weightedFactory> …
-forge script script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory --sig 'run(string)' <trustComposeFactory> …
-forge script script/DeployContributionsFactory.s.sol:DeployContributionsFactory …
+forge script contracts/script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory …
+forge script contracts/script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory …
+forge script contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory --sig 'run(string)' <weightedFactory> …
+forge script contracts/script/DeployGovernedTrustComposeFactory.s.sol:DeployGovernedTrustComposeFactory --sig 'run(string)' <trustComposeFactory> …
+forge script contracts/script/DeployContributionsFactory.s.sol:DeployContributionsFactory …
 ```
 
 `DeployFactory` also grants the factory `REGISTRAR_ROLE` on the registry (skip with
@@ -581,7 +581,7 @@ forge script script/DeployContributionsFactory.s.sol:DeployContributionsFactory 
 a governance action). `update()` stays with the global registry operator, while each controller may
 change only its own row's `paramsHash`; a factory bug can add rows but never rewrite one.
 
-Locally, `pnpm deploy:contracts` does all of it. `script/CreateDevInstances.s.sol` creates the
+Locally, `pnpm deploy:contracts` does all of it. `contracts/script/CreateDevInstances.s.sol` creates the
 dev-seed networks through the canonical factory; `DeployZodiacSafes` then transfers each typed
 params controller and both module authorities to that network's Safe before deployment completes.
 The browser uses the governed wrapper so the equivalent ownership is atomic in one transaction.

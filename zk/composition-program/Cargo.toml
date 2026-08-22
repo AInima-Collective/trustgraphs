@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"
-composition-core = { path = "../../packages/composition-core" }
+composition-core = { path = "../../crates/composition-core" }
 
 # Distinct workspace: the new guest cannot perturb any shipped program dependency graph or vkey.
 [workspace]

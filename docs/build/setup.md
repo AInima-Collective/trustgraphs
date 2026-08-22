@@ -120,7 +120,7 @@ Budget several minutes: the `succinct` toolchain unpacks to over a gigabyte unde
 
 ```bash
 task setup         # pnpm install + forge install
-task zk:build      # compile the five SP1 guest ELFs + the prover host
+task zk:build      # compile all SP1 guest ELFs + the prover host
 ```
 
 Give the guest build a few minutes the first time; afterwards it's cached and incremental.
@@ -128,18 +128,19 @@ Give the guest build a few minutes the first time; afterwards it's cached and in
 Why it's a separate step rather than something a `cargo build` picks up: `zk/prover/build.rs`
 calls `sp1_build::build_program("../program")`, which *would* build the guests on any host
 build — but the paths that invoke the prover repeatedly (`task demo` and its subtasks,
-`test/e2e/operator.sh`, `test/e2e/fork.sh`) export `SP1_SKIP_PROGRAM_BUILD=true` so they aren't
+`tests/e2e/operator.sh`, `tests/e2e/fork.sh`) export `SP1_SKIP_PROGRAM_BUILD=true` so they aren't
 paying for a guest rebuild on every tick. On a checkout where the guests have never been built,
-that skip turns into a missing-file error from `include_elf!` naming a path under
-`zk/program/target/` — which reads like a broken repo and actually means "run `task zk:build`".
+that skip turns into a missing-file error from `include_elf!` naming a path under a
+`zk/*/target/` directory — which reads like a broken repo and actually means "run `task zk:build`".
 (`task e2e` is the exception: it leaves the flag unset and will build the guests itself, slowly.)
 
 Two consequences worth knowing:
 
-- **After editing anything under `packages/`, rebuild the guests.** `sp1_build` does not watch
+- **After editing anything under `crates/`, rebuild the guests.** `sp1_build` does not watch
   path dependencies, so cargo will reuse a stale ELF and you will debug a change that isn't in
   the binary. `task zk:build` handles this (it touches `zk/prover/build.rs` between the two
-  steps); by hand it's `cd zk/program && cargo prove build && touch ../prover/build.rs`.
+  steps). For a manual build, run each `cargo prove build` command listed in
+  [`taskfile/zk.yml`](../../taskfile/zk.yml), then touch `zk/prover/build.rs`.
 - **Rebuilding changes the vkeys**, whenever the ELF changes at all — including refactors with
   identical semantics. `task demo:vkeys` prints what your checkout currently produces, and
   `task demo:deploy` derives them fresh rather than trusting `.env`, precisely because a stale

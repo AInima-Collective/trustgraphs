@@ -13,7 +13,7 @@ Under the hood, trustgraphs is a platform of zero-knowledge-proven graph computa
   **trust-graph**, the vouch-based scorer described in [the architecture](./architecture.md);
   the others below reuse the same proving machinery for different computations.
 - An **instance** is one deployment of a program: a chain, a contract set (snapshot and
-  verifier, accumulator or registry), a parameter set, and an indexer/frontend view. The same
+  verifier, accumulator or registry), a parameter set, and an indexer and frontend view. The same
   program can run as many instances as there are communities, with zero code changes.
 
 So a community's network is an _instance_ of the trust-graph _program_ (plus any companion
@@ -45,18 +45,18 @@ vkeys must be derived on the pinned toolchain (measurements:
 
 Where each piece lives in the repository:
 
-- `packages/zk-core` — shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal),
+- `crates/zk-core` — shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal),
   the single source of truth for the primitives; every program's core crate re-exports it.
-- `packages/pagerank-core` — trust-graph + signer semantics and their Params/Journal encodings.
-- `packages/weighted-prior-core` and `zk/weighted-program` — isolated weighted-prior semantics and
+- `crates/pagerank-core` — trust-graph + signer semantics and their Params/Journal encodings.
+- `crates/weighted-prior-core` and `zk/weighted-program` — isolated weighted-prior semantics and
   guest, kept outside the legacy guest dependency graph.
-- `packages/composition-core` and `zk/composition-program` — isolated source-aware Hamilton
+- `crates/composition-core` and `zk/composition-program` — isolated source-aware Hamilton
   composition semantics and guest, likewise kept outside every legacy guest dependency graph.
-- `packages/nostr-envelope`, `packages/nostr-workspace-core`, and `zk/nostr-program` — the isolated
+- `crates/nostr-envelope`, `crates/nostr-workspace-core`, and `zk/nostr-program` — the isolated
   Buzz/Nostr envelope, graph semantics, and detached conformance/production guests.
 - `zk/program` — one multi-bin guest crate: every program's zkVM binary, built together.
 - `zk/prover` — one host CLI (`trustgraph-prover`) with a subcommand group per program.
-- `test/golden/<program>.json` — one golden-vector file per program, enforcing four-way parity
+- `tests/golden/<program>.json` — one golden-vector file per program, enforcing four-way parity
   (native Rust / SP1 guest / Solidity / TypeScript). Exception: signer-sync shares
   `trust-graph.json`, since it reads the same attestation feed.
 - `docs/build/<program>/` — how to operate each program (runbooks, params, addresses);

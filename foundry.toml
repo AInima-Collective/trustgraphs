@@ -1,5 +1,7 @@
 [profile.default]
-src = 'src'
+src = 'contracts/src'
+test = 'contracts/test'
+script = 'contracts/script'
 out = 'out'
 libs = ['lib']
 auto_detect_solc = true

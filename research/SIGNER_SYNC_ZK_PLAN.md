@@ -17,21 +17,21 @@ proof — acceptable for zero blast radius on the core.
 
 Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == frontend TS):
 
-- **`packages/pagerank-core`**: `SelectionParams`, `select_signers` (value-desc / addr-asc total
+- **`crates/pagerank-core`**: `SelectionParams`, `select_signers` (value-desc / addr-asc total
   order, canonical ascending output, clamped threshold), `signer_set_root`, the 7-field
   `SignerJournal`, `encode::{selection_params_hash, signer_journal_encoded, signer_journal_digest}`,
   and `signer::compute_signers`. Signer journal digest `0xb81a2e5e…`, root `0x2a003402…`.
 - **`zk/program/src/signer.rs`** (2nd guest bin) + **`zk/prover`** signer subcommands
   (`signer-vkey`/`signer-selectionparamshash`/`signer-execute`/`signer-prove`). Executor-validated:
   guest == native at 1.85M cycles.
-- **`src/contracts/zodiac/SignerSyncZkModule.sol`**: permissionless `submitSignerProof` (monotonic
+- **`contracts/src/zodiac/SignerSyncZkModule.sol`**: permissionless `submitSignerProof` (monotonic
   checkpoint, journal rebuild + verify, canonical-signer validation, **on-chain owner diff against
   the Safe's real linked list**, threshold invariant preserved every step, `onlyOwner` governance,
   and a deliberate pause gate). The focused suite covers 28 cases plus randomized owner-set diffs
   against a real Gnosis Safe.
-- **Golden parity** (`test/unit/GoldenVectors.t.sol`): `selectionParamsHash`, `signerSetRoot`,
+- **Golden parity** (`contracts/test/unit/GoldenVectors.t.sol`): `selectionParamsHash`, `signerSetRoot`,
   signer journal encoding/digest recomputed in Solidity and asserted equal to the Rust vectors.
-- **Deploy** (`script/DeployZodiacSafes.s.sol`): deploys + enables the module with the signer
+- **Deploy** (`contracts/script/DeployZodiacSafes.s.sol`): deploys + enables the module with the signer
   guest's dedicated verifier while reusing the MerkleSnapshot's accumulator, score-checkpoint
   source, and params commitment; `selectionParamsHash` comes from `SELECTION_PARAMS_HASH`.
 - **Factory/app/operator** (`GovernedTrustgraphsFactory`, `SignerSyncModuleDeployer`, Ponder,
@@ -53,7 +53,7 @@ The original design is retained below for reference.
 ## Original plan
 
 This document specifies bringing the capability back as a permissionless SP1 proof, analogous to the
-ZK root producer (`packages/pagerank-core` → `zk/program` → `zk/prover` →
+ZK root producer (`crates/pagerank-core` → `zk/program` → `zk/prover` →
 `MerkleSnapshot.submitProof`, verified by `SP1TrustgraphsVerifier` behind `IZkVerifier`).
 
 ## 1. What it did (the capability we are replacing)
@@ -204,5 +204,5 @@ accumulator, the operational tier owns the params.
 - **WP-S3** `SignerSyncZkModule.sol`: `submitSignerProof`, on-chain diff, timelock governance, tests
   (unit + golden + Safe-invariant fuzz).
 - **WP-S4** deploy: add the module to `DeployZodiacSafes.s.sol` (enable on the Safe, register params),
-  wire into `deploy/env.ts`.
+  wire into `contracts/deploy/env.ts`.
 - **WP-S5** docs: fold into `ZK_ARCHITECTURE.md`; retire this plan file.

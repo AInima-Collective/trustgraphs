@@ -1734,7 +1734,7 @@ mod tests {
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3")
+            .join("../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3")
             .join(name)
     }
 
@@ -1770,7 +1770,7 @@ mod tests {
     #[test]
     fn pinned_schema_digest_matches_live_fixture() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(
-            "../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json",
+            "../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json",
         );
         let (source, _) = source_document(&root).unwrap();
         assert_eq!(migration_digest(&source.migrations).unwrap(), PINNED_SCHEMA_SHA256);

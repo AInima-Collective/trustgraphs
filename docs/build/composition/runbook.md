@@ -12,7 +12,7 @@ verification.
 ## Deploy the factory
 
 Compositions are created through `TrustComposeFactory`, deployed once per chain by
-`script/DeployTrustComposeFactory.s.sol` together with its own verifier (an `SP1JournalVerifier`
+`contracts/script/DeployTrustComposeFactory.s.sol` together with its own verifier (an `SP1JournalVerifier`
 pinned to the `trust-compose` guest's vkey), the `CompositionSourceAdapterFactory` used in "Admit
 sources" below, and its `REGISTRAR_ROLE` grant on the instance registry. The factory constructor
 cross-checks the vkey it is given against the verifier's own `programVKey()` and reverts on a
@@ -118,7 +118,7 @@ adapter list. Transfer controller authority with `transferOwnership` followed by
 
 ```sh
 task composition:contracts
-forge test --match-path test/unit/composition/TrustComposeCapture.t.sol -vv
+forge test --match-path contracts/test/unit/composition/TrustComposeCapture.t.sol -vv
 task zk:parity PROGRAM=trust-compose
 ```
 

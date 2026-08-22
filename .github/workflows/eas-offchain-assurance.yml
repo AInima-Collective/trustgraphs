@@ -4,46 +4,46 @@ on:
   pull_request:
     paths:
       - 'packages/eas-offchain-client/**'
-      - 'packages/eas-offchain-v2/**'
-      - 'packages/input-exporter/**'
-      - 'packages/operator-core/**'
-      - 'packages/trustgraph-core/**'
-      - 'services/eas-offchain-relay/**'
-      - 'frontend/app/create/**'
-      - 'frontend/app/networks/**'
-      - 'frontend/components/CreateAttestationModal.tsx'
-      - 'frontend/components/HybridVouchAudit.tsx'
-      - 'frontend/components/NetworkGraph.tsx'
-      - 'frontend/components/WalletConnectionButton.tsx'
-      - 'frontend/contexts/NetworkContext.tsx'
-      - 'frontend/hooks/useEasOffchainVouches.ts'
-      - 'frontend/lib/attestation*'
-      - 'frontend/lib/eas-offchain*'
-      - 'frontend/lib/types.ts'
-      - 'frontend/lib/wagmi.ts'
-      - 'frontend/queries/ponder.ts'
-      - 'frontend/scripts/generate-eas-offchain-fixture.ts'
-      - 'indexer/src/eas-offchain.ts'
-      - 'indexer/src/api/eas-offchain*'
-      - 'indexer/src/api/network.ts'
-      - 'indexer/src/trust-reconcile*'
-      - 'indexer/ponder.config.ts'
-      - 'indexer/ponder.schema.ts'
-      - 'src/contracts/factory/**'
-      - 'src/contracts/merkle/MerkleSnapshot.sol'
-      - 'src/contracts/params/**'
-      - 'src/contracts/registry/EasOffchainAnchorRegistry.sol'
-      - 'src/contracts/vault/ProvingVault.sol'
-      - 'src/interfaces/registry/IAnchorWorkRegistry.sol'
-      - 'script/DeployEasOffchainE2E.s.sol'
+      - 'crates/eas-offchain-v2/**'
+      - 'crates/input-exporter/**'
+      - 'crates/operator-core/**'
+      - 'crates/trustgraph-core/**'
+      - 'packages/eas-offchain-relay/**'
+      - 'packages/frontend/app/create/**'
+      - 'packages/frontend/app/networks/**'
+      - 'packages/frontend/components/CreateAttestationModal.tsx'
+      - 'packages/frontend/components/HybridVouchAudit.tsx'
+      - 'packages/frontend/components/NetworkGraph.tsx'
+      - 'packages/frontend/components/WalletConnectionButton.tsx'
+      - 'packages/frontend/contexts/NetworkContext.tsx'
+      - 'packages/frontend/hooks/useEasOffchainVouches.ts'
+      - 'packages/frontend/lib/attestation*'
+      - 'packages/frontend/lib/eas-offchain*'
+      - 'packages/frontend/lib/types.ts'
+      - 'packages/frontend/lib/wagmi.ts'
+      - 'packages/frontend/queries/ponder.ts'
+      - 'packages/frontend/scripts/generate-eas-offchain-fixture.ts'
+      - 'packages/indexer/src/eas-offchain.ts'
+      - 'packages/indexer/src/api/eas-offchain*'
+      - 'packages/indexer/src/api/network.ts'
+      - 'packages/indexer/src/trust-reconcile*'
+      - 'packages/indexer/ponder.config.ts'
+      - 'packages/indexer/ponder.schema.ts'
+      - 'contracts/src/factory/**'
+      - 'contracts/src/merkle/MerkleSnapshot.sol'
+      - 'contracts/src/params/**'
+      - 'contracts/src/registry/EasOffchainAnchorRegistry.sol'
+      - 'contracts/src/vault/ProvingVault.sol'
+      - 'contracts/src/interfaces/registry/IAnchorWorkRegistry.sol'
+      - 'contracts/script/DeployEasOffchainE2E.s.sol'
       - 'scripts/eas-offchain-*'
-      - 'test/e2e/eas-offchain-*'
-      - 'test/fixtures/eas-offchain/**'
-      - 'test/unit/EasOffchainAnchorRegistry.t.sol'
-      - 'test/unit/golden/EasOffchainPayloadGolden.t.sol'
-      - 'test/unit/factory/**'
-      - 'test/unit/MerkleSnapshot.t.sol'
-      - 'test/unit/vault/ProvingVault.t.sol'
+      - 'tests/e2e/eas-offchain-*'
+      - 'tests/fixtures/eas-offchain/**'
+      - 'contracts/test/unit/EasOffchainAnchorRegistry.t.sol'
+      - 'contracts/test/unit/golden/EasOffchainPayloadGolden.t.sol'
+      - 'contracts/test/unit/factory/**'
+      - 'contracts/test/unit/MerkleSnapshot.t.sol'
+      - 'contracts/test/unit/vault/ProvingVault.t.sol'
       - 'zk/trustgraph-program-v2/**'
       - 'zk/prover/**'
       - 'Cargo.lock'
@@ -112,7 +112,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install browser runtime
-        run: pnpm --dir frontend exec playwright install --with-deps chromium
+        run: pnpm --dir packages/frontend exec playwright install --with-deps chromium
 
       - name: Client compatibility and adversarial suite
         run: |
@@ -125,15 +125,15 @@ jobs:
           pnpm --filter @trustgraphs/eas-offchain-relay typecheck
 
       - name: Rollout evidence gate contract
-        run: node --test test/e2e/eas-offchain-dark-audit.test.mjs test/e2e/eas-offchain-rollout-gates.test.mjs
+        run: node --test tests/e2e/eas-offchain-dark-audit.test.mjs tests/e2e/eas-offchain-rollout-gates.test.mjs
 
       - name: Official fixture, indexer, and product contracts
         run: |
-          pnpm --dir frontend fixture:eas-offchain:check
-          pnpm --dir indexer exec node --import tsx --test src/api/eas-offchain.source.test.ts src/trust-reconcile.test.ts
-          pnpm --dir indexer typecheck
-          pnpm --dir frontend test:eas-offchain-product
-          pnpm --dir frontend exec tsc --noEmit
+          pnpm --dir packages/frontend fixture:eas-offchain:check
+          pnpm --dir packages/indexer exec node --import tsx --test src/api/eas-offchain.source.test.ts src/trust-reconcile.test.ts
+          pnpm --dir packages/indexer typecheck
+          pnpm --dir packages/frontend test:eas-offchain-product
+          pnpm --dir packages/frontend exec tsc --noEmit
 
       - name: Guest and reader suites
         run: cargo test -p eas-offchain-v2 -p trustgraph-core -p input-exporter
@@ -142,18 +142,18 @@ jobs:
         env:
           FOUNDRY_FUZZ_RUNS: '1024'
         run: |
-          forge test --match-path test/unit/EasOffchainAnchorRegistry.t.sol -vv
-          forge test --match-path test/unit/golden/EasOffchainPayloadGolden.t.sol -vv
-          forge test --match-path test/unit/AccumulatorCheckpoint.t.sol -vv
-          forge test --match-path test/unit/MerkleSnapshot.t.sol -vv
-          forge test --match-path test/unit/factory/TrustgraphsFactory.t.sol -vv
+          forge test --match-path contracts/test/unit/EasOffchainAnchorRegistry.t.sol -vv
+          forge test --match-path contracts/test/unit/golden/EasOffchainPayloadGolden.t.sol -vv
+          forge test --match-path contracts/test/unit/AccumulatorCheckpoint.t.sol -vv
+          forge test --match-path contracts/test/unit/MerkleSnapshot.t.sol -vv
+          forge test --match-path contracts/test/unit/factory/TrustgraphsFactory.t.sol -vv
 
       - name: Full factory-to-strict-input acceptance
         env:
           DATABASE_URL: postgresql://ponder:ponder@127.0.0.1:6432/ponder
           EAS_OFFCHAIN_E2E_INDEXER: '1'
           EAS_OFFCHAIN_E2E_BROWSER: '1'
-        run: test/e2e/eas-offchain-strict.sh
+        run: tests/e2e/eas-offchain-strict.sh
 
   real-testnet-groth16:
     name: Real testnet Groth16 gate
@@ -246,7 +246,7 @@ jobs:
         run: cargo build --release --features network --manifest-path zk/prover/Cargo.toml
 
       - name: Prove and submit the next strict hybrid checkpoint
-        run: test/e2e/eas-offchain-testnet-real.sh
+        run: tests/e2e/eas-offchain-testnet-real.sh
 
       - name: Hash non-secret evidence records
         if: always()

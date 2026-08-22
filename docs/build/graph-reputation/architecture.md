@@ -25,7 +25,7 @@ supersession, and rotation are excluded or reject a required root.
 The canonical `TGRP` binary and its Keccak commitment make that captured state portable. The
 `TGRR` result commits the input, iteration count, residual, score/rank, root-ingress matrix, and
 effective family masses. TypeScript and Rust independently match the frozen vectors in
-`test/golden/graph-reputation.json`.
+`tests/golden/graph-reputation.json`.
 
 ## Fixed-point recurrence
 

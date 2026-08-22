@@ -8,8 +8,8 @@
     "frontend": "pnpm --filter trustgraphs-frontend",
     "indexer": "pnpm --filter trustgraphs-indexer",
     "deploy:full": "pnpm deploy:create-deployer && pnpm deploy:contracts",
-    "deploy:contracts": "tsx deploy/deploy-contracts.ts",
-    "deploy:create-deployer": "tsx deploy/create-deployer.ts",
+    "deploy:contracts": "tsx contracts/deploy/deploy-contracts.ts",
+    "deploy:create-deployer": "tsx contracts/deploy/create-deployer.ts",
     "docker:log": "docker compose -f docker-compose.prod.yml logs -f -n 100",
     "docker:indexer:restart": "docker compose -f docker-compose.prod.yml up -d --force-recreate ponder ponder-server"
   },

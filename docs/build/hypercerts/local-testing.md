@@ -24,7 +24,7 @@ proof) either the Succinct prover network or a 16–32 GiB box.
 ## Quick check — `task e2e`
 
 ```bash
-task e2e            # or: bash test/e2e/run.sh
+task e2e            # or: bash tests/e2e/run.sh
 ```
 
 The e2e runs **four stages** and the last one is the full hypercerts pipeline on a throwaway
@@ -44,15 +44,15 @@ path. The [full pipeline](#full-pipeline--real-data-real-proofs) below is the ze
 cargo test -p hypercerts-core   # decode + decimal + binding + E1–E4 semantics/anti-gaming
                                 # + full-pipeline + two-sided multi-repo fixture tests
 cargo test -p envelopes         # envelope 1: CAR/commit/PLC/MST + 12-test conformance suite
-forge test --match-path "test/unit/golden/*"   # incl. HypercertsGoldenVectors (Solidity parity)
-cd frontend && pnpm test        # TS parity + the reduced-tier recompute from indexed edges
+forge test --match-path "contracts/test/unit/golden/*"   # incl. HypercertsGoldenVectors (Solidity parity)
+cd packages/frontend && pnpm test        # TS parity + the reduced-tier recompute from indexed edges
 
 task zk:execute PROGRAM=hypercerts    # guest == native byte-assert over the seeded fixture
 task zk:parity  PROGRAM=hypercerts    # the full aggregate: vectors drift-gate + all four layers
 task zk:vkey    PROGRAM=hypercerts    # ⚠ vkeys depend on the exact toolchain build — see concepts/networks-and-programs.md
 ```
 
-The anti-gaming battery lives in `packages/hypercerts-core/tests/semantics.rs` and
+The anti-gaming battery lives in `crates/hypercerts-core/tests/semantics.rs` and
 `tests/two_sided_fixture.rs`. First guest build takes minutes; afterwards seconds. If you edit
 `packages/*`, rebuild the guests — `sp1_build` doesn't watch path deps, so cargo will otherwise
 reuse a stale ELF: `task zk:build` (see [`../setup.md`](../setup.md#build-the-zk-guest-programs)).
@@ -166,7 +166,7 @@ SP1_VERIFIER_GATEWAY=$GW \
 HYPERCERTS_VKEY=$($PROVER hypercerts vkey) \
 HYPERCERTS_PARAMS_HASH=$($PROVER hypercerts paramshash $HC/hypercerts_input.json) \
 HYPERCERTS_MAX_TOTAL_INPUTS=1000 \
-forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance \
+forge script contracts/script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance \
   --sig "run(string)" local --rpc-url $RPC --private-key $PK --broadcast --skip-simulation
 export HC_REGISTRY=$(jq -r .anchor_registry .docker/hypercerts_instance_local_deploy.json)
 export HC_SNAPSHOT=$(jq -r .merkle_snapshot .docker/hypercerts_instance_local_deploy.json)
@@ -255,7 +255,7 @@ against the pinned vkey. When it lands, you have proven real production atproto 
 on-chain root with no mock anywhere in the path.
 
 > **No fork RPC / no proving hardware?** The same battery runs on a plain `anvil` with
-> `GW=$(forge create test/mocks/MockSP1Gateway.sol:MockSP1Gateway …)` and `SP1_PROVER=mock`
+> `GW=$(forge create contracts/test/mocks/MockSP1Gateway.sol:MockSP1Gateway …)` and `SP1_PROVER=mock`
 > proofs — real data, real checkpoint wiring, mocked SNARK seam only. That variant is exactly
 > the e2e's hypercerts stage generalized to fetched repos.
 
@@ -282,10 +282,10 @@ jq --slurpfile hc .docker/hypercerts_instance_local_deploy.json \
 curl -sF file=@$HC/hypercerts_blob.json \
   "http://localhost:5001/api/v0/add?cid-version=1&raw-leaves=true"
 
-# c. Indexer env — write BOTH into indexer/.env.local so they survive shell restarts
+# c. Indexer env — write BOTH into packages/indexer/.env.local so they survive shell restarts
 #    (a lost PONDER_START_BLOCK on a fork = Ponder backfills every pre-fork mainnet block,
 #    sweeps up production events, and never reaches yours — see the main guide's Indexer section):
-cat >> indexer/.env.local <<EOF
+cat >> packages/indexer/.env.local <<EOF
 PONDER_START_BLOCK=$(( $(cast rpc anvil_nodeInfo --rpc-url $RPC | jq -r '.forkConfig.forkBlockNumber') + 1 ))
 HYPERCERTS_BUNDLE_PATH=$PWD/$HC/hypercerts_bundle.json
 EOF
@@ -321,7 +321,7 @@ label nodes but never mislabel them.
   byte-assert, nothing else changes. Real proving needs `SP1_PROVER=network` or a 16–32 GiB box.
 - **`succinct` toolchain missing** (fresh container) → `curl -L https://sp1up.succinct.xyz | bash
   && ~/.sp1/bin/sp1up --version v6.3.1`, then `task zk:build`.
-- **`include_elf!` fails with a missing file under `zk/program/target/`** → the guests were never
+- **`include_elf!` fails with a missing file under a `zk/*/target/` directory** → the guests were never
   built, and whatever you ran exports `SP1_SKIP_PROGRAM_BUILD=true`. `task zk:build`.
 - **`prove` gets killed right after the `vkey:` line** → you're on the `cpu` backend and the
   local prover machine's multi-GiB allocation got OOM-killed. `SP1_PROVER=network` didn't reach
@@ -347,9 +347,9 @@ label nodes but never mislabel them.
   closed enum in `hypercerts_core::semantics::skip_reason` (+ rule-Φ CARRIED/DROPPED from
   `pagerank_core::skip_reason`).
 - **Regenerating the fixture**: the committed two-repo fixture (alice + bob, all seven v1.1.0
-  collections, a real `link.evm` signature) is generated by `test/fixtures/atproto/hypercerts/gen/gen.mjs`
+  collections, a real `link.evm` signature) is generated by `tests/fixtures/atproto/hypercerts/gen/gen.mjs`
   against a real in-process PDS + PLC (`@atproto/dev-env`). DIDs/keys are random per run, so
-  regenerating means re-pinning the consumers listed in `test/fixtures/atproto/hypercerts/fixtures/README.md`
+  regenerating means re-pinning the consumers listed in `tests/fixtures/atproto/hypercerts/fixtures/README.md`
   — don't regenerate unless you're changing the fixture's content.
 
 See [`runbook.md`](./runbook.md) for the deploy battery, roles, and the weekly epoch loop;

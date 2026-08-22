@@ -17,7 +17,7 @@ Two pieces make this sound — and the **first is identical to the ZK design**:
 1. **An input accumulator** in the EAS resolver, so the chain holds a trustless commitment to *exactly which edges existed* at snapshot time. Optimistic needs this **just as much as ZK**: without a chain-pinned input set, a proposer and a challenger can disagree about *which edges existed*, and the dispute becomes unresolvable ("you recomputed over a different graph"). The accumulator gives the proposer, every challenger, and the adjudicator **one canonical input set** to agree or disagree about. This is Contract A from `ZK_ARCHITECTURE.md` §3, unchanged.
 2. **An optimistic seam** on `MerkleSnapshot` that gates a write on *"a bond survived a challenge window"* instead of an operator signature, binding the claim to (a) the accumulator's committed input set and (b) a governance-pinned parameter set — the same journal binding the ZK design proves, here *asserted* by the proposer and *checkable* by any challenger.
 
-The design keeps the on-chain contract **dumb** and the canonical computation in **one place** — the same `packages/pagerank` guest, run off-chain by the proposer and by every challenger. The chain folds a raw event log, holds bonds, runs a timer, and adjudicates disputes. It never runs PageRank.
+The design keeps the on-chain contract **dumb** and the canonical computation in **one place** — the same `crates/pagerank` guest, run off-chain by the proposer and by every challenger. The chain folds a raw event log, holds bonds, runs a timer, and adjudicates disputes. It never runs PageRank.
 
 **The honest cost of "far less effort":** the effort saved is the zkVM port and per-snapshot proving. The effort *retained* is a real economic and liveness mechanism — bonds, a challenge window, an adjudicator, and the assumption that **at least one honest party is watching and will challenge in time**. §4.2 and §8 are unsparing about where that assumption bites.
 
@@ -31,7 +31,7 @@ Identical to `ZK_ARCHITECTURE.md` §2 — reproduced so this doc stands alone.
 |---|---|---|
 | Attestation | EAS, schema `string comment, uint256 confidence` | "Alice vouches for Bob." Public, timestamped. Resolver (`EASIndexerResolver.onAttest`) emits index events. |
 | Trigger | `MerkleSnapshot.trigger()` | Emits `MerklerTrigger(triggerId)`; WAVS wakes the component. |
-| Computation | WAVS operators, `components/trust-graph/` → `packages/pagerank` | `f64` Trust-Aware PageRank, `max_iterations` with `max_delta < tolerance` early-exit (`graph_computer.rs:290`); output quantized to `u64` at `1e6` (`graph_computer.rs:325`). |
+| Computation | WAVS operators, `components/trust-graph/` → `crates/pagerank` | `f64` Trust-Aware PageRank, `max_iterations` with `max_delta < tolerance` early-exit (`graph_computer.rs:290`); output quantized to `u64` at `1e6` (`graph_computer.rs:325`). |
 | Commitment | `MerkleSnapshot.handleSignedEnvelope` → `_updateState` | `_serviceManager.validate(...)`, then writes `MerkleState{root, ipfsHash, ipfsHashCid, totalValue}`. Leaf = `keccak256(keccak256(abi.encode(account, value)))` (`MerkleSnapshot.sol:129`). |
 | Consumption | `MerkleGovModule`, distributor, frontend | Merkle inclusion against `states[...]`. Historical snapshots retained. |
 
@@ -181,7 +181,7 @@ When nobody challenges — the expected case for an honest proposer computing a 
 - **Wait:** `challengeWindow` seconds of wall-clock. No compute.
 - **Finalize:** one status flip, one bond refund, one `_updateStateAtBlock`.
 
-There is **no zkVM, no proving network, no ~250–300k-gas Groth16 verify**. That is the "far less effort" the ZK doc concedes. The proposer still runs the canonical `packages/pagerank` off-chain to *get* the root, but so does WAVS today — that cost is unchanged. What's deleted relative to ZK is the entire proving stack.
+There is **no zkVM, no proving network, no ~250–300k-gas Groth16 verify**. That is the "far less effort" the ZK doc concedes. The proposer still runs the canonical `crates/pagerank` off-chain to *get* the root, but so does WAVS today — that cost is unchanged. What's deleted relative to ZK is the entire proving stack.
 
 ### 4.2 The crux — dispute resolution
 
@@ -232,7 +232,7 @@ Identical to `ZK_ARCHITECTURE.md` §4.2, minus the proof. `ipfsHash` (data diges
 
 3. A permissionless proposer:
       - reads all leaves up to checkpoint N (events + EAS getAttestation)
-      - runs the canonical packages/pagerank guest → (outputRoot, ipfsHash, totalValue)
+      - runs the canonical crates/pagerank guest → (outputRoot, ipfsHash, totalValue)
       - pins the {account, score} JSON to IPFS
       - proposeRoot(N, ...) + posts proposerBond                            [NO proof]
 
@@ -330,11 +330,11 @@ Design every shared piece — the accumulator, the journal tuple, freeze-block f
 
 ## Appendix — files this design touches
 
-- `src/contracts/eas/resolvers/EASIndexerResolver.sol` — add `AttestationAccumulator` mix-in + two `_fold` lines (**identical to ZK**; the single schema resolver that feeds the graph, per the §3 one-accumulator invariant)
-- `src/contracts/merkle/MerkleSnapshot.sol` — add `proposeRoot`/`challenge`/`finalize`, `Claim` storage, `adjudicator`/`paramsHash`/`lastAppliedCheckpoint`/`challengeWindow`/bonds, `_checkpoint()` in `trigger()`; refactor `_updateState` → `_updateStateAtBlock(blockNumber, …)` (**identical refactor to ZK**); **remove** `IWavsServiceHandler`, `_serviceManager`, `handleSignedEnvelope`
-- `src/interfaces/merkle/IMerkleSnapshot.sol` — add `InputsCheckpointed`, `Checkpoint`, `RootProposed`/`RootChallenged`/`RootFinalized` events, proposal/challenge errors
+- `contracts/src/eas/resolvers/EASIndexerResolver.sol` — add `AttestationAccumulator` mix-in + two `_fold` lines (**identical to ZK**; the single schema resolver that feeds the graph, per the §3 one-accumulator invariant)
+- `contracts/src/merkle/MerkleSnapshot.sol` — add `proposeRoot`/`challenge`/`finalize`, `Claim` storage, `adjudicator`/`paramsHash`/`lastAppliedCheckpoint`/`challengeWindow`/bonds, `_checkpoint()` in `trigger()`; refactor `_updateState` → `_updateStateAtBlock(blockNumber, …)` (**identical refactor to ZK**); **remove** `IWavsServiceHandler`, `_serviceManager`, `handleSignedEnvelope`
+- `contracts/src/interfaces/merkle/IMerkleSnapshot.sol` — add `InputsCheckpointed`, `Checkpoint`, `RootProposed`/`RootChallenged`/`RootFinalized` events, proposal/challenge errors
 - new `IAdjudicator` + **council adjudicator** (multisig) deployment; seam-swappable to the ZK verifier (Decision 4)
-- `packages/pagerank/`, `components/trust-graph/src/` — fixed-point guest (separate scope; **shared with ZK**, mandatory once adjudicator B is adopted, recommended regardless — §8)
-- `frontend/hooks/usePageRankComputer.ts` — reconcile to the guest's fixed-point output; also the basis for a watcher (**shared with ZK**)
+- `crates/pagerank/`, `components/trust-graph/src/` — fixed-point guest (separate scope; **shared with ZK**, mandatory once adjudicator B is adopted, recommended regardless — §8)
+- `packages/frontend/hooks/usePageRankComputer.ts` — reconcile to the guest's fixed-point output; also the basis for a watcher (**shared with ZK**)
 - governance: an operational `TimelockController` for `paramsHash`/window/bonds; a long-timelock (constitutional) gate on the `adjudicator` address
 - **new off-chain component: a watcher** — recomputes each checkpoint and challenges on mismatch. Has no ZK analog; it is the liveness backbone of this design (§8)

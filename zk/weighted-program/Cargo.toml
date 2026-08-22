@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"
-weighted-prior-core = { path = "../../packages/weighted-prior-core" }
+weighted-prior-core = { path = "../../crates/weighted-prior-core" }
 
 # This is a distinct guest workspace on purpose: adding the weighted program cannot perturb any
 # existing trust-graph, signer, contributions, Hypercerts, or conformance ELF dependency graph.

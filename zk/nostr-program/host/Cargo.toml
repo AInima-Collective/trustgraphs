@@ -7,10 +7,10 @@ publish = false
 [dependencies]
 alloy-primitives = "1"
 anyhow = "1"
-nostr-envelope = { path = "../../../packages/nostr-envelope" }
+nostr-envelope = { path = "../../../crates/nostr-envelope" }
 sha2 = "0.10"
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
-zk-core = { path = "../../../packages/zk-core" }
+zk-core = { path = "../../../crates/zk-core" }
 
 [build-dependencies]
 sp1-build = "=6.3.1"

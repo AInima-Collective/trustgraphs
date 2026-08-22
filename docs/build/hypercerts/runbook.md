@@ -10,7 +10,7 @@ See [`architecture.md`](./architecture.md) (→ [`../../../research/HYPERCERTS_A
 for the design, [`networks-and-programs.md`](../../concepts/networks-and-programs.md) for the program index and the vkey, and the
 sibling [`../trust-graph/runbook.md`](../trust-graph/runbook.md) for the shared prove/submit plumbing
 this reuses. The **exact end-to-end sequence this runbook operationalizes is the `hypercerts` stage of
-[`test/e2e/run.sh`](../../../test/e2e/run.sh)** (deploy → register → anchor → trigger → prove →
+[`tests/e2e/run.sh`](../../../tests/e2e/run.sh)** (deploy → register → anchor → trigger → prove →
 submitProof → InstanceRegistry); every command below mirrors a real step there.
 
 > **Program vs. instance.** `hypercerts` is one program (one guest, one vkey, one journal shape). This
@@ -22,7 +22,7 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 
 
 > **One-script deploy:** the whole battery below is also available as a single labeled script —
-> `forge script script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance --sig "run(string)" <label>`
+> `forge script contracts/script/DeployHypercertsInstance.s.sol:DeployHypercertsInstance --sig "run(string)" <label>`
 > (env: `SP1_VERIFIER_GATEWAY`, `HYPERCERTS_VKEY`, `HYPERCERTS_PARAMS_HASH`,
 > `HYPERCERTS_EPOCH_LENGTH`, `HYPERCERTS_MAX_TOTAL_INPUTS`, optional `INSTANCE_REGISTRY` + admin
 > overrides); it writes
@@ -33,17 +33,17 @@ submitProof → InstanceRegistry); every command below mirrors a real step there
 
 | Path | What it is |
 |---|---|
-| `packages/hypercerts-core` | The record→edge semantics (research plan §3) + fixed-point Trust-Aware PageRank + the `Params`/`Journal` encodings. Re-exports `zk-core`/`pagerank-core`. No floats. |
-| `packages/envelopes` | Envelope-1 (atproto) verification: CAR/MST walk, commit signature, PLC key-chain, `link.evm` EIP-712. Verified in-guest. |
+| `crates/hypercerts-core` | The record→edge semantics (research plan §3) + fixed-point Trust-Aware PageRank + the `Params`/`Journal` encodings. Re-exports `zk-core`/`pagerank-core`. No floats. |
+| `crates/envelopes` | Envelope-1 (atproto) verification: CAR/MST walk, commit signature, PLC key-chain, `link.evm` EIP-712. Verified in-guest. |
 | `zk/program` (bin `trustgraph-hypercerts-program`) | The hypercerts guest `[[bin]]`. |
 | `zk/prover` (`trustgraph-prover hypercerts …`) | Host CLI group: `hypercerts {vkey \| paramshash \| execute \| prove \| buildinput}`. `buildinput` and witness assembly (the shared `witness fetch` group) need `--features witness-atproto`. |
-| `src/contracts/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). Bound one-shot to its `MerkleSnapshot` at deploy, so only `trigger()` may mint — on a lane-2-only instance the checkpoint id is the only thing separating one epoch's inputs from another's. |
-| `src/contracts/registry/AnchorRegistry.sol` | Lane-2 input commitment: bounded chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` admits DID nodes; `ANCHORER_ROLE` admits relayers. |
-| `src/contracts/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v3) + two-tier authority + `epochLength` schedule. |
-| `src/contracts/merkle/SP1JournalVerifier.sol` | The SP1 gateway adapter, one labeled instance pinned to the **hypercerts vkey**. |
-| `src/contracts/registry/InstanceRegistry.sol` | Per-chain directory: frontends/indexers discover the contract set on-chain. |
-| `test/golden/hypercerts.json` + `test/unit/golden/HypercertsGoldenVectors.t.sol` | Four-way byte lock (native / guest / Solidity / TS) for this program. |
-| `indexer/` bundle API (`src/api/hypercerts.ts`) | Serves `{nodeId, score, proof[]}` bundles — see [§ Score-bundle API](#score-bundle-api). |
+| `contracts/src/merkle/EmptyLaneAccumulator.sol` | The lane-1 stand-in: `checkpoint()` returns monotonic ids, `acc = 0, leafCount = 0` (the guest asserts the empty lane). Bound one-shot to its `MerkleSnapshot` at deploy, so only `trigger()` may mint — on a lane-2-only instance the checkpoint id is the only thing separating one epoch's inputs from another's. |
+| `contracts/src/registry/AnchorRegistry.sol` | Lane-2 input commitment: bounded chained-hash log of per-repo head anchors. `REGISTRAR_ROLE` admits DID nodes; `ANCHORER_ROLE` admits relayers. |
+| `contracts/src/merkle/MerkleSnapshot.sol` | `trigger()` (freezes both lanes) + `submitProof` (journal v3) + two-tier authority + `epochLength` schedule. |
+| `contracts/src/merkle/SP1JournalVerifier.sol` | The SP1 gateway adapter, one labeled instance pinned to the **hypercerts vkey**. |
+| `contracts/src/registry/InstanceRegistry.sol` | Per-chain directory: frontends/indexers discover the contract set on-chain. |
+| `tests/golden/hypercerts.json` + `contracts/test/unit/golden/HypercertsGoldenVectors.t.sol` | Four-way byte lock (native / guest / Solidity / TS) for this program. |
+| `packages/indexer/` bundle API (`src/api/hypercerts.ts`) | Serves `{nodeId, score, proof[]}` bundles — see [§ Score-bundle API](#score-bundle-api). |
 
 ## Toolchain + the vkey reproducibility caveat
 
@@ -69,8 +69,8 @@ export PATH="$HOME/.sp1/bin:$PATH"
 
 ```bash
 cargo test -p hypercerts-core                              # determinism + §3 semantics + invariants
-task zk:vectors PROGRAM=hypercerts                         # regenerate test/golden/hypercerts.json
-forge test --match-path 'test/unit/golden/HypercertsGoldenVectors.t.sol'
+task zk:vectors PROGRAM=hypercerts                         # regenerate tests/golden/hypercerts.json
+forge test --match-path 'contracts/test/unit/golden/HypercertsGoldenVectors.t.sol'
 forge test                                                 # accumulator + submitProof + registry suites
 task zk:build                                              # every [[bin]] ELF + the prover host
 
@@ -110,23 +110,23 @@ real chain where a script exists; the `forge create` lines are the exact constru
 
 ```bash
 # 1. Empty lane-1 accumulator (acc = 0, leafCount = 0 — the guest asserts this).
-HC_EMPTY_ACC=$(forge create src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator \
+HC_EMPTY_ACC=$(forge create contracts/src/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json | jq -r .deployedTo)
 
 # 2. AnchorRegistry (lane-2 head log). Choose an immutable cap from the combined lifetime budget.
 #    Hypercerts has an empty lane 1; other programs must separately control their lane-1 ingress.
 HC_MAX_TOTAL_INPUTS=50000
-HC_REGISTRY=$(forge create src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
+HC_REGISTRY=$(forge create contracts/src/registry/AnchorRegistry.sol:AnchorRegistry \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
   --constructor-args "$OPERATIONAL_TIMELOCK" "$HC_MAX_TOTAL_INPUTS" | jq -r .deployedTo)
 
 # 3. SP1JournalVerifier pinned to the hypercerts vkey (one labeled instance; same bytecode as the others).
-HC_VERIFIER=$(forge create src/contracts/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
+HC_VERIFIER=$(forge create contracts/src/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json --constructor-args "$GATEWAY" "$HC_VKEY" | jq -r .deployedTo)
 
 # 4. MerkleSnapshot(verifier, paramsHash, EMPTY accumulator, constitutionalAdmin, operationalAdmin).
 #    NOTE: lane-1 accumulator = the EmptyLaneAccumulator, NOT an EAS resolver.
-HC_SNAPSHOT=$(forge create src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot \
+HC_SNAPSHOT=$(forge create contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
   --constructor-args "$HC_VERIFIER" "$HC_PARAMS_HASH" "$HC_EMPTY_ACC" "$CONSTITUTIONAL_TIMELOCK" "$OPERATIONAL_TIMELOCK" | jq -r .deployedTo)
 
@@ -371,24 +371,24 @@ The indexer serves `{nodeId, score, proof[]}` bundles so Hypercerts' apps get ra
 canonical interface (the on-chain root + proofs), never a second source of truth: every bundle carries
 the proof and root, so a consumer verifies it against the chain and can ignore the endpoint entirely.
 
-- **Routes** (`indexer/src/api/hypercerts.ts`, mounted at `/hypercerts` in `src/api/index.ts`):
+- **Routes** (`packages/indexer/src/api/hypercerts.ts`, mounted at `/hypercerts` in `src/api/index.ts`):
   - `GET /hypercerts/score/:nodeId` — bundle at the current root of the single instance
     (`?snapshot=0x…` / `?root=…` override).
   - `GET /hypercerts/:snapshot/score/:nodeId` and `GET /hypercerts/:snapshot/:root/score/:nodeId`.
   - `GET /hypercerts/roots?snapshot=0x…` — known roots, newest first.
 - **Proof** is rebuilt with the guest's exact OZ StandardMerkleTree over the **same leaf set the guest
   emits** — unified `keccak(nodeId, value)` leaves for every scored node **plus** v1
-  `keccak(address, value)` leaves for `link.evm`-bound nodes (`indexer/src/api/hypercerts-tree.ts`, a
-  documented port of `frontend/lib/pagerank/merkle.ts` + `recompute.ts`). The API cross-checks the
+  `keccak(address, value)` leaves for `link.evm`-bound nodes (`packages/indexer/src/api/hypercerts-tree.ts`, a
+  documented port of `packages/frontend/lib/pagerank/merkle.ts` + `recompute.ts`). The API cross-checks the
   recomputed root against the on-chain `outputRoot` before serving (409 on mismatch).
 - **Data source**: the `offchain.hypercerts_metadata` + `offchain.hypercerts_score` tables (the lane-2
   twins of `merkle_metadata`/`merkle_entry`). Their ingestion (`ingestHypercertsScores` in
-  `indexer/src/anchor.ts`) runs on each hypercerts `MerkleRootUpdated`: it fetches the pinned blob at
+  `packages/indexer/src/anchor.ts`) runs on each hypercerts `MerkleRootUpdated`: it fetches the pinned blob at
   the event's CID, reads DID labels + `link.evm` bindings from the prover's sidecar bundle
   (`HYPERCERTS_BUNDLE_PATH`, written by `hypercerts execute`/`prove`), rebuilds the guest's output
   tree, and only upserts rows once the rebuilt root reproduces the on-chain `outputRoot`. With no
   ingested rows the routes 404. The proof-construction logic is also verified independently by
-  `indexer/src/api/hypercerts-tree.test.ts` (`node --test`). (`skipped_node` ingestion remains a
+  `packages/indexer/src/api/hypercerts-tree.test.ts` (`node --test`). (`skipped_node` ingestion remains a
   documented stub — see `ingestSkippedNodes` in the same file.)
 
 ---

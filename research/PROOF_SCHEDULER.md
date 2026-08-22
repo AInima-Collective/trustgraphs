@@ -20,7 +20,7 @@ machinery and deleted the *off-chain* half:
 - `MerkleSnapshot.trigger()` is permissionless, epoch-gated by the contract-fixed
   `epochLength`, freezes both lanes, and emits `SnapshotTriggered` /
   `InputsCheckpointed(id, acc, leafCount, blockNumber)` — the docstring literally says
-  "provers watch InputsCheckpointed" (`src/contracts/merkle/MerkleSnapshot.sol:174`).
+  "provers watch InputsCheckpointed" (`contracts/src/merkle/MerkleSnapshot.sol:174`).
 - `submitProof` is permissionless and monotonic (`StaleCheckpoint`), and files state at
   the input-freeze block, so delayed/racy/redundant proving is already safe on-chain.
 
@@ -45,7 +45,7 @@ Two goals from the top:
 | `InputsCheckpointed` / `SnapshotTriggered` events | built | the operator's wakeup signal |
 | `submitProof` monotonicity + input-freeze-block filing | built | makes multiple/racing operators safe; intermediate checkpoints skippable |
 | `AttestationAccumulator.checkpoint()` `NoNewInputs` guard | built | quiet instances cost nothing — a checkpoint needs ≥1 new edge |
-| `packages/input-exporter` (+ `contributions fetch`, `witness fetch`) | built | self-checking input assembly from RPC alone |
+| `crates/input-exporter` (+ `contributions fetch`, `witness fetch`) | built | self-checking input assembly from RPC alone |
 | `zk/prover` CLI (`prove --groth16`, `SP1_PROVER=network`) | built | proving backend already speaks to the Succinct network |
 | `InstanceRegistry` | built, dormant | enumeration source for a multi-instance loop |
 | `InstanceCreated` full-params event (factory §2.1) | designed | makes the hosted loop config-free per instance |
@@ -481,7 +481,7 @@ role plumbing.
 
 ### 9.4 Where the daemon's logic lives
 
-Split, rather than one crate: **`packages/operator-core`** (root workspace, alloy only, no
+Split, rather than one crate: **`crates/operator-core`** (root workspace, alloy only, no
 sp1-sdk) holds everything that can be *wrong* — instance reconstruction lifted out of
 `instance_scan.rs`, the pure `plan(state, policy) -> Action` decision function, the rotation guard,
 the crash-safe request journal — so `cargo test --workspace` in CI covers it. **`zk/operator`**

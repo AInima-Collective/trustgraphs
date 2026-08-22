@@ -76,7 +76,7 @@ version 3 paramsHash 0x01c2f942922a8a7b5addfac45c2573a4903513b69d93d8d2b8200cb4e
 For a fresh local controller owner, start the safe handoff with:
 
 ```bash
-forge script script/DeployParamsTimelock.s.sol:DeployParamsTimelock \
+forge script contracts/script/DeployParamsTimelock.s.sol:DeployParamsTimelock \
   --sig 'run(address,uint256,string)' \
   "$PARAMS_CONTROLLER" 172800 0x0000000000000000000000000000000000000000 \
   --rpc-url "$RPC" --broadcast

@@ -29,12 +29,12 @@ This work is phased so that the **highest-value, lowest-risk fixes ship first** 
 | Stage | Where | What happens |
 |---|---|---|
 | Attestation | EAS on-chain, schema `string comment, uint256 confidence` | "Alice vouches for Bob, confidence 0–100, with a comment." Plaintext, public, timestamped. |
-| Indexing | Ponder indexer (`indexer/`) + `wavs-indexer` component | Edges and accounts re-served via an unauthenticated API (`indexer/src/api/network.ts` returns *all* accounts + edges in one call). |
-| Computation | WAVS operators, `components/trust-graph/` (Rust→WASM), `packages/pagerank` | Builds the full in-memory adjacency matrix (`eas_pagerank.rs`), runs Trust-Aware PageRank (`graph_computer.rs`, ~100 data-dependent iterations with early-exit), produces `{account → score}`. |
-| Commitment | `src/contracts/merkle/MerkleSnapshot.sol` | A 32-byte Merkle root is posted on-chain. Leaf = `keccak256(keccak256(abi.encode(account, value)))`. Historical snapshots retained. |
+| Indexing | Ponder indexer (`packages/indexer/`) + `wavs-indexer` component | Edges and accounts re-served via an unauthenticated API (`packages/indexer/src/api/network.ts` returns *all* accounts + edges in one call). |
+| Computation | WAVS operators, `components/trust-graph/` (Rust→WASM), `crates/pagerank` | Builds the full in-memory adjacency matrix (`eas_pagerank.rs`), runs Trust-Aware PageRank (`graph_computer.rs`, ~100 data-dependent iterations with early-exit), produces `{account → score}`. |
+| Commitment | `contracts/src/merkle/MerkleSnapshot.sol` | A 32-byte Merkle root is posted on-chain. Leaf = `keccak256(keccak256(abi.encode(account, value)))`. Historical snapshots retained. |
 | Distribution | IPFS + `MerkleFundDistributor.sol` | The **full** `{account, score}` table + trusted-seed list is uploaded to IPFS in plaintext and re-indexed. Rewards claimed against the root. |
-| Governance | `src/contracts/zodiac/MerkleGovModule.sol` | Vote weight = score proven by Merkle inclusion. `votes[proposalId][voter]` stored publicly; `VoteCast` emitted; calldata reveals the voter's exact score. |
-| Consumption | `frontend/` | `usePageRankComputer.ts` recomputes PageRank in-browser — which only works because the whole weighted graph is shipped to the client. |
+| Governance | `contracts/src/zodiac/MerkleGovModule.sol` | Vote weight = score proven by Merkle inclusion. `votes[proposalId][voter]` stored publicly; `VoteCast` emitted; calldata reveals the voter's exact score. |
+| Consumption | `packages/frontend/` | `usePageRankComputer.ts` recomputes PageRank in-browser — which only works because the whole weighted graph is shipped to the client. |
 
 **Trust-Aware PageRank** (`docs/concepts/algorithm.md`): standard PageRank with trusted seed attestors that receive a weight multiplier and an initial-score boost, so trust flows from a curated root set and Sybil rings stay isolated.
 
@@ -73,7 +73,7 @@ This work is phased so that the **highest-value, lowest-risk fixes ship first** 
 2. **Minimize the plaintext-graph blast radius.** The graph should be cleartext in as few places, for as short a time, under as distributed a trust assumption as possible.
 3. **Privacy must stay verifiable.** Every private output ships with a proof (Merkle inclusion, zk proof, or quorum attestation). Privacy is not an excuse for "trust me."
 4. **Prefer crypto + economic security over hardware trust** where practical. This is the Interfold/Enclave thesis, and it is reinforced by 2026 TEE attestation breaks (TEE.Fail). Use TEEs as a pragmatic accelerator, not the root of trust.
-5. **Reuse what exists.** Keep EAS, the WAVS operator/aggregator pipeline, `MerkleSnapshot`, the Zodiac governance module, and `packages/pagerank`. Add encryption, a committee, and proofs around them.
+5. **Reuse what exists.** Keep EAS, the WAVS operator/aggregator pipeline, `MerkleSnapshot`, the Zodiac governance module, and `crates/pagerank`. Add encryption, a committee, and proofs around them.
 6. **Ship the cheap wins first.** Closing the public-graph leak and adding private reputation proofs require no exotic crypto and deliver most of the real-world privacy benefit.
 
 ---
@@ -84,7 +84,7 @@ Everything reduces to one question: **where does the plaintext graph live during
 
 | Model | Who sees the graph | Mechanism | 2026 verdict |
 |---|---|---|---|
-| **A. Confidential compute domain** | one enclave, or one quorum-authorized operator | TEE, or threshold-decrypt-to-one-prover | **Recommended baseline.** Near-native speed, modest change, real privacy from the public/indexer/browser. |
+| **A. Confidential compute domain** | one enclave, or one quorum-authorized operator | TEE, or threshold-decrypt-to-one-prover | **Recommended baseline.** Near-native speed, modest change, real privacy from the public indexer/browser. |
 | **B. Nobody (encrypted end-to-end)** | no one | FHE or secret-shared MPC | FHE: **impractical** for iterative PageRank (division, data-dependent early-exit, 3–6 orders of magnitude slowdown). MPC: best *pure-crypto* fit, now has a transport (commonware), but still minutes-to-hours and round-heavy. **Research spike.** |
 | **C. Prover sees it, public gets a proof** | a prover | ZK / zkVM | Proves correctness + thresholds; does **not** hide the graph from the prover. **Complementary**, not a standalone privacy answer. |
 
@@ -128,7 +128,7 @@ This is precisely the "Distributed Threshold Cryptography" pillar of Interfold's
 │     • Or:        to ONE quorum-authorized "computing operator"               │
 │     • Future:    never decrypted — secret-shared MPC (Phase 4)               │
 │                                                                              │
-│  Runs existing packages/pagerank → {account → score}                          │
+│  Runs existing crates/pagerank → {account → score}                          │
 └────────────────────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
@@ -161,7 +161,7 @@ This is precisely the "Distributed Threshold Cryptography" pillar of Interfold's
 **Goal:** the public chain, indexer, IPFS, and browser never see a plaintext edge.
 
 - Define a new EAS schema whose sensitive fields are **ciphertext** encrypted to the committee's threshold public key (from DKG). At minimum encrypt `confidence`; ideally encrypt the recipient too (see §7 on the anonymity limit).
-- The attester attaches a **Noir validity proof**: the ciphertext is well-formed, `weight ∈ [0,100]`, the attester is eligible, and the recipient is a member of the recipient set. An on-chain verifier (extend `OffchainAttestationVerifier` / a resolver in `src/contracts/eas/resolvers/`) admits only valid attestations.
+- The attester attaches a **Noir validity proof**: the ciphertext is well-formed, `weight ∈ [0,100]`, the attester is eligible, and the recipient is a member of the recipient set. An on-chain verifier (extend `OffchainAttestationVerifier` / a resolver in `contracts/src/eas/resolvers/`) admits only valid attestations.
 - Reuse EAS **private data / offchain attestation** mechanisms so the on-chain footprint is a commitment, not the data.
 
 This single layer closes the worst leak (S1 social graph, S2 retaliation) regardless of how computation is done downstream.
@@ -172,9 +172,9 @@ This single layer closes the worst leak (S1 social graph, S2 retaliation) regard
 
 - A **commonware threshold committee** is established by DKG over the operator set; the private key is never reconstructed at one place. Decryption of the edge set requires a **quorum**, so no single operator can read the graph unilaterally.
 - The committee threshold-decrypts the edge set **into the compute step**:
-  - **Baseline (recommended first):** the operator runs `packages/pagerank` **inside a TEE enclave** (SGX/TDX/Nitro). Inputs are decrypted only inside the enclave; the enclave emits scores + a remote-attestation quote the aggregator verifies. Use **heterogeneous enclaves across operators** and keep the quorum for integrity, so one vendor break ≠ total break.
+  - **Baseline (recommended first):** the operator runs `crates/pagerank` **inside a TEE enclave** (SGX/TDX/Nitro). Inputs are decrypted only inside the enclave; the enclave emits scores + a remote-attestation quote the aggregator verifies. Use **heterogeneous enclaves across operators** and keep the quorum for integrity, so one vendor break ≠ total break.
   - **Pure-crypto alternative:** threshold-decrypt to **one quorum-authorized "computing operator"** that is trusted-for-confidentiality only (1-of-1 confidentiality), with integrity still enforced by the quorum + commitment + (optionally) a zkVM proof. This avoids hardware trust entirely at the cost of a single-operator confidentiality assumption per epoch — mitigated by rotating the role via `commonware-reshare`.
-- The computation itself is **unchanged** — this is the point. `packages/pagerank` runs as-is; we changed *who can see its inputs*, not the algorithm.
+- The computation itself is **unchanged** — this is the point. `crates/pagerank` runs as-is; we changed *who can see its inputs*, not the algorithm.
 
 ### 6.3 Layer 3 — Verifiable commitment
 
@@ -184,7 +184,7 @@ This single layer closes the worst leak (S1 social graph, S2 retaliation) regard
 - Additionally emit a **Poseidon** Merkle tree of `{account, score}` from `components/trust-graph` — keccak is expensive in ZK circuits, Poseidon is the ZK-friendly substrate Layer 4 needs.
 - Integrity proof, in increasing order of strength:
   1. **Operator quorum BFT-attestation** of the root (commonware Threshold Simplex) — cheap, available now.
-  2. **zkVM proof** (RISC Zero / SP1): `packages/pagerank` ports near-drop-in into a zkVM guest, producing a succinct proof that `root == PageRank(committed encrypted edges)`. This makes scores *trustless* (Model C) and composes with either compute baseline.
+  2. **zkVM proof** (RISC Zero / SP1): `crates/pagerank` ports near-drop-in into a zkVM guest, producing a succinct proof that `root == PageRank(committed encrypted edges)`. This makes scores *trustless* (Model C) and composes with either compute baseline.
 - **Encrypt the IPFS dump.** Replace the plaintext `{account, score}` upload (`trust-graph/src/lib.rs`) with per-user-encrypted entries so each user can read only their own score. Stop logging edges and seeds.
 
 ### 6.4 Layer 4 — Private consumption
@@ -252,12 +252,12 @@ This synthesis is backed by four grounded research reports (in the working scrat
 
 ## Appendix B — Key files this design touches
 
-- `src/contracts/eas/` — `WavsAttester`, `OffchainAttestationVerifier`, `SchemaRegistrar`, resolvers (encrypted schema + validity-proof verifier)
+- `contracts/src/eas/` — `WavsAttester`, `OffchainAttestationVerifier`, `SchemaRegistrar`, resolvers (encrypted schema + validity-proof verifier)
 - `components/trust-graph/src/` — `eas_pagerank.rs`, `lib.rs` (decrypt-in-domain, Poseidon tree, encrypted IPFS)
-- `packages/pagerank/` — unchanged compute core; candidate zkVM guest / TEE payload
-- `src/contracts/merkle/MerkleSnapshot.sol` — root substrate, historical snapshots
-- `src/contracts/zodiac/MerkleGovModule.sol` — replace public votes with anonymous, weighted, threshold-encrypted ballots
-- `indexer/src/api/network.ts` + `frontend/hooks/usePageRankComputer.ts` — stop serving/recomputing the full plaintext graph
+- `crates/pagerank/` — unchanged compute core; candidate zkVM guest / TEE payload
+- `contracts/src/merkle/MerkleSnapshot.sol` — root substrate, historical snapshots
+- `contracts/src/zodiac/MerkleGovModule.sol` — replace public votes with anonymous, weighted, threshold-encrypted ballots
+- `packages/indexer/src/api/network.ts` + `packages/frontend/hooks/usePageRankComputer.ts` — stop serving/recomputing the full plaintext graph
 - commonware (`cryptography`/`reshare`/`consensus`/`p2p`) — DKG, threshold decryption, committee rotation, transport
 </content>
 </invoke>

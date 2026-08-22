@@ -1,10 +1,10 @@
 # ZK trustgraphs — A Trustless Compute Seam
 
-**Status:** ✅ **Implemented (v1).** Journal v2 (two-lane) supersedes the journal section from **M2**; see [`MULTI_PROGRAM_PLATFORM.md`](./MULTI_PROGRAM_PLATFORM.md). This spec is realized in `packages/pagerank-core` (canonical
+**Status:** ✅ **Implemented (v1).** Journal v2 (two-lane) supersedes the journal section from **M2**; see [`MULTI_PROGRAM_PLATFORM.md`](./MULTI_PROGRAM_PLATFORM.md). This spec is realized in `crates/pagerank-core` (canonical
 fixed-point PageRank + encodings), `zk/program` (SP1 guest), `zk/prover` (host), the on-chain
 `AttestationAccumulator` / `MerkleSnapshot.submitProof` / `SP1JournalVerifier` (né `SP1TrustgraphsVerifier`), and the frontend
-`frontend/lib/pagerank` port. Guest output is cross-checked byte-identical against native Rust,
-Solidity (`test/unit/GoldenVectors.t.sol`), and TypeScript. Real STARK/Groth16 proving requires
+`packages/frontend/lib/pagerank` port. Guest output is cross-checked byte-identical against native Rust,
+Solidity (`contracts/test/unit/GoldenVectors.t.sol`), and TypeScript. Real STARK/Groth16 proving requires
 ≥16–32 GiB or the Succinct prover network — see [`docs/build/trust-graph/runbook.md`](../docs/build/trust-graph/runbook.md). Privacy remains
 out of scope for v1.
 **Scope:** How to replace WAVS as the *root producer* with a zero-knowledge proof of correct Trust-Aware PageRank, **without** touching EAS, `MerkleSnapshot`'s storage/verification API, the Zodiac governance module, the distributor, or the frontend proof format.
@@ -23,7 +23,7 @@ Two pieces make this sound:
 1. **An input accumulator** in the EAS resolver, so the chain holds a trustless commitment to *exactly which edges existed* at snapshot time. Without this, a proof of `root == PageRank(E)` is worthless because the prover chose `E`.
 2. **A verifier seam** on `MerkleSnapshot` that gates a write on a valid proof instead of an operator signature, binding the proof to (a) the accumulator's committed input set and (b) a governance-pinned parameter set.
 
-The design deliberately keeps the on-chain contracts **dumb** and the guest **canonical**: the chain folds a raw event log and checks a proof; every semantic decision (dedup, last-write-wins, self-loop exclusion, weight caps, fixed-point PageRank) lives in exactly one place — the guest, which is `packages/pagerank` compiled to a zkVM.
+The design deliberately keeps the on-chain contracts **dumb** and the guest **canonical**: the chain folds a raw event log and checks a proof; every semantic decision (dedup, last-write-wins, self-loop exclusion, weight caps, fixed-point PageRank) lives in exactly one place — the guest, which is `crates/pagerank` compiled to a zkVM.
 
 ---
 
@@ -33,7 +33,7 @@ The design deliberately keeps the on-chain contracts **dumb** and the guest **ca
 |---|---|---|
 | Attestation | EAS, schema `string comment, uint256 confidence` | "Alice vouches for Bob." Public, timestamped. Resolver (`EASIndexerResolver.onAttest`) emits index events. |
 | Trigger | `MerkleSnapshot.trigger()` | Emits `MerklerTrigger(triggerId)`; WAVS wakes the component. |
-| Computation | WAVS operators, `components/trust-graph/` → `packages/pagerank` | `f64` Trust-Aware PageRank, `max_iterations` with `max_delta < tolerance` early-exit (`graph_computer.rs:290`); output quantized to `u64` at `1e6` (`graph_computer.rs:325`). |
+| Computation | WAVS operators, `components/trust-graph/` → `crates/pagerank` | `f64` Trust-Aware PageRank, `max_iterations` with `max_delta < tolerance` early-exit (`graph_computer.rs:290`); output quantized to `u64` at `1e6` (`graph_computer.rs:325`). |
 | Commitment | `MerkleSnapshot.handleSignedEnvelope` → `_updateState` | `_serviceManager.validate(...)`, then writes `MerkleState{root, ipfsHash, ipfsHashCid, totalValue}`. Leaf = `keccak256(keccak256(abi.encode(account, value)))` (`MerkleSnapshot.sol:129`). |
 | Consumption | `MerkleGovModule`, distributor, frontend | Merkle inclusion against `states[...]`. Historical snapshots retained. |
 
@@ -287,10 +287,10 @@ Build the seam as **resolver accumulator → checkpoint on `trigger()` → permi
 
 ## Appendix — files this design touches
 
-- `src/contracts/eas/resolvers/EASIndexerResolver.sol` — add `AttestationAccumulator` mix-in + two `_fold` lines (the single schema resolver that feeds the graph; **not** the alternates, per the §3.2 one-accumulator invariant)
-- `src/contracts/merkle/MerkleSnapshot.sol` — add `submitProof`, `zkVerifier`/`imageId`/`paramsHash`/`lastAppliedCheckpoint`, `_checkpoint()` in `trigger()`; refactor `_updateState` → `_updateStateAtBlock(blockNumber, …)` so proofs file at the checkpoint freeze block; **remove** `IWavsServiceHandler`, `_serviceManager`, `handleSignedEnvelope`
-- `src/interfaces/merkle/IMerkleSnapshot.sol` — add `InputsCheckpointed`, `Checkpoint`, proof events/errors
+- `contracts/src/eas/resolvers/EASIndexerResolver.sol` — add `AttestationAccumulator` mix-in + two `_fold` lines (the single schema resolver that feeds the graph; **not** the alternates, per the §3.2 one-accumulator invariant)
+- `contracts/src/merkle/MerkleSnapshot.sol` — add `submitProof`, `zkVerifier`/`imageId`/`paramsHash`/`lastAppliedCheckpoint`, `_checkpoint()` in `trigger()`; refactor `_updateState` → `_updateStateAtBlock(blockNumber, …)` so proofs file at the checkpoint freeze block; **remove** `IWavsServiceHandler`, `_serviceManager`, `handleSignedEnvelope`
+- `contracts/src/interfaces/merkle/IMerkleSnapshot.sol` — add `InputsCheckpointed`, `Checkpoint`, proof events/errors
 - new `IZkVerifier` + SP1/RISC Zero verifier deployment
-- `packages/pagerank/`, `components/trust-graph/src/` — fixed-point guest (separate scope)
-- `frontend/hooks/usePageRankComputer.ts` — reconcile to the guest's fixed-point output
+- `crates/pagerank/`, `components/trust-graph/src/` — fixed-point guest (separate scope)
+- `packages/frontend/hooks/usePageRankComputer.ts` — reconcile to the guest's fixed-point output
 - governance: two `TimelockController`s owning the constitutional vs. operational setters

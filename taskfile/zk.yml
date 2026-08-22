@@ -15,12 +15,13 @@ tasks:
     desc: 'Build the SP1 guest ELFs + the prover host (do this once before task demo / task e2e)'
     cmds:
       # Nothing else in this repo builds the guests on purpose. `zk/prover/build.rs` calls the SP1
-      # builder for the legacy, weighted, and composition workspaces, but every demo task and e2e
+      # builder for every guest workspace, but every demo task and e2e
       # script exports SP1_SKIP_PROGRAM_BUILD=true. That makes build.rs emit ELF *paths* without
       # producing the ELFs. On a checkout that has never built them the host then fails at
       # `include_elf!` with a missing-file error — which reads like a broken repo and is really
       # "run this".
       - |
+        set -eu
         command -v cargo-prove >/dev/null 2>&1 || {
           echo "✗ cargo-prove not found. The guests build with the SP1 \`succinct\` toolchain:" >&2
           echo "    curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1" >&2
@@ -28,11 +29,12 @@ tasks:
           exit 1
         }
         echo "→ building the guest ELFs (first run takes a few minutes; after that it's cached)"
-        cd zk/program && cargo prove build
-        cd ../weighted-program && cargo prove build
-        cd ../composition-program && cargo prove build
-        cd ../nostr-program/program && cargo prove build --locked
-      # sp1_build does NOT watch the path deps under packages/, so cargo will happily reuse a stale
+        (cd zk/program && cargo prove build)
+        (cd zk/trustgraph-program-v2 && cargo prove build)
+        (cd zk/weighted-program && cargo prove build)
+        (cd zk/composition-program && cargo prove build)
+        (cd zk/nostr-program/program && cargo prove build --locked)
+      # sp1_build does NOT watch the path deps under crates/, so cargo will happily reuse a stale
       # ELF after you edit a core crate. Touching build.rs forces the directive re-emit, which is
       # what picks the freshly built ELFs up.
       - touch zk/prover/build.rs
@@ -52,7 +54,7 @@ tasks:
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > test/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > test/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > test/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > test/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json{{end}}'
+      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > tests/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > tests/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > tests/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > tests/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json{{end}}'
 
   vkey:
     desc: 'Print the SP1 program vkey for PROGRAM'
@@ -114,20 +116,20 @@ tasks:
       # (a) Regenerate golden vectors and fail if the encodings drifted without regenerated vectors.
       - task: vectors
         vars: { PROGRAM: '{{.PROGRAM}}' }
-      - git diff --exit-code test/golden/
+      - git diff --exit-code tests/golden/
       # (b) Rust parity (canonical core + zk glue + program crates).
       - cargo test -p pagerank-core -p zk-core -p hypercerts-core -p contributions-core -p weighted-prior-core -p composition-core -p nostr-envelope -p nostr-workspace-core
       # (c) Solidity golden vectors (both split suites).
-      - forge test --match-path "test/unit/golden/*"
+      - forge test --match-path "contracts/test/unit/golden/*"
       # (d) The independent TypeScript composition oracle, then frontend TS ports.
       - |
         if [ "{{.PROGRAM}}" = "trust-compose" ]; then
           node --import tsx --test research/composition/reference.test.ts research/composition/production.test.ts
           pnpm exec tsc research/composition/*.ts --noEmit \
             --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --strict \
-            --types node --typeRoots indexer/node_modules/@types
+            --types node --typeRoots packages/indexer/node_modules/@types
         fi
-      - cd frontend && pnpm test
+      - cd packages/frontend && pnpm test
       # (e) Guest==native byte-assert for PROGRAM.
       - task: execute
         vars: { PROGRAM: '{{.PROGRAM}}' }

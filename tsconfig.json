@@ -22,6 +22,6 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["deploy/**/*.ts"],
+  "include": ["contracts/deploy/**/*.ts"],
   "exclude": ["node_modules"]
 }

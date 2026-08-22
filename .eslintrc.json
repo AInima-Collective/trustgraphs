@@ -9,7 +9,11 @@
   },
   "overrides": [
     {
-      "files": ["deploy/**/*.d.ts", "deploy/**/*.ts", "deploy/**/*.tsx"],
+      "files": [
+        "contracts/deploy/**/*.d.ts",
+        "contracts/deploy/**/*.ts",
+        "contracts/deploy/**/*.tsx"
+      ],
       "excludedFiles": ["**/node_modules/**", "**/dist/**"],
       "parser": "@typescript-eslint/parser",
       "plugins": ["@typescript-eslint", "import", "unused-imports"],

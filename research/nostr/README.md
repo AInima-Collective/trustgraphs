@@ -37,7 +37,7 @@ the envelope verification workload, not the later S2 graph semantics.
 
 ## Production S1 conformance result
 
-The reusable verifier in `packages/envelopes/src/nostr/` (compiled by the isolated
+The reusable verifier in `crates/envelopes/src/nostr/` (compiled by the isolated
 `nostr-envelope` package so the legacy `envelopes` crate identity does not change) and the isolated
 `zk/nostr-program/program` conformance guest run the full S1 contract: strict TGNW decoding and
 byte re-encoding, Option-A/Option-C head verification, NIP-01 and NIP-OA signatures, roster
@@ -88,9 +88,9 @@ PATH="$HOME/.sp1/bin:$PATH" cargo prove build
 
 cd ../host
 SP1_PROVER=mock PATH="$HOME/.sp1/bin:$PATH" cargo run --release -- \
-  ../../../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json \
+  ../../../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json \
   ../results.json \
-  ../../../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-option-a.tgnw
+  ../../../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-option-a.tgnw
 ```
 
 The host prints `RESULT,<label>,<count>,<cycles>,<pgu>` and

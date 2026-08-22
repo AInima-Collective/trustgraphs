@@ -14,7 +14,7 @@ import {
 const checkedIn = () =>
   JSON.parse(
     readFileSync(
-      new URL('../../test/golden/trust-compose.json', import.meta.url),
+      new URL('../../tests/golden/trust-compose.json', import.meta.url),
       'utf8'
     )
   )

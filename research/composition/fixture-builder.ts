@@ -137,7 +137,7 @@ export const exportedFixture = () => {
   const result = compose(policy)
   const postTrigger = compose(postTriggerPolicy())
   return {
-    note: 'Source A is test/golden/trust-graph.json; B/C are representative unequal-pool sparse outputs.',
+    note: 'Source A is tests/golden/trust-graph.json; B/C are representative unequal-pool sparse outputs.',
     policy,
     expected: result,
     postTriggerUpdate: {

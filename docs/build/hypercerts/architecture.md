@@ -13,7 +13,7 @@ Repo head anchors are committed on-chain in `AnchorRegistry`, the lane-2 log of 
 offchain-attestation architecture; lane 1 is a permanent `EmptyLaneAccumulator` whose
 `(acc = 0, leafCount = 0)` the guest asserts. The guest verifies every anchored head in-circuit
 (envelope 1: CAR/MST walk, commit signature, PLC key chain) and derives the edge graph from the
-records (`packages/hypercerts-core`). Completeness is enforced by rule Φ and the deterministic
+records (`crates/hypercerts-core`). Completeness is enforced by rule Φ and the deterministic
 skip rules: a withheld head is carried forward within the k-epoch staleness window or the node's
 out-edges drop, and every skip is committed. Node identity resolves through
 `app.certified.link.evm` DID↔address bindings, verified in-guest in both directions.
@@ -46,5 +46,5 @@ To operate the program, see [`runbook.md`](./runbook.md); to exercise it end to 
 are in [`research/HYPERCERTS_PARTNER_BRIEF.md`](../../../research/HYPERCERTS_PARTNER_BRIEF.md).
 
 > **No standalone semantics reference.** There is no separate graph-semantics or pinned-lexicon
-> reference doc: the record→edge mapping semantics live in `packages/hypercerts-core` and the
+> reference doc: the record→edge mapping semantics live in `crates/hypercerts-core` and the
 > research plan above, and the pinned lexicon version is the `=1.1.0` stated here.

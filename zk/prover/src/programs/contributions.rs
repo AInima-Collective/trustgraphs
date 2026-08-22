@@ -4,11 +4,11 @@
 //! (`contributions-core`, docs/build/contributions/interfaces.md), and emits the journal-v2 merkle root
 //! + payout blob. Mirrors `trust_graph.rs`/`hypercerts.rs`; the built-in sample is the 6-persona
 //! worked example (`contributions_core::testutil::fixture()`), identical to
-//! `test/golden/contributions.json`'s `compute` family, so `execute`/`prove` run with no external
+//! `tests/golden/contributions.json`'s `compute` family, so `execute`/`prove` run with no external
 //! witness.
 //!
 //! `fetch` (host-only, network; build with `--features fetch`) reconstructs `input.json` from the
-//! two on-chain checkpoints of a contributions instance the way `packages/input-exporter` does for
+//! two on-chain checkpoints of a contributions instance the way `crates/input-exporter` does for
 //! the trust program: slot A (trust edges) from the trust accumulator's `EdgeFolded` log behind
 //! the instance's `TrustAccumulatorMirror` checkpoint, slot B (contribution records) from the
 //! `ContributionResolver`'s `EdgeFolded` log behind the snapshot's `anchorCheckpoints` freeze —
@@ -38,7 +38,7 @@ fn load_elf() -> Elf {
 }
 
 /// The built-in sample scenario: the 6-persona worked example (matches the `compute` family of
-/// test/golden/contributions.json — the cross-lane oracle fixture).
+/// tests/golden/contributions.json — the cross-lane oracle fixture).
 pub fn sample_input() -> GuestInput {
     contributions_core::testutil::fixture()
 }
@@ -55,10 +55,10 @@ fn load_input(path: Option<&String>) -> Result<GuestInput> {
 // ---------------------------------------------------------------------------
 //
 // Three params-file shapes exist in the repo and all must load:
-//   1. the camelCase golden-vector shape (test/golden/contributions.json
+//   1. the camelCase golden-vector shape (tests/golden/contributions.json
 //      `.compute.input.params`; decimal-string U256s, numeric u32/u64s),
 //   2. the crate's native serde shape (snake_case; 0x-hex U256s),
-//   3. the deploy template (test/e2e/params.contributions.template.json;
+//   3. the deploy template (tests/e2e/params.contributions.template.json;
 //      snake_case with EVERY numeric as a 0x-hex string — the Solidity
 //      `ContributionsParamsJson` reader's shape, written back by
 //      DeployContributionsInstance with the registered schema UIDs).
@@ -154,7 +154,7 @@ fn load_params(path: Option<&String>) -> Result<Params> {
 
 /// `contributions` subcommands. `input.json` is a serialized
 /// `contributions_core::compute::GuestInput`; omit it to use the built-in sample (the 6-persona
-/// worked example; identical to test/golden/contributions.json `.compute`).
+/// worked example; identical to tests/golden/contributions.json `.compute`).
 #[derive(Subcommand)]
 pub enum Command {
     /// Print the guest program verification key (bytes32) for deployment.
@@ -337,7 +337,7 @@ fn cmd_prove(input: GuestInput, groth16: bool, out: std::path::PathBuf) -> Resul
 }
 
 // ---------------------------------------------------------------------------
-// fetch — on-chain reconstruction (mirrors packages/input-exporter for slot A,
+// fetch — on-chain reconstruction (mirrors crates/input-exporter for slot A,
 // and applies the same leaf-match + re-fold self-check to slot B)
 // ---------------------------------------------------------------------------
 

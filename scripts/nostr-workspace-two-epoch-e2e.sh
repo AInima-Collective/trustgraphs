@@ -25,8 +25,8 @@ params_hash="0xaf83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd"
 community_node="0xbd02b91630293d28e9170a0df89a84d4ee57afd5cc94f72058a6f52e5237c95f"
 agent_node="0xac7bf0b5126e15d062f11021e0c692dd56c7694d02f6220c2055a827b25b4bac"
 agent_pubkey="462779ad4aad39514614751a71085f2f10e1c7a593e4e030efb5b8721ce55b0b"
-params="$repo_dir/test/fixtures/nostr/params.json"
-fixture="$repo_dir/test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3"
+params="$repo_dir/tests/fixtures/nostr/params.json"
+fixture="$repo_dir/tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3"
 
 fail() {
   echo "FATAL: $*" >&2
@@ -150,7 +150,7 @@ publish_blob() {
   [[ "${actual_hash,,}" == "${expected_hash,,}" ]] || fail "epoch $epoch score blob hash mismatch"
 
   local port=$((publish_port + epoch))
-  EXPECTED_CID="$cid" PORT="$port" node "$repo_dir/test/e2e/kubo-stub.mjs" \
+  EXPECTED_CID="$cid" PORT="$port" node "$repo_dir/tests/e2e/kubo-stub.mjs" \
     >"$work_dir/publisher-$epoch.log" 2>&1 &
   publisher_pid=$!
   for _ in $(seq 1 50); do
@@ -205,15 +205,15 @@ done
 echo "== authenticate program and deploy complete Nostr instance =="
 vkey="${TRUSTGRAPHS_NOSTR_VKEY:-$(SP1_PROVER=mock "$prover_bin" nostr-workspace vkey)}"
 [[ "${vkey,,}" == "${frozen_vkey,,}" ]] || fail "nostr-workspace vkey drift: $vkey"
-empty_lane=$(deploy src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)
-registry=$(deploy src/contracts/registry/AnchorRegistry.sol:AnchorRegistry \
+empty_lane=$(deploy contracts/src/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)
+registry=$(deploy contracts/src/registry/AnchorRegistry.sol:AnchorRegistry \
   --constructor-args "$dev_address" 200000)
-gateway=$(deploy test/mocks/MockSP1Gateway.sol:MockSP1Gateway)
+gateway=$(deploy contracts/test/mocks/MockSP1Gateway.sol:MockSP1Gateway)
 cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$gateway" \
   'setExpectedVKey(bytes32)' "$vkey" >/dev/null
-verifier=$(deploy src/contracts/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
+verifier=$(deploy contracts/src/merkle/SP1JournalVerifier.sol:SP1JournalVerifier \
   --constructor-args "$gateway" "$vkey")
-snapshot=$(deploy src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
+snapshot=$(deploy contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
   "$verifier" "$params_hash" "$empty_lane" "$dev_address" "$dev_address")
 cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$snapshot" \
   'setAnchorRegistry(address)' "$registry" >/dev/null
@@ -228,12 +228,12 @@ cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$registry" \
 cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$registry" \
   'registerNode(bytes32,uint8)' "$agent_node" 2 >/dev/null
 
-instance_registry=$(deploy src/contracts/registry/InstanceRegistry.sol:InstanceRegistry \
+instance_registry=$(deploy contracts/src/registry/InstanceRegistry.sol:InstanceRegistry \
   --constructor-args "$dev_address")
 instance_id=$(cast keccak 'nostr-workspace-s4-two-epoch')
 program_id=$(cast keccak 'nostr-workspace')
 output_domain=$(cast keccak 'trustgraphs.output.nostr-member.v1')
-authority=$(deploy src/contracts/factory/NostrWorkspaceParamsAuthority.sol:NostrWorkspaceParamsAuthority \
+authority=$(deploy contracts/src/factory/NostrWorkspaceParamsAuthority.sol:NostrWorkspaceParamsAuthority \
   --constructor-args "$instance_id" "$snapshot" "$params_hash")
 cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$instance_registry" \
   'registerWithParamsAuthority(bytes32,(bytes32,address,address,address,bytes32),address)' \
@@ -267,8 +267,8 @@ cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$snapshot" 'trigger()' 
 
 # A second snapshot sees the exact same input commitments and params. Replaying epoch 1 there can
 # therefore fail only at journal-v3's instanceDomain word, not because its graph inputs differ.
-twin_empty=$(deploy src/contracts/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)
-twin=$(deploy src/contracts/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
+twin_empty=$(deploy contracts/src/merkle/EmptyLaneAccumulator.sol:EmptyLaneAccumulator)
+twin=$(deploy contracts/src/merkle/MerkleSnapshot.sol:MerkleSnapshot --constructor-args \
   "$verifier" "$params_hash" "$twin_empty" "$dev_address" "$dev_address")
 cast send --rpc-url "$rpc_url" --private-key "$dev_key" "$twin" \
   'setAnchorRegistry(address)' "$registry" >/dev/null
@@ -360,7 +360,7 @@ root2=$(submit_epoch 1 "$work_dir/e2")
   fail "both proven states were not retained"
 
 echo "== capture authenticated Nostr provenance as a trust-compose source =="
-adapter_factory=$(deploy src/contracts/composition/CompositionSourceAdapter.sol:CompositionSourceAdapterFactory)
+adapter_factory=$(deploy contracts/src/composition/CompositionSourceAdapter.sol:CompositionSourceAdapterFactory)
 source_id=$(cast keccak 'buzz-s4-source')
 family_id=$(cast keccak 'nostr-workspace-member-v1')
 output_kind=$(cast keccak 'allocation')

@@ -9,8 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"
-pagerank-core = { path = "../../packages/pagerank-core" }
-trustgraph-core = { path = "../../packages/trustgraph-core" }
+pagerank-core = { path = "../../crates/pagerank-core" }
+trustgraph-core = { path = "../../crates/trustgraph-core" }
 
 [workspace]
 

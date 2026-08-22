@@ -66,7 +66,7 @@ The implementation is integer fixed-point, uses canonical ordered collections, n
 end, and is compiled into the SP1 guest. The proof binds the result to complete checkpointed inputs,
 governance-pinned parameters, one program vkey, one instance, and the output Merkle root. See the
 [algorithm specification](../docs/concepts/algorithm.md),
-[`pagerank.rs`](../packages/pagerank-core/src/pagerank.rs), and the
+[`pagerank.rs`](../crates/pagerank-core/src/pagerank.rs), and the
 [ZK architecture](./ZK_ARCHITECTURE.md).
 
 This baseline already occupies much of the territory associated with **TrustRank, EigenTrust, and

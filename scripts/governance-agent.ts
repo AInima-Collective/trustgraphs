@@ -17,7 +17,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 
-import { merkleGovModuleAbi } from '../frontend/lib/contract-abis'
+import { merkleGovModuleAbi } from '../packages/frontend/lib/contract-abis'
 
 type VoteName = 'no' | 'yes' | 'abstain'
 type Decision = { vote: VoteName; analysis: string }

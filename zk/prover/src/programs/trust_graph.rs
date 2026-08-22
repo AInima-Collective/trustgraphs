@@ -44,7 +44,7 @@ fn edge(kind: u8, from: u8, to: u8, uid: u8, ts: u64, w: u64) -> RawEdge {
     }
 }
 
-/// The built-in sample scenario (matches test/golden/trust-graph.json).
+/// The built-in sample scenario (matches tests/golden/trust-graph.json).
 pub fn sample_input() -> GuestInput {
     let s = scale();
     let params = Params {
@@ -77,7 +77,7 @@ pub fn sample_input() -> GuestInput {
         edge(1, 4, 5, 5, 105, 20),
     ];
     // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays byte-identical
-    // to test/golden/trust-graph.json. Both non-zero: a sample that left them at the default would
+    // to tests/golden/trust-graph.json. Both non-zero: a sample that left them at the default would
     // exercise neither new word.
     let binding = Binding {
         recipient: addr(0xBE),
@@ -94,7 +94,7 @@ fn load_input(path: Option<&String>) -> Result<GuestInput> {
 }
 
 /// `trust-graph` subcommands. `input.json` is a serialized `trustgraph_core::GuestInput`; omit it to
-/// use the built-in sample (identical to test/golden/trust-graph.json).
+/// use the built-in sample (identical to tests/golden/trust-graph.json).
 #[derive(Subcommand)]
 pub enum Command {
     /// Print the guest program verification key (bytes32) for deployment.

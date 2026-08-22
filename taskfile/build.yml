@@ -12,8 +12,8 @@ tasks:
       - forge build {{.CLI_ARGS}}
 
   shots:
-    desc: 'Screenshot the public pages across viewports and themes (see frontend/scripts/shots.mjs)'
-    dir: frontend
+    desc: 'Screenshot the public pages across viewports and themes (see packages/frontend/scripts/shots.mjs)'
+    dir: packages/frontend
     cmds:
       # Runs a production build and serves it on its own dist dir, so a dev server
       # you have open is not disturbed. Writes to .trustgraph/shots/<label>/.

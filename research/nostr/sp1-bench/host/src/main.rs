@@ -482,7 +482,7 @@ fn marginal(label: &str, one: &Measurement, many: &Measurement) -> Result<Derive
 
 fn default_live_export() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..").join(
-        "test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json",
+        "tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-export.json",
     )
 }
 

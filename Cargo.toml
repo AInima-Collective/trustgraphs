@@ -1,6 +1,5 @@
 [workspace]
-members = ["packages/*"]
-exclude = ["packages/eas-offchain-client"]
+members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]

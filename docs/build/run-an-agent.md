@@ -155,7 +155,7 @@ principal vote or vote twice for the same principal/proposal.
 
 Set `NEXT_PUBLIC_EAS_RELAY_ENABLED=true` only when the server route is configured with one chain,
 one EAS contract, a funded relay key, and an explicit schema allowlist. The complete environment
-shape is in `frontend/.env.example`.
+shape is in `packages/frontend/.env.example`.
 
 The browser groups drafts by schema, reads the signer's current EAS nonce, and asks the human to
 sign the EAS 1.3.0 `Attest` typed data in exact execution order. `/api/eas-relay` accepts at most 20

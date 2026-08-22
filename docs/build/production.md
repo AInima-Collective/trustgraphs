@@ -12,7 +12,7 @@ Create `config/networks.production.json` (copy the development template) with th
 network's metadata set, but leave the contracts and schemas blank — they are filled in by
 the deployment script.
 
-Set the ZK deployment parameters in your environment (see `deploy/env.ts` and `.env.example`):
+Set the ZK deployment parameters in your environment (see `contracts/deploy/env.ts` and `.env.example`):
 
 - `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- trust-graph vkey`)
 - `SP1_SIGNER_PROGRAM_VKEY` / `SELECTION_PARAMS_HASH` — the signer-sync equivalents (see the
@@ -50,12 +50,12 @@ exact prover build you will operate:
 export SP1_WEIGHTED_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-graph-weighted vkey)
 export SP1_COMPOSITION_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-compose vkey)
 
-forge script script/DeployZkVerifier.s.sol:DeployZkVerifier \
+forge script contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier \
   --sig 'run(string,bytes32,string)' \
   "$SP1_VERIFIER_GATEWAY" "$SP1_WEIGHTED_PROGRAM_VKEY" weighted \
   --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
 
-forge script script/DeployZkVerifier.s.sol:DeployZkVerifier \
+forge script contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier \
   --sig 'run(string,bytes32,string)' \
   "$SP1_VERIFIER_GATEWAY" "$SP1_COMPOSITION_PROGRAM_VKEY" composition \
   --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
@@ -69,14 +69,14 @@ a non-dev chain, so a dev default cannot reach production by accident. The trail
 chain's `ProvingVault` (pass `""` for no prepay path).
 
 ```bash
-forge script script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory \
+forge script contracts/script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory \
   --sig 'run(string,string,string,string,uint64,uint48,string)' \
   "$EAS" "$SCHEMA_REGISTRAR" \
   "$(jq -r .zk_verifier .docker/zk_verifier_weighted_deploy.json)" \
   "$INSTANCE_REGISTRY" 216000 172800 "$PROVING_VAULT" \
   --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
 
-forge script script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory \
+forge script contracts/script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory \
   --sig 'run(string,bytes32,string,uint64,uint48,string)' \
   "$(jq -r .zk_verifier .docker/zk_verifier_composition_deploy.json)" \
   "$SP1_COMPOSITION_PROGRAM_VKEY" \
@@ -192,7 +192,7 @@ The indexer has two production processes: a versioned writer and a stable read s
 
 ```bash
 PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # note: the production profile in
-                                        # indexer/ponder.config.ts is currently pinned to chain 10
+                                        # packages/indexer/ponder.config.ts is currently pinned to chain 10
                                         # (reads PONDER_RPC_URL_10); the go-forward production
                                         # chain is Ethereum mainnet (chain 1)
 PONDER_START_BLOCK_<chainId>=<earliest configured contract deployment block>
@@ -212,15 +212,15 @@ Startup refuses three unsafe states before Ponder runs: the wrong chain id, depl
 addresses with no code, or an RPC that cannot answer historical state at the start block. It also
 records a finalized block hash in Postgres. A later production identity mismatch is never reset
 automatically—verify the RPC/database and deploy to a new versioned schema. Use
-`pnpm --dir indexer preflight` for the same checks without starting Ponder.
+`pnpm --dir packages/indexer preflight` for the same checks without starting Ponder.
 
 When upgrading a database that predates authenticated score-program columns, apply the offchain
 Drizzle migration before the writer starts. Let the writer replay the configured
 `InstanceRegistry`, then audit and apply the historical repair:
 
 ```bash
-PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir indexer programs:backfill
-PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir indexer programs:backfill --apply
+PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir packages/indexer programs:backfill
+PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir packages/indexer programs:backfill --apply
 ```
 
 The command obtains every binding from `/score-programs/:snapshot`, plans table families before
@@ -231,8 +231,9 @@ provenance. Ordinary event replay also repairs rows root by root, so restarts ar
 ### Run the proving vault
 
 Optional, and only if you intend to pay for roots or let communities pay for their own.
-[`ProvingVault`](../../src/contracts/vault/ProvingVault.sol) is the tank a community tops up so
-somebody keeps proving its scores; [`IProvingVault`](../../src/interfaces/vault/IProvingVault.sol)
+[`ProvingVault`](../../contracts/src/vault/ProvingVault.sol) is the tank a community tops up so
+somebody keeps proving its scores;
+[`IProvingVault`](../../contracts/src/interfaces/vault/IProvingVault.sol)
 documents why each piece is shaped the way it is. Deploy order and the settings that matter:
 
 ```

@@ -613,7 +613,7 @@ impl PublicationReport {
 /// network page 404s and the community sees an empty roster over a valid proof.
 ///
 /// The manual loop always did this by hand (`ipfs add --cid-version=1 --raw-leaves`, both in
-/// `test/e2e/run.sh` and `taskfile/instances.sh`); the daemon replaced the loop and not that step.
+/// `tests/e2e/run.sh` and `taskfile/instances.sh`); the daemon replaced the loop and not that step.
 ///
 /// Every configured target is attempted so one outage does not hide the health of the others.
 /// The caller persists the report and refuses submission unless `satisfied()` is true.
@@ -686,7 +686,7 @@ fn pin_target(target: &PinTarget, cid: &str, blob: &[u8]) -> Result<()> {
 /// stuck retrying one event forever while every network page renders empty. Reading it back turns
 /// that into a failed pin at the moment it happens, next to the thing that caused it.
 fn readable(gateway: &str, cid: &str, expected: &[u8]) -> Result<()> {
-    // Concatenated and localhost-rewritten exactly as `indexer/src/merkle.ts` does it, from the
+    // Concatenated and localhost-rewritten exactly as `packages/indexer/src/merkle.ts` does it, from the
     // same string (`IPFS_GATEWAY`, which ends in `/ipfs/`). If this built the URL its own way the
     // check could pass against a URL no reader ever requests.
     let url = format!("{gateway}{cid}").replace("localhost", "127.0.0.1");
@@ -1169,7 +1169,7 @@ mod readback_tests {
         assert!(err.contains("bytes differ"), "{err}");
     }
 
-    /// The URL is built by plain concatenation, exactly as `indexer/src/merkle.ts` does it, so the
+    /// The URL is built by plain concatenation, exactly as `packages/indexer/src/merkle.ts` does it, so the
     /// check cannot pass against a URL no reader ever requests.
     #[test]
     fn the_url_is_the_gateway_string_plus_the_cid() {

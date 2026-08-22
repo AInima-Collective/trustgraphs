@@ -47,7 +47,7 @@ only a redacted assertion and evidence digest.
    with two distinct relayer addresses and the reviewed immutable cap. Leave
    `NEXT_PUBLIC_EAS_OFFCHAIN_RELAYER_ADDRESSES` unset in the public frontend so creation remains
    hidden.
-4. Configure both relays from [`services/eas-offchain-relay/.env.example`](../../../services/eas-offchain-relay/.env.example).
+4. Configure both relays from [`packages/eas-offchain-relay/.env.example`](../../../packages/eas-offchain-relay/.env.example).
    `STORAGE_QUORUM` is at least two. Configure the indexer's independent readers and the operator's
    envelope-0 readers. Serve only the operator's public heartbeat—not `operator.toml`—at the audit
    URL. Start services without placing RPC, pinning, or signing credentials in logs.
@@ -232,8 +232,8 @@ mismatches/unresolved incidents, and a clean independent-review disposition. Eac
 `sampleCount`, `observedAt`, `workCount`, cycles, proof seconds/cost, bundle bytes,
 anchor/submission gas, failure basis points, cap-utilization basis points, and an immutable evidence
 reference. The gate contracts are regression-tested by
-`test/e2e/eas-offchain-dark-audit.test.mjs` and
-`test/e2e/eas-offchain-rollout-gates.test.mjs`.
+`tests/e2e/eas-offchain-dark-audit.test.mjs` and
+`tests/e2e/eas-offchain-rollout-gates.test.mjs`.
 
 Stop admitting new users and hold proof submission on any unexplained params/domain/vkey mismatch,
 unrecoverable newest payload, root mismatch, cap/accounting disagreement, equivocation, suspected

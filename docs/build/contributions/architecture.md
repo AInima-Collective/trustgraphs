@@ -28,10 +28,10 @@ deadline-carrying rounds can be swept back to the funder. The indexer recomputes
 scores for display, validated against the proven root and never a second source of truth; the
 frontend's round screens read that API.
 
-Canonical semantics live in `packages/contributions-core`, compiled into the
-`contributions-program` guest, ported to TS in `frontend/lib/contributions/` (the indexer's
+Canonical semantics live in `crates/contributions-core`, compiled into the
+`contributions-program` guest, ported to TS in `packages/frontend/lib/contributions/` (the indexer's
 display recompute imports the same module), and golden-locked four ways in
-`test/golden/contributions.json`.
+`tests/golden/contributions.json`.
 
 ## The two-accumulator wiring
 

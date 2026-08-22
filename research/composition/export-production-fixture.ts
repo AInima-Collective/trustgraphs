@@ -5,7 +5,7 @@ import { productionGolden } from './production'
 
 writeFileSync(
   fileURLToPath(
-    new URL('../../test/golden/trust-compose.json', import.meta.url)
+    new URL('../../tests/golden/trust-compose.json', import.meta.url)
   ),
   `${JSON.stringify(productionGolden(), null, 2)}\n`
 )

@@ -4,19 +4,19 @@ Run the independent fixed-point cores and the indexer tests:
 
 ```bash
 cargo test -p graph-reputation-core
-pnpm --dir indexer test
+pnpm --dir packages/indexer test
 ```
 
-The Rust and TypeScript tests consume `test/golden/graph-reputation.json`. The vectors freeze the
+The Rust and TypeScript tests consume `tests/golden/graph-reputation.json`. The vectors freeze the
 disconnected-cartel zero result, the 10% trusted-ingress 16.3225% result, exact node scores,
 residuals, and both canonical commitments.
 
 Run frontend checks and a production build:
 
 ```bash
-pnpm --dir frontend test
-pnpm --dir frontend lint
-pnpm --dir frontend build
+pnpm --dir packages/frontend test
+pnpm --dir packages/frontend lint
+pnpm --dir packages/frontend build
 ```
 
 With the local contracts and indexer running, open `/graph-reputation`, choose one to eight live

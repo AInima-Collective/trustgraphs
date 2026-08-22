@@ -1,5 +1,5 @@
 {
-  "extends": ["../../indexer/.eslintrc.json"],
+  "extends": ["../../packages/indexer/.eslintrc.json"],
   "parserOptions": {
     "sourceType": "module"
   },

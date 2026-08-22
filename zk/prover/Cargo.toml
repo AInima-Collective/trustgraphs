@@ -50,7 +50,7 @@ witness-nostr = [
 
 # Opt-in: on-chain input reconstruction — `contributions fetch` (input.json from the two
 # checkpointed accumulators of a contributions instance, same refuse-to-emit re-fold discipline
-# as packages/input-exporter). Pulls reqwest + the sol! ABI machinery, kept out of the lean
+# as crates/input-exporter). Pulls reqwest + the sol! ABI machinery, kept out of the lean
 # default build like witness-atproto.
 #   cargo run --release --features fetch -- contributions fetch --rpc ... --snapshot ... --eas ... --checkpoint 0 --params params.json
 fetch = ["dep:reqwest", "dep:alloy-sol-types"]
@@ -58,15 +58,15 @@ fetch = ["dep:reqwest", "dep:alloy-sol-types"]
 [dependencies]
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
 sp1-core-executor = "=6.3.1"
-pagerank-core = { path = "../../packages/pagerank-core" }
-trustgraph-core = { path = "../../packages/trustgraph-core" }
-hypercerts-core = { path = "../../packages/hypercerts-core" }
-nostr-workspace-core = { path = "../../packages/nostr-workspace-core" }
-nostr-envelope = { path = "../../packages/nostr-envelope" }
-contributions-core = { path = "../../packages/contributions-core" }
-weighted-prior-core = { path = "../../packages/weighted-prior-core" }
-weighted-prior-research = { path = "../../packages/weighted-prior-research" }
-composition-core = { path = "../../packages/composition-core" }
+pagerank-core = { path = "../../crates/pagerank-core" }
+trustgraph-core = { path = "../../crates/trustgraph-core" }
+hypercerts-core = { path = "../../crates/hypercerts-core" }
+nostr-workspace-core = { path = "../../crates/nostr-workspace-core" }
+nostr-envelope = { path = "../../crates/nostr-envelope" }
+contributions-core = { path = "../../crates/contributions-core" }
+weighted-prior-core = { path = "../../crates/weighted-prior-core" }
+weighted-prior-research = { path = "../../crates/weighted-prior-research" }
+composition-core = { path = "../../crates/composition-core" }
 alloy-primitives = { version = "1", features = ["serde"] }
 # fetch feature only: the sol! call/event ABI plumbing for on-chain reconstruction.
 alloy-sol-types = { version = "1", optional = true }
@@ -80,8 +80,8 @@ clap = { version = "4", features = ["derive"] }
 # --- witness-atproto feature only (host-side, heavy; kept out of default builds) ---
 # The envelope verifier crate (light; guest-grade deps) — reused verbatim on the host so the
 # assembled bundle is byte-checked against the SAME code the guest runs.
-envelopes = { path = "../../packages/envelopes" }
-zk-core = { path = "../../packages/zk-core" }
+envelopes = { path = "../../crates/envelopes" }
+zk-core = { path = "../../crates/zk-core" }
 # reqwest blocking follows the getRepo 302 → PDS host automatically (M1 finding). rustls to avoid
 # a system-OpenSSL build dependency.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"], optional = true }

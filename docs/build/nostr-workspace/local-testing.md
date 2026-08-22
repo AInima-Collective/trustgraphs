@@ -90,4 +90,5 @@ Nostr conformance, and `nostr-workspace`.
 
 Do not replace those manifest allowances with guest-reachable source rewrites as routine cleanup.
 Any such rewrite must follow the benchmark, same-path ELF comparison, reviewed lockfile, and vkey
-rotation procedure required by [`GOAL.md`](../../../GOAL.md).
+rotation procedure required by
+[`research/plans/nostr-workspace.md`](../../../research/plans/nostr-workspace.md).

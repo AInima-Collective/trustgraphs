@@ -18,7 +18,7 @@ unconditional free tier is an unbounded liability: an attacker pays roughly one 
 per epoch to make somebody else pay for a ~600k-gas submit. So the promise is "every **eligible**
 instance", and this page says which ones those are rather than implying it covers everyone.
 
-> **Status.** The decision engine (`packages/operator-core`), the daemon that drives it
+> **Status.** The decision engine (`crates/operator-core`), the daemon that drives it
 > (`zk/operator`), and the proving vault it draws from are built. The local demo exercises both a
 > vault-funded trust-graph root and a curated contributions root. `task demo` is a finite run;
 > `task demo:live` leaves the daemon watching for later attestations.
@@ -42,7 +42,7 @@ Once per tick, per instance:
 ```
 
 Everything that can be *wrong* — when to trigger, which checkpoint to prove, when to hold, when to
-claim — lives in `packages/operator-core`, a plain crate in the root workspace that CI tests
+claim — lives in `crates/operator-core`, a plain crate in the root workspace that CI tests
 against a fake chain. Only the thin sp1-sdk adapter lives in the detached `zk/` workspace. If you
 are reading the code to answer "would it have paid twice here?", read `operator-core`.
 
@@ -443,7 +443,7 @@ chain. Mainnet is unaffected — chains there do not restart.
 The contracts are the database, so recovery is mostly "start it again".
 
 - **Ordinary crash / `kill -9`.** Restart. The journal re-attaches to any in-flight request and the
-  disk re-attaches to any finished-but-unsubmitted proof. Verified in `test/e2e/fork.sh`: killed
+  disk re-attaches to any finished-but-unsubmitted proof. Verified in `tests/e2e/fork.sh`: killed
   mid-proof, restarted, no second request and roots kept landing.
 - **Someone else landed the root first.** Nothing to do; that is the design. The bounty follows the
   journal's recipient, so `ProvingVault.claim(instanceId, checkpointId)` still pays the prover
@@ -524,7 +524,7 @@ sequence the daemon automates, and it is what to fall back to if the daemon itse
 Written down because "there is a test for it" and "it has been proven on a real chain" are
 different claims, and only one of them is true here.
 
-**Exercised end to end, unattended, on `test/e2e/fork.sh`:** three epochs of trigger → prove →
+**Exercised end to end, unattended, on `tests/e2e/fork.sh`:** three epochs of trigger → prove →
 submit with no human in the loop; a network created and its proving tank endowed in one
 transaction; the tank paying the prover for every root it bought; a stranger's direct
 `accumulator.checkpoint()` refused; five spam checkpoints coalescing to one paid proof; a params
@@ -556,7 +556,7 @@ Catalog derivation, native receipt construction, isolated budgets, and the real-
 are regression-tested. Legacy signer deployments retain the manifest fallback above.
 
 **Still not run unattended here: a Contributions round.** Its typed chain discovery is covered,
-and `test/e2e/run.sh` proves the full program pipeline through the CLI, but the fork rehearsal still
+and `tests/e2e/run.sh` proves the full program pipeline through the CLI, but the fork rehearsal still
 drives only the curated and vault-funded trust-graph pair. The remaining Contributions part of
 [`DEVIATIONS`](../../research/DEVIATIONS.md) #23 therefore remains accurate.
 

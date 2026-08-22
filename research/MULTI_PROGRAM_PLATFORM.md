@@ -11,7 +11,7 @@
 Two axes get conflated when we say "support multiple zk programs":
 
 - A **program** = one guest binary + the core-crate semantics it compiles + one journal shape + one params schema. Today: `trust-graph` (root producer) and `signer-sync`. Next: `hypercerts` (AT-proto graph).
-- An **instance** = one *deployment* of a program: a chain + a contract set (snapshot, verifier, accumulator/registry) + a params set + an indexer/frontend view. The same program can run as many instances (e.g. a Hypercerts instance on Optimism and a community instance elsewhere) with zero code changes.
+- An **instance** = one *deployment* of a program: a chain + a contract set (snapshot, verifier, accumulator/registry) + a params set + an indexer and frontend view. The same program can run as many instances (e.g. a Hypercerts instance on Optimism and a community instance elsewhere) with zero code changes.
 
 The reorg target: **adding a program costs a core crate + a guest bin + prover subcommands + golden vectors; adding an instance costs only a deployment.** Everything below serves that line.
 
@@ -28,7 +28,7 @@ The signer-sync build quietly proved most of the pattern. Inventory of what gene
 | `DeployZkVerifier.s.sol` | Already parametrized `run(gateway, vkey, outLabel)` — root and signer verifiers coexist via labels. Third label = third verifier. |
 | `SignerSyncZkModule` | The template for a program-specific consumer: own verifier, own journal, own `submit*Proof`, shared inputs. |
 
-What does **not** generalize today: `MerkleSnapshot`'s hardcoded 7-field journal, the PageRank-specific interior of `pagerank-core`, the single `test/golden/vectors.json`, the indexer's single-deployment config, `frontend/lib/pagerank` as a monolithic port, the absence of any zk task-runner plumbing, and docs whose "the program" phrasing assumes there is one. Those are the six work surfaces below.
+What does **not** generalize today: `MerkleSnapshot`'s hardcoded 7-field journal, the PageRank-specific interior of `pagerank-core`, the single `tests/golden/vectors.json`, the indexer's single-deployment config, `packages/frontend/lib/pagerank` as a monolithic port, the absence of any zk task-runner plumbing, and docs whose "the program" phrasing assumes there is one. Those are the six work surfaces below.
 
 ## 3. Rust workspace layout
 
@@ -76,7 +76,7 @@ Two decisions worth stating explicitly:
 | `AttestationAccumulator` (+ resolvers) | Reuse as-is for any instance with a lane-1 EAS feed. One accumulator per instance (the §3.2 invariant: one checkpoint freezes one `acc`). |
 | `AnchorRegistry` (new, offchain design §4.1) | **Per instance.** Each graph owns its anchor log — sharing one registry across graphs would couple their epoch schedules and registration gates for no benefit. |
 | `MerkleGovModule` / `MerkleFundDistributor` | Per instance, optional. The Hypercerts instance launches score-only (no gov, no distributor) — consumers are Hypercerts' own systems reading the proven root. |
-| `InstanceRegistry` (new, tiny) | **One per chain.** `instance → (program, snapshot, verifier, registry/accumulator, paramsHash)` behind the operational timelock, so any frontend/indexer discovers deployments on-chain instead of via `deployment_summary.json`. Decided 2026-07-14: build it (lands with M2's contract work). |
+| `InstanceRegistry` (new, tiny) | **One per chain.** `instance → (program, snapshot, verifier, registry/accumulator, paramsHash)` behind the operational timelock, so any frontend and indexer discovers deployments on-chain instead of via `deployment_summary.json`. Decided 2026-07-14: build it (lands with M2's contract work). |
 | `SignerSyncZkModule` | Untouched; trust-graph-instance-specific. |
 | `ParamsCodec` | Becomes per-program: `ParamsCodec` (trust-graph) + `HypercertsParamsCodec`, each golden-locked to its crate's `params_hash`. |
 
@@ -101,7 +101,7 @@ Ponder already indexes N contracts from `deployment_summary.json`; the gap is th
 
 ## 6. Frontend
 
-- Extract `frontend/lib/zk-core/` (TS twins of `packages/zk-core`: words, fixed, merkle, cid, fold, journal discipline). `lib/pagerank` keeps the trust-graph program semantics and re-exports the shared pieces.
+- Extract `packages/frontend/lib/zk-core/` (TS twins of `crates/zk-core`: words, fixed, merkle, cid, fold, journal discipline). `lib/pagerank` keeps the trust-graph program semantics and re-exports the shared pieces.
 - Per-program semantic ports only where **browser recompute** is a product requirement. For the trust-graph instance it is (that's the v1 trust story). For the Hypercerts instance v1, we deliberately ship a **reduced parity tier**: the browser re-derives PageRank + root from the indexer-served, envelope-verified edge set and checks it against the on-chain journal (root, accumulators, `skippedDigest`) — but does **not** re-verify MST walks/PLC logs in TS. Full envelope verification in the browser is a later, separately-scoped port; say so in the docs rather than implying parity we don't have.
 - Routes gain an instance scope (`/g/[instance]/...`); the existing routes alias to the trust-graph instance.
 
@@ -122,12 +122,12 @@ The genuinely new host-side subsystem is **witness assembly** for lane 2 (`src/w
 The four-way parity harness (native Rust / SP1 guest / Solidity / TS) is the crown jewel; scale it by splitting per program instead of growing one file:
 
 ```
-test/golden/trust-graph.json   (root + signer vectors — the current vectors.json, renamed)
-test/golden/hypercerts.json
+tests/golden/trust-graph.json   (root + signer vectors — the current vectors.json, renamed)
+tests/golden/hypercerts.json
 ```
 
 - Each core crate owns an `export_golden` example writing its file.
-- `test/unit/GoldenVectors.t.sol` splits into per-program test contracts reading their own file.
+- `contracts/test/unit/GoldenVectors.t.sol` splits into per-program test contracts reading their own file.
 - Each program's TS port gets its own `golden.test.ts`.
 - The prover's `execute` command retains the guest==native byte-assert per program.
 - Task plumbing (new `taskfile/zk.yml`): `task zk:vectors PROGRAM=…`, `zk:vkey`, `zk:execute`, `zk:prove`, and a `zk:parity` aggregate that CI runs for every program on every PR touching `packages/` or `zk/`.
@@ -157,7 +157,7 @@ Conventions: `research/` holds *why* (design docs, dossiers, tradeoffs — immut
 
 Ordered so nothing breaks between steps; this is the build plan's milestone M0 plus the M2 flag:
 
-1. Extract `packages/zk-core` (move + re-export; `pagerank-core` API unchanged). Regenerate nothing — encodings must come out byte-identical, proven by the *existing* vectors still passing.
+1. Extract `crates/zk-core` (move + re-export; `pagerank-core` API unchanged). Regenerate nothing — encodings must come out byte-identical, proven by the *existing* vectors still passing.
 2. Split golden vectors per program; split the Solidity/TS golden tests; add `taskfile/zk.yml` + CI parity job.
 3. Restructure `zk/prover` to clap program groups (behavior-preserving).
 4. Docs reorg (§9) incl. `PROGRAMS.md` and CLAUDE.md link fixes.

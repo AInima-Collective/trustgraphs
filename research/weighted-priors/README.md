@@ -2,34 +2,34 @@
 
 This directory contains the original issue #34 research evidence and the release benchmark record
 for the isolated weighted V1 implementation from issue #52. The research artifacts remain
-non-production; production code consumes only the promoted golden under `test/golden`.
+non-production; production code consumes only the promoted golden under `tests/golden`.
 
 ## Reproduce
 
 ```sh
 cargo test -p weighted-prior-research
 pnpm exec tsx research/weighted-priors/verify-fixture.ts
-forge test --match-path test/unit/WeightedPriorResearchFixture.t.sol -vv
+forge test --match-path contracts/test/unit/WeightedPriorResearchFixture.t.sol -vv
 
 cd research/weighted-priors/zk-program && cargo prove build
 cd ../../.. && cargo run --release --manifest-path zk/prover/Cargo.toml \
   --example weighted_prior_bench -- \
   research/weighted-priors/zk-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/trustgraph-weighted-prior-research \
   2048 4 40
-forge script script/research/WeightedPriorGas.s.sol:WeightedPriorGas \
+forge script contracts/script/research/WeightedPriorGas.s.sol:WeightedPriorGas \
   --sig 'run(uint256)' 2048 -vv
 pnpm exec tsx research/weighted-priors/benchmark-client.ts
-cd frontend && pnpm test
+cd packages/frontend && pnpm test
 ```
 
 The research script above preserves the original architecture spike. The promoted production
 validator and lifecycle gates are reproduced with:
 
 ```sh
-forge test --match-path test/unit/WeightedPriorValidator.t.sol -vv
-forge test --match-path test/unit/factory/WeightedPriorParamsController.t.sol
-forge test --match-path test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
-forge test --match-path test/unit/factory/WeightedTrustgraphsFactory.t.sol
+forge test --match-path contracts/test/unit/WeightedPriorValidator.t.sol -vv
+forge test --match-path contracts/test/unit/factory/WeightedPriorParamsController.t.sol
+forge test --match-path contracts/test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
+forge test --match-path contracts/test/unit/factory/WeightedTrustgraphsFactory.t.sol
 forge build --sizes
 ```
 

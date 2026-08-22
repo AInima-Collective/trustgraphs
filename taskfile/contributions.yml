@@ -3,7 +3,7 @@ version: '3'
 # Contribution-funding round lifecycle on local anvil (GOAL.md M5).
 #
 # The user-side actions (vouch / claim / respond / rate / claim payout) run through
-# frontend/scripts/contribution-round.ts — the exact SchemaManager → EAS.attest and
+# packages/frontend/scripts/contribution-round.ts — the exact SchemaManager → EAS.attest and
 # proof-bundle-API seams the frontend screens drive. The operator-side actions
 # (window params, trigger, prove, submit, fund, sweep) live here.
 #
@@ -37,20 +37,20 @@ tasks:
       - test -f {{.PARAMS_FILE}}
     cmds:
       - echo "== 1/4 trust lane (six fixture vouches) =="
-      - cd frontend && npx tsx scripts/contribution-round.ts graph
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts graph
       - echo "== 2/4 out-of-window claim (C4) =="
-      - cd frontend && npx tsx scripts/contribution-round.ts claim-out-of-window
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts claim-out-of-window
       - echo "== 3/4 open the round window (operational setParamsHash) =="
       - task: open-round-window
       - echo "== 4/4 in-window fixture sequence (C1/C2/C3/C5 + responses + valuations) =="
-      - cd frontend && npx tsx scripts/contribution-round.ts round1
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts round1
       - echo "Seeded. Next - task contributions:trigger"
 
   create-round-2:
     desc: 'Seed the minimal round-2 fixture (window rotate + co-claim + accept + two ratings)'
     cmds:
       - task: open-round-window
-      - cd frontend && npx tsx scripts/contribution-round.ts round2
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts round2
 
   # Rotate the round window to [now+1, now+1+7d]: update the params sidecar, recompute the
   # 21-word paramsHash, and publish the complete tuple through the typed controller.
@@ -77,7 +77,7 @@ tasks:
         # old ones into the verifiers, and the daemon then correctly holds both instances with
         # `verifier_rotated` forever. Only `task zk:build` builds guests.
         echo "window [$ROUND_START, $ROUND_END]"
-        forge script script/UpdateContributionsParams.s.sol:UpdateContributionsParams \
+        forge script contracts/script/UpdateContributionsParams.s.sol:UpdateContributionsParams \
           --sig 'run(string,string,string)' "$CONTROLLER" {{.PARAMS_FILE}} 'local round window' \
           --rpc-url {{.RPC_URL}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
         echo "complete ContributionsParamsUpdated tuple published"
@@ -169,14 +169,14 @@ tasks:
     preconditions:
       - test -n "{{.AMOUNT}}"
     cmds:
-      - cd frontend && npx tsx scripts/contribution-round.ts fund --amount {{.AMOUNT}} {{if .DEADLINE}}--deadline {{.DEADLINE}}{{end}}
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts fund --amount {{.AMOUNT}} {{if .DEADLINE}}--deadline {{.DEADLINE}}{{end}}
 
   # Claim payouts through the proof-bundle API. INDEX = distribution index (default 0);
   # AS = comma-separated persona subset (default: all six).
   claim-payouts:
     desc: 'Claim distribution INDEX for the personas via /contributions payout bundles'
     cmds:
-      - cd frontend && npx tsx scripts/contribution-round.ts claim --index {{.INDEX | default 0}} {{if .AS}}--as {{.AS}}{{end}}
+      - cd packages/frontend && npx tsx scripts/contribution-round.ts claim --index {{.INDEX | default 0}} {{if .AS}}--as {{.AS}}{{end}}
 
   sweep:
     desc: 'Sweep the unclaimed remainder of expired distribution INDEX back to the funder'

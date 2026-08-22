@@ -52,7 +52,7 @@ to the repo root.
 
 | Operation | Where | Authorization |
 |---|---|---|
-| Vouch / create EAS records | direct EAS or human-signed `multiAttestByDelegation`, called from `frontend/hooks/useAttestation.ts` | EAS recovers the signer as `attester`; relay is chain/contract/schema allowlisted and zero-value only |
+| Vouch / create EAS records | direct EAS or human-signed `multiAttestByDelegation`, called from `packages/frontend/hooks/useAttestation.ts` | EAS recovers the signer as `attester`; relay is chain/contract/schema allowlisted and zero-value only |
 | Rate, submit, respond (contributions) | same hook, three EAS schemas behind `ContributionResolver` | same draft-review-sign-relay path when enabled |
 | Propose / vote | `MerkleGovModule.propose` / `castVote` / `castVoteAsDelegate` | principal merkle proof against the proposal-pinned root; one provisional delegate vote, then at most one final principal vote |
 | Execute a passed proposal | `MerkleGovModule.execute` | **permissionless** |
@@ -64,7 +64,7 @@ to the repo root.
 
 Identity is the address. `nodeId = keccak256(abi.encode(address))` everywhere; ENS is
 input-resolution sugar; atproto DIDs exist only in the hypercerts lane. There is no
-delegation, operator, session-key, or permit primitive anywhere in `src/contracts/`. The one
+delegation, operator, session-key, or permit primitive anywhere in `contracts/src/`. The one
 existing automation pattern is `zk/operator/`: a daemon holding a raw private key that only
 touches permissionless functions. That is the current de-facto delegation model: hand a bot
 its own key.
@@ -208,7 +208,7 @@ upgrading, since the mapping can later be populated by a resolver.
 
 For vouch, rate, and respond, the recommendation is **human-signed, agent-relayed**, via the
 EAS delegated-attestation functions that are already deployed and already in
-`frontend/lib/contracts.ts`:
+`packages/frontend/lib/contracts.ts`:
 
 - The agent does the work: watches the graph, drafts vouches or a batch of contribution
   ratings, presents them with rationale.
@@ -225,7 +225,7 @@ The existing draft forms are the review surface for vouching, claims, ratings, a
 If fully autonomous vouching is ever wanted despite the threat model, constrain it: cap
 confidence well below the human maximum, rate-limit edge creation, always allow autonomous
 *revocation* (defensive direction), and require the delegation to be publicly visible. The
-envelope-0 offchain path (`packages/envelopes/`, `AnchorRegistry.anchor` through an admitted
+envelope-0 offchain path (`crates/envelopes/`, `AnchorRegistry.anchor` through an admitted
 relayer) is the natural gasless endgame for agent-maintained attestation logs, but it is
 dormant today (no factory deployment, empty `envelope0DomainSeparators` in the create
 wizard) and should not gate any of the above.
@@ -280,8 +280,8 @@ primary voting design because:
 ## References
 
 - EAS delegated attestations: `multiAttestByDelegation` and `DelegatedAttestationRequest` in the
-  deployed EAS contract, called through `frontend/hooks/useAttestation.ts` and
-  `frontend/app/api/eas-relay/route.ts`.
+  deployed EAS contract, called through `packages/frontend/hooks/useAttestation.ts` and
+  `packages/frontend/app/api/eas-relay/route.ts`.
 - `MerkleGovModule` voting internals: `castVote`, `_castVote`, `hasVoted`, `votes`,
   `_verifyMerkleProof` (proposal-pinned root).
 - Anyone-can-relay precedents in this repo: `MerkleFundDistributor.claim`,

@@ -486,17 +486,17 @@ a trust score.
 
 The current code already has most of the presentation and program structure needed:
 
-- `frontend/lib/types.ts` distinguishes address-keyed trustgraphs instances from node-ID-keyed
+- `packages/frontend/lib/types.ts` distinguishes address-keyed trustgraphs instances from node-ID-keyed
   Hypercerts instances, but `NetworkEntry` and `NetworkGraphNode` are currently address-specific.
-- `frontend/contexts/NetworkContext.tsx` is the right owner for bulk enrichment, just as it owns
+- `packages/frontend/contexts/NetworkContext.tsx` is the right owner for bulk enrichment, just as it owns
   bounded graph-wide ENS resolution.
-- `frontend/app/networks/[id]/component.tsx` owns member columns and filters.
-- `frontend/components/NetworkGraph.tsx` builds address nodes, address routes, and its inspector.
-- `frontend/app/account/[address]/component.tsx` owns the account header.
-- `indexer/src/eas.ts` and `indexer/src/api/network.ts` demonstrate event ingestion and the bulk
+- `packages/frontend/app/networks/[id]/component.tsx` owns member columns and filters.
+- `packages/frontend/components/NetworkGraph.tsx` builds address nodes, address routes, and its inspector.
+- `packages/frontend/app/account/[address]/component.tsx` owns the account header.
+- `packages/indexer/src/eas.ts` and `packages/indexer/src/api/network.ts` demonstrate event ingestion and the bulk
   network response.
-- `packages/pagerank-core/src/pagerank.rs` already implements generic-key PageRank.
-- `packages/hypercerts-core` and the Hypercerts score path demonstrate node-ID outputs and binding
+- `crates/pagerank-core/src/pagerank.rs` already implements generic-key PageRank.
+- `crates/hypercerts-core` and the Hypercerts score path demonstrate node-ID outputs and binding
   durable identities back to addresses.
 
 The larger program path also exposes existing platform debt: runtime program discovery is split

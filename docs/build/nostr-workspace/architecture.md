@@ -32,7 +32,7 @@ coordinate is terminal rather than exposing an older address.
 
 ## Package and guest isolation
 
-The goal-mandated verifier sources live at `packages/envelopes/src/nostr/`, but compile through the
+The goal-mandated verifier sources live at `crates/envelopes/src/nostr/`, but compile through the
 separate `nostr-envelope` package. The legacy `envelopes` crate manifest and module graph remain
 unchanged. This is necessary because even adding a disabled feature changes Rust crate identity and
 can rotate every legacy SP1 consumer.
@@ -56,4 +56,4 @@ port is explicitly reduced-tier: starting from authenticated envelope-verified r
 binding metadata, it recomputes V1/G1/J1/F1, rank, score blob/CID, root, skips, params, and journal;
 it does not claim to re-run BIP-340, NIP-OA, or Buzz audit verification.
 
-The frozen production vector is [`test/golden/nostr-workspace.json`](../../../test/golden/nostr-workspace.json).
+The frozen production vector is [`tests/golden/nostr-workspace.json`](../../../tests/golden/nostr-workspace.json).

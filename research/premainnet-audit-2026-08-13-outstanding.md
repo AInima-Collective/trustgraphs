@@ -35,7 +35,7 @@ Method recap: 11 parallel domain reviewers over the contracts + ZK stack (guests
 ### M-3 — Signer-sync proof journal omits instance/chain binding  *(now blocking: signer-sync is in the launch)*
 `SignerSyncZkModule.submitSignerProof` rebuilds its journal from `(acc, leafCount, paramsHash, selectionParamsHash, signerSetRoot, targetThreshold)` with **no** `instanceDomain`/chainId word — unlike `MerkleSnapshot`, which binds `keccak256(address(this), block.chainid)` (issue #9). The module rotates a Safe's owner set (fund control), and its isolation currently rests only on `paramsHash` transitively carrying `accumulator`/`chain_id` params that are `serde(default)=0` and were explicitly demoted to non-load-bearing. Two modules sharing an accumulator+params, or mirrored at the same CREATE2 address cross-chain, allow replay of an owner-rotation proof.
 **Fix:** add `keccak256(abi.encode(address(this), block.chainid))` as a journal word, reproduced byte-for-byte in the signer guest and `signer_journal_encoded`.
-**Caution — this is not a quick edit:** changing the guest changes the **program vkey**. Requires golden-vector regen, guest+host+Solidity byte-parity, and a redeploy/vkey-rotation step in the launch runbook. Files: `src/contracts/zodiac/SignerSyncZkModule.sol:230-236`, `packages/pagerank-core/src/encode.rs:145-153`, `zk/program/src/signer.rs`, golden vectors + frontend TS port.
+**Caution — this is not a quick edit:** changing the guest changes the **program vkey**. Requires golden-vector regen, guest+host+Solidity byte-parity, and a recontracts/deploy/vkey-rotation step in the launch runbook. Files: `contracts/src/zodiac/SignerSyncZkModule.sol:230-236`, `crates/pagerank-core/src/encode.rs:145-153`, `zk/program/src/signer.rs`, golden vectors + frontend TS port.
 
 ### H-3 — Operator submit revert loop is uncapped and outside the loss budget
 Hard-coded gas limits (1.5M submit) with no `eth_estimateGas`; the pre-send simulation is an `eth_call` with **no gas field**, so a tx that reverts only because 1.5M is insufficient passes simulation and burns full gas on-chain; a failed submit never journals `Settled`, so the next 60s tick re-plans it. `LossBudget` counts proving cost only — on-chain gas is never budgeted. A persistently reverting submit drains the operator hot wallet with no circuit breaker.
@@ -45,7 +45,7 @@ Hard-coded gas limits (1.5M submit) with no `eth_estimateGas`; the pre-send simu
 ### H-5 — Head-signature replay resurrects revoked edges  *(blocking IFF lane 2 is enabled — otherwise defer)*
 Envelope-0 head signatures carry no monotonic nonce; rule Φ picks the newest *anchored* head by anchor order, and anchoring is permissionless. Any third party can re-anchor a victim's old (pre-revocation) head with its still-valid signature; the honest prover must then consume it (resurrecting revoked out-edges) or drop the node — rewriting the score root that gates governance and rewards.
 **Fix:** bind a strictly increasing per-node nonce/epoch into the signed head and reject any anchored head whose signed count is below the max already anchored for that node (or track the latest accepted head per node in `AnchorRegistry`).
-**Location:** `packages/envelopes/src/eas_offchain.rs:117-124,186-209`, `packages/pagerank-core/src/lane2.rs:73-118`, `AnchorRegistry.sol:91-97`.
+**Location:** `crates/envelopes/src/eas_offchain.rs:117-124,186-209`, `crates/pagerank-core/src/lane2.rs:73-118`, `AnchorRegistry.sol:91-97`.
 
 ### H-4 — Permissionless accumulator/anchor bloat → griefing and permanent unprovability
 Attestations (and revocations, which also append a leaf) grow `leafCount`+`anchorCount` monotonically and irreversibly; proving cost scales linearly. Above `MAX_PRICED_INPUTS = 200,000`, `ProvingVault.bandOf` returns band 0 (no prover paid) and the code ties that to the zkVM cycle limit — past that point the root is both unprovable and unpaid, and the chained hash cannot be trimmed. Recovery today means a new resolver, losing all vouch history.
@@ -71,14 +71,14 @@ Attestations (and revocations, which also append a leaf) grow `leafCount`+`ancho
 **Distributor (`MerkleFundDistributor`):**
 - **M-7** — Owner can front-run `distribute()` with `setFeePercentage(100%)` + `setFeeRecipient(self)` to capture a funder's whole round. Add funder-supplied `maxFeeAmount`/`expectedFeeRecipient`, and/or delay fee changes. `:342,358,375-389`.
 
-**Lane 2 (`packages/envelopes`) — only if lane 2 is enabled:**
+**Lane 2 (`crates/envelopes`) — only if lane 2 is enabled:**
 - **M-12** — `Car::parse` panics on a malformed CAR instead of failing closed, aborting the whole guest. Bounds-check every LEB128 length before slicing. `carset.rs:44,69,77-79`.
 
 ---
 
 ## DEFERRED (Jake's call)
 
-- **C-1 (Critical, hypercerts only)** — `strongref_targets` is prover-supplied, not content-addressed against its CID, and committed nowhere, so a prover can add/forge/suppress badge-award edges and move the `output_root`. **Must be fixed before hypercerts ships to mainnet with value.** Not in the trust-graph launch path. `packages/hypercerts-core/src/semantics.rs:216-223`, `compute.rs:123-125`.
+- **C-1 (Critical, hypercerts only)** — `strongref_targets` is prover-supplied, not content-addressed against its CID, and committed nowhere, so a prover can add/forge/suppress badge-award edges and move the `output_root`. **Must be fixed before hypercerts ships to mainnet with value.** Not in the trust-graph launch path. `crates/hypercerts-core/src/semantics.rs:216-223`, `compute.rs:123-125`.
 
 ---
 

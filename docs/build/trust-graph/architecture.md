@@ -11,7 +11,7 @@ who called it.
 (`string comment, uint256 confidence`). The instance's `EASIndexerResolver` folds every
 attestation and revocation into an on-chain `AttestationAccumulator`, a chained hash over the
 ordered edge log. A permissionless `trigger()` freezes a checkpoint `(acc, leafCount)`; the
-prover reconstructs the exact edge set from the `EdgeFolded` logs (`packages/input-exporter`)
+prover reconstructs the exact edge set from the `EdgeFolded` logs (`crates/input-exporter`)
 and the guest re-folds it to the checkpointed accumulator, so input completeness is proven, not
 assumed. The guest replays those records in `(block timestamp, fold index)` order: an attestation
 replaces the current vouch for its `(attester, recipient)` pair, and a revocation clears the pair
@@ -36,8 +36,8 @@ inputs; the [`contributions`](../contributions/architecture.md) program reads th
 graph (through a mirror) as its reputation input; and the frontend and indexer render the member
 roster from the blob pinned at the committed CID.
 
-The canonical algorithm and every byte encoding live in `packages/pagerank-core` (which
-re-exports the shared `packages/zk-core` primitives) and are proven byte-identical across native
+The canonical algorithm and every byte encoding live in `crates/pagerank-core` (which
+re-exports the shared `crates/zk-core` primitives) and are proven byte-identical across native
 Rust, the SP1 guest, the Solidity golden tests, and the frontend TS port.
 
 The design of record is

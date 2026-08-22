@@ -13,8 +13,8 @@ Per [`../../research/MULTI_PROGRAM_PLATFORM.md`](../../research/MULTI_PROGRAM_PL
 program (call it `foo`) is exactly these additions — no change to any existing program's semantics:
 
 1. **Core crate** — `packages/foo-core/`: the record→edge mapping, weight normalization, and the
-   program's own `Params`/`Journal` + byte encodings, depending on `packages/zk-core` (and
-   `packages/envelopes` if it ingests a *lane-2* substrate — off-chain signed data, like atproto repos, anchored on-chain by digest rather than attested via EAS). Same discipline as every core crate: no
+   program's own `Params`/`Journal` + byte encodings, depending on `crates/zk-core` (and
+   `crates/envelopes` if it ingests a *lane-2* substrate — off-chain signed data, like atproto repos, anchored on-chain by digest rather than attested via EAS). Same discipline as every core crate: no
    floats, `BTreeMap` only, no non-deterministic iteration.
 2. **Isolated guest workspace** — add `zk/foo-program/` with a ~25-line `src/main.rs`, its own pinned
    SP1 dependencies/lockfile, and `[workspace]`; then register it in `zk/prover/build.rs`. This is the
@@ -27,8 +27,8 @@ program (call it `foo`) is exactly these additions — no change to any existing
    [fetch] | execute | prove}` clap group that shares the existing proof-writing plumbing
    (`abi.encode(publicValues, seal)`, blob export, local verify). Lane-2 programs also add host-only
    witness assembly under `zk/prover/src/witness/` behind a feature gate.
-4. **Golden vector file** — `test/golden/foo.json`, written by the core crate's `export_golden`
-   example, plus a per-program `test/unit/golden/FooGoldenVectors.t.sol` and a TS `golden.test.ts`. An
+4. **Golden vector file** — `tests/golden/foo.json`, written by the core crate's `export_golden`
+   example, plus a per-program `contracts/test/unit/golden/FooGoldenVectors.t.sol` and a TS `golden.test.ts`. An
    encoding change without a regenerated vector file in the same PR is a CI failure (now enforced per
    program).
 5. **Docs dir** — `docs/build/foo/` with `architecture.md` (pointer to the research design) and
@@ -47,12 +47,12 @@ The CI parity job runs for every program on every PR touching `packages/` or `zk
 instance (same bytecode, its own immutable vkey) against the same SP1 gateway, reuses `MerkleSnapshot`
 on journal v3, and adds a `ParamsCodec` twin golden-locked to its crate's `params_hash`. Standing up
 another *instance* of an existing program costs only a deployment (a new contract set + params +
-indexer/frontend view) — no Rust, no guest, no vectors.
+indexer and frontend view) — no Rust, no guest, no vectors.
 
 ## Registering the score program and output domain
 
 Score-blob dispatch is consensus-facing. Before a program can publish a root, add one reviewed row
-to `frontend/lib/score-program.ts` containing all of the following:
+to `packages/frontend/lib/score-program.ts` containing all of the following:
 
 - the exact `programId` written to `InstanceRegistry` (`keccak256("foo")` by convention);
 - a new, versioned `outputDomain` (`keccak256("trustgraphs.output.foo-subject.v1")`);
@@ -83,10 +83,10 @@ Indexer additions are therefore explicit:
 4. Expose and runtime-validate `scoreProgram` on every score response.
 5. Add the frontend page type only after the authenticated response can dispatch it.
 
-For an existing database, deploy in this order: apply the nullable migration; deploy/replay the new
+For an existing database, deploy in this order: apply the nullable migration; contracts/deploy/replay the new
 indexer so `score_program_binding` is rebuilt from registry events; run
-`pnpm --dir indexer programs:backfill` (dry-run) and then
-`pnpm --dir indexer programs:backfill --apply`; deploy the new frontend last. Old frontends ignore
+`pnpm --dir packages/indexer programs:backfill` (dry-run) and then
+`pnpm --dir packages/indexer programs:backfill --apply`; deploy the new frontend last. Old frontends ignore
 additive provenance fields. A new frontend against an old
 indexer refuses the response rather than guessing its type. Keep the dry-run output with the
 release evidence and audit all `409` responses before publishing the frontend.

@@ -22,7 +22,7 @@ pub fn elf() -> Elf {
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3")
+        .join("../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3")
 }
 
 fn scale() -> U256 {

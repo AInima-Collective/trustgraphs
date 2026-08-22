@@ -4,7 +4,7 @@
 program (see [`networks-and-programs.md`](../../concepts/networks-and-programs.md) for the program index).
 Every lane (contracts, core crate, guest/host, indexer, frontend) builds against
 these definitions. A change to anything in this file requires regenerated golden
-vectors (`test/golden/contributions.json`) in the same PR and a
+vectors (`tests/golden/contributions.json`) in the same PR and a
 [`research/DEVIATIONS.md`](../../../research/DEVIATIONS.md) entry.
 
 Design provenance: [`../../../research/CONTRIBUTION_FUNDING.md`](../../../research/CONTRIBUTION_FUNDING.md)
@@ -130,12 +130,12 @@ CID = CIDv1, `raw` codec, sha2-256.
 
 ## 6. Golden vectors
 
-`test/golden/contributions.json`, written by
+`tests/golden/contributions.json`, written by
 `cargo run -p contributions-core --example export_golden`, locked by:
 
-- `test/unit/golden/ContributionsGoldenVectors.t.sol` (Solidity)
+- `contracts/test/unit/golden/ContributionsGoldenVectors.t.sol` (Solidity)
 - `contributions-core` unit tests (native Rust)
-- the SP1 guest and `frontend/lib/contributions/golden.test.ts`
+- the SP1 guest and `packages/frontend/lib/contributions/golden.test.ts`
 
 The file carries the `params` family (every field + `seedSetRoot` + `paramsHash`),
 the `kinds` table, a sample contribution accumulator `leaf`, a `blob` sample, and

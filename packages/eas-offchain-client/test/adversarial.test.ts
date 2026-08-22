@@ -16,7 +16,7 @@ import {
   type SignedAnchorBundle,
 } from '../src/index.ts'
 
-const fixtureDir = resolve(__dirname, '../../../test/fixtures/eas-offchain/v1')
+const fixtureDir = resolve(__dirname, '../../../tests/fixtures/eas-offchain/v1')
 const SECP256K1_N = BigInt(
   '0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'
 )

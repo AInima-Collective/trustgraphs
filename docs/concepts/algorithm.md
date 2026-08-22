@@ -4,7 +4,7 @@
 > deliberately implementation-agnostic. How the system runs it today (fixed-point arithmetic,
 > epochs, the SP1 zero-knowledge proof) is summarized in the closing section and detailed in
 > [`research/ZK_ARCHITECTURE.md`](../../research/ZK_ARCHITECTURE.md). The canonical
-> implementation is `packages/pagerank-core`.
+> implementation is `crates/pagerank-core`.
 
 ## Abstract
 
@@ -91,7 +91,7 @@ Where:
 - `L(j)` = total outgoing attestation weight from j
 
 The exact fixed-point recurrence (including rounding order) is defined by the
-implementation of record, `packages/pagerank-core` — where this document and the code
+implementation of record, `crates/pagerank-core` — where this document and the code
 disagree, the code governs.
 
 ### Weight Assignment
@@ -150,7 +150,7 @@ a community chooses a lower value.
 The implementation of record departs from this spec in mechanics, never in semantics:
 
 - **Fixed-point, deterministic** — all arithmetic is integer fixed-point (1e18 scale) with
-  `BTreeMap` iteration, so every runner reproduces the same bytes (`packages/pagerank-core`,
+  `BTreeMap` iteration, so every runner reproduces the same bytes (`crates/pagerank-core`,
   the single source of truth compiled into the SP1 guest, the host, and the browser port).
 - **Epochs** — attestations fold into an on-chain accumulator; anyone freezes a checkpoint
   (`MerkleSnapshot.trigger()`), and scores are computed over exactly that frozen input set.
@@ -200,4 +200,4 @@ The implementation of record departs from this spec in mechanics, never in seman
 
 ---
 
-_This document is the algorithm specification. The implementation of record is `packages/pagerank-core`; where mechanics differ (fixed-point, epochs, ZK proving), that crate and the docs above govern._
+_This document is the algorithm specification. The implementation of record is `crates/pagerank-core`; where mechanics differ (fixed-point, epochs, ZK proving), that crate and the docs above govern._

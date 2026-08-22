@@ -7,22 +7,22 @@ SP1 proof of correct fixed-point Trust-Aware PageRank. See
 program index in [`networks-and-programs.md`](../../concepts/networks-and-programs.md).
 
 > **Sibling program.** The Safe signer-sync capability is a **second program** (`signer`) that reuses
-> this program's accumulator and `paramsHash`. Its build/deploy/run loop lives in
+> this program's accumulator and `paramsHash`. Its build/contracts/deploy/run loop lives in
 > [`../signer-sync/runbook.md`](../signer-sync/runbook.md).
 
 ## Components
 
 | Path                                                                              | What it is                                                                                                                                                 |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/zk-core`                                                                | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
-| `packages/pagerank-core`                                                          | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats.                                    |
+| `crates/zk-core`                                                                | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
+| `crates/pagerank-core`                                                          | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats.                                    |
 | `zk/program`                                                                      | Multi-bin SP1 guest crate. `trustgraph-program` bin = this program (root).                                                                                 |
 | `zk/prover`                                                                       | Host CLI `trustgraph-prover`. Clap program groups: `trust-graph {vkey\|paramshash\|execute\|prove}` (and `signer …`).                                      |
-| `packages/input-exporter`                                                         | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`.                                             |
-| `src/contracts/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
-| `src/contracts/merkle/MerkleSnapshot.sol`                                         | `submitProof` write-gate + two-tier timelock authority.                                                                                                    |
-| `src/contracts/merkle/SP1JournalVerifier.sol`                                     | `IZkVerifier` → SP1 gateway adapter (journal-agnostic; one instance per program vkey).                                                                     |
-| `test/golden/trust-graph.json` + `test/unit/golden/TrustgraphsGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors).                                                                                           |
+| `crates/input-exporter`                                                         | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`.                                             |
+| `contracts/src/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
+| `contracts/src/merkle/MerkleSnapshot.sol`                                         | `submitProof` write-gate + two-tier timelock authority.                                                                                                    |
+| `contracts/src/merkle/SP1JournalVerifier.sol`                                     | `IZkVerifier` → SP1 gateway adapter (journal-agnostic; one instance per program vkey).                                                                     |
+| `tests/golden/trust-graph.json` + `contracts/test/unit/golden/TrustgraphsGoldenVectors.t.sol` | Cross-language byte-format lock for this program (root vectors).                                                                                           |
 
 ## Toolchain
 
@@ -48,20 +48,19 @@ cargo test -p pagerank-core
 
 # 2. Regenerate this program's golden vectors and cross-check against Solidity
 task zk:vectors PROGRAM=trust-graph
-#   ≡ cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json
-forge test --match-path 'test/unit/golden/TrustgraphsGoldenVectors.t.sol'
+#   ≡ cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json
+forge test --match-path 'contracts/test/unit/golden/TrustgraphsGoldenVectors.t.sol'
 
 # 3. Full Solidity suite (accumulator, submitProof flow, existing consumers)
 forge test
 
-# 4. Guest ELFs + prover host. One `[[bin]]` per program in zk/program, all built together.
+# 4. Guest ELFs + prover host. The host embeds programs from every detached guest workspace.
 task zk:build
-#   ≡ cd zk/program && cargo prove build && touch ../prover/build.rs
-#     SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release'
+#   See taskfile/zk.yml for the explicit guest workspace list and host build.
 ```
 
 > Step 4 is the one that bites. `sp1_build` does not watch the path dependencies under
-> `packages/`, so after editing a core crate cargo will happily reuse a stale ELF — `task zk:build`
+> `crates/`, so after editing a core crate cargo will happily reuse a stale ELF — `task zk:build`
 > touches `build.rs` to force the pickup. And because the demo and the operator harnesses run with
 > `SP1_SKIP_PROGRAM_BUILD=true`, a checkout that has never run this fails with a missing-file error
 > from `include_elf!` rather than anything about guests. See
@@ -121,7 +120,7 @@ SP1_PROVER=cpu cargo run --release -- trust-graph execute ../../.trustgraph/trus
 
 Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its address):
 
-1. **SP1 verifier** — `script/DeployZkVerifier.s.sol` with the SP1 verifier-gateway address for the
+1. **SP1 verifier** — `contracts/script/DeployZkVerifier.s.sol` with the SP1 verifier-gateway address for the
    target chain and the `programVKey` from `trust-graph vkey`. (`DeployZkVerifier` deploys the shared
    `SP1JournalVerifier` bytecode; each program is a separate labeled instance with its own vkey.)
 2. **Network** — use `GovernedTrustgraphsFactory.createGovernedInstance` for a new community (the app
@@ -136,7 +135,7 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
    `DeployNetwork.s.sol` is the non-factory legacy path.
    That legacy script requires a nonzero `epochLength` argument and applies it before returning;
    zero is rejected because it disables the schedule and hands checkpoint timing to callers.
-3. **Timelocks** — `script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
+3. **Timelocks** — `contracts/script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s. On a controller-backed trust graph, call
    `proposeConstitutionalTransfer(timelock)` from the current holder, then have the timelock execute
    `acceptConstitutionalTransfer()`; acceptance grants the successor before removing the old holder.
@@ -273,7 +272,7 @@ forge build
 forge test
 ```
 
-Then invoke `script/MigrateTrustgraphsParamsController.s.sol` with the existing
+Then invoke `contracts/script/MigrateTrustgraphsParamsController.s.sol` with the existing
 `instanceId`, snapshot, registry, deployed
 `TrustgraphsParamsControllerDeployer`, exact `params.json`, schema UID,
 accumulator, chain ID, intended EOA/Safe/timelock owner, and a complete array of
@@ -283,7 +282,7 @@ legacy `OPERATIONAL_ROLE` holders. For an EOA-administered development instance:
 export RPC_URL=http://127.0.0.1:8545
 export FUNDED_KEY=0x... # current registry + snapshot administrator
 
-forge script script/MigrateTrustgraphsParamsController.s.sol:MigrateTrustgraphsParamsController \
+forge script contracts/script/MigrateTrustgraphsParamsController.s.sol:MigrateTrustgraphsParamsController \
   --rpc-url "$RPC_URL" --broadcast \
   --sig 'run(bytes32,address,address,address,string,bytes32,address,uint64,address,address[])' \
   "$INSTANCE_ID" "$SNAPSHOT" "$INSTANCE_REGISTRY" "$PARAMS_CONTROLLER_DEPLOYER" \
@@ -352,7 +351,7 @@ co-signature for address nodes), so lane-2 instances redeploy the registry along
 Per the batching rule, group every guest-affecting change into one rotation:
 
 1. Land the guest edits in one batch; regenerate golden vectors
-   (`cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json` — and the
+   (`cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json` — and the
    hypercerts feed if `zk-core` encodings changed) in the same commit; confirm guest==native,
    Solidity goldens, and the frontend TS golden test are green.
 2. `cargo run -q --release -- trust-graph vkey` → the new `SP1_PROGRAM_VKEY`.
@@ -418,13 +417,13 @@ What is validated end-to-end in CI-class hardware:
 
 - **Guest correctness**: `trust-graph execute` runs the real guest ELF in the SP1 RISC-V executor and
   its committed public values are asserted **byte-identical** to native `pagerank-core::compute` and to
-  the Solidity golden vectors (`test/golden/trust-graph.json`) and the frontend TS port. Guest cost ≈
+  the Solidity golden vectors (`tests/golden/trust-graph.json`) and the frontend TS port. Guest cost ≈
   **1.79M cycles** for the sample (seconds-to-minutes to prove on adequate hardware).
 - **Verification key** (deploy constant): recorded in
   [`networks-and-programs.md`](../../concepts/networks-and-programs.md) — `cargo run -p trustgraph-prover -- trust-graph vkey`. Re-derive
   after any guest change.
 - **On-chain verify adapter** (`SP1JournalVerifier`) is unit-tested against a mock verifier
-  (`test/unit/MerkleSnapshot.t.sol`): it binds `keccak256(publicValues) == journalDigest` and delegates
+  (`contracts/test/unit/MerkleSnapshot.t.sol`): it binds `keccak256(publicValues) == journalDigest` and delegates
   to the SP1 gateway with the immutable `programVKey`.
 
 What requires a bigger machine or the prover network:

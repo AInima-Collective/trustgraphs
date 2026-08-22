@@ -5,7 +5,7 @@
 Deploy one registry against the same canonical `InstanceRegistry` the score catalog indexes:
 
 ```sh
-forge script script/DeployGraphLineageRegistry.s.sol:DeployGraphLineageRegistry \
+forge script contracts/script/DeployGraphLineageRegistry.s.sol:DeployGraphLineageRegistry \
   --sig 'run(string)' "$INSTANCE_REGISTRY" \
   --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast
 ```

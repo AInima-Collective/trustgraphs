@@ -18,7 +18,7 @@ tasks:
   e2e:
     desc: "End-to-end: deploy on a local chain, attest, checkpoint, export input.json, cross-check the guest (needs anvil + SP1 toolchain)"
     cmds:
-      - bash test/e2e/run.sh
+      - bash tests/e2e/run.sh
 
   fmt:
     desc: "Format Solidity and Rust code"
@@ -72,7 +72,9 @@ tasks:
           echo "💡 then add it to PATH: export PATH=\"\$HOME/.sp1/bin:\$PATH\""
           exit 1
         fi
-        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-program >/dev/null 2>&1; then
+        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-program \
+                 zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
+                 >/dev/null 2>&1; then
           echo "⚠️  SP1 guest ELFs not built yet. Run: task zk:build"
         fi
         # Check docker
@@ -86,5 +88,5 @@ tasks:
     desc: "Convert all script files to Unix line endings"
     cmds:
       - |
-        find script/ -type f -name "*.sh" -exec dos2unix {} \;
-        find script/ -type f -name "*.env*" -exec dos2unix {} \;
+        find contracts/script/ -type f -name "*.sh" -exec dos2unix {} \;
+        find contracts/script/ -type f -name "*.env*" -exec dos2unix {} \;

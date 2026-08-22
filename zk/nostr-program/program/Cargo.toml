@@ -14,8 +14,8 @@ path = "src/nostr_workspace.rs"
 
 [dependencies]
 alloy-primitives = { version = "1", features = ["serde"] }
-nostr-envelope = { path = "../../../packages/nostr-envelope" }
-nostr-workspace-core = { path = "../../../packages/nostr-workspace-core" }
-pagerank-core = { path = "../../../packages/pagerank-core" }
+nostr-envelope = { path = "../../../crates/nostr-envelope" }
+nostr-workspace-core = { path = "../../../crates/nostr-workspace-core" }
+pagerank-core = { path = "../../../crates/pagerank-core" }
 sp1-zkvm = "=6.3.1"
-zk-core = { path = "../../../packages/zk-core" }
+zk-core = { path = "../../../crates/zk-core" }

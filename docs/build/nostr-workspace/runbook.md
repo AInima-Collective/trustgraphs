@@ -35,7 +35,7 @@ export INSTANCE_REGISTRY=0x...
 export NOSTR_MAX_TOTAL_INPUTS=200000
 export NOSTR_EPOCH_LENGTH=0
 
-forge script script/DeployNostrWorkspaceInstance.s.sol:DeployNostrWorkspaceInstance \
+forge script contracts/script/DeployNostrWorkspaceInstance.s.sol:DeployNostrWorkspaceInstance \
   --sig 'run(string)' pilot --rpc-url "$RPC_URL" --private-key "$DEPLOY_KEY" --broadcast
 ```
 

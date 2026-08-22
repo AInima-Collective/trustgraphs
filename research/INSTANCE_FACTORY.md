@@ -30,19 +30,19 @@ Scoping decisions already made:
 
 ## 1. What an instance actually is today
 
-From the deploy scripts (`script/DeployNetwork.s.sol:75-188`) and the
+From the deploy scripts (`contracts/script/DeployNetwork.s.sol:75-188`) and the
 platform doc (`research/MULTI_PROGRAM_PLATFORM.md` §4):
 
 **Shared singletons (once per chain), reused by every instance:**
 
-- EAS + SchemaRegistry (native predeploys on Base/OP; `script/DeployEAS.s.sol:52-74`)
+- EAS + SchemaRegistry (native predeploys on Base/OP; `contracts/script/DeployEAS.s.sol:52-74`)
 - `SchemaRegistrar` (thin wrapper over `SchemaRegistry.register`)
 - SP1 verifier gateway (canonical Succinct deployment; never ours)
 - `SP1JournalVerifier` — **one per (chain, program vkey)**, shared by all
-  instances of that program (`src/contracts/merkle/SP1JournalVerifier.sol:10-11`,
+  instances of that program (`contracts/src/merkle/SP1JournalVerifier.sol:10-11`,
   `docs/concepts/networks-and-programs.md:85-89`: "a new instance costs only a deployment, no verifier")
-- `InstanceRegistry` — one per chain (`src/contracts/registry/InstanceRegistry.sol:8`).
-  **Built but dormant**: zero references in `deploy/`, `indexer/`, `frontend/` today.
+- `InstanceRegistry` — one per chain (`contracts/src/registry/InstanceRegistry.sol:8`).
+  **Built but dormant**: zero references in `contracts/deploy/`, `packages/indexer/`, `packages/frontend/` today.
 
 **Per-instance contracts (trust-graph program):**
 
@@ -61,10 +61,10 @@ platform doc (`research/MULTI_PROGRAM_PLATFORM.md` §4):
 zero instance data; every instance-specific value (params incl. seeds,
 schema UID, accumulator checkpoint) enters as a private witness hashed
 into `paramsHash` or as storage the contract binds at submit time
-(`packages/pagerank-core/src/encode.rs:79-112`, `MerkleSnapshot.sol:205-243`).
+(`crates/pagerank-core/src/encode.rs:79-112`, `MerkleSnapshot.sol:205-243`).
 `submitProof` and `trigger` are permissionless. Retargeting the prover
 at a new instance is **config-only**: RPC + addresses + checkpoint id +
-that instance's params (`packages/input-exporter/src/main.rs:36-84`).
+that instance's params (`crates/input-exporter/src/main.rs:36-84`).
 "Same vkey, a thousand instances" is the intended design and is
 essentially already true.
 
@@ -124,7 +124,7 @@ struct, then:
   event params, compare to `snapshot.paramsHash()`) — zero manual
   config per community, which is the difference between "hosted infra
   scales to N instances" and "every creation is an ops ticket";
-- the **indexer/frontend** can display seeds, damping, epoch length
+- the **indexer and frontend** can display seeds, damping, epoch length
   honestly instead of a hash;
 - third parties can verify what a community's graph actually computes.
 
@@ -196,16 +196,16 @@ the registry is neutral infrastructure.
 
 Today the entire catalog is static build-time JSON:
 `config/networks.*.json` → `.docker/deployment_summary.json` → static
-import in `indexer/ponder.config.ts:6` → symlinked `networks.json` in
-`frontend/lib/config.ts:2`, with `generateStaticParams()` pre-rendering
+import in `packages/indexer/ponder.config.ts:6` → symlinked `networks.json` in
+`packages/frontend/lib/config.ts:2`, with `generateStaticParams()` pre-rendering
 network pages (`app/network/[id]/page.tsx:20-28`). A new instance
 currently requires editing JSON, restarting Ponder, and rebuilding the
 frontend — the exact thing the factory must eliminate.
 
 The good news (deliberate earlier choices paying off): **the tables are
 already instance-keyed.** Offchain tables key by
-`merkleSnapshotContract` (`indexer/offchain.schema.ts:28,50,115,147`),
-attestations carry `resolver` (`indexer/src/eas.ts:20`), distributions
+`merkleSnapshotContract` (`packages/indexer/offchain.schema.ts:28,50,115,147`),
+attestations carry `resolver` (`packages/indexer/src/eas.ts:20`), distributions
 key by distributor address. Handlers barely change.
 
 Migration:
@@ -234,12 +234,12 @@ Migration:
 4. **SchemaManager** builds its schema list from the catalog rows
    (each instance contributes its vouch schema UID + resolver), which it
    structurally already supports — the list is just no longer import-time
-   static (`frontend/lib/schemas.ts:20-22`).
+   static (`packages/frontend/lib/schemas.ts:20-22`).
 
 Known single-instance stragglers to sweep during the migration: the
-positional template-index coupling in `deploy/env.ts:157-215`, the
+positional template-index coupling in `contracts/deploy/env.ts:157-215`, the
 `anchor` table's deferred `instanceId` dimension
-(`indexer/ponder.schema.ts:60`), and the distributor `startBlock: 'latest'`
+(`packages/indexer/ponder.schema.ts:60`), and the distributor `startBlock: 'latest'`
 workaround (`ponder.config.ts:150-160` — factory children index from
 creation block, which fixes it properly). The bespoke `/localism-fund`
 route is already gone by this point (cleanup M2 removes it, replacing it
@@ -254,7 +254,7 @@ Screens, all passing the plain-reader rule:
 1. **Identity** — name, about, membership criteria, image → pinned to
    IPFS as the `metadataURI` blob. (Correction 2026-07-24: the frontend
    has **no pin path today** — score-blob pinning lives in
-   `deploy/env.ts:uploadToIpfs()` and the runbook's `ipfs add` step;
+   `contracts/deploy/env.ts:uploadToIpfs()` and the runbook's `ipfs add` step;
    the frontend's `app/api/ipfs/[cid]` route is a read-only gateway
    proxy. The wizard needs a new pin route built on the `pinApi`
    pattern.)
@@ -371,7 +371,7 @@ Sustainable posture given "hosted by us initially":
 ## 7. Phasing
 
 - **Phase A — contracts.** `TrustgraphsFactory` + `ParamsCodec` calldata
-  path + registry/controller wiring (`DeployInstanceRegistry` into `deploy/env.ts`,
+  path + registry/controller wiring (`DeployInstanceRegistry` into `contracts/deploy/env.ts`,
   factory granted `REGISTRAR_ROLE`). No live-network backfill needed —
   there is no production deployment; dev-seed networks are recreated
   through the factory. Foundry suite: creation invariants (factory role-free

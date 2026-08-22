@@ -16,7 +16,7 @@ const ELF: Elf = include_elf!("nostr-conformance");
 
 fn default_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(
-        "../../../test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-option-a.tgnw",
+        "../../../tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/live/live-option-a.tgnw",
     )
 }
 

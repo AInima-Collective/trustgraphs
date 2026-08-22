@@ -236,7 +236,7 @@ The constitutional ceremony, in order:
    objection window real rather than theatrical.)
 2. **Shadow run (champion/challenger)**: the candidate config is registered as `candidate` and
    proven as a **published challenger stream for ≥ K epochs** over live data — the permissionless
-   prover means anyone can produce these roots; the indexer/frontend render the per-account diff.
+   prover means anyone can produce these roots; the indexer and frontend render the per-account diff.
    Objective gates checked on the shadow roots (see §6, soft invariants): sybil-corpus
    non-regression, concentration non-regression, continuity bound. A candidate failing a gate is not
    votable on the standard track.
@@ -406,9 +406,9 @@ positive upgrade power.
 
 ## Sources
 
-**Repo**: `src/contracts/merkle/MerkleSnapshot.sol`, `src/contracts/merkle/SP1JournalVerifier.sol`,
-`src/contracts/params/ParamsCodec.sol`, `script/DeployTimelocks.s.sol`,
-`packages/pagerank-core/src/encode.rs`, `research/ZK_ARCHITECTURE.md` (Decisions 1–3, trust-surface
+**Repo**: `contracts/src/merkle/MerkleSnapshot.sol`, `contracts/src/merkle/SP1JournalVerifier.sol`,
+`contracts/src/params/ParamsCodec.sol`, `contracts/script/DeployTimelocks.s.sol`,
+`crates/pagerank-core/src/encode.rs`, `research/ZK_ARCHITECTURE.md` (Decisions 1–3, trust-surface
 table), `research/GRAPH_SEEDING.md` (§seed_prior_root, §open governance question),
 `research/MULTI_PROGRAM_PLATFORM.md`, `docs/concepts/networks-and-programs.md` (vkey table, toolchain caveat),
 `docs/build/trust-graph/runbook.md`, `research/DEVIATIONS.md`.

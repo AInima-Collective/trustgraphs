@@ -52,4 +52,4 @@ deliberately the only place that list is maintained.
 - [`../research/`](../research/) — design documents (`ZK_ARCHITECTURE.md`, program plans,
   economics); the file of record for *why* the system is shaped this way
 - [`../paper/`](../paper/) — the governance research paper (LaTeX)
-- [`../test/golden/`](../test/golden/) — cross-language golden vectors, one file per program
+- [`../tests/golden/`](../tests/golden/) — cross-language golden vectors, one file per program

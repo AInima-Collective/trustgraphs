@@ -16,7 +16,7 @@
 //! This crate lives in the detached `zk/` workspace because it carries the sp1-sdk dependency
 //! graph. Everything that can be *wrong* about the proving loop — when to trigger, which
 //! checkpoint to prove, when to hold — is deliberately NOT here; it is in
-//! `packages/operator-core`, in the root workspace, where `cargo test --workspace` runs it.
+//! `crates/operator-core`, in the root workspace, where `cargo test --workspace` runs it.
 
 pub mod common;
 pub mod programs;

@@ -7,10 +7,10 @@ cargo fmt --all --check
 cargo test -p nostr-envelope -p nostr-workspace-core
 CARGO_BUILD_JOBS=1 cargo test --features witness-nostr --lib --manifest-path zk/prover/Cargo.toml
 cargo test --locked --manifest-path zk/nostr-program/Cargo.toml
-forge test --match-path 'test/unit/golden/*'
+forge test --match-path 'contracts/test/unit/golden/*'
 forge test --match-contract NostrWorkspaceCompositionCaptureTest
-pnpm --dir indexer test
-pnpm --dir frontend test
+pnpm --dir packages/indexer test
+pnpm --dir packages/frontend test
 task zk:parity PROGRAM=nostr-workspace
 task zk:nostr-workspace-e2e
 ```
@@ -34,7 +34,8 @@ Expected frozen facts:
 - epoch-2 withheld-C execution: 8,477,214 cycles, root
   `0xf262dbe32bec8dc313f731ba1276cf4959d852eb36b9715461720a213171462f`.
 
-After focused gates, run the complete verification matrix in [`GOAL.md`](../../../GOAL.md). Known
+After focused gates, run the complete verification matrix in
+[`research/plans/nostr-workspace.md`](../../../research/plans/nostr-workspace.md). Known
 unrelated workspace typecheck failures are not waivers: either classify them with evidence or fix
 them before S5 release sign-off.
 

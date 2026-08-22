@@ -260,7 +260,7 @@ Net: Track 2 = Track 1 + ciphertext payloads + validity proofs + the committee f
 | Phase | Deliverable | Depends on | Retires the risk |
 |---|---|---|---|
 | **A — spike (days)** | Empirical SP1 numbers on v6.3.1: patched ecrecover + p256 cycles, PGU multiplier, one live network-price observation; MST walk prototype against `indigo`'s test vectors; draft vouch + binding lexicons | — | every *(soft)* number in this doc |
-| **B — offchain lane, EAS envelope** | `AnchorRegistry` + checkpoint wiring + journal v2 (golden vectors); guest: chained-log envelope, ecrecover-in-guest, `revokeOffchain` deletion set, rule Φ + `skippedDigest`; indexer/frontend read lane 2 | A | proves the two-lane seam end-to-end with zero atproto dependencies |
+| **B — offchain lane, EAS envelope** | `AnchorRegistry` + checkpoint wiring + journal v2 (golden vectors); guest: chained-log envelope, ecrecover-in-guest, `revokeOffchain` deletion set, rule Φ + `skippedDigest`; indexer and frontend read lane 2 | A | proves the two-lane seam end-to-end with zero atproto dependencies |
 | **C — atproto envelope** | MST range walk + dag-cbor decode in-guest; PLC audit-log verification + self-run mirror; vouch lexicon published; binding registry + two node classes + `pdsAttestedWeightFp`; CAR archival in indexer | B | reach; the novel-ground implementation |
 | **D — scale & hardening** | Per-repo compressed sub-proofs + aggregation guest (churn-proportional proving); blob/Blobstream `dataCommitment` upgrade from IPFS-pragmatic; anchor sponsorship UX | C | proving cost at 10⁴–10⁵ nodes; withholding hardening |
 | **E — privacy track** | Encrypted payload fields + validity proofs in both envelopes; committee integration per `PRIVACY_ARCHITECTURE.md` Phase 2; anchor-cadence padding | B (not C) | the reason this research started |
@@ -291,11 +291,11 @@ Full research with citations and confidence flags, compiled 2026-07-10:
 
 ## Appendix B — files this design touches
 
-- new `src/contracts/registry/AnchorRegistry.sol` — anchor fold + registration + checkpoint hook
-- `src/contracts/merkle/MerkleSnapshot.sol` — checkpoint gains `(anchorAcc, anchorCount)`; `submitProof` binds journal v2
-- `packages/pagerank-core` — envelope traits, `reconcile.rs` cross-lane order, `encode.rs` journal v2 + anchor leaf, rule Φ; golden vectors regenerate (Solidity + TS)
+- new `contracts/src/registry/AnchorRegistry.sol` — anchor fold + registration + checkpoint hook
+- `contracts/src/merkle/MerkleSnapshot.sol` — checkpoint gains `(anchorAcc, anchorCount)`; `submitProof` binds journal v2
+- `crates/pagerank-core` — envelope traits, `reconcile.rs` cross-lane order, `encode.rs` journal v2 + anchor leaf, rule Φ; golden vectors regenerate (Solidity + TS)
 - `zk/program` — lane-2 verification (patched `k256`/`p256`/`sha2`, `serde_ipld_dagcbor` or hand-rolled MST parser); later a per-repo sub-proof binary
 - `zk/prover` — witness assembly: firehose/PDS fetch, CAR archival, PLC mirror client, blob/IPFS retrieval
-- `indexer/` — anchor events, offchain-edge ingestion, CAR + attestation-blob archival (the availability mirror)
-- `frontend/lib/pagerank` — TS port of lane-2 reconciliation for the local recompute; binding + vouch UX
+- `packages/indexer/` — anchor events, offchain-edge ingestion, CAR + attestation-blob archival (the availability mirror)
+- `packages/frontend/lib/pagerank` — TS port of lane-2 reconciliation for the local recompute; binding + vouch UX
 - new lexicons: `<ns>.trust.vouch`, binding record (or adopt `org.chainagnostic.verification`)

@@ -102,7 +102,7 @@ test('source A exactly reproduces the existing trust-graph golden commitments', 
     source.blob,
     JSON.parse(
       readFileSync(
-        new URL('../../test/golden/trust-graph.json', import.meta.url),
+        new URL('../../tests/golden/trust-graph.json', import.meta.url),
         'utf8'
       )
     ).cid.blob

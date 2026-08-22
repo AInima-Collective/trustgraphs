@@ -84,7 +84,7 @@ mixture of components with independent lifecycles rather than one vector.
 
 Full dependency audit summary (cites verified against the repo):
 
-- The binary seed set drives four behaviors, all in `packages/pagerank-core/src/pagerank.rs`:
+- The binary seed set drives four behaviors, all in `crates/pagerank-core/src/pagerank.rs`:
   initial-score split (`:36-70`), BFS distances from seeds (`:74-96`), the `trust_multiplier` boost
   on seed-attester edges (`:168-172`), and `trust_decay^distance` attenuation, including a silent
   null-out of attesters unreachable from any seed (`:174-184`, `:177`). The first two generalize
@@ -93,7 +93,7 @@ Full dependency audit summary (cites verified against the repo):
   null-out disappears, changing *who* contributes, not just how much.
 - `compute.rs`, `distribute.rs`, `reconcile.rs`, `lane2.rs` never touch seeds/decay/multiplier. The
   whole dependency is `pagerank.rs` + `encode.rs`/`merkle.rs` (commitment) + `lib.rs` (types),
-  mirrored 1:1 in `frontend/lib/pagerank/*` and `src/contracts/params/ParamsCodec.sol`.
+  mirrored 1:1 in `packages/frontend/lib/pagerank/*` and `contracts/src/params/ParamsCodec.sol`.
 - **Commitment placement is already answered by our own constraints.** ZK_ARCHITECTURE's two-tier
   authority: vkey = constitutional, `paramsHash` (including `seedSetRoot`) = operational; "seed
   rotation must not be gated behind a circuit-upgrade ceremony." MULTI_PROGRAM_PLATFORM freezes the

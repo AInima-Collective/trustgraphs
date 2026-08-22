@@ -108,10 +108,10 @@ Everything downstream reads the stored `{account → score}` merkle root:
 ## One algorithm, four implementations, zero drift
 
 The canonical algorithm and all byte encodings live in one Rust crate,
-`packages/pagerank-core`. It is compiled into the SP1 guest (`zk/program`) and the host CLI
-(`zk/prover`), and ported to TypeScript for the browser (`frontend/lib/pagerank`), so the
+`crates/pagerank-core`. It is compiled into the SP1 guest (`zk/program`) and the host CLI
+(`zk/prover`), and ported to TypeScript for the browser (`packages/frontend/lib/pagerank`), so the
 frontend can preview scores with the same math the proof enforces. Golden vectors in
-`test/golden/` pin all implementations (native Rust, SP1 guest, Solidity tests, TypeScript) to
+`tests/golden/` pin all implementations (native Rust, SP1 guest, Solidity tests, TypeScript) to
 byte-identical outputs; a change that breaks parity fails CI. See
 [golden vectors](../verify/golden-vectors.md).
 

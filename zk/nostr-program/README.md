@@ -2,7 +2,7 @@
 
 This directory is one detached workspace, isolated from both the root workspace and `zk/program`.
 Its SP1 and crypto patches therefore cannot rotate any shipped Trustgraphs vkey. S1's
-`nostr-conformance` bin compiles the goal-mandated `packages/envelopes/src/nostr/` verifier through
+`nostr-conformance` bin compiles the goal-mandated `crates/envelopes/src/nostr/` verifier through
 the isolated `nostr-envelope` package and commits `(nodeId, head, count, dataCommitment,
 acceptedEventsDigest, skippedDigest)`. The host byte-compares that tuple with native verification
 and requires a re-committed signed-byte mutation to exit nonzero in the guest.

@@ -23,7 +23,7 @@ fn load_elf() -> Elf {
 pub enum Command {
     /// Execute the envelope-1 guest over a witness and byte-assert guest == native.
     Execute {
-        /// Path to the repo CAR (e.g. test/fixtures/atproto/repos/atproto.car or a witness-bundle CAR).
+        /// Path to the repo CAR (e.g. tests/fixtures/atproto/repos/atproto.car or a witness-bundle CAR).
         #[arg(long)]
         car: String,
         /// Path to the PLC audit log JSON (plc.directory /log/audit shape).

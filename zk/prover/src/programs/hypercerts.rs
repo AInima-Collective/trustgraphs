@@ -1,7 +1,7 @@
 //! Hypercerts root-producer program (lane-2-only): proves the §3 edge semantics + fixed-point
 //! Trust-Aware PageRank over anchored atproto repos and emits the journal-v2 merkle root + score
 //! blob. Mirrors `trust_graph.rs`; the built-in sample is the seeded-PDS fixture
-//! (`test/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
+//! (`tests/fixtures/atproto/hypercerts`) so `execute`/`prove` run with no external witness.
 
 use alloy_primitives::{B256, U256};
 use anyhow::{anyhow, Result};
@@ -80,15 +80,15 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 }
 
 /// The built-in sample scenario: the seeded-PDS fixture (matches
-/// `packages/hypercerts-core/tests/compute_fixture.rs` and `test/golden/hypercerts.json`).
+/// `crates/hypercerts-core/tests/compute_fixture.rs` and `tests/golden/hypercerts.json`).
 pub fn sample_input() -> GuestInput {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let car =
-        std::fs::read(format!("{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.car"))
+        std::fs::read(format!("{root}/tests/fixtures/atproto/hypercerts/fixtures/hypercerts.car"))
             .unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
-            "{root}/test/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
+            "{root}/tests/fixtures/atproto/hypercerts/fixtures/hypercerts.plc.json"
         ))
         .unwrap(),
     )
@@ -122,7 +122,7 @@ pub fn sample_input() -> GuestInput {
         witnesses: vec![AtprotoWitness { did: seed_did.clone(), car, plc_ops }],
         strongref_targets: BTreeMap::new(),
         // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays
-        // byte-identical to test/golden/hypercerts.json.
+        // byte-identical to tests/golden/hypercerts.json.
         binding: pagerank_core::Binding {
             recipient: alloy_primitives::Address::from([0xBE; 20]),
             instance_domain: pagerank_core::encode::instance_domain(
@@ -141,7 +141,7 @@ fn load_input(path: Option<&String>) -> Result<GuestInput> {
 }
 
 /// `hypercerts` subcommands. `input.json` is a serialized `hypercerts_core::compute::GuestInput`;
-/// omit it to use the built-in sample (the seeded fixture; identical to test/golden/hypercerts.json).
+/// omit it to use the built-in sample (the seeded fixture; identical to tests/golden/hypercerts.json).
 #[derive(Subcommand)]
 pub enum Command {
     /// Print the guest program verification key (bytes32) for deployment.

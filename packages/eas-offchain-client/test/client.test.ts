@@ -32,7 +32,7 @@ import {
   type WalletTypedDataSigner,
 } from '../src/index.ts'
 
-const fixtureDir = resolve(__dirname, '../../../test/fixtures/eas-offchain/v1')
+const fixtureDir = resolve(__dirname, '../../../tests/fixtures/eas-offchain/v1')
 
 type Manifest = {
   fixturePrivateKey: Hex

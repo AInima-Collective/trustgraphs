@@ -1,8 +1,8 @@
 # Graph-reputation simulation record
 
-The production recurrence is integer-only and lives in `indexer/src/graph-reputation.ts`; the
-independent Rust reproduction is `packages/graph-reputation-core`. Both are fixed by
-`test/golden/graph-reputation.json`.
+The production recurrence is integer-only and lives in `packages/indexer/src/graph-reputation.ts`; the
+independent Rust reproduction is `crates/graph-reputation-core`. Both are fixed by
+`tests/golden/graph-reputation.json`.
 
 The simulations establish the V1 advisory boundary:
 

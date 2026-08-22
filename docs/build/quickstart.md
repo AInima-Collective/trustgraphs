@@ -48,12 +48,12 @@ Then build the repo and the guest programs. **`task zk:build` is the step people
 
 ```bash
 task setup         # pnpm install + forge install
-task zk:build      # the five SP1 guest ELFs + the prover host — minutes the first time
+task zk:build      # all SP1 guest ELFs + the prover host — minutes the first time
 ```
 
 Nothing in `task demo` builds the guests. Every step of it runs the prover with
 `SP1_SKIP_PROGRAM_BUILD=true` so it isn't paying for a rebuild each tick, which means the ELFs have
-to be there already. Full explanation, plus what to do after editing `packages/`, in
+to be there already. Full explanation, plus what to do after editing `crates/`, in
 [`setup.md`](./setup.md#build-the-zk-guest-programs).
 
 ## 1. Services
@@ -300,7 +300,7 @@ Everything below cost someone real time.
   the attestations, the checkpoint and the root among them — sit one block short of visible, and the
   indexer looks perfectly healthy while the page stays empty. `task demo` ends with `demo:settle`,
   which mines 64. By hand: `cast rpc anvil_mine 0x40`. Better: `anvil --block-time 1`.
-- **IPFS is not optional, and "pinned" is not the same as "readable".** `indexer/src/merkle.ts`
+- **IPFS is not optional, and "pinned" is not the same as "readable".** `packages/indexer/src/merkle.ts`
   fetches the score blob by CID and _throws_ if it cannot, which wedges Ponder on that one event and
   leaves every network page 404ing over a perfectly valid proof. Worse, a successful `add` only
   proves the API node took the bytes: if `[ipfs] api` and `IPFS_GATEWAY` are different nodes, the
@@ -326,9 +326,9 @@ Everything below cost someone real time.
   in `taskfile/demo.yml` exports `SP1_SKIP_PROGRAM_BUILD=true`, which makes `zk/prover/build.rs`
   emit the ELF _paths_ without producing the ELFs — the right trade when they exist (a rebuild per
   tick would be unusable) and a confusing one when they don't: the failure is a missing-file error
-  from `include_elf!` naming a path under `zk/program/target/`, minutes into a Rust build.
+  from `include_elf!` naming a path under a `zk/*/target/` directory, minutes into a Rust build.
   `task zk:build` makes them; `demo:preflight` now checks for them and says so by name. The same
-  applies after editing anything under `packages/` — `sp1_build` does not watch path deps, so cargo
+  applies after editing anything under `crates/` — `sp1_build` does not watch path deps, so cargo
   reuses the stale ELF and you debug a change that isn't in the binary.
 - **Export the vkeys before deploying.** `SP1JournalVerifier` pins its vkey **immutably** at
   construction, so a stale `.env` value gives a stack that deploys cleanly and then refuses to prove
@@ -357,7 +357,7 @@ Everything below cost someone real time.
   verifies, the indexer independently re-derives it, and Σ payouts = pool − the 3% fee.
 - **The round driver reads wagmi-generated contract addresses, so `demo:seed-round` regenerates
   them first — and then verifies it.** The driver's schema uids flow live from
-  `config/networks.development.json`, but `frontend/lib/contracts.ts` (the EAS, distributor and
+  `config/networks.development.json`, but `packages/frontend/lib/contracts.ts` (the EAS, distributor and
   pool-token addresses) only changes when frontend codegen runs — so left stale it sends a
   current schema uid to a previous deploy's EAS, which dies as a bare no-data revert.
   `demo:seed-round` runs the codegen and then asserts the generated EAS address equals the one

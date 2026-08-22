@@ -36,8 +36,8 @@ Fixture/profile inspection:
 
 ```sh
 zk/prover/target/release/trustgraph-prover nostr-witness inspect \
-  --source test/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/source-corpus.json \
-  --params test/fixtures/nostr/params.json
+  --source tests/fixtures/nostr/buzz/a362fecc2389955f942c9581bdfeba379ab115b3/source-corpus.json \
+  --params tests/fixtures/nostr/params.json
 ```
 
 Live inspection takes the credential by environment-variable **name**, so neither the URL nor its

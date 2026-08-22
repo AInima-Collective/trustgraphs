@@ -690,13 +690,13 @@ Most importantly, encryption alone does not solve bribery or coercion. Replaceab
 
 ### Trustgraphs implementation
 
-- [`src/contracts/eas/AttestationAccumulator.sol`](../src/contracts/eas/AttestationAccumulator.sol)
-- [`src/contracts/eas/resolvers/EASIndexerResolver.sol`](../src/contracts/eas/resolvers/EASIndexerResolver.sol)
-- [`src/contracts/merkle/MerkleSnapshot.sol`](../src/contracts/merkle/MerkleSnapshot.sol)
-- [`packages/pagerank-core/src/compute.rs`](../packages/pagerank-core/src/compute.rs)
-- [`packages/pagerank-core/src/pagerank.rs`](../packages/pagerank-core/src/pagerank.rs)
-- [`src/contracts/zodiac/MerkleGovModule.sol`](../src/contracts/zodiac/MerkleGovModule.sol)
-- [`src/contracts/merkle/MerkleFundDistributor.sol`](../src/contracts/merkle/MerkleFundDistributor.sol)
+- [`contracts/src/eas/AttestationAccumulator.sol`](../contracts/src/eas/AttestationAccumulator.sol)
+- [`contracts/src/eas/resolvers/EASIndexerResolver.sol`](../contracts/src/eas/resolvers/EASIndexerResolver.sol)
+- [`contracts/src/merkle/MerkleSnapshot.sol`](../contracts/src/merkle/MerkleSnapshot.sol)
+- [`crates/pagerank-core/src/compute.rs`](../crates/pagerank-core/src/compute.rs)
+- [`crates/pagerank-core/src/pagerank.rs`](../crates/pagerank-core/src/pagerank.rs)
+- [`contracts/src/zodiac/MerkleGovModule.sol`](../contracts/src/zodiac/MerkleGovModule.sol)
+- [`contracts/src/merkle/MerkleFundDistributor.sol`](../contracts/src/merkle/MerkleFundDistributor.sol)
 - [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](OFFCHAIN_ATTESTATIONS_ZK.md)
 
 ### External systems and research

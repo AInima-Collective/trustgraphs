@@ -32,10 +32,10 @@ are a separate one-time step and everything below assumes they exist.
 ## Quick check — `task e2e`
 
 ```bash
-task e2e            # or: bash test/e2e/run.sh
+task e2e            # or: bash tests/e2e/run.sh
 ```
 
-What it does (`test/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
+What it does (`tests/e2e/run.sh`) — **four stages**, all on a throwaway anvil:
 
 1. **Reconstruction + guest cross-check** — deploys `SchemaRegistry` + `EAS` + `EASIndexerResolver`
    + a `(string comment, uint256 confidence)` schema → attests a 3-account ring and revokes one
@@ -78,7 +78,7 @@ export SP1_PROVER=cpu                                  # local: ~16-32 GiB + `--
 ```bash
 # Terminal 1 — mainnet-fork chain (real SP1 gateway in state):
 # `--chain-id 31337` is REQUIRED for the frontend: a bare `--fork-url` inherits mainnet's id (1), but
-# the UI's wallet + `frontend/lib/wagmi.ts` expect the anvil default 31337. Without it, CLI/cast attests
+# the UI's wallet + `packages/frontend/lib/wagmi.ts` expect the anvil default 31337. Without it, CLI/cast attests
 # still land (cast auto-detects the node id) but *frontend* attestations are signed for the wrong chain,
 # never fold, and `trigger()` later reverts NoNewInputs(). The override keeps all forked state (the SP1
 # gateway verifies pure calldata; direct EAS attest isn't chain-id-bound).
@@ -103,7 +103,7 @@ bound to the **signer** guest's vkey — both pointing at the real gateway.
 fills it in:
 
 ```bash
-cp test/e2e/params.template.json params.json    # tune seeds / pool / damping… to taste
+cp tests/e2e/params.template.json params.json    # tune seeds / pool / damping… to taste
 ```
 
 **Deploy constants** (vkeys + the signer selection hash — all derived from source, no chain state):
@@ -124,7 +124,7 @@ DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 
 The Network step deploys the resolver, registers the schema, then computes
 `paramsHash = ParamsCodec.hash(params.json, schemaUid)` — byte-identical to the guest's Rust
-`params_hash` (locked by `test/unit/golden/TrustgraphsGoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
+`params_hash` (locked by `contracts/test/unit/golden/TrustgraphsGoldenVectors.t.sol`) — and constructs `MerkleSnapshot` with it.
 Override the params path with `PARAMS_JSON=/path/to/params.json` if it isn't at the repo root.
 
 **Sync the prover's `schema_uid`.** The proof's params must carry the deployed schema UID. A DEV deploy
@@ -154,7 +154,7 @@ The indexer needs no code changes — it already indexes `MerkleSnapshot:MerkleR
 the Gnosis Safe owner events (from `submitSignerProof`'s rotation). Point it at the local fork and DB:
 
 ```bash
-# indexer/.env.local (see indexer/.env.example):
+# packages/indexer/.env.local (see packages/indexer/.env.example):
 #   PONDER_RPC_URL_1=http://localhost:8545
 #   DATABASE_URL=postgresql://ponder:ponder@localhost:6432/ponder
 #   PONDER_START_BLOCK=<fork block + 1>   # REQUIRED on a fork — else Ponder backfills all pre-fork blocks
@@ -266,7 +266,7 @@ Once `submitProof` lands, Ponder indexes `MerkleRootUpdated` and the frontend sh
   real proof, or gateway.
 - **`execute`/`vkey` get OOM-killed on a small box?** You're on the `cpu` backend (the `.env`
   default). Prefix executor-only commands with `SP1_PROVER=mock` — identical executor + byte-assert,
-  no ~5 GiB prover allocation. `taskfile/zk.yml` and `test/e2e/run.sh` already pin this.
+  no ~5 GiB prover allocation. `taskfile/zk.yml` and `tests/e2e/run.sh` already pin this.
 - **Gateway version.** `SP1_VERIFIER_GATEWAY` must be a gateway that has the verifier for the SP1 SDK
   version this repo pins (v6.3.1); it routes by the proof's 4-byte selector.
 - **Local Groth16** (`SP1_PROVER=cpu`) needs `--features native-gnark` and a gnark/Go toolchain; the

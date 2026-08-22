@@ -19,9 +19,9 @@ alongside the root loop) is [`../trust-graph/local-testing.md`](../trust-graph/l
 |---|---|
 | `zk/program` | Multi-bin SP1 guest crate. `trustgraph-signer-program` bin = this program (signer selection). |
 | `zk/prover` | Host CLI `trustgraph-prover`, `signer {vkey\|selectionparamshash\|execute\|prove}` group. |
-| `src/contracts/zodiac/SignerSyncZkModule.sol` | `submitSignerProof` write-gate + on-chain Safe owner-set diff. |
-| `src/contracts/merkle/SP1JournalVerifier.sol` | Shared journal-agnostic adapter; the signer gets its own instance bound to the signer vkey. |
-| `test/golden/trust-graph.json` + `test/unit/golden/SignerGoldenVectors.t.sol` | The signer vectors ship in the same `trust-graph.json` family (root + signer), locked by their own `.t.sol`. |
+| `contracts/src/zodiac/SignerSyncZkModule.sol` | `submitSignerProof` write-gate + on-chain Safe owner-set diff. |
+| `contracts/src/merkle/SP1JournalVerifier.sol` | Shared journal-agnostic adapter; the signer gets its own instance bound to the signer vkey. |
+| `tests/golden/trust-graph.json` + `contracts/test/unit/golden/SignerGoldenVectors.t.sol` | The signer vectors ship in the same `trust-graph.json` family (root + signer), locked by their own `.t.sol`. |
 
 ## Build & test
 
@@ -29,7 +29,7 @@ Shared core build is in the trust-graph runbook. Signer-specific validation:
 
 ```bash
 # Golden lock for the signer vectors (same trust-graph.json family, own test contract):
-forge test --match-path 'test/unit/golden/SignerGoldenVectors.t.sol'
+forge test --match-path 'contracts/test/unit/golden/SignerGoldenVectors.t.sol'
 
 # Guest == native (no proof) for the signer selection:
 cd zk/prover
@@ -50,7 +50,7 @@ cargo run --release -- signer selectionparamshash signer_input.json   # -> selec
 > **vkey:** the current signer vkey is recorded in [`networks-and-programs.md`](../../concepts/networks-and-programs.md) (it rotates
 > whenever the guest ELF changes, even for refactors that don't change semantics).
 
-`SignerSyncZkModule` is deployed + enabled by `script/DeployZodiacSafes.s.sol`, reusing the
+`SignerSyncZkModule` is deployed + enabled by `contracts/script/DeployZodiacSafes.s.sol`, reusing the
 MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the
 `SELECTION_PARAMS_HASH` env var (default `0` → inert until governance sets it). In the full mainnet-fork
 deploy (trust-graph runbook → "Two programs, two verifiers"), export it alongside the root constant:
@@ -114,7 +114,7 @@ signer program vkey. The 2026-08-13 M-3 fix (instanceDomain journal word) is suc
 sequence, per the batching rule (one rotation per program, all guest edits grouped):
 
 1. Land every signer-guest-affecting change in one batch; regenerate the golden vectors
-   (`cargo run -p pagerank-core --example export_golden > test/golden/trust-graph.json`) in the
+   (`cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json`) in the
    same commit and confirm guest==native (`signer execute`), Solidity
    (`SignerGoldenVectors.t.sol`), and the frontend TS golden test are all green.
 2. `cargo run --release -- signer vkey` → the new `SP1_SIGNER_PROGRAM_VKEY`.

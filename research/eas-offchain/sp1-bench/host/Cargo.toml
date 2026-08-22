@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 alloy-primitives = { version = "1", features = ["serde"] }
 anyhow = "1"
-eas-offchain-v2 = { path = "../../../../packages/eas-offchain-v2" }
+eas-offchain-v2 = { path = "../../../../crates/eas-offchain-v2" }
 hex = "0.4"
 k256 = { version = "0.13", features = ["ecdsa"] }
 serde = { version = "1", features = ["derive"] }

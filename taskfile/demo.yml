@@ -36,7 +36,7 @@ vars:
   # Where the indexer serves, so `report` can say whether the app will actually see any of this.
   PONDER: '{{.PONDER | default "http://127.0.0.1:65421"}}'
   IPFS_API: '{{.IPFS_API | default "http://127.0.0.1:5001"}}'
-  # The reader's view, and the exact string the indexer uses (indexer/.env IPFS_GATEWAY). Keep the
+  # The reader's view, and the exact string the indexer uses (packages/indexer/.env IPFS_GATEWAY). Keep the
   # trailing `/ipfs/`: both sides build the URL by plain concatenation.
   IPFS_GATEWAY: '{{.IPFS_GATEWAY | default "http://127.0.0.1:8080/ipfs/"}}'
   WORK: .demo
@@ -89,8 +89,10 @@ tasks:
         # several minutes in, which reads like a broken checkout instead of a missing step.
         # Globbed on the target triple on purpose: SP1 moved it from riscv32im to riscv64im.
         ls zk/program/target/elf-compilation/*/release/trustgraph-program \
+           zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
            zk/weighted-program/target/elf-compilation/*/release/trustgraph-weighted-program \
            zk/composition-program/target/elf-compilation/*/release/trustgraph-compose-program \
+           zk/nostr-program/program/target/elf-compilation/*/release/nostr-workspace \
            >/dev/null 2>&1 \
           || fail "the SP1 guest ELFs are not built — run: task zk:build"
 
@@ -143,7 +145,7 @@ tasks:
           | .schema_uid = ("0x" + ("0" * 64))
           | .accumulator = "0x0000000000000000000000000000000000000000"
           | .chain_id = 0
-        ' test/e2e/params.template.json > {{.WORK}}/params.json
+        ' tests/e2e/params.template.json > {{.WORK}}/params.json
         echo "→ deploying against trust-graph vkey $SP1_PROGRAM_VKEY"
         PARAMS_JSON={{.WORK}}/params.json \
           DEV_SEED_PREPAY_WEI={{.PREPAY_WEI}} \
@@ -193,7 +195,7 @@ tasks:
           exit 1
         }
         FAC=$(jq -r .factory .docker/factory_deploy.json)
-        forge script script/examples/CreateInstance.s.sol:CreateInstance \
+        forge script contracts/script/examples/CreateInstance.s.sol:CreateInstance \
           --sig 'run(address,uint256,string,address)' \
           "$FAC" {{.PREPAY_WEI}} '{{.NAME}}' {{.SEED_ACCOUNT}} \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --skip-simulation >/dev/null
@@ -234,7 +236,7 @@ tasks:
       - |
         # The round driver is frontend code (SchemaManager → EAS.attest), and while its SCHEMA
         # uids flow live from config/networks.development.json (rewritten every deploy), its
-        # contract ADDRESSES are wagmi-generated into frontend/lib/contracts.ts — which nothing
+        # contract ADDRESSES are wagmi-generated into packages/frontend/lib/contracts.ts — which nothing
         # else in `task demo` touches; normally the frontend dev server's predev regenerates it.
         # Left stale, the driver sends a current schema uid to a previous deploy's EAS and the
         # first vouch dies as a bare revert. Regenerate in predev's order: config, symlink, ABIs.
@@ -252,7 +254,7 @@ tasks:
         # the EAS this deploy just wrote. Catches the no-op filter above, a half-run predev, and
         # a redeploy on a reused chain (shifted nonces move every address) alike.
         WANT=$(jq -r .eas .docker/eas_deploy.json | tr 'A-F' 'a-f')
-        GEN=$(grep -oE "easAddress = '0x[0-9a-fA-F]{40}'" frontend/lib/contracts.ts | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
+        GEN=$(grep -oE "easAddress = '0x[0-9a-fA-F]{40}'" packages/frontend/lib/contracts.ts | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f')
         if [ -z "$GEN" ] || [ "$GEN" != "$WANT" ]; then
           echo "✗ frontend codegen is not tracking this deploy:" >&2
           echo "    generated easAddress  ${GEN:-<none>}" >&2
@@ -286,7 +288,7 @@ tasks:
         SIGNER_VERIFIER=$(jq -r '.signer_zk_verifier // .zk_verifier' \
           .docker/signer_zk_verifier_deploy.json 2>/dev/null \
           || jq -r .zk_verifier .docker/zk_verifier_deploy.json)
-        forge script script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
+        forge script contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
           --sig 'run(string,string,string)' "$SNAP" "$SIGNER_VERIFIER" "$CONTROLLER" \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
       - |
@@ -370,9 +372,9 @@ tasks:
         : "${SNAP:?no instance yet — run: task demo:create}"
         FAC=$(jq -r .contributions_factory .docker/contributions_factory_deploy.json)
         PARAMS=${CONTRIBUTIONS_PARAMS_JSON:-params.contributions.demo.json}
-        [ -f "$PARAMS" ] || cp test/e2e/params.contributions.template.json "$PARAMS"
+        [ -f "$PARAMS" ] || cp tests/e2e/params.contributions.template.json "$PARAMS"
         USDC=$(jq -r '.usdc // empty' .docker/proving_vault_deploy.json 2>/dev/null)
-        forge script script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound \
+        forge script contracts/script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound \
           --sig 'run(string,string,string,string,string,string)' \
           "$FAC" "$SNAP" "$PARAMS" '{{.NAME}} Contributions' "$USDC" 'demo' \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null

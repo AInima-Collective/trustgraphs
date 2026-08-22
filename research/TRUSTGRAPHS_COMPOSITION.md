@@ -235,9 +235,9 @@ These operators answer different questions:
 Trustgraphs already contains examples adjacent to three of them:
 
 - The two accumulator lanes are merged into **one raw edge set** before reconciliation and one
-  PageRank run ([compute.rs](../packages/pagerank-core/src/compute.rs)). Because raw edges have no
+  PageRank run ([compute.rs](../crates/pagerank-core/src/compute.rs)). Because raw edges have no
   source identifier and repeated attester/recipient pairs use last-write-wins reconciliation, this
-  is not an A/B/C score blend ([reconcile.rs](../packages/pagerank-core/src/reconcile.rs)).
+  is not an A/B/C score blend ([reconcile.rs](../crates/pagerank-core/src/reconcile.rs)).
 - Contributions **recomputes reputation and uses it to weight evaluations**, a directional,
   application-specific composition ([contributions architecture](../docs/build/contributions/architecture.md)).
 - The graph-seeding report proposes using external score distributions as **continuous teleport
@@ -253,7 +253,7 @@ were propagated through B and C.
 ### 3.1 A published trustgraphs score is a relative allocation
 
 The rank core first computes a fixed-point normalized PageRank-like distribution
-([pagerank.rs](../packages/pagerank-core/src/pagerank.rs)). The distribution step then:
+([pagerank.rs](../crates/pagerank-core/src/pagerank.rs)). The distribution step then:
 
 1. floors every normalized score to a `1e6` quantum, retaining zero-scaled entries in its working
    list;
@@ -264,9 +264,9 @@ The last entry may itself have zero quantized mass. If so, it can receive a posi
 while other sub-quantum accounts disappear. The address/value blob therefore exposes the program's
 published allocation, including this legacy rounding artifact—not the raw rank support.
 
-See [distribute.rs](../packages/pagerank-core/src/distribute.rs). The canonical public artifact is
-only the positive address/value map ([cid.rs](../packages/zk-core/src/cid.rs)), committed by an
-address/value Merkle tree ([merkle.rs](../packages/zk-core/src/merkle.rs)).
+See [distribute.rs](../crates/pagerank-core/src/distribute.rs). The canonical public artifact is
+only the positive address/value map ([cid.rs](../crates/zk-core/src/cid.rs)), committed by an
+address/value Merkle tree ([merkle.rs](../crates/zk-core/src/merkle.rs)).
 
 Consequences:
 
@@ -583,7 +583,7 @@ mix source distributions into the destination's teleport vector.
 The standard personalized-PageRank linearity result should not be applied mechanically to the
 current trustgraphs algorithm. Today, seed attesters receive a multiplier outside the outgoing-edge
 normalization and a BFS-derived `trust_decay` modifies propagation
-([pagerank.rs](../packages/pagerank-core/src/pagerank.rs)). Those additions make the recurrence
+([pagerank.rs](../crates/pagerank-core/src/pagerank.rs)). Those additions make the recurrence
 different from a stochastic PageRank transition. The graph-seeding report therefore proposes
 removing them as part of a continuous-prior design. Final-distribution blending is unaffected by
 this issue because it combines already-finalized source outputs.
@@ -649,12 +649,12 @@ The existing proof pipeline already provides valuable building blocks:
 
 - a checkpoint freezes input commitments and parameters before proving;
 - a journal binds inputs, params, output root, canonical-blob digest/CID, total value, recipient,
-  and instance domain ([MerkleSnapshot.sol](../src/contracts/merkle/MerkleSnapshot.sol));
+  and instance domain ([MerkleSnapshot.sol](../contracts/src/merkle/MerkleSnapshot.sol));
 - the standard output leaf remains `(address, value)`, so governance and distribution consumers can
   reuse membership proofs;
 - the canonical blob and Merkle utilities can be reused;
 - `TrustAccumulatorMirror` demonstrates checkpointing an upstream instance's live input without a
-  race ([TrustAccumulatorMirror.sol](../src/contracts/merkle/TrustAccumulatorMirror.sol));
+  race ([TrustAccumulatorMirror.sol](../contracts/src/merkle/TrustAccumulatorMirror.sol));
 - the contributions program demonstrates a two-input derived computation, although it recomputes
   upstream PageRank from raw trust edges rather than consuming a posted score root
   ([CONTRIBUTION_FUNDING.md](CONTRIBUTION_FUNDING.md)).
@@ -724,7 +724,7 @@ SourceStateRef {
 ```
 
 The current `MerkleState` exposes block, timestamp, root, blob references, and total value
-([IMerkleSnapshot.sol](../src/interfaces/merkle/IMerkleSnapshot.sol)). It does **not** bind source
+([IMerkleSnapshot.sol](../contracts/src/interfaces/merkle/IMerkleSnapshot.sol)). It does **not** bind source
 checkpoint ID, that checkpoint's params hash, verifier/vkey used at submission, accepted-output
 block, program ID, or immutable factory provenance. The concrete snapshot has indexed state
 history, but no state-to-checkpoint/config join. Registry records are mutable discovery metadata,
@@ -813,7 +813,7 @@ The indexer's offchain Merkle metadata already has an unused `sources` field, a 
 display seam, but its current `{name, metadata}[]` shape is always populated as empty and is not an
 adequate provenance schema. It needs a migration. Consensus provenance must come from committed
 onchain/program inputs rather than that JSON field
-([offchain.schema.ts](../indexer/offchain.schema.ts)).
+([offchain.schema.ts](../packages/indexer/offchain.schema.ts)).
 
 Every composite result should expose:
 
@@ -1092,10 +1092,10 @@ Repository references most relevant to an implementation:
 
 - [trustgraphs architecture](../docs/concepts/architecture.md)
 - [Networks and programs](../docs/concepts/networks-and-programs.md)
-- [PageRank computation](../packages/pagerank-core/src/pagerank.rs)
-- [Point distribution](../packages/pagerank-core/src/distribute.rs)
-- [Canonical output blob](../packages/zk-core/src/cid.rs)
-- [Snapshot verification and checkpointing](../src/contracts/merkle/MerkleSnapshot.sol)
+- [PageRank computation](../crates/pagerank-core/src/pagerank.rs)
+- [Point distribution](../crates/pagerank-core/src/distribute.rs)
+- [Canonical output blob](../crates/zk-core/src/cid.rs)
+- [Snapshot verification and checkpointing](../contracts/src/merkle/MerkleSnapshot.sol)
 - [Graph seeding research](GRAPH_SEEDING.md)
 - [Contribution funding research](CONTRIBUTION_FUNDING.md)
 - [Multi-program platform research](MULTI_PROGRAM_PLATFORM.md)

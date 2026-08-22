@@ -83,7 +83,7 @@ const presentation = {
 }
 
 writeFileSync(
-  new URL('../../frontend/lib/erc8004-reputation-experiment.json', directory),
+  new URL('../../packages/frontend/lib/erc8004-reputation-experiment.json', directory),
   `${JSON.stringify(presentation, null, 2)}\n`
 )
 

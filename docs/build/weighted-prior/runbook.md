@@ -6,7 +6,7 @@ does not apply to binary-seed `trust-graph` controllers.
 ## Deploy the factory
 
 Weighted instances are created through `WeightedTrustgraphsFactory`, deployed once per chain by
-`script/DeployWeightedTrustgraphsFactory.s.sol` together with its own verifier (an
+`contracts/script/DeployWeightedTrustgraphsFactory.s.sol` together with its own verifier (an
 `SP1JournalVerifier` pinned to the `trust-graph-weighted` guest's vkey, never the trust-graph root
 verifier) and its `REGISTRAR_ROLE` grant on the instance registry.
 

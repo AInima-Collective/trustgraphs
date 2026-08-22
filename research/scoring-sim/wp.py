@@ -1,4 +1,4 @@
-"""Weighted-prior semantics, per packages/weighted-prior-core/src/rank.rs::next_iteration.
+"""Weighted-prior semantics, per crates/weighted-prior-core/src/rank.rs::next_iteration.
 Float version (rounding is irrelevant to the qualitative question)."""
 def wp_calculate(nodes, outgoing, prior, damping=0.85, iters=400):
     cur={v: prior.get(v,0.0) for v in nodes}

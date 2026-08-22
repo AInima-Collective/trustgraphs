@@ -78,9 +78,9 @@ factory therefore retains 12,145 bytes under EIP-170. The existing governed fact
 bytes with 2,598 bytes of headroom. Reproduce with:
 
 ```sh
-forge test --match-path test/unit/WeightedPriorValidator.t.sol -vv
-forge test --match-path test/unit/factory/WeightedPriorParamsController.t.sol
-forge test --match-path test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
-forge test --match-path test/unit/factory/WeightedTrustgraphsFactory.t.sol
+forge test --match-path contracts/test/unit/WeightedPriorValidator.t.sol -vv
+forge test --match-path contracts/test/unit/factory/WeightedPriorParamsController.t.sol
+forge test --match-path contracts/test/unit/factory/WeightedPriorLifecycleInvariant.t.sol
+forge test --match-path contracts/test/unit/factory/WeightedTrustgraphsFactory.t.sol
 forge build --sizes
 ```

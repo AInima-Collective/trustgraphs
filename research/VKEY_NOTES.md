@@ -4,9 +4,9 @@ Measured vkey-rotation behavior, moved out of the public docs (`docs/concepts/ne
 
 ## Strict EAS envelope 0 / trust-graph v2 — 2026-08-20
 
-The opt-in strict EAS off-chain statement is isolated in `packages/eas-offchain-v2`,
-`packages/trustgraph-core`, and the detached `zk/trustgraph-program-v2` guest. The root-producer
-host now loads that guest. The frozen `packages/envelopes`, `packages/pagerank-core`, and the entire
+The opt-in strict EAS off-chain statement is isolated in `crates/eas-offchain-v2`,
+`crates/trustgraph-core`, and the detached `zk/trustgraph-program-v2` guest. The root-producer
+host now loads that guest. The frozen `crates/envelopes`, `crates/pagerank-core`, and the entire
 legacy multi-bin `zk/program` package (including its lockfile) are byte-identical to repository
 HEAD, so signer-sync, contributions, Hypercerts, and the old lane-1 statement do not acquire the new
 dependency graph.

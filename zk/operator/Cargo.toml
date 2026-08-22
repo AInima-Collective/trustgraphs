@@ -22,15 +22,15 @@ network = ["trustgraph-prover/network"]
 native-gnark = ["trustgraph-prover/native-gnark"]
 
 [dependencies]
-operator-core = { path = "../../packages/operator-core" }
+operator-core = { path = "../../crates/operator-core" }
 trustgraph-prover = { path = "../prover" }
-pagerank-core = { path = "../../packages/pagerank-core" }
-trustgraph-core = { path = "../../packages/trustgraph-core" }
-contributions-core = { path = "../../packages/contributions-core" }
-weighted-prior-core = { path = "../../packages/weighted-prior-core" }
-composition-core = { path = "../../packages/composition-core" }
-nostr-workspace-core = { path = "../../packages/nostr-workspace-core" }
-zk-core = { path = "../../packages/zk-core" }
+pagerank-core = { path = "../../crates/pagerank-core" }
+trustgraph-core = { path = "../../crates/trustgraph-core" }
+contributions-core = { path = "../../crates/contributions-core" }
+weighted-prior-core = { path = "../../crates/weighted-prior-core" }
+composition-core = { path = "../../crates/composition-core" }
+nostr-workspace-core = { path = "../../crates/nostr-workspace-core" }
+zk-core = { path = "../../crates/zk-core" }
 
 alloy-primitives = { version = "1", features = ["serde"] }
 alloy-sol-types = { version = "1", features = ["json"] }

@@ -24,7 +24,7 @@ Production indexes only the official Optimism singleton; there is no production 
 | Full ABI SHA-256 | `867b7975a5f2f9fee38c4a148a84471b141f4de91409ccc0c6bebe3df4f04001` |
 
 The reviewed subset and constants live in
-`indexer/abis/erc8004ReputationRegistry.ts`. Indexing stops on an unreviewed Optimism
+`packages/indexer/abis/erc8004ReputationRegistry.ts`. Indexing stops on an unreviewed Optimism
 implementation, owner, or Identity Registry binding. Do not “recover” by adding an arbitrary
 address or relaxing those checks. Audit the new implementation and ABI, update the pin and this
 table, then replay from the original source block.
@@ -66,8 +66,8 @@ Chain ingestion never performs a network fetch. Run the independent process afte
 offchain Drizzle migrations:
 
 ```bash
-pnpm --dir indexer db:migrate
-pnpm --dir indexer metadata:erc8004:watch
+pnpm --dir packages/indexer db:migrate
+pnpm --dir packages/indexer metadata:erc8004:watch
 ```
 
 The sidecar consumes both `/erc8004/metadata-tasks` and

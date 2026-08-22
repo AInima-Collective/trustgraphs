@@ -25,11 +25,11 @@ path = "src/contributions.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"
-pagerank-core = { path = "../../packages/pagerank-core" }
-hypercerts-core = { path = "../../packages/hypercerts-core" }
-contributions-core = { path = "../../packages/contributions-core" }
-envelopes = { path = "../../packages/envelopes" }
-zk-core = { path = "../../packages/zk-core" }
+pagerank-core = { path = "../../crates/pagerank-core" }
+hypercerts-core = { path = "../../crates/hypercerts-core" }
+contributions-core = { path = "../../crates/contributions-core" }
+envelopes = { path = "../../crates/envelopes" }
+zk-core = { path = "../../crates/zk-core" }
 alloy-primitives = { version = "1", features = ["serde"] }
 
 # Detach from the root workspace: the guest builds for riscv32im-succinct-zkvm-elf with the

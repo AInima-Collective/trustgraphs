@@ -399,7 +399,7 @@ decision.
 
 ## 11. Golden-corpus contract
 
-`test/fixtures/eas-offchain/v1/` is normative. Its manifest records the exact SDK package and lockfile
+`tests/fixtures/eas-offchain/v1/` is normative. Its manifest records the exact SDK package and lockfile
 integrity, EAS and head domains, typed data, typed digests, UIDs, signatures, payload bytes,
 commitment, CID, log prefix heads, and expected decoded mutations. The positive fixture is generated
 by pinned `@ethereum-attestation-service/eas-sdk` code, not by the Rust verifier.

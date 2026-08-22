@@ -3,12 +3,12 @@
 Run the focused contract and deterministic fixture suites:
 
 ```sh
-forge test --match-path test/unit/GraphLineageRegistry.t.sol -vv
-pnpm --dir indexer test
-pnpm --dir frontend test
+forge test --match-path contracts/test/unit/GraphLineageRegistry.t.sol -vv
+pnpm --dir packages/indexer test
+pnpm --dir packages/frontend test
 ```
 
-`test/fixtures/graph-lineage.json` contains A→B→C→A referral history, a revocation, an expired
+`tests/fixtures/graph-lineage.json` contains A→B→C→A referral history, a revocation, an expired
 edge, a pre-rotation issuer configuration, evidence and warning kinds, correlated family/method/
 controller records, mutable evidence, and a second scope. The TypeScript fold proves that only
 active referral records enter adjacency and reports unused mass exactly. The Solidity fixture also

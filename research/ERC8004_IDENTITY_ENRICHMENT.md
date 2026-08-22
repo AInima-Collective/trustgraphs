@@ -38,7 +38,7 @@ shape in canonical `(blockNumber, transactionIndex, logIndex)` order.
 
 ## Metadata worker
 
-Run `pnpm --dir indexer metadata:erc8004:watch` (the production Compose file runs this service).
+Run `pnpm --dir packages/indexer metadata:erc8004:watch` (the production Compose file runs this service).
 The event handler only records URI versions. The separate bounded worker permits HTTPS, IPFS, and
 base64 JSON data URIs; pins each HTTPS connection to a validated public DNS answer; revalidates
 redirect destinations; applies time, redirect, byte, and JSON content-type limits; validates the

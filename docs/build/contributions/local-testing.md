@@ -36,7 +36,7 @@ Ports/services used by the full round:
 | Service | URL | Started by |
 |---|---|---|
 | anvil | http://localhost:8545 | `anvil --port 8545` (or `task services:start-all`) |
-| Ponder indexer | http://127.0.0.1:65421 | `cd indexer && npm run dev` |
+| Ponder indexer | http://127.0.0.1:65421 | `cd packages/indexer && npm run dev` |
 | IPFS (score blobs) | http://localhost:5001 (api) | `task services:start-all` / kubo `ipfs daemon` |
 | Postgres (Ponder) | localhost:6432 | `task services:start-all` / embedded-postgres |
 | frontend (optional) | http://localhost:3000 | `pnpm frontend dev` |
@@ -70,7 +70,7 @@ encoding still agree across all four languages.
 #     property suite, and the §5 anti-gaming vector suite.
 cargo test -p contributions-core
 
-# (2) the four-way parity gate: regenerates test/golden/contributions.json and fails if the
+# (2) the four-way parity gate: regenerates tests/golden/contributions.json and fails if the
 #     encodings drifted without regenerated vectors, then runs the Rust / Solidity / TS /
 #     guest==native legs for the program.
 task zk:parity PROGRAM=contributions
@@ -78,11 +78,11 @@ task zk:parity PROGRAM=contributions
 
 What the parity gate checks, leg by leg:
 
-- **native** — `contributions-core` reproduces the golden vectors (`test/golden/contributions.json`);
-- **Solidity** — `test/unit/golden/ContributionsGoldenVectors.t.sol` recomputes the 21-word
+- **native** — `contributions-core` reproduces the golden vectors (`tests/golden/contributions.json`);
+- **Solidity** — `contracts/test/unit/golden/ContributionsGoldenVectors.t.sol` recomputes the 21-word
   `paramsHash`, the seed-set root, the fold `kind` tags, the accumulator leaf/fold, and the full
   fixture journal encode + digest;
-- **TS** — `frontend/lib/contributions/golden.test.ts` recomputes everything from the fixture
+- **TS** — `packages/frontend/lib/contributions/golden.test.ts` recomputes everything from the fixture
   input (reputation, per-claim scores, payouts, blob, CID, every journal field);
 - **guest==native** — the SP1 guest's committed public values equal the native journal encoding
   byte-for-byte.
@@ -95,13 +95,13 @@ and OOMs small boxes). The first run builds the guest ELF (minutes); after that 
 ## Full round on anvil
 
 One complete round from a clean checkout to wei-exact payouts. The seeded round reproduces the
-cross-lane oracle fixture (`packages/contributions-core/src/testutil.rs::fixture()`,
-golden-locked in `test/golden/contributions.json`), so **every number below is a hard expected
+cross-lane oracle fixture (`crates/contributions-core/src/testutil.rs::fixture()`,
+golden-locked in `tests/golden/contributions.json`), so **every number below is a hard expected
 value** — if your run prints something else, something regressed.
 
 **Startup order matters: infra services → deploy → frontend → indexer.** The deploy writes
 `.docker/deployment_summary.json`; the frontend's `predev` (`config:generate` + `wagmi:generate`)
-regenerates the config and the ABIs in `frontend/lib/contract-abis` *from that summary*; and the
+regenerates the config and the ABIs in `packages/frontend/lib/contract-abis` *from that summary*; and the
 indexer imports those ABIs. Start the indexer before the frontend has regenerated them and it can
 run against stale ABIs/addresses. Keep the indexer **down during the deploy** too — its RPC flood
 can drop a deploy transaction (see the troubleshooting note on the deploy hang).
@@ -128,7 +128,7 @@ IPFS_PATH=~/.ipfs-dev ipfs init 2>/dev/null; IPFS_PATH=~/.ipfs-dev ipfs daemon -
 #   → initialise() → start() → createDatabase('ponder')
 ```
 
-`indexer/.env.local` needs the DB URL. Contributions params are reconstructed from the typed
+`packages/indexer/.env.local` needs the DB URL. Contributions params are reconstructed from the typed
 controller's event history and matched to each checkpoint hash:
 
 ```
@@ -161,7 +161,7 @@ one-transaction path a community's authority uses from the app:
    one-shot allowlist, `TrustAccumulatorMirror` (bound via the one-shot `bindSnapshot`, so only
    `trigger()` can mint checkpoints), `MerkleSnapshot`, `MerkleFundDistributor` (fee 0,
    fee recipient = the admin — the factory convention), and the typed params controller. It
-   provisions `params.contributions.json` from `test/e2e/params.contributions.template.json` if
+   provisions `params.contributions.json` from `tests/e2e/params.contributions.template.json` if
    absent; the file is READ-only now (schema UIDs are factory-derived, never written back).
 
 There is no `program: "contributions"` entry in the networks config any more: the indexer
@@ -180,10 +180,10 @@ first.
 
 ```bash
 pnpm frontend dev         # http://localhost:3000 — predev regenerates config + ABIs from the deploy summary
-cd indexer && npm run dev # ponder dev on :65421 — predev runs drizzle migrate + networks:link; imports the ABIs above
+cd packages/indexer && npm run dev # ponder dev on :65421 — predev runs drizzle migrate + networks:link; imports the ABIs above
 ```
 
-The frontend first: its `predev` regenerates `frontend/lib/contract-abis` and the network config
+The frontend first: its `predev` regenerates `packages/frontend/lib/contract-abis` and the network config
 from `.docker/deployment_summary.json`, which the indexer then imports. (For a pure CLI/indexer
 run without the UI you can regenerate the ABIs directly with `pnpm frontend wagmi:generate`
 before starting the indexer — but keep the order.) Contributions networks route to the round view;
@@ -195,7 +195,7 @@ keep `NEXT_PUBLIC_TG_REVIEW_FIXTURES` unset so the pages read the live API.
 task contributions:create-contribution-round-network
 ```
 
-This runs, in order (user actions go through `frontend/scripts/contribution-round.ts` — the
+This runs, in order (user actions go through `packages/frontend/scripts/contribution-round.ts` — the
 exact `SchemaManager.encode` → `EAS.attest` seam the frontend screens drive):
 
 1. **Trust lane** — the fixture's six vouches through the trust resolver:
@@ -399,7 +399,7 @@ task contributions:prove-round ID=<checkpoint>
   guard that makes `trigger()` the sole checkpoint mint, so both lanes are always frozen together
   (a directly-minted mirror checkpoint would otherwise leave the contribution lane at `(0,0)` and
   admit a contributions-blind proof — see [`research/audits/2026-07-M6.md`](../../../research/audits/2026-07-M6.md) M6-1).
-- **Stale `frontend/lib/contracts.ts` / `contract-abis` after a redeploy** — start the frontend
+- **Stale `packages/frontend/lib/contracts.ts` / `contract-abis` after a redeploy** — start the frontend
   before the indexer (§3): its `predev` runs `wagmi:generate` / `config:generate` off the fresh
   deploy summary, and the indexer imports those ABIs. Or regenerate directly with
   `pnpm frontend wagmi:generate`. Contract addresses are deterministic per deployer

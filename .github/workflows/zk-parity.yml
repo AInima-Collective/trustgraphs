@@ -4,15 +4,16 @@ on:
   pull_request:
     paths:
       - 'packages/**'
+      - 'crates/**'
       - 'zk/**'
-      - 'test/golden/**'
-      - 'test/unit/golden/**'
-      - 'frontend/lib/pagerank/**'
-      - 'frontend/lib/hypercerts/**'
-      - 'frontend/lib/contributions/**'
+      - 'tests/golden/**'
+      - 'contracts/test/unit/golden/**'
+      - 'packages/frontend/lib/pagerank/**'
+      - 'packages/frontend/lib/hypercerts/**'
+      - 'packages/frontend/lib/contributions/**'
       - 'research/composition/**'
-      - 'src/contracts/params/TrustCompose*.sol'
-      - 'test/unit/TrustCompose*.sol'
+      - 'contracts/src/params/TrustCompose*.sol'
+      - 'contracts/test/unit/TrustCompose*.sol'
       - 'taskfile/zk.yml'
       - '.github/workflows/zk-parity.yml'
 
@@ -32,8 +33,10 @@ jobs:
           cache-on-failure: true
           workspaces: |
             zk/program -> target
+            zk/trustgraph-program-v2 -> target
             zk/weighted-program -> target
             zk/composition-program -> target
+            zk/nostr-program/program -> target
 
       - name: Install SP1 toolchain (pinned 6.3.1)
         run: |
@@ -44,12 +47,16 @@ jobs:
       - name: Build all isolated guest families
         run: |
           (cd zk/program && cargo prove build)
+          (cd zk/trustgraph-program-v2 && cargo prove build)
           (cd zk/weighted-program && cargo prove build)
           (cd zk/composition-program && cargo prove build)
+          (cd zk/nostr-program/program && cargo prove build --locked)
           tar -czf sp1-guest-elfs.tar.gz \
             zk/program/target/elf-compilation \
+            zk/trustgraph-program-v2/target/elf-compilation \
             zk/weighted-program/target/elf-compilation \
-            zk/composition-program/target/elf-compilation
+            zk/composition-program/target/elf-compilation \
+            zk/nostr-program/program/target/elf-compilation
 
       - name: Upload guest ELFs
         uses: actions/upload-artifact@v4

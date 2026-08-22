@@ -40,7 +40,7 @@ different hash, and the proof simply does not verify. Completeness is proven, no
 
 A zero-knowledge proof shows that a program ran correctly, and the **journal** is what that
 program publicly committed while running. It is the entire interface between the guest and the
-chain. The trust-graph journal (version 3, defined in `packages/pagerank-core` with field order
+chain. The trust-graph journal (version 3, defined in `crates/pagerank-core` with field order
 frozen) contains twelve fields:
 
 | Field | What it commits |

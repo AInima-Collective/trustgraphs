@@ -12,7 +12,7 @@ hashes, and the preimage fold. [`golden.json`](./golden.json) is independently r
 
 - [`reference.ts`](./reference.ts), the exporter/guest-shaped TypeScript reference;
 - [`rust/src/lib.rs`](./rust/src/lib.rs), the detached future-prover/guest reference; and
-- [`ERC8004CompletenessResearch.t.sol`](../../test/unit/research/ERC8004CompletenessResearch.t.sol),
+- [`ERC8004CompletenessResearch.t.sol`](../../contracts/test/unit/research/ERC8004CompletenessResearch.t.sol),
   the Solidity mirror/checkpoint twin.
 
 The fixture starts two reviewed implementation epochs, imports two activation-state wallet
@@ -30,7 +30,7 @@ node --import tsx --test research/erc8004-completeness/reference.test.ts
 pnpm exec tsc -p research/erc8004-completeness/tsconfig.json
 pnpm exec eslint research/erc8004-completeness/*.ts
 cargo test --manifest-path research/erc8004-completeness/rust/Cargo.toml
-forge test --match-path test/unit/research/ERC8004CompletenessResearch.t.sol -vv --gas-report
+forge test --match-path contracts/test/unit/research/ERC8004CompletenessResearch.t.sol -vv --gas-report
 
 cd research/erc8004-completeness/zk-program && cargo prove build
 cd ../../..
