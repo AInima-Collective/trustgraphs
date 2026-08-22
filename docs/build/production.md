@@ -98,6 +98,16 @@ production. The frontend picks both up from the same summary keys during `config
 (`WEIGHTED_FACTORY_ADDRESS` / `TRUST_COMPOSE_FACTORY_ADDRESS` are the env overrides). The indexer
 reads the summary once at startup, so restart it after the factories land.
 
+### Strict EAS off-chain lane: testnet gate only
+
+The optional EAS off-chain v2 lane is built but is not authorized for mainnet by this production
+guide. It uses a separate hybrid factory entry point, detached trust-graph guest/vkey, admitted
+relays, and strict retained payload readers. Follow the
+[strict EAS off-chain testnet runbook](./eas-offchain/runbook.md) and obtain a passing
+[rollout report](./eas-offchain/rollout-report.md) first. That report still feeds a separate
+mainnet go/no-go decision; it does not turn the lane on automatically. Lane-1-only creation and
+operation do not require any off-chain relay or reader configuration.
+
 ### Run the prover
 
 The `{account → score}` root is produced by a permissionless SP1 proof — anyone can post `(root, proof)`
@@ -132,12 +142,15 @@ Four things to get right before the first tick:
 
 ### The accumulator ceiling — enforce, monitor, and recover
 
-**The fact.** Both lane-1 accumulator leaves (every attestation and revocation appends one) and
-lane-2 anchors grow monotonically; a chained hash cannot be trimmed. Proving cost scales with
-`leafCount + anchorCount`. `ProvingVault`, bounded `AnchorRegistry`, and the operator share the
-absolute **`MAX_PRICED_INPUTS = 200,000`** boundary. A new anchor is rejected before the fold when it
-would exceed the registry's lower immutable `maxTotalInputs`; choose that cap below 200,000 on a
-two-lane instance to reserve the planned lane-1 budget. Separately gate or price lane-1 EAS ingress.
+**The fact.** Lane-1 accumulator leaves (every attestation and revocation appends one), lane-2
+anchor records, and strict envelope-0 append-only logs all add proof work; a chained history cannot
+be trimmed. A strict hybrid's lane-2 `workCount` is
+`anchorCount + aggregateLatestEnvelope0EntryCount * 4`, not raw anchor count. Its proving and price
+size is `leafCount + workCount`; legacy registries still use `leafCount + anchorCount`.
+`ProvingVault`, bounded registries, snapshots, and the operator share the absolute
+**`MAX_PRICED_INPUTS = 200,000`** boundary. A new anchor is rejected before the fold when it would
+exceed the registry's lower immutable `maxTotalInputs`; choose that cap below 200,000 on a two-lane
+instance to reserve the planned lane-1 budget. Separately gate or price lane-1 EAS ingress.
 
 **Attacker cost (order of magnitude, mainnet).** Each lane-1 leaf is one EAS attestation or
 revocation through the resolver (~120–180k gas). Filling the ceiling from scratch is therefore
@@ -157,11 +170,11 @@ least two independent operators and alert on role changes. An instance whose lan
 ingress is open to adversaries must still price or stake that ingress (the payable resolver exists
 for this) before real value depends on the scores.
 
-**Monitoring (in place).** The proof scheduler reads a bounded registry's `maxTotalInputs` and
-alerts (webhook + `input_ceiling_approaching` log event + status page) when
-`leafCount + anchorCount` crosses **80%** of that cap. Legacy/no-lane-2 implementations fall back to
-200,000. Do not silence the alert: revoke unexpected ingress and start migration while an orderly
-final checkpoint still fits.
+**Monitoring (in place).** The proof scheduler reads a bounded registry's `maxTotalInputs` and the
+snapshot's authenticated checkpoint work, then alerts (webhook + `input_ceiling_approaching` log
+event + status page) when `leafCount + lane2Work` crosses **80%** of that cap. Legacy/no-lane-2
+implementations use their existing anchor count or zero lane. Do not silence the alert: revoke
+unexpected ingress and start migration while an orderly final checkpoint still fits.
 
 **Recovery path (prepare BEFORE launch).** Both input-lane setters are available only before
 checkpoint 0. Re-seed by deploying a fresh resolver/accumulator, bounded registry, verifier, and

@@ -99,6 +99,7 @@ const serialize = (
     merkleSnapshot: row.snapshot,
     easIndexerResolver: row.resolver,
     merkleFundDistributor: row.distributor,
+    easOffchainAnchorRegistry: row.offchainRegistry,
     trustgraphsParamsController: row.paramsController,
     merkleGovModule: governance?.address ?? null,
     safe:
@@ -109,6 +110,13 @@ const serialize = (
           }
         : null,
   },
+  offchainLane: row.offchainRegistry
+    ? {
+        registry: row.offchainRegistry,
+        easDomainSeparator: row.offchainEasDomainSeparator,
+        maxTotalInputs: row.offchainMaxTotalInputs?.toString() ?? null,
+      }
+    : null,
   signerSync: signer
     ? {
         operatorInstanceId: signer.operatorInstanceId,

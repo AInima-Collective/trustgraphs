@@ -14,6 +14,7 @@ import {
     MerkleFundDistributorDeployer,
     TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
+import {EasOffchainAnchorRegistryDeployer} from "contracts/factory/HybridInstanceDeployers.sol";
 import {InstanceRegistry} from "contracts/registry/InstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -99,6 +100,7 @@ contract DeployFactory is Common {
         MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();
         MerkleFundDistributorDeployer distributorDeployer = new MerkleFundDistributorDeployer();
         TrustgraphsParamsControllerDeployer paramsControllerDeployer = new TrustgraphsParamsControllerDeployer();
+        EasOffchainAnchorRegistryDeployer easRegistryDeployer = new EasOffchainAnchorRegistryDeployer();
 
         TrustgraphsFactory trustgraphsFactory = new TrustgraphsFactory(
             IEAS(eas),
@@ -108,6 +110,7 @@ contract DeployFactory is Common {
             snapshotDeployer,
             distributorDeployer,
             paramsControllerDeployer,
+            easRegistryDeployer,
             epochFloor,
             vault
         );
@@ -136,6 +139,7 @@ contract DeployFactory is Common {
         console.log("MerkleSnapshotDeployer:", address(snapshotDeployer));
         console.log("MerkleFundDistributorDeployer:", address(distributorDeployer));
         console.log("TrustgraphsParamsControllerDeployer:", address(paramsControllerDeployer));
+        console.log("EasOffchainAnchorRegistryDeployer:", address(easRegistryDeployer));
         console.log("TrustgraphsFactory:", factory);
         console.log("epochFloor (blocks):", epochFloor);
 
@@ -144,6 +148,7 @@ contract DeployFactory is Common {
         _json.serialize("snapshot_deployer", Strings.toChecksumHexString(address(snapshotDeployer)));
         _json.serialize("distributor_deployer", Strings.toChecksumHexString(address(distributorDeployer)));
         _json.serialize("params_controller_deployer", Strings.toChecksumHexString(address(paramsControllerDeployer)));
+        _json.serialize("eas_registry_deployer", Strings.toChecksumHexString(address(easRegistryDeployer)));
         _json.serialize("epoch_floor", uint256(epochFloor));
         string memory finalJson = _json.serialize("factory", Strings.toChecksumHexString(factory));
         vm.writeFile(string.concat(root, "/.docker/factory_deploy.json"), finalJson);

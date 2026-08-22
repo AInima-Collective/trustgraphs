@@ -11,7 +11,10 @@ use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
 use operator_core::plan;
-use operator_core::types::{Action, InFlight, InFlightState, InstanceSize, InstanceState, Program};
+use operator_core::types::{
+    Action, AvailabilityStage, HoldReason, InFlight, InFlightState, InstanceSize, InstanceState,
+    Program,
+};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -561,7 +564,7 @@ fn tick(
             // Monotonic inputs cannot be trimmed. A bounded AnchorRegistry publishes the lower
             // instance-selected ingress capacity; other lanes use MAX_PRICED_INPUTS. Approaching
             // either cliff must be loud while a replacement-snapshot migration is still orderly.
-            let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
+            let inputs = state.live_input_work;
             let ceiling = state.input_capacity.max(1).min(operator_core::policy::MAX_PRICED_INPUTS);
             if *program != Program::Composition && inputs >= ceiling.saturating_mul(8) / 10 {
                 let text = format!(
@@ -604,7 +607,67 @@ fn tick(
                     Some(&root_instance_ids),
                 )
             };
-            let action = plan(&state, &policy, spend);
+            let mut action = plan(&state, &policy, spend);
+            let mut prepared_input = None;
+            let mut envelope0_preflight = None;
+            match action {
+                Action::Trigger => match handlers::preflight_live_envelope0(cfg, rpc, entry) {
+                    Ok(report) => envelope0_preflight = report,
+                    Err(_) => {
+                        logger.event(
+                            "envelope0_unavailable",
+                            json!({
+                                "instance": format!("{:#x}", entry.instance_id),
+                                "stage": "live_pretrigger",
+                            }),
+                        );
+                        action = Action::Hold(HoldReason::InputUnavailable {
+                            stage: AvailabilityStage::LivePretrigger,
+                            checkpoint_id: None,
+                        });
+                    }
+                },
+                Action::Prove { checkpoint_id }
+                    if entry.program == Program::Trustgraphs
+                        && handlers::uses_strict_envelope0(rpc, entry).unwrap_or(true) =>
+                {
+                    let pinned = state
+                        .checkpoints
+                        .iter()
+                        .find(|checkpoint| checkpoint.id == checkpoint_id)
+                        .and_then(|checkpoint| checkpoint.pinned_params_hash);
+                    let build = pinned
+                        .ok_or_else(|| anyhow::anyhow!("checkpoint has no pinned params"))
+                        .and_then(|hash| entry_at_params_hash(rpc, entry, hash, state.head_block))
+                        .and_then(|proving_entry| {
+                            handlers::build_input(
+                                cfg,
+                                rpc,
+                                &proving_entry,
+                                checkpoint_id,
+                                cfg.recipient(),
+                            )
+                        });
+                    match build {
+                        Ok(built) => prepared_input = Some(built),
+                        Err(_) => {
+                            logger.event(
+                                "envelope0_unavailable",
+                                json!({
+                                    "instance": format!("{:#x}", entry.instance_id),
+                                    "stage": "checkpoint_reconstruction",
+                                    "checkpoint": checkpoint_id,
+                                }),
+                            );
+                            action = Action::Hold(HoldReason::InputUnavailable {
+                                stage: AvailabilityStage::CheckpointReconstruction,
+                                checkpoint_id: Some(checkpoint_id),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
             // Log the decision when the instance's STATE changes (see `action_key`), not every
             // tick: `idle/quiet` repeated forever is what the heartbeat file is for, and a
             // rising confirmation count is progress inside one state, not a new one.
@@ -645,6 +708,7 @@ fn tick(
                     entry,
                     &state,
                     &action,
+                    prepared_input.as_ref(),
                 ) {
                     logger.event(
                         "action_failed",
@@ -662,6 +726,25 @@ fn tick(
                 }
             }
 
+            let blocks_since_root = state
+                .last_applied_checkpoint
+                .and_then(|id| state.checkpoints.iter().find(|c| c.id == id))
+                .map(|c| head.saturating_sub(c.block_number));
+            let input_unavailable = matches!(
+                &action,
+                Action::Hold(HoldReason::InputUnavailable { .. })
+            );
+            let unprovable_age_blocks = match &action {
+                Action::Hold(HoldReason::InputUnavailable {
+                    checkpoint_id: Some(checkpoint_id),
+                    ..
+                }) => state
+                    .checkpoints
+                    .iter()
+                    .find(|checkpoint| checkpoint.id == *checkpoint_id)
+                    .map(|checkpoint| head.saturating_sub(checkpoint.block_number)),
+                _ => None,
+            };
             statuses.push(InstanceStatus {
                 instance_id: format!("{:#x}", entry.instance_id),
                 name: entry.name.clone(),
@@ -669,10 +752,18 @@ fn tick(
                 snapshot: format!("{:#x}", entry.snapshot),
                 curated: policy.curated,
                 action,
-                blocks_since_root: state
-                    .last_applied_checkpoint
-                    .and_then(|id| state.checkpoints.iter().find(|c| c.id == id))
-                    .map(|c| head.saturating_sub(c.block_number)),
+                blocks_since_root,
+                newest_anchor_count: state.live_commitments.anchor_count,
+                input_work: state.live_input_work,
+                input_capacity: state.input_capacity,
+                envelope0_fetch_latency_ms: envelope0_preflight
+                    .as_ref()
+                    .map(|report| report.fetch_latency_ms),
+                envelope0_exact_readers: envelope0_preflight
+                    .as_ref()
+                    .map(|report| report.exact_readers),
+                envelope0_validation_failed: input_unavailable,
+                unprovable_age_blocks,
             });
         }
     }
@@ -822,6 +913,11 @@ fn build_state(
         .transpose()?
         .unwrap_or_else(|| entry.clone());
     let reconstructed_params_hash = proving_entry.reconstructed_params_hash;
+    let proof_leaf_count = proving_checkpoint
+        .map_or(view.live.leaf_count, |checkpoint| checkpoint.commitments.leaf_count);
+    let proof_anchor_work =
+        proving_checkpoint.map_or(view.live_anchor_work, |checkpoint| checkpoint.work_count);
+    let live_input_work = view.live.leaf_count.saturating_add(view.live_anchor_work);
 
     // In-flight work, from the journal rather than from memory: a restart must re-attach rather
     // than pay again.
@@ -998,10 +1094,11 @@ fn build_state(
         rotation_pending: false,
         live_commitments: view.live,
         size: InstanceSize {
-            leaf_count: view.live.leaf_count,
-            anchor_count: view.live.anchor_count,
+            leaf_count: proof_leaf_count,
+            anchor_count: proof_anchor_work,
             authenticated_cycles,
         },
+        live_input_work,
         input_capacity: view.input_capacity.unwrap_or(operator_core::policy::MAX_PRICED_INPUTS),
         in_flight,
         vault,
@@ -1035,6 +1132,7 @@ fn act(
     entry: &CatalogEntry,
     state: &InstanceState,
     action: &Action,
+    prepared_input: Option<&handlers::Built>,
 ) -> Result<()> {
     let Some(sender) = sender else { return Ok(()) };
     let max_fee = cfg.gas.max_basefee_gwei as u128 * 1_000_000_000 * 2;
@@ -1102,8 +1200,19 @@ fn act(
                 })?;
             let proving_entry =
                 entry_at_params_hash(rpc, entry, pinned_params_hash, state.head_block)?;
-            let built =
-                handlers::build_input(cfg, rpc, &proving_entry, *checkpoint_id, cfg.recipient())?;
+            let owned_built;
+            let built = if let Some(prepared) = prepared_input {
+                prepared
+            } else {
+                owned_built = handlers::build_input(
+                    cfg,
+                    rpc,
+                    &proving_entry,
+                    *checkpoint_id,
+                    cfg.recipient(),
+                )?;
+                &owned_built
+            };
 
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".

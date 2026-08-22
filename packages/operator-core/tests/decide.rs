@@ -32,6 +32,7 @@ fn checkpoint(id: u64, block: u64, n: u64) -> CheckpointRef {
         id,
         block_number: block,
         commitments: commitments(n),
+        work_count: 0,
         pinned_params_hash: Some(PARAMS),
     }
 }
@@ -57,6 +58,7 @@ fn healthy() -> InstanceState {
         rotation_pending: false,
         live_commitments: commitments(3),
         size: InstanceSize { leaf_count: 3, anchor_count: 0, authenticated_cycles: None },
+        live_input_work: 3,
         input_capacity: operator_core::policy::MAX_PRICED_INPUTS,
         in_flight: None,
         vault: None,
@@ -229,6 +231,7 @@ fn lane_2_movement_wakes_a_hypercerts_instance_whose_lane_1_never_moves() {
             anchor_acc: B256::from([0x11; 32]),
             anchor_count: 4,
         },
+        work_count: 4,
         pinned_params_hash: Some(PARAMS),
     }];
     s.last_applied_checkpoint = Some(0);
@@ -259,6 +262,7 @@ fn a_contributions_round_moves_while_its_mirrored_vouch_graph_is_silent() {
             anchor_acc: B256::from([0x44; 32]),
             anchor_count: 2,
         },
+        work_count: 2,
         pinned_params_hash: Some(PARAMS),
     }];
     s.last_applied_checkpoint = Some(0);
@@ -535,6 +539,25 @@ fn an_oversized_instance_is_refused_before_the_request_not_after_the_timeout() {
         }
         other => panic!("expected TooLarge, got {other:?}"),
     }
+}
+
+#[test]
+fn checkpointed_lane2_work_not_raw_anchor_count_drives_refusal() {
+    use operator_core::policy::MAX_PRICED_INPUTS;
+    let mut s = healthy();
+    // One public anchor can commit a 2,048-entry payload. The adapter places authenticated work,
+    // not the journal's raw anchor count, in InstanceSize.
+    s.checkpoints[0].commitments.anchor_count = 1;
+    s.checkpoints[0].work_count = MAX_PRICED_INPUTS + 1;
+    s.size = InstanceSize {
+        leaf_count: 0,
+        anchor_count: s.checkpoints[0].work_count,
+        authenticated_cycles: None,
+    };
+    assert!(matches!(
+        plan(&s, &curated(), Spend::default()),
+        Action::Skip(SkipReason::TooLarge { .. })
+    ));
 }
 
 // ---------------------------------------------------------------------------

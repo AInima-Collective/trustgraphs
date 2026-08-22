@@ -1,5 +1,6 @@
 import { Hex } from 'viem'
 
+import type { AttestationProvenance } from './attestation-provenance'
 import { type Erc8004AgentCompact } from './erc8004'
 import type { ScoreProgramProvenance } from './score-program'
 
@@ -26,6 +27,12 @@ export type Network = {
   paramsHash?: Hex
   /** Unix seconds of the creating transaction (catalog networks only). */
   createdTimestamp?: string
+  /** Factory-authenticated strict EAS v2 lane. Absent means on-chain EAS only. */
+  offchainLane?: {
+    registry: Hex
+    easDomainSeparator: Hex
+    maxTotalInputs: string
+  }
   name: string
   hidden?: boolean
   link?: {
@@ -46,6 +53,8 @@ export type Network = {
   contracts: {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
+    /** Strict off-chain anchor registry when this is a hybrid trust graph. */
+    easOffchainAnchorRegistry?: Hex
     merkleFundDistributor?: Hex
     /**
      * The Safe governance module, when this network has one. Wired outside the factory (a factory
@@ -236,7 +245,10 @@ export interface NetworkGraphNode {
 }
 
 export type NetworkGraphEdge = {
-  href: string
+  href?: string
+  uid: Hex
+  schema: Hex
+  provenance?: AttestationProvenance
   label: string
   size: number
   color?: string

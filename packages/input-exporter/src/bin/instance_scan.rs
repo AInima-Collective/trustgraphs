@@ -96,6 +96,9 @@ sol! {
         uint64 epochLength,
         SolParams params
     );
+    event OffchainEasLaneCreated(
+        bytes32 indexed instanceId, address registry, bytes32 domainSeparator, uint64 maxTotalInputs
+    );
 
     /// `IInstanceRegistry`.
     struct Instance {
@@ -138,6 +141,8 @@ sol! {
     function lastTriggerBlock() external view returns (uint64);
     function hasAppliedCheckpoint() external view returns (bool);
     function lastAppliedCheckpoint() external view returns (uint256);
+    function anchorRegistry() external view returns (address);
+    function checkpointWorkCount(uint256 checkpointId) external view returns (uint64);
 
     /// `AttestationAccumulator` (the instance's `EASIndexerResolver`).
     struct Checkpoint { bytes32 acc; uint64 leafCount; uint64 blockNumber; }
@@ -145,6 +150,13 @@ sol! {
     function checkpointCount() external view returns (uint256);
     function getCheckpoint(uint256 id) external view returns (Checkpoint);
     function anchorCount() external view returns (uint64);
+    function workCount() external view returns (uint64);
+
+    /// `EasOffchainAnchorRegistry` immutable/bound provenance.
+    function schemaUid() external view returns (bytes32);
+    function maxTotalInputs() external view returns (uint64);
+    function easDomainSeparator() external view returns (bytes32);
+    function headDomainSeparator() external view returns (bytes32);
 
     /// `TrustgraphsFactory` — the shared singletons an instance inherits.
     function EAS() external view returns (address);
@@ -478,6 +490,92 @@ async fn main() -> Result<()> {
 
         let params = to_core_params(&ev.params);
 
+        // The snapshot is authoritative for the optional lane address. The additive factory event
+        // is the public discovery record and must agree for the strict two-domain profile.
+        let anchor_registry_ret = rpc
+            .eth_call(record.snapshot, anchorRegistryCall {}.abi_encode())
+            .await
+            .with_context(|| format!("anchorRegistry() on snapshot {:#x}", record.snapshot))?;
+        let anchor_registry = anchorRegistryCall::abi_decode_returns(&anchor_registry_ret)
+            .context("decoding anchorRegistry()")?;
+        let lane_event = logs.iter().find(|log| {
+            log.address == factory
+                && log.topics.first() == Some(&OffchainEasLaneCreated::SIGNATURE_HASH)
+                && log.topics.get(1) == Some(id)
+        });
+        let mut hybrid_registry_eas = None;
+        if params.envelope0_domain_separators.len() == 2 {
+            let lane_log = lane_event.ok_or_else(|| {
+                anyhow!(
+                    "strict hybrid instance {id:#x} has no factory OffchainEasLaneCreated discovery event"
+                )
+            })?;
+            let lane = OffchainEasLaneCreated::decode_raw_log(
+                lane_log.topics.iter().copied(),
+                &lane_log.data,
+            )
+            .context("decoding OffchainEasLaneCreated")?;
+            if anchor_registry == Address::ZERO || lane.registry != anchor_registry {
+                bail!(
+                    "strict hybrid discovery mismatch for {id:#x}: event registry={:#x}, snapshot registry={anchor_registry:#x}",
+                    lane.registry
+                );
+            }
+
+            let registry_eas_ret = rpc
+                .eth_call(anchor_registry, EASCall {}.abi_encode())
+                .await
+                .context("reading strict registry EAS")?;
+            let registry_eas = EASCall::abi_decode_returns(&registry_eas_ret)?;
+            hybrid_registry_eas = Some(registry_eas);
+            let registry_schema_ret = rpc
+                .eth_call(anchor_registry, schemaUidCall {}.abi_encode())
+                .await
+                .context("reading strict registry schemaUid")?;
+            let registry_schema = schemaUidCall::abi_decode_returns(&registry_schema_ret)?;
+            let registry_snapshot_ret = rpc
+                .eth_call(anchor_registry, snapshotCall {}.abi_encode())
+                .await
+                .context("reading strict registry snapshot")?;
+            let registry_snapshot = snapshotCall::abi_decode_returns(&registry_snapshot_ret)?;
+            let registry_cap_ret = rpc
+                .eth_call(anchor_registry, maxTotalInputsCall {}.abi_encode())
+                .await
+                .context("reading strict registry maxTotalInputs")?;
+            let registry_cap = maxTotalInputsCall::abi_decode_returns(&registry_cap_ret)?;
+            let registry_eas_domain_ret = rpc
+                .eth_call(anchor_registry, easDomainSeparatorCall {}.abi_encode())
+                .await
+                .context("reading strict registry EAS domain")?;
+            let registry_eas_domain =
+                easDomainSeparatorCall::abi_decode_returns(&registry_eas_domain_ret)?;
+            let registry_head_domain_ret = rpc
+                .eth_call(anchor_registry, headDomainSeparatorCall {}.abi_encode())
+                .await
+                .context("reading strict registry head domain")?;
+            let registry_head_domain =
+                headDomainSeparatorCall::abi_decode_returns(&registry_head_domain_ret)?;
+
+            if lane.domainSeparator != params.envelope0_domain_separators[0]
+                || registry_eas_domain != params.envelope0_domain_separators[0]
+                || registry_head_domain != params.envelope0_domain_separators[1]
+                || registry_schema != params.schema_uid
+                || registry_schema != ev.schemaUid
+                || registry_snapshot != record.snapshot
+                || registry_cap == 0
+                || registry_cap != lane.maxTotalInputs
+            {
+                bail!(
+                    "strict hybrid provenance mismatch for {id:#x}: event EAS domain={:#x}, registry EAS domain={registry_eas_domain:#x}, registry head domain={registry_head_domain:#x}, registry schema={registry_schema:#x}, registry snapshot={registry_snapshot:#x}, registry cap={registry_cap}",
+                    lane.domainSeparator
+                );
+            }
+        } else if anchor_registry != Address::ZERO {
+            bail!(
+                "instance {id:#x} names lane registry {anchor_registry:#x} without the strict two-domain params profile"
+            );
+        }
+
         // --- 4. THE SELF-CHECK. ----------------------------------------------------------------
         let computed = B256::from(encode::params_hash(&params));
         let live_ret = rpc
@@ -521,6 +619,13 @@ async fn main() -> Result<()> {
                 a
             }
         };
+        if let Some(registry_eas) = hybrid_registry_eas {
+            if registry_eas != eas {
+                bail!(
+                    "strict hybrid EAS mismatch for {id:#x}: factory={eas:#x}, registry={registry_eas:#x}"
+                );
+            }
+        }
 
         let epoch_length = call_u64(&rpc, record.snapshot, epochLengthCall {}.abi_encode()).await?;
         let last_trigger =
@@ -537,6 +642,21 @@ async fn main() -> Result<()> {
         } else {
             0
         };
+        let anchor_work = if anchor_registry == Address::ZERO {
+            0
+        } else {
+            call_u64(&rpc, anchor_registry, workCountCall {}.abi_encode()).await?
+        };
+        let checkpointed_anchor_work = if cp_count > U256::ZERO {
+            call_u64(
+                &rpc,
+                record.snapshot,
+                checkpointWorkCountCall { checkpointId: cp_count - U256::from(1) }.abi_encode(),
+            )
+            .await?
+        } else {
+            0
+        };
 
         // --- 6. Readiness. Every not-ready case is a logged skip, never an abort. ---------------
         let status = if epoch_length > 0 && next_block < last_trigger + epoch_length {
@@ -546,12 +666,15 @@ async fn main() -> Result<()> {
                 last_trigger + epoch_length,
                 last_trigger + epoch_length - next_block
             ))
-        } else if cp_count == U256::ZERO && leaf_count == 0 {
-            Status::Skipped("no attestations yet — nothing to prove".to_string())
-        } else if cp_count > U256::ZERO && leaf_count <= checkpointed_leaves {
+        } else if cp_count == U256::ZERO && leaf_count == 0 && anchor_work == 0 {
+            Status::Skipped("neither input lane has entries yet — nothing to prove".to_string())
+        } else if cp_count > U256::ZERO
+            && leaf_count <= checkpointed_leaves
+            && anchor_work <= checkpointed_anchor_work
+        {
             Status::Skipped(format!(
-                "no new edges since checkpoint #{} ({leaf_count} folded, {checkpointed_leaves} \
-                 already checkpointed) — trigger() would revert NoNewInputs()",
+                "no new inputs since checkpoint #{} (lane1 {leaf_count}/{checkpointed_leaves}, \
+                 lane2 work {anchor_work}/{checkpointed_anchor_work}) — trigger() would revert NoNewInputs()",
                 cp_count - U256::from(1)
             ))
         } else {
@@ -571,7 +694,7 @@ async fn main() -> Result<()> {
             ready += 1;
         }
         eprintln!(
-            "  {:<8} {id:#x} \"{}\"  snapshot={:#x} edges={leaf_count}{}",
+            "  {:<8} {id:#x} \"{}\"  snapshot={:#x} lane1={leaf_count} lane2Work={anchor_work}{}",
             status.label(),
             ev.name,
             record.snapshot,
@@ -592,6 +715,7 @@ async fn main() -> Result<()> {
             "eas": format!("{eas:#x}"),
             "snapshot": format!("{:#x}", record.snapshot),
             "accumulator": format!("{acc:#x}"),
+            "anchorRegistry": format!("{anchor_registry:#x}"),
             "verifier": format!("{:#x}", record.verifier),
             "distributor": format!("{:#x}", ev.distributor),
             "distributorToken": format!("{:#x}", ev.distributorToken),
@@ -603,6 +727,8 @@ async fn main() -> Result<()> {
             "leafCount": leaf_count,
             "checkpointCount": cp_count.to::<u64>(),
             "checkpointedLeafCount": checkpointed_leaves,
+            "anchorWork": anchor_work,
+            "checkpointedAnchorWork": checkpointed_anchor_work,
             "paramsPath": params_path.display().to_string(),
             "outDir": inst_dir.display().to_string(),
             "status": status.label(),

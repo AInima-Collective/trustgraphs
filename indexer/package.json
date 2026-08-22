@@ -27,6 +27,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@trustgraphs/eas-offchain-client": "workspace:*",
     "@notionhq/client": "^5.3.0",
     "@ponder/client": "^0.16.2",
     "drizzle-orm": "^0.41.0",

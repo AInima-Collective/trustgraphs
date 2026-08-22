@@ -49,6 +49,7 @@ import {
 } from '@/components/Select'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
+import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import type { InstanceRow } from '@/lib/catalog'
 import { CONTRACT_CONFIG, PROVING_VAULT } from '@/lib/config'
 import {
@@ -63,7 +64,6 @@ import {
 } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
-import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import {
   contributionsRoundsFor,
   sortRoundsNewestActiveFirst,
@@ -96,6 +96,15 @@ const SAFE_GUARD_STORAGE_SLOT =
   0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8n
 const SAFE_SENTINEL = '0x0000000000000000000000000000000000000001' as Hex
 const ZERO_HASH = `0x${'0'.repeat(64)}` as Hex
+const strictWorkCountAbi = [
+  {
+    type: 'function',
+    name: 'workCount',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint64' }],
+  },
+] as const
 
 type ReadResult = { status?: string; result?: unknown }
 
@@ -421,8 +430,8 @@ const AttachFundSection = ({
           <ContractAddress value={attached.distributor} />
         )}
         <p className="text-xs text-muted-foreground">
-          It appears on this page as soon as the indexer catches up; reload in
-          a moment. Anyone can then top it up, and the owner sends payouts.
+          It appears on this page as soon as the indexer catches up; reload in a
+          moment. Anyone can then top it up, and the owner sends payouts.
         </p>
       </div>
     )
@@ -432,13 +441,13 @@ const AttachFundSection = ({
     <div className="space-y-3 pt-4">
       <p className="text-xs text-muted-foreground">
         This network was created without a shared fund, and that closed no
-        doors: you can attach one now. A fund is a pot anyone can top up,
-        split between members by trust score when its owner sends a payout.
-        Anyone may pay the gas for this step, but the fund&apos;s owner must
-        hold this network&apos;s constitutional role right now; the contract
-        checks that before anything is deployed. For a governed network the
-        authority is its Safe, so the Safe owns the fund and payouts happen
-        through member governance.
+        doors: you can attach one now. A fund is a pot anyone can top up, split
+        between members by trust score when its owner sends a payout. Anyone may
+        pay the gas for this step, but the fund&apos;s owner must hold this
+        network&apos;s constitutional role right now; the contract checks that
+        before anything is deployed. For a governed network the authority is its
+        Safe, so the Safe owns the fund and payouts happen through member
+        governance.
       </p>
       <div className="space-y-1">
         <Label htmlFor="attach-fund-owner">Fund owner</Label>
@@ -1225,6 +1234,18 @@ export const SettingsPage = ({
   const anchorAcc = asString(readResult(anchorReads, 0))
   const anchorCount = asBigInt(readResult(anchorReads, 1)) ?? 0n
   const anchorCapacity = asBigInt(readResult(anchorReads, 2))
+  const { data: strictAnchorWorkCount } = useReadContract({
+    address: anchorRegistry,
+    abi: strictWorkCountAbi,
+    functionName: 'workCount',
+    query: {
+      enabled: !!anchorRegistry && !!network.offchainLane,
+      refetchInterval: 30_000,
+    },
+  })
+  const anchorWorkCount = network.offchainLane
+    ? strictAnchorWorkCount
+    : anchorCount
 
   const {
     data: vaultReads,
@@ -1619,7 +1640,8 @@ export const SettingsPage = ({
     policyLastPaidBlock !== undefined && policyMinInterval !== undefined
       ? policyLastPaidBlock + policyMinInterval
       : undefined
-  const inputCount = leafCount + anchorCount
+  const inputCount =
+    anchorWorkCount === undefined ? undefined : leafCount + anchorWorkCount
   const inputCapacity = anchorCapacity ?? maxPricedInputs
   const distributorPaused = asBoolean(readResult(distributorReads, 5))
   const fundingRestricted = asBoolean(readResult(distributorReads, 4))
@@ -1687,7 +1709,9 @@ export const SettingsPage = ({
     signerOperatorWatch?.action?.action === 'skip'
       ? `Signer-sync operator: ${signerOperatorWatch.action.reason ?? signerOperatorWatch.action.action}.`
       : null,
-    inputCapacity !== undefined && inputCount * 5n >= inputCapacity * 4n
+    inputCapacity !== undefined &&
+    inputCount !== undefined &&
+    inputCount * 5n >= inputCapacity * 4n
       ? `Proof inputs have reached at least 80% of the ${comma(inputCapacity)}-input capacity.`
       : null,
     accountSnapshot &&
@@ -2369,17 +2393,20 @@ export const SettingsPage = ({
                   <SettingRow label="Anchor count">
                     {comma(anchorCount)}
                   </SettingRow>
+                  <SettingRow label="Anchor/log work">
+                    {comma(anchorWorkCount)}
+                  </SettingRow>
                   <SettingRow label="Anchor accumulator">
                     <Hash value={anchorAcc} />
                   </SettingRow>
-                  <SettingRow label="Combined proof inputs">
+                  <SettingRow label="Combined proof work">
                     {comma(inputCount)}
                   </SettingRow>
                   <SettingRow label="Anchor-ingress capacity">
                     {comma(inputCapacity)}
                   </SettingRow>
                   <SettingRow label="Anchor-ingress headroom">
-                    {inputCapacity === undefined
+                    {inputCapacity === undefined || inputCount === undefined
                       ? '—'
                       : comma(
                           inputCount >= inputCapacity
@@ -2532,6 +2559,12 @@ export const SettingsPage = ({
                             ? 'Paused'
                             : 'Active'}
                   </SettingRow>
+                  {network.offchainLane && (
+                    <SettingRow label="Hybrid compatibility">
+                      Permanently unavailable: signer-sync does not authenticate
+                      strict off-chain history.
+                    </SettingRow>
+                  )}
                   <SettingRow label="Top signers">
                     {network.safeZodiacSignerSync.topNSigners}
                   </SettingRow>
@@ -2713,12 +2746,20 @@ export const SettingsPage = ({
                       : 'Connect to check access'}
                   </SettingRow>
                   <div className="flex flex-wrap gap-3 pt-4">
-                    <ButtonLink
-                      href={`/networks/${network.id}/contributions/new`}
-                      size="sm"
-                    >
-                      Start a contribution round
-                    </ButtonLink>
+                    {network.offchainLane ? (
+                      <p className="text-xs text-muted-foreground">
+                        Contribution rounds are blocked for hybrid networks: the
+                        contribution guest does not authenticate strict
+                        off-chain vouch history.
+                      </p>
+                    ) : (
+                      <ButtonLink
+                        href={`/networks/${network.id}/contributions/new`}
+                        size="sm"
+                      >
+                        Start a contribution round
+                      </ButtonLink>
+                    )}
                     {contributionRound && (
                       <ButtonLink
                         href={`/networks/${network.id}/contributions`}
@@ -2983,6 +3024,12 @@ export const SettingsPage = ({
                           ? 'Paused deliberately'
                           : 'Active'}
                   </SettingRow>
+                  {network.offchainLane && (
+                    <SettingRow label="Hybrid compatibility">
+                      Permanently unavailable: signer-sync does not authenticate
+                      strict off-chain history.
+                    </SettingRow>
+                  )}
                   <SettingRow label="Top signers">
                     {network.safeZodiacSignerSync.topNSigners}
                   </SettingRow>

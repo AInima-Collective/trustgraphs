@@ -12,11 +12,14 @@ import { cn } from '@/lib/utils'
 
 import {
   GOVERNED_FACTORY_ADDRESS,
+  MAX_OFFCHAIN_TOTAL_INPUTS,
   WizardData,
   describeBlocks,
   effectiveBlocks,
   fundTokenProblem,
+  isOffchainVouchCreationAvailable,
   isSignerSyncAvailable,
+  offchainVouchesProblem,
   prepayProblem,
   signerSyncProblem,
 } from '../model'
@@ -63,7 +66,9 @@ export const AddOnsStep = ({
   const tokenError = showErrors ? fundTokenProblem(data) : null
   const prepayError = showErrors ? prepayProblem(data) : null
   const signerSyncError = showErrors ? signerSyncProblem(data) : null
+  const offchainError = showErrors ? offchainVouchesProblem(data) : null
   const signerSyncAvailable = isSignerSyncAvailable()
+  const offchainAvailable = isOffchainVouchCreationAvailable()
   const paidCadence = effectiveBlocks(data.tuning.cadence, epochFloor)
   // The live governance profile the review screen also reads; stated here so nobody reaches the
   // last step before learning a Safe is part of the deal.
@@ -103,8 +108,8 @@ export const AddOnsStep = ({
           owns the network and its fund. Your wallet becomes the Safe&apos;s
           only recorded owner, but a permanently sealed guard disables
           owner-signed transactions: members direct the Safe through delayed
-          trust-weighted voting, and your wallet keeps a slow, visible
-          recovery role.
+          trust-weighted voting, and your wallet keeps a slow, visible recovery
+          role.
         </p>
         <p className="text-xs text-muted-foreground max-w-xl">
           {authority.valid
@@ -123,6 +128,79 @@ export const AddOnsStep = ({
         </p>
       </Card>
 
+      <Card type="detail" size="md" className="space-y-3">
+        <div className="flex flex-row items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm">Gasless off-chain vouches</div>
+            <p className="text-xs text-muted-foreground max-w-xl">
+              Let members sign EAS v2 vouches without paying an attestation
+              transaction. Public relayers retain the exact signed log, pin it
+              to independent storage, and pay to anchor its content hash.
+              On-chain vouches continue to work alongside it.
+            </p>
+          </div>
+          <Switch
+            size="md"
+            enabled={data.withOffchainVouches}
+            readOnly={!offchainAvailable}
+            onClick={() =>
+              offchainAvailable &&
+              onChange({
+                withOffchainVouches: !data.withOffchainVouches,
+                // The hybrid guest is not a valid signer-selection input.
+                ...(!data.withOffchainVouches ? { withSignerSync: false } : {}),
+              })
+            }
+          />
+        </div>
+
+        {!offchainAvailable && (
+          <Note>
+            This deployment has not published the required two or more initial
+            relayer addresses, so strict off-chain vouches cannot be created
+            here yet.
+          </Note>
+        )}
+
+        {data.withOffchainVouches && (
+          <div className="space-y-2 border-t border-border pt-3">
+            <Field label="Immutable proof-work cap" error={offchainError}>
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-40 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                  type="number"
+                  min={1}
+                  max={MAX_OFFCHAIN_TOTAL_INPUTS}
+                  step={1}
+                  value={data.offchainMaxTotalInputs}
+                  onChange={(event) =>
+                    onChange({
+                      offchainMaxTotalInputs: Number(event.target.value),
+                    })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">
+                  work units
+                </span>
+              </div>
+            </Field>
+            <p className="text-xs text-muted-foreground max-w-xl">
+              This one ceiling covers on-chain leaves, anchor records, and
+              retained off-chain log entries. It can never be raised after
+              creation. Each off-chain entry consumes four units and each anchor
+              consumes one; the protocol ceiling is{' '}
+              {MAX_OFFCHAIN_TOTAL_INPUTS.toLocaleString()}.
+            </p>
+            <Note tone="warning">
+              This lane currently supports EOAs only. Score-selected Safe
+              signers and contribution rounds are unavailable because their
+              guests do not authenticate the strict lane. Weighted and composed
+              creation remain separate network types.
+            </Note>
+          </div>
+        )}
+      </Card>
+
       <Card type="detail" size="md">
         <div className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
@@ -137,9 +215,10 @@ export const AddOnsStep = ({
           <Switch
             size="md"
             enabled={data.withSignerSync}
-            readOnly={!signerSyncAvailable}
+            readOnly={!signerSyncAvailable || data.withOffchainVouches}
             onClick={() =>
               signerSyncAvailable &&
+              !data.withOffchainVouches &&
               onChange({ withSignerSync: !data.withSignerSync })
             }
           />
@@ -149,6 +228,13 @@ export const AddOnsStep = ({
           <Note>
             This deployment has not published a signer verifier and program
             identity, so the optional module cannot be installed here.
+          </Note>
+        )}
+
+        {data.withOffchainVouches && (
+          <Note>
+            Disabled for this hybrid network: the signer-selection guest does
+            not authenticate strict off-chain history.
           </Note>
         )}
 
@@ -333,15 +419,15 @@ export const AddOnsStep = ({
         <Note>
           Skipping the fund closes no doors: a network created without one can
           attach a fund later from its settings page, under Features. The
-          network&apos;s authority (the DAO Safe) must own the attached fund,
-          so for a governed network that later step is a proposal.
+          network&apos;s authority (the DAO Safe) must own the attached fund, so
+          for a governed network that later step is a proposal.
         </Note>
       )}
 
       <Note>
-        Looking for contribution rounds, where members submit work and rate
-        each other for a shared pool? They are not a creation-time choice: a
-        round needs a live network to hang from. Once your network exists, its
+        Looking for contribution rounds, where members submit work and rate each
+        other for a shared pool? They are not a creation-time choice: a round
+        needs a live network to hang from. Once your network exists, its
         authority starts a round from the network&apos;s settings page, under
         Features.
       </Note>

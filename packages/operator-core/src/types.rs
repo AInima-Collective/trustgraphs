@@ -169,6 +169,9 @@ pub struct CheckpointRef {
     /// The block the inputs froze at. Roots file here, not at the submission block.
     pub block_number: u64,
     pub commitments: Commitments,
+    /// Authenticated lane-2 work checkpointed alongside the raw journal commitment. Legacy
+    /// snapshots fall back to `commitments.anchor_count`.
+    pub work_count: u64,
     /// The `paramsHash` `trigger()` pinned. `None` = never pinned, which since M0 means the
     /// checkpoint was minted outside `trigger()` and can never be proven (`UnpinnedCheckpoint`).
     pub pinned_params_hash: Option<B256>,
@@ -229,6 +232,8 @@ impl VaultView {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceSize {
     pub leaf_count: u64,
+    /// Lane-2 authenticated work units. For legacy registries this equals raw anchor count; the
+    /// strict EAS lane prices one anchor plus four units per latest envelope entry.
     pub anchor_count: u64,
     /// Exact program-authenticated cycle estimate when raw lane counts are not a work proxy.
     /// Composition fills this only after fetching and validating every captured source blob.
@@ -295,6 +300,9 @@ pub struct InstanceState {
     /// The live input commitments, for the quiet check.
     pub live_commitments: Commitments,
     pub size: InstanceSize,
+    /// Current combined lane work used for the irreversible ingress-cap alert. `size` may instead
+    /// describe the newest pending checkpoint, which is the proof we are actually pricing.
+    pub live_input_work: u64,
     /// The earliest authenticated input ceiling the operator must alert against. New bounded
     /// anchor registries publish their immutable cap; legacy/no-lane-2 instances use the global
     /// vault/operator ceiling.
@@ -417,6 +425,19 @@ pub enum HoldReason {
     Unfunded {
         reason: u8,
     },
+    /// A strict off-chain lane could not be reconstructed byte-exactly. No trigger or proof is
+    /// purchased until the committed bundle set is available and consensus-valid again.
+    InputUnavailable {
+        stage: AvailabilityStage,
+        checkpoint_id: Option<u64>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AvailabilityStage {
+    LivePretrigger,
+    CheckpointReconstruction,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -10,12 +10,17 @@
  * network's attestations are being indexed" are the same fact, with no config edit and no restart
  * between the transaction and the network being live.
  */
+import { domainSeparator, headDomain } from '@trustgraphs/eas-offchain-client'
 import { ponder } from 'ponder:registry'
-import { instance, merkleFundDistributor } from 'ponder:schema'
+import { easOffchainLane, instance, merkleFundDistributor } from 'ponder:schema'
 import { type Hex, zeroAddress } from 'viem'
 
 import { revalidateNetwork } from './utils'
 import { paramsHash } from '../../frontend/lib/pagerank/encode'
+import {
+  easOffchainAnchorRegistryAbi,
+  easVersionAbi,
+} from '../abis/easOffchainAnchorRegistry'
 import { trustgraphsFactoryAbi } from '../abis/trustgraphsFactory'
 
 /**
@@ -229,3 +234,91 @@ ponder.on('trustgraphsFactory:InstanceCreated', async ({ event, context }) => {
 
   await revalidateNetwork(instanceId)
 })
+
+ponder.on(
+  'trustgraphsFactory:OffchainEasLaneCreated',
+  async ({ event, context }) => {
+    const {
+      instanceId,
+      registry,
+      domainSeparator: easDomain,
+      maxTotalInputs,
+    } = event.args
+    const catalog = await context.db.find(instance, { id: instanceId })
+    if (!catalog) {
+      console.error(
+        `factory: strict lane ${registry} has no preceding instance ${instanceId}; refusing discovery`
+      )
+      return
+    }
+    const params = catalog.params as InstanceParamsJson
+    const [paramsEasDomain, paramsHeadDomain] = params.envelope0DomainSeparators
+    if (
+      params.envelope0DomainSeparators.length !== 2 ||
+      !paramsEasDomain ||
+      !paramsHeadDomain ||
+      paramsEasDomain.toLowerCase() !== easDomain.toLowerCase()
+    ) {
+      console.error(
+        `factory: strict lane ${registry} domain does not match authenticated instance params`
+      )
+      return
+    }
+    const eas = await context.client.readContract({
+      address: registry,
+      abi: easOffchainAnchorRegistryAbi,
+      functionName: 'EAS',
+      blockNumber: event.block.number,
+    })
+    const easVersion = await context.client.readContract({
+      address: eas,
+      abi: easVersionAbi,
+      functionName: 'version',
+      blockNumber: event.block.number,
+    })
+    const chainId = BigInt(context.chain.id)
+    const computedEasDomain = domainSeparator({
+      name: 'EAS Attestation',
+      version: easVersion,
+      chainId,
+      verifyingContract: eas,
+    })
+    const computedHeadDomain = domainSeparator(headDomain(chainId, registry))
+    if (
+      computedEasDomain.toLowerCase() !== easDomain.toLowerCase() ||
+      computedHeadDomain.toLowerCase() !== paramsHeadDomain.toLowerCase()
+    ) {
+      console.error(
+        `factory: strict lane ${registry} EAS/head domains do not reproduce the factory tuple`
+      )
+      return
+    }
+
+    await context.db.insert(easOffchainLane).values({
+      registry,
+      instanceId,
+      factory: event.log.address,
+      chainId: `${context.chain.id}`,
+      eas,
+      easVersion,
+      schemaUid: catalog.schemaUid,
+      domainSeparator: easDomain,
+      headDomainSeparator: paramsHeadDomain,
+      maxTotalInputs,
+      anchorCount: 0n,
+      aggregateEntryCount: 0n,
+      workCount: 0n,
+      validationFailures: 0n,
+      lastAnchorBlock: null,
+      lastVerifiedBlock: null,
+      createdBlock: event.block.number,
+      createdTimestamp: event.block.timestamp,
+      createdTxHash: event.transaction.hash,
+    })
+    await context.db.update(instance, { id: instanceId }).set({
+      offchainRegistry: registry,
+      offchainEasDomainSeparator: easDomain,
+      offchainMaxTotalInputs: maxTotalInputs,
+    })
+  }
+)

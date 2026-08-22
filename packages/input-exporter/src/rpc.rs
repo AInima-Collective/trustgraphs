@@ -59,7 +59,21 @@ impl Rpc {
     }
 
     pub async fn eth_call(&self, to: Address, data: Vec<u8>) -> Result<Vec<u8>> {
-        let params = json!([{ "to": to, "data": format!("0x{}", hex::encode(&data)) }, "latest"]);
+        self.eth_call_at(to, data, "latest").await
+    }
+
+    /// Execute a read against one explicit block tag, keeping state reads and log prefixes on the
+    /// same canonical view during live availability preflight.
+    pub async fn eth_call_at(
+        &self,
+        to: Address,
+        data: Vec<u8>,
+        block: impl Into<String>,
+    ) -> Result<Vec<u8>> {
+        let params = json!([{
+            "to": to,
+            "data": format!("0x{}", hex::encode(&data))
+        }, block.into()]);
         let r = self.call("eth_call", params).await?;
         let s = r.as_str().ok_or_else(|| anyhow!("eth_call returned no data"))?;
         Ok(hex::decode(s.trim_start_matches("0x"))?)

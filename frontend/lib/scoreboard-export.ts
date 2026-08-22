@@ -25,7 +25,9 @@ type PublishedExportMetadata = {
 }
 
 export type SimulationExportProvenance = {
-  kind: 'reduced-lane-1-browser-recompute'
+  kind:
+    | 'reduced-lane-1-browser-recompute'
+    | 'independent-envelope0-browser-recompute'
   inputDataFetchedAt?: string
   referencePublishedRoot?: string
   referencePublishedRootAsOf?: {
@@ -52,6 +54,12 @@ export type SimulationExportProvenance = {
   paramsHash: string
   inputAccumulator: string
   inputLeafCount: string
+  envelope0Audit?: {
+    registry: string
+    nodes: number
+    entries: number
+    verifiedAt: string
+  }
 }
 
 type SimulationExportMetadata = {

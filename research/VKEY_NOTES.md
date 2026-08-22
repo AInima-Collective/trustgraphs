@@ -2,6 +2,29 @@
 
 Measured vkey-rotation behavior, moved out of the public docs (`docs/concepts/networks-and-programs.md`) because it is an engineering field record, not product documentation. The values below are from the dev box; deployment-grade vkeys must be derived on the pinned toolchain recorded in the deploy runbook.
 
+## Strict EAS envelope 0 / trust-graph v2 — 2026-08-20
+
+The opt-in strict EAS off-chain statement is isolated in `packages/eas-offchain-v2`,
+`packages/trustgraph-core`, and the detached `zk/trustgraph-program-v2` guest. The root-producer
+host now loads that guest. The frozen `packages/envelopes`, `packages/pagerank-core`, and the entire
+legacy multi-bin `zk/program` package (including its lockfile) are byte-identical to repository
+HEAD, so signer-sync, contributions, Hypercerts, and the old lane-1 statement do not acquire the new
+dependency graph.
+
+- Toolchain: `cargo-prove sp1` commit `8252c29` (2026-06-25), `rustc +succinct 1.94.0-dev`.
+- Strict guest lock: SP1 guest/runtime/slop crates remain on `6.3.1`; SHA-256 and k256 use the
+  existing SP1 patch tags.
+- Guest ELF SHA-256: `2501be0a68b65607b5db027b578b28477fa5196932f763aaf8b71fad404e8347`.
+- Trust-graph vkey: `0x009fd32b243328e6fc18cca955c291275421e3d521a46e4cd6f7139d2d00c32b`.
+- Executor evidence: the official-SDK two-anchor fixture completed in 736,128 cycles, matched native
+  computation, and committed zero `skippedDigest`; the frozen lane-1 sample also matched native and
+  retained its journal digest `0x35bd9bd4c23a17ccde035938c8457b2614f308e6edba46beece6f3fc9c2167d5`.
+
+Raw ELF hashes from different checkout paths are not a valid non-rotation comparison here: Rust
+embeds source paths in panic strings, shifting `.rodata`, code addresses, and the ELF entry point.
+The companion-program check is therefore the stronger dependency-closure check above: their source,
+manifest, and lock inputs are unchanged in the same checkout/toolchain.
+
 > **vkeys:** a vkey identifies one exact guest binary, so it changes whenever the guest ELF
 > changes — including refactors that don't change semantics (the platform reorg rotated the
 > trust-graph and signer vkeys even though golden vectors stayed byte-identical). Re-derive with

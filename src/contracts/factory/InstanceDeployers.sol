@@ -125,6 +125,7 @@ contract SignerSyncModuleDeployer {
     error InvalidSignerVerifier();
     error SignerProgramVKeyMismatch(bytes32 supplied, bytes32 verifierVKey);
     error InvalidSignerSelection(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps);
+    error HybridScoreSnapshotUnsupported(address anchorRegistry);
 
     event SignerSyncModuleConfigured(
         bytes32 indexed instanceId,
@@ -160,6 +161,16 @@ contract SignerSyncModuleDeployer {
             topN == 0 || topN > MAX_SIGNERS || minThreshold == 0 || minThreshold > topN || targetThresholdBps == 0
                 || targetThresholdBps > 10_000
         ) revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
+
+        // Signer-sync's current guest authenticates lane 1 only. Keep it fail-closed for any
+        // score snapshot that advertises a live lane-2 registry; legacy snapshot types without
+        // this optional getter retain their existing path.
+        (bool anchorOk, bytes memory anchorResult) =
+            address(scoreSnapshot).staticcall(abi.encodeWithSignature("anchorRegistry()"));
+        if (anchorOk && anchorResult.length == 32) {
+            address anchorRegistry = abi.decode(anchorResult, (address));
+            if (anchorRegistry != address(0)) revert HybridScoreSnapshotUnsupported(anchorRegistry);
+        }
 
         (bool ok, bytes memory returned) = address(verifier).staticcall(abi.encodeWithSignature("programVKey()"));
         if (!ok || returned.length != 32) revert InvalidSignerVerifier();

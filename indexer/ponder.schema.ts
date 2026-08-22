@@ -647,6 +647,11 @@ export const instance = onchainTable(
     paramsExecutedTxHash: t.hex(),
     // Null until the first CheckpointParamsPinned event carrying the current version's hash.
     paramsFirstCheckpoint: t.bigint(),
+    // Present only for the opt-in strict EAS offchain v2 hybrid created by the companion factory
+    // event. Null preserves the frozen InstanceCreated catalog shape for every legacy instance.
+    offchainRegistry: t.hex(),
+    offchainEasDomainSeparator: t.hex(),
+    offchainMaxTotalInputs: t.bigint(),
     // Denormalized out of `params` so seed membership is queryable without unpacking the JSON.
     trustedSeeds: t.hex().array().notNull(),
     createdBlock: t.bigint().notNull(),
@@ -664,6 +669,7 @@ export const instance = onchainTable(
     createdBlockIdx: index().on(t.createdBlock),
     createdTimestampIdx: index().on(t.createdTimestamp),
     paramsControllerIdx: index().on(t.paramsController),
+    offchainRegistryIdx: index().on(t.offchainRegistry),
   })
 )
 
@@ -1264,6 +1270,8 @@ export const anchorCheckpoint = onchainTable(
     address: t.hex().notNull(), // MerkleSnapshot that emitted it
     anchorAcc: t.hex().notNull(),
     anchorCount: t.bigint().notNull(), // uint64
+    // Authenticated priced work; equals anchorCount for legacy registries.
+    workCount: t.bigint().notNull(),
     blockTimestamp: t.bigint().notNull(),
     txHash: t.hex().notNull(),
     blockNumber: t.bigint().notNull(),
@@ -1274,6 +1282,157 @@ export const anchorCheckpoint = onchainTable(
     checkpointIdIdx: index().on(t.checkpointId),
     anchorAccIdx: index().on(t.anchorAcc),
     blockNumberIdx: index().on(t.blockNumber),
+  })
+)
+
+/*///////////////////////////////////////////////////////////////
+      STRICT EAS OFFCHAIN V2 — factory-discovered verified state
+//////////////////////////////////////////////////////////////*/
+
+export const easOffchainLane = onchainTable(
+  'eas_offchain_lane',
+  (t) => ({
+    registry: t.hex().primaryKey(),
+    instanceId: t.hex().notNull(),
+    factory: t.hex().notNull(),
+    chainId: t.text().notNull(),
+    eas: t.hex().notNull(),
+    easVersion: t.text().notNull(),
+    schemaUid: t.hex().notNull(),
+    domainSeparator: t.hex().notNull(),
+    headDomainSeparator: t.hex().notNull(),
+    maxTotalInputs: t.bigint().notNull(),
+    anchorCount: t.bigint().notNull(),
+    aggregateEntryCount: t.bigint().notNull(),
+    workCount: t.bigint().notNull(),
+    validationFailures: t.bigint().notNull(),
+    lastAnchorBlock: t.bigint(),
+    lastVerifiedBlock: t.bigint(),
+    createdBlock: t.bigint().notNull(),
+    createdTimestamp: t.bigint().notNull(),
+    createdTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    instanceIdx: index().on(t.instanceId),
+    factoryIdx: index().on(t.factory),
+    workIdx: index().on(t.workCount),
+  })
+)
+
+export const easOffchainRegistration = onchainTable(
+  'eas_offchain_registration',
+  (t) => ({
+    registry: t.hex().notNull(),
+    nodeId: t.hex().notNull(),
+    owner: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+    timestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.registry, t.nodeId] }),
+    ownerIdx: index().on(t.owner),
+  })
+)
+
+export const easOffchainNode = onchainTable(
+  'eas_offchain_node',
+  (t) => ({
+    registry: t.hex().notNull(),
+    nodeId: t.hex().notNull(),
+    owner: t.hex().notNull(),
+    anchorId: t.text().notNull(),
+    head: t.hex().notNull(),
+    previousHead: t.hex().notNull(),
+    count: t.bigint().notNull(),
+    dataCommitment: t.hex().notNull(),
+    cid: t.text().notNull(),
+    verified: t.boolean().notNull(),
+    validationError: t.text(),
+    updatedBlock: t.bigint().notNull(),
+    updatedTimestamp: t.bigint().notNull(),
+    updatedTxHash: t.hex().notNull(),
+  }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.registry, t.nodeId] }),
+    ownerIdx: index().on(t.owner),
+    verifiedIdx: index().on(t.verified),
+    updatedBlockIdx: index().on(t.updatedBlock),
+  })
+)
+
+export const easOffchainAnchor = onchainTable(
+  'eas_offchain_anchor',
+  (t) => ({
+    id: t.text().primaryKey(),
+    registry: t.hex().notNull(),
+    instanceId: t.hex().notNull(),
+    foldIndex: t.bigint().notNull(),
+    nodeId: t.hex().notNull(),
+    owner: t.hex().notNull(),
+    envelopeKind: t.integer().notNull(),
+    schemaUid: t.hex().notNull(),
+    previousHead: t.hex().notNull(),
+    head: t.hex().notNull(),
+    count: t.bigint().notNull(),
+    dataCommitment: t.hex().notNull(),
+    cid: t.text().notNull(),
+    headSignature: t.hex().notNull(),
+    payloadHex: t.hex(),
+    payloadBytes: t.integer(),
+    verified: t.boolean().notNull(),
+    validationError: t.text(),
+    gatewayIndex: t.integer(),
+    fetchLatencyMs: t.integer(),
+    blockTimestamp: t.bigint().notNull(),
+    txHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+  }),
+  (t) => ({
+    registryFoldIdx: index().on(t.registry, t.foldIndex),
+    nodeHistoryIdx: index().on(t.registry, t.nodeId, t.foldIndex),
+    cidIdx: index().on(t.dataCommitment),
+    verifiedIdx: index().on(t.verified),
+  })
+)
+
+/**
+ * Complete ordered mutations materialized from one independently verified canonical payload.
+ *
+ * Keeping revokes is consensus-critical for a hybrid graph: dropping the tombstone here would let
+ * an older lane-1 vouch reappear in product/API reconciliation after the newest off-chain vouch is
+ * revoked. Rows are repeated under each newest `anchorId` deliberately; consumers select the
+ * current node's anchor and get one self-contained authenticated log.
+ */
+export const easOffchainMutation = onchainTable(
+  'eas_offchain_mutation',
+  (t) => ({
+    id: t.text().primaryKey(),
+    anchorId: t.text().notNull(),
+    registry: t.hex().notNull(),
+    nodeId: t.hex().notNull(),
+    kind: t.integer().notNull(), // 0 = attest, 1 = in-log revoke
+    uid: t.hex().notNull(),
+    recipient: t.hex().notNull(),
+    /** Consensus effective time: signed time for attest, first-commit anchor time for revoke. */
+    time: t.bigint().notNull(),
+    /** The referenced EAS v2 attestation's signed time (also retained on its revoke row). */
+    signedTime: t.bigint().notNull(),
+    data: t.hex().notNull(),
+    sequence: t.integer().notNull(),
+    firstAnchorId: t.text().notNull(),
+    firstAnchorFoldIndex: t.bigint().notNull(),
+    firstAnchorBlock: t.bigint().notNull(),
+    firstAnchorTimestamp: t.bigint().notNull(),
+    firstAnchorTxHash: t.hex().notNull(),
+    blockNumber: t.bigint().notNull(),
+  }),
+  (t) => ({
+    anchorIdx: index().on(t.anchorId),
+    nodeIdx: index().on(t.registry, t.nodeId),
+    recipientIdx: index().on(t.recipient),
+    uidIdx: index().on(t.uid),
+    firstAnchorIdx: index().on(t.firstAnchorId),
   })
 )
 

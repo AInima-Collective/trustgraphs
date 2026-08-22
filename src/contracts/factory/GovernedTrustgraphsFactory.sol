@@ -90,6 +90,7 @@ contract GovernedTrustgraphsFactory {
     error InitialFeeUnpriced(bytes32 program, uint8 band);
     error InitialCapBelowFee(uint96 supplied, uint256 feeUsd);
     error GovernanceDefaultsMismatch();
+    error HybridSignerSyncUnsupported();
 
     event GovernedInstanceCreated(
         bytes32 indexed instanceId,
@@ -146,6 +147,34 @@ contract GovernedTrustgraphsFactory {
         InitialPolicy calldata policy,
         SignerSyncConfig calldata signerSync
     ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        TrustgraphsFactory.OffchainEasConfig memory disabled;
+        return _createGovernedInstance(requested, policy, signerSync, disabled, false);
+    }
+
+    /// @notice Create a governed strict-hybrid instance. Signer-sync is deliberately unavailable:
+    ///         its current guest authenticates lane 1 only and must never rotate owners from a
+    ///         score root that also depends on strict off-chain history.
+    function createGovernedHybridInstance(
+        TrustgraphsFactory.CreateArgs calldata requested,
+        TrustgraphsFactory.OffchainEasConfig calldata offchain,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync
+    ) external payable returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
+        if (signerSync.enabled) revert HybridSignerSyncUnsupported();
+        TrustgraphsFactory.OffchainEasConfig memory config = offchain;
+        return _createGovernedInstance(requested, policy, signerSync, config, true);
+    }
+
+    function _createGovernedInstance(
+        TrustgraphsFactory.CreateArgs calldata requested,
+        InitialPolicy calldata policy,
+        SignerSyncConfig calldata signerSync,
+        TrustgraphsFactory.OffchainEasConfig memory offchain,
+        bool hybrid
+    )
+        internal
+        returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot)
+    {
         IProvingVault vault = FACTORY.VAULT();
         if (msg.value == 0) {
             if (policy.minPaidIntervalBlocks != 0 || policy.maxPerRootUsd != 0) revert PolicyRequiresPrepay();
@@ -183,7 +212,10 @@ contract GovernedTrustgraphsFactory {
             if (!funded) revert SafeFundingFailed();
         }
 
-        _execSafe(safe, address(FACTORY), msg.value, abi.encodeCall(TrustgraphsFactory.createInstance, (args)));
+        bytes memory createCall = hybrid
+            ? abi.encodeCall(TrustgraphsFactory.createHybridInstance, (args, offchain))
+            : abi.encodeCall(TrustgraphsFactory.createInstance, (args));
+        _execSafe(safe, address(FACTORY), msg.value, createCall);
 
         // The Safe is the actual factory caller, hence part of the canonical instance id.
         instanceId = FACTORY.computeInstanceId(safeAddress, args.name, args.salt);

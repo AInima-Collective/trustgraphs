@@ -6,10 +6,7 @@ import { notFound, redirect } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getCatalog, getNetwork } from '@/lib/catalog.server'
-import {
-  VISIBLE_HYPERCERTS_NETWORKS,
-  VISIBLE_SEED_NETWORKS,
-} from '@/lib/config'
+import { VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
@@ -24,24 +21,12 @@ import { NetworkPage } from './component'
 import { ContributionsNetworkPage } from './contributions'
 import { HypercertsNetworkPage } from './hypercerts'
 
-// The trust-graph half of this route is catalog-driven, so its cached window is the catalog's
-// (seconds), not an hour. `dynamicParams` stays on its default (true): an id that was not known
-// when this build ran renders on demand, which is the whole point of a permissionless factory.
-// Must be a literal — Next statically analyses this export. Keep it equal to
-// `CATALOG_REVALIDATE_SECONDS` in lib/catalog.server.ts.
-export const revalidate = 10
-
-export async function generateStaticParams() {
-  // Build-time prerender list only. It is deliberately the STATIC seed plus the other programs —
-  // the indexer is not a build dependency, and every network it knows about that is missing here
-  // is rendered on demand instead. Contribution rounds are factory-minted, so they are always
-  // on-demand: the runtime round catalog is their only source.
-  return [...VISIBLE_SEED_NETWORKS, ...VISIBLE_HYPERCERTS_NETWORKS].map(
-    (network) => ({
-      id: network.id,
-    })
-  )
-}
+// A permissionless factory can mint an id after this production bundle was built. Next 15 treats
+// an ISR route with generated params as static, then rejects `getNetwork()`'s required no-store
+// fallback for that fresh id as a static-to-dynamic transition. Make the detail route explicitly
+// request-time; its catalog fetch still keeps its own ten-second cache, while the direct instance
+// fallback can truthfully render a just-created network without a rebuild.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({
   params,

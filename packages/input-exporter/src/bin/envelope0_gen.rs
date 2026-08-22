@@ -1,114 +1,113 @@
-//! envelope0-gen — build a signed envelope-0 chained log (an `Envelope0Witness`) for a key.
+//! `envelope0-gen` — deterministic fixture/debug generator for `Envelope0PayloadV1`.
 //!
-//! This is the attester-side tool: it appends EAS-offchain-v2 attestations (and in-log
-//! revocations) to a log, signs each attestation (EIP-712) and the running head (EIP-191),
-//! and writes the witness JSON the exporter merges into `GuestInput.lane2`. It also prints
-//! the values needed on-chain: the nodeId to `register()` and the head to `anchor()`.
-//!
-//! Example (one edge, confidence 60):
-//!   envelope0-gen --key 0x... --domain-separator 0x... --schema 0xab..ab \
-//!     --attest `0x<recipient>:60` --out log.json
+//! This raw-key CLI is not the product signing path. M3 uses wallet-provider signatures and random
+//! salts. Here deterministic salts make local fixtures reproducible; the output is the exact binary
+//! payload consumed by the guest and accepted by `input-exporter --envelope0-log`.
 
 use alloy_primitives::{hex, keccak256, Address, B256, U256};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use envelopes_crate::eas_offchain::{
-    address_node_id, attest_struct_hash, eip712_digest, head_payload, log_head, offchain_uid_v2,
-    Envelope0Witness, LogEntry, OffchainAttestation, ENTRY_ATTEST, ENTRY_REVOKE,
+use eas_offchain_v2::{
+    address_node_id, attest_struct_hash, eip712_digest, log_head, offchain_uid_v2, payload_v1,
+    LogEntry, OffchainAttestation, ENTRY_ATTEST, ENTRY_REVOKE,
 };
-use envelopes_crate::ecdsa::eip191_digest32;
 use k256::ecdsa::SigningKey;
 
+const ZERO_B256: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 #[derive(Parser, Debug)]
-#[command(about = "Build a signed envelope-0 chained log (Envelope0Witness JSON)")]
+#[command(about = "Build canonical Envelope0PayloadV1 bytes and a typed head authorization")]
 struct Args {
-    /// The attester's secp256k1 private key (0x-hex, 32 bytes).
+    /// Fixture/debug secp256k1 key. Never pass a funded or deployment key.
     #[arg(long)]
     key: String,
-    /// The pinned EIP-712 domain separator the instance's params accept.
+    /// Pinned official EAS `EAS Attestation` domain separator.
+    #[arg(long, alias = "domain-separator")]
+    eas_domain_separator: String,
+    /// Pinned `Trustgraphs Offchain Head` v2 domain separator for this chain and registry.
     #[arg(long)]
-    domain_separator: String,
-    /// The attestation schema UID (same as lane 1's).
+    head_domain_separator: String,
+    /// Canonical vouch schema UID.
     #[arg(long)]
     schema: String,
-    /// Attestations to append, as `0x<recipient>:<confidence>[:<time>]` (repeatable, in order).
+    /// Registry predecessor head (zero for a first anchor).
+    #[arg(long, default_value = ZERO_B256)]
+    previous_head: String,
+    /// Append `0x<recipient>:<confidence>[:<time>]` (repeatable, in order).
     #[arg(long)]
     attest: Vec<String>,
-    /// In-log revocations, as 0-based indexes into the ATTEST list (repeatable; applied after
-    /// all attests, in the given order).
+    /// Append a revoke naming a 0-based index in the attest list (repeatable, after all attests).
     #[arg(long)]
     revoke: Vec<usize>,
-    /// Output path for the witness JSON.
-    #[arg(long, default_value = "envelope0_log.json")]
+    /// Output path for exact canonical payload bytes.
+    #[arg(long, default_value = "envelope0_payload.bin")]
     out: String,
 }
 
-fn sign_prehash(sk: &SigningKey, prehash: &B256) -> Result<Vec<u8>> {
-    let (sig, _) = sk
+fn sign_canonical(sk: &SigningKey, prehash: &B256) -> Result<Vec<u8>> {
+    let (signature, _) = sk
         .sign_prehash_recoverable(prehash.as_slice())
-        .map_err(|e| anyhow!("signing failed: {e}"))?;
-    let sig = sig.normalize_s().unwrap_or(sig);
-    for v in 0u8..=1 {
-        let rid = k256::ecdsa::RecoveryId::from_byte(v).unwrap();
-        if let Ok(vk) =
-            k256::ecdsa::VerifyingKey::recover_from_prehash(prehash.as_slice(), &sig, rid)
-        {
-            if vk == *sk.verifying_key() {
-                let mut out = sig.to_bytes().to_vec();
-                out.push(v);
-                return Ok(out);
+        .map_err(|error| anyhow!("signing failed: {error}"))?;
+    let signature = signature.normalize_s().unwrap_or(signature);
+    for parity in 0u8..=1 {
+        let recovery_id = k256::ecdsa::RecoveryId::from_byte(parity).unwrap();
+        if let Ok(verifying_key) = k256::ecdsa::VerifyingKey::recover_from_prehash(
+            prehash.as_slice(),
+            &signature,
+            recovery_id,
+        ) {
+            if verifying_key == *sk.verifying_key() {
+                let mut output = signature.to_bytes().to_vec();
+                output.push(parity + 27);
+                return Ok(output);
             }
         }
     }
-    bail!("no recovery id matched (unreachable)")
+    bail!("no recovery id matched")
 }
 
-fn ethereum_wire_signature(mut signature: Vec<u8>) -> Vec<u8> {
-    if let Some(v) = signature.last_mut() {
-        if *v < 27 {
-            *v += 27;
-        }
+fn parse_b256(value: &str) -> Result<B256> {
+    let bytes = hex::decode(value.trim_start_matches("0x"))?;
+    if bytes.len() != 32 {
+        bail!("expected 32 bytes, got {}", bytes.len());
     }
-    signature
-}
-
-fn parse_b256(s: &str) -> Result<B256> {
-    let b = hex::decode(s.trim_start_matches("0x"))?;
-    if b.len() != 32 {
-        bail!("expected 32 bytes, got {}", b.len());
-    }
-    Ok(B256::from_slice(&b))
+    Ok(B256::from_slice(&bytes))
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.attest.is_empty() {
+        bail!("at least one --attest is required");
+    }
     let key_bytes = hex::decode(args.key.trim_start_matches("0x")).context("bad --key hex")?;
-    let sk = SigningKey::from_slice(&key_bytes).map_err(|e| anyhow!("bad --key: {e}"))?;
-    let unc = sk.verifying_key().to_encoded_point(false);
-    let owner = Address::from_slice(&keccak256(&unc.as_bytes()[1..])[12..]);
-    let ds = parse_b256(&args.domain_separator)?;
+    let signing_key =
+        SigningKey::from_slice(&key_bytes).map_err(|error| anyhow!("bad --key: {error}"))?;
+    let uncompressed = signing_key.verifying_key().to_encoded_point(false);
+    let owner = Address::from_slice(&keccak256(&uncompressed.as_bytes()[1..])[12..]);
+    let eas_domain = parse_b256(&args.eas_domain_separator)?;
+    let head_domain = parse_b256(&args.head_domain_separator)?;
     let schema = parse_b256(&args.schema)?;
+    let previous_head = parse_b256(&args.previous_head)?;
 
-    let mut entries: Vec<LogEntry> = Vec::new();
-    let mut attestations: Vec<OffchainAttestation> = Vec::new();
-    let mut uids: Vec<B256> = Vec::new();
-
-    for (i, spec) in args.attest.iter().enumerate() {
-        let parts: Vec<&str> = spec.split(':').collect();
-        if parts.len() < 2 {
+    let mut entries = Vec::new();
+    let mut attestations = Vec::new();
+    let mut uids = Vec::new();
+    for (index, spec) in args.attest.iter().enumerate() {
+        let parts = spec.split(':').collect::<Vec<_>>();
+        if !(2..=3).contains(&parts.len()) {
             bail!("--attest must be 0x<recipient>:<confidence>[:<time>], got {spec}");
         }
         let recipient: Address = parts[0].parse().context("bad recipient")?;
         let confidence: u64 = parts[1].parse().context("bad confidence")?;
-        let time: u64 = if parts.len() > 2 { parts[2].parse()? } else { 1000 + i as u64 };
+        let time = if parts.len() == 3 { parts[2].parse()? } else { 1000 + index as u64 };
 
-        // Same ABI shape as lane 1: (string comment, uint256 confidence) — comment empty.
-        let mut data = vec![0u8; 64];
-        data[32..].copy_from_slice(&U256::from(confidence).to_be_bytes::<32>());
-
+        // Canonical abi.encode(string(""), confidence): offset=64, confidence, length=0.
+        let mut data = vec![0u8; 96];
+        data[31] = 64;
+        data[32..64].copy_from_slice(&U256::from(confidence).to_be_bytes::<32>());
         let mut salt = [0u8; 32];
-        salt[31] = (i + 1) as u8; // deterministic per-entry salt for reproducible fixtures
-        let mut a = OffchainAttestation {
+        salt[24..].copy_from_slice(&(index as u64 + 1).to_be_bytes());
+        let mut attestation = OffchainAttestation {
             version: 2,
             schema,
             recipient,
@@ -118,57 +117,65 @@ fn main() -> Result<()> {
             ref_uid: B256::ZERO,
             data,
             salt: B256::from(salt),
-            signature: vec![],
+            signature: Vec::new(),
         };
-        a.signature = sign_prehash(&sk, &eip712_digest(ds, attest_struct_hash(&a)))?;
-        let uid = offchain_uid_v2(&a);
+        attestation.signature = sign_canonical(
+            &signing_key,
+            &eip712_digest(eas_domain, attest_struct_hash(&attestation)),
+        )?;
+        let uid = offchain_uid_v2(&attestation);
         entries.push(LogEntry { kind: ENTRY_ATTEST, uid });
+        attestations.push(attestation);
         uids.push(uid);
-        attestations.push(a);
     }
-
-    for idx in &args.revoke {
-        let uid = *uids.get(*idx).ok_or_else(|| anyhow!("--revoke {idx} out of range"))?;
+    for index in args.revoke {
+        let uid = *uids.get(index).ok_or_else(|| anyhow!("--revoke {index} out of range"))?;
         entries.push(LogEntry { kind: ENTRY_REVOKE, uid });
     }
 
-    let head = log_head(&entries);
-    let head_signature =
-        sign_prehash(&sk, &eip191_digest32(&head_payload(head, entries.len() as u64)))?;
-    let witness = Envelope0Witness { owner, entries, attestations, head_signature };
+    let payload = payload_v1::PayloadV1 { owner, entries, attestations };
+    let bytes = payload_v1::encode(&payload)
+        .map_err(|error| anyhow!("{}: payload encoding failed", error.code()))?;
+    let node_id = address_node_id(owner);
+    let head = log_head(&payload.entries);
+    let data_commitment = payload_v1::data_commitment(&bytes);
+    let message = payload_v1::AnchorMessage {
+        node_id,
+        envelope_kind: 0,
+        schema_uid: schema,
+        previous_head,
+        head,
+        count: payload.entries.len() as u64,
+        data_commitment,
+    };
+    let head_signature = sign_canonical(
+        &signing_key,
+        &eip712_digest(head_domain, payload_v1::anchor_struct_hash(&message)),
+    )?;
 
-    std::fs::write(&args.out, serde_json::to_string_pretty(&witness)?)?;
-    println!("owner:   0x{}", hex::encode(owner));
-    println!("nodeId:  0x{}", hex::encode(address_node_id(owner)));
-    println!("head:    0x{}", hex::encode(head));
-    println!("count:   {}", witness.entries.len());
-    // The head co-signature doubles as the on-chain ingress proof (H-5):
-    // anchor(bytes32 nodeId, uint8 0, bytes32 head, uint64 count, bytes32 dataCommitment, bytes headSig)
-    // The guest's k256 recovery accepts parity 0/1, while OpenZeppelin ECDSA uses the Ethereum
-    // wire convention 27/28. Normalize only the printed transaction argument; keep the witness
-    // bytes exactly as signed for guest/native parity.
-    let onchain_head_signature = ethereum_wire_signature(witness.head_signature.clone());
-    println!("headSig: 0x{}", hex::encode(onchain_head_signature));
-    println!("wrote {}", args.out);
+    std::fs::write(&args.out, &bytes)?;
+    println!("owner:          0x{}", hex::encode(owner));
+    println!("nodeId:         0x{}", hex::encode(node_id));
+    println!("previousHead:   0x{}", hex::encode(previous_head));
+    println!("head:           0x{}", hex::encode(head));
+    println!("count:          {}", payload.entries.len());
+    println!("dataCommitment: 0x{}", hex::encode(data_commitment));
+    println!("cid:             {}", payload_v1::cid(&bytes));
+    println!("headSignature:   0x{}", hex::encode(head_signature));
+    println!("wrote {} canonical bytes to {}", bytes.len(), args.out);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ethereum_wire_signature;
+    use super::*;
 
     #[test]
-    fn printed_signature_uses_openzeppelin_recovery_ids() {
-        let mut parity_zero = vec![0u8; 65];
-        let mut parity_one = vec![0u8; 65];
-        parity_one[64] = 1;
-        let mut already_wire = vec![0u8; 65];
-        already_wire[64] = 28;
-
-        assert_eq!(ethereum_wire_signature(parity_zero.clone())[64], 27);
-        assert_eq!(ethereum_wire_signature(parity_one)[64], 28);
-        assert_eq!(ethereum_wire_signature(already_wire.clone()), already_wire);
-        parity_zero.clear();
-        assert!(ethereum_wire_signature(parity_zero).is_empty());
+    fn debug_signatures_use_the_canonical_wire_recovery_ids() {
+        let signing_key = SigningKey::from_slice(&[0x42; 32]).unwrap();
+        let signature = sign_canonical(&signing_key, &B256::from([7; 32])).unwrap();
+        assert_eq!(signature.len(), 65);
+        assert!(matches!(signature[64], 27 | 28));
+        payload_v1::canonical_signature(&signature).unwrap();
     }
 }

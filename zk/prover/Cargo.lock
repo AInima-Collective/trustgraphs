@@ -2541,6 +2541,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "eas-offchain-v2"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "k256",
+ "serde",
+ "sha2 0.10.9",
+ "zk-core",
+]
+
+[[package]]
 name = "ecdsa"
 version = "0.16.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7642,6 +7653,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "trustgraph-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "eas-offchain-v2",
+ "pagerank-core",
+ "serde",
+ "zk-core",
+]
+
+[[package]]
 name = "trustgraph-prover"
 version = "0.1.0"
 dependencies = [
@@ -7671,6 +7693,7 @@ dependencies = [
  "sp1-build",
  "sp1-core-executor",
  "sp1-sdk",
+ "trustgraph-core",
  "uuid",
  "weighted-prior-core",
  "weighted-prior-research",

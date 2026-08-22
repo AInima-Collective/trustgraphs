@@ -19,6 +19,7 @@ import {
     MerkleFundDistributorDeployer,
     TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
+import {EasOffchainAnchorRegistryDeployer} from "contracts/factory/HybridInstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
@@ -55,6 +56,7 @@ abstract contract TrustgraphsFactoryBase is Test {
     MerkleSnapshotDeployer internal snapshotDeployer;
     MerkleFundDistributorDeployer internal distributorDeployer;
     TrustgraphsParamsControllerDeployer internal paramsControllerDeployer;
+    EasOffchainAnchorRegistryDeployer internal easRegistryDeployer;
     TrustgraphsFactory internal factory;
 
     /// @notice The registry's own admin (the operational timelock in production).
@@ -112,6 +114,7 @@ abstract contract TrustgraphsFactoryBase is Test {
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
         paramsControllerDeployer = new TrustgraphsParamsControllerDeployer();
+        easRegistryDeployer = new EasOffchainAnchorRegistryDeployer();
         // A real vault, so the prepay path in `createInstance` is exercised rather than stubbed.
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -127,6 +130,7 @@ abstract contract TrustgraphsFactoryBase is Test {
             snapshotDeployer,
             distributorDeployer,
             paramsControllerDeployer,
+            easRegistryDeployer,
             EPOCH_FLOOR,
             vault
         );

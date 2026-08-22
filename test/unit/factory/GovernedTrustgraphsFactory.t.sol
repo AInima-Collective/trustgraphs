@@ -17,6 +17,7 @@ import {TrustgraphsFactory} from "contracts/factory/TrustgraphsFactory.sol";
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
+import {EasOffchainAnchorRegistry} from "contracts/registry/EasOffchainAnchorRegistry.sol";
 import {MerkleGovModule} from "contracts/zodiac/MerkleGovModule.sol";
 import {DelayedRecoveryModule} from "contracts/zodiac/DelayedRecoveryModule.sol";
 import {SafeExecutionGuard} from "contracts/zodiac/SafeExecutionGuard.sol";
@@ -161,6 +162,72 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
+    }
+
+    function test_CreateGovernedHybridMakesSafeTheStrictLaneAdmin() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("governed-hybrid");
+        TrustgraphsFactory.OffchainEasConfig memory offchain = _governedOffchainConfig();
+
+        vm.prank(creator);
+        (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedHybridInstance(
+            args, offchain, _unpaidPolicy(), _noSigner()
+        );
+
+        EasOffchainAnchorRegistry anchors =
+            EasOffchainAnchorRegistry(address(MerkleSnapshot(snapshot).anchorRegistry()));
+        assertTrue(address(anchors) != address(0));
+        assertEq(address(anchors.snapshot()), snapshot);
+        assertTrue(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), safe), "Safe controls relayer policy");
+        assertFalse(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), address(governedFactory)));
+        assertEq(governedFactory.authorityOf(instanceId).safe, safe);
+        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(governedFactory.authorityOf(instanceId).governanceModule));
+    }
+
+    function test_GovernedHybridAndSignerSyncAreRejectedAtomically() public {
+        GovernedTrustgraphsFactory.SignerSyncConfig memory signer = _noSigner();
+        signer.enabled = true;
+        vm.expectRevert(GovernedTrustgraphsFactory.HybridSignerSyncUnsupported.selector);
+        governedFactory.createGovernedHybridInstance(
+            _args("hybrid-signer"), _governedOffchainConfig(), _unpaidPolicy(), signer
+        );
+        assertEq(registry.instanceCount(), 0);
+    }
+
+    function test_SignerSyncDeployerRejectsAnyHybridScoreSnapshot() public {
+        vm.prank(creator);
+        (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedHybridInstance(
+            _args("hybrid-defense"), _governedOffchainConfig(), _unpaidPolicy(), _noSigner()
+        );
+        address anchorRegistry = address(MerkleSnapshot(snapshot).anchorRegistry());
+        IAttestationAccumulator accumulator =
+            IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator()));
+        bytes32 paramsHash = MerkleSnapshot(snapshot).paramsHash();
+        vm.expectRevert(
+            abi.encodeWithSelector(SignerSyncModuleDeployer.HybridScoreSnapshotUnsupported.selector, anchorRegistry)
+        );
+        signerSyncDeployer.deploy(
+            instanceId,
+            safe,
+            IZkVerifier(address(verifier)),
+            accumulator,
+            ISignerSyncCheckpointSource(snapshot),
+            paramsHash,
+            bytes32(uint256(1)),
+            1,
+            1,
+            10_000
+        );
+    }
+
+    function _governedOffchainConfig()
+        internal
+        pure
+        returns (TrustgraphsFactory.OffchainEasConfig memory config)
+    {
+        config.maxTotalInputs = 200_000;
+        config.initialRelayers = new address[](2);
+        config.initialRelayers[0] = address(0x111);
+        config.initialRelayers[1] = address(0x222);
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {

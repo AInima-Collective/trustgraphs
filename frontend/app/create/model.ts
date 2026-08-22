@@ -35,6 +35,27 @@ export const IS_LOCAL_CHAIN = CHAIN === 'local'
 /** Matches `TrustgraphsFactory.MAX_NAME_BYTES` / `MAX_TRUSTED_SEEDS`. */
 export const MAX_NAME_BYTES = 64
 export const MAX_SEEDS = 64
+/** Frozen proving boundary shared by InputCapacity and EasOffchainAnchorRegistry. */
+export const MAX_OFFCHAIN_TOTAL_INPUTS = 200_000
+
+const configuredRelayerText =
+  process.env.NEXT_PUBLIC_EAS_OFFCHAIN_RELAYER_ADDRESSES ?? ''
+
+/** Public addresses granted the initial registry ANCHORER_ROLE at hybrid creation. */
+export const OFFCHAIN_INITIAL_RELAYERS = Array.from(
+  new Set(
+    configuredRelayerText
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(
+        (value) => isAddress(value, { strict: false }) && value !== zeroAddress
+      )
+  )
+) as Hex[]
+
+export const isOffchainVouchCreationAvailable = (): boolean =>
+  OFFCHAIN_INITIAL_RELAYERS.length >= 2 &&
+  OFFCHAIN_INITIAL_RELAYERS.length <= 16
 
 /**
  * The wizard's steps, by name rather than position. Everything that used to hardcode a step index
@@ -147,6 +168,10 @@ export type WizardData = {
   maxPerRootUsd: string
   /** Install the score-selected Safe signer module in the same governed creation transaction. */
   withSignerSync: boolean
+  /** Add the strict, retained off-chain EAS v2 lane. On-chain-only remains the default. */
+  withOffchainVouches: boolean
+  /** Immutable combined lane-1 + strict-lane work ceiling. */
+  offchainMaxTotalInputs: number
   /** Number of highest-scoring accounts considered for Safe ownership. */
   signerTopN: number
   /** Absolute lower bound for the Safe threshold. */
@@ -170,6 +195,8 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   prepayEth: '',
   maxPerRootUsd: DEFAULT_MAX_PER_ROOT_USD,
   withSignerSync: false,
+  withOffchainVouches: false,
+  offchainMaxTotalInputs: MAX_OFFCHAIN_TOTAL_INPUTS,
   signerTopN: 5,
   signerMinThreshold: 1,
   signerTargetThresholdPct: 50,
@@ -377,6 +404,9 @@ export const isSignerSyncAvailable = (): boolean => {
 
 export const signerSyncProblem = (data: WizardData): string | null => {
   if (!data.withSignerSync) return null
+  if (data.withOffchainVouches) {
+    return 'Score-selected Safe signers cannot be combined with gasless off-chain vouches.'
+  }
   if (!isSignerSyncAvailable()) {
     return 'Score-selected Safe signers are not configured on this deployment.'
   }
@@ -400,6 +430,24 @@ export const signerSyncProblem = (data: WizardData): string | null => {
     data.signerTargetThresholdPct > 100
   ) {
     return 'The target threshold must be between 1% and 100%.'
+  }
+  return null
+}
+
+export const offchainVouchesProblem = (data: WizardData): string | null => {
+  if (!data.withOffchainVouches) return null
+  if (!isOffchainVouchCreationAvailable()) {
+    return 'This deployment needs between 2 and 16 distinct public relayer addresses before it can create a gasless off-chain lane.'
+  }
+  if (
+    !Number.isInteger(data.offchainMaxTotalInputs) ||
+    data.offchainMaxTotalInputs < 1 ||
+    data.offchainMaxTotalInputs > MAX_OFFCHAIN_TOTAL_INPUTS
+  ) {
+    return `Choose an immutable work cap between 1 and ${MAX_OFFCHAIN_TOTAL_INPUTS.toLocaleString()}.`
+  }
+  if (data.withSignerSync) {
+    return 'Turn off score-selected Safe signers before enabling gasless off-chain vouches.'
   }
   return null
 }
@@ -447,6 +495,18 @@ export type SignerSyncCreateConfig = {
   minThreshold: number
   targetThresholdBps: number
 }
+
+export type OffchainEasCreateConfig = {
+  maxTotalInputs: bigint
+  initialRelayers: readonly Hex[]
+}
+
+export const buildOffchainEasConfig = (
+  data: WizardData
+): OffchainEasCreateConfig => ({
+  maxTotalInputs: BigInt(data.offchainMaxTotalInputs),
+  initialRelayers: OFFCHAIN_INITIAL_RELAYERS,
+})
 
 /** Exact optional module config consumed by `createGovernedInstance`. */
 export const buildSignerSyncConfig = (
@@ -526,6 +586,22 @@ export const buildCreateArgs = ({
  * words the screens used, rather than showing the raw revert.
  */
 const FACTORY_ERROR_COPY: [string, string][] = [
+  [
+    'HybridSignerSyncUnsupported',
+    'Score-selected Safe signers cannot be installed on a network with strict off-chain vouches.',
+  ],
+  [
+    'InvalidRelayerCount',
+    'Gasless off-chain vouches need between 2 and 16 distinct initial relayers.',
+  ],
+  [
+    'InvalidRelayer',
+    'The configured initial relayer set contains a zero or duplicate address.',
+  ],
+  [
+    'InvalidInputCapacity',
+    `The immutable proof-work cap must be between 1 and ${MAX_OFFCHAIN_TOTAL_INPUTS.toLocaleString()}.`,
+  ],
   ['EmptyName', 'Your network needs a name.'],
   [
     'NameTooLong',

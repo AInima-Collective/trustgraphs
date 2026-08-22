@@ -63,6 +63,19 @@ pub struct Proved {
     pub output_root: B256,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Envelope0PreflightReport {
+    pub block: u64,
+    pub anchor_count: u64,
+    pub nodes: usize,
+    pub mutations: usize,
+    pub cache_hits: usize,
+    pub gateway_attempts: usize,
+    pub exact_readers: usize,
+    pub fetch_latency_ms: u64,
+}
+
 /// What a held proof needs to be submitted, reloaded after a restart.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HeldProof {
@@ -118,11 +131,21 @@ pub fn build_input(
     // Lane 2, when this instance has one. Without it the exporter emits a lane-1-only input whose
     // journal commits the zero anchor pair, and `submitProof` binds the CHECKPOINTED pair — so the
     // digest would not match and the proof would be wasted.
-    let anchor_args: Vec<String> = if view.anchor_registry == alloy_primitives::Address::ZERO {
+    let mut anchor_args: Vec<String> = if view.anchor_registry == alloy_primitives::Address::ZERO {
         Vec::new()
     } else {
         vec!["--anchor-registry".into(), format!("{:#x}", view.anchor_registry)]
     };
+    if !anchor_args.is_empty() {
+        for target in cfg.ipfs.resolved_targets() {
+            anchor_args.push("--envelope0-gateway".into());
+            anchor_args.push(target.gateway);
+        }
+        anchor_args.push("--envelope0-cache".into());
+        anchor_args.push(cfg.ipfs.envelope0_cache_dir.clone());
+        anchor_args.push("--envelope0-fetch-concurrency".into());
+        anchor_args.push(cfg.ipfs.envelope0_fetch_concurrency.to_string());
+    }
     let dir = out_dir(entry, checkpoint_id);
     std::fs::create_dir_all(&dir)?;
     let input_path = dir.join("input.json");
@@ -339,6 +362,64 @@ pub fn build_input(
     native_journal(entry.program, &input_path, recipient)
 }
 
+/// Verify the complete current strict lane before paying to freeze it. Legacy/no-lane instances
+/// return `None`; a strict lane without one exact configured reader is an availability error.
+pub fn preflight_live_envelope0(
+    cfg: &Config,
+    rpc: &Rpc,
+    entry: &CatalogEntry,
+) -> Result<Option<Envelope0PreflightReport>> {
+    let view = crate::chain::read_snapshot(rpc, entry.snapshot)?;
+    if !uses_strict_envelope0(rpc, entry)? {
+        return Ok(None);
+    }
+    let params_path = params_path(entry)?;
+
+    let mut args = vec![
+        "run".to_string(),
+        "-q".to_string(),
+        "-p".to_string(),
+        "input-exporter".to_string(),
+        "--bin".to_string(),
+        "envelope0-preflight".to_string(),
+        "--".to_string(),
+        "--rpc".to_string(),
+        cfg.rpc.clone(),
+        "--registry".to_string(),
+        format!("{:#x}", view.anchor_registry),
+        "--params".to_string(),
+        params_path,
+        "--from-block".to_string(),
+        entry.created_block.to_string(),
+        "--envelope0-cache".to_string(),
+        cfg.ipfs.envelope0_cache_dir.clone(),
+        "--envelope0-fetch-concurrency".to_string(),
+        cfg.ipfs.envelope0_fetch_concurrency.to_string(),
+    ];
+    for target in cfg.ipfs.resolved_targets() {
+        args.push("--envelope0-gateway".to_string());
+        args.push(target.gateway);
+    }
+    let output = run_tool_output("cargo", &args, "strict Envelope0 live preflight")?;
+    serde_json::from_str(output.trim())
+        .context("strict Envelope0 preflight returned invalid metrics")
+        .map(Some)
+}
+
+pub fn uses_strict_envelope0(rpc: &Rpc, entry: &CatalogEntry) -> Result<bool> {
+    if entry.program != Program::Trustgraphs {
+        return Ok(false);
+    }
+    let view = crate::chain::read_snapshot(rpc, entry.snapshot)?;
+    if view.anchor_registry == Address::ZERO {
+        return Ok(false);
+    }
+    let path = params_path(entry)?;
+    let params: pagerank_core::Params = serde_json::from_str(&std::fs::read_to_string(path)?)
+        .context("parsing trust-graph params for strict lane detection")?;
+    Ok(params.envelope0_domain_separators.len() == 2 && params.lane2_max_head_age == 0)
+}
+
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
     let text = std::fs::read_to_string(input_path)?;
@@ -432,8 +513,8 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
     }
     let (j, cid, vk, blob) = match program {
         Program::Trustgraphs => {
-            let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
-            let r = pagerank_core::compute::compute(&input);
+            let input: trustgraph_core::GuestInput = serde_json::from_str(&text)?;
+            let r = trustgraph_core::compute::compute(&input);
             let vk =
                 trustgraph_prover::common::vkey(trustgraph_prover::programs::trust_graph::elf())?;
             (r.journal, r.cid, vk, r.blob)
@@ -637,9 +718,9 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
     let text = std::fs::read_to_string(&built.input_path)?;
     let (proof, native_pub) = match built.program {
         Program::Trustgraphs => {
-            let input: pagerank_core::GuestInput = serde_json::from_str(&text)?;
+            let input: trustgraph_core::GuestInput = serde_json::from_str(&text)?;
             let native = pagerank_core::encode::journal_encoded(
-                &pagerank_core::compute::compute(&input).journal,
+                &trustgraph_core::compute::compute(&input).journal,
             );
             let elf = trustgraph_prover::programs::trust_graph::elf();
             trustgraph_prover::common::execute_values(elf.clone(), &input, &native)?;
@@ -885,6 +966,20 @@ fn run_tool(bin: &str, args: Vec<&str>) -> Result<()> {
         bail!("{bin} {} failed:\n{}", args.join(" "), String::from_utf8_lossy(&out.stderr));
     }
     Ok(())
+}
+
+fn run_tool_output(bin: &str, args: &[String], label: &str) -> Result<String> {
+    let out = Command::new(bin)
+        .args(args)
+        .env("SP1_SKIP_PROGRAM_BUILD", "true")
+        .output()
+        .with_context(|| format!("starting {label}"))?;
+    if !out.status.success() {
+        // Endpoint URLs can contain credentials. The hold is intentionally specific while its
+        // message remains safe for logs, status APIs, and alert webhooks.
+        bail!("{label} failed; no exact current bundle set was recovered");
+    }
+    String::from_utf8(out.stdout).with_context(|| format!("{label} output was not UTF-8"))
 }
 
 fn parse_b256(s: &str) -> Result<B256> {

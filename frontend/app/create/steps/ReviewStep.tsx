@@ -49,6 +49,7 @@ import {
   GOVERNED_FACTORY_ADDRESS,
   WizardData,
   type WizardStepId,
+  buildOffchainEasConfig,
   buildSignerSyncConfig,
   describeBlocks,
   effectiveBlocks,
@@ -69,6 +70,7 @@ export type CreatedNetwork = {
   recoveryModule: Hex
   recoveryDelay: bigint
   signerSyncModule: Hex
+  offchainRegistry: Hex
 }
 
 const shortAddress = (address: string) =>
@@ -106,6 +108,13 @@ export const ReviewStep = ({
     data.maxPerRootUsd
   )
   const signerSync = buildSignerSyncConfig(data)
+  const offchain = buildOffchainEasConfig(data)
+  const createFunction = data.withOffchainVouches
+    ? 'createGovernedHybridInstance'
+    : 'createGovernedInstance'
+  const createFunctionArgs = data.withOffchainVouches
+    ? [args, offchain, initialPolicy, signerSync]
+    : [args, initialPolicy, signerSync]
 
   const program = keccak256(toBytes('trust-graph'))
   const { data: vaultPreview } = useReadContracts({
@@ -168,8 +177,8 @@ export const ReviewStep = ({
   } = useSimulateContract({
     address: GOVERNED_FACTORY_ADDRESS,
     abi: governedTrustgraphsFactoryAbi,
-    functionName: 'createGovernedInstance',
-    args: [args, initialPolicy, signerSync] as any,
+    functionName: createFunction,
+    args: createFunctionArgs as any,
     ...(prepay > 0n ? { value: prepay } : {}),
     query: {
       enabled:
@@ -229,8 +238,8 @@ export const ReviewStep = ({
         const estimate = await publicClient?.estimateContractGas({
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
-          functionName: 'createGovernedInstance',
-          args: [args, initialPolicy, signerSync] as any,
+          functionName: createFunction,
+          args: createFunctionArgs as any,
           ...(prepay > 0n ? { value: prepay } : {}),
         })
         gas = estimate ? (estimate * 125n) / 100n : undefined
@@ -242,8 +251,8 @@ export const ReviewStep = ({
         tx: {
           address: GOVERNED_FACTORY_ADDRESS,
           abi: governedTrustgraphsFactoryAbi,
-          functionName: 'createGovernedInstance',
-          args: [args, initialPolicy, signerSync],
+          functionName: createFunction,
+          args: createFunctionArgs,
           ...(gas ? { gas } : {}),
           ...(prepay > 0n ? { value: prepay } : {}),
         } as any,
@@ -253,6 +262,7 @@ export const ReviewStep = ({
       let createdEvent: Record<string, unknown> | undefined
       let governedEvent: Record<string, unknown> | undefined
       let authorityEvent: Record<string, unknown> | undefined
+      let offchainEvent: Record<string, unknown> | undefined
       for (const log of receipt.logs) {
         try {
           if (log.address.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
@@ -263,6 +273,8 @@ export const ReviewStep = ({
             })
             if (decoded.eventName === 'InstanceCreated') {
               createdEvent = decoded.args as Record<string, unknown>
+            } else if (decoded.eventName === 'OffchainEasLaneCreated') {
+              offchainEvent = decoded.args as Record<string, unknown>
             }
           } else if (
             log.address.toLowerCase() === GOVERNED_FACTORY_ADDRESS.toLowerCase()
@@ -300,6 +312,8 @@ export const ReviewStep = ({
             (authorityEvent.recoveryDelay as bigint | undefined) ?? 0n,
           signerSyncModule:
             (authorityEvent.signerSyncModule as Hex | undefined) ?? zeroAddress,
+          offchainRegistry:
+            (offchainEvent?.registry as Hex | undefined) ?? zeroAddress,
         })
         return
       }
@@ -366,6 +380,54 @@ export const ReviewStep = ({
             ? `Yes — top ${data.signerTopN}, ${data.signerTargetThresholdPct}% target threshold, minimum ${data.signerMinThreshold}`
             : 'No'}
         </SummaryRow>
+        <SummaryRow label="Gasless off-chain vouches">
+          {data.withOffchainVouches
+            ? 'Yes — strict retained EAS v2, alongside on-chain vouches'
+            : 'No — on-chain EAS only (the default)'}
+        </SummaryRow>
+        {data.withOffchainVouches && (
+          <>
+            <SummaryRow label="Relay and storage boundary">
+              Relayers validate the owner&apos;s two signatures, retain and read
+              back the exact public payload from independent storage, then pay
+              to anchor its SHA-256 commitment. They cannot alter a signed vouch
+              or head. Availability still depends on retained exact bytes; the
+              indexer and prover fetch and verify them independently rather than
+              trusting relay claims.
+            </SummaryRow>
+            <SummaryRow label="Immutable work cap">
+              {data.offchainMaxTotalInputs.toLocaleString()} combined work
+              units. On-chain leaves, anchor records, and four units per
+              off-chain log entry share this cap; it cannot be raised after
+              creation.
+            </SummaryRow>
+            <SummaryRow label="Initial relayer set">
+              <div className="space-y-1">
+                {offchain.initialRelayers.map((relayer) => (
+                  <div key={relayer} className="font-mono text-xs break-all">
+                    {relayer}
+                  </div>
+                ))}
+              </div>
+            </SummaryRow>
+            <SummaryRow label="Signer boundary">
+              EOAs only. Contract wallets and account-abstraction signers are
+              blocked because the frozen profile verifies ECDSA recovery, not
+              ERC-1271.
+            </SummaryRow>
+            <SummaryRow label="History and revocation">
+              Every signed vouch remains in a public, retained append-only
+              payload. Revocation appends a signed head entry naming that UID;
+              it does not delete history or fall back to an older vouch.
+            </SummaryRow>
+            <SummaryRow label="Unavailable add-ons">
+              Score-selected Safe signer sync and contribution rounds are
+              blocked for hybrid networks. Weighted starting shares and composed
+              scoreboards remain separate creation paths and cannot be combined
+              here.
+            </SummaryRow>
+          </>
+        )}
         <SummaryRow label="Refresh prepayment">
           {prepay > 0n
             ? `${data.prepayEth.trim()} ETH`
@@ -416,9 +478,9 @@ export const ReviewStep = ({
           upgrades, delegatecalls, and batches.
         </SummaryRow>
         <SummaryRow label="Safe owners and threshold">
-          The DAO Safe is a shared onchain account; it, not any wallet, owns
-          the network contracts and the fund. Your connected wallet starts as
-          the Safe&apos;s only recorded owner (1 of 1), but the owner execution
+          The DAO Safe is a shared onchain account; it, not any wallet, owns the
+          network contracts and the fund. Your connected wallet starts as the
+          Safe&apos;s only recorded owner (1 of 1), but the owner execution
           route is disabled. Owners cannot remove the guard or add a bypass
           module directly.
         </SummaryRow>

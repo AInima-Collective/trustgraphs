@@ -116,6 +116,9 @@ pub fn action_key(action: &Action) -> String {
             format!("hold/request_outcome_unknown/{checkpoint_id}")
         }
         Action::Hold(HoldReason::Unfunded { reason }) => format!("hold/unfunded/{reason}"),
+        Action::Hold(HoldReason::InputUnavailable { stage, checkpoint_id }) => {
+            format!("hold/input_unavailable/{stage:?}/{checkpoint_id:?}")
+        }
         Action::Skip(SkipReason::UnsupportedProgram(p)) => {
             format!("skip/unsupported_program/{}", p.name())
         }
@@ -200,6 +203,14 @@ pub struct InstanceStatus {
     /// Blocks since the last applied root, or `null` if none has ever landed. The number a
     /// staleness alert watches.
     pub blocks_since_root: Option<u64>,
+    pub newest_anchor_count: u64,
+    pub input_work: u64,
+    pub input_capacity: u64,
+    pub envelope0_fetch_latency_ms: Option<u64>,
+    pub envelope0_exact_readers: Option<usize>,
+    pub envelope0_validation_failed: bool,
+    /// Age of an instance specifically held because committed input bytes are unavailable.
+    pub unprovable_age_blocks: Option<u64>,
 }
 
 pub fn write_status(path: &Path, status: &Status) -> Result<()> {

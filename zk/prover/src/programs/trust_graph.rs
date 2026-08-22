@@ -4,8 +4,9 @@
 use alloy_primitives::{Address, B256, U256};
 use anyhow::Result;
 use clap::Subcommand;
-use pagerank_core::{compute::compute, encode, Binding, GuestInput, Params, RawEdge};
+use pagerank_core::encode;
 use sp1_sdk::{include_elf, Elf};
+use trustgraph_core::{compute::compute, Binding, GuestInput, Params, RawEdge};
 
 use crate::common;
 
@@ -18,7 +19,7 @@ pub fn elf() -> Elf {
 }
 
 fn load_elf() -> Elf {
-    include_elf!("trustgraph-program")
+    include_elf!("trustgraph-program-v2")
 }
 
 fn scale() -> U256 {
@@ -92,7 +93,7 @@ fn load_input(path: Option<&String>) -> Result<GuestInput> {
     }
 }
 
-/// `trust-graph` subcommands. `input.json` is a serialized `pagerank_core::GuestInput`; omit it to
+/// `trust-graph` subcommands. `input.json` is a serialized `trustgraph_core::GuestInput`; omit it to
 /// use the built-in sample (identical to test/golden/trust-graph.json).
 #[derive(Subcommand)]
 pub enum Command {

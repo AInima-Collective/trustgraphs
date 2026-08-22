@@ -11,6 +11,8 @@ import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol"
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {TrustgraphsParamsValidator} from "contracts/params/TrustgraphsParamsValidator.sol";
 import {TrustgraphsParamsController} from "contracts/factory/TrustgraphsParamsController.sol";
+import {EasOffchainAnchorRegistry} from "contracts/registry/EasOffchainAnchorRegistry.sol";
+import {EasOffchainAnchorRegistryDeployer} from "contracts/factory/HybridInstanceDeployers.sol";
 import {
     MerkleSnapshotDeployer,
     MerkleFundDistributorDeployer,
@@ -19,6 +21,7 @@ import {
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 /// @title TrustgraphsFactory
@@ -77,6 +80,14 @@ contract TrustgraphsFactory {
         bytes32 salt;
     }
 
+    /// @notice Strict off-chain EAS v2 lane configuration for the additive hybrid path.
+    /// @dev Relayer admission is explicit and bounded. Relayers submit owner-signed transitions;
+    ///      they never become node owners and cannot forge a head.
+    struct OffchainEasConfig {
+        uint64 maxTotalInputs;
+        address[] initialRelayers;
+    }
+
     /// @notice A new instance exists. THE load-bearing interface — provers, indexers and auditors
     ///         all reconstruct an instance from this event, so its shape is frozen like a journal.
     /// @param params The FINAL params, i.e. with the derived fields filled in. It always holds that
@@ -103,6 +114,12 @@ contract TrustgraphsFactory {
 
     /// @notice Discovery link for the typed parameter control plane. `InstanceCreated` stays frozen.
     event ParamsControllerCreated(bytes32 indexed instanceId, address indexed controller);
+
+    /// @notice Discovery record for the opt-in strict EAS v2 lane. `domainSeparator` is the EAS
+    ///         attestation domain; the registry exposes its separately bound head domain.
+    event OffchainEasLaneCreated(
+        bytes32 indexed instanceId, address registry, bytes32 domainSeparator, uint64 maxTotalInputs
+    );
 
     /// @notice A fund distributor was attached to an existing instance after creation.
     ///         `InstanceCreated` stays frozen; this event is the additive discovery source for
@@ -175,6 +192,8 @@ contract TrustgraphsFactory {
     MerkleFundDistributorDeployer public immutable DISTRIBUTOR_DEPLOYER;
     /// @notice Creation-code holder for the trust-graph-specific typed params controller.
     TrustgraphsParamsControllerDeployer public immutable PARAMS_CONTROLLER_DEPLOYER;
+    /// @notice Inert creation-code holder for strict lane-2 registries.
+    EasOffchainAnchorRegistryDeployer public immutable EAS_REGISTRY_DEPLOYER;
 
     /// @notice The minimum epoch length, in blocks. Chain-appropriate: roughly monthly on mainnet
     ///         (what hosted proving commits to), tiny on a devnet. A shorter request is raised to
@@ -231,6 +250,8 @@ contract TrustgraphsFactory {
     error NotInstanceAuthority(bytes32 instanceId, address owner);
     /// @notice The instance already has a factory-known fund distributor.
     error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
+    error InvalidRelayerCount(uint256 supplied, uint256 minimum, uint256 maximum);
+    error InvalidRelayer(address relayer);
 
     /// @param eas The chain's EAS contract.
     /// @param schemaRegistrar The shared schema registrar.
@@ -247,6 +268,7 @@ contract TrustgraphsFactory {
         MerkleSnapshotDeployer snapshotDeployer,
         MerkleFundDistributorDeployer distributorDeployer,
         TrustgraphsParamsControllerDeployer paramsControllerDeployer,
+        EasOffchainAnchorRegistryDeployer easRegistryDeployer,
         uint64 epochFloor,
         IProvingVault vault
     ) {
@@ -254,6 +276,7 @@ contract TrustgraphsFactory {
             address(eas) == address(0) || address(schemaRegistrar) == address(0) || address(verifier) == address(0)
                 || address(instanceRegistry) == address(0) || address(snapshotDeployer) == address(0)
                 || address(distributorDeployer) == address(0) || address(paramsControllerDeployer) == address(0)
+                || address(easRegistryDeployer) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -271,6 +294,7 @@ contract TrustgraphsFactory {
         SNAPSHOT_DEPLOYER = snapshotDeployer;
         DISTRIBUTOR_DEPLOYER = distributorDeployer;
         PARAMS_CONTROLLER_DEPLOYER = paramsControllerDeployer;
+        EAS_REGISTRY_DEPLOYER = easRegistryDeployer;
         EPOCH_FLOOR = epochFloor;
     }
 
@@ -298,6 +322,25 @@ contract TrustgraphsFactory {
         payable
         returns (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid)
     {
+        OffchainEasConfig memory disabled;
+        return _createInstance(args, disabled, false);
+    }
+
+    /// @notice Create the same frozen trust-graph bundle with the strict off-chain EAS v2 lane
+    ///         atomically wired before checkpoint zero.
+    function createHybridInstance(CreateArgs calldata args, OffchainEasConfig calldata offchain)
+        external
+        payable
+        returns (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid)
+    {
+        OffchainEasConfig memory config = offchain;
+        return _createInstance(args, config, true);
+    }
+
+    function _createInstance(CreateArgs calldata args, OffchainEasConfig memory offchain, bool hybrid)
+        internal
+        returns (bytes32 instanceId, address snapshot, address resolver, address distributor, bytes32 schemaUid)
+    {
         if (msg.value != 0 && address(VAULT) == address(0)) {
             revert NoVaultConfigured();
         }
@@ -308,6 +351,7 @@ contract TrustgraphsFactory {
 
         ParamsCodec.Params memory params = args.params;
         _validateParams(params);
+        if (hybrid) _validateOffchainConfig(offchain);
 
         address admin = args.admin == address(0) ? msg.sender : args.admin;
         // The one address that may NOT be an instance admin is this factory. Naming it would (a)
@@ -352,13 +396,27 @@ contract TrustgraphsFactory {
         //        window in which it would fold a foreign edge into this instance's accumulator.
         indexerResolver.bindSchema(schemaUid);
 
-        // --- 3. The derived identity fields, then the canonical hash. -------------------------
+        // --- 3. Optional strict lane 2. The registry address is part of its EIP-712 head domain,
+        //        so it must exist before paramsHash. The helper receives no role; every authority
+        //        is explicit and the factory retains only its one-call binder capability.
+        EasOffchainAnchorRegistry offchainRegistry;
+        if (hybrid) {
+            offchainRegistry = EAS_REGISTRY_DEPLOYER.deploy(
+                EAS, schemaUid, offchain.maxTotalInputs, admin, address(this), offchain.initialRelayers
+            );
+            params.envelope0DomainSeparators = new bytes32[](2);
+            params.envelope0DomainSeparators[0] = offchainRegistry.easDomainSeparator();
+            params.envelope0DomainSeparators[1] = offchainRegistry.headDomainSeparator();
+            params.lane2MaxHeadAge = 0;
+        }
+
+        // --- 4. The derived identity fields, then the canonical hash. -------------------------
         params.schemaUid = schemaUid;
         params.accumulator = resolver;
         params.chainId = uint64(block.chainid);
         bytes32 paramsHash = ParamsCodec.hash(params);
 
-        // --- 4. The snapshot. The factory takes both roles transiently so it can install the ----
+        // --- 5. The snapshot. The factory takes both roles transiently so it can install the ----
         //        controller whose constructor needs this newly-created snapshot's address.
         MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
             VERIFIER, paramsHash, IAttestationAccumulator(resolver), address(this), address(this)
@@ -379,7 +437,15 @@ contract TrustgraphsFactory {
         //        accumulator is unbound never leaves this call.
         indexerResolver.bindSnapshot(snapshot);
 
-        // --- 5. Publish version 1, install its typed controller, and hand both roles over. -----
+        //        Both sides of the lane-2 relationship are installed in this transaction, before
+        //        a checkpoint can exist. The registry verifies that the snapshot already points
+        //        back to it, making a partial or cross-instance binding impossible.
+        if (hybrid) {
+            merkleSnapshot.setAnchorRegistry(IAnchorRegistry(address(offchainRegistry)));
+            offchainRegistry.bindSnapshot(snapshot);
+        }
+
+        // --- 6. Publish version 1, install its typed controller, and hand both roles over. -----
         //        `setEpochLength` is constitutional-only and not a constructor argument, which is
         //        the sole reason this factory ever holds a role. GRANT BEFORE RENOUNCE: the
         //        opposite order would leave the instance with no constitutional holder at all,
@@ -394,7 +460,7 @@ contract TrustgraphsFactory {
         merkleSnapshot.grantRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), admin);
         merkleSnapshot.renounceRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), address(this));
 
-        // --- 6. The optional fund distributor, owned outright by the admin. -------------------
+        // --- 7. The optional fund distributor, owned outright by the admin. -------------------
         //        No fee by default: the community can set one later. `feeRecipient` is the admin so
         //        that turning a fee on never routes value to a stranger.
         if (args.withDistributor) {
@@ -402,7 +468,7 @@ contract TrustgraphsFactory {
             distributorOf[instanceId] = distributor;
         }
 
-        // --- 7. The directory entry. Presentation-free by design: name/metadata live in the -----
+        // --- 8. The directory entry. Presentation-free by design: name/metadata live in the -----
         //        event and the indexer, never on the registry record.
         INSTANCE_REGISTRY.registerWithParamsAuthority(
             instanceId,
@@ -416,7 +482,7 @@ contract TrustgraphsFactory {
             address(controller)
         );
 
-        // --- 8. The optional prepay. AFTER the registry row, because the vault resolves the ---
+        // --- 9. The optional prepay. AFTER the registry row, because the vault resolves the ---
         //        instance through it at first deposit — depositing first would revert on an id
         //        the directory does not yet know.
         if (msg.value != 0) {
@@ -438,6 +504,11 @@ contract TrustgraphsFactory {
             epochLength,
             params
         );
+        if (hybrid) {
+            emit OffchainEasLaneCreated(
+                instanceId, address(offchainRegistry), offchainRegistry.easDomainSeparator(), offchain.maxTotalInputs
+            );
+        }
         // Emitted after the frozen creation event so ordered indexers have already materialized
         // the instance row when they attach its separately-discovered controller.
         emit ParamsControllerCreated(instanceId, address(controller));
@@ -493,5 +564,17 @@ contract TrustgraphsFactory {
     ///      the envelope the fixed-point guest is proven over, plus the two identity rules.
     function _validateParams(ParamsCodec.Params memory p) internal pure {
         TrustgraphsParamsValidator.validateCreation(p);
+    }
+
+    function _validateOffchainConfig(OffchainEasConfig memory config) internal pure {
+        uint256 count = config.initialRelayers.length;
+        if (count < 2 || count > 16) revert InvalidRelayerCount(count, 2, 16);
+        for (uint256 i; i < count; ++i) {
+            address relayer = config.initialRelayers[i];
+            if (relayer == address(0)) revert InvalidRelayer(relayer);
+            for (uint256 j; j < i; ++j) {
+                if (config.initialRelayers[j] == relayer) revert InvalidRelayer(relayer);
+            }
+        }
     }
 }

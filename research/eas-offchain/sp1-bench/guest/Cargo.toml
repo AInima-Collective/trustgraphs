@@ -1,0 +1,28 @@
+[package]
+name = "trustgraphs-eas-offchain-sp1-bench-guest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "eas-offchain-envelope-bench"
+path = "src/main.rs"
+
+[dependencies]
+alloy-primitives = { version = "1", features = ["serde"] }
+eas-offchain-v2 = { path = "../../../../packages/eas-offchain-v2" }
+sp1-lib = "=6.3.1"
+sp1-primitives = "=6.3.1"
+sp1-zkvm = "=6.3.1"
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[patch.crates-io]
+sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-6.0.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "k256", tag = "patch-k256-13.4-sp1-6.0.0" }
+p256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "p256", tag = "patch-p256-13.2-sp1-6.0.0" }

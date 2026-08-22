@@ -1,0 +1,282 @@
+name: Strict EAS off-chain assurance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/eas-offchain-client/**'
+      - 'packages/eas-offchain-v2/**'
+      - 'packages/input-exporter/**'
+      - 'packages/operator-core/**'
+      - 'packages/trustgraph-core/**'
+      - 'services/eas-offchain-relay/**'
+      - 'frontend/app/create/**'
+      - 'frontend/app/networks/**'
+      - 'frontend/components/CreateAttestationModal.tsx'
+      - 'frontend/components/HybridVouchAudit.tsx'
+      - 'frontend/components/NetworkGraph.tsx'
+      - 'frontend/components/WalletConnectionButton.tsx'
+      - 'frontend/contexts/NetworkContext.tsx'
+      - 'frontend/hooks/useEasOffchainVouches.ts'
+      - 'frontend/lib/attestation*'
+      - 'frontend/lib/eas-offchain*'
+      - 'frontend/lib/types.ts'
+      - 'frontend/lib/wagmi.ts'
+      - 'frontend/queries/ponder.ts'
+      - 'frontend/scripts/generate-eas-offchain-fixture.ts'
+      - 'indexer/src/eas-offchain.ts'
+      - 'indexer/src/api/eas-offchain*'
+      - 'indexer/src/api/network.ts'
+      - 'indexer/src/trust-reconcile*'
+      - 'indexer/ponder.config.ts'
+      - 'indexer/ponder.schema.ts'
+      - 'src/contracts/factory/**'
+      - 'src/contracts/merkle/MerkleSnapshot.sol'
+      - 'src/contracts/params/**'
+      - 'src/contracts/registry/EasOffchainAnchorRegistry.sol'
+      - 'src/contracts/vault/ProvingVault.sol'
+      - 'src/interfaces/registry/IAnchorWorkRegistry.sol'
+      - 'script/DeployEasOffchainE2E.s.sol'
+      - 'scripts/eas-offchain-*'
+      - 'test/e2e/eas-offchain-*'
+      - 'test/fixtures/eas-offchain/**'
+      - 'test/unit/EasOffchainAnchorRegistry.t.sol'
+      - 'test/unit/golden/EasOffchainPayloadGolden.t.sol'
+      - 'test/unit/factory/**'
+      - 'test/unit/MerkleSnapshot.t.sol'
+      - 'test/unit/vault/ProvingVault.t.sol'
+      - 'zk/trustgraph-program-v2/**'
+      - 'zk/prover/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'docs/build/eas-offchain/**'
+      - '.github/workflows/eas-offchain-assurance.yml'
+  schedule:
+    # One paid real proof per week while the testnet cohort is active.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-offchain-assurance-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  local-strict:
+    name: Local strict two-lane gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ponder
+          POSTGRES_USER: ponder
+          POSTGRES_PASSWORD: ponder
+        ports:
+          - 6432:5432
+        options: >-
+          --health-cmd "pg_isready -U ponder -d ponder"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser runtime
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
+
+      - name: Client compatibility and adversarial suite
+        run: |
+          pnpm --filter @trustgraphs/eas-offchain-client test
+          pnpm --filter @trustgraphs/eas-offchain-client typecheck
+
+      - name: Relay abuse, race, and reorg suite
+        run: |
+          pnpm --filter @trustgraphs/eas-offchain-relay test
+          pnpm --filter @trustgraphs/eas-offchain-relay typecheck
+
+      - name: Rollout evidence gate contract
+        run: node --test test/e2e/eas-offchain-dark-audit.test.mjs test/e2e/eas-offchain-rollout-gates.test.mjs
+
+      - name: Official fixture, indexer, and product contracts
+        run: |
+          pnpm --dir frontend fixture:eas-offchain:check
+          pnpm --dir indexer exec node --import tsx --test src/api/eas-offchain.source.test.ts src/trust-reconcile.test.ts
+          pnpm --dir indexer typecheck
+          pnpm --dir frontend test:eas-offchain-product
+          pnpm --dir frontend exec tsc --noEmit
+
+      - name: Guest and reader suites
+        run: cargo test -p eas-offchain-v2 -p trustgraph-core -p input-exporter
+
+      - name: Registry and factory suites
+        env:
+          FOUNDRY_FUZZ_RUNS: '1024'
+        run: |
+          forge test --match-path test/unit/EasOffchainAnchorRegistry.t.sol -vv
+          forge test --match-path test/unit/golden/EasOffchainPayloadGolden.t.sol -vv
+          forge test --match-path test/unit/AccumulatorCheckpoint.t.sol -vv
+          forge test --match-path test/unit/MerkleSnapshot.t.sol -vv
+          forge test --match-path test/unit/factory/TrustgraphsFactory.t.sol -vv
+
+      - name: Full factory-to-strict-input acceptance
+        env:
+          DATABASE_URL: postgresql://ponder:ponder@127.0.0.1:6432/ponder
+          EAS_OFFCHAIN_E2E_INDEXER: '1'
+          EAS_OFFCHAIN_E2E_BROWSER: '1'
+        run: test/e2e/eas-offchain-strict.sh
+
+  real-testnet-groth16:
+    name: Real testnet Groth16 gate
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      TESTNET_RPC_URL: ${{ secrets.EAS_OFFCHAIN_TESTNET_RPC_URL }}
+      TESTNET_INSTANCE_REGISTRY: ${{ vars.EAS_OFFCHAIN_TESTNET_INSTANCE_REGISTRY }}
+      TESTNET_REGISTRY_FROM_BLOCK: ${{ vars.EAS_OFFCHAIN_TESTNET_REGISTRY_FROM_BLOCK }}
+      TESTNET_INSTANCE_ID: ${{ vars.EAS_OFFCHAIN_TESTNET_INSTANCE_ID }}
+      TESTNET_EXPECTED_CHAIN_ID: ${{ vars.EAS_OFFCHAIN_TESTNET_CHAIN_ID }}
+      TESTNET_EXPECTED_ADMIN: ${{ vars.EAS_OFFCHAIN_TESTNET_ADMIN }}
+      TESTNET_RELAYER_A: ${{ vars.EAS_OFFCHAIN_TESTNET_RELAYER_A }}
+      TESTNET_RELAYER_B: ${{ vars.EAS_OFFCHAIN_TESTNET_RELAYER_B }}
+      TESTNET_RELAY_URL_A: ${{ vars.EAS_OFFCHAIN_TESTNET_RELAY_URL_A }}
+      TESTNET_RELAY_URL_B: ${{ vars.EAS_OFFCHAIN_TESTNET_RELAY_URL_B }}
+      TESTNET_SUBMITTER_PRIVATE_KEY: ${{ secrets.EAS_OFFCHAIN_TESTNET_SUBMITTER_PRIVATE_KEY }}
+      TESTNET_EXPECTED_VERIFIER: ${{ vars.EAS_OFFCHAIN_TESTNET_EXPECTED_VERIFIER }}
+      TESTNET_EXPECTED_GATEWAY: ${{ vars.EAS_OFFCHAIN_TESTNET_EXPECTED_GATEWAY }}
+      TESTNET_EXPECTED_PROGRAM_VKEY: ${{ vars.EAS_OFFCHAIN_TESTNET_PROGRAM_VKEY }}
+      TESTNET_EXPECTED_MAX_TOTAL_INPUTS: ${{ vars.EAS_OFFCHAIN_TESTNET_MAX_TOTAL_INPUTS }}
+      TESTNET_INDEXER_API: ${{ vars.EAS_OFFCHAIN_TESTNET_INDEXER_API }}
+      TESTNET_OPERATOR_STATUS_URL: ${{ vars.EAS_OFFCHAIN_TESTNET_OPERATOR_STATUS_URL }}
+      TESTNET_CONFIRMATIONS: ${{ vars.EAS_OFFCHAIN_TESTNET_CONFIRMATIONS }}
+      TESTNET_DEPLOYMENT_VERIFICATION_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_DEPLOYMENT_VERIFICATION_EVIDENCE }}
+      TESTNET_RELAYER_CUSTODY_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_RELAYER_CUSTODY_EVIDENCE }}
+      TESTNET_STORAGE_INDEPENDENCE_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_STORAGE_INDEPENDENCE_EVIDENCE }}
+      TESTNET_ALERT_DELIVERY_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_ALERT_DELIVERY_EVIDENCE }}
+      TESTNET_BACKUP_RESTORE_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_BACKUP_RESTORE_EVIDENCE }}
+      TESTNET_RECOVERY_EXPORT_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_RECOVERY_EXPORT_EVIDENCE }}
+      TESTNET_FEATURE_HIDDEN_EVIDENCE: ${{ vars.EAS_OFFCHAIN_TESTNET_FEATURE_HIDDEN_EVIDENCE }}
+      TESTNET_ENVELOPE0_GATEWAYS: ${{ secrets.EAS_OFFCHAIN_TESTNET_ENVELOPE0_GATEWAYS }}
+      TESTNET_SCORE_IPFS_API_A: ${{ secrets.EAS_OFFCHAIN_TESTNET_SCORE_IPFS_API_A }}
+      TESTNET_SCORE_IPFS_API_B: ${{ secrets.EAS_OFFCHAIN_TESTNET_SCORE_IPFS_API_B }}
+      TESTNET_SCORE_IPFS_AUTH_A: ${{ secrets.EAS_OFFCHAIN_TESTNET_SCORE_IPFS_AUTH_A }}
+      TESTNET_SCORE_IPFS_AUTH_B: ${{ secrets.EAS_OFFCHAIN_TESTNET_SCORE_IPFS_AUTH_B }}
+      NETWORK_PRIVATE_KEY: ${{ secrets.SP1_NETWORK_PRIVATE_KEY }}
+      TESTNET_AUDIT_REPORT_FILE: .trustgraph/eas-offchain/testnet-dark-deploy.json
+      TESTNET_REPORT_FILE: .trustgraph/eas-offchain/testnet-real-proof.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dark deploy and hosted services
+        run: scripts/eas-offchain-testnet-audit.sh
+
+      - name: Install pinned SP1 toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version v6.3.1
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+
+      - name: Build pinned guest ELFs
+        run: |
+          (cd zk/program && cargo prove build)
+          (cd zk/trustgraph-program-v2 && cargo prove build)
+          (cd zk/weighted-program && cargo prove build)
+          (cd zk/composition-program && cargo prove build)
+          (cd zk/nostr-program/program && cargo prove build)
+
+      - name: Build network prover host
+        env:
+          SP1_SKIP_PROGRAM_BUILD: 'true'
+        run: cargo build --release --features network --manifest-path zk/prover/Cargo.toml
+
+      - name: Prove and submit the next strict hybrid checkpoint
+        run: test/e2e/eas-offchain-testnet-real.sh
+
+      - name: Hash non-secret evidence records
+        if: always()
+        run: |
+          manifest=.trustgraph/eas-offchain/evidence-manifest.sha256
+          mkdir -p "$(dirname "$manifest")"
+          first=1
+          for evidence_file in \
+            .trustgraph/eas-offchain/testnet-dark-deploy.json \
+            .trustgraph/eas-offchain/testnet-real-proof.checkpoint.json \
+            .trustgraph/eas-offchain/testnet-real-proof.json; do
+            if [ -f "$evidence_file" ]; then
+              if [ "$first" -eq 1 ]; then
+                sha256sum "$evidence_file" > "$manifest"
+                first=0
+              else
+                sha256sum "$evidence_file" >> "$manifest"
+              fi
+            fi
+          done
+
+      - name: Upload non-secret proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eas-offchain-testnet-real-${{ github.run_id }}
+          path: |
+            .trustgraph/eas-offchain/testnet-dark-deploy.json
+            .trustgraph/eas-offchain/testnet-real-proof.checkpoint.json
+            .trustgraph/eas-offchain/testnet-real-proof.json
+            .trustgraph/eas-offchain/evidence-manifest.sha256
+          if-no-files-found: warn
+          retention-days: 90

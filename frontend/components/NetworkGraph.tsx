@@ -315,7 +315,14 @@ export function NetworkGraph({
       const inactive = attestation.status !== 'verified'
 
       graph.addEdgeWithKey(attestation.uid, source, target, {
-        href: `/attestations/${attestation.uid}`,
+        ...(attestation.provenance?.source === 'off-chain-eas'
+          ? {}
+          : { href: `/attestations/${attestation.uid}` }),
+        uid: attestation.uid,
+        schema: attestation.schema,
+        ...(attestation.provenance
+          ? { provenance: attestation.provenance }
+          : {}),
         label:
           confidence === null
             ? 'Confidence unknown'
@@ -952,6 +959,7 @@ function EdgeInspector({
       : edge.status === 'revoked'
         ? 'Revoked vouch'
         : 'Expired vouch'
+  const canOpen = Boolean(edge.href)
 
   return (
     <div className="space-y-3">
@@ -993,9 +1001,11 @@ function EdgeInspector({
           </p>
         </div>
         <p className="max-w-[18ch] text-right text-[10px] leading-relaxed text-text-subtle">
-          {hoverState.touch === 'first'
-            ? 'Tap again to open the record'
-            : 'Click the edge to open the record'}
+          {canOpen
+            ? hoverState.touch === 'first'
+              ? 'Tap again to open the record'
+              : 'Click the edge to open the record'
+            : 'Revoke this retained record from the vouch dialog.'}
         </p>
       </div>
 
@@ -1003,6 +1013,50 @@ function EdgeInspector({
         <p className="line-clamp-3 border-l border-hairline-strong pl-2.5 text-[11px] leading-relaxed text-text-muted">
           “{edge.comment}”
         </p>
+      )}
+
+      {edge.provenance && (
+        <div className="space-y-1 border-t border-hairline pt-2.5 text-[9px] leading-relaxed text-text-subtle">
+          <p className="uppercase tracking-wider text-text-muted">
+            {edge.provenance.source === 'off-chain-eas'
+              ? 'Off-chain EAS · independently verified retained CID'
+              : 'On-chain EAS'}
+          </p>
+          <p className="break-all" title={edge.uid}>
+            UID {edge.uid}
+          </p>
+          <p className="break-all" title={edge.schema}>
+            Schema {edge.schema}
+          </p>
+          {edge.provenance.source === 'off-chain-eas' ? (
+            <>
+              <p className="break-all" title={edge.provenance.head}>
+                Current head {edge.provenance.head} · log count{' '}
+                {edge.provenance.count}
+              </p>
+              <p className="break-all" title={edge.provenance.cid}>
+                CID {edge.provenance.cid}
+              </p>
+              <p
+                className="break-all"
+                title={edge.provenance.anchorTransactionHash}
+              >
+                Current anchor tx {edge.provenance.anchorTransactionHash}
+              </p>
+              <p>
+                Relay inclusion: finalized · storage/indexer health: verified
+                {edge.provenance.fetchLatencyMs === null
+                  ? ''
+                  : ` · ${edge.provenance.fetchLatencyMs} ms`}
+                {' · '}revocation is Trustgraphs in-log only
+              </p>
+            </>
+          ) : edge.provenance.transactionHash ? (
+            <p className="break-all" title={edge.provenance.transactionHash}>
+              Attestation tx {edge.provenance.transactionHash}
+            </p>
+          ) : null}
+        </div>
       )}
     </div>
   )

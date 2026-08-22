@@ -87,6 +87,13 @@ pub struct Ipfs {
     /// Persistent retry cadence after a failed publication policy, in seconds.
     #[serde(default = "d_publication_retry")]
     pub retry_seconds: u64,
+    /// Digest-verified strict Envelope0 recovery cache. These are prover inputs, not publication
+    /// outputs, but they reuse the configured target gateways as independent readers.
+    #[serde(default = "d_envelope0_cache_dir")]
+    pub envelope0_cache_dir: String,
+    /// Bounded parallelism across newest node bundles.
+    #[serde(default = "d_envelope0_fetch_concurrency")]
+    pub envelope0_fetch_concurrency: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -294,6 +301,12 @@ fn d_eth_usd() -> u64 {
 fn d_publication_retry() -> u64 {
     300
 }
+fn d_envelope0_cache_dir() -> String {
+    "./.trustgraph/operator/envelope0".into()
+}
+fn d_envelope0_fetch_concurrency() -> usize {
+    8
+}
 fn d_weighted_cache_dir() -> String {
     "./.trustgraph/operator/weighted-manifests".into()
 }
@@ -380,6 +393,8 @@ impl Default for Ipfs {
             targets: Vec::new(),
             min_success: None,
             retry_seconds: d_publication_retry(),
+            envelope0_cache_dir: d_envelope0_cache_dir(),
+            envelope0_fetch_concurrency: d_envelope0_fetch_concurrency(),
         }
     }
 }
@@ -599,6 +614,14 @@ impl Ipfs {
     }
 
     fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            (1..=64).contains(&self.envelope0_fetch_concurrency),
+            "[ipfs] envelope0_fetch_concurrency must be in 1..=64"
+        );
+        anyhow::ensure!(
+            !self.envelope0_cache_dir.trim().is_empty(),
+            "[ipfs] envelope0_cache_dir cannot be empty"
+        );
         let legacy_any = self.api.is_some() || self.gateway.is_some();
         anyhow::ensure!(
             !legacy_any || self.targets.is_empty(),

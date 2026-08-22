@@ -69,11 +69,16 @@ contract AccumulatorCheckpointTest is Test {
         assertEq(c.acc, bytes32(0));
     }
 
-    function test_CheckpointRequiresNewInputs() public {
+    /// Freshness is a two-lane decision made by MerkleSnapshot.trigger(). The bound accumulator
+    /// must record an unchanged lane when the other lane moved.
+    function test_BoundSnapshotCanCheckpointAQuietLane() public {
         _fold(0, 1, 2, 1);
-        _checkpoint(); // ok, id 0
-        vm.expectRevert(IAttestationAccumulator.NoNewInputs.selector);
-        _checkpoint(); // no new edges since last
+        uint256 first = _checkpoint();
+        uint256 second = _checkpoint();
+        assertEq(first, 0);
+        assertEq(second, 1);
+        assertEq(acc.getCheckpoint(second).acc, acc.getCheckpoint(first).acc);
+        assertEq(acc.getCheckpoint(second).leafCount, acc.getCheckpoint(first).leafCount);
     }
 
     function test_CheckpointAfterNewFold() public {

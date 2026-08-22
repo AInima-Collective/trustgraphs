@@ -3,7 +3,11 @@ import { ResolvedSchema } from '@ponder/react'
 import { queryOptions } from '@tanstack/react-query'
 import { Hex } from 'viem'
 
-import { AttestationData, intoAttestationsData } from '@/lib/attestation'
+import {
+  type AttestationApiRow,
+  AttestationData,
+  intoAttestationsData,
+} from '@/lib/attestation'
 import type { InstanceParamsJson } from '@/lib/catalog'
 import { APIS } from '@/lib/config'
 import {
@@ -578,7 +582,7 @@ export const ponderQueries = {
               ) => ({ ...account, agents: account.agents ?? [] })
             ),
             attestations: intoAttestationsData(
-              data.attestations as (typeof easAttestation.$inferSelect)[]
+              data.attestations as AttestationApiRow[]
             ),
             scoreProgram: (() => {
               const scoreProgram = parseScoreProgramProvenance(

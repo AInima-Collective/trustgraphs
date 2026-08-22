@@ -19,7 +19,8 @@ export const NetworkSimulationConfigDropdown = ({
   className,
   size = 'default',
 }: NetworkSimulationConfigDropdownProps) => {
-  const { simulationConfig, setSimulationConfig } = useNetwork()
+  const { simulationConfig, setSimulationConfig, envelope0Verification } =
+    useNetwork()
 
   return (
     <Popup
@@ -71,6 +72,21 @@ export const NetworkSimulationConfigDropdown = ({
           enabled={simulationConfig.enabled}
         />
       </Button>
+
+      {envelope0Verification && (
+        <div
+          className={`border-y border-border px-3 py-2 text-xs ${
+            envelope0Verification.status === 'failed'
+              ? 'text-destructive'
+              : 'text-muted-foreground'
+          }`}
+        >
+          <div className="font-medium text-foreground">
+            Strict-lane verification: {envelope0Verification.status}
+          </div>
+          <div>{envelope0Verification.message}</div>
+        </div>
+      )}
 
       <div className="flex flex-row justify-between items-center gap-4 px-3 pt-2.5 pb-2 text-sm">
         <div className="flex flex-row items-center gap-1">

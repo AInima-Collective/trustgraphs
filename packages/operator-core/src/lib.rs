@@ -36,6 +36,6 @@ pub use decide::plan;
 pub use journal::SubmitFailureClass;
 pub use policy::{LossBudget, Policy, Spend};
 pub use types::{
-    Action, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight, InFlightState,
-    InstanceSize, InstanceState, Program, SkipReason, VaultView,
+    Action, AvailabilityStage, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight,
+    InFlightState, InstanceSize, InstanceState, Program, SkipReason, VaultView,
 };

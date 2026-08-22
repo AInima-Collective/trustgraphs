@@ -4,6 +4,9 @@ import { db } from 'ponder:api'
 import {
   accumulatorRecord,
   easAttestation,
+  easOffchainAnchor,
+  easOffchainMutation,
+  easOffchainNode,
   erc8004Agent,
   instance,
   merkleSnapshot,
@@ -20,9 +23,12 @@ import {
   requireSnapshotScoreProgram,
 } from './score-programs'
 import { EAS_NETWORKS as NETWORKS, isHexEqual, lower } from './utils'
-import { currentVouches } from '../trust-reconcile'
+import { currentTimedVouches } from '../trust-reconcile'
 
 const app = new Hono()
+const ZERO32 = `0x${'0'.repeat(64)}` as Hex
+
+class StrictLaneApiError extends Error {}
 
 const requireTrustNetworkProgram = async (snapshot: string) => {
   const scoreProgram = await requireSnapshotScoreProgram(snapshot, 'merkle')
@@ -168,8 +174,11 @@ app.get('/:snapshot', async (c) => {
         attester: accumulatorRecord.attester,
         recipient: accumulatorRecord.recipient,
         uid: accumulatorRecord.uid,
+        data: accumulatorRecord.data,
+        blockTimestamp: accumulatorRecord.blockTimestamp,
         blockNumber: accumulatorRecord.blockNumber,
         logIndex: accumulatorRecord.logIndex,
+        txHash: accumulatorRecord.txHash,
       })
       .from(accumulatorRecord)
       .where(eq(accumulatorRecord.accumulator, resolver))
@@ -177,24 +186,151 @@ app.get('/:snapshot', async (c) => {
         asc(accumulatorRecord.blockNumber),
         asc(accumulatorRecord.logIndex)
       )
-    const currentUids = currentVouches(foldRows)
-      .filter(
-        (row) =>
-          accountsMap.has(row.attester) &&
-          accountsMap.has(row.recipient) &&
-          row.attester !== row.recipient
-      )
-      .map((row) => row.uid)
+    const [catalogInstance] = await db
+      .select({
+        offchainRegistry: instance.offchainRegistry,
+        schemaUid: instance.schemaUid,
+      })
+      .from(instance)
+      .where(eq(instance.snapshot, merkleSnapshotContract.toLowerCase() as Hex))
+      .limit(1)
+    const strictRegistry = catalogInstance?.offchainRegistry
+    const strictRows: Array<{
+      kind: number
+      attester: Hex
+      recipient: Hex
+      uid: Hex
+      data: Hex
+      timestamp: bigint
+      signedTime: bigint
+      sourceLane: 1
+      sourceOrder: bigint
+      sourceSuborder: number
+      registry: Hex
+      nodeId: Hex
+      head: Hex
+      count: bigint
+      dataCommitment: Hex
+      cid: string
+      anchorTxHash: Hex
+      anchorBlock: bigint
+      anchorTimestamp: bigint
+      firstAnchorTxHash: Hex
+      firstAnchorBlock: bigint
+      firstAnchorTimestamp: bigint
+      gatewayIndex: number | null
+      fetchLatencyMs: number | null
+    }> = []
 
-    const attestations =
-      currentUids.length === 0
+    if (strictRegistry) {
+      const nodes = await db
+        .select()
+        .from(easOffchainNode)
+        .where(eq(easOffchainNode.registry, strictRegistry))
+      const invalid = nodes.find((node) => !node.verified)
+      if (invalid) {
+        throw new StrictLaneApiError(
+          `Strict node ${invalid.nodeId} is unavailable or invalid (${invalid.validationError ?? 'E0_VALIDATION'})`
+        )
+      }
+
+      const anchorIds = nodes.map((node) => node.anchorId)
+      const [mutations, anchors] =
+        anchorIds.length === 0
+          ? [[], []]
+          : await Promise.all([
+              db
+                .select()
+                .from(easOffchainMutation)
+                .where(inArray(easOffchainMutation.anchorId, anchorIds)),
+              db
+                .select()
+                .from(easOffchainAnchor)
+                .where(inArray(easOffchainAnchor.id, anchorIds)),
+            ])
+      const mutationsByAnchor = new Map<string, number>()
+      for (const mutation of mutations) {
+        mutationsByAnchor.set(
+          mutation.anchorId,
+          (mutationsByAnchor.get(mutation.anchorId) ?? 0) + 1
+        )
+      }
+      for (const node of nodes) {
+        if (BigInt(mutationsByAnchor.get(node.anchorId) ?? 0) !== node.count) {
+          throw new StrictLaneApiError(
+            `Strict node ${node.nodeId} has an incomplete derived mutation log`
+          )
+        }
+      }
+
+      const nodesByAnchor = new Map(nodes.map((node) => [node.anchorId, node]))
+      const anchorsById = new Map(anchors.map((anchor) => [anchor.id, anchor]))
+      for (const mutation of mutations) {
+        const node = nodesByAnchor.get(mutation.anchorId)
+        const anchor = anchorsById.get(mutation.anchorId)
+        if (!node || !anchor?.verified) {
+          throw new StrictLaneApiError(
+            `Strict mutation ${mutation.id} lacks a verified current anchor`
+          )
+        }
+        strictRows.push({
+          kind: mutation.kind,
+          attester: node.owner,
+          recipient: mutation.recipient,
+          uid: mutation.uid,
+          data: mutation.data,
+          timestamp: mutation.time,
+          signedTime: mutation.signedTime,
+          sourceLane: 1,
+          sourceOrder: mutation.firstAnchorFoldIndex,
+          sourceSuborder: mutation.sequence,
+          registry: strictRegistry,
+          nodeId: node.nodeId,
+          head: node.head,
+          count: node.count,
+          dataCommitment: node.dataCommitment,
+          cid: node.cid,
+          anchorTxHash: node.updatedTxHash,
+          anchorBlock: node.updatedBlock,
+          anchorTimestamp: node.updatedTimestamp,
+          firstAnchorTxHash: mutation.firstAnchorTxHash,
+          firstAnchorBlock: mutation.firstAnchorBlock,
+          firstAnchorTimestamp: mutation.firstAnchorTimestamp,
+          gatewayIndex: anchor.gatewayIndex,
+          fetchLatencyMs: anchor.fetchLatencyMs,
+        })
+      }
+    }
+
+    const lane1Rows = foldRows.map((row) => ({
+      ...row,
+      timestamp: row.blockTimestamp,
+      sourceLane: 0 as const,
+      sourceOrder: row.blockNumber,
+      sourceSuborder: row.logIndex,
+    }))
+    const currentRows = currentTimedVouches([
+      ...lane1Rows,
+      ...strictRows,
+    ]).filter(
+      (row) =>
+        accountsMap.has(row.attester) &&
+        accountsMap.has(row.recipient) &&
+        row.attester !== row.recipient
+    )
+    const currentLane1 = currentRows.filter(
+      (row): row is (typeof lane1Rows)[number] => row.sourceLane === 0
+    )
+    const currentLane1Uids = currentLane1.map((row) => row.uid)
+    const onchainAttestations =
+      currentLane1Uids.length === 0
         ? []
         : await db
             .select()
             .from(easAttestation)
             .where(
               and(
-                inArray(easAttestation.uid, currentUids),
+                inArray(easAttestation.uid, currentLane1Uids),
                 inArray(easAttestation.schema, schemaUids),
                 inArray(easAttestation.attester, relevantAccounts),
                 inArray(easAttestation.recipient, relevantAccounts)
@@ -204,6 +340,67 @@ app.get('/:snapshot', async (c) => {
               asc(easAttestation.attester),
               asc(easAttestation.recipient)
             )
+
+    const lane1ByUid = new Map(
+      currentLane1.map((row) => [row.uid.toLowerCase(), row])
+    )
+    const hybrid = Boolean(strictRegistry)
+    const attestations = [
+      ...onchainAttestations.map((attestation) => {
+        if (!hybrid) return attestation
+        const fold = lane1ByUid.get(attestation.uid.toLowerCase())
+        return {
+          ...attestation,
+          provenance: {
+            source: 'on-chain-eas',
+            transactionHash: fold?.txHash ?? null,
+            blockNumber: fold?.blockNumber.toString() ?? null,
+          },
+        }
+      }),
+      ...currentRows
+        .filter(
+          (row): row is (typeof strictRows)[number] => row.sourceLane === 1
+        )
+        .map((row) => ({
+          uid: row.uid,
+          schema: catalogInstance!.schemaUid,
+          resolver: strictRegistry!,
+          attester: row.attester,
+          recipient: row.recipient,
+          ref: ZERO32,
+          revocable: true,
+          expirationTime: 0n,
+          revocationTime: 0n,
+          data: row.data,
+          blockNumber: row.firstAnchorBlock,
+          timestamp: row.signedTime,
+          provenance: {
+            source: 'off-chain-eas',
+            registry: row.registry,
+            nodeId: row.nodeId,
+            head: row.head,
+            count: row.count.toString(),
+            dataCommitment: row.dataCommitment,
+            cid: row.cid,
+            anchorTransactionHash: row.anchorTxHash,
+            anchorBlock: row.anchorBlock.toString(),
+            anchorTimestamp: row.anchorTimestamp.toString(),
+            firstCommitTransactionHash: row.firstAnchorTxHash,
+            firstCommitBlock: row.firstAnchorBlock.toString(),
+            firstCommitTimestamp: row.firstAnchorTimestamp.toString(),
+            storageHealthy: true,
+            indexerVerified: true,
+            gatewayIndex: row.gatewayIndex,
+            fetchLatencyMs: row.fetchLatencyMs,
+            revocation: 'Trustgraphs in-log only',
+          },
+        })),
+    ].sort(
+      (a, b) =>
+        a.attester.localeCompare(b.attester) ||
+        a.recipient.localeCompare(b.recipient)
+    )
 
     for (const attestation of attestations) {
       accountsMap.get(attestation.attester)!.sent++
@@ -263,6 +460,9 @@ app.get('/:snapshot', async (c) => {
       scoreProgram,
     })
   } catch (error) {
+    if (error instanceof StrictLaneApiError) {
+      return c.json({ error: error.message, code: 'E0_INDEXER_STATE' }, 409)
+    }
     if (error instanceof ScoreProgramApiError) {
       return c.json({ error: error.message }, 409)
     }

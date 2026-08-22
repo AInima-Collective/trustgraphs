@@ -2,6 +2,7 @@ import { Hex } from 'viem'
 
 import { easAttestation } from '@/ponder.schema'
 
+import type { AttestationProvenance } from './attestation-provenance'
 import { SchemaManager } from './schemas'
 import { formatTimeAgo } from './utils'
 
@@ -12,6 +13,11 @@ export enum AttestationStatus {
 }
 
 export const ATTESTATION_STATUSES = Object.values(AttestationStatus)
+
+export type AttestationApiRow = typeof easAttestation.$inferSelect & {
+  /** Present on hybrid network responses; absent keeps legacy API/UI rows unchanged. */
+  provenance?: AttestationProvenance
+}
 
 export interface AttestationData {
   uid: Hex
@@ -29,6 +35,7 @@ export interface AttestationData {
   data: Hex
   decodedData: Record<string, any>
   status: `${AttestationStatus}`
+  provenance?: AttestationProvenance
 }
 
 /**
@@ -38,19 +45,19 @@ export function intoAttestationData(): null
 export function intoAttestationData(ponderData: undefined): null
 export function intoAttestationData(ponderData: null): null
 export function intoAttestationData(
-  ponderData: typeof easAttestation.$inferSelect
+  ponderData: AttestationApiRow
 ): AttestationData
 export function intoAttestationData(
-  ponderData: typeof easAttestation.$inferSelect | undefined
+  ponderData: AttestationApiRow | undefined
 ): AttestationData
 // The shape a guarded ponder query hands to `select`: a missing row is `null`, never `undefined`.
 // Without this overload TS resolves the call to the one above and then rejects it, because that
 // one promises an `AttestationData` for an input this function answers `null` to.
 export function intoAttestationData(
-  ponderData: typeof easAttestation.$inferSelect | null
+  ponderData: AttestationApiRow | null
 ): AttestationData | null
 export function intoAttestationData(
-  ponderData?: typeof easAttestation.$inferSelect | null
+  ponderData?: AttestationApiRow | null
 ): AttestationData | null {
   if (!ponderData) {
     return null
@@ -104,11 +111,12 @@ export function intoAttestationData(
     data: ponderData.data,
     decodedData,
     status,
+    ...(ponderData.provenance ? { provenance: ponderData.provenance } : {}),
   }
 }
 
 export const intoAttestationsData = (
-  ponderData: (typeof easAttestation.$inferSelect)[]
+  ponderData: AttestationApiRow[]
 ): AttestationData[] =>
   // Called through an arrow rather than passed to `.map` directly: every element here is a real
   // row, so this must pick the non-null overload, and point-free `.map(intoAttestationData)`

@@ -160,6 +160,7 @@ sol! {
     function accumulator() external view returns (address);
     function anchorRegistry() external view returns (address);
     function anchorCheckpoints(uint256 checkpointId) external view returns (bytes32 anchorAcc, uint64 anchorCount);
+    function checkpointWorkCount(uint256 checkpointId) external view returns (uint64);
     function instanceDomain() external view returns (bytes32);
     function trigger() external returns (uint256);
     function submitProof(
@@ -196,6 +197,7 @@ sol! {
     /// `AnchorRegistry`.
     function anchorAcc() external view returns (bytes32);
     function anchorCount() external view returns (uint64);
+    function workCount() external view returns (uint64);
     function maxTotalInputs() external view returns (uint64);
 
     /// `TrustgraphsFactory`.
@@ -922,6 +924,8 @@ pub struct SnapshotView {
     pub instance_domain: B256,
     pub checkpoints: Vec<CheckpointRef>,
     pub live: Commitments,
+    /// Current authenticated lane-2 work, raw anchor count for legacy registries.
+    pub live_anchor_work: u64,
     /// Present on capacity-bounded AnchorRegistry deployments. A legacy lane-2 implementation may
     /// expose only `anchorAcc`/`anchorCount`, in which case the operator uses its global ceiling.
     pub input_capacity: Option<u64>,
@@ -1021,6 +1025,15 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
             // and `submitProof` would revert `UnpinnedCheckpoint`.
             (h != B256::ZERO).then_some(h)
         };
+        let work_count = rpc
+            .eth_call(
+                snapshot,
+                checkpointWorkCountCall { checkpointId: U256::from(id) }.abi_encode(),
+            )
+            .ok()
+            .and_then(|returned| word_u64(&returned, "checkpointWorkCount").ok())
+            .filter(|work| *work >= ac.anchorCount)
+            .unwrap_or(ac.anchorCount);
         checkpoints.push(CheckpointRef {
             id,
             block_number: c.blockNumber,
@@ -1030,6 +1043,7 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
                 anchor_acc: ac.anchorAcc,
                 anchor_count: ac.anchorCount,
             },
+            work_count,
             pinned_params_hash: pinned,
         });
     }
@@ -1049,6 +1063,15 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
         let a = rpc.eth_call(anchor_registry, anchorAccCall {}.abi_encode())?;
         let n = rpc.eth_call(anchor_registry, anchorCountCall {}.abi_encode())?;
         (word32(&a, "anchorAcc")?, word_u64(&n, "anchorCount")?)
+    };
+    let live_anchor_work = if anchor_registry == Address::ZERO {
+        0
+    } else {
+        rpc.eth_call(anchor_registry, workCountCall {}.abi_encode())
+            .ok()
+            .and_then(|returned| word_u64(&returned, "workCount").ok())
+            .filter(|work| *work >= live_anchor_count)
+            .unwrap_or(live_anchor_count)
     };
     let input_capacity = if anchor_registry == Address::ZERO {
         None
@@ -1078,6 +1101,7 @@ pub fn read_snapshot(rpc: &Rpc, snapshot: Address) -> Result<SnapshotView> {
             anchor_acc: live_anchor_acc,
             anchor_count: live_anchor_count,
         },
+        live_anchor_work,
         input_capacity,
     })
 }
@@ -1168,6 +1192,7 @@ pub fn read_signer_view(
             // both the quiet check and the loss estimate scoped to the exact score receipt this
             // derived program is allowed to follow.
             view.live = checkpoint.commitments;
+            view.live_anchor_work = checkpoint.work_count;
         }
     }
     view.checkpoints.retain(|checkpoint| score_last.is_some_and(|last| checkpoint.id <= last));
@@ -1177,6 +1202,7 @@ pub fn read_signer_view(
     view.epoch_length = u64::MAX;
     view.live.anchor_acc = B256::ZERO;
     view.live.anchor_count = 0;
+    view.live_anchor_work = 0;
     view.input_capacity = None;
     Ok((view, paused))
 }
@@ -1201,6 +1227,15 @@ pub fn read_checkpoint(rpc: &Rpc, snapshot: Address, checkpoint_id: u64) -> Resu
         )?,
         "checkpointParamsHash",
     )?;
+    let work_count = rpc
+        .eth_call(
+            snapshot,
+            checkpointWorkCountCall { checkpointId: U256::from(checkpoint_id) }.abi_encode(),
+        )
+        .ok()
+        .and_then(|returned| word_u64(&returned, "checkpointWorkCount").ok())
+        .filter(|work| *work >= anchors.anchorCount)
+        .unwrap_or(anchors.anchorCount);
     Ok(CheckpointRef {
         id: checkpoint_id,
         block_number: checkpoint.blockNumber,
@@ -1210,6 +1245,7 @@ pub fn read_checkpoint(rpc: &Rpc, snapshot: Address, checkpoint_id: u64) -> Resu
             anchor_acc: anchors.anchorAcc,
             anchor_count: anchors.anchorCount,
         },
+        work_count,
         pinned_params_hash: (pinned != B256::ZERO).then_some(pinned),
     })
 }
