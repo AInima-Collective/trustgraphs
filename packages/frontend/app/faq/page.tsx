@@ -310,13 +310,15 @@ export default function FaqPage() {
           group has to be one click away rather than a scroll away. */}
       <nav
         aria-label="Question groups"
-        className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-1 border-y border-border"
+        className="mt-6 grid grid-cols-2 border-y border-border sm:flex sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-1"
       >
-        {GROUPS.map((group) => (
+        {GROUPS.map((group, index) => (
           <a
             key={group.id}
             href={`#${group.id}`}
-            className="inline-flex min-h-11 items-center tg-label text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            className={`inline-flex min-h-11 items-center border-border tg-label text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink sm:border-0 ${
+              index < 2 ? 'border-b' : ''
+            } ${index % 2 === 0 ? 'border-r pr-3 sm:pr-0' : 'pl-3 sm:pl-0'}`}
           >
             {group.name}
           </a>
@@ -328,7 +330,7 @@ export default function FaqPage() {
           key={group.id}
           id={group.id}
           aria-label={group.name}
-          className="mt-20 scroll-mt-6 [@media(max-height:480px)]:mt-10"
+          className="mt-14 scroll-mt-6 sm:mt-20 [@media(max-height:480px)]:mt-10"
         >
           <SectionHeading>{group.name}</SectionHeading>
           {group.questions.map((question) => (

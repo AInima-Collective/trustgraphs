@@ -32,15 +32,19 @@ export const NetworkNav = ({
 }) => {
   const pathname = usePathname()
   const navRef = useRef<HTMLElement>(null)
+  const tabSignature = tabs.map((tab) => tab.href).join('\n')
 
   // A phone can only show part of a feature-rich network's tab row. Keep the
   // current destination in view after direct navigation instead of making the
-  // active state exist just beyond the right edge of the screen.
+  // active state exist just beyond the right edge of the screen. The runtime
+  // contributions catalog can add a tab after this component mounts, shifting
+  // every tab after it; include the tab set in the dependency so that late
+  // layout change cannot strand the active tab off-canvas.
   useEffect(() => {
     navRef.current
       ?.querySelector('[aria-current="page"]')
       ?.scrollIntoView({ block: 'nearest', inline: 'center' })
-  }, [pathname])
+  }, [pathname, tabSignature])
 
   // Nothing to navigate to: an instance with no gov module, no distributor and no sibling round
   // has only its overview, and a lone "Overview" tab is noise.
@@ -69,7 +73,7 @@ export const NetworkNav = ({
         href={tab.href}
         aria-current={active ? 'page' : undefined}
         className={cn(
-          'shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors',
+          'inline-flex min-h-11 shrink-0 items-center gap-1.5 px-3 py-2 text-sm transition-colors sm:min-h-0 sm:py-1.5',
           active
             ? 'bg-primary text-primary-foreground font-medium'
             : 'text-muted-foreground hover:text-foreground hover:bg-accent'

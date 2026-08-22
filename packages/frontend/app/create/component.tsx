@@ -57,14 +57,19 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
     <div className="space-y-4">
       <Card type="accent" size="md" className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium">Standard network</h2>
+          <h2 className="tg-label-strong">Standard network</h2>
           <p className="text-sm text-muted-foreground">
             Members vouch for each other and scores follow; every starting
             account you list counts equally.
           </p>
         </div>
         {isFactoryAvailable() ? (
-          <Button type="button" size="sm" onClick={onStandard}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={onStandard}
+            className="h-auto min-h-11 w-full justify-between whitespace-normal py-2 text-left leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:py-0 sm:text-center sm:leading-normal"
+          >
             Start a standard network
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -78,26 +83,36 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
 
       <Card type="accent" size="md" className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium">Weighted starting shares</h2>
+          <h2 className="tg-label-strong">Weighted starting shares</h2>
           <p className="text-sm text-muted-foreground">
             Give each starting account its own size of head start; vouches still
             decide the final scores.
           </p>
         </div>
-        <ButtonLink href="/create/weighted" variant="outline" size="sm">
+        <ButtonLink
+          href="/create/weighted"
+          variant="outline"
+          size="sm"
+          className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
+        >
           Choose weighted shares
         </ButtonLink>
       </Card>
 
       <Card type="accent" size="md" className="space-y-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium">Compose proved scoreboards</h2>
+          <h2 className="tg-label-strong">Compose proved scoreboards</h2>
           <p className="text-sm text-muted-foreground">
             Blend the proven scoreboards of existing networks into one, at exact
             percentages you choose.
           </p>
         </div>
-        <ButtonLink href="/create/composition" variant="outline" size="sm">
+        <ButtonLink
+          href="/create/composition"
+          variant="outline"
+          size="sm"
+          className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
+        >
           Open the composition workspace
         </ButtonLink>
       </Card>

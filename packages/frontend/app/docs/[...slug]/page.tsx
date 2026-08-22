@@ -172,7 +172,7 @@ export default async function DocPage({ params }: Props) {
 
         {/* `break-words`: doc H1s carry unbreakable identifiers
          * ("TrustAwarePageRank:") that overflow a 320px viewport otherwise. */}
-        <PageTitle className="break-words">{doc.title}</PageTitle>
+        <PageTitle className="tg-doc-title break-words">{doc.title}</PageTitle>
 
         {contents.length >= 3 && (
           <nav aria-label="Contents" className="mt-8">

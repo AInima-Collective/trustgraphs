@@ -146,6 +146,18 @@
   padding: 0.1em 0.35em;
 }
 
+/* Inline identifiers can be longer than an entire phone line (contract
+ * addresses and generated symbol names are common in these docs). Break those
+ * tokens inside the reading column; code blocks keep their own horizontal
+ * scroller below. Cloning the decoration keeps the background and padding on
+ * every wrapped fragment instead of painting one broken rectangle. */
+.tg-prose :not(pre) > code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .tg-prose pre {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -194,4 +206,14 @@
   padding: 0.5rem 0.75rem 0.5rem 0;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
+}
+
+/* A compact display step for article titles on phones. Short section and
+ * index titles keep the app-wide page-title scale; this class is used only by
+ * individual documents, whose names often contain long technical identifiers. */
+@media (max-width: 640px) {
+  .tg-doc-title {
+    font-size: calc(var(--text-2xl) * var(--display-scale));
+    line-height: 1.02;
+  }
 }
