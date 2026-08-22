@@ -3,13 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import {
-  type Address,
-  type Hex,
-  isAddress,
-  parseEventLogs,
-  toHex,
-} from 'viem'
+import { type Address, type Hex, isAddress, parseEventLogs, toHex } from 'viem'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
 
 import { Button, ButtonLink } from '@/components/Button'
@@ -17,8 +11,8 @@ import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { NetworkHeader } from '@/components/NetworkHeader'
-import { APIS, CONTRIBUTIONS_FACTORY } from '@/lib/config'
 import { type InstanceRow } from '@/lib/catalog'
+import { APIS, CONTRIBUTIONS_FACTORY } from '@/lib/config'
 import {
   PARENT_AUTHORITY_ROLE,
   contributionsCreateArgs,
@@ -98,7 +92,9 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
         `${APIS.ponder}/instances/${network.instanceId}`
       )
       if (!response.ok) {
-        throw new Error(`GET /instances/${network.instanceId} responded ${response.status}`)
+        throw new Error(
+          `GET /instances/${network.instanceId} responded ${response.status}`
+        )
       }
       const { instance } = (await response.json()) as { instance: InstanceRow }
       return instance
@@ -141,6 +137,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
       !network.instanceId ||
       !parent ||
       !CONTRIBUTIONS_FACTORY ||
+      network.offchainLane ||
       problem !== null
     ) {
       return
@@ -205,17 +202,27 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
         <div className="space-y-3">
           <h2 className="text-2xl font-bold">Start a contribution round</h2>
           <p className="text-sm leading-relaxed text-text-muted">
-            A round lets members submit work, respond when they are named on
-            it, and rate each other&apos;s contributions. Ratings are weighted
-            by this network&apos;s trust scores, and once the round&apos;s
-            result is proven, the pool splits accordingly and recipients claim
-            their payouts. One transaction sets up everything: the three
-            attestation schemas, the round&apos;s own score contract, and its
-            payout fund.
+            A round lets members submit work, respond when they are named on it,
+            and rate each other&apos;s contributions. Ratings are weighted by
+            this network&apos;s trust scores, and once the round&apos;s result
+            is proven, the pool splits accordingly and recipients claim their
+            payouts. One transaction sets up everything: the three attestation
+            schemas, the round&apos;s own score contract, and its payout fund.
           </p>
         </div>
 
-        {!CONTRIBUTIONS_FACTORY ? (
+        {network.offchainLane ? (
+          <div className="space-y-2 text-sm text-warn">
+            <p>Contribution rounds are unavailable for this hybrid network.</p>
+            <p>
+              The contribution guest authenticates the on-chain vouch
+              accumulator only; it does not verify the strict retained off-chain
+              history that also affects this network&apos;s scores. The factory
+              rejects this parent so a round cannot silently use a partial trust
+              graph.
+            </p>
+          </div>
+        ) : !CONTRIBUTIONS_FACTORY ? (
           <p className="text-sm text-warn">
             This deployment has no contribution-round factory yet, so rounds
             cannot be started from the app here.
@@ -223,8 +230,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
         ) : !network.instanceId ? (
           <p className="text-sm text-warn">
             This network is not in the on-chain directory, so a round cannot be
-            attached to it. Networks created through the app are always
-            listed.
+            attached to it. Networks created through the app are always listed.
           </p>
         ) : created ? (
           <div className="space-y-4">
@@ -271,9 +277,8 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 maxLength={64}
               />
               <p className="text-xs text-text-muted">
-                Shown wherever the round appears. It is part of the
-                round&apos;s id, so two rounds can share a name without
-                clashing.
+                Shown wherever the round appears. It is part of the round&apos;s
+                id, so two rounds can share a name without clashing.
               </p>
             </div>
 
@@ -297,8 +302,8 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 />
               </div>
               <p className="text-xs text-text-muted sm:col-span-2">
-                Only contributions submitted inside this window count toward
-                the round.
+                Only contributions submitted inside this window count toward the
+                round.
               </p>
             </div>
 
@@ -327,9 +332,9 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 onChange={(e) => setRaterRewardPct(e.target.value)}
               />
               <p className="text-xs text-text-muted">
-                A slice of the pool set aside for members whose ratings
-                counted, so reviewing work is paid too. 0 turns it off; 1% is
-                the usual default.
+                A slice of the pool set aside for members whose ratings counted,
+                so reviewing work is paid too. 0 turns it off; 1% is the usual
+                default.
               </p>
             </div>
 
@@ -342,8 +347,8 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
                 placeholder="0x…"
               />
               <p className="text-xs text-text-muted">
-                The token you plan to pay out in. This only sets the default
-                the app shows; the fund accepts any token when it is funded.
+                The token you plan to pay out in. This only sets the default the
+                app shows; the fund accepts any token when it is funded.
               </p>
             </div>
 
@@ -381,9 +386,9 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
 
         <p className="text-xs text-text-muted">
           Terminology, for clarity: contributors <strong>submit</strong>{' '}
-          contributions during the window; once the result is proven,
-          recipients <strong>claim</strong> their payouts from the round&apos;s
-          fund. See the{' '}
+          contributions during the window; once the result is proven, recipients{' '}
+          <strong>claim</strong> their payouts from the round&apos;s fund. See
+          the{' '}
           <Link
             href={`/networks/${network.id}/contributions`}
             className="underline underline-offset-4"

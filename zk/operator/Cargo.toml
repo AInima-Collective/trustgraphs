@@ -25,6 +25,7 @@ native-gnark = ["trustgraph-prover/native-gnark"]
 operator-core = { path = "../../packages/operator-core" }
 trustgraph-prover = { path = "../prover" }
 pagerank-core = { path = "../../packages/pagerank-core" }
+trustgraph-core = { path = "../../packages/trustgraph-core" }
 contributions-core = { path = "../../packages/contributions-core" }
 weighted-prior-core = { path = "../../packages/weighted-prior-core" }
 composition-core = { path = "../../packages/composition-core" }

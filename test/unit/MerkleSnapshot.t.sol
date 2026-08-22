@@ -6,10 +6,24 @@ import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockAnchorRegistry} from "../mocks/MockAnchorRegistry.sol";
+import {TestAccumulator} from "../mocks/TestAccumulator.sol";
 import {MockHook, RevertingHook, GasGuzzlerHook} from "../mocks/MockHook.sol";
+
+contract MockWorkAnchorRegistry is IAnchorRegistry {
+    bytes32 public anchorAcc;
+    uint64 public anchorCount;
+    uint64 public workCount;
+
+    function setState(bytes32 acc_, uint64 count_, uint64 work_) external {
+        anchorAcc = acc_;
+        anchorCount = count_;
+        workCount = work_;
+    }
+}
 
 contract MerkleSnapshotTest is Test {
     MerkleSnapshot ms;
@@ -567,19 +581,24 @@ contract MerkleSnapshotTest is Test {
 
     /// Lane 2 moving alone is enough — which is the case the mirror's missing guard exists for.
     function test_Lane2MovementAloneJustifiesACheckpoint() public {
+        TestAccumulator productionAccumulator = new TestAccumulator();
+        MerkleSnapshot strictSnapshot =
+            new MerkleSnapshot(verifier, paramsHash, productionAccumulator, constitutional, operational);
+        productionAccumulator.bindSnapshot(address(strictSnapshot));
         MockAnchorRegistry areg = new MockAnchorRegistry();
         vm.prank(constitutional);
-        ms.setAnchorRegistry(areg);
+        strictSnapshot.setAnchorRegistry(areg);
 
-        accer.setState(bytes32(uint256(1)), 1);
         areg.setState(bytes32(uint256(1)), 1);
-        ms.trigger();
+        strictSnapshot.trigger();
 
-        // Lane 1 is silent; lane 2 gained an anchor. A contributions round closing while the
-        // vouch graph is quiet is exactly this shape.
+        // The production EAS accumulator is silent; lane 2 gained an anchor. Its former local
+        // NoNewInputs guard wedged this exact strict-vouch shape after the first checkpoint.
         areg.setState(bytes32(uint256(2)), 2);
-        ms.trigger();
-        assertEq(accer.checkpointCount(), 2);
+        strictSnapshot.trigger();
+        assertEq(productionAccumulator.checkpointCount(), 2);
+        assertEq(productionAccumulator.getCheckpoint(0).acc, productionAccumulator.getCheckpoint(1).acc);
+        assertEq(productionAccumulator.getCheckpoint(0).leafCount, productionAccumulator.getCheckpoint(1).leafCount);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -593,6 +612,42 @@ contract MerkleSnapshotTest is Test {
         (bytes32 aAcc, uint64 aCount) = ms.anchorCheckpoints(id);
         assertEq(aAcc, bytes32(0));
         assertEq(aCount, 0);
+        assertEq(ms.checkpointWorkCount(id), 0);
+    }
+
+    function test_WorkAwareRegistryCheckpointsAuthenticatedWorkWithoutChangingRawJournalCount() public {
+        MockWorkAnchorRegistry areg = new MockWorkAnchorRegistry();
+        vm.prank(constitutional);
+        ms.setAnchorRegistry(IAnchorRegistry(address(areg)));
+
+        accer.setState(bytes32(uint256(1)), 5);
+        areg.setState(bytes32(uint256(2)), 9, 45);
+        uint256 id = ms.trigger();
+
+        (bytes32 storedAcc, uint64 storedCount) = ms.anchorCheckpoints(id);
+        assertEq(storedAcc, bytes32(uint256(2)));
+        assertEq(storedCount, 9, "journal v3 remains raw anchor count");
+        assertEq(ms.checkpointWorkCount(id), 45, "pricing checkpoints authenticated work");
+    }
+
+    function test_LegacyOrUndersizedWorkGetterFallsBackToRawAnchorCount() public {
+        MockAnchorRegistry legacy = new MockAnchorRegistry();
+        vm.prank(constitutional);
+        ms.setAnchorRegistry(legacy);
+        accer.setState(bytes32(uint256(1)), 1);
+        legacy.setState(bytes32(uint256(2)), 9);
+        uint256 legacyId = ms.trigger();
+        assertEq(ms.checkpointWorkCount(legacyId), 9, "missing optional getter falls back");
+
+        MockAccumulator nextAccumulator = new MockAccumulator();
+        MerkleSnapshot next = new MerkleSnapshot(verifier, paramsHash, nextAccumulator, constitutional, operational);
+        MockWorkAnchorRegistry malformed = new MockWorkAnchorRegistry();
+        vm.prank(constitutional);
+        next.setAnchorRegistry(IAnchorRegistry(address(malformed)));
+        nextAccumulator.setState(bytes32(uint256(3)), 2);
+        malformed.setState(bytes32(uint256(4)), 10, 9);
+        uint256 malformedId = next.trigger();
+        assertEq(next.checkpointWorkCount(malformedId), 10, "work can never underprice raw anchors");
     }
 
     /// With an anchor registry set, trigger() freezes its (anchorAcc, anchorCount) per checkpoint, and

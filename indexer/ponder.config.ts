@@ -13,6 +13,7 @@ import {
 } from './abis/composition'
 import { contributionsFactoryAbi } from './abis/contributionsFactory'
 import { contributionsParamsControllerAbi } from './abis/contributionsParamsController'
+import { easOffchainAnchorRegistryAbi } from './abis/easOffchainAnchorRegistry'
 import {
   OPTIMISM_ERC8004_IDENTITY_REGISTRY,
   erc8004IdentityRegistryAbi,
@@ -252,6 +253,10 @@ const PARAMS_CONTROLLER_CREATED = getAbiItem({
   abi: trustgraphsFactoryAbi,
   name: 'ParamsControllerCreated',
 })
+const OFFCHAIN_EAS_LANE_CREATED = getAbiItem({
+  abi: trustgraphsFactoryAbi,
+  name: 'OffchainEasLaneCreated',
+})
 const PARAMS_AUTHORITY_UPDATED = getAbiItem({
   abi: instanceRegistryParamsAbi,
   name: 'ParamsAuthorityUpdated',
@@ -305,6 +310,14 @@ const paramsControllers = () =>
     address: TRUSTGRAPHS_FACTORY!,
     event: PARAMS_CONTROLLER_CREATED,
     parameter: 'controller',
+    startBlock: CORE_START_BLOCK,
+  })
+
+const easOffchainRegistries = () =>
+  factory({
+    address: TRUSTGRAPHS_FACTORY!,
+    event: OFFCHAIN_EAS_LANE_CREATED,
+    parameter: 'registry',
     startBlock: CORE_START_BLOCK,
   })
 
@@ -365,7 +378,10 @@ const BASE_FACTORIES = [
 const attachedDistributors = () =>
   factory({
     address: BASE_FACTORIES,
-    event: getAbiItem({ abi: trustgraphsFactoryAbi, name: 'DistributorAttached' }),
+    event: getAbiItem({
+      abi: trustgraphsFactoryAbi,
+      name: 'DistributorAttached',
+    }),
     parameter: 'distributor',
     startBlock: CORE_START_BLOCK,
   })
@@ -713,6 +729,15 @@ export default createConfig({
               ),
             },
           }
+        : {},
+    },
+    // Opt-in strict v2 lane. Every registry comes only from the authenticated factory event; no
+    // manifest, annotation, or deployment-summary address can create a strict lane row.
+    easOffchainAnchorRegistry: {
+      abi: easOffchainAnchorRegistryAbi,
+      startBlock: CORE_START_BLOCK,
+      chain: FACTORY_DISCOVERY
+        ? { [CORE_CHAIN]: { address: easOffchainRegistries() } }
         : {},
     },
     // Contributions-program resolver + accumulator (M3). Discovered from deployment_summary.json

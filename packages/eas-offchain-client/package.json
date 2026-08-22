@@ -1,0 +1,22 @@
+{
+  "name": "@trustgraphs/eas-offchain-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "tsx --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ethereum-attestation-service/eas-sdk": "2.9.0",
+    "viem": "^2.39.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "tsx": "^4.20.6",
+    "typescript": "5.5.4"
+  }
+}

@@ -11,7 +11,10 @@ use operator_core::decide::alerts;
 use operator_core::finality::{Anchor, Finality};
 use operator_core::journal::{Journal, Outcome, Record, Status, SubmitFailureClass, WorkKey};
 use operator_core::plan;
-use operator_core::types::{Action, InFlight, InFlightState, InstanceSize, InstanceState, Program};
+use operator_core::types::{
+    Action, AvailabilityStage, HoldReason, InFlight, InFlightState, InstanceSize, InstanceState,
+    Program,
+};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -24,7 +27,8 @@ use crate::chain::{
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{
-    alert, write_status, InstanceStatus, Logger, PublicSettings, Status as OpsStatus,
+    action_key, alert, write_status, InstanceStatus, Logger, Narration, PublicSettings,
+    Status as OpsStatus,
 };
 use crate::tx::Sender;
 
@@ -139,6 +143,10 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     let mut seen_anchors: BTreeMap<(B256, u64), Anchor> = BTreeMap::new();
     let mut pending_settles: BTreeMap<WorkKey, PendingSettle> = BTreeMap::new();
 
+    // The log narrates changes; the heartbeat file carries steady state. This remembers what has
+    // already been said so a healthy tick is one line, not one line per instance per lane.
+    let mut narration = Narration::default();
+
     let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
@@ -163,6 +171,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             &mut scan,
             &mut seen_anchors,
             &mut pending_settles,
+            &mut narration,
             &logger,
             dry_run,
         ) {
@@ -289,6 +298,7 @@ fn tick(
     scan: &mut RegistryScan,
     seen_anchors: &mut BTreeMap<(B256, u64), Anchor>,
     pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
+    narration: &mut Narration,
     logger: &Logger,
     dry_run: bool,
 ) -> Result<()> {
@@ -366,18 +376,68 @@ fn tick(
         .flat_map(|(_, catalog)| catalog.entries.iter().map(|entry| entry.instance_id))
         .collect::<BTreeSet<_>>();
 
+    // Ids some lane recognizes as its own: an entry, or a skip with a substantive cause (the
+    // deeper checks only run once the program matches). A cross-lane `OtherProgram` skip for a
+    // recognized id is routing, not an anomaly — every instance is expected to be "another
+    // program's" in every lane but its own.
+    let recognized = catalogs
+        .iter()
+        .flat_map(|(_, catalog)| {
+            catalog.entries.iter().map(|entry| entry.instance_id).chain(
+                catalog
+                    .skipped
+                    .iter()
+                    .filter(|s| !matches!(s.reason, SkipCause::OtherProgram(_)))
+                    .map(|s| s.instance_id),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let mut skipped_now: BTreeSet<B256> = BTreeSet::new();
+
     for (program, catalog) in &catalogs {
-        // Say what was skipped. A silently shorter list is indistinguishable from a healthy one.
+        // Say what was skipped — when it changes, not once per lane per tick. A silently shorter
+        // list is indistinguishable from a healthy one, but the same skip re-announced every tick
+        // buries the line that matters; the heartbeat file carries the steady state.
         for s in &catalog.skipped {
+            let lane_key = format!("skip/{}/{:#x}", program.name(), s.instance_id);
+            let unclaimed_key = format!("skip/unclaimed/{:#x}", s.instance_id);
+            if let SkipCause::OtherProgram(owner) = &s.reason {
+                if recognized.contains(&s.instance_id) {
+                    // Routing. Its own lane tells this instance's story; end any old one here.
+                    narration.clear(&lane_key);
+                    continue;
+                }
+                // No lane claims it (an unknown program id, or its lane is disabled). One line,
+                // lane-less: every lane says this at once and naming one would be arbitrary.
+                skipped_now.insert(s.instance_id);
+                let reason = format!(
+                    "no supported program claims this instance (registered program {owner:#x})"
+                );
+                if narration.changed(&unclaimed_key, &reason) {
+                    logger.event(
+                        "instance_skipped",
+                        json!({
+                            "instance": format!("{:#x}", s.instance_id),
+                            "program": serde_json::Value::Null,
+                            "reason": reason,
+                        }),
+                    );
+                }
+                continue;
+            }
+            skipped_now.insert(s.instance_id);
+            narration.clear(&unclaimed_key);
             let reason = s.reason.to_string();
-            logger.event(
-                "instance_skipped",
-                json!({
-                    "instance": format!("{:#x}", s.instance_id),
-                    "program": program.name(),
-                    "reason": reason.clone(),
-                }),
-            );
+            if narration.changed(&lane_key, &reason) {
+                logger.event(
+                    "instance_skipped",
+                    json!({
+                        "instance": format!("{:#x}", s.instance_id),
+                        "program": program.name(),
+                        "reason": reason.clone(),
+                    }),
+                );
+            }
             if matches!(&s.reason, SkipCause::ControllerInconsistent(_)) {
                 let text = format!(
                     "parameter-control bypass/inconsistency for {:#x} ({}): {}",
@@ -391,6 +451,23 @@ fn tick(
         }
 
         for entry in &catalog.entries {
+            // A lane that lists the instance ends any skip story about it. Log the recovery so
+            // the earlier `instance_skipped` line has a closing bracket.
+            let was_skipped =
+                narration.clear(&format!("skip/{}/{:#x}", program.name(), entry.instance_id));
+            let was_unclaimed =
+                narration.clear(&format!("skip/unclaimed/{:#x}", entry.instance_id));
+            if was_skipped || was_unclaimed {
+                logger.event(
+                    "instance_recovered",
+                    json!({
+                        "instance": format!("{:#x}", entry.instance_id),
+                        "name": entry.name,
+                        "program": program.name(),
+                    }),
+                );
+            }
+
             // Weighted prior bytes are checkpoint-critical data. Keep the active version warm on
             // every tick and prefetch a pending proposal before its timelock can activate. A
             // failure is loud but per-instance; proving still re-runs the same fail-closed
@@ -410,18 +487,30 @@ fn tick(
                 for (status, version) in warm {
                     match crate::weighted::recover_for_entry(cfg, rpc, &version) {
                         Ok(recovered) => {
-                            logger.event(
-                                "weighted_manifest_pinned",
-                                json!({
-                                    "instance": format!("{:#x}", entry.instance_id),
-                                    "version": version.params_version,
-                                    "status": status,
-                                    "bytes": recovered.bytes.len(),
-                                    "source": recovered.source.to_string(),
-                                    "degraded_sources": crate::weighted::degraded_source_count(&recovered),
-                                }),
-                            );
                             let degraded = crate::weighted::degraded_source_count(&recovered);
+                            // The keep-warm runs every tick; the same pin re-confirmed is not
+                            // news. A new version, source, or degradation is.
+                            if narration.changed(
+                                &format!("weighted/{:#x}/{status}", entry.instance_id),
+                                &format!(
+                                    "{:?}/{}/{}/{degraded}",
+                                    version.params_version,
+                                    recovered.source,
+                                    recovered.bytes.len()
+                                ),
+                            ) {
+                                logger.event(
+                                    "weighted_manifest_pinned",
+                                    json!({
+                                        "instance": format!("{:#x}", entry.instance_id),
+                                        "version": version.params_version,
+                                        "status": status,
+                                        "bytes": recovered.bytes.len(),
+                                        "source": recovered.source.to_string(),
+                                        "degraded_sources": degraded,
+                                    }),
+                                );
+                            }
                             if degraded > 0 {
                                 let text = format!(
                                     "{}: {status} weighted manifest recovered from {} but {} earlier source(s) are degraded; retry interval {}s",
@@ -475,7 +564,7 @@ fn tick(
             // Monotonic inputs cannot be trimmed. A bounded AnchorRegistry publishes the lower
             // instance-selected ingress capacity; other lanes use MAX_PRICED_INPUTS. Approaching
             // either cliff must be loud while a replacement-snapshot migration is still orderly.
-            let inputs = state.size.leaf_count.saturating_add(state.size.anchor_count);
+            let inputs = state.live_input_work;
             let ceiling = state.input_capacity.max(1).min(operator_core::policy::MAX_PRICED_INPUTS);
             if *program != Program::Composition && inputs >= ceiling.saturating_mul(8) / 10 {
                 let text = format!(
@@ -518,8 +607,80 @@ fn tick(
                     Some(&root_instance_ids),
                 )
             };
-            let action = plan(&state, &policy, spend);
-            logger.action(&format!("{:#x}", entry.instance_id), &action);
+            let mut action = plan(&state, &policy, spend);
+            let mut prepared_input = None;
+            let mut envelope0_preflight = None;
+            match action {
+                Action::Trigger => match handlers::preflight_live_envelope0(cfg, rpc, entry) {
+                    Ok(report) => envelope0_preflight = report,
+                    Err(_) => {
+                        logger.event(
+                            "envelope0_unavailable",
+                            json!({
+                                "instance": format!("{:#x}", entry.instance_id),
+                                "stage": "live_pretrigger",
+                            }),
+                        );
+                        action = Action::Hold(HoldReason::InputUnavailable {
+                            stage: AvailabilityStage::LivePretrigger,
+                            checkpoint_id: None,
+                        });
+                    }
+                },
+                Action::Prove { checkpoint_id }
+                    if entry.program == Program::Trustgraphs
+                        && handlers::uses_strict_envelope0(rpc, entry).unwrap_or(true) =>
+                {
+                    let pinned = state
+                        .checkpoints
+                        .iter()
+                        .find(|checkpoint| checkpoint.id == checkpoint_id)
+                        .and_then(|checkpoint| checkpoint.pinned_params_hash);
+                    let build = pinned
+                        .ok_or_else(|| anyhow::anyhow!("checkpoint has no pinned params"))
+                        .and_then(|hash| entry_at_params_hash(rpc, entry, hash, state.head_block))
+                        .and_then(|proving_entry| {
+                            handlers::build_input(
+                                cfg,
+                                rpc,
+                                &proving_entry,
+                                checkpoint_id,
+                                cfg.recipient(),
+                            )
+                        });
+                    match build {
+                        Ok(built) => prepared_input = Some(built),
+                        Err(_) => {
+                            logger.event(
+                                "envelope0_unavailable",
+                                json!({
+                                    "instance": format!("{:#x}", entry.instance_id),
+                                    "stage": "checkpoint_reconstruction",
+                                    "checkpoint": checkpoint_id,
+                                }),
+                            );
+                            action = Action::Hold(HoldReason::InputUnavailable {
+                                stage: AvailabilityStage::CheckpointReconstruction,
+                                checkpoint_id: Some(checkpoint_id),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
+            // Log the decision when the instance's STATE changes (see `action_key`), not every
+            // tick: `idle/quiet` repeated forever is what the heartbeat file is for, and a
+            // rising confirmation count is progress inside one state, not a new one.
+            if narration
+                .changed(&format!("decision/{:#x}", entry.instance_id), &action_key(&action))
+            {
+                logger.action(
+                    &format!("{:#x}", entry.instance_id),
+                    &entry.name,
+                    program.name(),
+                    &action,
+                );
+            }
 
             if matches!(action, Action::Idle(operator_core::types::IdleReason::Proving { .. })) {
                 in_flight_now += 1;
@@ -547,6 +708,7 @@ fn tick(
                     entry,
                     &state,
                     &action,
+                    prepared_input.as_ref(),
                 ) {
                     logger.event(
                         "action_failed",
@@ -564,6 +726,25 @@ fn tick(
                 }
             }
 
+            let blocks_since_root = state
+                .last_applied_checkpoint
+                .and_then(|id| state.checkpoints.iter().find(|c| c.id == id))
+                .map(|c| head.saturating_sub(c.block_number));
+            let input_unavailable = matches!(
+                &action,
+                Action::Hold(HoldReason::InputUnavailable { .. })
+            );
+            let unprovable_age_blocks = match &action {
+                Action::Hold(HoldReason::InputUnavailable {
+                    checkpoint_id: Some(checkpoint_id),
+                    ..
+                }) => state
+                    .checkpoints
+                    .iter()
+                    .find(|checkpoint| checkpoint.id == *checkpoint_id)
+                    .map(|checkpoint| head.saturating_sub(checkpoint.block_number)),
+                _ => None,
+            };
             statuses.push(InstanceStatus {
                 instance_id: format!("{:#x}", entry.instance_id),
                 name: entry.name.clone(),
@@ -571,13 +752,35 @@ fn tick(
                 snapshot: format!("{:#x}", entry.snapshot),
                 curated: policy.curated,
                 action,
-                blocks_since_root: state
-                    .last_applied_checkpoint
-                    .and_then(|id| state.checkpoints.iter().find(|c| c.id == id))
-                    .map(|c| head.saturating_sub(c.block_number)),
+                blocks_since_root,
+                newest_anchor_count: state.live_commitments.anchor_count,
+                input_work: state.live_input_work,
+                input_capacity: state.input_capacity,
+                envelope0_fetch_latency_ms: envelope0_preflight
+                    .as_ref()
+                    .map(|report| report.fetch_latency_ms),
+                envelope0_exact_readers: envelope0_preflight
+                    .as_ref()
+                    .map(|report| report.exact_readers),
+                envelope0_validation_failed: input_unavailable,
+                unprovable_age_blocks,
             });
         }
     }
+
+    // One line per tick, always. Now that steady state is change-logged, this is the log's
+    // liveness pulse: a quiet healthy daemon prints exactly this and nothing else.
+    logger.event(
+        "tick",
+        json!({
+            "head": head,
+            "instances": statuses.len(),
+            "idle": statuses.iter().filter(|s| matches!(s.action, Action::Idle(_))).count(),
+            "proving": in_flight_now,
+            "skipped": skipped_now.len(),
+            "alerts": alerts_raised.len(),
+        }),
+    );
 
     write_status(
         &PathBuf::from(&cfg.ops.status_path),
@@ -710,6 +913,11 @@ fn build_state(
         .transpose()?
         .unwrap_or_else(|| entry.clone());
     let reconstructed_params_hash = proving_entry.reconstructed_params_hash;
+    let proof_leaf_count = proving_checkpoint
+        .map_or(view.live.leaf_count, |checkpoint| checkpoint.commitments.leaf_count);
+    let proof_anchor_work =
+        proving_checkpoint.map_or(view.live_anchor_work, |checkpoint| checkpoint.work_count);
+    let live_input_work = view.live.leaf_count.saturating_add(view.live_anchor_work);
 
     // In-flight work, from the journal rather than from memory: a restart must re-attach rather
     // than pay again.
@@ -762,13 +970,10 @@ fn build_state(
             anyhow::anyhow!("nostr-workspace {} has no operator manifest", proving_entry.name)
         })?;
         let params: nostr_workspace_core::params::Params = serde_json::from_str(
-            &std::fs::read_to_string(&manifest.params).with_context(|| {
-                format!("reading Nostr params preimage {}", manifest.params)
-            })?,
+            &std::fs::read_to_string(&manifest.params)
+                .with_context(|| format!("reading Nostr params preimage {}", manifest.params))?,
         )?;
-        params
-            .validate()
-            .map_err(|error| anyhow::anyhow!("invalid Nostr params: {error:?}"))?;
+        params.validate().map_err(|error| anyhow::anyhow!("invalid Nostr params: {error:?}"))?;
         let reconstructed = nostr_workspace_core::params_hash(&params);
         anyhow::ensure!(
             reconstructed == reconstructed_params_hash,
@@ -889,10 +1094,11 @@ fn build_state(
         rotation_pending: false,
         live_commitments: view.live,
         size: InstanceSize {
-            leaf_count: view.live.leaf_count,
-            anchor_count: view.live.anchor_count,
+            leaf_count: proof_leaf_count,
+            anchor_count: proof_anchor_work,
             authenticated_cycles,
         },
+        live_input_work,
         input_capacity: view.input_capacity.unwrap_or(operator_core::policy::MAX_PRICED_INPUTS),
         in_flight,
         vault,
@@ -926,6 +1132,7 @@ fn act(
     entry: &CatalogEntry,
     state: &InstanceState,
     action: &Action,
+    prepared_input: Option<&handlers::Built>,
 ) -> Result<()> {
     let Some(sender) = sender else { return Ok(()) };
     let max_fee = cfg.gas.max_basefee_gwei as u128 * 1_000_000_000 * 2;
@@ -993,8 +1200,19 @@ fn act(
                 })?;
             let proving_entry =
                 entry_at_params_hash(rpc, entry, pinned_params_hash, state.head_block)?;
-            let built =
-                handlers::build_input(cfg, rpc, &proving_entry, *checkpoint_id, cfg.recipient())?;
+            let owned_built;
+            let built = if let Some(prepared) = prepared_input {
+                prepared
+            } else {
+                owned_built = handlers::build_input(
+                    cfg,
+                    rpc,
+                    &proving_entry,
+                    *checkpoint_id,
+                    cfg.recipient(),
+                )?;
+                &owned_built
+            };
 
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".

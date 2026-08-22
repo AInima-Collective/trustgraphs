@@ -59,6 +59,7 @@ fetch = ["dep:reqwest", "dep:alloy-sol-types"]
 sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
 sp1-core-executor = "=6.3.1"
 pagerank-core = { path = "../../packages/pagerank-core" }
+trustgraph-core = { path = "../../packages/trustgraph-core" }
 hypercerts-core = { path = "../../packages/hypercerts-core" }
 nostr-workspace-core = { path = "../../packages/nostr-workspace-core" }
 nostr-envelope = { path = "../../packages/nostr-envelope" }

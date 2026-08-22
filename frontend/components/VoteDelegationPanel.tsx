@@ -23,8 +23,17 @@ interface VoteDelegationPanelProps {
   currentDelegate: Hex
   isLoading: boolean
   onSetDelegate: (delegate: Hex) => Promise<string | null>
+  /** Called after a delegate is set or revoked, so a host modal can close. */
+  onDone?: () => void
 }
 
+/**
+ * The setup form for agent voting. Rare, deliberate, and gated on confirming a
+ * notification channel — so it lives in a modal rather than above the proposals
+ * it would otherwise crowd out. Whether an agent is currently active is a fact
+ * about every proposal on the page, so that part stays visible outside this
+ * form: see `VoteDelegationStatus`.
+ */
 export function VoteDelegationPanel({
   networkId,
   module,
@@ -32,6 +41,7 @@ export function VoteDelegationPanel({
   currentDelegate,
   isLoading,
   onSetDelegate,
+  onDone,
 }: VoteDelegationPanelProps) {
   const [delegate, setDelegate] = useState('')
   const [channelLabel, setChannelLabel] = useState('')
@@ -85,6 +95,7 @@ export function VoteDelegationPanel({
         'Delegation succeeded, but this browser could not save the notification receipt.'
       )
     }
+    onDone?.()
   }
 
   const revoke = async () => {
@@ -96,6 +107,7 @@ export function VoteDelegationPanel({
       setDelegate('')
       setChannelLabel('')
       setNotificationConfirmed(false)
+      onDone?.()
     } catch (error) {
       toast.error(parseErrorMessage(error))
     }
@@ -110,22 +122,20 @@ export function VoteDelegationPanel({
   }
 
   return (
-    <div className="space-y-4 border border-border bg-muted/20 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="text-sm font-medium">Agent vote delegate</div>
-          <p className="max-w-2xl text-xs text-muted-foreground">
-            One agent may cast a provisional vote using your published voting
-            power. Your own vote always replaces it and becomes final.
-          </p>
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        An agent can cast a vote for you, using the voting power already
+        published for your address. Your own vote always replaces the agent's
+        and is the one that counts, so delegating never takes the decision away
+        from you.
+      </p>
+
+      {active && (
+        <div className="flex flex-wrap items-baseline gap-2 border border-border bg-muted/20 p-3 text-xs">
+          <span className="text-muted-foreground">Voting for you now:</span>
+          <Address textClassName="text-xs" address={currentDelegate} />
         </div>
-        {active && (
-          <div className="text-xs text-muted-foreground">
-            Active:{' '}
-            <Address textClassName="text-xs" address={currentDelegate} />
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
@@ -194,6 +204,60 @@ export function VoteDelegationPanel({
         delegation and every vote receipt are public on-chain. Keep your agent
         runner's notification configuration separately backed up.
       </p>
+    </div>
+  )
+}
+
+interface VoteDelegationStatusProps {
+  currentDelegate: Hex
+  isLoading: boolean
+  onManage: () => void
+}
+
+/**
+ * The one-line delegation state, for the page's context strip.
+ *
+ * An active delegate changes what happens to every proposal below it — if the
+ * principal does nothing, an agent votes — so it is stated in the open rather
+ * than hidden behind the modal that configures it. With no delegate set there
+ * is nothing to report, so this is only an unobtrusive way in.
+ */
+export function VoteDelegationStatus({
+  currentDelegate,
+  isLoading,
+  onManage,
+}: VoteDelegationStatusProps) {
+  const active = currentDelegate !== zeroAddress
+
+  if (isLoading) return null
+
+  // Nothing to report, so this is only a way in: `order-last` parks it in the
+  // strip's right-hand cluster beside the other secondary links.
+  if (!active) {
+    return (
+      <button
+        type="button"
+        onClick={onManage}
+        className="order-last self-end text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-text"
+      >
+        Let an agent vote for you
+      </button>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="tg-label">Agent voting for you</div>
+      <div className="flex items-baseline gap-2">
+        <Address address={currentDelegate} textClassName="text-sm" monospace />
+        <button
+          type="button"
+          onClick={onManage}
+          className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-text"
+        >
+          Manage
+        </button>
+      </div>
     </div>
   )
 }

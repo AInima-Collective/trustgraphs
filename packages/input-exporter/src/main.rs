@@ -8,12 +8,15 @@ use alloy_primitives::{Address, B256, U256};
 use alloy_sol_types::{sol, SolCall, SolEvent, SolValue};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use input_exporter::envelope0_fetch::{fetch_payloads, FetchConfig, FetchRequest};
 use input_exporter::reconstruct;
 use input_exporter::rpc::{parse_addr, Rpc};
-use pagerank_core::{
-    AnchorRecord, Binding, GuestInput, Lane2Witness, Params, RawEdge, SelectionParams, SignerInput,
+use pagerank_core::{AnchorRecord, Binding, Params, RawEdge, SelectionParams, SignerInput};
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
+use trustgraph_core::{
+    Envelope0AnchorAuthorization, Envelope0PayloadWitness, GuestInput, Lane2Witness,
 };
-use std::collections::BTreeSet;
 
 sol! {
     struct Checkpoint { bytes32 acc; uint64 leafCount; uint64 blockNumber; }
@@ -29,7 +32,12 @@ sol! {
     event EdgeFolded(uint64 indexed index, bytes32 leaf, bytes32 acc);
     event Attested(address indexed recipient, address indexed attester, bytes32 uid, bytes32 indexed schemaUID);
 
-    event HeadAnchored(uint64 indexed foldIndex, bytes32 indexed nodeId, uint8 envelopeKind, bytes32 head, uint64 count, bytes32 dataCommitment, uint256 blockTimestamp);
+    event HeadAnchored(
+        uint64 indexed foldIndex, bytes32 indexed nodeId, address indexed owner,
+        uint8 envelopeKind, bytes32 schemaUid, bytes32 previousHead, bytes32 head,
+        uint64 count, bytes32 dataCommitment, uint256 blockTimestamp, bytes headSignature
+    );
+
     function anchorCheckpoints(uint256 checkpointId) external view returns (bytes32 anchorAcc, uint64 anchorCount);
 }
 
@@ -85,11 +93,20 @@ struct Args {
     /// block become the anchor-log witness.
     #[arg(long)]
     anchor_registry: Option<String>,
-    /// Lane 2: envelope-0 witness JSON files (from envelope0-gen), repeatable. Heads whose data
-    /// is not supplied here degrade via rule Φ in-guest (that is the withholding path, not an
-    /// error).
+    /// Lane 2 debug path: raw canonical Envelope0PayloadV1 files, repeatable. The hosted path will
+    /// fetch these by CID; missing bytes are always an error for the strict profile.
     #[arg(long)]
     envelope0_log: Vec<String>,
+    /// Lane 2 hosted path: raw-CID reader gateway prefix, repeatable. The CID derived from each
+    /// newest checkpointed dataCommitment is appended verbatim. One exact reader is sufficient.
+    #[arg(long, conflicts_with = "envelope0_log")]
+    envelope0_gateway: Vec<String>,
+    /// Persistent cache for digest-verified Envelope0 payload bytes.
+    #[arg(long, default_value = ".trustgraph/cache/envelope0")]
+    envelope0_cache: String,
+    /// Maximum newest-node payload fetches in flight.
+    #[arg(long, default_value_t = 8)]
+    envelope0_fetch_concurrency: usize,
     /// The MerkleSnapshot this input will be proven against. REQUIRED for a `GuestInput`: it is
     /// half of the journal-v3 `instanceDomain` the contract rebuilds from `address(this)` and
     /// `block.chainid`, so an export without it produces a proof no snapshot can accept. Also
@@ -332,8 +349,23 @@ async fn main() -> Result<()> {
     if args.weighted && args.anchor_registry.is_some() {
         bail!("--weighted is lane-one-only and cannot accept --anchor-registry");
     }
+    if args.signer && args.anchor_registry.is_some() {
+        bail!("--signer is lane-one-only and cannot accept --anchor-registry");
+    }
     let lane2: Option<Lane2Witness> = if let Some(reg) = &args.anchor_registry {
         let registry = parse_addr(reg)?;
+        let snapshot = parse_addr(
+            args.snapshot.as_ref().expect("non-signer export already requires --snapshot"),
+        )?;
+        let ret = rpc
+            .eth_call(
+                snapshot,
+                anchorCheckpointsCall { checkpointId: U256::from(args.checkpoint) }.abi_encode(),
+            )
+            .await
+            .context("anchorCheckpoints failed")?;
+        let cp2 = anchorCheckpointsCall::abi_decode_returns(&ret)
+            .context("decoding anchorCheckpoints")?;
         let anchor_logs = rpc
             .get_logs(
                 registry,
@@ -344,10 +376,15 @@ async fn main() -> Result<()> {
             )
             .await
             .context("querying HeadAnchored logs")?;
-        let mut indexed: Vec<(u64, AnchorRecord)> = Vec::new();
+        let mut indexed: Vec<(u64, AnchorRecord, Address, B256, B256, Vec<u8>)> = Vec::new();
         for log in &anchor_logs {
             let ev = HeadAnchored::decode_raw_log(log.topics.iter().copied(), &log.data)
                 .context("decoding HeadAnchored")?;
+            // An anchor submitted later in the checkpoint block is not part of this immutable
+            // freeze. Fold index is the transaction-order discriminator that block filters lack.
+            if ev.foldIndex >= cp2.anchorCount {
+                continue;
+            }
             indexed.push((
                 ev.foldIndex,
                 AnchorRecord {
@@ -359,62 +396,150 @@ async fn main() -> Result<()> {
                     block_timestamp: u64::try_from(ev.blockTimestamp)
                         .context("anchor timestamp overflows u64")?,
                 },
+                ev.owner,
+                ev.schemaUid,
+                ev.previousHead,
+                ev.headSignature.to_vec(),
             ));
         }
-        indexed.sort_by_key(|(i, _)| *i);
-        for (want, (got, _)) in indexed.iter().enumerate() {
+        indexed.sort_by_key(|(i, ..)| *i);
+        for (want, (got, ..)) in indexed.iter().enumerate() {
             if *got != want as u64 {
                 bail!("HeadAnchored indices not contiguous: expected {want}, found {got}");
             }
         }
-        let anchors: Vec<AnchorRecord> = indexed.into_iter().map(|(_, a)| a).collect();
 
-        // Self-check the re-fold against the checkpointed anchorAcc, when a snapshot is given.
-        if let Some(snap) = &args.snapshot {
-            let snapshot = parse_addr(snap)?;
-            let ret = rpc
-                .eth_call(
-                    snapshot,
-                    anchorCheckpointsCall { checkpointId: U256::from(args.checkpoint) }
-                        .abi_encode(),
-                )
-                .await
-                .context("anchorCheckpoints failed")?;
-            let cp2 = anchorCheckpointsCall::abi_decode_returns(&ret)
-                .context("decoding anchorCheckpoints")?;
-            let mut acc2 = B256::ZERO;
-            for a in &anchors {
-                let leaf = zk_core::anchor::anchor_leaf(
-                    a.node_id,
-                    a.envelope_kind,
-                    a.head,
-                    a.count,
-                    a.data_commitment,
-                    a.block_timestamp,
-                );
-                acc2 = zk_core::fold::fold(acc2, leaf);
-            }
-            if acc2 != cp2.anchorAcc || anchors.len() as u64 != cp2.anchorCount {
+        let lane2_params = params.as_ref().expect("weighted/signer lane 2 was rejected");
+        if lane2_params.envelope0_domain_separators.len() != 2
+            || lane2_params.lane2_max_head_age != 0
+        {
+            bail!("strict lane 2 requires exactly [EAS domain, head domain] and maxHeadAge=0");
+        }
+        let expected_schema = lane2_params.schema_uid;
+        let head_domain = lane2_params.envelope0_domain_separators[1];
+        let mut previous_by_node: BTreeMap<B256, B256> = BTreeMap::new();
+        let mut anchors = Vec::with_capacity(indexed.len());
+        let mut authorizations = Vec::with_capacity(indexed.len());
+        let mut acc2 = B256::ZERO;
+        for (fold_index, anchor, owner, event_schema, previous_head, head_signature) in indexed {
+            if event_schema != expected_schema {
                 bail!(
-                    "anchor re-fold mismatch: local acc={acc2:#x} count={} vs checkpointed acc={:#x} count={}",
-                    anchors.len(), cp2.anchorAcc, cp2.anchorCount
+                    "HeadAnchored #{fold_index} schema {event_schema:#x} != params schema {expected_schema:#x}"
                 );
             }
-            eprintln!("anchor re-fold self-check OK: matches checkpointed anchorAcc ✓");
+            let expected_previous =
+                previous_by_node.get(&anchor.node_id).copied().unwrap_or_default();
+            if previous_head != expected_previous {
+                bail!(
+                    "HeadAnchored #{fold_index} predecessor {previous_head:#x} != reconstructed {expected_previous:#x}"
+                );
+            }
+            if eas_offchain_v2::address_node_id(owner) != anchor.node_id {
+                bail!("HeadAnchored #{fold_index} owner does not derive nodeId");
+            }
+            let message = eas_offchain_v2::payload_v1::AnchorMessage {
+                node_id: anchor.node_id,
+                envelope_kind: anchor.envelope_kind,
+                schema_uid: expected_schema,
+                previous_head,
+                head: anchor.head,
+                count: anchor.count,
+                data_commitment: anchor.data_commitment,
+            };
+            let recovered = eas_offchain_v2::payload_v1::verify_anchor_authorization(
+                head_domain,
+                &message,
+                &head_signature,
+            )
+            .map_err(|error| anyhow::anyhow!("{}: HeadAnchored #{fold_index}", error.code()))?;
+            if recovered != owner {
+                bail!("HeadAnchored #{fold_index} signature does not recover event owner");
+            }
+            let leaf = zk_core::anchor::anchor_leaf(
+                anchor.node_id,
+                anchor.envelope_kind,
+                anchor.head,
+                anchor.count,
+                anchor.data_commitment,
+                anchor.block_timestamp,
+            );
+            acc2 = zk_core::fold::fold(acc2, leaf);
+            previous_by_node.insert(anchor.node_id, anchor.head);
+            anchors.push(anchor);
+            authorizations.push(Envelope0AnchorAuthorization { fold_index, head_signature });
         }
+        if acc2 != cp2.anchorAcc || anchors.len() as u64 != cp2.anchorCount {
+            bail!(
+                "anchor re-fold mismatch: local acc={acc2:#x} count={} vs checkpointed acc={:#x} count={}",
+                anchors.len(), cp2.anchorAcc, cp2.anchorCount
+            );
+        }
+        eprintln!("anchor re-fold and authorization self-check OK ✓");
 
-        let mut envelopes = Vec::new();
-        for path in &args.envelope0_log {
-            let w: envelopes_crate::eas_offchain::Envelope0Witness =
-                serde_json::from_str(&std::fs::read_to_string(path)?)
-                    .with_context(|| format!("failed to parse {path} as Envelope0Witness"))?;
-            envelopes.push(w);
+        let mut payloads_by_node = BTreeMap::new();
+        if args.envelope0_log.is_empty() {
+            let latest = anchors.iter().fold(BTreeMap::new(), |mut by_node, anchor| {
+                by_node.insert(anchor.node_id, anchor.data_commitment);
+                by_node
+            });
+            let requests = latest
+                .into_iter()
+                .map(|(node_id, data_commitment)| FetchRequest { node_id, data_commitment })
+                .collect();
+            let (fetched, metrics) = fetch_payloads(
+                requests,
+                FetchConfig {
+                    gateways: args.envelope0_gateway.clone(),
+                    cache_dir: std::path::PathBuf::from(&args.envelope0_cache),
+                    concurrency: args.envelope0_fetch_concurrency,
+                    timeout: Duration::from_secs(20),
+                },
+            )
+            .await?;
+            eprintln!(
+                "lane 2 bundle fetch: payloads={} cacheHits={} gatewayAttempts={} exactReaders={} totalLatencyMs={}",
+                metrics.payloads,
+                metrics.cache_hits,
+                metrics.gateway_attempts,
+                metrics.gateway_successes,
+                metrics.latency_ms
+            );
+            payloads_by_node.extend(fetched);
+        } else {
+            eprintln!("lane 2: using --envelope0-log debug fixtures (not a hosted source)");
+            for path in &args.envelope0_log {
+                let payload = std::fs::read(path).with_context(|| {
+                    format!("failed to read {path} as Envelope0PayloadV1 bytes")
+                })?;
+                let decoded = eas_offchain_v2::payload_v1::decode(&payload, expected_schema)
+                    .map_err(|error| anyhow::anyhow!("{}: {}", error.code(), path))?;
+                let node_id = eas_offchain_v2::address_node_id(decoded.owner);
+                if payloads_by_node.insert(node_id, payload).is_some() {
+                    bail!("more than one --envelope0-log payload supplied for node {node_id:#x}");
+                }
+            }
         }
-        eprintln!("lane 2: {} anchors, {} envelope witnesses", anchors.len(), envelopes.len());
-        Some(Lane2Witness { anchors, envelopes })
+        let payloads = payloads_by_node
+            .into_iter()
+            .map(|(node_id, payload)| Envelope0PayloadWitness { node_id, payload })
+            .collect::<Vec<_>>();
+        eprintln!("lane 2: {} anchors, {} canonical payloads", anchors.len(), payloads.len());
+        Some(Lane2Witness { anchors, authorizations, payloads })
     } else {
         None
     };
+
+    if let Some(witness) = lane2.as_ref() {
+        let result = trustgraph_core::lane2::process(
+            params.as_ref().expect("strict lane 2 has binary params"),
+            witness,
+        )
+        .map_err(|error| anyhow::anyhow!("strict lane-2 preflight failed: {error:?}"))?;
+        eprintln!(
+            "strict lane-2 native preflight OK: {} authenticated mutations",
+            result.edges.len()
+        );
+    }
 
     // 5. Emit. Default paths live under the repo's gitignored `.trustgraph/` output directory,
     // resolved from this crate's manifest dir so they land there from any CWD.

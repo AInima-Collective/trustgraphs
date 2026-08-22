@@ -109,13 +109,18 @@ export const WalletConnectionButton = ({
             <Button
               variant={open ? 'outline' : 'default'}
               onClick={() => {
-                if (!isConnected) {
-                  void prepareWalletConnectors().catch((error) => {
-                    console.error('Failed to load wallet options:', error)
-                    toast.error('Some wallet options could not be loaded')
-                  })
-                }
+                // Commit the panel open before optional connector discovery updates the parent
+                // provider. Running both state transitions in the same event could discard this
+                // Popup's local open state, leaving aria-expanded=false and an inert chooser.
                 onClick()
+                if (!isConnected) {
+                  setTimeout(() => {
+                    void prepareWalletConnectors().catch((error) => {
+                      console.error('Failed to load wallet options:', error)
+                      toast.error('Some wallet options could not be loaded')
+                    })
+                  }, 0)
+                }
               }}
               size="default"
               // 44px rather than the default 36px. On a phone this collapses to

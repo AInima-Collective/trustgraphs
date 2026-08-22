@@ -23,6 +23,7 @@ import {
   metadataFingerprint,
   metadataFrom,
   nameProblem,
+  offchainVouchesProblem,
   prepayProblem,
   randomSalt,
   signerSyncProblem,
@@ -69,8 +70,8 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
           </Button>
         ) : (
           <p className="text-sm">
-            Standard networks cannot be created on{' '}
-            {getTargetChainConfig().name} yet.
+            Standard networks cannot be created on {getTargetChainConfig().name}{' '}
+            yet.
           </p>
         )}
       </Card>
@@ -79,8 +80,8 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
         <div className="space-y-1">
           <h2 className="text-sm font-medium">Weighted starting shares</h2>
           <p className="text-sm text-muted-foreground">
-            Give each starting account its own size of head start; vouches
-            still decide the final scores.
+            Give each starting account its own size of head start; vouches still
+            decide the final scores.
           </p>
         </div>
         <ButtonLink href="/create/weighted" variant="outline" size="sm">
@@ -92,8 +93,8 @@ const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
         <div className="space-y-1">
           <h2 className="text-sm font-medium">Compose proved scoreboards</h2>
           <p className="text-sm text-muted-foreground">
-            Blend the proven scoreboards of existing networks into one, at
-            exact percentages you choose.
+            Blend the proven scoreboards of existing networks into one, at exact
+            percentages you choose.
           </p>
         </div>
         <ButtonLink href="/create/composition" variant="outline" size="sm">
@@ -171,7 +172,10 @@ export const CreateNetworkWizard = () => {
     }
     if (id === 'extras') {
       return (
-        fundTokenProblem(data) || prepayProblem(data) || signerSyncProblem(data)
+        fundTokenProblem(data) ||
+        prepayProblem(data) ||
+        offchainVouchesProblem(data) ||
+        signerSyncProblem(data)
       )
     }
     return null

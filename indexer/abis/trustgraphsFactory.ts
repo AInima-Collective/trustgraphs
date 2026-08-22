@@ -774,6 +774,37 @@ export const trustgraphsFactoryAbi = [
     anonymous: false,
   },
   {
+    type: 'event',
+    name: 'OffchainEasLaneCreated',
+    inputs: [
+      {
+        name: 'instanceId',
+        type: 'bytes32',
+        indexed: true,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'registry',
+        type: 'address',
+        indexed: false,
+        internalType: 'address',
+      },
+      {
+        name: 'domainSeparator',
+        type: 'bytes32',
+        indexed: false,
+        internalType: 'bytes32',
+      },
+      {
+        name: 'maxTotalInputs',
+        type: 'uint64',
+        indexed: false,
+        internalType: 'uint64',
+      },
+    ],
+    anonymous: false,
+  },
+  {
     type: 'error',
     name: 'DerivedFieldNotZero',
     inputs: [],

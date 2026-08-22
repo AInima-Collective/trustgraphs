@@ -18,6 +18,7 @@ import { useAccount } from 'wagmi'
 import { registerNetworks } from '@/components/schema-components/registerNetworks'
 import { ENS_EAGER_ADDRESS_LIMIT, useBatchEnsQuery } from '@/hooks/useEns'
 import { AttestationData, AttestationStatus } from '@/lib/attestation'
+import { type StrictAudit, auditStrictLane } from '@/lib/eas-offchain'
 import {
   ROUTINE_INDEXER_QUERY_OPTIONS,
   createIndexerPollingPolicy,
@@ -99,6 +100,12 @@ export type NetworkContextType = {
   simulationConfig: NetworkSimulationConfig
   /** Set the simulation config for the network. */
   setSimulationConfig: Dispatch<SetStateAction<NetworkSimulationConfig>>
+  /** Browser verification tier for the strict lane, if this network has one. */
+  envelope0Verification?: {
+    status: 'indexed-only' | 'verifying' | 'verified' | 'failed'
+    message: string
+    audit?: StrictAudit
+  }
 }
 
 export const NetworkContext = createContext<NetworkContextType | null>(null)
@@ -182,11 +189,24 @@ export const NetworkProvider = ({
     useState<NetworkSimulationConfig>({
       enabled: false,
       dampingFactor: 0.85,
-      trustMultiplier: 3,
-      trustShare: 1,
-      trustDecay: 0.8,
+      trustMultiplier: network.pagerank.trustMultiplier,
+      trustShare: network.pagerank.trustShare,
+      trustDecay: network.pagerank.trustDecay,
       maxIterations: 100,
     })
+
+  const strictRegistry = network.offchainLane?.registry
+  const {
+    data: strictAudit,
+    error: strictAuditError,
+    isLoading: strictAuditLoading,
+  } = useQuery({
+    queryKey: ['eas-offchain-browser-audit', strictRegistry],
+    queryFn: () => auditStrictLane(strictRegistry!),
+    enabled: simulationConfig.enabled && !!strictRegistry,
+    retry: false,
+    staleTime: 15_000,
+  })
 
   // Local "what-if" simulation using the CANONICAL fixed-point PageRank (the exact TS mirror of
   // packages/pagerank-core / the zk guest). Recomputed synchronously — no WASM needed — so the
@@ -199,20 +219,33 @@ export const NetworkProvider = ({
   // `skippedDigest` are zero here. To verify the on-chain lane-2 accumulator, read
   // `AnchorRegistry.anchorAcc()/anchorCount()` or the `MerkleSnapshot.AnchorsCheckpointed` event.
   const simulation = useMemo(() => {
-    if (!simulationConfig.enabled || !_networkData) {
+    if (
+      !simulationConfig.enabled ||
+      !_networkData ||
+      (strictRegistry && !strictAudit)
+    ) {
       return null
     }
 
     try {
       return simulateNetwork(
-        _networkData.attestations.map((attestation) => ({
-          attester: attestation.attester,
-          recipient: attestation.recipient,
-          uid: attestation.uid,
-          time: attestation.time,
-          confidence: Number(attestation.decodedData?.confidence || 0),
-          revoked: attestation.status === AttestationStatus.REVOKED,
-        })),
+        _networkData.attestations
+          // The normal network API now carries current winners from both lanes for display.
+          // Independent strict verification supplies the complete authenticated lane-2 mutation
+          // log below, so feeding its current winner here as lane 1 would count it twice.
+          .filter(
+            (attestation) =>
+              !strictAudit || attestation.provenance?.source !== 'off-chain-eas'
+          )
+          .map((attestation) => ({
+            attester: attestation.attester,
+            recipient: attestation.recipient,
+            uid: attestation.uid,
+            time: attestation.time,
+            confidence: Number(attestation.decodedData?.confidence || 0),
+            revoked: attestation.status === AttestationStatus.REVOKED,
+            revocationTime: attestation.revocationTime,
+          })),
         {
           dampingFactor: simulationConfig.dampingFactor,
           trustMultiplier: simulationConfig.trustMultiplier,
@@ -238,7 +271,8 @@ export const NetworkProvider = ({
           accumulator: network.contracts.easIndexerResolver,
           chainId: BigInt(getCurrentChainConfig().id),
           schemaUid: network.schemas.find((s) => s.key === 'vouching')?.uid,
-        }
+        },
+        strictAudit?.edges ?? []
       )
     } catch (error) {
       console.error('error running pagerank simulation', error)
@@ -246,6 +280,8 @@ export const NetworkProvider = ({
     }
   }, [
     simulationConfig,
+    strictRegistry,
+    strictAudit,
     _networkData,
     network.pagerank.minWeight,
     network.pagerank.maxWeight,
@@ -430,6 +466,7 @@ export const NetworkProvider = ({
         liveCountsFetchedAt,
       }
     }
+    if (!simulation) return undefined
 
     const schemaUid = network.schemas.find(
       (schema) => schema.key === 'vouching'
@@ -442,7 +479,9 @@ export const NetworkProvider = ({
       ipfsHashCid: simulation.cid,
       liveCountsFetchedAt,
       simulation: {
-        kind: 'reduced-lane-1-browser-recompute',
+        kind: strictAudit
+          ? 'independent-envelope0-browser-recompute'
+          : 'reduced-lane-1-browser-recompute',
         inputDataFetchedAt: liveCountsFetchedAt,
         referencePublishedRoot: referenceTree?.root,
         referencePublishedRootAsOf: referenceTree
@@ -471,6 +510,16 @@ export const NetworkProvider = ({
         paramsHash: simulation.journal.paramsHash,
         inputAccumulator: simulation.journal.acc,
         inputLeafCount: simulation.journal.leafCount.toString(),
+        ...(strictAudit
+          ? {
+              envelope0Audit: {
+                registry: strictAudit.lane.registry,
+                nodes: strictAudit.nodes,
+                entries: strictAudit.entries,
+                verifiedAt: strictAudit.verifiedAt,
+              },
+            }
+          : {}),
       },
     }
   }, [
@@ -480,6 +529,7 @@ export const NetworkProvider = ({
     network,
     _merkleTreeData,
     liveCountsFetchedAt,
+    strictAudit,
   ])
 
   // Calculate derived values
@@ -557,6 +607,45 @@ export const NetworkProvider = ({
     // Simulation
     simulationConfig,
     setSimulationConfig,
+    ...(strictRegistry
+      ? {
+          envelope0Verification: strictAudit
+            ? {
+                status: 'verified' as const,
+                message: `Independently verified ${strictAudit.entries.toLocaleString()} strict-lane log entries across ${strictAudit.nodes.toLocaleString()} nodes from exact CIDs. ${
+                  simulation &&
+                  network.paramsHash &&
+                  simulation.journal.paramsHash.toLowerCase() ===
+                    network.paramsHash.toLowerCase()
+                    ? simulation.outputRoot.toLowerCase() ===
+                      _merkleTreeData?.tree.root?.toLowerCase()
+                      ? 'The exact-parameter browser root matches the published root.'
+                      : 'The exact-parameter browser root does not match the published root; do not rely on this result.'
+                    : 'The current what-if parameters differ from the network’s pinned parameters, so no published-root match is claimed.'
+                }`,
+                audit: strictAudit,
+              }
+            : strictAuditError
+              ? {
+                  status: 'failed' as const,
+                  message:
+                    strictAuditError instanceof Error
+                      ? strictAuditError.message
+                      : 'Strict-lane browser verification failed.',
+                }
+              : strictAuditLoading
+                ? {
+                    status: 'verifying' as const,
+                    message:
+                      'Fetching exact CIDs and independently checking strict-lane signatures and history…',
+                  }
+                : {
+                    status: 'indexed-only' as const,
+                    message:
+                      'Reduced display: current scores come from the finalized indexer; enable simulation to fetch and independently verify every strict-lane CID.',
+                  },
+        }
+      : {}),
   }
 
   return (

@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 3,
+  "instanceId": null,
+  "mainnetEnabled": false,
+  "topology": {
+    "relays": [
+      { "id": "relay-a", "evidence": null },
+      { "id": "relay-b", "evidence": null }
+    ],
+    "storageTargets": [
+      { "id": "relay-a-store-a", "relayId": "relay-a", "evidence": null },
+      { "id": "relay-a-store-b", "relayId": "relay-a", "evidence": null },
+      { "id": "relay-b-store-a", "relayId": "relay-b", "evidence": null },
+      { "id": "relay-b-store-b", "relayId": "relay-b", "evidence": null }
+    ],
+    "readers": [
+      { "id": "reader-a", "evidence": null },
+      { "id": "reader-b", "evidence": null }
+    ],
+    "primaryRpc": { "id": "primary-rpc", "evidence": null },
+    "indexer": { "id": "indexer", "evidence": null },
+    "prover": { "id": "prover", "evidence": null }
+  },
+  "soak": {
+    "startedAt": null,
+    "endedAt": null
+  },
+  "evidence": {
+    "darkDeploy": null,
+    "internalCanary": null,
+    "optInCohort": null,
+    "realGroth16": null
+  },
+  "checkpoints": [],
+  "drills": {
+    "relay-loss:relay-a": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "alternateRelaySucceeded": null
+    },
+    "relay-loss:relay-b": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "alternateRelaySucceeded": null
+    },
+    "storage-loss:relay-a-store-a": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "quorumPolicyEnforced": null
+    },
+    "storage-loss:relay-a-store-b": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "quorumPolicyEnforced": null
+    },
+    "storage-loss:relay-b-store-a": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "quorumPolicyEnforced": null
+    },
+    "storage-loss:relay-b-store-b": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "quorumPolicyEnforced": null
+    },
+    "reader-loss:reader-a": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "remainingReadersExact": null
+    },
+    "reader-loss:reader-b": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "remainingReadersExact": null
+    },
+    "rpc-loss:primary-rpc": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "failoverRpcUsed": null
+    },
+    "indexer-loss:indexer": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "replayedFromChain": null
+    },
+    "prover-loss:prover": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "byteIdenticalRetry": null
+    },
+    "all-readers-loss": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "proofHeld": null,
+      "proofRequested": null,
+      "proofSubmitted": null
+    },
+    "corrupt-reader-recovery": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "corruptionRejected": null,
+      "healthyReaderFallback": null,
+      "corruptCopyQuarantined": null
+    },
+    "conflict-recovery": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "canonicalHeadReloaded": null,
+      "unsignedDraftReapplied": null,
+      "forkAnchorPrevented": null
+    },
+    "repin-recovery": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "cidRecomputed": null,
+      "byteExactReadback": null
+    },
+    "backup-restore": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "freshRepository": null,
+      "allCidsRecomputed": null,
+      "historicalCheckpointReproduced": null
+    },
+    "relayer-key-rotation": {
+      "status": "pending",
+      "observedAt": null,
+      "evidence": null,
+      "alertDelivered": null,
+      "proofSafetyPreserved": null,
+      "recovered": null,
+      "postRecoveryCheckpointId": null,
+      "oldRoleRevoked": null,
+      "twoDistinctRelayersRetained": null
+    }
+  },
+  "measurementBands": [],
+  "outcomes": {
+    "unexplainedRootMismatches": null,
+    "lostAnchoredBundles": null,
+    "unresolvedIncidents": null
+  },
+  "securityReview": {
+    "reviewer": null,
+    "report": null,
+    "unresolvedCritical": null,
+    "unresolvedHigh": null,
+    "mediumFindings": []
+  }
+}

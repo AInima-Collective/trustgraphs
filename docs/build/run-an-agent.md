@@ -80,7 +80,9 @@ retry without a bound.
 
 ## 3. Configure vote delegation and notifications
 
-Open the network's Governance page and enter the dedicated agent address. The UI does not enable
+Open the network's Governance page and follow "Let an agent vote for you" in the strip above the
+proposals, then enter the dedicated agent address. Once a delegate is set, that spot names it
+instead and "Manage" reopens the same form to change or revoke it. The UI does not enable
 delegation until the user confirms receiving a test notification containing the agent's analysis
 and intended vote. That confirmation is a browser-side safety rail; direct contract calls can
 bypass it, so runner configuration is still the source of truth.

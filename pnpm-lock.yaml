@@ -17,6 +17,9 @@ importers:
       '@ethereum-attestation-service/eas-contracts':
         specifier: ^1.8.0
         version: 1.8.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)
+      '@ethereum-attestation-service/eas-sdk':
+        specifier: 2.9.0
+        version: 2.9.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)
       '@gnosis-guild/zodiac-core':
         specifier: ^3.0.1
         version: 3.0.1(bufferutil@4.0.9)(utf-8-validate@5.0.10)
@@ -35,6 +38,9 @@ importers:
       '@openzeppelin/contracts-upgradeable':
         specifier: ^5.2.0
         version: 5.4.0(@openzeppelin/contracts@5.4.0)
+      '@trustgraphs/eas-offchain-client':
+        specifier: workspace:*
+        version: link:packages/eas-offchain-client
       '@types/lodash':
         specifier: ^4.17.20
         version: 4.17.20
@@ -100,7 +106,7 @@ importers:
         specifier: ^1.0.0-beta.4
         version: 1.0.0-beta.4(@types/react@19.2.2)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
       '@ethereum-attestation-service/eas-sdk':
-        specifier: ^2.9.0
+        specifier: 2.9.0
         version: 2.9.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@3.25.67)
       '@hookform/resolvers':
         specifier: ^3.10.0
@@ -213,6 +219,9 @@ importers:
       '@tanstack/react-query-devtools':
         specifier: ^5.85.3
         version: 5.90.2(@tanstack/react-query@5.90.3(react@19.2.1))(react@19.2.1)
+      '@trustgraphs/eas-offchain-client':
+        specifier: workspace:*
+        version: link:../packages/eas-offchain-client
       '@types/marked':
         specifier: ^5.0.2
         version: 5.0.2
@@ -385,6 +394,9 @@ importers:
       '@wagmi/cli':
         specifier: ^2.4.0
         version: 2.7.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)
+      drizzle-orm:
+        specifier: ^0.41.0
+        version: 0.41.0(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.0)(@types/pg@8.15.5)(kysely@0.26.3)(pg@8.16.3)
       eslint:
         specifier: ^8.57.1
         version: 8.57.1
@@ -400,6 +412,9 @@ importers:
       eslint-plugin-unused-imports:
         specifier: ^3.0.0
         version: 3.2.0(@typescript-eslint/eslint-plugin@7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.5.4))(eslint@8.57.1)(typescript@5.5.4))(eslint@8.57.1)
+      playwright:
+        specifier: 1.62.1
+        version: 1.62.1
       postcss:
         specifier: ^8.5
         version: 8.5.6
@@ -433,6 +448,9 @@ importers:
       '@ponder/client':
         specifier: ^0.16.2
         version: 0.16.2(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.0)(@types/pg@8.15.5)(kysely@0.26.3)(pg@8.16.3)(typescript@5.5.4)
+      '@trustgraphs/eas-offchain-client':
+        specifier: workspace:*
+        version: link:../packages/eas-offchain-client
       drizzle-orm:
         specifier: ^0.41.0
         version: 0.41.0(@electric-sql/pglite@0.2.13)(@opentelemetry/api@1.9.0)(@types/pg@8.15.5)(kysely@0.26.3)(pg@8.16.3)
@@ -487,6 +505,44 @@ importers:
         version: 3.6.2
       typescript:
         specifier: ^5.3.2
+        version: 5.5.4
+
+  packages/eas-offchain-client:
+    dependencies:
+      '@ethereum-attestation-service/eas-sdk':
+        specifier: 2.9.0
+        version: 2.9.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)
+      viem:
+        specifier: ^2.39.0
+        version: 2.42.1(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: 5.5.4
+        version: 5.5.4
+
+  services/eas-offchain-relay:
+    dependencies:
+      '@trustgraphs/eas-offchain-client':
+        specifier: workspace:*
+        version: link:../../packages/eas-offchain-client
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      viem:
+        specifier: ^2.39.0
+        version: 2.42.1(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
+      typescript:
+        specifier: 5.5.4
         version: 5.5.4
 
 packages:
@@ -5653,6 +5709,11 @@ packages:
   fs.realpath@1.0.0:
     resolution: {integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -7533,6 +7594,16 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.62.1:
+    resolution: {integrity: sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
@@ -10230,7 +10301,7 @@ snapshots:
   '@commitlint/is-ignored@19.8.0':
     dependencies:
       '@commitlint/types': 19.8.0
-      semver: 7.7.1
+      semver: 7.7.3
 
   '@commitlint/lint@19.8.0':
     dependencies:
@@ -10657,8 +10728,28 @@ snapshots:
       lodash: 4.17.21
       multiformats: 9.9.0
       pako: 2.1.0
-      semver: 7.7.1
+      semver: 7.7.3
       viem: 2.42.1(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@3.25.67)
+    transitivePeerDependencies:
+      - bufferutil
+      - c-kzg
+      - supports-color
+      - ts-node
+      - typescript
+      - utf-8-validate
+      - zod
+
+  '@ethereum-attestation-service/eas-sdk@2.9.0(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)':
+    dependencies:
+      '@ethereum-attestation-service/eas-contracts': 1.7.1(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)
+      '@openzeppelin/merkle-tree': 1.0.8
+      ethers: 6.15.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      js-base64: 3.7.8
+      lodash: 4.17.21
+      multiformats: 9.9.0
+      pako: 2.1.0
+      semver: 7.7.3
+      viem: 2.42.1(bufferutil@4.0.9)(typescript@5.5.4)(utf-8-validate@5.0.10)(zod@4.1.12)
     transitivePeerDependencies:
       - bufferutil
       - c-kzg
@@ -15841,6 +15932,9 @@ snapshots:
 
   fs.realpath@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -18194,6 +18288,14 @@ snapshots:
       thread-stream: 2.7.0
 
   pirates@4.0.7: {}
+
+  playwright-core@1.62.1: {}
+
+  playwright@1.62.1:
+    dependencies:
+      playwright-core: 1.62.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   pngjs@5.0.0: {}
 

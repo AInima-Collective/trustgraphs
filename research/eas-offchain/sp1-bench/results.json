@@ -1,0 +1,109 @@
+{
+  "format": "trustgraphs-eas-offchain-sp1-bench-v1",
+  "sp1": "6.3.1",
+  "cargoProve": "8252c29",
+  "maxPayloadBytes": 1048576,
+  "maxEntriesPerNode": 2048,
+  "entryWorkUnits": 4,
+  "cyclesPerWorkUnit": 40000,
+  "measurements": [
+    {
+      "label": "all-attest-N1",
+      "entries": 1,
+      "attestations": 1,
+      "revocations": 0,
+      "payloadBytes": 371,
+      "workUnits": 5,
+      "cycles": 242744,
+      "pgu": 295642
+    },
+    {
+      "label": "all-attest-N100",
+      "entries": 100,
+      "attestations": 100,
+      "revocations": 0,
+      "payloadBytes": 33338,
+      "workUnits": 401,
+      "cycles": 13121997,
+      "pgu": 15426796
+    },
+    {
+      "label": "all-attest-N1000",
+      "entries": 1000,
+      "attestations": 1000,
+      "revocations": 0,
+      "payloadBytes": 333038,
+      "workUnits": 4001,
+      "cycles": 130514600,
+      "pgu": 153213856
+    },
+    {
+      "label": "all-attest-N2048",
+      "entries": 2048,
+      "attestations": 2048,
+      "revocations": 0,
+      "payloadBytes": 682022,
+      "workUnits": 8193,
+      "cycles": 267339452,
+      "pgu": 313743626
+    },
+    {
+      "label": "revoke-dense-N2",
+      "entries": 2,
+      "attestations": 1,
+      "revocations": 1,
+      "payloadBytes": 404,
+      "workUnits": 9,
+      "cycles": 258764,
+      "pgu": 312032
+    },
+    {
+      "label": "revoke-dense-N100",
+      "entries": 100,
+      "attestations": 50,
+      "revocations": 50,
+      "payloadBytes": 18338,
+      "workUnits": 401,
+      "cycles": 7409097,
+      "pgu": 8559179
+    },
+    {
+      "label": "revoke-dense-N1000",
+      "entries": 1000,
+      "attestations": 500,
+      "revocations": 500,
+      "payloadBytes": 183038,
+      "workUnits": 4001,
+      "cycles": 73359815,
+      "pgu": 84510554
+    },
+    {
+      "label": "revoke-dense-N2048",
+      "entries": 2048,
+      "attestations": 1024,
+      "revocations": 1024,
+      "payloadBytes": 374822,
+      "workUnits": 8193,
+      "cycles": 150352729,
+      "pgu": 173106277
+    }
+  ],
+  "marginals": [
+    {
+      "label": "all-attest",
+      "fromEntries": 100,
+      "toEntries": 1000,
+      "cyclesPerEntry": 130436,
+      "pguPerEntry": 153096,
+      "budgetedCyclesPerEntry": 160000
+    },
+    {
+      "label": "revoke-dense",
+      "fromEntries": 100,
+      "toEntries": 1000,
+      "cyclesPerEntry": 73278,
+      "pguPerEntry": 84390,
+      "budgetedCyclesPerEntry": 160000
+    }
+  ]
+}

@@ -100,17 +100,14 @@ abstract contract AttestationAccumulator is IAttestationAccumulator {
 
     /// @inheritdoc IAttestationAccumulator
     /// @dev Only the bound snapshot may mint, so every checkpoint id lands on the contract-fixed
-    ///      epoch boundary with both lanes frozen and its `paramsHash` pinned.
+    ///      epoch boundary with both lanes frozen and its `paramsHash` pinned. The accumulator does
+    ///      not reject an unchanged lane here: `MerkleSnapshot.trigger()` is the only caller and
+    ///      must decide freshness across BOTH lanes. A strict off-chain append legitimately needs
+    ///      a new checkpoint while this lane remains byte-identical.
     function checkpoint() external returns (uint256 id) {
         if (msg.sender != snapshot || snapshot == address(0)) revert NotSnapshot();
 
-        uint256 len = checkpoints.length;
-        // Anti-spam / correctness: a checkpoint must capture at least one new edge, except the very
-        // first (which may legitimately freeze an empty input set).
-        if (len != 0 && leafCount <= checkpoints[len - 1].leafCount) {
-            revert NoNewInputs();
-        }
-        id = len;
+        id = checkpoints.length;
         checkpoints.push(Checkpoint({acc: acc, leafCount: leafCount, blockNumber: uint64(block.number)}));
         emit InputsCheckpointed(id, acc, leafCount, uint64(block.number));
     }

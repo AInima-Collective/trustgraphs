@@ -1,0 +1,20 @@
+[package]
+name = "trustgraphs-eas-offchain-sp1-bench-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+alloy-primitives = { version = "1", features = ["serde"] }
+anyhow = "1"
+eas-offchain-v2 = { path = "../../../../packages/eas-offchain-v2" }
+hex = "0.4"
+k256 = { version = "0.13", features = ["ecdsa"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sp1-sdk = { version = "=6.3.1", features = ["blocking"] }
+
+[build-dependencies]
+sp1-build = "=6.3.1"
+
+[workspace]

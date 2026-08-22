@@ -57,11 +57,17 @@ export type InstanceRow = {
   contracts: {
     merkleSnapshot: Hex
     easIndexerResolver: Hex
+    easOffchainAnchorRegistry: Hex | null
     merkleFundDistributor: Hex | null
     trustgraphsParamsController: Hex | null
     merkleGovModule: Hex | null
     safe: { proxy: Hex; signerSyncManager: Hex | null } | null
   }
+  offchainLane: {
+    registry: Hex
+    easDomainSeparator: Hex
+    maxTotalInputs: string
+  } | null
   signerSync?: {
     operatorInstanceId: Hex
     module: Hex
@@ -196,6 +202,15 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
     epochLength: row.epochLength,
     paramsHash: row.paramsHash,
     createdTimestamp: row.createdTimestamp,
+    ...(row.offchainLane
+      ? {
+          offchainLane: {
+            registry: row.offchainLane.registry,
+            easDomainSeparator: row.offchainLane.easDomainSeparator,
+            maxTotalInputs: row.offchainLane.maxTotalInputs,
+          },
+        }
+      : {}),
     about: metadata.description?.trim() || NO_DESCRIPTION,
     criteria: metadata.criteria?.trim() || NO_CRITERIA,
     ...(metadata.applicationUrl?.trim()
@@ -204,6 +219,11 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
     contracts: {
       merkleSnapshot: row.contracts.merkleSnapshot,
       easIndexerResolver: row.contracts.easIndexerResolver,
+      ...(row.contracts.easOffchainAnchorRegistry
+        ? {
+            easOffchainAnchorRegistry: row.contracts.easOffchainAnchorRegistry,
+          }
+        : {}),
       ...(row.contracts.merkleFundDistributor
         ? { merkleFundDistributor: row.contracts.merkleFundDistributor }
         : {}),

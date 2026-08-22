@@ -377,12 +377,25 @@ Two files, both rewritten in place, both meant to be scraped:
   `abandoned` checkpoints. It is the only file whose loss can duplicate paid work or resurrect a
   rejected checkpoint, and the only one worth backing up.
 
+The log on stdout narrates **changes**; the heartbeat file carries steady state. A quiet healthy
+daemon prints exactly one `tick` line per pass — `head` plus instance/idle/proving/skipped/alert
+counts — and nothing else. A `decision` line (with the instance's name and program) appears when an
+instance's planned action changes state, not every tick: a rising confirmation count or a wiggling
+basefee is progress inside one state, while a new checkpoint id or a different hold is a
+transition. `instance_skipped` appears when an instance is newly refused, or refused for a new
+reason; `instance_recovered` closes the bracket when it is listed again. One skip is deliberately
+never logged: "owned by another SP1 program" across lanes, because every instance is expected to be
+another program's in every lane but its own. An instance **no** lane claims (an unknown program id,
+or its lane disabled) does get a single lane-less `instance_skipped` line. A restart re-announces
+the current state once.
+
 Useful one-liners:
 
 ```bash
 jq -c '{head_block, tick_at, instances: [.instances[] | {name, action: .action}]}' status.json
 jq -c 'select(.kind=="intent")' journal.jsonl | tail             # what has been paid for
 jq -r 'select(.event=="instance_skipped") | .reason' run.log | sort | uniq -c
+jq -c 'select(.event=="tick")' run.log | tail -1                 # is it alive, and how busy
 ```
 
 The network settings page can consume this heartbeat through `OPERATOR_STATUS_URL`, or

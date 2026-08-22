@@ -9,6 +9,12 @@ import { CHAIN } from './config'
 import { REVIEW_FIXTURES_ENABLED } from './review-fixture-query'
 import { getReviewWalletAccount } from './review-wallet-fixture'
 
+const localRpcUrl =
+  process.env.NEXT_PUBLIC_RPC_URL_31337 || 'http://localhost:8545'
+const localWebSocketUrl =
+  process.env.NEXT_PUBLIC_WEBSOCKET_URL_31337 ||
+  localRpcUrl.replace(/^http/, 'ws')
+
 export const localChain: Chain = {
   id: 31337, // Anvil default chain ID
   name: 'Local Anvil',
@@ -19,12 +25,12 @@ export const localChain: Chain = {
   },
   rpcUrls: {
     default: {
-      http: ['http://localhost:8545'],
-      webSocket: ['ws://localhost:8545'],
+      http: [localRpcUrl],
+      webSocket: [localWebSocketUrl],
     },
   },
   blockExplorers: {
-    default: { name: 'Local', url: 'http://localhost:8545' },
+    default: { name: 'Local', url: localRpcUrl },
   },
 }
 

@@ -23,6 +23,7 @@ import {
     MerkleFundDistributorDeployer,
     TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
+import {EasOffchainAnchorRegistryDeployer} from "contracts/factory/HybridInstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
 import {SP1JournalVerifier} from "contracts/merkle/SP1JournalVerifier.sol";
@@ -134,6 +135,7 @@ contract ContributionsFactoryTest is Test {
             snapshotDeployer,
             distributorDeployer,
             trustControllerDeployer,
+            new EasOffchainAnchorRegistryDeployer(),
             EPOCH_FLOOR,
             IProvingVault(address(0))
         );
@@ -508,6 +510,34 @@ contract ContributionsFactoryTest is Test {
             abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, stranger)
         );
         factory.validateParent(parentId, stranger);
+    }
+
+    function test_HybridTrustGraphCannotBeUsedAsContributionsParent() public {
+        TrustgraphsFactory.OffchainEasConfig memory offchain;
+        offchain.maxTotalInputs = 200_000;
+        offchain.initialRelayers = new address[](2);
+        offchain.initialRelayers[0] = address(0x111);
+        offchain.initialRelayers[1] = address(0x222);
+        (bytes32 hybridId, address hybridSnapshot,,,) =
+            trustFactory.createHybridInstance(_trustArgs("hybrid-parent"), offchain);
+        address anchorRegistry = address(MerkleSnapshot(hybridSnapshot).anchorRegistry());
+
+        ContributionsFactory.CreateArgs memory args = _args("hybrid-child");
+        args.parentInstanceId = hybridId;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry
+            )
+        );
+        vm.prank(parentAdmin);
+        factory.createInstance(args);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry
+            )
+        );
+        factory.validateParent(hybridId, parentAdmin);
     }
 
     function test_GovernedStyleAuthorityTransferMovesTheGate() public {

@@ -441,6 +441,13 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         } catch {
             return (0, 0, false);
         }
+        // Work-aware snapshots checkpoint the authenticated lane-2 cost separately while keeping
+        // the journal's raw anchorCount unchanged. Old deployed snapshots do not have this getter;
+        // malformed/undersized values likewise fall back to the raw count and can never underprice
+        // relative to the legacy rule.
+        try snapshot.checkpointWorkCount(checkpointId) returns (uint64 work) {
+            if (work >= anchorCount) anchorCount = work;
+        } catch {}
     }
 
     function _min(uint256 x, uint256 y) internal pure returns (uint256) {
@@ -470,7 +477,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         //
         // Keeping a per-program `if` even though the arithmetic is now shared is deliberate: an
         // unrecognised program must fall through to the unpriced band, not inherit a default.
-        uint64 n = leafCount + anchorCount; // both are uint64 counters; the sum cannot realistically wrap
+        uint256 n = uint256(leafCount) + anchorCount;
         // `trust-graph-weighted` is sized like trust-graph: its guest proves the same fixed-point
         // PageRank over the same accumulator-committed edge log, plus a prior manifest whose size
         // is bounded at creation — so the on-chain counters ARE the work, unlike the flat-banded

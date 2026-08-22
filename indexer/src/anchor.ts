@@ -84,6 +84,7 @@ const onAnchorsCheckpointed = async ({
     address: event.log.address,
     anchorAcc,
     anchorCount,
+    workCount: anchorCount,
     blockTimestamp: event.block.timestamp,
     txHash: event.transaction.hash,
     blockNumber: event.block.number,
@@ -95,6 +96,35 @@ ponder.on('programSnapshot:AnchorsCheckpointed', onAnchorsCheckpointed)
 ponder.on(
   'contributionsMerkleSnapshot:AnchorsCheckpointed',
   onAnchorsCheckpointed
+)
+
+const onAnchorWorkCheckpointed = async ({
+  event,
+  context,
+}: SharedArgs<'merkleSnapshot:AnchorWorkCheckpointed'>) => {
+  const checkpoint = await context.db.find(anchorCheckpoint, {
+    address: event.log.address,
+    checkpointId: event.args.checkpointId,
+  })
+  if (!checkpoint) {
+    console.warn(
+      `anchor: work checkpoint ${event.args.checkpointId} has no preceding anchor checkpoint`
+    )
+    return
+  }
+  await context.db
+    .update(anchorCheckpoint, {
+      address: event.log.address,
+      checkpointId: event.args.checkpointId,
+    })
+    .set({ workCount: event.args.workCount })
+}
+
+ponder.on('merkleSnapshot:AnchorWorkCheckpointed', onAnchorWorkCheckpointed)
+ponder.on('programSnapshot:AnchorWorkCheckpointed', onAnchorWorkCheckpointed)
+ponder.on(
+  'contributionsMerkleSnapshot:AnchorWorkCheckpointed',
+  onAnchorWorkCheckpointed
 )
 
 /*///////////////////////////////////////////////////////////////

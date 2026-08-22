@@ -42,16 +42,23 @@ library TrustgraphsParamsValidator {
             revert DerivedFieldNotZero();
         }
         validateComputationalEnvelope(p);
+        // The legacy factory selector remains lane-1-only. The additive hybrid selector derives
+        // both separators itself only after the EAS resolver and head registry exist.
+        if (p.envelope0DomainSeparators.length != 0 || p.lane2MaxHeadAge != 0) {
+            revert Lane2NotSupported();
+        }
     }
 
     /// @notice Validate a complete, already-derived tuple (used for controller version 1).
     function validateFinal(ParamsCodec.Params memory p) internal pure {
         validateComputationalEnvelope(p);
+        _validateLane2Profile(p);
     }
 
     /// @notice Validate an update and prove that no identity/program field moved from version 1.
     function validateUpdate(ParamsCodec.Params memory next, ParamsCodec.Params memory initial) internal pure {
         validateComputationalEnvelope(next);
+        _validateLane2Profile(next);
         if (
             next.schemaUid != initial.schemaUid || next.accumulator != initial.accumulator
                 || next.chainId != initial.chainId || next.precisionScale != initial.precisionScale
@@ -97,11 +104,20 @@ library TrustgraphsParamsValidator {
             }
         }
 
-        if (p.envelope0DomainSeparators.length != 0 || p.lane2MaxHeadAge != 0) {
-            revert Lane2NotSupported();
-        }
-
         _validateGrowth(p);
+    }
+
+    /// Lane 2 is either absent or the strict v2 pair `[EAS domain, head domain]`. Head freshness is
+    /// checked against the first lane-1 anchor inside the guest, so the old wall-clock age knob is
+    /// deliberately fixed to zero for both profiles.
+    function _validateLane2Profile(ParamsCodec.Params memory p) private pure {
+        uint256 length = p.envelope0DomainSeparators.length;
+        if (p.lane2MaxHeadAge != 0) revert Lane2NotSupported();
+        if (length == 0) return;
+        if (
+            length != 2 || p.envelope0DomainSeparators[0] == bytes32(0)
+                || p.envelope0DomainSeparators[1] == bytes32(0)
+        ) revert Lane2NotSupported();
     }
 
     function _validateGrowth(ParamsCodec.Params memory p) private pure {

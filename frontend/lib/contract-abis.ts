@@ -2659,6 +2659,136 @@ export const governedTrustgraphsFactoryAbi = [
         ],
       },
       {
+        name: 'offchain',
+        internalType: 'struct TrustgraphsFactory.OffchainEasConfig',
+        type: 'tuple',
+        components: [
+          { name: 'maxTotalInputs', internalType: 'uint64', type: 'uint64' },
+          {
+            name: 'initialRelayers',
+            internalType: 'address[]',
+            type: 'address[]',
+          },
+        ],
+      },
+      {
+        name: 'policy',
+        internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
+        type: 'tuple',
+        components: [
+          {
+            name: 'minPaidIntervalBlocks',
+            internalType: 'uint64',
+            type: 'uint64',
+          },
+          { name: 'maxPerRootUsd', internalType: 'uint96', type: 'uint96' },
+        ],
+      },
+      {
+        name: 'signerSync',
+        internalType: 'struct GovernedTrustgraphsFactory.SignerSyncConfig',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', internalType: 'bool', type: 'bool' },
+          { name: 'verifier', internalType: 'address', type: 'address' },
+          { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'topN', internalType: 'uint32', type: 'uint32' },
+          { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+          {
+            name: 'targetThresholdBps',
+            internalType: 'uint32',
+            type: 'uint32',
+          },
+        ],
+      },
+    ],
+    name: 'createGovernedHybridInstance',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'safeAddress', internalType: 'address', type: 'address' },
+      { name: 'merkleGovModule', internalType: 'address', type: 'address' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'requested',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustMultiplierFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+      {
         name: 'policy',
         internalType: 'struct GovernedTrustgraphsFactory.InitialPolicy',
         type: 'tuple',
@@ -2781,6 +2911,7 @@ export const governedTrustgraphsFactoryAbi = [
     name: 'GovernedInstanceCreated',
   },
   { type: 'error', inputs: [], name: 'GovernanceDefaultsMismatch' },
+  { type: 'error', inputs: [], name: 'HybridSignerSyncUnsupported' },
   {
     type: 'error',
     inputs: [
@@ -4699,6 +4830,15 @@ export const merkleSnapshotAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'checkpointWorkCount',
+    outputs: [{ name: 'workCount', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'constitutionalHolderCount',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
@@ -5295,6 +5435,25 @@ export const merkleSnapshotAbi = [
       },
     ],
     name: 'AnchorRegistryUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'workCount',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'AnchorWorkCheckpointed',
   },
   {
     type: 'event',
@@ -7861,6 +8020,11 @@ export const trustgraphsFactoryAbi = [
         internalType: 'contract TrustgraphsParamsControllerDeployer',
         type: 'address',
       },
+      {
+        name: 'easRegistryDeployer',
+        internalType: 'contract EasOffchainAnchorRegistryDeployer',
+        type: 'address',
+      },
       { name: 'epochFloor', internalType: 'uint64', type: 'uint64' },
       {
         name: 'vault',
@@ -7888,6 +8052,19 @@ export const trustgraphsFactoryAbi = [
     inputs: [],
     name: 'EAS',
     outputs: [{ name: '', internalType: 'contract IEAS', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'EAS_REGISTRY_DEPLOYER',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract EasOffchainAnchorRegistryDeployer',
+        type: 'address',
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -8059,6 +8236,107 @@ export const trustgraphsFactoryAbi = [
     name: 'computeInstanceId',
     outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [
+      {
+        name: 'args',
+        internalType: 'struct TrustgraphsFactory.CreateArgs',
+        type: 'tuple',
+        components: [
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'metadataURI', internalType: 'string', type: 'string' },
+          {
+            name: 'params',
+            internalType: 'struct ParamsCodec.Params',
+            type: 'tuple',
+            components: [
+              { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'toleranceFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
+              { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
+              { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'trustMultiplierFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustShareFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustDecayFp',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              {
+                name: 'trustedSeeds',
+                internalType: 'address[]',
+                type: 'address[]',
+              },
+              { name: 'totalPool', internalType: 'uint256', type: 'uint256' },
+              {
+                name: 'precisionScale',
+                internalType: 'uint256',
+                type: 'uint256',
+              },
+              { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+              {
+                name: 'weightFieldIndex',
+                internalType: 'uint32',
+                type: 'uint32',
+              },
+              {
+                name: 'envelope0DomainSeparators',
+                internalType: 'bytes32[]',
+                type: 'bytes32[]',
+              },
+              {
+                name: 'lane2MaxHeadAge',
+                internalType: 'uint64',
+                type: 'uint64',
+              },
+              { name: 'accumulator', internalType: 'address', type: 'address' },
+              { name: 'chainId', internalType: 'uint64', type: 'uint64' },
+            ],
+          },
+          { name: 'admin', internalType: 'address', type: 'address' },
+          { name: 'epochLength', internalType: 'uint64', type: 'uint64' },
+          { name: 'withDistributor', internalType: 'bool', type: 'bool' },
+          {
+            name: 'distributorToken',
+            internalType: 'address',
+            type: 'address',
+          },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+        ],
+      },
+      {
+        name: 'offchain',
+        internalType: 'struct TrustgraphsFactory.OffchainEasConfig',
+        type: 'tuple',
+        components: [
+          { name: 'maxTotalInputs', internalType: 'uint64', type: 'uint64' },
+          {
+            name: 'initialRelayers',
+            internalType: 'address[]',
+            type: 'address[]',
+          },
+        ],
+      },
+    ],
+    name: 'createHybridInstance',
+    outputs: [
+      { name: 'instanceId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'snapshot', internalType: 'address', type: 'address' },
+      { name: 'resolver', internalType: 'address', type: 'address' },
+      { name: 'distributor', internalType: 'address', type: 'address' },
+      { name: 'schemaUid', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -8362,6 +8640,37 @@ export const trustgraphsFactoryAbi = [
         indexed: true,
       },
       {
+        name: 'registry',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'domainSeparator',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: false,
+      },
+      {
+        name: 'maxTotalInputs',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'OffchainEasLaneCreated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'instanceId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
         name: 'controller',
         internalType: 'address',
         type: 'address',
@@ -8434,6 +8743,20 @@ export const trustgraphsFactoryAbi = [
       { name: 'precisionScale', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidPrecisionScale',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'relayer', internalType: 'address', type: 'address' }],
+    name: 'InvalidRelayer',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'supplied', internalType: 'uint256', type: 'uint256' },
+      { name: 'minimum', internalType: 'uint256', type: 'uint256' },
+      { name: 'maximum', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InvalidRelayerCount',
   },
   {
     type: 'error',

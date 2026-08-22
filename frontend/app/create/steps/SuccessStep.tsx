@@ -51,6 +51,11 @@ export const SuccessStep = ({ created }: { created: CreatedNetwork }) => (
       <SummaryRow label="Where vouches are recorded">
         <CopyableText text={created.resolver} className="text-xs" />
       </SummaryRow>
+      {created.offchainRegistry !== zeroAddress && (
+        <SummaryRow label="Strict off-chain vouch anchors">
+          <CopyableText text={created.offchainRegistry} className="text-xs" />
+        </SummaryRow>
+      )}
       <SummaryRow label="DAO Safe">
         <CopyableText text={created.safe} className="text-xs" />
       </SummaryRow>

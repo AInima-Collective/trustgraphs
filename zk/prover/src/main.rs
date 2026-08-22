@@ -18,7 +18,7 @@
 //!   trustgraph-prover trust-graph-weighted {vkey|paramshash|execute|prove}
 //!   trustgraph-prover trust-compose {vkey|paramshash|execute|prove}
 //!
-//! For `trust-graph`, `input.json` is a serialized `pagerank_core::GuestInput`; for `signer` it is a
+//! For `trust-graph`, `input.json` is a serialized `trustgraph_core::GuestInput`; for `signer` it is a
 //! `pagerank_core::SignerInput`; for `trust-graph-weighted`, `trust-compose`, and `contributions`
 //! it is their core crate's `GuestInput`. Omit it to use the relevant built-in golden sample.
 

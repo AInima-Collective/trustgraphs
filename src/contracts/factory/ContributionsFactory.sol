@@ -171,6 +171,7 @@ contract ContributionsFactory {
     error ProgramVKeyMismatch(bytes32 expected, bytes32 actual);
     /// @notice The named parent row exists but is not a trust-graph instance.
     error ParentNotTrustGraph(bytes32 parentInstanceId, bytes32 program);
+    error HybridParentUnsupported(bytes32 parentInstanceId, address anchorRegistry);
     /// @notice The caller does not hold the parent snapshot's constitutional role.
     error NotParentAuthority(bytes32 parentInstanceId, address caller);
     /// @notice EAS returned a schema UID other than the one its documented derivation implies.
@@ -408,7 +409,12 @@ contract ContributionsFactory {
         if (parent.program != PARENT_PROGRAM) {
             revert ParentNotTrustGraph(parentInstanceId, parent.program);
         }
-        if (!MerkleSnapshot(parent.snapshot).hasRole(PARENT_AUTHORITY_ROLE, creator)) {
+        MerkleSnapshot parentSnapshot = MerkleSnapshot(parent.snapshot);
+        address anchorRegistry = address(parentSnapshot.anchorRegistry());
+        if (anchorRegistry != address(0)) {
+            revert HybridParentUnsupported(parentInstanceId, anchorRegistry);
+        }
+        if (!parentSnapshot.hasRole(PARENT_AUTHORITY_ROLE, creator)) {
             revert NotParentAuthority(parentInstanceId, creator);
         }
         return parent.registryOrAccumulator;

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {stdJson} from "forge-std/StdJson.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
@@ -13,8 +14,10 @@ import {
     MerkleFundDistributorDeployer,
     TrustgraphsParamsControllerDeployer
 } from "contracts/factory/InstanceDeployers.sol";
+import {EasOffchainAnchorRegistryDeployer} from "contracts/factory/HybridInstanceDeployers.sol";
 import {MerkleSnapshot} from "contracts/merkle/MerkleSnapshot.sol";
 import {MerkleFundDistributor} from "contracts/merkle/MerkleFundDistributor.sol";
+import {EasOffchainAnchorRegistry} from "contracts/registry/EasOffchainAnchorRegistry.sol";
 import {ParamsCodec} from "contracts/params/ParamsCodec.sol";
 import {TrustgraphsParamsValidator} from "contracts/params/TrustgraphsParamsValidator.sol";
 import {ITrustgraphsParamsController} from "interfaces/factory/ITrustgraphsParamsController.sol";
@@ -79,6 +82,118 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         );
     }
 
+    function test_CreateHybridAtomicallyWiresStrictLaneAndDerivesBothDomains() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("strict-hybrid");
+        args.admin = alice;
+        TrustgraphsFactory.OffchainEasConfig memory config = _offchainConfig();
+
+        vm.recordLogs();
+        (bytes32 instanceId, address snapshotAddress, address resolver,, bytes32 schemaUid) =
+            factory.createHybridInstance(args, config);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        MerkleSnapshot snapshot = MerkleSnapshot(snapshotAddress);
+        EasOffchainAnchorRegistry anchors = EasOffchainAnchorRegistry(address(snapshot.anchorRegistry()));
+        assertTrue(address(anchors) != address(0));
+        assertEq(address(snapshot.accumulator()), resolver);
+        assertEq(address(anchors.EAS()), address(eas));
+        assertEq(anchors.schemaUid(), schemaUid);
+        assertEq(address(anchors.snapshot()), snapshotAddress, "reciprocal binding completed before return");
+        assertEq(anchors.maxTotalInputs(), config.maxTotalInputs);
+
+        address controllerAddress = registry.paramsAuthority(instanceId);
+        ParamsCodec.Params memory params = TrustgraphsParamsController(controllerAddress).getCurrentParams();
+        assertEq(params.envelope0DomainSeparators.length, 2);
+        assertEq(params.envelope0DomainSeparators[0], anchors.easDomainSeparator());
+        assertEq(params.envelope0DomainSeparators[1], anchors.headDomainSeparator());
+        assertEq(params.lane2MaxHeadAge, 0);
+        assertEq(ParamsCodec.hash(params), snapshot.paramsHash());
+
+        assertTrue(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), alice));
+        assertTrue(anchors.hasRole(anchors.ANCHORER_ROLE(), config.initialRelayers[0]));
+        assertTrue(anchors.hasRole(anchors.ANCHORER_ROLE(), config.initialRelayers[1]));
+        assertFalse(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), address(factory)));
+        assertFalse(anchors.hasRole(anchors.ANCHORER_ROLE(), address(factory)));
+        assertFalse(anchors.hasRole(anchors.DEFAULT_ADMIN_ROLE(), address(easRegistryDeployer)));
+        assertFalse(anchors.hasRole(anchors.ANCHORER_ROLE(), address(easRegistryDeployer)));
+
+        uint256 createdIndex = type(uint256).max;
+        uint256 laneIndex = type(uint256).max;
+        uint256 controllerIndex = type(uint256).max;
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter == address(factory) && logs[i].topics.length == 4
+                    && logs[i].topics[0] == TrustgraphsFactory.InstanceCreated.selector
+            ) createdIndex = i;
+            if (
+                logs[i].emitter == address(factory) && logs[i].topics.length == 3
+                    && logs[i].topics[0] == TrustgraphsFactory.ParamsControllerCreated.selector
+            ) controllerIndex = i;
+            if (
+                logs[i].emitter != address(factory) || logs[i].topics.length != 2
+                    || logs[i].topics[0] != TrustgraphsFactory.OffchainEasLaneCreated.selector
+            ) continue;
+            assertEq(logs[i].topics[1], instanceId);
+            (address emittedRegistry, bytes32 domain, uint64 cap) =
+                abi.decode(logs[i].data, (address, bytes32, uint64));
+            assertEq(emittedRegistry, address(anchors));
+            assertEq(domain, anchors.easDomainSeparator());
+            assertEq(cap, config.maxTotalInputs);
+            laneIndex = i;
+        }
+        assertTrue(laneIndex != type(uint256).max, "hybrid discovery event missing");
+        assertLt(createdIndex, laneIndex, "base instance must be discoverable before its strict lane");
+        assertLt(laneIndex, controllerIndex, "strict lane must be known before controller publication");
+    }
+
+    function test_CreateHybridRejectsWeakOrAmbiguousRelayerSetsBeforeDeployment() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("bad-relayers");
+        TrustgraphsFactory.OffchainEasConfig memory config;
+        config.maxTotalInputs = 200_000;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(TrustgraphsFactory.InvalidRelayerCount.selector, uint256(0), uint256(2), uint256(16))
+        );
+        factory.createHybridInstance(args, config);
+
+        config.initialRelayers = new address[](2);
+        config.initialRelayers[0] = address(0x111);
+        config.initialRelayers[1] = address(0x111);
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidRelayer.selector, address(0x111)));
+        factory.createHybridInstance(args, config);
+
+        config.initialRelayers[1] = address(0);
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidRelayer.selector, address(0)));
+        factory.createHybridInstance(args, config);
+
+        config.initialRelayers = new address[](17);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TrustgraphsFactory.InvalidRelayerCount.selector, uint256(17), uint256(2), uint256(16)
+            )
+        );
+        factory.createHybridInstance(args, config);
+        assertEq(registry.instanceCount(), 0, "invalid configuration is atomic");
+    }
+
+    function test_BaseFactoryAndStrictRegistryDeployerHaveExplicitEip170Headroom() public view {
+        assertLt(address(factory).code.length, 24_576);
+        assertLt(address(easRegistryDeployer).code.length, 24_576);
+        assertGt(24_576 - address(factory).code.length, 3_000, "base factory runtime margin");
+        assertGt(
+            24_576 - address(easRegistryDeployer).code.length,
+            3_000,
+            "strict registry deployer runtime margin"
+        );
+    }
+
+    function _offchainConfig() internal pure returns (TrustgraphsFactory.OffchainEasConfig memory config) {
+        config.maxTotalInputs = 200_000;
+        config.initialRelayers = new address[](2);
+        config.initialRelayers[0] = address(0x111);
+        config.initialRelayers[1] = address(0x222);
+    }
+
     /// The defect this guards against: no mint path enabled provenance, and nothing after creation
     /// can ever flip it (constitutional-only, pre-first-root-only), so no factory-minted network
     /// could ever be admitted as a composition source. A fresh mint must pass adapter admission
@@ -93,6 +208,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
             snapshotDeployer,
             distributorDeployer,
             paramsControllerDeployer,
+            easRegistryDeployer,
             EPOCH_FLOOR,
             vault
         );
@@ -643,8 +759,8 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     /// Every shared singleton is required; a factory wired to a hole would fail at create time on
     /// somebody else's transaction.
     function test_ConstructorRejectsZeroSingletons() public {
-        address[7] memory holes;
-        for (uint256 i = 0; i < 7; i++) {
+        address[8] memory holes;
+        for (uint256 i = 0; i < 8; i++) {
             holes = [
                 address(eas),
                 address(registrar),
@@ -652,7 +768,8 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
                 address(registry),
                 address(snapshotDeployer),
                 address(distributorDeployer),
-                address(paramsControllerDeployer)
+                address(paramsControllerDeployer),
+                address(easRegistryDeployer)
             ];
             holes[i] = address(0);
 
@@ -665,6 +782,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
                 MerkleSnapshotDeployer(holes[4]),
                 MerkleFundDistributorDeployer(holes[5]),
                 TrustgraphsParamsControllerDeployer(holes[6]),
+                EasOffchainAnchorRegistryDeployer(holes[7]),
                 EPOCH_FLOOR,
                 vault
             );
@@ -683,6 +801,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
             snapshotDeployer,
             distributorDeployer,
             paramsControllerDeployer,
+            easRegistryDeployer,
             0,
             vault
         );
@@ -759,6 +878,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
             snapshotDeployer,
             distributorDeployer,
             paramsControllerDeployer,
+            easRegistryDeployer,
             EPOCH_FLOOR,
             IProvingVault(address(0))
         );

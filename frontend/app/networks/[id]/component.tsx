@@ -13,6 +13,7 @@ import { Card } from '@/components/Card'
 import { CreateAttestationModal } from '@/components/CreateAttestationModal'
 import { Dropdown } from '@/components/Dropdown'
 import { ExportButton } from '@/components/ExportButton'
+import { HybridVouchAudit } from '@/components/HybridVouchAudit'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkSimulationConfigDropdown } from '@/components/NetworkSimulationConfigDropdown'
 import { ScoresAsOf } from '@/components/ScoresAsOf'
@@ -44,6 +45,7 @@ export const NetworkPage = () => {
     isLoading,
     error,
     accountData: networkData,
+    attestationsData,
     scoreboardExportData,
     scoreboardExportMetadata,
     totalValue,
@@ -239,6 +241,10 @@ export const NetworkPage = () => {
           gnosisSafe={gnosisSafe}
         />
       </section>
+
+      {network.offchainLane && (
+        <HybridVouchAudit attestations={attestationsData ?? []} />
+      )}
 
       <div className="space-y-6 border-t border-border pt-10 sm:pt-12">
         <div className="flex flex-row justify-between items-center gap-x-8 gap-y-4 flex-wrap">

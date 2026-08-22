@@ -62,6 +62,18 @@ contract ReentrantRecipient {
     }
 }
 
+contract VaultWorkAnchorRegistry is IAnchorRegistry {
+    bytes32 public anchorAcc;
+    uint64 public anchorCount;
+    uint64 public workCount;
+
+    function setState(bytes32 acc_, uint64 count_, uint64 work_) external {
+        anchorAcc = acc_;
+        anchorCount = count_;
+        workCount = work_;
+    }
+}
+
 contract ProvingVaultTest is Test {
     ProvingVault vault;
     InstanceRegistry registry;
@@ -645,6 +657,41 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(PROGRAM, 900, 400_000), 0, "and past the top band it is unpriced");
         // A lane-2-only program still has a permanently zero lane 1; the sum handles it.
         assertEq(vault.bandOf(keccak256("hypercerts"), 0, 500), 1);
+    }
+
+    function test_QuotePricesCheckpointedLane2WorkAtEveryBoundary() public {
+        VaultWorkAnchorRegistry anchors = new VaultWorkAnchorRegistry();
+        vm.prank(constitutional);
+        snapshot.setAnchorRegistry(IAnchorRegistry(address(anchors)));
+
+        vm.startPrank(feeSetter);
+        vault.setFeePerRootUsd(PROGRAM, 1, 10 * vault.USD());
+        vault.setFeePerRootUsd(PROGRAM, 2, 20 * vault.USD());
+        vault.setFeePerRootUsd(PROGRAM, 3, 30 * vault.USD());
+        vm.stopPrank();
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+
+        uint64[4] memory work = [uint64(1_000), uint64(20_000), uint64(200_000), uint64(200_001)];
+        uint256[4] memory expectedFee = [
+            uint256(10) * vault.USD(),
+            uint256(20) * vault.USD(),
+            uint256(30) * vault.USD(),
+            uint256(0)
+        ];
+        for (uint256 i; i < work.length; ++i) {
+            anchors.setState(keccak256(abi.encode("anchor", i)), uint64(i + 1), work[i]);
+            uint256 checkpointId = snapshot.trigger();
+            assertEq(snapshot.checkpointWorkCount(checkpointId), work[i]);
+            IProvingVault.Quote memory quote = vault.quote(INSTANCE, checkpointId);
+            assertEq(quote.feeUsd, expectedFee[i], "vault must band on checkpointed work");
+            if (work[i] <= vault.MAX_PRICED_INPUTS()) {
+                assertTrue(quote.eligible);
+            } else {
+                assertFalse(quote.eligible, "one unit beyond the operator cap is unpriced");
+                assertEq(quote.reason, uint8(IProvingVault.IneligibleReason.UnknownProgram));
+            }
+        }
     }
 
     function test_OnlyAdmittedAnchorIngressCanMoveTheFeeBand() public {

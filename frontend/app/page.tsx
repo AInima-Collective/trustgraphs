@@ -9,6 +9,7 @@ import {
 import { ProofDiagram } from '@/components/marketing/ProofDiagram'
 import { resolveNetwork } from '@/lib/catalog'
 import { getCatalog } from '@/lib/catalog.server'
+import { MIN_STARS_SHOWN, formatStars, getRepoStars } from '@/lib/github.server'
 import { socialCard } from '@/lib/metadata'
 import { cn } from '@/lib/utils'
 
@@ -84,7 +85,7 @@ const ROADMAP: Array<{
   },
   {
     n: '02',
-    status: 'Integrating',
+    status: 'Pilot',
     title: 'Off-chain EAS',
     description:
       'Signed attestations without a transaction per edge, anchored so the prover can’t choose the inputs.',
@@ -92,12 +93,19 @@ const ROADMAP: Array<{
   {
     n: '03',
     status: 'Pilot',
+    title: 'Nostr',
+    description:
+      'Prove over signed events from relays, using follows and notes people already publish.',
+  },
+  {
+    n: '04',
+    status: 'Pilot',
     title: 'AT Protocol',
     description:
       'Verify repo history and records before computing over social and impact data.',
   },
   {
-    n: '04',
+    n: '05',
     status: 'Research',
     title: 'Private graphs',
     description:
@@ -127,6 +135,13 @@ export default async function LandingPage() {
   // sigma and WebGL to draw a spinner that resolves to "not reachable" six
   // seconds later. The server already knows the answer, so it gives it.
   const graphReachable = demo !== undefined && !error
+
+  // Social proof for the repository CTA. `null` whenever GitHub cannot be read,
+  // and deliberately hidden while the number is small enough to argue against
+  // the button it decorates — see MIN_STARS_SHOWN.
+  const stars = await getRepoStars()
+  const starLabel =
+    stars !== null && stars >= MIN_STARS_SHOWN ? formatStars(stars) : null
 
   return (
     <div className="flex flex-col gap-20 sm:gap-28 lg:gap-36">
@@ -302,7 +317,10 @@ export default async function LandingPage() {
           </>
         }
       >
-        <ol className="mx-auto max-w-5xl list-none border-t border-border p-0 lg:grid lg:grid-cols-4 lg:items-start lg:gap-0 lg:pt-10">
+        {/* Five steps rather than four, so the stepper needs both the extra
+            track and a little more width to keep each description readable.
+            The connecting-line halves are index-driven and need no change. */}
+        <ol className="mx-auto max-w-6xl list-none border-t border-border p-0 lg:grid lg:grid-cols-5 lg:items-start lg:gap-0 lg:pt-10">
           {ROADMAP.map((item, index) => (
             <RoadmapItem
               key={item.n}
@@ -355,16 +373,40 @@ export default async function LandingPage() {
           <h2 className="mt-4 max-w-[10ch] text-3xl leading-none text-ink-fg text-balance sm:text-4xl">
             Open source. Take it apart.
           </h2>
-          <ButtonLink
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="lg"
-            variant="custom"
-            className="mt-12 w-full shrink-0 border-ink-fg text-ink-fg hover:bg-ink-fg hover:text-ink lg:mt-auto"
-          >
-            Star on GitHub
-          </ButtonLink>
+          <p className="mt-6 max-w-[34ch] text-sm text-ink-fg opacity-70">
+            Every contract, circuit and page is in the open. Read how it works,
+            then read the code that does it.
+          </p>
+
+          {/* Two CTAs where there was one, and the repository takes the filled
+           * treatment: on this panel it is the ask, and an outline button
+           * beside an outline button asks for nothing in particular. */}
+          <div className="mt-10 flex flex-col gap-3 lg:mt-auto">
+            <ButtonLink
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="lg"
+              variant="custom"
+              className="w-full shrink-0 border-ink-fg bg-ink-fg text-ink hover:opacity-90 active:opacity-80"
+            >
+              Star on GitHub
+              {starLabel && (
+                <span className="ml-1 border-l border-ink/25 pl-3 tabular-nums">
+                  {starLabel}
+                </span>
+              )}
+            </ButtonLink>
+            <ButtonLink
+              href="/docs"
+              prefetch={false}
+              size="lg"
+              variant="custom"
+              className="w-full shrink-0 border-ink-fg/45 text-ink-fg hover:bg-ink-fg hover:text-ink"
+            >
+              Read the docs
+            </ButtonLink>
+          </div>
         </div>
       </section>
     </div>

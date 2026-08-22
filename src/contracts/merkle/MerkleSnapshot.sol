@@ -9,6 +9,7 @@ import {IMerkleSnapshotHook} from "interfaces/merkle/IMerkleSnapshotHook.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
+import {IAnchorWorkRegistry} from "interfaces/registry/IAnchorWorkRegistry.sol";
 
 /// @title MerkleSnapshot
 /// @notice Merkle-root snapshotter for trustgraphs. The `{account => score}` root is produced by a
@@ -48,6 +49,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
     /// @notice Lane-2 checkpoint per lane-1 checkpoint id (zeros when no registry is set).
     mapping(uint256 checkpointId => AnchorCheckpoint) public anchorCheckpoints;
+
+    /// @notice Checkpointed lane-2 work units used for operator admission and vault pricing.
+    /// @dev This is additive: `anchorCheckpoints` and journal v3 remain unchanged. Registries that
+    ///      do not expose `IAnchorWorkRegistry.workCount()` checkpoint their raw anchor count.
+    mapping(uint256 checkpointId => uint64 workCount) public checkpointWorkCount;
 
     /// @notice Contract-fixed epoch schedule in blocks; 0 = unscheduled (lane-1-only default).
     ///         A nonzero schedule is anchored when configured; callers consume its boundaries but
@@ -326,6 +332,9 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     /// @notice Emitted with every trigger's lane-2 snapshot.
     event AnchorsCheckpointed(uint256 indexed checkpointId, bytes32 anchorAcc, uint64 anchorCount);
 
+    /// @notice Emitted with the lane-2 work value priced for this checkpoint.
+    event AnchorWorkCheckpointed(uint256 indexed checkpointId, uint64 workCount);
+
     /// @notice Emitted when a consumer hook reverts during a root update. The root is still recorded;
     ///         the hook is skipped so a misbehaving consumer can never block proof submission.
     event HookFailed(uint256 indexed hookIndex, address indexed hook);
@@ -354,10 +363,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
 
         // Refuse to freeze a checkpoint identical to the last one, across BOTH lanes.
         //
-        // `AttestationAccumulator` has always refused this for lane 1 (`NoNewInputs`), but the two
-        // other lane-1 seams deliberately do not: `TrustAccumulatorMirror` must let a contributions
-        // round close while the vouch graph is quiet, and `EmptyLaneAccumulator`'s lane 1 is the
-        // constant zero pair. On those, `trigger()` could mint an unlimited run of checkpoints with
+        // Lane accumulators deliberately do not make this decision: a strict lane-2 append must
+        // checkpoint even when lane 1 is byte-identical, `TrustAccumulatorMirror` must let a
+        // contributions round close while the vouch graph is quiet, and `EmptyLaneAccumulator`'s
+        // lane 1 is the constant zero pair. Without this combined guard, `trigger()` could mint an
+        // unlimited run of checkpoints with
         // byte-identical commitments — and the journal digest does not include the checkpoint id,
         // so ONE proof verifies against every one of them. That is a bounty paid repeatedly for a
         // single piece of work, and a stale root re-filed at ever-later blocks as if its inputs
@@ -401,9 +411,11 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
             if (a != bytes32(0) || n != 0) {
                 anchorCheckpoints[checkpointId] = AnchorCheckpoint({anchorAcc: a, anchorCount: n});
             }
+            checkpointWorkCount[checkpointId] = _liveAnchorWork(n);
         }
         AnchorCheckpoint memory ac = anchorCheckpoints[checkpointId];
         emit AnchorsCheckpointed(checkpointId, ac.anchorAcc, ac.anchorCount);
+        emit AnchorWorkCheckpointed(checkpointId, checkpointWorkCount[checkpointId]);
         emit SnapshotTriggered(checkpointId);
     }
 
@@ -522,6 +534,20 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     function _liveAnchors() internal view returns (bytes32, uint64) {
         if (address(anchorRegistry) == address(0)) return (bytes32(0), 0);
         return (anchorRegistry.anchorAcc(), anchorRegistry.anchorCount());
+    }
+
+    /// The optional work-aware lane-2 size, safely falling back to raw anchors for legacy lanes.
+    function _liveAnchorWork(uint64 anchorCount_) internal view returns (uint64) {
+        if (address(anchorRegistry) == address(0)) return 0;
+        (bool ok, bytes memory returned) =
+            address(anchorRegistry).staticcall(abi.encodeCall(IAnchorWorkRegistry.workCount, ()));
+        if (ok && returned.length == 32) {
+            uint256 candidate = abi.decode(returned, (uint256));
+            if (candidate >= anchorCount_ && candidate <= type(uint64).max) {
+                return uint64(candidate);
+            }
+        }
+        return anchorCount_;
     }
 
     /// @notice This instance's journal-v3 domain separator: `keccak256(abi.encode(address(this),

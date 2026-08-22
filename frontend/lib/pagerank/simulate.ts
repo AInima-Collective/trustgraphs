@@ -2,9 +2,10 @@
 //! fixed-point PageRank result. This is what the UI calls for "what-if" previews so the numbers it
 //! shows match, byte-for-byte, what the zk guest would commit for the same inputs.
 //!
-//! PARITY TIER (MULTI_PROGRAM_PLATFORM §6, REDUCED): this recomputes PageRank + the output root over
-//! the EDGE SET AS SERVED BY THE INDEXER; it does NOT re-verify EAS envelope signatures (envelope
-//! verification is in-guest only). Consequently the browser produces a LANE-1-ONLY journal — the
+//! PARITY TIER: lane-1-only callers remain reduced. Hybrid callers may pass strict-lane raw edges
+//! only after independently fetching and validating the complete supported envelope profile. The
+//! browser still does not reproduce the anchor accumulator journal fields, so the resulting
+//! journal remains lane-1-shaped — the
 //! lane-2 anchor fields (`anchorAcc`, `anchorCount`, `skippedDigest`) come back as the zero
 //! accumulator here (see `compute.ts`). The lane-2 `Params` fields ARE threaded through because
 //! `paramsHash` hashes all 17 param fields; leaving them out would mismatch an on-chain lane-2
@@ -34,6 +35,8 @@ export interface SimAttestation {
   confidence: number
   /** Whether this attestation is revoked (excluded from the graph, like the canonical reconcile). */
   revoked?: boolean
+  /** Effective on-chain revoke time, when revoked. */
+  revocationTime?: bigint
 }
 
 export interface SimConfig {
@@ -109,18 +112,37 @@ const encodeConfidence = (confidence: number): Hex => {
  */
 export const simulateNetwork = (
   attestations: SimAttestation[],
-  cfg: SimConfig
+  cfg: SimConfig,
+  independentlyVerifiedEnvelope0Edges: readonly RawEdge[] = []
 ): SimResult => {
-  const edges: RawEdge[] = attestations
-    .filter((a) => !a.revoked)
-    .map((a) => ({
-      kind: 0,
-      attester: a.attester.toLowerCase() as Hex,
-      recipient: a.recipient.toLowerCase() as Hex,
-      uid: a.uid,
-      blockTimestamp: a.time,
-      data: encodeConfidence(a.confidence),
-    }))
+  const edges: RawEdge[] = attestations.flatMap((attestation) => {
+    const edge = {
+      attester: attestation.attester.toLowerCase() as Hex,
+      recipient: attestation.recipient.toLowerCase() as Hex,
+      uid: attestation.uid,
+      data: encodeConfidence(attestation.confidence),
+    }
+    return [
+      { ...edge, kind: 0, blockTimestamp: attestation.time },
+      ...(attestation.revoked
+        ? [
+            {
+              ...edge,
+              kind: 1,
+              blockTimestamp:
+                attestation.revocationTime &&
+                attestation.revocationTime > 0n
+                  ? attestation.revocationTime
+                  : attestation.time,
+            },
+          ]
+        : []),
+    ]
+  })
+
+  edges.push(
+    ...independentlyVerifiedEnvelope0Edges.map((edge) => ({ ...edge }))
+  )
 
   const params: Params = {
     dampingFp: toFp(cfg.dampingFactor),

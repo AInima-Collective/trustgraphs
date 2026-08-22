@@ -1,7 +1,9 @@
 ## Governance
 - Design Actions UI system, build a similar system to DAO DAO (both for proposing / encoding actions and viewing proposals).
 - Action UI components: ERC20 (transfers, sends, etc.), NFT (transfer, etc.), trustgraph DAO settings.
-- Hide delegation UI? It shouldn't be shown by default.
+- ~~Hide delegation UI? It shouldn't be shown by default.~~ Done: the setup form
+  is a `?delegate=1` route modal; the governance context strip carries only a
+  quiet "Let an agent vote for you" link, or the active delegate when one is set.
 
 -----
 # New work
