@@ -45,7 +45,7 @@ test('manifest validator rejects unknown fields and secret-bearing keys', () => 
   )
 })
 
-test('stage and target resolve independently without retargeting legacy prod', () => {
+test('stage and target resolve independently', () => {
   assert.deepEqual(
     resolveDeploymentSelection({ stage: 'production', target: 'sepolia' }),
     {
@@ -54,10 +54,6 @@ test('stage and target resolve independently without retargeting legacy prod', (
       envName: 'prod',
       profile: resolveDeploymentSelection({ target: 'sepolia' }).profile,
     }
-  )
-  assert.equal(
-    resolveDeploymentSelection({ legacyEnv: 'prod' }).target,
-    'optimism'
   )
   assert.throws(
     () => resolveDeploymentSelection({ stage: 'production' }),

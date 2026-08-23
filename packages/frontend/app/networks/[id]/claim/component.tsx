@@ -16,13 +16,13 @@ import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
+import { contributionsQueries } from '@/lib/contributions-api'
+import { parseErrorMessage } from '@/lib/error'
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
   latestMerkleStateAbi,
 } from '@/lib/funding-terms'
-import { contributionsQueries } from '@/lib/contributions-api'
-import { parseErrorMessage } from '@/lib/error'
 import { contributionsTabs } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
 import { ContributionsNetwork } from '@/lib/types'

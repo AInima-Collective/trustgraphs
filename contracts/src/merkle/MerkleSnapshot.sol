@@ -120,8 +120,9 @@ contract MerkleSnapshot is IMerkleSnapshot, IMerkleSnapshotProvenance, AccessCon
     mapping(uint256 checkpointId => bool accepted) private _acceptedCheckpoints;
 
     /// @notice Opt-in provenance history for snapshots intended to serve as composition sources.
-    /// @dev False preserves the exact legacy proof-submission economics. Constitutional authority
-    ///      may enable it once before the first accepted state; it can never be disabled.
+    /// @dev False keeps proof submission at its base cost for snapshots that will never be
+    ///      composed from. Constitutional authority may enable it once before the first accepted
+    ///      state; it can never be disabled.
     bool public provenanceEnabled;
 
     /// @notice Array of block numbers where states were created (ascending)

@@ -72,7 +72,7 @@ tasks:
           echo "💡 then add it to PATH: export PATH=\"\$HOME/.sp1/bin:\$PATH\""
           exit 1
         fi
-        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-program \
+        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-signer-program \
                  zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
                  >/dev/null 2>&1; then
           echo "⚠️  SP1 guest ELFs not built yet. Run: task zk:build"

@@ -89,20 +89,9 @@ export function manifestDeploymentSummary(manifest) {
 }
 
 export function resolveDeploymentProfile(environment, repoDir) {
-  const legacy = environment.DEPLOY_ENV?.trim().toUpperCase()
-  if (legacy && legacy !== 'DEV' && legacy !== 'PROD') {
-    throw new Error(
-      'DEPLOY_ENV must be DEV or PROD when the legacy alias is used'
-    )
-  }
   let stage = environment.DEPLOY_STAGE?.trim().toLowerCase()
   let target = environment.DEPLOY_TARGET?.trim().toLowerCase()
 
-  if (!stage && legacy)
-    stage =
-      legacy === 'PROD' ? 'production' : legacy === 'DEV' ? 'development' : ''
-  if (!target && legacy)
-    target = legacy === 'PROD' ? 'optimism' : legacy === 'DEV' ? 'local' : ''
   if (!stage && target)
     stage = target === 'local' ? 'development' : 'production'
   if (!stage) stage = 'development'

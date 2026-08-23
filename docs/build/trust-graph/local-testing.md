@@ -118,7 +118,7 @@ cd ../..
 **Deploy** (one command):
 
 ```bash
-DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
+RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 ```
 
 The Network step deploys the resolver, registers the schema, then computes
@@ -140,9 +140,9 @@ jq --arg s "$(jq -r '.schemas.vouching.uid' config/network_deploy_dev_0.json)" \
 > **Why plain DEV works now.** DEV regenerates the deployer key each run, but that no longer matters:
 > the schema UID is produced *and* consumed inside the same deploy, so nothing has to reproduce across
 > runs. (Needing it to reproduce is exactly what used to force a pinned-deployer, two-pass,
-> restart-the-fork dance.) Reach for `DEPLOY_ENV=PROD` when you want the production timelock/config
-> wiring and a fixed `FUNDED_KEY` (DEV regenerates the deployer key each run — see the note in
-> `.env.example`).
+> restart-the-fork dance.) Reach for `DEPLOY_STAGE=production` with an explicit `DEPLOY_TARGET` when
+> you want the production timelock/config wiring and a fixed `FUNDED_KEY` (development regenerates
+> the deployer key each run — see the note in `.env.example`).
 
 Addresses are written to `.docker/deployment_summary.json` (Safe/module addresses to
 `.docker/zodiac_safes_deploy.json`), and the frontend + indexer read them from there.

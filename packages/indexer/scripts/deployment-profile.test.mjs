@@ -6,17 +6,18 @@ import test from 'node:test'
 
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
-test('legacy PROD remains Optimism while stage and target are independent', () => {
-  const legacy = resolveDeploymentProfile({ DEPLOY_ENV: 'PROD' }, '/repo')
-  assert.equal(legacy.target, 'optimism')
-  assert.equal(legacy.chainId, 10)
+test('stage and target resolve independently', () => {
+  const local = resolveDeploymentProfile({}, '/repo')
+  assert.equal(local.stage, 'development')
+  assert.equal(local.target, 'local')
+  assert.equal(local.chainId, 31337)
   assert.throws(
     () => resolveDeploymentProfile({ DEPLOY_STAGE: 'production' }, '/repo'),
     /requires DEPLOY_TARGET/
   )
   assert.throws(
-    () => resolveDeploymentProfile({ DEPLOY_ENV: 'staging' }, '/repo'),
-    /DEV or PROD/
+    () => resolveDeploymentProfile({ DEPLOY_STAGE: 'staging' }, '/repo'),
+    /development or production/
   )
 })
 

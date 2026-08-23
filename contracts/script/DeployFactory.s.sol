@@ -78,7 +78,7 @@ contract DeployFactory is Common {
         require(epochFloor > 0, "DeployFactory: epochFloor is zero");
         // The floor is IMMUTABLE and it is what bounds hosted proving cost per instance, so a dev
         // default must not reach a real chain. `contracts/deploy/env.ts` hardcodes 1 block for local anvil
-        // and `DEPLOY_ENV` defaults to `dev`, which makes "unset env + real RPC" a one-typo path to
+        // and the stage defaults to `development`, which makes "unset env + real RPC" a one-typo path to
         // a permissionless factory whose floor is one block. Roughly a day of blocks is the least
         // that could be deliberate; mainnet's intended value is ~30 days (216000).
         require(

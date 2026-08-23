@@ -7,7 +7,7 @@ import { getContributionsNetwork } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
 
-import { PayoutPage } from '../payout/component'
+import { PayoutPage } from './component'
 
 export const revalidate = 10
 

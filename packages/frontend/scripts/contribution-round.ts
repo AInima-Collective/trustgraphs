@@ -48,23 +48,23 @@ import { foundry } from 'viem/chains'
 
 import { SEED_NETWORKS } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
-import {
-  distributeArgs as buildDistributeArgs,
-  fundingTermsAbi,
-  latestMerkleStateAbi,
-} from '../lib/funding-terms'
-import {
-  type ContributionsInstanceRow,
-  fetchContributionsInstances,
-  toContributionsNetwork,
-} from '../lib/contributions-catalog'
-import type { ContributionsNetwork, Network } from '../lib/types'
 import { easAddress } from '../lib/contracts'
 import {
   fetchContributionsPayout,
   fetchContributionsRound,
 } from '../lib/contributions-api'
+import {
+  type ContributionsInstanceRow,
+  fetchContributionsInstances,
+  toContributionsNetwork,
+} from '../lib/contributions-catalog'
+import {
+  distributeArgs as buildDistributeArgs,
+  fundingTermsAbi,
+  latestMerkleStateAbi,
+} from '../lib/funding-terms'
 import { SchemaManager, registerSchemas } from '../lib/schemas'
+import type { ContributionsNetwork, Network } from '../lib/types'
 
 const RPC = process.env.RPC_URL ?? 'http://127.0.0.1:8545'
 const STATE_FILE = path.resolve(
@@ -146,7 +146,9 @@ const loadRoundArtifact = (): RoundArtifact | undefined => {
 /** The artifact reshaped as a catalog row, or undefined when it predates the enriched fields.
  * Only what the seeding phases read is real; the round window and pool figures live on chain and
  * on the indexer, not here. */
-const artifactRow = (a: RoundArtifact): ContributionsInstanceRow | undefined => {
+const artifactRow = (
+  a: RoundArtifact
+): ContributionsInstanceRow | undefined => {
   if (
     !a.trust_accumulator ||
     !a.claim_schema_uid ||

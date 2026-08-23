@@ -38,12 +38,12 @@ import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
+import { parseErrorMessage } from '@/lib/error'
 import {
   distributeArgs as buildDistributeArgs,
   fundingTermsAbi,
   quotedFee,
 } from '@/lib/funding-terms'
-import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
 import { usePonderQuery } from '@/lib/use-ponder-query'
 import { formatBigNumber } from '@/lib/utils'
@@ -460,8 +460,7 @@ export const DistributePage = ({
               />
               {feeAmount !== undefined && parsedAmount > 0n && (
                 <p className="text-xs text-muted-foreground">
-                  Fee:{' '}
-                  {formatBigNumber(feeAmount ?? 0n, 18, true)}{' '}
+                  Fee: {formatBigNumber(feeAmount ?? 0n, 18, true)}{' '}
                   {tokenType === 'native' ? 'ETH' : tokenSymbol || 'tokens'}
                 </p>
               )}

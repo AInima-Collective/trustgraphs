@@ -2,7 +2,7 @@ import type { EventNames, IndexingFunctionArgs } from 'ponder:registry'
 import type { Hex } from 'viem'
 
 const defaultFrontendOrigin = (env: NodeJS.ProcessEnv): string =>
-  env.DEPLOY_ENV?.trim().toUpperCase() === 'PROD'
+  env.DEPLOY_STAGE?.trim().toLowerCase() === 'production'
     ? 'https://trustgraph.network'
     : 'http://127.0.0.1:3000'
 

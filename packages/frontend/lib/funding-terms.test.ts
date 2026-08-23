@@ -46,7 +46,9 @@ test('distribute has exactly one form, and it is the guarded one', () => {
       'utf8'
     )
   ).abi as Array<{ type: string; name?: string; inputs?: unknown[] }>
-  const forms = abi.filter((e) => e.type === 'function' && e.name === 'distribute')
+  const forms = abi.filter(
+    (e) => e.type === 'function' && e.name === 'distribute'
+  )
   assert.equal(forms.length, 1, 'distribute must not be overloaded')
   assert.equal(forms[0].inputs?.length, 7)
 })

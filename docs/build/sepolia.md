@@ -8,11 +8,9 @@ Sepolia or any other public chain yet; the tracked manifest remains explicitly `
 Trustgraphs now has separate deployment stage and chain-target inputs:
 
 - `development` + `local` means chain 31337 and the modern factory/registry stack;
-- `production` + `sepolia` selects the modern first-release plan on chain 11155111; and
-- the legacy `DEPLOY_ENV=PROD` compatibility input still selects Optimism chain 10 and a
-  direct-per-network deployment path. That describes configuration still in the repository, not a
-  live deployment or a release target. It is slated for retirement; Ethereum mainnet is the later
-  production target after a Sepolia rehearsal.
+- `production` + `sepolia` selects the modern first-release plan on chain 11155111.
+
+Ethereum mainnet is the later production target, after a Sepolia rehearsal.
 
 Ethereum Sepolia is an explicit chain target using the modern factory/registry architecture. A
 real deployment must use canonical Sepolia EAS, a real SP1 verifier

@@ -459,9 +459,10 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             return (0, 0, 0, false);
         }
         // Work-aware snapshots checkpoint the authenticated lane-2 cost separately while keeping
-        // the journal's raw anchorCount unchanged. Old deployed snapshots do not have this getter;
-        // malformed/undersized values likewise fall back to the raw count and can never underprice
-        // relative to the legacy rule.
+        // the journal's raw anchorCount unchanged. The catch is NOT back-compatibility: an account
+        // binds to whatever `snapshot` the registry names, and `OPERATOR_ROLE` can register a row
+        // pointing at a contract that is not a MerkleSnapshot at all. A missing, malformed, or
+        // undersized answer falls back to the raw anchor count, which can only overprice.
         try snapshot.checkpointWorkCount(checkpointId) returns (uint64 work) {
             if (work >= anchorCount) anchorCount = work;
         } catch {}

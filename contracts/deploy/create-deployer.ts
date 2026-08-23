@@ -20,10 +20,6 @@ import { sleep } from './utils'
 const program = new Command('create-deployer')
   .description('Create and fund a new deployer wallet')
   .option(
-    '-e, --env <env>',
-    'The deploy environment (dev or prod) (default: $DEPLOY_ENV from .env)'
-  )
-  .option(
     '-r, --rpc-url <rpcUrl>',
     'The RPC URL for the chain (default: $RPC_URL from .env)'
   )

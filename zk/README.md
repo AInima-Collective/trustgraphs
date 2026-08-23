@@ -6,7 +6,7 @@ verification keys of another.
 
 | Workspace | Responsibility |
 |---|---|
-| `program/` | Legacy multi-program guest workspace for trustgraph, signer-sync, hypercerts, contributions, and conformance programs |
+| `program/` | Multi-bin guest workspace for the signer-sync, hypercerts, contributions, and conformance programs |
 | `trustgraph-program-v2/` | Strict hybrid trustgraph guest |
 | `weighted-program/` | Weighted-prior guest |
 | `composition-program/` | Trust-composition guest |

@@ -1347,7 +1347,6 @@ export const initProgram = (program: Command): ProgramContext => {
   const selection = resolveDeploymentSelection({
     stage: options.stage || process.env.DEPLOY_STAGE,
     target: options.chain || process.env.DEPLOY_TARGET,
-    legacyEnv: options.env || process.env.DEPLOY_ENV,
   })
   options.env = selection.envName
   options.stage = selection.stage

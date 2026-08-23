@@ -174,8 +174,9 @@ contract SignerSyncModuleDeployer {
         ) revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
 
         // Signer-sync's current guest authenticates lane 1 only. Keep it fail-closed for any
-        // score snapshot that advertises a live lane-2 registry; legacy snapshot types without
-        // this optional getter retain their existing path.
+        // score snapshot that advertises a live lane-2 registry. The staticcall is a foreign-type
+        // guard, not a back-compatibility shim: `scoreSnapshot` is caller-supplied and need not be
+        // a MerkleSnapshot, so a contract without this getter is treated as lane-1-only.
         (bool anchorOk, bytes memory anchorResult) =
             address(scoreSnapshot).staticcall(abi.encodeWithSignature("anchorRegistry()"));
         if (anchorOk && anchorResult.length == 32) {

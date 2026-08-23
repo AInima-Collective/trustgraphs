@@ -16,7 +16,7 @@ program index in [`networks-and-programs.md`](../../concepts/networks-and-progra
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `crates/zk-core`                                                                | Shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal). Single source of truth for the primitives; re-exported by every core crate. |
 | `crates/pagerank-core`                                                          | Canonical fixed-point PageRank + selection + the trust-graph Params/Journal encodings. Re-exports `zk-core`. No floats.                                    |
-| `zk/program`                                                                      | Multi-bin SP1 guest crate. `trustgraph-program` bin = this program (root).                                                                                 |
+| `zk/trustgraph-program-v2`                                                        | SP1 guest crate for this program (root). The multi-bin `zk/program` crate holds the signer, hypercerts, contributions, and conformance guests.             |
 | `zk/prover`                                                                       | Host CLI `trustgraph-prover`. Clap program groups: `trust-graph {vkey\|paramshash\|execute\|prove}` (and `signer …`).                                      |
 | `crates/input-exporter`                                                         | Reconstructs `input.json` from chain (`EdgeFolded` + EAS) and self-checks it re-folds to the checkpoint `acc`.                                             |
 | `contracts/src/eas/AttestationAccumulator.sol`                                    | Chained-hash accumulator (mixed into `EASIndexerResolver`).                                                                                                |
@@ -260,46 +260,6 @@ an older tuple and publish it as the next version. The version number remains
 monotonic, evidence and executor provenance remain append-only, and settled
 roots keep their original meaning.
 
-### Legacy migration ceremony
-
-Migration transfers a real capability and is constitutional. Never run it
-silently against a community network. Announce the exact instance, tuple,
-controller owner, and every legacy operational holder; use the community's Safe
-or timelock batch when that is the current administrator.
-
-From a cold checkout, build and test first:
-
-```bash
-pnpm install --frozen-lockfile
-forge build
-forge test
-```
-
-Then invoke `contracts/script/MigrateTrustgraphsParamsController.s.sol` with the existing
-`instanceId`, snapshot, registry, deployed
-`TrustgraphsParamsControllerDeployer`, exact `params.json`, schema UID,
-accumulator, chain ID, intended EOA/Safe/timelock owner, and a complete array of
-legacy `OPERATIONAL_ROLE` holders. For an EOA-administered development instance:
-
-```bash
-export RPC_URL=http://127.0.0.1:8545
-export FUNDED_KEY=0x... # current registry + snapshot administrator
-
-forge script contracts/script/MigrateTrustgraphsParamsController.s.sol:MigrateTrustgraphsParamsController \
-  --rpc-url "$RPC_URL" --broadcast \
-  --sig 'run(bytes32,address,address,address,string,bytes32,address,uint64,address,address[])' \
-  "$INSTANCE_ID" "$SNAPSHOT" "$INSTANCE_REGISTRY" "$PARAMS_CONTROLLER_DEPLOYER" \
-  "$PARAMS_JSON" "$SCHEMA_UID" "$ACCUMULATOR" "$CHAIN_ID" "$CONTROLLER_OWNER" \
-  "[$LEGACY_OPERATIONAL_HOLDER]"
-```
-
-The script refuses a tuple that does not reproduce both the snapshot and
-registry hash. Its order is association → grant controller → verify grant →
-publish version 1 → revoke every enumerated legacy holder. It repeats all
-postconditions after broadcast. For a Safe/timelock, encode those same ordered
-calls as one reviewed batch; do not export an EOA key or bypass the existing
-authority.
-
 ## Real end-to-end on a mainnet fork (with the UI)
 
 To exercise the **real** on-chain path — a genuine Groth16 proof verified by Succinct's real SP1
@@ -377,7 +337,7 @@ Per the batching rule, group every guest-affecting change into one rotation:
 # 1. Fork + deploy the full stack (EAS, both verifiers, MerkleSnapshot, the Safe with MerkleGovModule
 #    + SignerSyncZkModule, timelocks, distributor). Writes .docker/deployment_summary.json.
 anvil --fork-url "$FORK_RPC_URL" --silent &
-DEPLOY_ENV=DEV RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
+RPC_URL=http://127.0.0.1:8545 pnpm deploy:full
 
 # 2. Attest (UI or `task forge:vouch ...`), then run the "Produce a root" loop above against the
 #    deployed MerkleSnapshot — real `prove --groth16` (add `--features native-gnark` for SP1_PROVER=cpu),

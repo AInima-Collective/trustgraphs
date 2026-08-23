@@ -503,9 +503,9 @@ impl Journal {
 
     /// How many deterministic submit failures this key has accumulated, and the latest class.
     ///
-    /// Legacy journals represented receipt reverts only as `SubmitGas`; those records remain
-    /// first-class failure observations. A `Resolved` line clears pre-abandonment counters for
-    /// backwards compatibility with the old circuit breaker, but it cannot clear the terminal
+    /// A reverted receipt is still written as `SubmitGas { reverted: true }` (the gas was spent),
+    /// so those records count as first-class failure observations alongside `SubmitFailure`. A
+    /// `Resolved` line clears pre-abandonment counters, but it cannot clear the terminal
     /// [`Status::Abandoned`] disposition.
     pub fn submit_failures(&self, key: &WorkKey) -> (u32, Option<SubmitFailureClass>) {
         let mut attempts = 0u32;

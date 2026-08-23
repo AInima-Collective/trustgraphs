@@ -76,27 +76,20 @@ export type DeploymentSelection = {
 /**
  * Resolve deployment strictness independently from chain identity.
  *
- * `DEPLOY_ENV=DEV|PROD` remains a legacy compatibility input. New public-chain
- * invocations must name a target; `PROD` alone continues to select only the
- * existing legacy Optimism profile so it cannot silently become Sepolia.
+ * Stage decides how strict validation is; target decides which chain. Naming
+ * neither is the local development default; naming a public target without a
+ * stage implies production.
  */
 export const resolveDeploymentSelection = ({
   stage,
   target,
-  legacyEnv,
 }: {
   stage?: string
   target?: string
-  legacyEnv?: string
 }): DeploymentSelection => {
   let resolvedStage = normalizeStage(stage)
   let resolvedTarget = normalizeTarget(target)
-  const legacyStage = normalizeStage(legacyEnv)
 
-  if (!resolvedStage) resolvedStage = legacyStage
-  if (!resolvedTarget && legacyEnv) {
-    resolvedTarget = legacyStage === 'production' ? 'optimism' : 'local'
-  }
   if (!resolvedStage && resolvedTarget) {
     resolvedStage = resolvedTarget === 'local' ? 'development' : 'production'
   }

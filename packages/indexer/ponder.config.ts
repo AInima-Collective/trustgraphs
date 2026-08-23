@@ -100,22 +100,10 @@ dotenv.config({
   quiet: true,
 })
 
-const legacyDeployment = process.env.DEPLOY_ENV?.trim().toUpperCase()
-if (
-  legacyDeployment &&
-  legacyDeployment !== 'DEV' &&
-  legacyDeployment !== 'PROD'
-) {
-  throw new Error(
-    'DEPLOY_ENV must be DEV or PROD when the legacy alias is used'
-  )
-}
 const deploymentStage =
-  process.env.DEPLOY_STAGE?.trim().toLowerCase() ??
-  (legacyDeployment === 'PROD' ? 'production' : 'development')
+  process.env.DEPLOY_STAGE?.trim().toLowerCase() ?? 'development'
 const deploymentTarget =
-  process.env.DEPLOY_TARGET?.trim().toLowerCase() ??
-  (legacyDeployment === 'PROD' ? 'optimism' : 'local')
+  process.env.DEPLOY_TARGET?.trim().toLowerCase() ?? 'local'
 if (!['development', 'production'].includes(deploymentStage)) {
   throw new Error('DEPLOY_STAGE must be development or production')
 }

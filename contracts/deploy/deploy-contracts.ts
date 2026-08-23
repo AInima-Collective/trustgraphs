@@ -18,7 +18,6 @@ import { execFull } from './utils'
 
 const program = new Command('deploy-contracts')
   .description('Deploy contracts to the chain')
-  .option('-e, --env <env>', 'Legacy deploy environment alias (dev or prod)')
   .option(
     '--stage <stage>',
     'Deployment stage: development or production (default: $DEPLOY_STAGE)'

@@ -89,7 +89,7 @@ tasks:
         # first failure is a missing-file error from `include_elf!` in the middle of a Rust build,
         # several minutes in, which reads like a broken checkout instead of a missing step.
         # Globbed on the target triple on purpose: SP1 moved it from riscv32im to riscv64im.
-        ls zk/program/target/elf-compilation/*/release/trustgraph-program \
+        ls zk/program/target/elf-compilation/*/release/trustgraph-signer-program \
            zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
            zk/weighted-program/target/elf-compilation/*/release/trustgraph-weighted-program \
            zk/composition-program/target/elf-compilation/*/release/trustgraph-compose-program \

@@ -17,7 +17,7 @@
 # as a snapshot hook on the instance's first proof).
 #
 # Prerequisites (checked below):
-#   - a dev chain at $RPC with the dev stack deployed:  pnpm deploy:full   (anvil, DEPLOY_ENV=dev)
+#   - a dev chain at $RPC with the dev stack deployed:  pnpm deploy:full   (anvil, DEPLOY_STAGE=development)
 #   - Postgres reachable at $DATABASE_URL — the indexer API requires it. No docker needed; e.g.:
 #       npm install embedded-postgres   # in a scratch dir OUTSIDE the repo
 #       node -e 'import("embedded-postgres").then(async ({default: EP}) => {
@@ -80,7 +80,7 @@ indexer_alive() { [ -n "$INDEXER_PID" ] && kill -0 "$INDEXER_PID" 2>/dev/null; }
 
 start_indexer() {
   echo "== starting indexer on :$INDEXER_PORT =="
-  env DATABASE_URL="$DATABASE_URL" DEPLOY_ENV=DEV \
+  env DATABASE_URL="$DATABASE_URL" DEPLOY_STAGE=development \
     RPC_URL="$RPC" PONDER_RPC_URL_31337="$RPC" PONDER_PORT="$INDEXER_PORT" \
     IPFS_GATEWAY="http://127.0.0.1:${STUB_PORT}/ipfs/" \
     pnpm -C indexer run start >"$WORK/indexer.log" 2>&1 &

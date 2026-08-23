@@ -75,14 +75,6 @@ pub struct Config {
 /// legitimate only if something else does.
 #[derive(Debug, Deserialize)]
 pub struct Ipfs {
-    /// Legacy single-target kubo RPC API. Kept so existing self-hosted configs continue to load;
-    /// production should use `targets` with `min_success >= 2`.
-    #[serde(default)]
-    pub api: Option<String>,
-    /// Legacy reader gateway paired with `api`. Both or neither must be present: accepting bytes
-    /// without reading them back is no longer enough to satisfy a publication policy.
-    #[serde(default)]
-    pub gateway: Option<String>,
     /// Independent kubo/pinning targets. Every target is verified through its reader gateway.
     #[serde(default)]
     pub targets: Vec<PinTarget>,
@@ -409,8 +401,6 @@ impl Default for SignerSync {
 impl Default for Ipfs {
     fn default() -> Self {
         Self {
-            api: None,
-            gateway: None,
             targets: Vec::new(),
             min_success: None,
             retry_seconds: d_publication_retry(),
@@ -767,15 +757,7 @@ impl WeightedManifests {
 
 impl Ipfs {
     pub fn resolved_targets(&self) -> Vec<PinTarget> {
-        if let (Some(api), Some(gateway)) = (&self.api, &self.gateway) {
-            vec![PinTarget {
-                name: "legacy".to_string(),
-                api: api.clone(),
-                gateway: gateway.clone(),
-            }]
-        } else {
-            self.targets.clone()
-        }
+        self.targets.clone()
     }
 
     pub fn required_successes(&self) -> usize {
@@ -802,16 +784,6 @@ impl Ipfs {
             !self.envelope0_cache_dir.trim().is_empty(),
             "[ipfs] envelope0_cache_dir cannot be empty"
         );
-        let legacy_any = self.api.is_some() || self.gateway.is_some();
-        anyhow::ensure!(
-            !legacy_any || self.targets.is_empty(),
-            "[ipfs] legacy `api`/`gateway` cannot be mixed with [[ipfs.targets]]"
-        );
-        anyhow::ensure!(
-            self.api.is_some() == self.gateway.is_some(),
-            "[ipfs] legacy `api` and `gateway` must be configured together so every pin is read back"
-        );
-
         let targets = self.resolved_targets();
         let required = self.required_successes();
         if targets.is_empty() {
@@ -1070,11 +1042,5 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         );
         let err = parse(&src).unwrap_err();
         assert!(err.contains("not independent durability"), "{err}");
-    }
-
-    #[test]
-    fn legacy_ipfs_requires_api_and_gateway_together() {
-        let err = parse(&format!("{GOOD}\n[ipfs]\napi = \"http://one:5001\"\n")).unwrap_err();
-        assert!(err.contains("configured together"), "{err}");
     }
 }
