@@ -98,8 +98,13 @@ fn emit_unpinned_encoding_vectors() {
         skip_leaf(&e1),
         skipped,
     );
-    let out =
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/test/audit-poc/audit-vectors.json");
-    std::fs::write(out, &json).expect("write audit vectors");
+    // Printing is the contract; the Solidity side pins these values as literals.
+    // Writing the tracked artifact is opt-in, because an unconditional write makes
+    // every concurrent `cargo test -p pagerank-core` dirty the working tree.
+    if std::env::var_os("AUDIT_WRITE_VECTORS").is_some() {
+        let out =
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/test/audit-poc/audit-vectors.json");
+        std::fs::write(out, &json).expect("write audit vectors");
+    }
     println!("{json}");
 }

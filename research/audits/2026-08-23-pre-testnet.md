@@ -152,6 +152,12 @@ check means a bogus head at a higher count outranks every honest head permanentl
 `count = type(uint64).max` is terminal with no admin reset, no de-registration and no
 re-`register()`. The sibling `EasOffchainAnchorRegistry` gets this right with a full EIP-712
 struct bound to `verifyingContract`; the two near-twins disagree.
+**Correction (2026-08-23, dependency pass):** fixing this is not a local Solidity change. The
+guest verifies the byte-identical preimage at `crates/envelopes/src/eas_offchain.rs:117-122`,
+reached from both `main.rs` and `signer.rs`, so binding the domain rotates seven programs and
+is the largest vkey batch in the remediation. The anchor *leaf* needs no change:
+`zk-core/src/anchor.rs:17-33` already binds `envelopeKind` and `dataCommitment`. Split the
+Solidity-only half (count range, admin reset) from the signature half.
 
 **M-2. Governed factories take the signer-sync verifier from calldata.** The only
 authenticity test is that the caller-supplied `verifier.programVKey()` equals the
@@ -252,6 +258,9 @@ underflow.
   `envelope0DomainSeparators` / `lane2MaxHeadAge` non-default, an anchor leaf with
   `envelopeKind != 0`, and a multi-entry `skippedDigest`) were checked against the Rust
   implementation and **agree**. The action is to add the vectors, not to fix an encoding.
+  **Correction (2026-08-23):** only two of the four are genuinely unpinned. `envelopeKind != 0`
+  and the multi-entry `skippedDigest` are already covered by `tests/golden/nostr-workspace.json`;
+  they looked missing because nostr-workspace is absent from the `zk-parity` CI matrix.
 - **Distributor conservation under an honest root.** `total_value` is the exact fold-sum of
   the same `assigned` vector the leaves are built from, and `submitProof` binds both into one
   journal digest, so `sum(leaves) == totalValue` is guaranteed by the proof. Floor division
@@ -378,7 +387,7 @@ Findings were re-derived against the current bytes where they touched changed fi
 CREATE2 salt derivation is unchanged, and M-4 survives unchanged. Everything else cited was
 verified against the pre-edit tree.
 
-**The evidence is on disk and untracked.** `contracts/test/audit-poc/` holds 41 PoC files
+**The evidence is in the tree.** **Correction (2026-08-23):** it was untracked when this report was written and has since been committed (`90765d6`), so the five deliberately-failing tests now turn `forge test` red on `main` until dispositioned. Originally: `contracts/test/audit-poc/` holds 41 PoC files
 plus 12 verifier tests, and `crates/hypercerts-core/tests/audit_poc_leaf_domain.rs` is one
 more. Nothing is staged and nothing under `contracts/src` was modified by this audit. The
 PoCs are worth keeping until the fixes land, since each one is an executable regression test
