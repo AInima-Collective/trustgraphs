@@ -11,8 +11,8 @@
 #     resolve_instance "<id-or-name>" "<factory>" "<rpc>"
 #       -> INSTANCE_ID INSTANCE_NAME INSTANCE_RESOLVER INSTANCE_SCHEMA INSTANCE_SEED
 
-INSTANCE_SIG='InstanceCreated(bytes32 indexed,address indexed,address indexed,string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))'
-INSTANCE_DEC='x()(string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))'
+INSTANCE_SIG='InstanceCreated(bytes32 indexed,address indexed,address indexed,string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))'
+INSTANCE_DEC='x()(string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))'
 
 resolve_instance() {
   _want="$1"; _factory="$2"; _rpc="$3"
