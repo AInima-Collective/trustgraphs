@@ -1,12 +1,15 @@
 ## Governance
 - Design Actions UI system, build a similar system to DAO DAO (both for proposing / encoding actions and viewing proposals).
 - Action UI components: ERC20 (transfers, sends, etc.), NFT (transfer, etc.), trustgraph DAO settings.
-- ~~Hide delegation UI? It shouldn't be shown by default.~~ Done: the setup form
-  is a `?delegate=1` route modal; the governance context strip carries only a
-  quiet "Let an agent vote for you" link, or the active delegate when one is set.
 
 -----
 # New work
+## Multichain UX
+- Add chain selector
+- Default to testnet for now
+
+## Communicate this is Alpha software
+
 ## Skills
 We need a SKILL.md for trustgraphs.
 
@@ -19,12 +22,6 @@ Also, we should design a SKILL.md for trustgraph governance, so people can autom
 
 ## Paper (attestation based governance systems)
 Re-write a leaner version of the verifiable offchain governance paper more focused on trustgraphs and their applications.
-
-## Delegation to agent (maybe this is done?)
-Overrule
-
-## Offchain attestations
-- Need to investigate status
 
 # Needs testing
 ## ERC-8003 (needs testing)

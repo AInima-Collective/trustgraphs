@@ -23,6 +23,7 @@ print('iterations', it, 'converged', conv)"
 | `sparse.py` | float engine for graphs too large for the O(n²) core; agrees with `tg.py` to 1e-4 |
 | `neg.py` | complaint scoring: the weight-of-evidence discount and its fixed-point solve |
 | `withheld.py` | the withheld share, so removed standing is tracked instead of normalised away |
+| `founder_prior.py` | D11: which incoming vouch earns a founder's starting balance, and the security boundary of the rule that survives |
 | `otc.py` | loader for the Bitcoin OTC signed web of trust |
 | `p14.py`, `p14b.py` | the admission gate, and how the boost hides it |
 | `probes.py` | founder floor, the cost of vouching, closed-loop gain, seed divisor |
