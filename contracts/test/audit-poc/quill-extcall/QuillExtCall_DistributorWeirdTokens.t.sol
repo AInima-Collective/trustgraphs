@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {RoundPins} from "test/helpers/RoundPins.sol";
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
@@ -62,7 +63,8 @@ contract ReturnBomb {
 /// @notice A funder contract that cannot receive ETH. Distributions it funds can never be swept.
 contract RejectingFunder {
     function fund(MerkleFundDistributor d, uint256 amount, uint64 deadline) external payable {
-        d.distribute{value: amount}(address(0), amount, bytes32(0), deadline);
+        RoundPins.Pins memory _pins0 = RoundPins.read(d, amount);
+        d.distribute{value: amount}(address(0), amount, _pins0.root, _pins0.totalValue, deadline, type(uint256).max, _pins0.feeRecipient);
     }
 
     receive() external payable {
@@ -129,8 +131,9 @@ contract QuillExtCall_DistributorWeirdTokens is Test {
         bytes32 leafBob = _leaf(bob, 500);
         _setTree(_pair(leafBomb, leafBob), 1000);
 
+        RoundPins.Pins memory _pins1 = RoundPins.read(distributor, 10 ether);
         vm.prank(alice);
-        distributor.distribute{value: 10 ether}(address(0), 10 ether, bytes32(0));
+        distributor.distribute{value: 10 ether}(address(0), 10 ether, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
 
         bytes32[] memory proofBomb = new bytes32[](1);
         proofBomb[0] = leafBob;
@@ -194,7 +197,8 @@ contract QuillExtCall_DistributorWeirdTokens is Test {
         uint64 deadline = uint64(block.timestamp + 1 days);
         vm.startPrank(alice);
         token.approve(address(distributor), type(uint256).max);
-        distributor.distribute(address(token), 100 ether, bytes32(0), deadline);
+        RoundPins.Pins memory _pins2 = RoundPins.read(distributor, 100 ether);
+        distributor.distribute(address(token), 100 ether, _pins2.root, _pins2.totalValue, deadline, type(uint256).max, _pins2.feeRecipient);
         vm.stopPrank();
 
         // The token issuer blocks the distributor itself (the documented USDC/USDT power).
@@ -225,7 +229,8 @@ contract QuillExtCall_DistributorWeirdTokens is Test {
         uint64 deadline = uint64(block.timestamp + 1 days);
         vm.startPrank(alice);
         token.approve(address(distributor), type(uint256).max);
-        distributor.distribute(address(token), 100 ether, bytes32(0), deadline);
+        RoundPins.Pins memory _pins3 = RoundPins.read(distributor, 100 ether);
+        distributor.distribute(address(token), 100 ether, _pins3.root, _pins3.totalValue, deadline, type(uint256).max, _pins3.feeRecipient);
         vm.stopPrank();
 
         token.block_(alice);

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test, console} from "forge-std/Test.sol";
+import {RoundPins} from "test/helpers/RoundPins.sol";
 
 import {SP1JournalVerifier} from "src/merkle/SP1JournalVerifier.sol";
 import {ISP1Verifier} from "interfaces/merkle/ISP1Verifier.sol";
@@ -358,8 +359,9 @@ contract DepthExternal_Poc is Test {
         MerkleFundDistributor d = new MerkleFundDistributor(address(this), address(snap), address(bad), 1e16, false);
 
         vm.deal(address(this), 10 ether);
+        RoundPins.Pins memory _pins0 = RoundPins.read(d, 1 ether);
         vm.expectRevert();
-        d.distribute{value: 1 ether}(address(0), 1 ether, bytes32(0));
+        d.distribute{value: 1 ether}(address(0), 1 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
 
         // ERC20 rounds are equally blocked (SafeERC20 bubbles the callee revert), but the
         // decisive point is that ONE owner-set address halts every native funding round for

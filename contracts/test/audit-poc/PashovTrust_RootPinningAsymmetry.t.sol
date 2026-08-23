@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {RoundPins} from "test/helpers/RoundPins.sol";
 import {Operation} from "@gnosis-guild/zodiac-core/core/Operation.sol";
 
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
@@ -160,8 +161,9 @@ contract PashovTrust_RootPinningAsymmetry is Test {
         //        (Executed here as a direct call: `MerkleGovModule.execute` would forward exactly
         //        this calldata through the Safe, and it is permissionless, so the attacker picks
         //        the block.)
+        RoundPins.Pins memory _pins0 = RoundPins.read(dist, 100 ether);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), 100 ether, bytes32(0));
+        uint256 idx = dist.distribute(address(token), 100 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
         assertEq(d.root, rootV2, "the DAO's approved payout bound the epoch-N+1 scoreboard");

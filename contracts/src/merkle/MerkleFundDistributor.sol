@@ -327,55 +327,21 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         _unpause();
     }
 
-    /// @notice Distributes funds with no claim deadline (claims stay open forever, never sweepable).
+    /// @notice Distributes funds against fully pinned state. Every guard is mandatory: the round
+    ///         reverts unless the root, the payout denominator, the fee recipient and the fee the
+    ///         funder was shown are all still exactly what they were when the funder decided.
+    /// @dev There is deliberately no unguarded overload. A funder always reads the state it is
+    ///      funding against, so "skip this check" is an option with no legitimate caller and one
+    ///      obvious wrong caller: the convenient one. `feeRecipient` can never be zero
+    ///      (`_setFeeRecipient`), so a zero `expectedFeeRecipient` is a caller that forgot rather
+    ///      than a caller that opted out, and is rejected as such.
     /// @param token The token to distribute.
     /// @param amount The amount of token to distribute.
-    /// @param expectedRoot The expected root of the merkle tree to add an additional layer of security (pass 0 to skip).
-    /// @dev Only distributors can distribute funds.
-    /// @return distributionIndex The index of the distribution.
-    function distribute(address token, uint256 amount, bytes32 expectedRoot)
-        external
-        payable
-        onlyDistributor
-        nonReentrant
-        whenNotPaused
-        returns (uint256 distributionIndex)
-    {
-        return _distribute(token, amount, expectedRoot, 0);
-    }
-
-    /// @notice Distributes funds with a claim deadline.
-    /// @param token The token to distribute.
-    /// @param amount The amount of token to distribute.
-    /// @param expectedRoot The expected root of the merkle tree to add an additional layer of security (pass 0 to skip).
-    /// @param claimDeadline The timestamp after which claims close and the unclaimed remainder can be swept back to the funder (0 = no expiry).
-    /// @dev Only distributors can distribute funds.
-    /// @return distributionIndex The index of the distribution.
-    function distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
-        external
-        payable
-        onlyDistributor
-        nonReentrant
-        whenNotPaused
-        returns (uint256 distributionIndex)
-    {
-        if (claimDeadline != 0 && claimDeadline <= block.timestamp) {
-            revert InvalidClaimDeadline();
-        }
-
-        return _distribute(token, amount, expectedRoot, claimDeadline);
-    }
-
-    /// @notice Distributes funds with funder-supplied state and fee guards (H-3/M-7): the round
-    ///         reverts if the root or payout denominator changed, if the fee would exceed
-    ///         `maxFeeAmount`, or if the fee recipient is not the one the funder expected.
-    /// @param token The token to distribute.
-    /// @param amount The amount of token to distribute.
-    /// @param expectedRoot The expected root of the merkle tree (pass 0 to skip).
-    /// @param expectedTotalMerkleValue The expected sum of values committed by the merkle tree.
-    /// @param claimDeadline The timestamp after which claims close (0 = no expiry).
+    /// @param expectedRoot The merkle root the funder is funding against.
+    /// @param expectedTotalMerkleValue The payout denominator committed by that root.
+    /// @param claimDeadline The timestamp after which claims close (0 = no expiry, never sweepable).
     /// @param maxFeeAmount The most the funder will pay in fees, in token units.
-    /// @param expectedFeeRecipient The fee recipient the funder is agreeing to pay (pass 0 to skip).
+    /// @param expectedFeeRecipient The fee recipient the funder is agreeing to pay.
     /// @return distributionIndex The index of the distribution.
     function distribute(
         address token,
@@ -389,7 +355,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         if (claimDeadline != 0 && claimDeadline <= block.timestamp) {
             revert InvalidClaimDeadline();
         }
-        if (expectedFeeRecipient != address(0) && feeRecipient != expectedFeeRecipient) {
+        if (expectedFeeRecipient == address(0) || feeRecipient != expectedFeeRecipient) {
             revert UnexpectedFeeRecipient(expectedFeeRecipient, feeRecipient);
         }
         // Pre-check against the requested amount (covers native exactly; for fee-on-transfer
@@ -399,28 +365,18 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert FeeExceedsFunderCap(wouldPay, maxFeeAmount);
         }
 
-        return _distribute(token, amount, expectedRoot, expectedTotalMerkleValue, claimDeadline, true);
+        return _distribute(token, amount, expectedRoot, expectedTotalMerkleValue, claimDeadline);
     }
 
-    /// @dev Creates a distribution and moves the funds. Shared by the two legacy overloads.
-    function _distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
-        internal
-        returns (uint256 distributionIndex)
-    {
-        return _distribute(token, amount, expectedRoot, 0, claimDeadline, false);
-    }
-
-    /// @dev Creates a distribution and moves the funds, optionally pinning the payout denominator.
-    ///      A zero `expectedTotalMerkleValue` is used internally only by the legacy overloads,
-    ///      which did not expose a denominator guard. The funder-guarded overload requires an
-    ///      exact match, so passing zero cannot skip the guard.
+    /// @dev Creates a distribution and moves the funds. Both state pins are unconditional: a live
+    ///      root is never zero (`InvalidMerkleState` above), so a zero `expectedRoot` fails the
+    ///      equality check rather than skipping it.
     function _distribute(
         address token,
         uint256 amount,
         bytes32 expectedRoot,
         uint256 expectedTotalMerkleValue,
-        uint64 claimDeadline,
-        bool pinTotalMerkleValue
+        uint64 claimDeadline
     ) internal returns (uint256 distributionIndex) {
         // Fetch the latest merkle state.
         IMerkleSnapshot.MerkleState memory merkleState = IMerkleSnapshot(merkleSnapshot).getLatestState();
@@ -429,11 +385,11 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert InvalidMerkleState();
         }
 
-        if (expectedRoot != bytes32(0) && merkleState.root != expectedRoot) {
+        if (merkleState.root != expectedRoot) {
             revert UnexpectedMerkleRoot(expectedRoot, merkleState.root);
         }
 
-        if (pinTotalMerkleValue && merkleState.totalValue != expectedTotalMerkleValue) {
+        if (merkleState.totalValue != expectedTotalMerkleValue) {
             revert UnexpectedMerkleTotalValue(expectedTotalMerkleValue, merkleState.totalValue);
         }
 
@@ -556,8 +512,9 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         }
 
         // A malformed or malicious (root, totalValue) pair must never let this round spend funds
-        // booked for a sibling round of the same token. This cap is authoritative even when the
-        // snapshot source is compromised or a caller uses a legacy distribute overload.
+        // booked for a sibling round of the same token. `distribute` already pins the pair, so this
+        // cap is the backstop for the case the pin cannot cover: a compromised snapshot source that
+        // reports a consistent-but-wrong pair to funder and contract alike.
         uint256 amountDistributed = distribution.amountDistributed;
         uint256 remainingBudget = amountDistributed >= totalDistributable ? 0 : totalDistributable - amountDistributed;
         if (claimedAmount > remainingBudget) {

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {RoundPins} from "test/helpers/RoundPins.sol";
 
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
@@ -52,8 +53,9 @@ contract OmegaPassA_DistributorPauseTrap is Test {
     }
 
     function test_M8_PauseDoesNotFreezeExpiredSweep() public {
+        RoundPins.Pins memory _pins0 = RoundPins.read(dist, 1_000);
         vm.prank(funder);
-        uint256 index = dist.distribute(address(token), 1_000, root, uint64(block.timestamp + 1 days));
+        uint256 index = dist.distribute(address(token), 1_000, root, _pins0.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins0.feeRecipient);
         assertEq(token.balanceOf(address(dist)), 1_000);
 
         dist.pause();

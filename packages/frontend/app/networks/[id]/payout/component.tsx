@@ -16,6 +16,11 @@ import { NetworkHeader } from '@/components/NetworkHeader'
 import { SectionHeading } from '@/components/SectionHeading'
 import { Column, Table } from '@/components/Table'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
+import {
+  distributeArgs as buildDistributeArgs,
+  fundingTermsAbi,
+  latestMerkleStateAbi,
+} from '@/lib/funding-terms'
 import { contributionsQueries } from '@/lib/contributions-api'
 import { parseErrorMessage } from '@/lib/error'
 import { contributionsTabs } from '@/lib/network-nav'
@@ -79,9 +84,45 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
     queryFn: ponderQueryFns.getFundDistributor(distributorAddress),
     enabled: !!distributorAddress,
   })
-  const feePercentage = distributorState?.feePercentage
-    ? Number(distributorState.feePercentage) * 100
-    : undefined
+  // Fee terms and the payout denominator come from the chain, not the indexer: `distribute` is
+  // bound to these exact values, and a rounded copy would revert a legitimate round.
+  const { data: fundingTerms } = useReadContracts({
+    contracts:
+      distributorAddress && snapshotAddress
+        ? [
+            {
+              address: distributorAddress,
+              abi: fundingTermsAbi,
+              functionName: 'feePercentage',
+            },
+            {
+              address: distributorAddress,
+              abi: fundingTermsAbi,
+              functionName: 'FEE_RANGE',
+            },
+            {
+              address: distributorAddress,
+              abi: fundingTermsAbi,
+              functionName: 'feeRecipient',
+            },
+            {
+              address: snapshotAddress as Hex,
+              abi: latestMerkleStateAbi,
+              functionName: 'getLatestState',
+            },
+          ]
+        : [],
+  })
+  const feePercentageRaw = fundingTerms?.[0]?.result as bigint | undefined
+  const feeRange = fundingTerms?.[1]?.result as bigint | undefined
+  const feeRecipient = fundingTerms?.[2]?.result as Hex | undefined
+  const expectedTotalMerkleValue = (
+    fundingTerms?.[3]?.result as { totalValue?: bigint } | undefined
+  )?.totalValue
+  const feePercentage =
+    feePercentageRaw !== undefined && feeRange
+      ? (Number(feePercentageRaw) / Number(feeRange)) * 100
+      : undefined
   const isPaused = distributorState?.paused
 
   // The proven root new distributions are pinned to: the round API's root, falling back to the
@@ -206,16 +247,36 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
   }
 
   const handleDistribute = async () => {
-    if (!connectedAddress || !publicClient || !expectedRoot || !poolToken)
+    if (
+      !connectedAddress ||
+      !publicClient ||
+      !expectedRoot ||
+      !poolToken ||
+      feePercentageRaw === undefined ||
+      !feeRange ||
+      !feeRecipient ||
+      expectedTotalMerkleValue === undefined
+    )
       return
     setError(null)
     setIsDistributing(true)
     try {
+      // The full guard set: root, denominator, the fee this screen quoted, and its recipient.
+      const distributeArgs = buildDistributeArgs({
+        token: poolToken,
+        amount: parsedAmount,
+        expectedRoot,
+        expectedTotalMerkleValue,
+        claimDeadline: 0n,
+        feePercentage: feePercentageRaw,
+        feeRange,
+        feeRecipient,
+      })
       const gasEstimate = await publicClient.estimateContractGas({
         abi: merkleFundDistributorAbi,
         address: distributorAddress,
         functionName: 'distribute',
-        args: [poolToken, parsedAmount, expectedRoot],
+        args: distributeArgs,
         account: connectedAddress,
       })
       await txToast({
@@ -223,7 +284,7 @@ export const PayoutPage = ({ network }: { network: ContributionsNetwork }) => {
           abi: merkleFundDistributorAbi,
           address: distributorAddress,
           functionName: 'distribute',
-          args: [poolToken, parsedAmount, expectedRoot],
+          args: distributeArgs,
           gas: (gasEstimate * 120n) / 100n,
         },
         successMessage: 'Round payout funded!',

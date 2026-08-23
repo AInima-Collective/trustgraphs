@@ -11,7 +11,12 @@ import {
   parseEther,
   parseUnits,
 } from 'viem'
-import { useAccount, usePublicClient, useReadContracts } from 'wagmi'
+import {
+  useAccount,
+  usePublicClient,
+  useReadContract,
+  useReadContracts,
+} from 'wagmi'
 
 import { Address } from '@/components/Address'
 import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
@@ -33,6 +38,11 @@ import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
+import {
+  distributeArgs as buildDistributeArgs,
+  fundingTermsAbi,
+  quotedFee,
+} from '@/lib/funding-terms'
 import { parseErrorMessage } from '@/lib/error'
 import { txToast } from '@/lib/tx'
 import { usePonderQuery } from '@/lib/use-ponder-query'
@@ -97,10 +107,32 @@ export const DistributePage = ({
     enabled: !!merkleFundDistributorAddress,
   })
 
+  // Fee terms come from the chain, not the indexer: these are the numbers the funder is shown
+  // AND the numbers `distribute` is bound to, so a rounded or stale copy would either mis-state
+  // the fee or revert a legitimate round.
+  const feeTermsRead = {
+    address: merkleFundDistributorAddress as Hex,
+    abi: fundingTermsAbi,
+    query: { enabled: !!merkleFundDistributorAddress },
+  } as const
+  const { data: feePercentageRaw } = useReadContract({
+    ...feeTermsRead,
+    functionName: 'feePercentage',
+  })
+  const { data: feeRange } = useReadContract({
+    ...feeTermsRead,
+    functionName: 'FEE_RANGE',
+  })
+  const { data: feeRecipient } = useReadContract({
+    ...feeTermsRead,
+    functionName: 'feeRecipient',
+  })
+  const feePercentage =
+    feePercentageRaw !== undefined && feeRange
+      ? (Number(feePercentageRaw) / Number(feeRange)) * 100
+      : undefined
+
   const allowlistEnabled = distributorState?.allowlistEnabled
-  const feePercentage = distributorState?.feePercentage
-    ? Number(distributorState.feePercentage) * 100
-    : undefined
   const isPaused = distributorState?.paused
 
   // Check if user is allowed to distribute
@@ -163,6 +195,12 @@ export const DistributePage = ({
     }
   }, [amount, tokenType, tokenDecimals])
 
+  // Exactly what `distribute` will charge, computed the way the contract computes it.
+  const feeAmount =
+    feePercentageRaw !== undefined && feeRange
+      ? quotedFee(parsedAmount, feePercentageRaw, feeRange)
+      : undefined
+
   const needsApproval =
     tokenType === 'erc20' &&
     parsedAmount > 0n &&
@@ -213,7 +251,9 @@ export const DistributePage = ({
       !connectedAddress ||
       !publicClient ||
       !merkleFundDistributorAddress ||
-      !latestMerkleTree?.tree
+      !latestMerkleTree?.tree ||
+      feeAmount === undefined ||
+      !feeRecipient
     )
       return
 
@@ -225,12 +265,24 @@ export const DistributePage = ({
         tokenType === 'native'
           ? '0x0000000000000000000000000000000000000000'
           : tokenAddress
+      // Every guard `distribute` takes, pinned to what this screen showed the funder: the root,
+      // the payout denominator that root committed, the fee, and who receives it.
       const expectedRoot = latestMerkleTree.tree.root as Hex
+      const distributeArgs = buildDistributeArgs({
+        token: token as Hex,
+        amount: parsedAmount,
+        expectedRoot,
+        expectedTotalMerkleValue: BigInt(latestMerkleTree.tree.totalValue),
+        claimDeadline: 0n, // claims stay open; the round is never sweepable
+        feePercentage: feePercentageRaw!,
+        feeRange: feeRange!,
+        feeRecipient,
+      })
       const gasEstimate = await publicClient.estimateContractGas({
         abi: merkleFundDistributorAbi,
         address: merkleFundDistributorAddress,
         functionName: 'distribute',
-        args: [token as Hex, parsedAmount, expectedRoot],
+        args: distributeArgs,
         account: connectedAddress,
         ...(tokenType === 'native' ? { value: parsedAmount } : {}),
       })
@@ -240,7 +292,7 @@ export const DistributePage = ({
           abi: merkleFundDistributorAbi,
           address: merkleFundDistributorAddress,
           functionName: 'distribute',
-          args: [token as Hex, parsedAmount, expectedRoot],
+          args: distributeArgs,
           gas: (gasEstimate * 120n) / 100n,
           ...(tokenType === 'native' ? { value: parsedAmount } : {}),
         } as any,
@@ -406,14 +458,10 @@ export const DistributePage = ({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {feePercentage !== undefined && parsedAmount > 0n && (
+              {feeAmount !== undefined && parsedAmount > 0n && (
                 <p className="text-xs text-muted-foreground">
                   Fee:{' '}
-                  {formatBigNumber(
-                    (parsedAmount * BigInt(feePercentage)) / BigInt(100),
-                    18,
-                    true
-                  )}{' '}
+                  {formatBigNumber(feeAmount ?? 0n, 18, true)}{' '}
                   {tokenType === 'native' ? 'ETH' : tokenSymbol || 'tokens'}
                 </p>
               )}

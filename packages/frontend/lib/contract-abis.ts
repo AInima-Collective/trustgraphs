@@ -3188,33 +3188,6 @@ export const merkleFundDistributorAbi = [
   },
   {
     type: 'function',
-    inputs: [
-      { name: 'token', internalType: 'address', type: 'address' },
-      { name: 'amount', internalType: 'uint256', type: 'uint256' },
-      { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
-      { name: 'claimDeadline', internalType: 'uint64', type: 'uint64' },
-    ],
-    name: 'distribute',
-    outputs: [
-      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    stateMutability: 'payable',
-  },
-  {
-    type: 'function',
-    inputs: [
-      { name: 'token', internalType: 'address', type: 'address' },
-      { name: 'amount', internalType: 'uint256', type: 'uint256' },
-      { name: 'expectedRoot', internalType: 'bytes32', type: 'bytes32' },
-    ],
-    name: 'distribute',
-    outputs: [
-      { name: 'distributionIndex', internalType: 'uint256', type: 'uint256' },
-    ],
-    stateMutability: 'payable',
-  },
-  {
-    type: 'function',
     inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     name: 'distributions',
     outputs: [

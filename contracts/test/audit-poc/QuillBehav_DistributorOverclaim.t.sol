@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
+import {RoundPins} from "test/helpers/RoundPins.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -72,7 +73,8 @@ contract QuillBehav_DistributorOverclaim is Test {
         // 1. Alice funds a real round of 1000 tokens against the honest root.
         vm.startPrank(alice);
         token.approve(address(dist), 1_000e18);
-        uint256 aliceRound = dist.distribute(address(token), 1_000e18, bytes32(0));
+        RoundPins.Pins memory _pins0 = RoundPins.read(dist, 1_000e18);
+        uint256 aliceRound = dist.distribute(address(token), 1_000e18, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
         vm.stopPrank();
         assertEq(token.balanceOf(address(dist)), 1_000e18, "round funded");
 
@@ -86,7 +88,8 @@ contract QuillBehav_DistributorOverclaim is Test {
         //    funder, the amount, or any relationship between the root and the amount funded.
         vm.startPrank(admin);
         token.approve(address(dist), 1);
-        uint256 rogueRound = dist.distribute(address(token), 1, bytes32(0));
+        RoundPins.Pins memory _pins1 = RoundPins.read(dist, 1);
+        uint256 rogueRound = dist.distribute(address(token), 1, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
         vm.stopPrank();
 
         // 4. The formula proposes 1000e18, but the round has only one wei of budget.

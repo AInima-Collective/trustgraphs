@@ -49,6 +49,11 @@ import { foundry } from 'viem/chains'
 import { SEED_NETWORKS } from '../lib/config'
 import { easAbi, merkleFundDistributorAbi } from '../lib/contract-abis'
 import {
+  distributeArgs as buildDistributeArgs,
+  fundingTermsAbi,
+  latestMerkleStateAbi,
+} from '../lib/funding-terms'
+import {
   type ContributionsInstanceRow,
   fetchContributionsInstances,
   toContributionsNetwork,
@@ -446,6 +451,42 @@ const main = async () => {
         )
       const expectedRoot = round.root as Hex
 
+      // `distribute` pins every term. Read them from the chain so the script agrees with what the
+      // contract will see, and fails loudly if the round moved under it.
+      const [feePercentage, feeRange, feeRecipient, latestState] =
+        (await Promise.all([
+          publicClient.readContract({
+            address: distributor,
+            abi: fundingTermsAbi,
+            functionName: 'feePercentage',
+          }),
+          publicClient.readContract({
+            address: distributor,
+            abi: fundingTermsAbi,
+            functionName: 'FEE_RANGE',
+          }),
+          publicClient.readContract({
+            address: distributor,
+            abi: fundingTermsAbi,
+            functionName: 'feeRecipient',
+          }),
+          publicClient.readContract({
+            address: snapshot,
+            abi: latestMerkleStateAbi,
+            functionName: 'getLatestState',
+          }),
+        ])) as [bigint, bigint, Hex, { totalValue: bigint }]
+      const distributeArgs = buildDistributeArgs({
+        token: poolToken,
+        amount,
+        expectedRoot,
+        expectedTotalMerkleValue: latestState.totalValue,
+        claimDeadline: deadline ?? 0n,
+        feePercentage,
+        feeRange,
+        feeRecipient,
+      })
+
       const approveHash = await funder.writeContract({
         address: poolToken,
         abi: erc20Abi,
@@ -454,19 +495,12 @@ const main = async () => {
       })
       await publicClient.waitForTransactionReceipt({ hash: approveHash })
 
-      const distributeHash = deadline
-        ? await funder.writeContract({
-            address: distributor,
-            abi: merkleFundDistributorAbi,
-            functionName: 'distribute',
-            args: [poolToken, amount, expectedRoot, deadline],
-          })
-        : await funder.writeContract({
-            address: distributor,
-            abi: merkleFundDistributorAbi,
-            functionName: 'distribute',
-            args: [poolToken, amount, expectedRoot],
-          })
+      const distributeHash = await funder.writeContract({
+        address: distributor,
+        abi: merkleFundDistributorAbi,
+        functionName: 'distribute',
+        args: distributeArgs,
+      })
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: distributeHash,
       })
