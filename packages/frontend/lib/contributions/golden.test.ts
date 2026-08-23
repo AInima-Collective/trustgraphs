@@ -43,7 +43,6 @@ const toParams = (p: any): ContributionsParams => ({
   maxIterations: Number(p.maxIterations),
   minWeightFp: BigInt(p.minWeightFp),
   maxWeightFp: BigInt(p.maxWeightFp),
-  trustMultiplierFp: BigInt(p.trustMultiplierFp),
   trustShareFp: BigInt(p.trustShareFp),
   trustDecayFp: BigInt(p.trustDecayFp),
   trustedSeeds: p.trustedSeeds as Hex[],

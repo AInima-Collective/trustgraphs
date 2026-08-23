@@ -50,7 +50,6 @@ export interface NostrWorkspaceParams {
   dampingFp: bigint
   toleranceFp: bigint
   maxIterations: number
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   precisionScale: bigint
@@ -162,12 +161,12 @@ const wordBytes16 = (value: Hex): Hex => {
 export const paramsEncoded = (p: NostrWorkspaceParams): Hex => {
   const l = p.limits
   return concat([
+    wordU32(3),
     wordU32(p.version),
     p.outputDomain,
     wordU256(p.dampingFp),
     wordU256(p.toleranceFp),
     wordU32(p.maxIterations),
-    wordU256(p.trustMultiplierFp),
     wordU256(p.trustShareFp),
     wordU256(p.trustDecayFp),
     wordU256(p.precisionScale),
@@ -707,7 +706,6 @@ const rankParams = (p: NostrWorkspaceParams, seeds: Hex[]): RankParams => ({
   maxIterations: p.maxIterations,
   minWeightFp: 0n,
   maxWeightFp: 0n,
-  trustMultiplierFp: p.trustMultiplierFp,
   trustShareFp: p.trustShareFp,
   trustDecayFp: p.trustDecayFp,
   trustedSeeds: seeds,

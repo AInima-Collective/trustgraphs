@@ -33,8 +33,7 @@ fn params() -> Params {
         max_iterations: 100,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100) * s(),
-        trust_multiplier_fp: U256::from(2) * s(),
-        trust_share_fp: fp(15, 100),
+        trust_share_fp: s(),
         trust_decay_fp: fp(80, 100),
         trusted_seeds: vec![
             // Deliberately unsorted: the vector locks sort-independence.
@@ -72,7 +71,6 @@ fn main() {
         "maxIterations": p.max_iterations,
         "minWeightFp": p.min_weight_fp.to_string(),
         "maxWeightFp": p.max_weight_fp.to_string(),
-        "trustMultiplierFp": p.trust_multiplier_fp.to_string(),
         "trustShareFp": p.trust_share_fp.to_string(),
         "trustDecayFp": p.trust_decay_fp.to_string(),
         "trustedSeeds": p.trusted_seeds.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),
@@ -181,7 +179,6 @@ fn main() {
                 "maxIterations": fp.max_iterations,
                 "minWeightFp": fp.min_weight_fp.to_string(),
                 "maxWeightFp": fp.max_weight_fp.to_string(),
-                "trustMultiplierFp": fp.trust_multiplier_fp.to_string(),
                 "trustShareFp": fp.trust_share_fp.to_string(),
                 "trustDecayFp": fp.trust_decay_fp.to_string(),
                 "trustedSeeds": fp.trusted_seeds.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>(),

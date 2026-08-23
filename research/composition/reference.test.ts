@@ -118,7 +118,10 @@ test('wrong bytes, wrong root, and stale source references fail closed', () => {
   const wrongBlob = fixturePolicy()
   wrongBlob.sources[0] = {
     ...wrongBlob.sources[0]!,
-    blob: wrongBlob.sources[0]!.blob.replace('220016', '220017'),
+    blob: wrongBlob.sources[0]!.blob.replace(
+      '369963739927479854959709',
+      '369963739927479854959708'
+    ),
   }
   assert.throws(
     () => compose(wrongBlob),

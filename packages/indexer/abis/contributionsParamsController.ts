@@ -4,7 +4,6 @@ export const contributionsParamsComponents = [
   { name: 'maxIterations', type: 'uint32' },
   { name: 'minWeightFp', type: 'uint256' },
   { name: 'maxWeightFp', type: 'uint256' },
-  { name: 'trustMultiplierFp', type: 'uint256' },
   { name: 'trustShareFp', type: 'uint256' },
   { name: 'trustDecayFp', type: 'uint256' },
   { name: 'trustedSeeds', type: 'address[]' },

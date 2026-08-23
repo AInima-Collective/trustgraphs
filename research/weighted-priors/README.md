@@ -7,7 +7,7 @@ non-production; production code consumes only the promoted golden under `tests/g
 ## Reproduce
 
 ```sh
-cargo test -p weighted-prior-research
+cargo test --manifest-path research/weighted-priors/core/Cargo.toml
 pnpm exec tsx research/weighted-priors/verify-fixture.ts
 forge test --match-path contracts/test/unit/WeightedPriorResearchFixture.t.sol -vv
 

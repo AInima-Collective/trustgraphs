@@ -15,6 +15,8 @@ pragma solidity ^0.8.22;
 ///         round params. Field order/types are FROZEN; changing them requires regenerating the
 ///         golden vectors and the Rust/TS ports in lockstep.
 library ContributionsParamsCodec {
+    uint256 internal constant PARAMS_SCHEMA_VERSION = 3;
+
     /// @notice The governance-pinned contributions parameters (mirror of
     ///         `contributions_core::Params`).
     /// @dev `trustedSeeds` is the raw (unsorted) seed set; `seedSetRoot` sorts internally, so the
@@ -25,7 +27,6 @@ library ContributionsParamsCodec {
         uint32 maxIterations;
         uint256 minWeightFp;
         uint256 maxWeightFp;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         address[] trustedSeeds;
@@ -47,12 +48,12 @@ library ContributionsParamsCodec {
     ///         stack-too-deep); the bytes are byte-identical to a single 21-arg `abi.encode`.
     function hash(Params memory p) internal pure returns (bytes32) {
         bytes memory head = abi.encode(
+            PARAMS_SCHEMA_VERSION,
             p.dampingFp,
             p.toleranceFp,
             p.maxIterations,
             p.minWeightFp,
             p.maxWeightFp,
-            p.trustMultiplierFp,
             p.trustShareFp,
             p.trustDecayFp,
             seedSetRoot(p.trustedSeeds),

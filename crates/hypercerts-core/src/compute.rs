@@ -13,7 +13,7 @@ use crate::semantics::{self, EdgeParams, RepoRecords};
 use alloy_primitives::{keccak256, Address, B256, U256};
 use envelopes::atproto::{self, AtprotoWitness};
 use pagerank_core::distribute::distribute_points_generic;
-use pagerank_core::pagerank::{calculate_generic, RankConfig};
+use pagerank_core::pagerank::{calculate_generic_detailed, RankConfig};
 use pagerank_core::{cid, merkle, skip_reason as phi_reason, AnchorRecord, Binding};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,6 +23,7 @@ use zk_core::words::{word_u256, word_u32, word_u64};
 
 /// Envelope kind 1 = atproto repo commit (AnchorRegistry convention).
 pub const ENVELOPE_ATPROTO: u8 = 1;
+pub const PARAMS_SCHEMA_VERSION: u32 = 3;
 
 /// The seven §2 collections, in walk order. FROZEN per lexicon pin =1.1.0; changing this
 /// set is a guest change + vkey rotation (partner ask #4).
@@ -45,7 +46,6 @@ pub struct Params {
     pub damping_fp: U256,
     pub tolerance_fp: U256,
     pub max_iterations: u32,
-    pub trust_multiplier_fp: U256,
     pub trust_share_fp: U256,
     pub trust_decay_fp: U256,
     pub precision_scale: U256,
@@ -79,7 +79,7 @@ impl Params {
 }
 
 /// The hypercerts `paramsHash` — 17 static words, FROZEN (golden-locked four ways):
-/// `abi.encode(damping, tolerance, maxIterations, trustMultiplier, trustShare, trustDecay,
+/// `abi.encode(schemaVersion, damping, tolerance, maxIterations, trustShare, trustDecay,
 ///  precisionScale, totalPool, seedSetRoot, wFollow, wBadge, wEval, wAttrib, ackBoost,
 ///  unackedAttrib, pdsAttestedWeight, lane2MaxHeadAge)` where `seedSetRoot` is the OZ
 /// standard tree over the SORTED seed nodeIds (leaf = keccak256(nodeId) — one hash over
@@ -92,10 +92,10 @@ pub fn params_hash(p: &Params) -> B256 {
     let seed_set_root = merkle::merkle_root(leaves);
 
     let mut buf = Vec::with_capacity(32 * 17);
+    buf.extend_from_slice(&word_u32(PARAMS_SCHEMA_VERSION));
     buf.extend_from_slice(&word_u256(p.damping_fp));
     buf.extend_from_slice(&word_u256(p.tolerance_fp));
     buf.extend_from_slice(&word_u32(p.max_iterations));
-    buf.extend_from_slice(&word_u256(p.trust_multiplier_fp));
     buf.extend_from_slice(&word_u256(p.trust_share_fp));
     buf.extend_from_slice(&word_u256(p.trust_decay_fp));
     buf.extend_from_slice(&word_u256(p.precision_scale));
@@ -148,6 +148,7 @@ pub struct ComputeResult {
     pub skips: Vec<SkipEntry>,
     pub blob: Vec<u8>,
     pub cid: String,
+    pub rank: pagerank_core::RankTelemetry,
 }
 
 /// The canonical hypercerts blob: `{"0x<nodeId>":"<decimal>",...}` sorted ascending —
@@ -275,13 +276,14 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         damping_fp: p.damping_fp,
         tolerance_fp: p.tolerance_fp,
         max_iterations: p.max_iterations,
-        trust_multiplier_fp: p.trust_multiplier_fp,
         trust_share_fp: p.trust_share_fp,
         trust_decay_fp: p.trust_decay_fp,
         scale: p.precision_scale,
         seeds,
     };
-    let scores_fp = calculate_generic(&graph.nodes, &graph.outgoing, &cfg);
+    let rank_result = calculate_generic_detailed(&graph.nodes, &graph.outgoing, &cfg);
+    let rank = rank_result.telemetry(p.max_iterations);
+    let scores_fp = rank_result.scores;
     let filtered: Vec<(B256, U256)> = scores_fp.into_iter().filter(|(_, v)| !v.is_zero()).collect();
     let (mut assigned, total_value) =
         distribute_points_generic(&filtered, p.precision_scale, p.total_pool);
@@ -322,5 +324,13 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         recipient: input.binding.recipient,
         instance_domain: input.binding.instance_domain,
     };
-    ComputeResult { journal, scores: assigned, bindings: graph.bindings, skips, blob, cid: cid_str }
+    ComputeResult {
+        journal,
+        scores: assigned,
+        bindings: graph.bindings,
+        skips,
+        blob,
+        cid: cid_str,
+        rank,
+    }
 }

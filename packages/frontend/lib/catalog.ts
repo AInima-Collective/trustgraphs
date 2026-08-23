@@ -73,6 +73,7 @@ export type InstanceRow = {
     module: Hex
     safe: Hex
     scoreSnapshot: Hex
+    activitySource: Hex
     accumulator: Hex
     verifier: Hex
     programVKey: Hex
@@ -80,6 +81,8 @@ export type InstanceRow = {
     topN: number
     minThreshold: number
     targetThresholdBps: number
+    maxInactiveBlocks: string
+    minActivityWitnesses: number
     paused: boolean
     safeModuleEnabled: boolean
     hasAppliedCheckpoint: boolean
@@ -255,7 +258,6 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
       // Kept as the raw decimal string: `totalPool` is routinely 1e24, which a JS number cannot
       // hold exactly, and it is hashed into `paramsHash`.
       pointsPool: row.params.totalPool,
-      trustMultiplier: fromFp(row.params.trustMultiplierFp, scale),
       trustShare: fromFp(row.params.trustShareFp, scale),
       trustDecay: fromFp(row.params.trustDecayFp, scale),
       minWeight: fromFp(row.params.minWeightFp, scale),
@@ -276,7 +278,7 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
         !row.signerSync.paused,
       paused: row.signerSync?.paused ?? false,
       topNSigners: row.signerSync?.topN ?? 5,
-      minThreshold: row.signerSync?.minThreshold ?? 1,
+      minThreshold: row.signerSync?.minThreshold ?? 2,
       targetThreshold: (row.signerSync?.targetThresholdBps ?? 5000) / 10_000,
       ...(row.signerSync
         ? {
@@ -284,6 +286,9 @@ export const instanceToNetwork = (row: InstanceRow): Network => {
             verifier: row.signerSync.verifier,
             programVKey: row.signerSync.programVKey,
             selectionParamsHash: row.signerSync.selectionParamsHash,
+            activitySource: row.signerSync.activitySource,
+            maxInactiveBlocks: row.signerSync.maxInactiveBlocks,
+            minActivityWitnesses: row.signerSync.minActivityWitnesses,
             lastAppliedCheckpoint: row.signerSync.lastAppliedCheckpoint,
             lastSyncedTimestamp: row.signerSync.lastSyncedTimestamp,
             lastSyncedTxHash: row.signerSync.lastSyncedTxHash,

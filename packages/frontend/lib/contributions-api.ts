@@ -177,7 +177,6 @@ const normalizeParams = (
       maxIterations: numberValue('maxIterations'),
       minWeightFp: bigintValue('minWeightFp'),
       maxWeightFp: bigintValue('maxWeightFp'),
-      trustMultiplierFp: bigintValue('trustMultiplierFp'),
       trustShareFp: bigintValue('trustShareFp'),
       trustDecayFp: bigintValue('trustDecayFp'),
       trustedSeeds: raw.trustedSeeds as Hex[],

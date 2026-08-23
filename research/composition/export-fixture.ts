@@ -1,3 +1,6 @@
+import { writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { exportedFixture } from './fixture-builder'
 
 const json = JSON.stringify(
@@ -6,4 +9,7 @@ const json = JSON.stringify(
   2
 )
 
-process.stdout.write(`${json}\n`)
+writeFileSync(
+  fileURLToPath(new URL('./golden.json', import.meta.url)),
+  `${json}\n`
+)

@@ -1,7 +1,7 @@
 //! The 21-word `paramsHash` encoding (INTERFACES.md §3) — frozen, golden-locked against
 //! `ContributionsParamsCodec.sol` and the TS port via `tests/golden/contributions.json`.
 
-use crate::Params;
+use crate::{Params, PARAMS_SCHEMA_VERSION};
 use alloy_primitives::{keccak256, B256};
 use pagerank_core::encode::{word_u256, word_u32, word_u64};
 use pagerank_core::merkle;
@@ -17,12 +17,12 @@ pub fn params_hash(p: &Params) -> B256 {
     let seed_set_root = merkle::seed_set_root(&seeds);
 
     let mut buf = Vec::with_capacity(32 * 21);
+    buf.extend_from_slice(&word_u32(PARAMS_SCHEMA_VERSION));
     buf.extend_from_slice(&word_u256(p.damping_fp));
     buf.extend_from_slice(&word_u256(p.tolerance_fp));
     buf.extend_from_slice(&word_u32(p.max_iterations));
     buf.extend_from_slice(&word_u256(p.min_weight_fp));
     buf.extend_from_slice(&word_u256(p.max_weight_fp));
-    buf.extend_from_slice(&word_u256(p.trust_multiplier_fp));
     buf.extend_from_slice(&word_u256(p.trust_share_fp));
     buf.extend_from_slice(&word_u256(p.trust_decay_fp));
     buf.extend_from_slice(seed_set_root.as_slice());
@@ -54,8 +54,7 @@ mod tests {
             max_iterations: 100,
             min_weight_fp: U256::ZERO,
             max_weight_fp: s * U256::from(100),
-            trust_multiplier_fp: U256::from(2) * s,
-            trust_share_fp: s * U256::from(15) / U256::from(100),
+            trust_share_fp: s,
             trust_decay_fp: s * U256::from(80) / U256::from(100),
             trusted_seeds: vec![Address::from([0x11; 20]), Address::from([0x22; 20])],
             precision_scale: s,
@@ -92,7 +91,6 @@ mod tests {
             Params { max_iterations: p.max_iterations + 1, ..p.clone() },
             Params { min_weight_fp: p.min_weight_fp + one, ..p.clone() },
             Params { max_weight_fp: p.max_weight_fp + one, ..p.clone() },
-            Params { trust_multiplier_fp: p.trust_multiplier_fp + one, ..p.clone() },
             Params { trust_share_fp: p.trust_share_fp + one, ..p.clone() },
             Params { trust_decay_fp: p.trust_decay_fp + one, ..p.clone() },
             Params { trusted_seeds: vec![Address::from([0x33; 20])], ..p.clone() },

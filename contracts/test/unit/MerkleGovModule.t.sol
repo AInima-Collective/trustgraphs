@@ -191,7 +191,7 @@ contract MerkleGovModuleTest is Test {
         assertEq(govModule.totalVotingPower(), initialTotalVotingPower);
         assertEq(govModule.votingDelay(), 1);
         assertEq(govModule.votingPeriod(), 50400);
-        assertEq(govModule.quorum(), 4e16);
+        assertEq(govModule.quorum(), 15e16);
     }
 
     function test_ProposalCreation() public {
@@ -402,8 +402,8 @@ contract MerkleGovModuleTest is Test {
         // Move to voting period
         vm.roll(block.number + 2);
 
-        // Get enough votes to pass (need >= 4% quorum and more for than against)
-        // Total voting power = 575e18, so need >= 23e18 total votes (4% of 575e18 = 23e18)
+        // Get enough votes to pass (need >= 15% quorum and more for than against).
+        // Total voting power = 575e18, so need >= 86.25e18 decisive votes.
         vm.prank(alice);
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]); // 100e18
 
@@ -559,7 +559,7 @@ contract MerkleGovModuleTest is Test {
     /// M-1: the quorum fraction is snapshotted per proposal at creation. A later `setQuorum` must not
     /// retroactively flip a decided proposal, and only affects proposals created after it.
     function test_QuorumIsSnapshottedPerProposal() public {
-        // P1 under the default 4% quorum (threshold 23e18 of 575e18); alice's 100e18 Yes clears it.
+        // P1 under the default 15% quorum (threshold 86.25e18); alice's 100e18 Yes clears it.
         uint256 p1 = _proposeEmpty();
         _rollToActive(p1);
         vm.prank(alice);
@@ -913,7 +913,7 @@ contract MerkleGovModuleTest is Test {
         // Move to voting period
         vm.roll(block.number + 2);
 
-        // Alice votes Yes (100e18) - this alone meets 4% quorum of 575e18 (23e18)
+        // Alice votes Yes (100e18) - this alone meets 15% quorum of 575e18 (86.25e18)
         vm.prank(alice);
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
 
@@ -928,7 +928,7 @@ contract MerkleGovModuleTest is Test {
                 root: newRoot,
                 ipfsHash: bytes32(uint256(0x5678)),
                 ipfsHashCid: "ipfs://test",
-                totalValue: 10000e18 // 10x increase - 4% would be 400e18
+                totalValue: 10000e18 // 10x increase - 15% would be 1500e18
             })
         );
         merkleSnapshot.pushUpdate(address(govModule));
@@ -937,7 +937,7 @@ contract MerkleGovModuleTest is Test {
         vm.roll(block.number + 50401);
 
         // Proposal should still be Passed because it uses snapshotted totalVotingPower (575e18)
-        // 100e18 votes >= 4% of 575e18 (23e18), and yesVotes > noVotes
+        // 100e18 votes >= 15% of 575e18 (86.25e18), and yesVotes > noVotes
         assertEq(uint256(govModule.state(proposalId)), uint256(MerkleGovModule.ProposalState.Passed));
     }
 
@@ -1705,6 +1705,64 @@ contract MerkleGovModuleTest is Test {
         govModule.castVote(pid2, MerkleGovModule.VoteType.No, votingPowers[bob], proofs[bob]);
         _rollPastEnd(pid2);
         assertEq(uint256(govModule.state(pid2)), uint256(MerkleGovModule.ProposalState.Rejected));
+    }
+
+    function test_DirectVoteCreatesAuthenticatedSignerActivityCheckpoint() public {
+        uint256 pid = _proposeEmpty();
+        _rollToActive(pid);
+        uint64 activityBlock = uint64(block.number);
+        bytes32 expected = keccak256(abi.encode(bytes32(0), uint64(1), alice, pid, activityBlock));
+
+        vm.prank(alice);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
+
+        assertEq(govModule.activityAccumulator(), expected);
+        assertEq(govModule.activityCount(), 1);
+        assertEq(govModule.lastDirectActivityBlock(alice), activityBlock);
+        assertEq(govModule.activityCheckpointCount(), 1);
+        MerkleGovModule.ActivityCheckpoint memory checkpoint = govModule.getActivityCheckpoint(0);
+        assertEq(checkpoint.acc, expected);
+        assertEq(checkpoint.count, 1);
+        assertEq(checkpoint.blockNumber, activityBlock);
+    }
+
+    function test_DelegateCannotClaimPrincipalActivityButPrincipalOverrideCan() public {
+        uint256 pid = _proposeEmpty();
+        vm.prank(alice);
+        govModule.setVoteDelegate(bob);
+        _rollToActive(pid);
+
+        vm.prank(bob);
+        govModule.castVoteAsDelegate(
+            alice, pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice], "provisional"
+        );
+        assertEq(govModule.activityCount(), 0, "delegation is not proof of principal activity");
+
+        vm.prank(alice);
+        govModule.castVote(pid, MerkleGovModule.VoteType.No, votingPowers[alice], proofs[alice]);
+        assertEq(govModule.activityCount(), 1);
+        assertEq(govModule.lastDirectActivityBlock(alice), block.number);
+    }
+
+    function test_PermissionlessActivityCheckpointRefreshDoesNotInventActivity() public {
+        uint256 pid = _proposeEmpty();
+        _rollToActive(pid);
+        vm.prank(alice);
+        govModule.castVote(pid, MerkleGovModule.VoteType.Yes, votingPowers[alice], proofs[alice]);
+        bytes32 acc = govModule.activityAccumulator();
+
+        vm.expectRevert();
+        govModule.checkpointSignerActivity();
+        vm.roll(block.number + govModule.MIN_ACTIVITY_CHECKPOINT_INTERVAL());
+        uint256 id = govModule.checkpointSignerActivity();
+
+        assertEq(id, 1);
+        assertEq(govModule.activityAccumulator(), acc);
+        assertEq(govModule.activityCount(), 1);
+        MerkleGovModule.ActivityCheckpoint memory checkpoint = govModule.getActivityCheckpoint(id);
+        assertEq(checkpoint.acc, acc);
+        assertEq(checkpoint.count, 1);
+        assertEq(checkpoint.blockNumber, block.number);
     }
 }
 

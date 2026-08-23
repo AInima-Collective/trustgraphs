@@ -8,19 +8,12 @@ use alloy_primitives::{U256, U512};
 /// Panics on `d == 0` (a programming error — callers guard division by zero explicitly, matching
 /// the legacy `total_base_weight == 0` / `total_scaled_score.is_zero()` early-exits).
 ///
-/// Panics if the QUOTIENT does not fit in 256 bits. This used to truncate silently, on the
-/// assumption that "the result always fits for our magnitudes" — an assumption nothing enforced
-/// and which a permissionless factory breaks: with a large trust multiplier, a seed whose only
-/// out-edge points at another seed multiplies its rank by `damping × multiplier` every iteration
-/// (ranks are normalized once, AFTER the loop — `pagerank::calculate_generic`), so ranks grow
-/// without bound and wrap. Truncation made that a *silently wrong* proven score. Worse, it broke
-/// cross-language parity outright: the TS port is arbitrary-precision `bigint` and does not wrap,
-/// so the browser preview and the guest disagreed on both payouts and ranking order.
-///
-/// Failing loudly is the honest behaviour: in the guest a panic means no proof exists, so an
-/// instance configured outside the representable range is unprovable rather than wrong. The
-/// factory's creation-time bounds exist to keep real instances far from here; this is the
-/// backstop that makes "far from here" a checkable claim instead of a hope.
+/// Panics if the QUOTIENT does not fit in 256 bits. Rank callers establish the stronger executable
+/// invariant that total standing never exceeds the fixed-point scale on any iteration: row ratios
+/// sum to at most one, trust decay is at most one, damping is below one, and teleport uses the
+/// remaining fraction. Other callers must establish their own bounds. Keeping the widened check
+/// here turns any future invariant drift into an explicit guest failure instead of truncating a
+/// consensus value or diverging from the TypeScript `bigint` port.
 #[inline]
 pub fn mul_div(a: U256, b: U256, d: U256) -> U256 {
     debug_assert!(!d.is_zero(), "mul_div by zero");

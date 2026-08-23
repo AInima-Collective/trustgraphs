@@ -63,8 +63,7 @@ fn params() -> Params {
         damping_fp: fp(85, 100),
         tolerance_fp: scale() / U256::from(1_000_000u64),
         max_iterations: 100,
-        trust_multiplier_fp: scale() * U256::from(2),
-        trust_share_fp: fp(15, 100),
+        trust_share_fp: scale(),
         trust_decay_fp: fp(80, 100),
         precision_scale: scale(),
         total_pool: U256::from(1_000_000_000_000_000_000_000_000u128),
@@ -368,10 +367,9 @@ fn unsafe_rank_and_seed_params_are_rejected() {
     bad_scale.precision_scale /= U256::from(10);
     assert_eq!(bad_scale.validate(), Err(nostr_workspace_core::params::ParamsError::Rank));
 
-    let mut runaway = params();
-    runaway.trust_multiplier_fp = scale() * U256::from(100);
-    runaway.max_iterations = nostr_workspace_core::params::MAX_ITERATIONS;
-    assert_eq!(runaway.validate(), Err(nostr_workspace_core::params::ParamsError::Rank));
+    let mut too_precise = params();
+    too_precise.tolerance_fp = U256::from(999_999u64);
+    assert_eq!(too_precise.validate(), Err(nostr_workspace_core::params::ParamsError::Rank));
 
     let mut zero_seed = params();
     zero_seed.trusted_seed_pubkeys = vec![[0; 32]];

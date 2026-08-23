@@ -19,7 +19,6 @@ type JsonParams = Omit<
   | 'toleranceFp'
   | 'minWeightFp'
   | 'maxWeightFp'
-  | 'trustMultiplierFp'
   | 'trustShareFp'
   | 'trustDecayFp'
   | 'precisionScale'
@@ -34,7 +33,6 @@ type JsonParams = Omit<
   toleranceFp: string
   minWeightFp: string
   maxWeightFp: string
-  trustMultiplierFp: string
   trustShareFp: string
   trustDecayFp: string
   precisionScale: string
@@ -65,7 +63,6 @@ const params: ContributionsParams = {
   maxIterations: Number(jsonParams.maxIterations),
   minWeightFp: BigInt(jsonParams.minWeightFp),
   maxWeightFp: BigInt(jsonParams.maxWeightFp),
-  trustMultiplierFp: BigInt(jsonParams.trustMultiplierFp),
   trustShareFp: BigInt(jsonParams.trustShareFp),
   trustDecayFp: BigInt(jsonParams.trustDecayFp),
   trustedSeeds: jsonParams.trustedSeeds as Hex[],
@@ -108,27 +105,27 @@ assert.deepEqual(
   [
     {
       claimUid: `0x${'01'.repeat(32)}`,
-      scoreFp: '506824390837398103',
-      shareBps: '6747',
-      payout: '3373642554',
+      scoreFp: '463682807641048419',
+      shareBps: '5492',
+      payout: '2746484664',
     },
     {
       claimUid: `0x${'05'.repeat(32)}`,
-      scoreFp: '127318578491555229',
-      shareBps: '1694',
-      payout: '847487575',
+      scoreFp: '312736006219458024',
+      shareBps: '3704',
+      payout: '1852397006',
     },
     {
       claimUid: `0x${'02'.repeat(32)}`,
-      scoreFp: '68631029410138147',
-      shareBps: '913',
-      payout: '456837842',
+      scoreFp: '42481119502443358',
+      shareBps: '503',
+      payout: '251624044',
     },
     {
       claimUid: `0x${'03'.repeat(32)}`,
-      scoreFp: '48379068918605035',
-      shareBps: '646',
-      payout: '322032029',
+      scoreFp: '25238782763216347',
+      shareBps: '301',
+      payout: '149494286',
     },
   ]
 )

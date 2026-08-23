@@ -37,8 +37,7 @@ const params: Params = {
   maxIterations: 100,
   minWeightFp: 0n,
   maxWeightFp: 100n * S,
-  trustMultiplierFp: 2n * S,
-  trustShareFp: (15n * S) / 100n,
+  trustShareFp: S,
   trustDecayFp: (80n * S) / 100n,
   trustedSeeds: [addr(1), addr(3)],
   totalPool: 10n ** 24n,
@@ -53,11 +52,17 @@ const same = previewScoringChange({
   edges,
   current: params,
   proposed: params,
-  signerSelection: { topN: 3, minThreshold: 1, targetThresholdBps: 5_000 },
+  signerSelection: {
+    topN: 3,
+    minThreshold: 2,
+    targetThresholdBps: 5_000,
+    maxInactiveBlocks: 151_200n,
+    minActivityWitnesses: 2,
+  },
 })
 assert.equal(
   same.currentRoot,
-  '0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27'
+  '0x28487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f'
 )
 assert.equal(same.currentRoot, same.proposedRoot)
 assert.equal(same.gained, 0)
@@ -71,7 +76,7 @@ assert.ok(
   same.graphEdges.every((edge) => edge.currentWeight === edge.proposedWeight)
 )
 
-const proposed = { ...params, trustMultiplierFp: 3n * S }
+const proposed = { ...params, trustDecayFp: (60n * S) / 100n }
 const changed = previewScoringChange({ edges, current: params, proposed })
 assert.notEqual(changed.currentRoot, changed.proposedRoot)
 assert.equal(changed.gained + changed.lost + changed.unchanged, 3)

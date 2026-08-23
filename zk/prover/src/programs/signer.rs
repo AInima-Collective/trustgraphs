@@ -1,9 +1,14 @@
 //! Signer-sync program: proves the selected Safe signer set (top-N by proven PageRank score) and its
 //! threshold, for `SignerSyncZkModule`.
 
+use alloy_primitives::{B256, U256};
 use anyhow::Result;
 use clap::Subcommand;
-use pagerank_core::{encode, signer::compute_signers, SelectionParams, SignerInput};
+use pagerank_core::{
+    encode,
+    signer::{compute_signers, fold_activity},
+    ActivityCheckpoint, SelectionParams, SignerActivity, SignerInput,
+};
 use sp1_sdk::{include_elf, Elf};
 
 use crate::common;
@@ -20,16 +25,40 @@ fn load_signer_elf() -> Elf {
     include_elf!("trustgraph-signer-program")
 }
 
-/// The built-in signer sample (same edges/params as the root sample + a 3/50%/min-1 selection).
+/// The built-in signer sample (same edges/params as the root sample + two authenticated direct
+/// votes and the production selection/liveness floors).
 /// The zero `instance_domain` is fine for local execute/vkey smoke tests but no deployed module
 /// will accept a proof of it — real inputs come from `input-exporter --signer --module <addr>`,
 /// which derives the domain from the module address + chain id (audit M-3).
-fn sample_signer_input() -> SignerInput {
+pub fn sample_signer_input() -> SignerInput {
     let g = sample_input();
+    let scored = trustgraph_core::compute::compute(&g).scores;
+    let current_signer = scored[0].0;
+    let one = g.params.precision_scale / g.params.precision_scale;
+    let activity = vec![
+        SignerActivity { account: scored[0].0, proposal_id: U256::from(1), block_number: 100 },
+        SignerActivity { account: scored[1].0, proposal_id: U256::from(2), block_number: 101 },
+    ];
+    let activity_acc = activity
+        .iter()
+        .enumerate()
+        .fold(B256::ZERO, |acc, (index, record)| fold_activity(acc, (index + 1) as u64, record));
     SignerInput {
         edges: g.edges,
         params: g.params,
-        selection: SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 },
+        selection: SelectionParams {
+            top_n: 3,
+            min_threshold: 2,
+            target_threshold_bps: 5000,
+            max_inactive_blocks: 151_200,
+            min_activity_witnesses: 2,
+        },
+        activity,
+        activity_checkpoint: ActivityCheckpoint { acc: activity_acc, count: 2, block_number: 101 },
+        activity_checkpoint_id: 1,
+        current_signers: vec![current_signer],
+        current_threshold: one,
+        was_initialized: false,
         instance_domain: Default::default(),
     }
 }

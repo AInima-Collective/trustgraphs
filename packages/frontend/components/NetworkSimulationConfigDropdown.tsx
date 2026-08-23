@@ -111,28 +111,8 @@ export const NetworkSimulationConfigDropdown = ({
 
       <div className="flex flex-row justify-between items-center gap-4 px-3 py-2 text-sm">
         <div className="flex flex-row items-center gap-1">
-          <span>Trust Multiplier</span>
-          <InfoTooltip title="The factor (≥ 1) by which the weight of attestations from trusted seeds is multiplied. Higher values mean more weight, lower values mean less weight." />
-        </div>
-        <Input
-          value={simulationConfig.trustMultiplier}
-          onChange={(e) =>
-            setSimulationConfig((config) => ({
-              ...config,
-              trustMultiplier: Number(e.target.value),
-            }))
-          }
-          step={0.1}
-          type="number"
-          min={1}
-          className="text-sm w-32"
-        />
-      </div>
-
-      <div className="flex flex-row justify-between items-center gap-4 px-3 py-2 text-sm">
-        <div className="flex flex-row items-center gap-1">
           <span>Trust Share</span>
-          <InfoTooltip title="The proportion (0 to 1) of initial weight distributed to trusted seeds at the beginning (to be propagated out through their attestations). The remainder is distributed evenly among all untrusted attesters. Setting it to 1 ensures only people receiving attestations directly or indirectly from a source trusted seed can participate in the network—this is full Trust Aware PageRank. Setting it to 0 means every attester is assigned an equal base weight to distribute. Any value less than 1 means that anyone can join the network by making an attestation to someone else, even if they don't receive any attestations themselves." />
+          <InfoTooltip title="The proportion (0 to 1) of initial weight distributed to trusted seeds. Any remainder is divided only among accounts reachable by a directed path from a trusted seed; disconnected accounts always receive zero." />
         </div>
         <Input
           value={simulationConfig.trustShare}

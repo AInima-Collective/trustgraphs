@@ -79,12 +79,12 @@ contributions round params.
 
 | slot | field | type | notes |
 |---|---|---|---|
-| 1 | `dampingFp` | uint256 | fixed-point, scaled by `precisionScale` |
-| 2 | `toleranceFp` | uint256 | |
-| 3 | `maxIterations` | uint32 | |
-| 4 | `minWeightFp` | uint256 | vouch-weight clamp floor |
-| 5 | `maxWeightFp` | uint256 | vouch-weight clamp cap |
-| 6 | `trustMultiplierFp` | uint256 | |
+| 1 | `paramsSchemaVersion` | uint256 | literal `3`; domain-separates this tuple shape |
+| 2 | `dampingFp` | uint256 | fixed-point, scaled by `precisionScale` |
+| 3 | `toleranceFp` | uint256 | |
+| 4 | `maxIterations` | uint32 | |
+| 5 | `minWeightFp` | uint256 | vouch-weight clamp floor |
+| 6 | `maxWeightFp` | uint256 | vouch-weight clamp cap |
 | 7 | `trustShareFp` | uint256 | |
 | 8 | `trustDecayFp` | uint256 | required by the trust algorithm |
 | 9 | `seedSetRoot` | bytes32 | OZ standard tree over the **sorted** seed addresses, leaf = `keccak256(abi.encode(address))` — same builder as the trust program |

@@ -115,6 +115,7 @@ pub struct SignerSyncDescriptor {
     pub module: Address,
     pub safe: Address,
     pub score_snapshot: Address,
+    pub activity_source: Address,
     pub accumulator: Address,
     pub verifier: Address,
     pub program_vkey: B256,
@@ -461,6 +462,7 @@ fn scan_signer<R: ChainReader>(reader: &R, id: B256) -> Result<Option<CatalogEnt
     if descriptor.module == Address::ZERO
         || descriptor.safe == Address::ZERO
         || descriptor.verifier == Address::ZERO
+        || descriptor.activity_source == Address::ZERO
         || descriptor.program_vkey == B256::ZERO
     {
         disagreements

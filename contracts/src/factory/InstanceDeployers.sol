@@ -11,7 +11,11 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 
 /// @title MerkleSnapshotDeployer
 /// @notice A one-per-chain singleton whose only job is to hold `MerkleSnapshot`'s creation code so
@@ -133,13 +137,16 @@ contract SignerSyncModuleDeployer {
         address indexed signerSyncModule,
         bytes32 operatorInstanceId,
         address scoreSnapshot,
+        address activitySource,
         address accumulator,
         address verifier,
         bytes32 programVKey,
         bytes32 selectionParamsHash,
         uint32 topN,
         uint32 minThreshold,
-        uint32 targetThresholdBps
+        uint32 targetThresholdBps,
+        uint64 maxInactiveBlocks,
+        uint32 minActivityWitnesses
     );
 
     function deploy(
@@ -148,18 +155,22 @@ contract SignerSyncModuleDeployer {
         IZkVerifier verifier,
         IAttestationAccumulator accumulator,
         ISignerSyncCheckpointSource scoreSnapshot,
+        ISignerActivitySource activitySource,
         bytes32 paramsHash,
         bytes32 programVKey,
         uint32 topN,
         uint32 minThreshold,
-        uint32 targetThresholdBps
+        uint32 targetThresholdBps,
+        uint64 maxInactiveBlocks,
+        uint32 minActivityWitnesses
     ) external returns (SignerSyncZkModule) {
         if (address(verifier) == address(0) || programVKey == bytes32(0)) {
             revert InvalidSignerVerifier();
         }
         if (
-            topN == 0 || topN > MAX_SIGNERS || minThreshold == 0 || minThreshold > topN || targetThresholdBps == 0
-                || targetThresholdBps > 10_000
+            topN < 2 || topN > MAX_SIGNERS || minThreshold < 2 || minThreshold > topN || targetThresholdBps == 0
+                || targetThresholdBps > 10_000 || maxInactiveBlocks == 0 || minActivityWitnesses < 2
+                || minActivityWitnesses > topN
         ) revert InvalidSignerSelection(topN, minThreshold, targetThresholdBps);
 
         // Signer-sync's current guest authenticates lane 1 only. Keep it fail-closed for any
@@ -177,9 +188,22 @@ contract SignerSyncModuleDeployer {
         bytes32 verifierVKey = abi.decode(returned, (bytes32));
         if (verifierVKey != programVKey) revert SignerProgramVKeyMismatch(programVKey, verifierVKey);
 
-        bytes32 selectionParamsHash = keccak256(abi.encode(topN, minThreshold, targetThresholdBps));
+        bytes32 selectionParamsHash =
+            keccak256(abi.encode(topN, minThreshold, targetThresholdBps, maxInactiveBlocks, minActivityWitnesses));
         SignerSyncZkModule module = new SignerSyncZkModule(
-            safe, safe, safe, verifier, accumulator, scoreSnapshot, paramsHash, selectionParamsHash
+            safe,
+            safe,
+            safe,
+            verifier,
+            accumulator,
+            scoreSnapshot,
+            activitySource,
+            paramsHash,
+            topN,
+            minThreshold,
+            targetThresholdBps,
+            maxInactiveBlocks,
+            minActivityWitnesses
         );
         bytes32 operatorInstanceId = keccak256(abi.encode(instanceId, address(module), keccak256("signer-sync")));
         emit SignerSyncModuleConfigured(
@@ -188,13 +212,16 @@ contract SignerSyncModuleDeployer {
             address(module),
             operatorInstanceId,
             address(scoreSnapshot),
+            address(activitySource),
             address(accumulator),
             address(verifier),
             programVKey,
             selectionParamsHash,
             topN,
             minThreshold,
-            targetThresholdBps
+            targetThresholdBps,
+            maxInactiveBlocks,
+            minActivityWitnesses
         );
         return module;
     }

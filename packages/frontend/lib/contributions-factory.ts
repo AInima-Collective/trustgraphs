@@ -10,7 +10,7 @@ import type { InstanceParamsJson } from './catalog'
 
 /** The 21-field contributions params tuple, matching `ContributionsParamsCodec.Params`. */
 const PARAMS =
-  '(uint256 dampingFp,uint256 toleranceFp,uint32 maxIterations,uint256 minWeightFp,uint256 maxWeightFp,uint256 trustMultiplierFp,uint256 trustShareFp,uint256 trustDecayFp,address[] trustedSeeds,uint256 precisionScale,uint32 weightFieldIndex,uint64 roundStart,uint64 roundEnd,uint256 unacceptedMultFp,uint256 collaboratorMultFp,uint256 minRaterRepFp,uint32 evaluatorCarveoutBps,uint256 totalPool,bytes32 claimSchemaUid,bytes32 responseSchemaUid,bytes32 valuationSchemaUid)'
+  '(uint256 dampingFp,uint256 toleranceFp,uint32 maxIterations,uint256 minWeightFp,uint256 maxWeightFp,uint256 trustShareFp,uint256 trustDecayFp,address[] trustedSeeds,uint256 precisionScale,uint32 weightFieldIndex,uint64 roundStart,uint64 roundEnd,uint256 unacceptedMultFp,uint256 collaboratorMultFp,uint256 minRaterRepFp,uint32 evaluatorCarveoutBps,uint256 totalPool,bytes32 claimSchemaUid,bytes32 responseSchemaUid,bytes32 valuationSchemaUid)'
 
 export const contributionsFactoryAbi = parseAbi([
   `event ContributionsInstanceCreated(bytes32 indexed instanceId,bytes32 indexed parentInstanceId,address indexed creator,address admin,string name,string metadataURI,address trustAccumulator,address mirror,address resolver,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 claimSchemaUid,bytes32 responseSchemaUid,bytes32 valuationSchemaUid,${PARAMS} params)`,
@@ -68,7 +68,6 @@ export const contributionsCreateArgs = (
     maxIterations: parentParams.maxIterations,
     minWeightFp: BigInt(parentParams.minWeightFp),
     maxWeightFp: BigInt(parentParams.maxWeightFp),
-    trustMultiplierFp: BigInt(parentParams.trustMultiplierFp),
     trustShareFp: BigInt(parentParams.trustShareFp),
     trustDecayFp: BigInt(parentParams.trustDecayFp),
     trustedSeeds: parentParams.trustedSeeds,

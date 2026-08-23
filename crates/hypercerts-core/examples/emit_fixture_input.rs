@@ -39,8 +39,9 @@ fn json_to_ipld(v: &serde_json::Value) -> Ipld {
 }
 
 fn load_repo(root: &str, car_name: &str, plc_name: &str) -> (String, B256, AtprotoWitness) {
-    let car = std::fs::read(format!("{root}/tests/fixtures/atproto/hypercerts/fixtures/{car_name}"))
-        .unwrap();
+    let car =
+        std::fs::read(format!("{root}/tests/fixtures/atproto/hypercerts/fixtures/{car_name}"))
+            .unwrap();
     let plc_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(format!(
             "{root}/tests/fixtures/atproto/hypercerts/fixtures/{plc_name}"
@@ -73,8 +74,7 @@ fn main() {
         damping_fp: fp(85, 100),
         tolerance_fp: s() / U256::from(1_000_000u64),
         max_iterations: 100,
-        trust_multiplier_fp: U256::from(2) * s(),
-        trust_share_fp: fp(15, 100),
+        trust_share_fp: s(),
         trust_decay_fp: fp(80, 100),
         precision_scale: s(),
         total_pool: U256::from(1_000_000_000_000_000_000_000_000u128),

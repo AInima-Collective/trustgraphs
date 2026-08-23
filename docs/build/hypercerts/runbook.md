@@ -334,8 +334,7 @@ Governance-pinned, all fixed-point at `precision_scale` (1e18), tunable via the 
   "damping_fp": "0xbcbce7f1b150000",
   "tolerance_fp": "0xe8d4a51000",
   "max_iterations": 100,
-  "trust_multiplier_fp": "0x1bc16d674ec80000",
-  "trust_share_fp": "0x214e8348c4f0000",
+  "trust_share_fp": "0xde0b6b3a7640000",
   "trust_decay_fp": "0xb1a2bc2ec500000",
   "precision_scale": "0xde0b6b3a7640000",
   "total_pool": "0xd3c21bcecceda1000000",
@@ -351,7 +350,8 @@ Governance-pinned, all fixed-point at `precision_scale` (1e18), tunable via the 
 }
 ```
 
-`paramsHash` hashes these 17 words in this order (with `trusted_seed_dids` folded to a `seedSetRoot`
+`paramsHash` hashes 17 words: the schema-version word `3` followed by these 16 fields in order
+(with `trusted_seed_dids` folded to a `seedSetRoot`
 over the sorted seed nodeIds); it is golden-locked four ways (`hypercerts_core::compute::params_hash`).
 
 ### How a params update flows

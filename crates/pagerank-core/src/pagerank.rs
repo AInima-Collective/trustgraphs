@@ -1,5 +1,6 @@
 //! Fixed-point Trust-Aware PageRank. A structural port of `graph_computer.rs::calculate_pagerank`
-//! (scores scaled by S), with all `f64` replaced by integer `U256` arithmetic (PLAN.md §2).
+//! (scores scaled by S), with all `f64` replaced by integer `U256` arithmetic
+//! (`research/ZK_ARCHITECTURE.md` §4.1).
 //!
 //! The algorithm core is GENERIC over the node key (`K: Ord + Copy`) so other programs
 //! (hypercerts: `B256` node ids for DIDs/artifacts/bound addresses) reuse the exact same
@@ -18,7 +19,6 @@ pub struct RankConfig<K> {
     pub damping_fp: U256,
     pub tolerance_fp: U256,
     pub max_iterations: u32,
-    pub trust_multiplier_fp: U256,
     pub trust_share_fp: U256,
     pub trust_decay_fp: U256,
     pub scale: U256,
@@ -30,10 +30,14 @@ fn is_seed<K: Ord>(seeds: &BTreeSet<K>, a: &K) -> bool {
     seeds.contains(a)
 }
 
-/// Initial scores (scaled by S). No trust ⇒ uniform `S/n`. Trust ⇒ seeds share `trust_share`,
-/// regulars share `1 - trust_share`. Counts follow the legacy convention exactly
-/// (`trusted_count = |seeds|`, `regular_count = n - trusted_count`).
-fn initialize_scores<K: Ord + Copy>(nodes: &[K], cfg: &RankConfig<K>) -> BTreeMap<K, U256> {
+/// Initial scores (scaled by S). No trust ⇒ uniform `S/n`. With trust, seeds share
+/// `trust_share` and only reachable non-seeds share the remainder. Unreachable nodes start and
+/// remain at zero, so a disconnected component cannot acquire standing through teleportation.
+fn initialize_scores<K: Ord + Copy>(
+    nodes: &[K],
+    cfg: &RankConfig<K>,
+    reachable: Option<&BTreeMap<K, U256>>,
+) -> BTreeMap<K, U256> {
     let n = nodes.len();
     let s = cfg.scale;
     let seeds = &cfg.seeds;
@@ -49,9 +53,12 @@ fn initialize_scores<K: Ord + Copy>(nodes: &[K], cfg: &RankConfig<K>) -> BTreeMa
         return out;
     }
     let trusted_count = seeds.len();
-    let regular_count = n.saturating_sub(trusted_count);
+    let regular_count = reachable
+        .map(|nodes| nodes.keys().filter(|node| !is_seed(seeds, node)).count())
+        .unwrap_or(0);
     let trusted_total = cfg.trust_share_fp;
-    let regular_total = s - cfg.trust_share_fp;
+    let regular_total =
+        s.checked_sub(cfg.trust_share_fp).expect("rank: trust share exceeds precision scale");
     let trusted_score = if trusted_count > 0 {
         trusted_total / U256::from(trusted_count as u64)
     } else {
@@ -63,160 +70,294 @@ fn initialize_scores<K: Ord + Copy>(nodes: &[K], cfg: &RankConfig<K>) -> BTreeMa
         U256::ZERO
     };
     for node in nodes {
-        let v = if is_seed(seeds, node) { trusted_score } else { regular_score };
+        let v = if is_seed(seeds, node) {
+            trusted_score
+        } else if reachable.is_some_and(|reachable| reachable.contains_key(node)) {
+            regular_score
+        } else {
+            U256::ZERO
+        };
         out.insert(*node, v);
     }
     out
 }
 
-/// Multi-source BFS shortest distances from the trusted seeds (deterministic: seeds processed in
-/// sorted order, neighbours in address order via the BTree). Mirrors `calculate_trust_distances`.
-fn bfs_distances<K: Ord + Copy>(
+/// Multi-source BFS carrying each node's fixed-point decay from the trusted seeds. Seeds and
+/// neighbours are processed in BTree order, so the first visit is the shortest path and
+/// `decay[child] = fp_mul(decay[parent], base)` is exactly the old iterative `decay_pow(base,
+/// distance)` without a second walk per node.
+fn bfs_decays<K: Ord + Copy>(
     outgoing: &BTreeMap<K, BTreeMap<K, U256>>,
     seeds: &BTreeSet<K>,
-) -> BTreeMap<K, usize> {
-    let mut distances: BTreeMap<K, usize> = BTreeMap::new();
+    base_fp: U256,
+    scale: U256,
+) -> BTreeMap<K, U256> {
+    let mut decays: BTreeMap<K, U256> = BTreeMap::new();
     let mut queue: VecDeque<K> = VecDeque::new();
     for seed in seeds {
-        distances.insert(*seed, 0);
+        decays.insert(*seed, scale);
         queue.push_back(*seed);
     }
     while let Some(current) = queue.pop_front() {
-        let d = distances[&current];
         if let Some(edges) = outgoing.get(&current) {
+            let mut child_decay = None;
             for neighbor in edges.keys() {
-                if !distances.contains_key(neighbor) {
-                    distances.insert(*neighbor, d + 1);
+                if !decays.contains_key(neighbor) {
+                    let value = *child_decay
+                        .get_or_insert_with(|| fp_mul(decays[&current], base_fp, scale));
+                    decays.insert(*neighbor, value);
                     queue.push_back(*neighbor);
                 }
             }
         }
     }
-    distances
+    decays
 }
 
-/// `base_fp ^ dist` in fixed point (iterative). `dist == 0 ⇒ S` (1.0), matching `powi(0)`.
-fn decay_pow(base_fp: U256, dist: usize, s: U256) -> U256 {
-    let mut r = s;
-    for _ in 0..dist {
-        r = fp_mul(r, base_fp, s);
+fn assert_edge_closure<K: Ord + Copy>(nodes: &[K], outgoing: &BTreeMap<K, BTreeMap<K, U256>>) {
+    let node_set: BTreeSet<K> = nodes.iter().copied().collect();
+    for (source, row) in outgoing {
+        assert!(node_set.contains(source), "rank: edge source missing from node set");
+        for target in row.keys() {
+            assert!(node_set.contains(target), "rank: edge target missing from node set");
+        }
     }
-    r
 }
 
-/// Compute normalized PageRank scores over any node key type (scaled by S; sum ≈ S).
-/// Empty graph ⇒ empty. This IS the algorithm; wrappers only adapt key types.
-pub fn calculate_generic<K: Ord + Copy>(
+/// Scores plus convergence telemetry used by the operator's prepared-input work profile.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RankResult<K> {
+    pub scores: BTreeMap<K, U256>,
+    pub iterations: u32,
+    pub converged: bool,
+    pub unique_nodes: u64,
+    pub live_edges: u64,
+    pub max_out_degree: u64,
+}
+
+impl<K> RankResult<K> {
+    pub fn telemetry(&self, max_iterations: u32) -> crate::RankTelemetry {
+        crate::RankTelemetry {
+            unique_nodes: self.unique_nodes,
+            live_edges: self.live_edges,
+            max_out_degree: self.max_out_degree,
+            max_iterations,
+            iterations_run: self.iterations,
+            converged: self.converged,
+        }
+    }
+}
+
+/// Compute normalized PageRank scores and convergence telemetry over any node key type.
+pub fn calculate_generic_detailed<K: Ord + Copy>(
     nodes: &[K],
     outgoing: &BTreeMap<K, BTreeMap<K, U256>>,
     cfg: &RankConfig<K>,
-) -> BTreeMap<K, U256> {
+) -> RankResult<K> {
+    // A configured seed is part of the consensus universe even when it has no live edges. The
+    // BTreeSet union makes every seed appear exactly once in canonical order.
+    let rank_nodes: Vec<K> = nodes
+        .iter()
+        .copied()
+        .chain(cfg.seeds.iter().copied())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    assert_edge_closure(&rank_nodes, outgoing);
+
+    let nodes = rank_nodes.as_slice();
     let n = nodes.len();
+    let unique_nodes = u64::try_from(n).unwrap_or(u64::MAX);
+    let live_edges = outgoing.values().fold(0u64, |total, row| {
+        total.saturating_add(u64::try_from(row.len()).unwrap_or(u64::MAX))
+    });
+    let max_out_degree = outgoing
+        .values()
+        .map(|row| u64::try_from(row.len()).unwrap_or(u64::MAX))
+        .max()
+        .unwrap_or(0);
     if n == 0 {
-        return BTreeMap::new();
+        return RankResult {
+            scores: BTreeMap::new(),
+            iterations: 0,
+            converged: true,
+            unique_nodes,
+            live_edges,
+            max_out_degree,
+        };
     }
     let s = cfg.scale;
     let seeds = &cfg.seeds;
 
-    let initial = initialize_scores(nodes, cfg);
+    let decays = if seeds.is_empty() {
+        None
+    } else {
+        Some(bfs_decays(outgoing, seeds, cfg.trust_decay_fp, s))
+    };
+    let initial = initialize_scores(nodes, cfg, decays.as_ref());
     let mut current = initial.clone();
 
-    let distances = if !seeds.is_empty() { Some(bfs_distances(outgoing, seeds)) } else { None };
+    // Match the pull kernel's zero-iteration boundary: no iterative arithmetic is evaluated.
+    if cfg.max_iterations == 0 {
+        normalize(&mut current, s, decays.as_ref());
+        return RankResult {
+            scores: current,
+            iterations: 0,
+            converged: false,
+            unique_nodes,
+            live_edges,
+            max_out_degree,
+        };
+    }
+
+    // Hoist the complete row normalization out of the iteration. Targets outside the trusted
+    // reachable set are deliberately omitted: the pull kernel gives them teleport only and skips
+    // them before evaluating an edge ratio.
+    let mut ratios: BTreeMap<K, Vec<(K, U256)>> = BTreeMap::new();
+    for attester in nodes {
+        let Some(edges) = outgoing.get(attester) else { continue };
+        let mut total_base = U256::ZERO;
+        for (target, weight) in edges {
+            if target == attester || weight.is_zero() {
+                continue;
+            }
+            total_base = total_base
+                .checked_add(*weight)
+                .expect("rank: outgoing-weight sum overflowed 256 bits");
+        }
+        if total_base.is_zero() {
+            continue;
+        }
+
+        let mut row = Vec::new();
+        for (target, base_weight) in edges {
+            if target == attester || base_weight.is_zero() {
+                continue;
+            }
+            if decays.as_ref().is_some_and(|reachable| !reachable.contains_key(target)) {
+                continue;
+            }
+            row.push((*target, fp_div(*base_weight, total_base, s)));
+        }
+        if !row.is_empty() {
+            ratios.insert(*attester, row);
+        }
+    }
 
     let base_teleport = s - cfg.damping_fp; // (1 - d) * S
+    let teleport: BTreeMap<K, U256> =
+        nodes.iter().map(|node| (*node, fp_mul(base_teleport, initial[node], s))).collect();
 
-    for _iteration in 0..cfg.max_iterations {
-        let mut new_scores: BTreeMap<K, U256> = BTreeMap::new();
-        let mut max_delta = U256::ZERO;
+    let mut iterations = 0;
+    let mut converged = false;
+    for iteration in 0..cfg.max_iterations {
+        let mut new_scores = teleport.clone();
 
-        for recipient in nodes {
-            // teleportation base: (1 - d) * initial[recipient]
-            let mut new_score = fp_mul(base_teleport, initial[recipient], s);
-
-            // isolated (unreachable) nodes get only the base score.
-            if let Some(dist) = &distances {
-                if !dist.contains_key(recipient) {
-                    new_scores.insert(*recipient, new_score);
-                    continue;
-                }
-            }
-
-            for attester in nodes {
-                if attester == recipient {
-                    continue;
-                }
-                let Some(edges) = outgoing.get(attester) else { continue };
-
-                // Filter out self-loops and zero-weight edges for the outgoing-weight normalization.
-                let mut total_base = U256::ZERO;
-                let mut to_recipient: Option<U256> = None;
-                for (target, w) in edges {
-                    if target == attester || w.is_zero() {
-                        continue;
-                    }
-                    total_base = total_base
-                        .checked_add(*w)
-                        .expect("rank: outgoing-weight sum overflowed 256 bits");
-                    if target == recipient {
-                        to_recipient = Some(*w);
-                    }
-                }
-                if total_base.is_zero() {
-                    continue;
-                }
-                let Some(base_w) = to_recipient else { continue };
-
-                // effective weight (trust multiplier for trusted attesters)
-                let eff = if is_seed(seeds, attester) {
-                    fp_mul(base_w, cfg.trust_multiplier_fp, s)
-                } else {
-                    base_w
-                };
-
-                // trust decay by distance-from-seed of the attester
-                let decay = match distances.as_ref().map(|d| d.get(attester).copied()) {
-                    Some(Some(distance)) => decay_pow(cfg.trust_decay_fp, distance, s),
-                    Some(None) => U256::ZERO,
-                    None => s, // trust disabled ⇒ 1.0
-                };
-
-                // contribution = current[attester] * (eff / total_base) * decay
-                let ratio = fp_div(eff, total_base, s);
-                let mut contribution = fp_mul(current[attester], ratio, s);
+        // Sources stay in node order, preserving the pull kernel's per-recipient addition order.
+        for attester in nodes {
+            let Some(row) = ratios.get(attester) else { continue };
+            let decay = decays
+                .as_ref()
+                .map_or(s, |values| values.get(attester).copied().unwrap_or(U256::ZERO));
+            for (recipient, ratio) in row {
+                let mut contribution = fp_mul(current[attester], *ratio, s);
                 contribution = fp_mul(contribution, decay, s);
-                new_score = new_score
-                    .checked_add(fp_mul(cfg.damping_fp, contribution, s))
-                    .expect("rank: accumulated score overflowed 256 bits");
+                let damped = fp_mul(cfg.damping_fp, contribution, s);
+                let score = new_scores
+                    .get_mut(recipient)
+                    .expect("rank: edge target missing from node set after closure check");
+                *score =
+                    score.checked_add(damped).expect("rank: accumulated score overflowed 256 bits");
             }
+        }
 
+        // With row ratios summing to at most one, decay at most one, damping below one, and
+        // teleport drawn from an initial total at most S, standing cannot grow above S. Keep the
+        // invariant executable in the guest so accepted parameter bounds and arithmetic never
+        // drift apart.
+        let iteration_total = new_scores.values().copied().fold(U256::ZERO, |sum, score| {
+            sum.checked_add(score).expect("rank: iteration score total overflowed 256 bits")
+        });
+        assert!(iteration_total <= s, "rank: total standing exceeded precision scale");
+
+        let mut max_delta = U256::ZERO;
+        for recipient in nodes {
+            // Consensus-critical: unreachable nodes remain zero and do not affect convergence.
+            if decays.as_ref().is_some_and(|reachable| !reachable.contains_key(recipient)) {
+                continue;
+            }
+            let new_score = new_scores[recipient];
             let prev = current[recipient];
             let delta = if new_score > prev { new_score - prev } else { prev - new_score };
             if delta > max_delta {
                 max_delta = delta;
             }
-            new_scores.insert(*recipient, new_score);
         }
 
         current = new_scores;
+        iterations = iteration + 1;
 
         if max_delta < cfg.tolerance_fp {
+            converged = true;
             break;
         }
     }
 
-    // Normalize to sum S.
-    // Checked, like every other accumulation here: alloy's `+` wraps silently in release, so an
-    // unchecked fold would turn an out-of-range instance into a wrong-but-provable answer.
-    let total: U256 = current
+    normalize(&mut current, s, decays.as_ref());
+    RankResult { scores: current, iterations, converged, unique_nodes, live_edges, max_out_degree }
+}
+
+fn normalize<K: Ord + Copy>(
+    scores: &mut BTreeMap<K, U256>,
+    scale: U256,
+    reachable: Option<&BTreeMap<K, U256>>,
+) {
+    let total: U256 = scores
         .values()
         .copied()
         .fold(U256::ZERO, |a, b| a.checked_add(b).expect("rank: score total overflowed 256 bits"));
     if !total.is_zero() {
-        for v in current.values_mut() {
-            *v = fp_div(*v, total, s);
+        for score in scores.values_mut() {
+            *score = fp_div(*score, total, scale);
         }
     }
-    current
+
+    if scores.is_empty() {
+        return;
+    }
+    let normalized_total = scores.values().copied().fold(U256::ZERO, |sum, score| {
+        sum.checked_add(score).expect("rank: normalized score total overflowed 256 bits")
+    });
+    let remainder = scale
+        .checked_sub(normalized_total)
+        .expect("rank: normalized score total exceeded precision scale");
+    if remainder.is_zero() {
+        return;
+    }
+
+    // Assign flooring dust canonically without ever endowing an unreachable component. Usually
+    // the first normalized-positive node is enough; the reachable fallback also covers a
+    // degenerate all-zero accepted input.
+    let recipient = scores
+        .iter()
+        .find_map(|(node, score)| (!score.is_zero()).then_some(*node))
+        .or_else(|| {
+            reachable.and_then(|nodes| nodes.keys().find(|node| scores.contains_key(node)).copied())
+        })
+        .or_else(|| scores.keys().next().copied())
+        .expect("rank: nonempty score map lost its first node");
+    let score = scores.get_mut(&recipient).expect("rank: normalization recipient disappeared");
+    *score = score.checked_add(remainder).expect("rank: normalization remainder overflowed");
+}
+
+/// Compute normalized PageRank scores over any node key type (scaled by S; sum ≈ S).
+/// Empty graph ⇒ empty. Wrappers only adapt key types.
+pub fn calculate_generic<K: Ord + Copy>(
+    nodes: &[K],
+    outgoing: &BTreeMap<K, BTreeMap<K, U256>>,
+    cfg: &RankConfig<K>,
+) -> BTreeMap<K, U256> {
+    calculate_generic_detailed(nodes, outgoing, cfg).scores
 }
 
 /// The trust-graph program's entry: Address-keyed, `Params`-driven (public API unchanged).
@@ -225,7 +366,6 @@ pub fn calculate(graph: &Graph, p: &Params) -> BTreeMap<Address, U256> {
         damping_fp: p.damping_fp,
         tolerance_fp: p.tolerance_fp,
         max_iterations: p.max_iterations,
-        trust_multiplier_fp: p.trust_multiplier_fp,
         trust_share_fp: p.trust_share_fp,
         trust_decay_fp: p.trust_decay_fp,
         scale: p.precision_scale,

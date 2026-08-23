@@ -655,8 +655,7 @@ mod tests {
     #[test]
     fn rust_matches_the_frozen_typescript_golden_vectors() {
         let golden: Value =
-            serde_json::from_str(include_str!("../../../tests/golden/graph-reputation.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../golden/graph-reputation.json")).unwrap();
         for case in golden["cases"].as_array().unwrap() {
             let mode = case["mode"].as_str().unwrap();
             let mut input = fixture(mode == "ingress");

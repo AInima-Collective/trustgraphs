@@ -12,9 +12,8 @@ library TrustgraphsParamsValidator {
     uint32 internal constant WEIGHT_FIELD_INDEX = 1;
     uint32 internal constant MAX_ITERATIONS = 500;
     uint256 internal constant MAX_TOLERANCE_FP = 1e15;
-    uint256 internal constant MAX_TRUST_MULTIPLIER_FP = 100e18;
+    uint256 internal constant MIN_TOLERANCE_FP = 1e6;
     uint256 internal constant MAX_WEIGHT_FP = 1e6 * PRECISION_SCALE;
-    uint256 internal constant MAX_RANK_FP = type(uint256).max / PRECISION_SCALE;
     uint256 internal constant MAX_TRUSTED_SEEDS = 64;
 
     error DerivedFieldNotZero();
@@ -22,10 +21,8 @@ library TrustgraphsParamsValidator {
     error InvalidTolerance(uint256 toleranceFp);
     error InvalidIterations(uint32 maxIterations);
     error InvalidWeightBounds(uint256 minWeightFp, uint256 maxWeightFp);
-    error RankGrowthUnbounded(uint256 factorFp, uint32 maxIterations);
     error InvalidTrustShare(uint256 trustShareFp);
     error InvalidTrustDecay(uint256 trustDecayFp);
-    error InvalidTrustMultiplier(uint256 trustMultiplierFp);
     error InvalidPrecisionScale(uint256 precisionScale);
     error InvalidTotalPool();
     error InvalidWeightFieldIndex(uint32 weightFieldIndex);
@@ -73,7 +70,7 @@ library TrustgraphsParamsValidator {
     /// @notice The guest's hard validity envelope, independent of how the tuple was published.
     function validateComputationalEnvelope(ParamsCodec.Params memory p) internal pure {
         if (p.dampingFp == 0 || p.dampingFp >= PRECISION_SCALE) revert InvalidDamping(p.dampingFp);
-        if (p.toleranceFp == 0 || p.toleranceFp > MAX_TOLERANCE_FP) {
+        if (p.toleranceFp < MIN_TOLERANCE_FP || p.toleranceFp > MAX_TOLERANCE_FP) {
             revert InvalidTolerance(p.toleranceFp);
         }
         if (p.maxIterations == 0 || p.maxIterations > MAX_ITERATIONS) {
@@ -84,9 +81,6 @@ library TrustgraphsParamsValidator {
         }
         if (p.trustShareFp > PRECISION_SCALE) revert InvalidTrustShare(p.trustShareFp);
         if (p.trustDecayFp > PRECISION_SCALE) revert InvalidTrustDecay(p.trustDecayFp);
-        if (p.trustMultiplierFp > MAX_TRUST_MULTIPLIER_FP) {
-            revert InvalidTrustMultiplier(p.trustMultiplierFp);
-        }
         if (p.precisionScale != PRECISION_SCALE) revert InvalidPrecisionScale(p.precisionScale);
         if (p.totalPool == 0) revert InvalidTotalPool();
         if (p.weightFieldIndex != WEIGHT_FIELD_INDEX) {
@@ -103,8 +97,6 @@ library TrustgraphsParamsValidator {
                 if (p.trustedSeeds[j] == seed) revert InvalidSeed(seed);
             }
         }
-
-        _validateGrowth(p);
     }
 
     /// Lane 2 is either absent or the strict v2 pair `[EAS domain, head domain]`. Head freshness is
@@ -114,23 +106,9 @@ library TrustgraphsParamsValidator {
         uint256 length = p.envelope0DomainSeparators.length;
         if (p.lane2MaxHeadAge != 0) revert Lane2NotSupported();
         if (length == 0) return;
-        if (
-            length != 2 || p.envelope0DomainSeparators[0] == bytes32(0)
-                || p.envelope0DomainSeparators[1] == bytes32(0)
-        ) revert Lane2NotSupported();
-    }
-
-    function _validateGrowth(ParamsCodec.Params memory p) private pure {
-        uint256 factor = (p.dampingFp * p.trustMultiplierFp) / PRECISION_SCALE;
-        if (factor <= PRECISION_SCALE) return;
-
-        uint256 growth = PRECISION_SCALE;
-        for (uint256 i = 0; i < p.maxIterations; i++) {
-            if (growth > type(uint256).max / factor) {
-                revert RankGrowthUnbounded(factor, p.maxIterations);
-            }
-            growth = (growth * factor) / PRECISION_SCALE;
-            if (growth > MAX_RANK_FP) revert RankGrowthUnbounded(factor, p.maxIterations);
+        if (length != 2 || p.envelope0DomainSeparators[0] == bytes32(0) || p.envelope0DomainSeparators[1] == bytes32(0))
+        {
+            revert Lane2NotSupported();
         }
     }
 }

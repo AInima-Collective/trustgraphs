@@ -5,6 +5,8 @@ pragma solidity ^0.8.22;
 /// @notice Frozen 39-word params codec for the `nostr-workspace` SP1 program.
 /// @dev Field order and widths mirror `nostr_workspace_core::params::params_encoded` exactly.
 library NostrWorkspaceParamsCodec {
+    uint256 internal constant PARAMS_SCHEMA_VERSION = 3;
+
     struct Limits {
         uint32 envelopeBytes;
         uint32 selectedHeads;
@@ -27,7 +29,6 @@ library NostrWorkspaceParamsCodec {
         uint256 dampingFp;
         uint256 toleranceFp;
         uint32 maxIterations;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         uint256 precisionScale;
@@ -61,12 +62,12 @@ library NostrWorkspaceParamsCodec {
 
     function encode(Params memory p) internal pure returns (bytes memory) {
         bytes memory rank = abi.encode(
+            PARAMS_SCHEMA_VERSION,
             p.version,
             p.outputDomain,
             p.dampingFp,
             p.toleranceFp,
             p.maxIterations,
-            p.trustMultiplierFp,
             p.trustShareFp,
             p.trustDecayFp,
             p.precisionScale,

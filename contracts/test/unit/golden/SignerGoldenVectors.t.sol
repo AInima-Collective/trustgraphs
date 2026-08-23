@@ -21,12 +21,14 @@ contract SignerGoldenVectorsTest is Test {
         json = vm.readFile("tests/golden/trust-graph.json");
     }
 
-    /// selectionParamsHash: keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetBps)).
+    /// selectionParamsHash: the five-word signer selection + liveness policy.
     function test_SelectionParamsHash() public view {
         bytes memory encoded = abi.encode(
             uint32(json.readUint(".signer.selection.topN")),
             uint32(json.readUint(".signer.selection.minThreshold")),
-            uint32(json.readUint(".signer.selection.targetThresholdBps"))
+            uint32(json.readUint(".signer.selection.targetThresholdBps")),
+            uint64(json.readUint(".signer.selection.maxInactiveBlocks")),
+            uint32(json.readUint(".signer.selection.minActivityWitnesses"))
         );
         assertEq(keccak256(encoded), json.readBytes32(".signer.selectionParamsHash"), "selectionParamsHash mismatch");
     }
@@ -41,7 +43,7 @@ contract SignerGoldenVectorsTest is Test {
         assertEq(_ozRoot(leaves), json.readBytes32(".signer.signerSetRoot"), "signerSetRoot mismatch");
     }
 
-    /// Signer journal: abi.encode(bytes32, uint64, bytes32, bytes32, bytes32, uint256, bytes32)
+    /// Signer journal: the 13-word score, activity, pre-state, result, and instance commitment
     /// and its keccak. This is the EXACT tuple `SignerSyncZkModule.submitSignerProof` rebuilds and
     /// verifies against (the final word is the M-3 instance/chain binding).
     function test_SignerJournalEncodingAndDigest() public view {
@@ -50,6 +52,12 @@ contract SignerGoldenVectorsTest is Test {
             uint64(json.readUint(".signer.journal.leafCount")),
             json.readBytes32(".signer.journal.paramsHash"),
             json.readBytes32(".signer.journal.selectionParamsHash"),
+            json.readBytes32(".signer.journal.activityAcc"),
+            uint64(json.readUint(".signer.journal.activityCount")),
+            uint64(json.readUint(".signer.journal.activityBlock")),
+            json.readBool(".signer.journal.wasInitialized"),
+            json.readBytes32(".signer.journal.currentSignerSetRoot"),
+            json.readUint(".signer.journal.currentThreshold"),
             json.readBytes32(".signer.journal.signerSetRoot"),
             json.readUint(".signer.journal.targetThreshold"),
             json.readBytes32(".signer.journal.instanceDomain")

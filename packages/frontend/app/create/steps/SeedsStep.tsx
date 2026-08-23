@@ -141,7 +141,7 @@ export const SeedsStep = ({
         label="Starting accounts"
         htmlFor="network-seeds"
         error={problem || listError}
-        hint={`Paste one address or ENS name per line, or several at once. Three to seven is a good start, and you can add up to ${MAX_SEEDS}.`}
+        hint={`Paste one address or ENS name per line, or several at once. Start with three to five independent accounts; you can add up to ${MAX_SEEDS}.`}
       >
         <Textarea
           id="network-seeds"
@@ -246,10 +246,13 @@ export const SeedsStep = ({
           bug, but it does mean a brand new network looks empty until the first
           vouches land.
         </Note>
-        {data.seeds.length === 1 && (
+        {data.seeds.length > 0 && data.seeds.length < 3 && (
           <Note tone="warning">
-            You have one starting account. If it goes quiet or loses its keys,
-            nobody can be pulled into the network. Two or three is safer.
+            Use at least three independent starting accounts for a real network.
+            Their starting balance is split equally, so one account creates a
+            large permanent floor even when nobody vouches for it. Three keeps
+            each founder below the 15% default governance quorum in the measured
+            40-member scenario; five lowers the floor further.
           </Note>
         )}
         <Note>

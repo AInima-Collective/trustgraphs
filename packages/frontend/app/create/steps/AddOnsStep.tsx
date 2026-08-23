@@ -207,9 +207,11 @@ export const AddOnsStep = ({
             <div className="text-sm">Keep Safe signers aligned with scores</div>
             <p className="text-xs text-muted-foreground max-w-xl">
               Install a separate zero-knowledge module that periodically makes
-              the highest-scoring accounts the Safe&apos;s recorded signers. The
-              sealed guard still prevents owner-signed execution; member voting
-              remains the authority for transactions.
+              the highest-scoring, recently active accounts the Safe&apos;s
+              recorded signers. Activity means casting your own authenticated
+              governance vote—not a heartbeat or a delegated vote. The sealed
+              guard still prevents owner-signed execution; member voting remains
+              the authority for transactions.
             </p>
           </div>
           <Switch
@@ -244,7 +246,7 @@ export const AddOnsStep = ({
               <input
                 className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
                 type="number"
-                min={1}
+                min={2}
                 max={64}
                 value={data.signerTopN}
                 onChange={(event) =>
@@ -256,7 +258,7 @@ export const AddOnsStep = ({
               <input
                 className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
                 type="number"
-                min={1}
+                min={2}
                 max={data.signerTopN}
                 value={data.signerMinThreshold}
                 onChange={(event) =>
@@ -287,6 +289,12 @@ export const AddOnsStep = ({
               accounts. The Safe threshold targets{' '}
               {data.signerTargetThresholdPct}% and never falls below{' '}
               {data.signerMinThreshold}.
+            </p>
+            <p className="text-xs text-muted-foreground sm:col-span-3">
+              Missing activity never removes anyone. Rotation starts only after
+              two distinct fresh witnesses; after the first rotation, both must
+              be current owners. This lets two live owners replace three inactive
+              owners without letting one account activate removals alone.
             </p>
           </div>
         )}

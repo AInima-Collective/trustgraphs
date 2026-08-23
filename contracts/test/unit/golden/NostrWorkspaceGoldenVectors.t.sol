@@ -120,7 +120,6 @@ contract NostrWorkspaceGoldenVectorsTest is Test {
         p.dampingFp = golden.readUint(".params.dampingFp");
         p.toleranceFp = golden.readUint(".params.toleranceFp");
         p.maxIterations = uint32(golden.readUint(".params.maxIterations"));
-        p.trustMultiplierFp = golden.readUint(".params.trustMultiplierFp");
         p.trustShareFp = golden.readUint(".params.trustShareFp");
         p.trustDecayFp = golden.readUint(".params.trustDecayFp");
         p.precisionScale = golden.readUint(".params.precisionScale");
@@ -128,7 +127,7 @@ contract NostrWorkspaceGoldenVectorsTest is Test {
         p.trustedSeedPubkeys = golden.readBytes32Array(".params.trustedSeedPubkeys");
         bytes memory community = golden.readBytes(".params.communityId");
         assembly ("memory-safe") {
-            mstore(add(p, 0x160), mload(add(community, 0x20)))
+            mstore(add(p, 0x140), mload(add(community, 0x20)))
         }
         p.instanceDomain = golden.readBytes32(".params.instanceDomain");
         p.relayPubkey = golden.readBytes32(".params.relayPubkey");

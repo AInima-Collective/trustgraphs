@@ -3,6 +3,13 @@
 Status: **IMPLEMENTED**. The capability is back as a permissionless SP1 proof, analogous to the ZK
 root producer.
 
+> **M3 liveness addendum (2026-08-23):** the original score-only selector below is superseded by
+> the shipped design in [`docs/build/signer-sync/architecture.md`](../docs/build/signer-sync/architecture.md).
+> Signer inputs now include the `MerkleGovModule` direct-vote activity hash chain and the Safe's
+> authenticated pre-rotation owner state. `selectionParamsHash` has five fields, and the journal
+> has thirteen words. Missing or insufficient activity preserves the exact owner set; it is never
+> interpreted as death. Historical sections remain here to explain the first implementation.
+
 ## Implementation summary (what was built)
 
 One deliberate deviation from the "recommended shape" below: rather than **fuse** signer selection
@@ -18,7 +25,7 @@ proof — acceptable for zero blast radius on the core.
 Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == frontend TS):
 
 - **`crates/pagerank-core`**: `SelectionParams`, `select_signers` (value-desc / addr-asc total
-  order, canonical ascending output, clamped threshold), `signer_set_root`, the 7-field
+  order, canonical ascending output, clamped threshold), `signer_set_root`, the historical 7-field
   `SignerJournal`, `encode::{selection_params_hash, signer_journal_encoded, signer_journal_digest}`,
   and `signer::compute_signers`. Signer journal digest `0xb81a2e5e…`, root `0x2a003402…`.
 - **`zk/program/src/signer.rs`** (2nd guest bin) + **`zk/prover`** signer subcommands
@@ -33,7 +40,8 @@ Delivered, all byte-identical (guest ELF == native Rust == Solidity golden == fr
   signer journal encoding/digest recomputed in Solidity and asserted equal to the Rust vectors.
 - **Deploy** (`contracts/script/DeployZodiacSafes.s.sol`): deploys + enables the module with the signer
   guest's dedicated verifier while reusing the MerkleSnapshot's accumulator, score-checkpoint
-  source, and params commitment; `selectionParamsHash` comes from `SELECTION_PARAMS_HASH`.
+  source, and params commitment. The M3 addendum supersedes its old environment-supplied hash with
+  the complete five-field on-chain policy tuple.
 - **Factory/app/operator** (`GovernedTrustgraphsFactory`, `SignerSyncModuleDeployer`, Ponder,
   create/settings UI, `zk/operator`): optional atomic installation with a distinct signer verifier
   and vkey, event-derived operator identity and selection tuple, indexed rotation receipts,

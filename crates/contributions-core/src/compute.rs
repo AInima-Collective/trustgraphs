@@ -43,9 +43,25 @@ pub struct GuestInput {
 /// Stage-1 reputation: the trust program's exact pipeline (reconcile → Trust-Aware PageRank),
 /// driven by the mirrored rep params. Returns normalized scores (sum ≈ S) for every node.
 pub fn reputation(trust_edges: &[RawEdge], p: &Params) -> BTreeMap<Address, U256> {
+    reputation_detailed(trust_edges, p).scores
+}
+
+fn reputation_detailed(trust_edges: &[RawEdge], p: &Params) -> pagerank::RankResult<Address> {
     let tp = trust_params(p);
     let graph = trust_reconcile::build_graph(trust_edges, &tp);
-    pagerank::calculate(&graph, &tp)
+    pagerank::calculate_generic_detailed(
+        &graph.nodes,
+        &graph.outgoing,
+        &pagerank::RankConfig {
+            damping_fp: tp.damping_fp,
+            tolerance_fp: tp.tolerance_fp,
+            max_iterations: tp.max_iterations,
+            trust_share_fp: tp.trust_share_fp,
+            trust_decay_fp: tp.trust_decay_fp,
+            scale: tp.precision_scale,
+            seeds: tp.trusted_seeds.iter().copied().collect(),
+        },
+    )
 }
 
 /// The `pagerank-core::Params` twin driving stage 1 (only the fields the trust pipeline
@@ -58,7 +74,6 @@ fn trust_params(p: &Params) -> pagerank_core::Params {
         max_iterations: p.max_iterations,
         min_weight_fp: p.min_weight_fp,
         max_weight_fp: p.max_weight_fp,
-        trust_multiplier_fp: p.trust_multiplier_fp,
         trust_share_fp: p.trust_share_fp,
         trust_decay_fp: p.trust_decay_fp,
         trusted_seeds: p.trusted_seeds.clone(),
@@ -255,7 +270,9 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     let params_hash = params::params_hash(&input.params);
 
     // 3. Stage 1: reputation over the vouch graph (trust pipeline, untouched).
-    let rep = reputation(&input.trust_edges, &input.params);
+    let rank_result = reputation_detailed(&input.trust_edges, &input.params);
+    let rank = rank_result.telemetry(input.params.max_iterations);
+    let rep = rank_result.scores;
 
     // 4. Reconcile the record log and apply the eligibility filters.
     let state = reconcile(&input.records, &input.params);
@@ -301,7 +318,7 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         recipient: input.binding.recipient,
         instance_domain: input.binding.instance_domain,
     };
-    ComputeResult { journal, scores: assigned, blob, cid: cid_str }
+    ComputeResult { journal, scores: assigned, blob, cid: cid_str, rank, signature_checks: 0 }
 }
 
 /// The journal digest the on-chain verifier binds.

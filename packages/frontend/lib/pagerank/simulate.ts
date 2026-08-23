@@ -41,7 +41,6 @@ export interface SimAttestation {
 
 export interface SimConfig {
   dampingFactor: number
-  trustMultiplier: number
   trustShare: number
   trustDecay: number
   maxIterations: number
@@ -150,7 +149,6 @@ export const simulateNetwork = (
     maxIterations: cfg.maxIterations,
     minWeightFp: toFp(cfg.minWeight),
     maxWeightFp: toFp(cfg.maxWeight),
-    trustMultiplierFp: toFp(cfg.trustMultiplier),
     trustShareFp: toFp(cfg.trustShare),
     trustDecayFp: toFp(cfg.trustDecay),
     trustedSeeds: cfg.trustedSeeds.map((a) => a.toLowerCase() as Hex),

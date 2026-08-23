@@ -54,7 +54,6 @@ export const displayParams = (window?: {
   maxIterations: 100,
   minWeightFp: 0n,
   maxWeightFp: 100n * S,
-  trustMultiplierFp: 3n * S,
   trustShareFp: S,
   trustDecayFp: (8n * S) / 10n,
   trustedSeeds: [],

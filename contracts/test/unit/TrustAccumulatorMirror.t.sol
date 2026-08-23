@@ -11,7 +11,8 @@ import {MockSnapshotView} from "../mocks/MockSnapshotView.sol";
 /// @title TrustAccumulatorMirrorTest
 /// @notice The contributions slot-A seam: the mirror freezes the TRUST accumulator's live
 ///         `(acc, leafCount)` into its OWN checkpoint array — never pushing into the trust
-///         accumulator, never reverting on a quiet lane (no `NoNewInputs` wedge).
+///         accumulator and never rejecting a quiet lane. Freshness is checked across both lanes
+///         by `MerkleSnapshot.trigger()`, not independently by either accumulator.
 contract TrustAccumulatorMirrorTest is Test {
     TestAccumulator trust;
     TrustAccumulatorMirror mirror;
@@ -66,8 +67,7 @@ contract TrustAccumulatorMirrorTest is Test {
         assertEq(c.blockNumber, 77);
     }
 
-    /// The whole point of the mirror: a quiet vouch graph must not wedge round triggers. The real
-    /// accumulator reverts `NoNewInputs` on an unchanged state; the mirror never does.
+    /// The whole point of the mirror: a quiet vouch graph must not wedge round triggers.
     function test_QuietLaneCheckpointDoesNotWedge() public {
         _foldOne(1);
         uint256 first = mirror.checkpoint();
@@ -83,12 +83,15 @@ contract TrustAccumulatorMirrorTest is Test {
         assertEq(a.acc, b.acc, "unchanged lane freezes the same acc");
         assertEq(a.leafCount, b.leafCount);
 
-        // Contrast: the wrapped accumulator itself WOULD wedge on the second checkpoint.
+        // The wrapped accumulator now follows the same rule. A strict lane-2 append may justify a
+        // new snapshot while lane 1 is byte-identical, so only the snapshot can decide whether the
+        // combined input moved.
         vm.prank(address(trustSnapshot));
-        trust.checkpoint();
+        uint256 trustFirst = trust.checkpoint();
         vm.prank(address(trustSnapshot));
-        vm.expectRevert(IAttestationAccumulator.NoNewInputs.selector);
-        trust.checkpoint();
+        uint256 trustSecond = trust.checkpoint();
+        assertEq(trustFirst, 0);
+        assertEq(trustSecond, 1);
     }
 
     /// Mirror checkpoints are local: the trust accumulator's own checkpoint history is untouched.

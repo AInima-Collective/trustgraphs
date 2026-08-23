@@ -70,7 +70,6 @@ const presentAction = (action: DisplayProposalAction): ActionPresentation => {
       evidenceURI: update.evidenceURI,
       resultingSettings: [
         `Damping: ${formatFixed(update.proposed.dampingFp)}`,
-        `Trusted-account multiplier: ${formatFixed(update.proposed.trustMultiplierFp)}`,
         `Trusted accounts: ${update.proposed.trustedSeeds.length}`,
         `Maximum iterations: ${update.proposed.maxIterations}`,
       ],

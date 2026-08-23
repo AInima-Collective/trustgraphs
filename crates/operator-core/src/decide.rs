@@ -11,6 +11,7 @@ use crate::policy::{Policy, Spend};
 use crate::types::{
     Action, CheckpointRef, HoldReason, IdleReason, InFlightState, InstanceState, SkipReason,
 };
+use crate::work::{CapabilityProfile, WorkProfile};
 
 /// Decide what to do with one instance right now.
 pub fn plan(state: &InstanceState, policy: &Policy, spend: Spend) -> Action {
@@ -18,7 +19,16 @@ pub fn plan(state: &InstanceState, policy: &Policy, spend: Spend) -> Action {
     if !policy.supported_programs.contains(&state.program) {
         return Action::Skip(SkipReason::UnsupportedProgram(state.program));
     }
-    let cycles = state.size.estimated_cycles(policy.cycles_per_input, policy.base_cycles);
+    let raw_bound = WorkProfile::from_raw_bounds(state.program, state.size);
+    if let Err(violation) = CapabilityProfile::default().check(raw_bound) {
+        return Action::Skip(SkipReason::CapabilityExceeded {
+            profile_version: violation.profile_version,
+            dimension: violation.dimension,
+            observed: violation.observed,
+            limit: violation.limit,
+        });
+    }
+    let cycles = state.size.estimated_cycles(state.program);
     if cycles > policy.cycle_limit {
         return Action::Skip(SkipReason::TooLarge {
             estimated_cycles: cycles,

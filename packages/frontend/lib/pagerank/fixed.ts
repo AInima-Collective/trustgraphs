@@ -10,6 +10,15 @@
 /** The guest's ceiling: results at or above this do not exist in U256. */
 const U256_MAX = (1n << 256n) - 1n
 
+/** Checked U256 addition, matching Rust's `checked_add(...).expect(...)`. */
+export const checkedAdd = (a: bigint, b: bigint, context: string): bigint => {
+  const sum = a + b
+  if (sum > U256_MAX) {
+    throw new RangeError(`${context} overflowed 256 bits`)
+  }
+  return sum
+}
+
 /**
  * `(a * b) / d`, truncating toward zero (matches U256 integer division for non-negative operands).
  * Callers guard `d != 0` explicitly, matching the Rust early-exits.

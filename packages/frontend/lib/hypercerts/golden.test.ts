@@ -74,10 +74,10 @@ const p = g.params
 const paramsHash = (): Hex =>
   keccak256(
     concat([
+      wordU32(3),
       wordU256(BigInt(p.dampingFp)),
       wordU256(BigInt(p.toleranceFp)),
       wordU32(Number(p.maxIterations)),
-      wordU256(BigInt(p.trustMultiplierFp)),
       wordU256(BigInt(p.trustShareFp)),
       wordU256(BigInt(p.trustDecayFp)),
       wordU256(BigInt(p.precisionScale)),
@@ -170,7 +170,6 @@ const rcParams: HypercertsParams = {
   dampingFp: BigInt(p.dampingFp),
   toleranceFp: BigInt(p.toleranceFp),
   maxIterations: Number(p.maxIterations),
-  trustMultiplierFp: BigInt(p.trustMultiplierFp),
   trustShareFp: BigInt(p.trustShareFp),
   trustDecayFp: BigInt(p.trustDecayFp),
   precisionScale: BigInt(p.precisionScale),

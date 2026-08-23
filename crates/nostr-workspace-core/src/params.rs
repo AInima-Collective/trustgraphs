@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use zk_core::words::{word_u256, word_u32, word_u64, word_u8};
 
 pub const PARAMS_VERSION: u32 = 1;
+pub const PARAMS_SCHEMA_VERSION: u32 = 3;
 pub const PRECISION_SCALE: u64 = 1_000_000_000_000_000_000;
 pub const MAX_ITERATIONS: u32 = 500;
 pub const MAX_TRUSTED_SEEDS: usize = 64;
@@ -25,7 +26,6 @@ pub struct Params {
     pub damping_fp: U256,
     pub tolerance_fp: U256,
     pub max_iterations: u32,
-    pub trust_multiplier_fp: U256,
     pub trust_share_fp: U256,
     pub trust_decay_fp: U256,
     pub precision_scale: U256,
@@ -81,28 +81,12 @@ impl Params {
             || self.damping_fp.is_zero()
             || self.damping_fp >= scale
             || self.tolerance_fp.is_zero()
+            || self.tolerance_fp < U256::from(1_000_000u64)
             || self.tolerance_fp > scale / U256::from(1_000u64)
             || self.trust_share_fp > scale
             || self.trust_decay_fp > scale
-            || self.trust_multiplier_fp > scale * U256::from(100u64)
         {
             return Err(ParamsError::Rank);
-        }
-        let factor = pagerank_core::fixed::fp_mul(
-            self.damping_fp,
-            self.trust_multiplier_fp,
-            self.precision_scale,
-        );
-        if factor > scale {
-            let max_rank = U256::MAX / scale;
-            let threshold = max_rank * scale / factor;
-            let mut growth = scale;
-            for _ in 0..self.max_iterations {
-                if growth > threshold {
-                    return Err(ParamsError::Rank);
-                }
-                growth = pagerank_core::fixed::fp_mul(growth, factor, scale);
-            }
         }
         if self.community_id == [0; 16]
             || self.instance_domain == [0; 32]
@@ -179,12 +163,12 @@ fn word_bytes16(value: &[u8; 16]) -> [u8; 32] {
 /// Frozen 39-word static ABI tuple. The Solidity and TypeScript codecs use this exact word order.
 pub fn params_encoded(params: &Params) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(32 * 39);
+    bytes.extend_from_slice(&word_u32(PARAMS_SCHEMA_VERSION));
     bytes.extend_from_slice(&word_u32(params.version));
     bytes.extend_from_slice(params.output_domain.as_slice());
     bytes.extend_from_slice(&word_u256(params.damping_fp));
     bytes.extend_from_slice(&word_u256(params.tolerance_fp));
     bytes.extend_from_slice(&word_u32(params.max_iterations));
-    bytes.extend_from_slice(&word_u256(params.trust_multiplier_fp));
     bytes.extend_from_slice(&word_u256(params.trust_share_fp));
     bytes.extend_from_slice(&word_u256(params.trust_decay_fp));
     bytes.extend_from_slice(&word_u256(params.precision_scale));

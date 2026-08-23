@@ -15,7 +15,8 @@ the deployment script.
 Set the ZK deployment parameters in your environment (see `contracts/deploy/env.ts` and `.env.example`):
 
 - `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- trust-graph vkey`)
-- `SP1_SIGNER_PROGRAM_VKEY` / `SELECTION_PARAMS_HASH` — the signer-sync equivalents (see the
+- `SP1_SIGNER_PROGRAM_VKEY` — the signer-sync vkey (the five selection/liveness fields are stored
+  individually and hashed by the deployed module; see the
   [signer-sync runbook](./signer-sync/runbook.md))
 - `SP1_VERIFIER_GATEWAY` — the canonical SP1 verifier gateway on the target chain
 - `NETWORK_EPOCH_LENGTH` — a nonzero block count between score checkpoints for each network

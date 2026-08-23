@@ -1,0 +1,20 @@
+[package]
+name = "graph-reputation-core"
+version = "0.9.3"
+edition = "2021"
+license = "MIT"
+authors = ["Lay3r Labs Team"]
+repository = "https://github.com/JakeHartnell/trustgraphs"
+rust-version = "1.87.0"
+publish = false
+
+[dependencies]
+alloy-primitives = "1.0.0"
+thiserror = "1.0.47"
+
+[dev-dependencies]
+serde_json = "1.0.140"
+
+# This is a deliberately standalone research reproduction, not a member of the
+# production workspace rooted at the repository Cargo.toml.
+[workspace]

@@ -6,8 +6,11 @@
 //! float-free and deterministic so the SP1 guest, host, and browser all agree byte-for-byte.
 
 use crate::{compute, encode, merkle};
-use crate::{GuestInput, SelectionParams, SignerComputeResult, SignerInput, SignerJournal};
-use alloy_primitives::{Address, U256};
+use crate::{
+    GuestInput, SelectionParams, SignerActivity, SignerComputeResult, SignerInput, SignerJournal,
+};
+use alloy_primitives::{keccak256, Address, B256, U256};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// `ceil(a / b)` for `b > 0`.
 #[inline]
@@ -60,6 +63,88 @@ pub fn signer_set_root(sorted_signers: &[Address]) -> alloy_primitives::B256 {
     merkle::seed_set_root(sorted_signers)
 }
 
+/// Fold one authenticated direct-governance activity record. Mirrors
+/// `MerkleGovModule._recordDirectActivity` exactly.
+pub fn fold_activity(previous: B256, sequence: u64, record: &SignerActivity) -> B256 {
+    let mut encoded = Vec::with_capacity(32 * 5);
+    encoded.extend_from_slice(previous.as_slice());
+    encoded.extend_from_slice(&encode::word_u64(sequence));
+    encoded.extend_from_slice(&encode::word_addr(record.account));
+    encoded.extend_from_slice(&encode::word_u256(record.proposal_id));
+    encoded.extend_from_slice(&encode::word_u64(record.block_number));
+    keccak256(encoded)
+}
+
+fn activity_selection(
+    scores: &[(Address, U256)],
+    input: &SignerInput,
+) -> (Vec<Address>, U256, bool) {
+    let mut acc = B256::ZERO;
+    let mut latest = BTreeMap::<Address, u64>::new();
+    for (index, record) in input.activity.iter().enumerate() {
+        let sequence = u64::try_from(index + 1).expect("activity witness length exceeds u64");
+        assert!(
+            record.block_number <= input.activity_checkpoint.block_number,
+            "activity record after checkpoint"
+        );
+        acc = fold_activity(acc, sequence, record);
+        latest
+            .entry(record.account)
+            .and_modify(|block| *block = (*block).max(record.block_number))
+            .or_insert(record.block_number);
+    }
+    assert_eq!(
+        input.activity_checkpoint.count,
+        u64::try_from(input.activity.len()).expect("activity witness length exceeds u64"),
+        "activity count mismatch"
+    );
+    assert_eq!(input.activity_checkpoint.acc, acc, "activity accumulator mismatch");
+
+    let mut current = input.current_signers.clone();
+    current.sort();
+    current.dedup();
+    assert!(!current.is_empty(), "current Safe owner set is empty");
+    assert_eq!(current.len(), input.current_signers.len(), "duplicate current Safe owner");
+    assert!(
+        input.current_threshold >= U256::from(1u8)
+            && input.current_threshold <= U256::from(current.len()),
+        "invalid current Safe threshold"
+    );
+
+    // An empty chain is absence, not evidence of inactivity. Return the exact pre-rotation state.
+    if input.activity_checkpoint.count == 0 {
+        return (current, input.current_threshold, false);
+    }
+
+    let cutoff =
+        input.activity_checkpoint.block_number.saturating_sub(input.selection.max_inactive_blocks);
+    let fresh = latest
+        .iter()
+        .filter_map(|(account, block)| (*block >= cutoff).then_some(*account))
+        .collect::<BTreeSet<_>>();
+    let positive_scores = scores
+        .iter()
+        .filter_map(|(account, value)| (*value != U256::ZERO).then_some(*account))
+        .collect::<BTreeSet<_>>();
+    let witness_count = if input.was_initialized {
+        current.iter().filter(|account| fresh.contains(*account)).count()
+    } else {
+        fresh.intersection(&positive_scores).count()
+    };
+    let minimum = input.selection.min_activity_witnesses as usize;
+    if minimum < 2 || witness_count < minimum {
+        return (current, input.current_threshold, false);
+    }
+
+    let active_scores =
+        scores.iter().copied().filter(|(account, _)| fresh.contains(account)).collect::<Vec<_>>();
+    let (signers, threshold) = select_signers(&active_scores, &input.selection);
+    if signers.len() < minimum {
+        return (current, input.current_threshold, false);
+    }
+    (signers, threshold, true)
+}
+
 /// Run the full signer-sync pipeline: folded edges + params + selection → signer journal + owner set.
 /// Deterministic and float-free.
 pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
@@ -80,7 +165,8 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
     });
 
     let selection_params_hash = encode::selection_params_hash(&input.selection);
-    let (signers, target_threshold) = select_signers(&base.scores, &input.selection);
+    let (signers, target_threshold, activity_applied) = activity_selection(&base.scores, input);
+    let current_signer_set_root = signer_set_root(&input.current_signers);
     let signer_set_root = signer_set_root(&signers);
 
     let journal = SignerJournal {
@@ -88,11 +174,17 @@ pub fn compute_signers(input: &SignerInput) -> SignerComputeResult {
         leaf_count: base.journal.leaf_count,
         params_hash: base.journal.params_hash,
         selection_params_hash,
+        activity_acc: input.activity_checkpoint.acc,
+        activity_count: input.activity_checkpoint.count,
+        activity_block: input.activity_checkpoint.block_number,
+        was_initialized: input.was_initialized,
+        current_signer_set_root,
+        current_threshold: input.current_threshold,
         signer_set_root,
         target_threshold,
         instance_domain: input.instance_domain,
     };
-    SignerComputeResult { journal, signers, target_threshold }
+    SignerComputeResult { journal, signers, target_threshold, activity_applied, rank: base.rank }
 }
 
 /// The signer journal digest the on-chain `SignerSyncZkModule` binds.
@@ -103,10 +195,49 @@ pub fn signer_journal_digest(j: &SignerJournal) -> alloy_primitives::B256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ActivityCheckpoint, SignerActivity};
     use alloy_primitives::U256;
 
     fn addr(b: u8) -> Address {
         Address::from([b; 20])
+    }
+
+    fn selection(top_n: u32, min_threshold: u32, target_threshold_bps: u32) -> SelectionParams {
+        SelectionParams {
+            top_n,
+            min_threshold,
+            target_threshold_bps,
+            max_inactive_blocks: 151_200,
+            min_activity_witnesses: 2,
+        }
+    }
+
+    fn liveness_input(
+        current_signers: Vec<Address>,
+        current_threshold: u64,
+        was_initialized: bool,
+        activity: Vec<SignerActivity>,
+        checkpoint_block: u64,
+    ) -> SignerInput {
+        let acc = activity.iter().enumerate().fold(B256::ZERO, |head, (index, record)| {
+            fold_activity(head, (index + 1) as u64, record)
+        });
+        SignerInput {
+            edges: Vec::new(),
+            params: crate::tests::default_params(),
+            selection: selection(5, 2, 5000),
+            activity_checkpoint: ActivityCheckpoint {
+                acc,
+                count: activity.len() as u64,
+                block_number: checkpoint_block,
+            },
+            activity_checkpoint_id: 0,
+            activity,
+            current_signers,
+            current_threshold: U256::from(current_threshold),
+            was_initialized,
+            instance_domain: B256::ZERO,
+        }
     }
 
     #[test]
@@ -118,7 +249,7 @@ mod tests {
             (addr(0x33), U256::from(30u64)),
             (addr(0x44), U256::from(20u64)),
         ];
-        let sp = SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 };
+        let sp = selection(3, 1, 5000);
         let (signers, threshold) = select_signers(&scores, &sp);
         assert_eq!(signers, vec![addr(0x22), addr(0x33), addr(0x44)]);
         // ceil(5000*3/10000) = ceil(1.5) = 2
@@ -129,7 +260,7 @@ mod tests {
     fn tie_break_is_address_ascending() {
         // a and b both have value 10; top_n 1 must pick the lower address deterministically.
         let scores = vec![(addr(0x44), U256::from(10u64)), (addr(0x11), U256::from(10u64))];
-        let sp = SelectionParams { top_n: 1, min_threshold: 1, target_threshold_bps: 5000 };
+        let sp = selection(1, 1, 5000);
         let (signers, _) = select_signers(&scores, &sp);
         assert_eq!(signers, vec![addr(0x11)]);
     }
@@ -138,20 +269,20 @@ mod tests {
     fn threshold_clamped_to_min_and_count() {
         let scores = vec![(addr(0x11), U256::from(10u64)), (addr(0x22), U256::from(20u64))];
         // target 10% of 2 = 0.2 → ceil 1, but min_threshold 2 → clamp up to 2 (== n).
-        let sp = SelectionParams { top_n: 5, min_threshold: 2, target_threshold_bps: 1000 };
+        let sp = selection(5, 2, 1000);
         let (signers, threshold) = select_signers(&scores, &sp);
         assert_eq!(signers.len(), 2);
         assert_eq!(threshold, U256::from(2u64));
 
         // min_threshold larger than count clamps down to count.
-        let sp2 = SelectionParams { top_n: 5, min_threshold: 9, target_threshold_bps: 1000 };
+        let sp2 = selection(5, 9, 1000);
         let (_, threshold2) = select_signers(&scores, &sp2);
         assert_eq!(threshold2, U256::from(2u64));
     }
 
     #[test]
     fn empty_scores_yields_empty_set_zero_threshold() {
-        let sp = SelectionParams { top_n: 5, min_threshold: 1, target_threshold_bps: 5000 };
+        let sp = selection(5, 1, 5000);
         let (signers, threshold) = select_signers(&[], &sp);
         assert!(signers.is_empty());
         assert_eq!(threshold, U256::ZERO);
@@ -160,10 +291,75 @@ mod tests {
     #[test]
     fn fewer_accounts_than_top_n() {
         let scores = vec![(addr(0x11), U256::from(10u64))];
-        let sp = SelectionParams { top_n: 5, min_threshold: 1, target_threshold_bps: 6000 };
+        let sp = selection(5, 1, 6000);
         let (signers, threshold) = select_signers(&scores, &sp);
         assert_eq!(signers, vec![addr(0x11)]);
         // ceil(6000*1/10000)=1, clamp [1,1] = 1
         assert_eq!(threshold, U256::from(1u64));
+    }
+
+    #[test]
+    fn absent_activity_preserves_exact_safe_state() {
+        let input = liveness_input(vec![addr(1), addr(2), addr(3)], 2, true, Vec::new(), 1_000);
+        let scores = vec![(addr(4), U256::from(100)), (addr(5), U256::from(90))];
+        let (signers, threshold, applied) = activity_selection(&scores, &input);
+        assert_eq!(signers, vec![addr(1), addr(2), addr(3)]);
+        assert_eq!(threshold, U256::from(2));
+        assert!(!applied);
+    }
+
+    #[test]
+    fn one_current_owner_cannot_activate_removals() {
+        let activity = vec![
+            SignerActivity { account: addr(1), proposal_id: U256::from(1), block_number: 1_000 },
+            SignerActivity { account: addr(9), proposal_id: U256::from(1), block_number: 1_000 },
+        ];
+        let input = liveness_input(vec![addr(1), addr(2), addr(3)], 2, true, activity, 1_000);
+        let scores = vec![(addr(1), U256::from(100)), (addr(9), U256::from(90))];
+        let (signers, threshold, applied) = activity_selection(&scores, &input);
+        assert_eq!(signers, vec![addr(1), addr(2), addr(3)]);
+        assert_eq!(threshold, U256::from(2));
+        assert!(!applied);
+    }
+
+    #[test]
+    fn two_live_owners_replace_three_dead_with_lower_ranked_active_member() {
+        let activity = vec![
+            SignerActivity { account: addr(1), proposal_id: U256::from(7), block_number: 999 },
+            SignerActivity { account: addr(2), proposal_id: U256::from(7), block_number: 1_000 },
+            SignerActivity { account: addr(6), proposal_id: U256::from(7), block_number: 1_000 },
+        ];
+        let input = liveness_input(
+            vec![addr(1), addr(2), addr(3), addr(4), addr(5)],
+            3,
+            true,
+            activity,
+            1_000,
+        );
+        let scores = vec![
+            (addr(1), U256::from(100)),
+            (addr(2), U256::from(90)),
+            (addr(3), U256::from(80)),
+            (addr(4), U256::from(70)),
+            (addr(5), U256::from(60)),
+            (addr(6), U256::from(10)),
+        ];
+        let (signers, threshold, applied) = activity_selection(&scores, &input);
+        assert_eq!(signers, vec![addr(1), addr(2), addr(6)]);
+        assert_eq!(threshold, U256::from(2));
+        assert!(applied);
+    }
+
+    #[test]
+    #[should_panic(expected = "activity accumulator mismatch")]
+    fn omitted_activity_record_cannot_manufacture_absence() {
+        let activity = vec![SignerActivity {
+            account: addr(1),
+            proposal_id: U256::from(1),
+            block_number: 1_000,
+        }];
+        let mut input = liveness_input(vec![addr(1), addr(2)], 2, true, activity, 1_000);
+        input.activity_checkpoint.acc = B256::from([0x55; 32]);
+        let _ = activity_selection(&[(addr(1), U256::from(1))], &input);
     }
 }

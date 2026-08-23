@@ -25,10 +25,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
@@ -134,8 +131,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
                     || logs[i].topics[0] != TrustgraphsFactory.OffchainEasLaneCreated.selector
             ) continue;
             assertEq(logs[i].topics[1], instanceId);
-            (address emittedRegistry, bytes32 domain, uint64 cap) =
-                abi.decode(logs[i].data, (address, bytes32, uint64));
+            (address emittedRegistry, bytes32 domain, uint64 cap) = abi.decode(logs[i].data, (address, bytes32, uint64));
             assertEq(emittedRegistry, address(anchors));
             assertEq(domain, anchors.easDomainSeparator());
             assertEq(cap, config.maxTotalInputs);
@@ -180,11 +176,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertLt(address(factory).code.length, 24_576);
         assertLt(address(easRegistryDeployer).code.length, 24_576);
         assertGt(24_576 - address(factory).code.length, 3_000, "base factory runtime margin");
-        assertGt(
-            24_576 - address(easRegistryDeployer).code.length,
-            3_000,
-            "strict registry deployer runtime margin"
-        );
+        assertGt(24_576 - address(easRegistryDeployer).code.length, 3_000, "strict registry deployer runtime margin");
     }
 
     function _offchainConfig() internal pure returns (TrustgraphsFactory.OffchainEasConfig memory config) {
@@ -218,14 +210,15 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         (bytes32 instanceId, address snapshot,,,) = sourceFactory.createInstance(_args("composable"));
 
-        CompositionSourceAdapter adapter = new CompositionSourceAdapterFactory().create(
-            IInstanceRegistry(address(registry)),
-            instanceId,
-            bytes32(uint256(1)),
-            keccak256("weighted-allocation-v1"),
-            keccak256("allocation"),
-            keccak256("reviewed deployment packet")
-        );
+        CompositionSourceAdapter adapter = new CompositionSourceAdapterFactory()
+            .create(
+                IInstanceRegistry(address(registry)),
+                instanceId,
+                bytes32(uint256(1)),
+                keccak256("weighted-allocation-v1"),
+                keccak256("allocation"),
+                keccak256("reviewed deployment packet")
+            );
         assertEq(adapter.snapshot(), snapshot, "adapter pinned the minted snapshot");
         assertEq(adapter.programVKey(), keccak256("source vkey"), "adapter authenticated the program key");
     }
@@ -383,7 +376,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(registry.getInstance(c.instanceId).paramsHash, versionOneHash);
     }
 
-    function test_ControllerRejectsNoopInvalidGrowthAndIdentityChanges() public {
+    function test_ControllerRejectsNoopInvalidToleranceAndIdentityChanges() public {
         Created memory c = _create(_args("validation"));
         TrustgraphsParamsController controller = TrustgraphsParamsController(c.controller);
         ParamsCodec.Params memory next = controller.getCurrentParams();
@@ -399,13 +392,9 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         controller.updateParams(next, "ipfs://unauthorized");
 
         next = controller.getCurrentParams();
-        next.dampingFp = 9e17;
-        next.trustMultiplierFp = 100e18;
-        next.maxIterations = 500;
+        next.toleranceFp = 1e6 - 1;
         vm.prank(c.admin);
-        vm.expectRevert(
-            abi.encodeWithSelector(TrustgraphsParamsValidator.RankGrowthUnbounded.selector, uint256(90e18), uint32(500))
-        );
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidTolerance.selector, uint256(1e6 - 1)));
         controller.updateParams(next, "");
 
         next = controller.getCurrentParams();
@@ -537,14 +526,9 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     ) public {
         ParamsCodec.Params memory p = _baseParams();
         p.dampingFp = bound(dampingFp, 1, factory.PRECISION_SCALE() - 1);
-        p.toleranceFp = bound(toleranceFp, 1, factory.MAX_TOLERANCE_FP());
+        p.toleranceFp = bound(toleranceFp, factory.MIN_TOLERANCE_FP(), factory.MAX_TOLERANCE_FP());
         p.maxIterations = uint32(bound(uint256(maxIterations), 1, factory.MAX_ITERATIONS()));
         p.totalPool = bound(totalPool, 1, type(uint128).max);
-        // Ranks must not be able to grow, or `_validateGrowth` legitimately rejects the pairing at
-        // high iteration counts (see `test_RejectsRunawayGrowth`); this fuzz is about hash parity,
-        // not about the growth bound, so pin a multiplier that is safe at any damping.
-        p.trustMultiplierFp = 1e18;
-
         Created memory c = _create(_args("fuzz-params", p));
 
         ParamsCodec.Params memory expected = p;
@@ -918,7 +902,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(
             TrustgraphsFactory.InstanceCreated.selector,
             keccak256(
-                "InstanceCreated(bytes32,address,address,string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))"
+                "InstanceCreated(bytes32,address,address,string,string,address,bytes32,address,address,address,uint64,(uint256,uint256,uint32,uint256,uint256,uint256,uint256,address[],uint256,uint256,bytes32,uint32,bytes32[],uint64,address,uint64))"
             ),
             "InstanceCreated is frozen"
         );

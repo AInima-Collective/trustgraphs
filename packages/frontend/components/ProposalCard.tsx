@@ -36,7 +36,7 @@ interface ProposalCardProps {
   proposal: ProposalCore
   actions: ProposalAction[]
   votes?: ProposalVoteRow[]
-  /** Quorum as a fraction of total voting power (0.04 = 4%). */
+  /** Quorum as a fraction of total voting power (0.10 = 10%). */
   quorum?: number
   currentBlockNumber?: bigint
   userVotingPower?: string

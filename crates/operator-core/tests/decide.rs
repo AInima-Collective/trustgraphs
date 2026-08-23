@@ -57,7 +57,13 @@ fn healthy() -> InstanceState {
         paused: false,
         rotation_pending: false,
         live_commitments: commitments(3),
-        size: InstanceSize { leaf_count: 3, anchor_count: 0, authenticated_cycles: None },
+        size: InstanceSize {
+            leaf_count: 3,
+            anchor_count: 0,
+            max_iterations: 100,
+            seed_count: 0,
+            authenticated_cycles: None,
+        },
         live_input_work: 3,
         input_capacity: operator_core::policy::MAX_PRICED_INPUTS,
         in_flight: None,
@@ -145,6 +151,10 @@ fn an_abandoned_ready_checkpoint_advances_without_resurrecting_its_proof() {
                 vk_hash: B256::from([0x88; 32]),
                 at: 1,
                 cost_cents: 100,
+                cost_model_version: 1,
+                estimated_cycles: 1_000_000_000,
+                max_iterations: 100,
+                iterations_run: 17,
             })
             .unwrap();
         journal.append(Record::Requested { key, request_id, at: 2 }).unwrap();
@@ -475,43 +485,40 @@ fn an_unsupported_program_is_skipped_before_anything_else_is_considered() {
     );
 }
 
-/// The operator's refusal boundary and the vault's top fee band must be the SAME number, or we
-/// price proofs we will not produce (or produce proofs nobody will pay for). The Solidity half of
-/// this assertion is `test_TheTopBandAndTheOperatorsCycleLimitAgree`.
+/// Vault fee bands price checkpoints; they are not a claim about this particular host's capacity.
 #[test]
-fn the_refusal_boundary_is_exactly_the_vaults_top_priced_band() {
+fn the_vaults_top_band_does_not_override_operator_capability() {
     use operator_core::policy::MAX_PRICED_INPUTS;
     let p = curated();
     let mut s = healthy();
 
-    s.size =
-        InstanceSize { leaf_count: MAX_PRICED_INPUTS, anchor_count: 0, authenticated_cycles: None };
-    assert_eq!(
-        plan(&s, &p, Spend::default()),
-        Action::Prove { checkpoint_id: 0 },
-        "the largest priced instance must still be provable"
-    );
-
     s.size = InstanceSize {
-        leaf_count: MAX_PRICED_INPUTS + 1,
+        leaf_count: MAX_PRICED_INPUTS,
         anchor_count: 0,
+        max_iterations: 100,
+        seed_count: 0,
         authenticated_cycles: None,
     };
     assert!(
-        matches!(plan(&s, &p, Spend::default()), Action::Skip(SkipReason::TooLarge { .. })),
-        "one input past the top band must be refused"
+        matches!(
+            plan(&s, &p, Spend::default()),
+            Action::Skip(SkipReason::CapabilityExceeded { .. })
+        ),
+        "a priced checkpoint may still exceed this host's published capability"
     );
-
-    // And the derivation is the thing that keeps them equal, not a coincidence of two literals.
-    assert_eq!(p.cycle_limit, p.base_cycles + MAX_PRICED_INPUTS * p.cycles_per_input);
 }
 
 #[test]
 fn composition_uses_authenticated_work_not_its_small_source_count() {
     let mut state = healthy();
     state.program = Program::Composition;
-    state.size =
-        InstanceSize { leaf_count: 2, anchor_count: 0, authenticated_cycles: Some(222_311_301) };
+    state.size = InstanceSize {
+        leaf_count: 2,
+        anchor_count: 0,
+        max_iterations: 1,
+        seed_count: 0,
+        authenticated_cycles: Some(222_311_301),
+    };
     let mut policy = curated();
     policy.supported_programs.insert(Program::Composition);
     policy.cycle_limit = 222_311_300;
@@ -530,15 +537,18 @@ fn composition_uses_authenticated_work_not_its_small_source_count() {
 #[test]
 fn an_oversized_instance_is_refused_before_the_request_not_after_the_timeout() {
     let mut s = healthy();
-    s.size = InstanceSize { leaf_count: 10_000_000, anchor_count: 0, authenticated_cycles: None };
+    s.size = InstanceSize {
+        leaf_count: 10_000_000,
+        anchor_count: 0,
+        max_iterations: 100,
+        seed_count: 0,
+        authenticated_cycles: None,
+    };
     let p = curated();
-    match plan(&s, &p, Spend::default()) {
-        Action::Skip(SkipReason::TooLarge { estimated_cycles, limit }) => {
-            assert!(estimated_cycles > limit);
-            assert_eq!(limit, p.cycle_limit);
-        }
-        other => panic!("expected TooLarge, got {other:?}"),
-    }
+    assert!(matches!(
+        plan(&s, &p, Spend::default()),
+        Action::Skip(SkipReason::CapabilityExceeded { .. })
+    ));
 }
 
 #[test]
@@ -552,11 +562,13 @@ fn checkpointed_lane2_work_not_raw_anchor_count_drives_refusal() {
     s.size = InstanceSize {
         leaf_count: 0,
         anchor_count: s.checkpoints[0].work_count,
+        max_iterations: 100,
+        seed_count: 0,
         authenticated_cycles: None,
     };
     assert!(matches!(
         plan(&s, &curated(), Spend::default()),
-        Action::Skip(SkipReason::TooLarge { .. })
+        Action::Skip(SkipReason::CapabilityExceeded { .. })
     ));
 }
 

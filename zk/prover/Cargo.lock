@@ -4182,6 +4182,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "operator-core"
+version = "0.9.3"
+dependencies = [
+ "alloy-primitives",
+ "composition-core",
+ "contributions-core",
+ "pagerank-core",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "weighted-prior-core",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7683,6 +7697,7 @@ dependencies = [
  "k256",
  "nostr-envelope",
  "nostr-workspace-core",
+ "operator-core",
  "pagerank-core",
  "postgres",
  "reqwest",

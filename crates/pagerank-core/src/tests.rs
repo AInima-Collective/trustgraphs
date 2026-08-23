@@ -1,6 +1,9 @@
 //! Shared test helpers + end-to-end determinism / invariant tests.
 
 use crate::compute::compute;
+use crate::pagerank;
+use crate::pagerank_oracle;
+use crate::pagerank_test_support::{generated_case, DIFFERENTIAL_SEEDS};
 use crate::{GuestInput, Params, RawEdge};
 use alloy_primitives::{Address, B256, U256};
 
@@ -21,9 +24,8 @@ pub(crate) fn default_params() -> Params {
         damping_fp: fp(85, 100),                    // 0.85
         tolerance_fp: s / U256::from(1_000_000u64), // 1e-6
         max_iterations: 100,
-        min_weight_fp: U256::ZERO,                 // 0
-        max_weight_fp: U256::from(100u64) * s,     // 100
-        trust_multiplier_fp: U256::from(2u64) * s, // unused when no seeds
+        min_weight_fp: U256::ZERO,             // 0
+        max_weight_fp: U256::from(100u64) * s, // 100
         trust_share_fp: U256::ZERO,
         trust_decay_fp: U256::ZERO,
         trusted_seeds: vec![],
@@ -45,9 +47,8 @@ pub(crate) fn default_params() -> Params {
 pub(crate) fn trust_params(seeds: Vec<Address>) -> Params {
     let s = scale();
     Params {
-        trust_multiplier_fp: U256::from(2u64) * s, // 2.0
-        trust_share_fp: fp(15, 100),               // 0.15
-        trust_decay_fp: fp(80, 100),               // 0.8
+        trust_share_fp: s,           // 1.0
+        trust_decay_fp: fp(80, 100), // 0.8
         trusted_seeds: seeds,
         ..default_params()
     }
@@ -114,7 +115,7 @@ fn journal_binds_inputs() {
 }
 
 #[test]
-fn trust_boosts_seed_neighbour() {
+fn seeded_cycle_distributes_the_full_pool() {
     // Alice (seed) -> Bob, Bob -> Charlie, Charlie -> Alice.
     let edges = vec![edge(1, 2, 1, 100, 1), edge(2, 3, 2, 101, 1), edge(3, 1, 3, 102, 1)];
     let input = GuestInput {
@@ -195,6 +196,87 @@ fn empty_input_is_valid() {
     assert_eq!(r.scores.len(), 0);
     // empty blob is "{}"
     assert_eq!(r.blob, b"{}");
+}
+
+#[test]
+fn current_fixed_point_kernel_matches_frozen_pull_oracle() {
+    for (index, seed) in DIFFERENTIAL_SEEDS.into_iter().enumerate() {
+        let case = generated_case(seed, 8 + index * 3, 2 + index % 5, 2, index % 4);
+        let expected = pagerank_oracle::calculate(&case.nodes, &case.outgoing, &case.config);
+        let actual = pagerank::calculate_generic(&case.nodes, &case.outgoing, &case.config);
+        assert_eq!(actual, expected, "fixed-point oracle mismatch for seed {seed:#018x}");
+    }
+}
+
+/// The retired floating-point implementation's deterministic seed-0 input remains frozen here.
+/// M2 intentionally rotates its output: seed-only starting mass and the reachability gate remove
+/// one disconnected account. Keep both expectations so that change remains explicit.
+#[test]
+fn legacy_float_fixture_records_intentional_m2_rotation() {
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self, bound: u64) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (self.0 >> 33) % bound
+        }
+    }
+
+    let mut lcg = Lcg(0x9E37_79B9_7F4A_7C15);
+    let edges = (0u8..30)
+        .map(|uid| {
+            let from = lcg.next(12) as u8 + 1;
+            let to = lcg.next(12) as u8 + 1;
+            let weight = lcg.next(100) + 1;
+            edge(from, to, uid + 1, 1_000 + u64::from(uid), weight)
+        })
+        .collect();
+    let input = GuestInput {
+        edges,
+        params: trust_params(vec![addr(1), addr(2)]),
+        lane2: None,
+        binding: Default::default(),
+    };
+    let actual: Vec<U256> = compute(&input).scores.into_iter().map(|(_, value)| value).collect();
+    let legacy: Vec<U256> = [
+        68_526_411_158_466_950_801_704u128,
+        65_071_390_428_342_570_055_420,
+        88_060_528_363_170_179_021_074,
+        75_088_450_530_703_184_219_105,
+        81_277_487_664_925_989_555_937,
+        116_681_700_090_200_541_203_247,
+        19_794_118_764_712_588_275_534,
+        98_072_588_435_530_613_183_679,
+        67_148_402_890_417_342_504_055,
+        107_211_643_269_859_619_157_714,
+        158_324_949_949_699_698_198_189,
+        54_742_328_453_970_723_824_342,
+    ]
+    .into_iter()
+    .map(U256::from)
+    .collect();
+
+    let expected_m2: Vec<U256> = [
+        185_701_928_509_642_548_212_741u128,
+        169_625_848_129_240_646_203_231,
+        40_975_204_876_024_380_121_900,
+        66_185_330_926_654_633_273_166,
+        83_308_416_542_082_710_413_552,
+        70_906_354_531_772_658_863_294,
+        72_675_363_376_816_884_084_420,
+        39_868_199_340_996_704_983_529,
+        79_469_397_346_986_734_933_674,
+        143_929_719_648_598_242_991_214,
+        47_354_236_771_183_855_919_279,
+    ]
+    .into_iter()
+    .map(U256::from)
+    .collect();
+
+    assert_ne!(actual, legacy);
+    assert_eq!(actual, expected_m2);
 }
 
 // ---------------------------------------------------------------------------

@@ -28,8 +28,7 @@ fn params() -> Params {
         damping_fp: fp(85, 100),
         tolerance_fp: s() / U256::from(1_000_000u64),
         max_iterations: 100,
-        trust_multiplier_fp: U256::from(2) * s(),
-        trust_share_fp: fp(15, 100),
+        trust_share_fp: s(),
         trust_decay_fp: fp(80, 100),
         precision_scale: s(),
         total_pool: U256::from(1_000_000_000_000_000_000_000_000u128),
@@ -151,9 +150,14 @@ fn truncated_car_skips_node_and_epoch_still_proves() {
         cut.witnesses[0].car = full[..full.len() * frac / 8].to_vec();
         let r = compute(&cut);
         assert_eq!(r.journal.anchor_count, 1, "anchor log still committed");
-        assert!(r.scores.is_empty(), "truncated CAR must yield no edges");
+        assert_eq!(r.rank.live_edges, 0, "truncated CAR must yield no witness-derived edges");
+        assert_eq!(
+            r.scores,
+            vec![(did_node_id(ALICE), input.params.total_pool)],
+            "the configured seed remains in the ranked universe"
+        );
         assert_ne!(r.journal.skipped_digest, B256::ZERO, "the skip is publicly committed");
-        assert_eq!(r.journal.output_root, B256::ZERO, "empty epoch is a valid outcome");
+        assert_ne!(r.journal.output_root, B256::ZERO, "the seed-only epoch has a committed root");
     }
 }
 
@@ -163,10 +167,15 @@ fn withheld_witness_drops_node_and_root_still_lands() {
     input.witnesses.clear(); // anchored head, data withheld
     let r = compute(&input);
     assert_eq!(r.journal.anchor_count, 1);
-    assert!(r.scores.is_empty(), "no witness, no edges, no scores");
+    assert_eq!(r.rank.live_edges, 0, "no witness, no witness-derived edges");
+    assert_eq!(
+        r.scores,
+        vec![(did_node_id(ALICE), input.params.total_pool)],
+        "withholding cannot erase the governance-configured seed"
+    );
     assert_ne!(r.journal.skipped_digest, B256::ZERO, "the drop is publicly committed");
-    // journal still forms (root of an empty tree is zero — a valid epoch outcome).
-    assert_eq!(r.journal.output_root, B256::ZERO);
+    // The journal still forms and commits the seed-only distribution.
+    assert_ne!(r.journal.output_root, B256::ZERO);
 }
 
 #[test]

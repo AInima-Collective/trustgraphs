@@ -77,9 +77,9 @@ export const fixturePolicy = (): CompositionPolicy => ({
       freezeBlock: 999_900n,
       weight: 333_000_000_000_000_000n,
       entries: [
-        ['01', 220_016_440_032_880_065_760_133n],
-        ['02', 300_189_600_379_200_758_401_516n],
-        ['03', 479_793_959_587_919_175_838_351n],
+        ['01', 369_963_739_927_479_854_959_709n],
+        ['02', 314_467_628_935_257_870_515_742n],
+        ['03', 315_568_631_137_262_274_524_549n],
       ],
     }),
     source({
@@ -137,13 +137,35 @@ export const exportedFixture = () => {
   const result = compose(policy)
   const postTrigger = compose(postTriggerPolicy())
   return {
-    note: 'Source A is tests/golden/trust-graph.json; B/C are representative unequal-pool sparse outputs.',
-    policy,
-    expected: result,
+    sourceStates: policy.sources.map((item) => ({
+      sourceId: item.sourceId,
+      blobSha256: item.blobSha256,
+      cid: item.cid,
+      outputRoot: item.outputRoot,
+      totalValue: item.totalValue,
+    })),
+    manifestSha256: result.manifestSha256,
+    sourceQuotas: Object.fromEntries(
+      result.sourceAllocations.map((item) => [item.sourceId, item.quota])
+    ),
+    sourceAllocations: Object.fromEntries(
+      result.sourceAllocations.map((item) => [
+        item.sourceId,
+        Object.fromEntries(
+          item.allocations.map((entry) => [entry.account, entry.value])
+        ),
+      ])
+    ),
+    output: Object.fromEntries(
+      result.output.map((entry) => [entry.account, entry.value])
+    ),
+    outputBlobSha256: result.outputBlobSha256,
+    outputCid: result.outputCid,
+    outputRoot: result.outputRoot,
+    totalValue: result.totalValue,
     postTriggerUpdate: {
-      policy: postTriggerPolicy(),
-      expectedOutputRoot: postTrigger.outputRoot,
-      expectedManifestSha256: postTrigger.manifestSha256,
+      outputRoot: postTrigger.outputRoot,
+      manifestSha256: postTrigger.manifestSha256,
     },
     expectedFailures: {
       stale: 'is stale at capture',

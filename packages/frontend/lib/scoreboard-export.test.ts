@@ -100,7 +100,6 @@ const simulation: ScoreboardExportInput = {
       },
       params: {
         dampingFactor: 0.85,
-        trustMultiplier: 3,
         trustShare: 1,
         trustDecay: 0.8,
         maxIterations: 100,

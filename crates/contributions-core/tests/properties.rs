@@ -290,7 +290,9 @@ fn padding_recapture_never_exceeds_the_full_consent_ceiling() {
 }
 
 /// The crisp E4 analog: when every original share is fully consented (no burned mass to
-/// recapture), padding cannot increase the set's combined take at all.
+/// recapture), padding cannot increase the set's combined take beyond one legacy 1e6 output
+/// quantum. Adding a contributor can move one truncated pre-payout quantum across the set
+/// boundary; with a 5e9 pool that is at most 5,000 units, not newly created pool mass.
 #[test]
 fn padding_a_fully_consented_claim_never_mints() {
     let mut checked = 0;
@@ -326,8 +328,10 @@ fn padding_a_fully_consented_claim_never_mints() {
             .iter()
             .map(|a| payout_of(&padded.scores, *a))
             .fold(U256::ZERO, |a, b| a + b);
+        let output_quantum =
+            (padded_sc.input.params.total_pool + U256::from(999_999u64)) / U256::from(1_000_000u64);
         assert!(
-            padded_take <= base_take + U256::from(64u64),
+            padded_take <= base_take + output_quantum + U256::from(64u64),
             "seed {seed}: fully-consented padding minted {padded_take} > {base_take}"
         );
         checked += 1;

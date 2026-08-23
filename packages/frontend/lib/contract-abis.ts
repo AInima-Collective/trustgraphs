@@ -2602,11 +2602,6 @@ export const governedTrustgraphsFactoryAbi = [
               { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
               { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
               {
-                name: 'trustMultiplierFp',
-                internalType: 'uint256',
-                type: 'uint256',
-              },
-              {
                 name: 'trustShareFp',
                 internalType: 'uint256',
                 type: 'uint256',
@@ -2731,11 +2726,6 @@ export const governedTrustgraphsFactoryAbi = [
               { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
               { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
               { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-              {
-                name: 'trustMultiplierFp',
-                internalType: 'uint256',
-                type: 'uint256',
-              },
               {
                 name: 'trustShareFp',
                 internalType: 'uint256',
@@ -3718,8 +3708,36 @@ export const merkleGovModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'MIN_ACTIVITY_CHECKPOINT_INTERVAL',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'QUORUM_RANGE',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'activityAccumulator',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'activityCheckpointCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'activityCount',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -3768,6 +3786,15 @@ export const merkleGovModuleAbi = [
     ],
     name: 'castVoteAsDelegate',
     outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'checkpointSignerActivity',
+    outputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
     stateMutability: 'nonpayable',
   },
   {
@@ -3823,6 +3850,26 @@ export const merkleGovModuleAbi = [
           { name: 'data', internalType: 'bytes', type: 'bytes' },
           { name: 'operation', internalType: 'enum Operation', type: 'uint8' },
           { name: 'description', internalType: 'string', type: 'string' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'getActivityCheckpoint',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct MerkleGovModule.ActivityCheckpoint',
+        type: 'tuple',
+        components: [
+          { name: 'acc', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'count', internalType: 'uint64', type: 'uint64' },
+          { name: 'blockNumber', internalType: 'uint64', type: 'uint64' },
         ],
       },
     ],
@@ -3907,6 +3954,13 @@ export const merkleGovModuleAbi = [
     inputs: [],
     name: 'ipfsHashCid',
     outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'account', internalType: 'address', type: 'address' }],
+    name: 'lastDirectActivityBlock',
+    outputs: [{ name: 'blockNumber', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -4304,6 +4358,38 @@ export const merkleGovModuleAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'sequence',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: true,
+      },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'proposalId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'blockNumber',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+    ],
+    name: 'DirectGovernanceActivity',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'newDelay',
         internalType: 'uint256',
         type: 'uint256',
@@ -4483,6 +4569,27 @@ export const merkleGovModuleAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'checkpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      { name: 'acc', internalType: 'bytes32', type: 'bytes32', indexed: false },
+      { name: 'count', internalType: 'uint64', type: 'uint64', indexed: false },
+      {
+        name: 'blockNumber',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+    ],
+    name: 'SignerActivityCheckpointed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'previousTarget',
         internalType: 'address',
         type: 'address',
@@ -4627,6 +4734,11 @@ export const merkleGovModuleAbi = [
     inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
     name: 'ActionFailed',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'nextBlock', internalType: 'uint256', type: 'uint256' }],
+    name: 'ActivityCheckpointTooSoon',
+  },
   { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'AlreadyVoted' },
   {
@@ -4653,6 +4765,7 @@ export const merkleGovModuleAbi = [
   { type: 'error', inputs: [], name: 'InvalidQuorum' },
   { type: 'error', inputs: [], name: 'InvalidVotingPeriod' },
   { type: 'error', inputs: [], name: 'NoMerkleRootSet' },
+  { type: 'error', inputs: [], name: 'NoSignerActivity' },
   { type: 'error', inputs: [], name: 'NotAuthorized' },
   { type: 'error', inputs: [], name: 'NotInitializing' },
   {
@@ -7022,11 +7135,18 @@ export const signerSyncModuleDeployerAbi = [
         internalType: 'contract ISignerSyncCheckpointSource',
         type: 'address',
       },
+      {
+        name: 'activitySource',
+        internalType: 'contract ISignerActivitySource',
+        type: 'address',
+      },
       { name: 'paramsHash', internalType: 'bytes32', type: 'bytes32' },
       { name: 'programVKey', internalType: 'bytes32', type: 'bytes32' },
       { name: 'topN', internalType: 'uint32', type: 'uint32' },
       { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
       { name: 'targetThresholdBps', internalType: 'uint32', type: 'uint32' },
+      { name: 'maxInactiveBlocks', internalType: 'uint64', type: 'uint64' },
+      { name: 'minActivityWitnesses', internalType: 'uint32', type: 'uint32' },
     ],
     name: 'deploy',
     outputs: [
@@ -7068,6 +7188,12 @@ export const signerSyncModuleDeployerAbi = [
         indexed: false,
       },
       {
+        name: 'activitySource',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
         name: 'accumulator',
         internalType: 'address',
         type: 'address',
@@ -7100,6 +7226,18 @@ export const signerSyncModuleDeployerAbi = [
       },
       {
         name: 'targetThresholdBps',
+        internalType: 'uint32',
+        type: 'uint32',
+        indexed: false,
+      },
+      {
+        name: 'maxInactiveBlocks',
+        internalType: 'uint64',
+        type: 'uint64',
+        indexed: false,
+      },
+      {
+        name: 'minActivityWitnesses',
         internalType: 'uint32',
         type: 'uint32',
         indexed: false,
@@ -7160,12 +7298,17 @@ export const signerSyncZkModuleAbi = [
         internalType: 'contract ISignerSyncCheckpointSource',
         type: 'address',
       },
-      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
       {
-        name: '_selectionParamsHash',
-        internalType: 'bytes32',
-        type: 'bytes32',
+        name: '_activitySource',
+        internalType: 'contract ISignerActivitySource',
+        type: 'address',
       },
+      { name: '_paramsHash', internalType: 'bytes32', type: 'bytes32' },
+      { name: '_topN', internalType: 'uint32', type: 'uint32' },
+      { name: '_minThreshold', internalType: 'uint32', type: 'uint32' },
+      { name: '_targetThresholdBps', internalType: 'uint32', type: 'uint32' },
+      { name: '_maxInactiveBlocks', internalType: 'uint64', type: 'uint64' },
+      { name: '_minActivityWitnesses', internalType: 'uint32', type: 'uint32' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -7192,6 +7335,19 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'activitySource',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ISignerActivitySource',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'avatar',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
@@ -7208,6 +7364,13 @@ export const signerSyncZkModuleAbi = [
     inputs: [],
     name: 'lastAppliedCheckpoint',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'maxInactiveBlocks',
+    outputs: [{ name: '', internalType: 'uint64', type: 'uint64' }],
     stateMutability: 'view',
   },
   {
@@ -7287,6 +7450,19 @@ export const signerSyncZkModuleAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      {
+        name: 'activitySource_',
+        internalType: 'contract ISignerActivitySource',
+        type: 'address',
+      },
+    ],
+    name: 'setActivitySource',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [{ name: '_avatar', internalType: 'address', type: 'address' }],
     name: 'setAvatar',
     outputs: [],
@@ -7309,13 +7485,13 @@ export const signerSyncZkModuleAbi = [
   {
     type: 'function',
     inputs: [
-      {
-        name: '_selectionParamsHash',
-        internalType: 'bytes32',
-        type: 'bytes32',
-      },
+      { name: 'topN', internalType: 'uint32', type: 'uint32' },
+      { name: 'minThreshold', internalType: 'uint32', type: 'uint32' },
+      { name: 'targetThresholdBps', internalType: 'uint32', type: 'uint32' },
+      { name: 'maxInactiveBlocks_', internalType: 'uint64', type: 'uint64' },
+      { name: 'minActivityWitnesses', internalType: 'uint32', type: 'uint32' },
     ],
-    name: 'setSelectionParamsHash',
+    name: 'setSelectionParams',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -7352,6 +7528,11 @@ export const signerSyncZkModuleAbi = [
     type: 'function',
     inputs: [
       { name: 'checkpointId', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'activityCheckpointId',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
       { name: 'signers', internalType: 'address[]', type: 'address[]' },
       { name: 'targetThreshold', internalType: 'uint256', type: 'uint256' },
       { name: 'proof', internalType: 'bytes', type: 'bytes' },
@@ -7404,6 +7585,19 @@ export const signerSyncZkModuleAbi = [
       },
     ],
     name: 'AccumulatorUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'activitySource',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ActivitySourceUpdated',
   },
   {
     type: 'event',
@@ -7597,6 +7791,15 @@ export const signerSyncZkModuleAbi = [
     ],
     name: 'ZkVerifierUpdated',
   },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'checkpointBlock', internalType: 'uint64', type: 'uint64' },
+      { name: 'currentBlock', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ActivityCheckpointStale',
+  },
+  { type: 'error', inputs: [], name: 'ActivityCheckpointSuperseded' },
   { type: 'error', inputs: [], name: 'AlreadyInitialized' },
   { type: 'error', inputs: [], name: 'EmptySignerSet' },
   { type: 'error', inputs: [], name: 'InvalidInitialization' },
@@ -7605,6 +7808,7 @@ export const signerSyncZkModuleAbi = [
     inputs: [{ name: 'authority', internalType: 'address', type: 'address' }],
     name: 'InvalidParamsAuthority',
   },
+  { type: 'error', inputs: [], name: 'InvalidSelectionParams' },
   {
     type: 'error',
     inputs: [{ name: 'signer', internalType: 'address', type: 'address' }],
@@ -8107,13 +8311,6 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'MAX_RANK_FP',
-    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    inputs: [],
     name: 'MAX_TOLERANCE_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
@@ -8128,14 +8325,14 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'function',
     inputs: [],
-    name: 'MAX_TRUST_MULTIPLIER_FP',
+    name: 'MAX_WEIGHT_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
     type: 'function',
     inputs: [],
-    name: 'MAX_WEIGHT_FP',
+    name: 'MIN_TOLERANCE_FP',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -8265,11 +8462,6 @@ export const trustgraphsFactoryAbi = [
               { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
               { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
               {
-                name: 'trustMultiplierFp',
-                internalType: 'uint256',
-                type: 'uint256',
-              },
-              {
                 name: 'trustShareFp',
                 internalType: 'uint256',
                 type: 'uint256',
@@ -8366,11 +8558,6 @@ export const trustgraphsFactoryAbi = [
               { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
               { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
               {
-                name: 'trustMultiplierFp',
-                internalType: 'uint256',
-                type: 'uint256',
-              },
-              {
                 name: 'trustShareFp',
                 internalType: 'uint256',
                 type: 'uint256',
@@ -8455,11 +8642,6 @@ export const trustgraphsFactoryAbi = [
           { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
           { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
           { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-          {
-            name: 'trustMultiplierFp',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
           { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
           { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
           {
@@ -8586,11 +8768,6 @@ export const trustgraphsFactoryAbi = [
           { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
           { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
           { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-          {
-            name: 'trustMultiplierFp',
-            internalType: 'uint256',
-            type: 'uint256',
-          },
           { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
           { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
           {
@@ -8804,20 +8981,6 @@ export const trustgraphsFactoryAbi = [
   {
     type: 'error',
     inputs: [
-      { name: 'trustMultiplierFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustMultiplier',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'trustMultiplierFp', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'InvalidTrustMultiplier',
-  },
-  {
-    type: 'error',
-    inputs: [
       { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidTrustShare',
@@ -8876,22 +9039,6 @@ export const trustgraphsFactoryAbi = [
       { name: 'owner', internalType: 'address', type: 'address' },
     ],
     name: 'NotInstanceAuthority',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'factorFp', internalType: 'uint256', type: 'uint256' },
-      { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
-    ],
-    name: 'RankGrowthUnbounded',
-  },
-  {
-    type: 'error',
-    inputs: [
-      { name: 'factorFp', internalType: 'uint256', type: 'uint256' },
-      { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
-    ],
-    name: 'RankGrowthUnbounded',
   },
   {
     type: 'error',

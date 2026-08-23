@@ -1,11 +1,13 @@
 //! Exact byte encodings shared with Solidity. Every function here is golden-tested against
-//! `abi.encode` / `keccak256` / `sha256` in `contracts/test/unit/golden/TrustgraphsGoldenVectors.t.sol` (PLAN.md §1, WP2).
+//! `abi.encode` / `keccak256` / `sha256` in
+//! `contracts/test/unit/golden/TrustgraphsGoldenVectors.t.sol`
+//! (`research/ZK_ARCHITECTURE.md` §4.1).
 //!
 //! All tuples we encode are composed of STATIC ABI types (uintN, address, bytes32), so
 //! `abi.encode` is simply the concatenation of 32-byte big-endian words. We hand-roll it (rather
 //! than pull in a proc-macro ABI crate) for auditability and zkVM-friendliness.
 
-use crate::{merkle, Journal, Params, SelectionParams, SignerJournal};
+use crate::{merkle, Journal, Params, SelectionParams, SignerJournal, PARAMS_SCHEMA_VERSION};
 use alloy_primitives::{keccak256, Address, B256, U256};
 
 // The word encoders and the accumulator fold are program-agnostic and live in `zk-core`;
@@ -82,7 +84,7 @@ pub fn journal_digest(j: &Journal) -> B256 {
     keccak256(journal_encoded(j))
 }
 
-/// The governance-pinned `paramsHash` (PLAN.md §1.3). `seedSetRoot` is computed over the sorted
+/// The governance-pinned `paramsHash` (`research/ZK_ARCHITECTURE.md` §4.1). `seedSetRoot` is computed over the sorted
 /// trusted-seed set. The guest computes this from its private `Params` witness and commits it as a
 /// journal field; it is bound to the stored value because `MerkleSnapshot.submitProof` builds the
 /// journal digest from `storage.paramsHash` — a proof whose params differ yields a different digest
@@ -104,12 +106,12 @@ pub fn params_hash(p: &Params) -> B256 {
     };
 
     let mut buf = Vec::with_capacity(32 * 17);
+    buf.extend_from_slice(&word_u32(PARAMS_SCHEMA_VERSION));
     buf.extend_from_slice(&word_u256(p.damping_fp));
     buf.extend_from_slice(&word_u256(p.tolerance_fp));
     buf.extend_from_slice(&word_u32(p.max_iterations));
     buf.extend_from_slice(&word_u256(p.min_weight_fp));
     buf.extend_from_slice(&word_u256(p.max_weight_fp));
-    buf.extend_from_slice(&word_u256(p.trust_multiplier_fp));
     buf.extend_from_slice(&word_u256(p.trust_share_fp));
     buf.extend_from_slice(&word_u256(p.trust_decay_fp));
     buf.extend_from_slice(seed_set_root.as_slice());
@@ -119,39 +121,50 @@ pub fn params_hash(p: &Params) -> B256 {
     buf.extend_from_slice(&word_u32(p.weight_field_index));
     buf.extend_from_slice(domain_set_hash.as_slice());
     buf.extend_from_slice(&word_u64(p.lane2_max_head_age));
-    // Domain separation (INSTANCE_FACTORY §6.1), appended as fields 16-17 in the params-schema v2
-    // rotation. The journal shape is untouched — separation lives in the params, not the journal.
+    // Domain separation (INSTANCE_FACTORY §6.1), retained as preimage words 16-17 after the
+    // schema-v3 version word was prepended. The journal shape is untouched.
     buf.extend_from_slice(&word_addr(p.accumulator));
     buf.extend_from_slice(&word_u64(p.chain_id));
     keccak256(&buf)
 }
 
 /// The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:
-/// `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps))`.
+/// `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps,
+///                       uint64 maxInactiveBlocks, uint32 minActivityWitnesses))`.
 /// Bound the same way `paramsHash` is: `SignerSyncZkModule.submitSignerProof` builds the signer
 /// journal digest from its stored `selectionParamsHash`, so a proof with different selection params
 /// yields a different digest and fails verification.
 pub fn selection_params_hash(sp: &SelectionParams) -> B256 {
-    let mut buf = Vec::with_capacity(32 * 3);
+    let mut buf = Vec::with_capacity(32 * 5);
     buf.extend_from_slice(&word_u32(sp.top_n));
     buf.extend_from_slice(&word_u32(sp.min_threshold));
     buf.extend_from_slice(&word_u32(sp.target_threshold_bps));
+    buf.extend_from_slice(&word_u64(sp.max_inactive_blocks));
+    buf.extend_from_slice(&word_u32(sp.min_activity_witnesses));
     keccak256(&buf)
 }
 
 /// The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
 /// `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
+///             bytes32 activityAcc, uint64 activityCount, uint64 activityBlock,
+///             bool wasInitialized, bytes32 currentSignerSetRoot, uint256 currentThreshold,
 ///             bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
 ///
 /// `instanceDomain` is a pass-through the guest copies from its witness, made binding by
 /// `SignerSyncZkModule.submitSignerProof`, which rebuilds the digest with a domain derived from
 /// `address(this)` + `block.chainid` (audit M-3).
 pub fn signer_journal_encoded(j: &SignerJournal) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(32 * 7);
+    let mut buf = Vec::with_capacity(32 * 13);
     buf.extend_from_slice(j.acc.as_slice());
     buf.extend_from_slice(&word_u64(j.leaf_count));
     buf.extend_from_slice(j.params_hash.as_slice());
     buf.extend_from_slice(j.selection_params_hash.as_slice());
+    buf.extend_from_slice(j.activity_acc.as_slice());
+    buf.extend_from_slice(&word_u64(j.activity_count));
+    buf.extend_from_slice(&word_u64(j.activity_block));
+    buf.extend_from_slice(&word_u32(u32::from(j.was_initialized)));
+    buf.extend_from_slice(j.current_signer_set_root.as_slice());
+    buf.extend_from_slice(&word_u256(j.current_threshold));
     buf.extend_from_slice(j.signer_set_root.as_slice());
     buf.extend_from_slice(&word_u256(j.target_threshold));
     buf.extend_from_slice(j.instance_domain.as_slice());

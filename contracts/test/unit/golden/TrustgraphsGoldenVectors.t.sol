@@ -201,7 +201,6 @@ contract TrustgraphsGoldenVectorsTest is Test {
             maxIterations: uint32(json.readUint(".params.maxIterations")),
             minWeightFp: json.readUint(".params.minWeightFp"),
             maxWeightFp: json.readUint(".params.maxWeightFp"),
-            trustMultiplierFp: json.readUint(".params.trustMultiplierFp"),
             trustShareFp: json.readUint(".params.trustShareFp"),
             trustDecayFp: json.readUint(".params.trustDecayFp"),
             trustedSeeds: json.readAddressArray(".params.sortedSeeds"),

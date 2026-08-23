@@ -66,7 +66,6 @@ export interface ContributionsParamsFile {
   max_iterations: number
   min_weight_fp: string
   max_weight_fp: string
-  trust_multiplier_fp: string
   trust_share_fp: string
   trust_decay_fp: string
   trusted_seeds: string[]
@@ -93,7 +92,6 @@ export const parseParamsFile = (
   maxIterations: f.max_iterations,
   minWeightFp: BigInt(f.min_weight_fp),
   maxWeightFp: BigInt(f.max_weight_fp),
-  trustMultiplierFp: BigInt(f.trust_multiplier_fp),
   trustShareFp: BigInt(f.trust_share_fp),
   trustDecayFp: BigInt(f.trust_decay_fp),
   trustedSeeds: f.trusted_seeds.map((s) => s as Hex),
@@ -120,7 +118,6 @@ export const parseParamsSnapshot = (
   maxIterations: Number(value.maxIterations),
   minWeightFp: BigInt(value.minWeightFp as string),
   maxWeightFp: BigInt(value.maxWeightFp as string),
-  trustMultiplierFp: BigInt(value.trustMultiplierFp as string),
   trustShareFp: BigInt(value.trustShareFp as string),
   trustDecayFp: BigInt(value.trustDecayFp as string),
   trustedSeeds: value.trustedSeeds as Hex[],
@@ -164,7 +161,6 @@ export const paramsSnapshot = (
   maxIterations: p.maxIterations,
   minWeightFp: p.minWeightFp.toString(),
   maxWeightFp: p.maxWeightFp.toString(),
-  trustMultiplierFp: p.trustMultiplierFp.toString(),
   trustShareFp: p.trustShareFp.toString(),
   trustDecayFp: p.trustDecayFp.toString(),
   trustedSeeds: p.trustedSeeds,

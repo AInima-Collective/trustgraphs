@@ -1,12 +1,14 @@
 //! Emit canonical golden vectors consumed by `contracts/test/unit/GoldenVectors.t.sol`, which independently
-//! recomputes every frozen byte format in Solidity and asserts equality (PLAN.md WP2, Risk R2).
+//! recomputes every frozen byte format in Solidity and asserts equality
+//! (`research/ZK_ARCHITECTURE.md` §4.1).
 //!
 //! Run: `cargo run -p pagerank-core --example export_golden`
 
 use alloy_primitives::{hex, Address, B256, U256};
 use pagerank_core::compute::compute;
 use pagerank_core::{
-    encode, merkle, signer, GuestInput, Params, RawEdge, SelectionParams, SignerInput,
+    encode, merkle, signer, ActivityCheckpoint, GuestInput, Params, RawEdge, SelectionParams,
+    SignerActivity, SignerInput,
 };
 use serde_json::json;
 use std::str::FromStr;
@@ -48,8 +50,7 @@ fn params() -> Params {
         max_iterations: 100,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100u64) * s,
-        trust_multiplier_fp: U256::from(2u64) * s,
-        trust_share_fp: fp(15, 100),
+        trust_share_fp: s,
         trust_decay_fp: fp(80, 100),
         trusted_seeds: vec![addr(1), addr(3)],
         total_pool: U256::from(1_000_000_000_000_000_000_000_000u128),
@@ -119,12 +120,39 @@ fn main() {
     // Signer-sync selection: derive the Safe owner set + threshold + signer journal. The instance
     // domain is the real derivation over a fixed (module, chainId) pair — deliberately a DIFFERENT
     // address than the trust-graph binding's 0x5A so a port that cross-wires the two domains fails.
-    let selection = SelectionParams { top_n: 3, min_threshold: 1, target_threshold_bps: 5000 };
+    let selection = SelectionParams {
+        top_n: 3,
+        min_threshold: 2,
+        target_threshold_bps: 5000,
+        max_inactive_blocks: 151_200,
+        min_activity_witnesses: 2,
+    };
     let signer_domain = encode::instance_domain(addr(0x5B), 31337);
+    let activity = vec![
+        SignerActivity {
+            account: result.scores[0].0,
+            proposal_id: U256::from(1),
+            block_number: 100,
+        },
+        SignerActivity {
+            account: result.scores[1].0,
+            proposal_id: U256::from(2),
+            block_number: 101,
+        },
+    ];
+    let activity_acc = activity.iter().enumerate().fold(B256::ZERO, |acc, (index, record)| {
+        signer::fold_activity(acc, (index + 1) as u64, record)
+    });
     let signer_input = SignerInput {
         edges: edges.clone(),
         params: params(),
         selection,
+        activity,
+        activity_checkpoint: ActivityCheckpoint { acc: activity_acc, count: 2, block_number: 101 },
+        activity_checkpoint_id: 1,
+        current_signers: vec![result.scores[0].0],
+        current_threshold: U256::from(1),
+        was_initialized: false,
         instance_domain: signer_domain,
     };
     let signer_result = signer::compute_signers(&signer_input);
@@ -144,7 +172,6 @@ fn main() {
             "maxIterations": p.max_iterations,
             "minWeightFp": p.min_weight_fp.to_string(),
             "maxWeightFp": p.max_weight_fp.to_string(),
-            "trustMultiplierFp": p.trust_multiplier_fp.to_string(),
             "trustShareFp": p.trust_share_fp.to_string(),
             "trustDecayFp": p.trust_decay_fp.to_string(),
             "seedSetRoot": hx(seed_set_root.as_slice()),
@@ -251,7 +278,9 @@ fn main() {
             "selection": {
                 "topN": selection.top_n,
                 "minThreshold": selection.min_threshold,
-                "targetThresholdBps": selection.target_threshold_bps
+                "targetThresholdBps": selection.target_threshold_bps,
+                "maxInactiveBlocks": selection.max_inactive_blocks,
+                "minActivityWitnesses": selection.min_activity_witnesses
             },
             "selectionParamsHash": hx(selection_params_hash.as_slice()),
             "signers": signer_result.signers.iter().map(|a| hx(a.as_slice())).collect::<Vec<_>>(),
@@ -269,6 +298,12 @@ fn main() {
                 "leafCount": sj.leaf_count,
                 "paramsHash": hx(sj.params_hash.as_slice()),
                 "selectionParamsHash": hx(sj.selection_params_hash.as_slice()),
+                "activityAcc": hx(sj.activity_acc.as_slice()),
+                "activityCount": sj.activity_count,
+                "activityBlock": sj.activity_block,
+                "wasInitialized": sj.was_initialized,
+                "currentSignerSetRoot": hx(sj.current_signer_set_root.as_slice()),
+                "currentThreshold": sj.current_threshold.to_string(),
                 "signerSetRoot": hx(sj.signer_set_root.as_slice()),
                 "targetThreshold": sj.target_threshold.to_string(),
                 "instanceDomain": hx(sj.instance_domain.as_slice()),

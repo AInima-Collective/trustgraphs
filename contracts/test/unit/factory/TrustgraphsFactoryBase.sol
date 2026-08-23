@@ -158,7 +158,6 @@ abstract contract TrustgraphsFactoryBase is Test {
         p.maxIterations = uint32(goldenJson.readUint(".params.maxIterations"));
         p.minWeightFp = goldenJson.readUint(".params.minWeightFp");
         p.maxWeightFp = goldenJson.readUint(".params.maxWeightFp");
-        p.trustMultiplierFp = goldenJson.readUint(".params.trustMultiplierFp");
         p.trustShareFp = goldenJson.readUint(".params.trustShareFp");
         p.trustDecayFp = goldenJson.readUint(".params.trustDecayFp");
         p.trustedSeeds = goldenJson.readAddressArray(".params.sortedSeeds");

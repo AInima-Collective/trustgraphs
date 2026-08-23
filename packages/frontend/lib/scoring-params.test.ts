@@ -29,7 +29,6 @@ const current: Params = {
   maxIterations: 100,
   minWeightFp: PARAMS_SCALE,
   maxWeightFp: 100n * PARAMS_SCALE,
-  trustMultiplierFp: 3n * PARAMS_SCALE,
   trustShareFp: 500_000_000_000_000_000n,
   trustDecayFp: 800_000_000_000_000_000n,
   trustedSeeds: [address('1'), address('2')],
@@ -61,7 +60,6 @@ const chainTuple = Object.values({
   maxIterations: current.maxIterations,
   minWeightFp: current.minWeightFp,
   maxWeightFp: current.maxWeightFp,
-  trustMultiplierFp: current.trustMultiplierFp,
   trustShareFp: current.trustShareFp,
   trustDecayFp: current.trustDecayFp,
   trustedSeeds: current.trustedSeeds,
@@ -99,11 +97,9 @@ const identity = cloneParams(current)
 identity.chainId = 1n
 assert.ok(validateParamsUpdate(identity, current).errors.identity)
 
-const unbounded = cloneParams(current)
-unbounded.dampingFp = parseFixed('0.99')
-unbounded.trustMultiplierFp = parseFixed('100')
-unbounded.maxIterations = 500
-assert.ok(validateParamsUpdate(unbounded, current).errors.growth)
+const tooPrecise = cloneParams(current)
+tooPrecise.toleranceFp = 999_999n
+assert.ok(validateParamsUpdate(tooPrecise, current).errors.toleranceFp)
 
 const actions = buildParameterActions({
   controller: address('5'),

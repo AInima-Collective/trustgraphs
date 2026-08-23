@@ -122,6 +122,9 @@ pub fn action_key(action: &Action) -> String {
         Action::Skip(SkipReason::UnsupportedProgram(p)) => {
             format!("skip/unsupported_program/{}", p.name())
         }
+        Action::Skip(SkipReason::CapabilityExceeded { dimension, .. }) => {
+            format!("skip/capability/{dimension:?}")
+        }
         Action::Skip(SkipReason::TooLarge { .. }) => "skip/too_large".into(),
         Action::Skip(SkipReason::ParamsMismatch { on_chain, reconstructed }) => {
             format!("skip/params_mismatch/{on_chain:#x}/{reconstructed:#x}")
@@ -156,6 +159,8 @@ pub struct Status {
 /// even if today's UI promises to ignore them.
 #[derive(Serialize)]
 pub struct PublicSettings {
+    pub capability_profile: operator_core::CapabilityProfile,
+    pub cost_model_version: u16,
     pub paid_enabled: bool,
     pub paid_vault: Option<String>,
     pub paid_recipient: Option<String>,

@@ -70,7 +70,6 @@ fn main() {
         max_iterations: 100,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100u64) * scale,
-        trust_multiplier_fp: U256::from(2u64) * scale,
         trust_share_fp: U256::ZERO,
         trust_decay_fp: U256::ZERO,
         trusted_seeds: Vec::new(),

@@ -26,7 +26,6 @@ const params: NostrWorkspaceParams = {
   dampingFp: BigInt(p.dampingFp),
   toleranceFp: BigInt(p.toleranceFp),
   maxIterations: Number(p.maxIterations),
-  trustMultiplierFp: BigInt(p.trustMultiplierFp),
   trustShareFp: BigInt(p.trustShareFp),
   trustDecayFp: BigInt(p.trustDecayFp),
   precisionScale: BigInt(p.precisionScale),

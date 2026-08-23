@@ -228,7 +228,6 @@ type DraftFields = {
   maxIterations: string
   minWeight: string
   maxWeight: string
-  trustMultiplier: string
   trustShare: string
   trustDecay: string
   totalPool: string
@@ -248,7 +247,6 @@ const fieldsFromParams = (params: Params): DraftFields => ({
   maxIterations: String(params.maxIterations),
   minWeight: formatFixed(params.minWeightFp, params.precisionScale),
   maxWeight: formatFixed(params.maxWeightFp, params.precisionScale),
-  trustMultiplier: formatFixed(params.trustMultiplierFp, params.precisionScale),
   trustShare: formatFixed(params.trustShareFp, params.precisionScale),
   trustDecay: formatFixed(params.trustDecayFp, params.precisionScale),
   totalPool: formatFixed(params.totalPool, params.precisionScale),
@@ -269,7 +267,6 @@ const paramsFromFields = (
     ['tolerance', 'toleranceFp'],
     ['minWeight', 'minWeightFp'],
     ['maxWeight', 'maxWeightFp'],
-    ['trustMultiplier', 'trustMultiplierFp'],
     ['trustShare', 'trustShareFp'],
     ['trustDecay', 'trustDecayFp'],
     ['totalPool', 'totalPool'],
@@ -694,9 +691,6 @@ const CurrentParameterCards = ({ params }: { params: Params }) => (
       </FieldRow>
       <FieldRow label="Starting share">
         {formatFixed(params.trustShareFp, params.precisionScale)}
-      </FieldRow>
-      <FieldRow label="Boost">
-        {formatFixed(params.trustMultiplierFp, params.precisionScale)}×
       </FieldRow>
       <FieldRow label="Distance decay">
         {formatFixed(params.trustDecayFp, params.precisionScale)}
@@ -1273,6 +1267,11 @@ const LiveScoringSettings = ({
                 targetThresholdBps: Math.round(
                   network.safeZodiacSignerSync.targetThreshold * 10_000
                 ),
+                maxInactiveBlocks: BigInt(
+                  network.safeZodiacSignerSync.maxInactiveBlocks ?? '151200'
+                ),
+                minActivityWitnesses:
+                  network.safeZodiacSignerSync.minActivityWitnesses ?? 2,
               },
             }
           : {}),
@@ -1881,18 +1880,6 @@ const LiveScoringSettings = ({
                         }
                       />
                       <InputField
-                        id="trust-boost"
-                        label="Trusted-account boost"
-                        value={fields.trustMultiplier}
-                        onChange={(trustMultiplier) =>
-                          setFields({ ...fields, trustMultiplier })
-                        }
-                        error={
-                          draftErrors.trustMultiplier ??
-                          draftErrors.trustMultiplierFp
-                        }
-                      />
-                      <InputField
                         id="trust-decay"
                         label="Distance decay"
                         value={fields.trustDecay}
@@ -1911,8 +1898,8 @@ const LiveScoringSettings = ({
                       <div>
                         <h3 className="font-semibold">Vouch influence</h3>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Damping and boost compound. Their combined growth is
-                          checked against the iteration cap.
+                          Damping controls how much standing follows vouches on
+                          each iteration.
                         </p>
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -1944,16 +1931,6 @@ const LiveScoringSettings = ({
                           error={draftErrors.maxWeight ?? draftErrors.weights}
                         />
                       </div>
-                      {envelope.interactionWarning && (
-                        <p className="border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
-                          {envelope.interactionWarning}
-                        </p>
-                      )}
-                      {draftErrors.growth && (
-                        <p className="text-xs text-error" role="alert">
-                          {draftErrors.growth}
-                        </p>
-                      )}
                     </div>
 
                     <div className="space-y-4">
@@ -2433,7 +2410,6 @@ const reviewParams: Params = {
   maxIterations: 100,
   minWeightFp: 1_000_000_000_000_000_000n,
   maxWeightFp: 100_000_000_000_000_000_000n,
-  trustMultiplierFp: 3_000_000_000_000_000_000n,
   trustShareFp: 500_000_000_000_000_000n,
   trustDecayFp: 800_000_000_000_000_000n,
   trustedSeeds: [

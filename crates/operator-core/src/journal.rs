@@ -104,6 +104,15 @@ pub enum Record {
         /// recorded).
         #[serde(default)]
         cost_cents: u64,
+        /// Cost-model provenance and the convergence drift signal, captured before spend.
+        #[serde(default)]
+        cost_model_version: u16,
+        #[serde(default)]
+        estimated_cycles: u64,
+        #[serde(default)]
+        max_iterations: u32,
+        #[serde(default)]
+        iterations_run: u32,
     },
     /// Written after the request returns a handle.
     Requested { key: WorkKey, request_id: B256, at: u64 },

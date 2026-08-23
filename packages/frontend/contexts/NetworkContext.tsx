@@ -38,7 +38,6 @@ import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 export type NetworkSimulationConfig = {
   enabled: boolean
   dampingFactor: number
-  trustMultiplier: number
   trustShare: number
   trustDecay: number
   maxIterations: number
@@ -189,7 +188,6 @@ export const NetworkProvider = ({
     useState<NetworkSimulationConfig>({
       enabled: false,
       dampingFactor: 0.85,
-      trustMultiplier: network.pagerank.trustMultiplier,
       trustShare: network.pagerank.trustShare,
       trustDecay: network.pagerank.trustDecay,
       maxIterations: 100,
@@ -248,7 +246,6 @@ export const NetworkProvider = ({
           })),
         {
           dampingFactor: simulationConfig.dampingFactor,
-          trustMultiplier: simulationConfig.trustMultiplier,
           trustShare: simulationConfig.trustShare,
           trustDecay: simulationConfig.trustDecay,
           maxIterations: simulationConfig.maxIterations,
@@ -492,7 +489,6 @@ export const NetworkProvider = ({
           : undefined,
         params: {
           dampingFactor: simulationConfig.dampingFactor,
-          trustMultiplier: simulationConfig.trustMultiplier,
           trustShare: simulationConfig.trustShare,
           trustDecay: simulationConfig.trustDecay,
           maxIterations: simulationConfig.maxIterations,

@@ -20,8 +20,7 @@ fn params(seed: u8) -> Params {
         max_iterations: 100,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100u64) * s,
-        trust_multiplier_fp: U256::from(2u64) * s,
-        trust_share_fp: s * U256::from(15u64) / U256::from(100u64),
+        trust_share_fp: s,
         trust_decay_fp: s * U256::from(80u64) / U256::from(100u64),
         trusted_seeds: vec![Address::from([seed; 20])],
         total_pool: U256::from(1_000_000u64),
@@ -177,7 +176,13 @@ fn governed_signer_module_is_derived_from_creation_events_without_a_manifest() {
     let mut chain = FakeChain::default();
     let parent = add_healthy(&mut chain, 1);
     let module = Address::from([0x91; 20]);
-    let selection = SelectionParams { top_n: 5, min_threshold: 2, target_threshold_bps: 6000 };
+    let selection = SelectionParams {
+        top_n: 5,
+        min_threshold: 2,
+        target_threshold_bps: 6000,
+        max_inactive_blocks: 151_200,
+        min_activity_witnesses: 2,
+    };
     let operator_instance_id = B256::from([0xA1; 32]);
     let created = chain.created.get_mut(&parent).unwrap();
     created.signer_sync = Some(SignerSyncDescriptor {
@@ -185,6 +190,7 @@ fn governed_signer_module_is_derived_from_creation_events_without_a_manifest() {
         module,
         safe: Address::from([0x92; 20]),
         score_snapshot: created.snapshot,
+        activity_source: Address::from([0x95; 20]),
         accumulator: created.resolver,
         verifier: Address::from([0x93; 20]),
         program_vkey: B256::from([0x94; 32]),
@@ -230,8 +236,7 @@ fn contributions_params(seed: u8) -> contributions_core::Params {
         max_iterations: 100,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100u64) * s,
-        trust_multiplier_fp: U256::from(2u64) * s,
-        trust_share_fp: s * U256::from(15u64) / U256::from(100u64),
+        trust_share_fp: s,
         trust_decay_fp: s * U256::from(80u64) / U256::from(100u64),
         trusted_seeds: vec![Address::from([seed; 20])],
         precision_scale: s,

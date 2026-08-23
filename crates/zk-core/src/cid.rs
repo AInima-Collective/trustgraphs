@@ -1,4 +1,5 @@
-//! Canonical IPFS blob + CIDv1 (raw codec, sha2-256), reproducible in-circuit (PLAN.md §1.5).
+//! Canonical IPFS blob + CIDv1 (raw codec, sha2-256), reproducible in-circuit
+//! (`research/ZK_ARCHITECTURE.md` §4.2).
 //!
 //! The blob is a compact JSON object `{"0x<addr>":"<decimal value>",...}` with addresses lowercased
 //! and sorted ascending. Its SHA2-256 digest is `ipfsHash`; the CIDv1-raw string is `ipfsHashCid`.

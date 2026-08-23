@@ -65,7 +65,6 @@ nostr-workspace-core = { path = "../../crates/nostr-workspace-core" }
 nostr-envelope = { path = "../../crates/nostr-envelope" }
 contributions-core = { path = "../../crates/contributions-core" }
 weighted-prior-core = { path = "../../crates/weighted-prior-core" }
-weighted-prior-research = { path = "../../crates/weighted-prior-research" }
 composition-core = { path = "../../crates/composition-core" }
 alloy-primitives = { version = "1", features = ["serde"] }
 # fetch feature only: the sol! call/event ABI plumbing for on-chain reconstruction.
@@ -99,6 +98,8 @@ sp1-build = "=6.3.1"
 [dev-dependencies]
 # Research-only benchmark support; this does not enter the production prover dependency graph.
 erc8004-completeness-research = { path = "../../research/erc8004-completeness/rust" }
+weighted-prior-research = { path = "../../research/weighted-priors/core" }
+operator-core = { path = "../../crates/operator-core" }
 
 # Detached from the root workspace: sp1-sdk brings its own (large) dependency graph that must not
 # be unified with the alloy graph of the main workspace.

@@ -25,7 +25,9 @@ TrustAwarePageRank is an extension of the traditional PageRank algorithm designe
 
 Traditional reputation systems face a fundamental challenge: how to bootstrap trust in a network where anyone can create multiple identities (Sybil attack). While PageRank provides an elegant solution for ranking web pages based on link authority, applying it directly to attestation networks creates vulnerabilities that malicious actors can exploit.
 
-TrustAwarePageRank addresses these vulnerabilities by introducing the concept of **trusted seed attestors** - a carefully curated set of entities whose attestations carry additional weight and authority in the reputation computation.
+TrustAwarePageRank addresses these vulnerabilities by introducing **trusted seed
+attestors**: a carefully curated set of entities that receive the starting
+endowment and define the directed reachability boundary for the computation.
 
 ## The Spam Problem in Traditional PageRank
 
@@ -57,10 +59,10 @@ Spammer1 -> Spammer2 -> Spammer3 -> Spammer1 (artificial boost cycle)
 
 ### Core Principles
 
-1. **Trusted Seeds**: Designate a set of trusted attestors whose endorsements carry additional weight
-2. **Weighted Attestations**: Attestations from trusted seeds receive higher weight in score computation
-3. **Trust Propagation**: Higher initial scores for trusted seeds allow trust to flow through the network
-4. **Spam Isolation**: Spam networks become isolated from trusted pathways, reducing their influence
+1. **Trusted Seeds**: designate the accounts that split the configured starting share.
+2. **Reachability Gate**: accounts with no directed path from a seed receive zero score.
+3. **Trust Propagation**: seed standing flows through weighted vouches and the damping recurrence.
+4. **Distance Decay**: an attester's outgoing influence falls with its distance from a seed.
 
 ### Trust Mechanics
 
@@ -84,9 +86,9 @@ Where:
 - `d` = damping factor (typically 0.85)
 - `T(i)` = the **teleport vector** — and this is the load-bearing difference from vanilla
   PageRank. It is *seed-biased*, not uniform: a configured share of teleport mass
-  (`trust_share`) is reserved for the trusted seeds and only the remainder spreads over
-  everyone else (TrustRank-style personalization). With a uniform `1/N` teleport, the
-  seeds' initial boost would wash out at convergence and Sybil isolation would fail.
+  (`trust_share`) is reserved for the trusted seeds and the remainder spreads only over
+  seed-reachable non-seeds (TrustRank-style personalization). With a uniform `1/N`
+  teleport, disconnected Sybil components would receive standing by construction.
 - `W(j,i)` = weight of attestation from j to i
 - `L(j)` = total outgoing attestation weight from j
 
@@ -94,29 +96,33 @@ The exact fixed-point recurrence (including rounding order) is defined by the
 implementation of record, `crates/pagerank-core` — where this document and the code
 disagree, the code governs.
 
-### Weight Assignment
+`W(j,i) / L(j)` is always the vouch's base weight divided by the sum of the
+attester's eligible outgoing base weights. The retired founder multiplier used
+to multiply only the numerator. That created standing, diluted founders, left
+downstream ratios unchanged, and could prevent convergence; schema v3 removes it.
 
-```
-W(j,i) = {
-    W_trust * base_weight  if j ∈ TrustedSeeds
-    base_weight           otherwise
-}
-```
+Before damping, contributions from an attester at seed distance `k` are also
+multiplied by `trust_decay^k`. An attester outside the seed-reachable set cannot
+contribute.
 
 ### Initial Score Distribution
 
 ```
 Initial_PR(i) = {
     trust_share / |TrustedSeeds|  if i ∈ TrustedSeeds
-    (1 - trust_share) / (N - |TrustedSeeds|)  otherwise
+    (1 - trust_share) / |ReachableNonSeeds|  if i is seed-reachable and not a seed
+    0                                      otherwise
 }
 ```
 
-Exact isolation of a component that is unreachable from the trusted seeds requires
-`trust_share = 1`: then its teleport term is zero as well as its incoming trust flow. At
-any lower value, non-seed accounts divide `1 - trust_share` and therefore keep a positive
-baseline even when they are unreachable. The create form defaults to `1` and warns before
-a community chooses a lower value.
+Configured seeds are ranked nodes even when they have no live edges. This prevents an
+absent seed's share from disappearing. After the fixed-point recurrence, scores are
+normalised to exactly the precision scale with the remainder assigned in canonical account
+order; a non-empty output therefore always totals 100%.
+
+An unreachable component receives zero at every starting-share setting. Adding, removing,
+or rewiring it cannot change any reachable account's score or payout. The create form still
+defaults `trust_share` to 1 because that keeps the entire starting endowment with the seeds.
 
 ## Implementation Architecture
 

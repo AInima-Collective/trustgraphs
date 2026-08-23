@@ -235,22 +235,19 @@ pub struct InstanceSize {
     /// Lane-2 authenticated work units. For legacy registries this equals raw anchor count; the
     /// strict EAS lane prices one anchor plus four units per latest envelope entry.
     pub anchor_count: u64,
+    /// Governance-pinned loop ceiling used by the cheap pre-reconstruction admission bound.
+    pub max_iterations: u32,
+    /// Configured seed count; the graph node bound is `2 * raw_records + seed_count`.
+    pub seed_count: u64,
     /// Exact program-authenticated cycle estimate when raw lane counts are not a work proxy.
     /// Composition fills this only after fetching and validating every captured source blob.
     pub authenticated_cycles: Option<u64>,
 }
 
 impl InstanceSize {
-    /// A deliberately crude upper bound on guest cycles, used only to refuse instances we cannot
-    /// prove at all. Being wrong here costs a skip, not money; being absent costs a timed-out
-    /// request we paid for.
-    pub fn estimated_cycles(&self, per_input_cycles: u64, base_cycles: u64) -> u64 {
-        if let Some(cycles) = self.authenticated_cycles {
-            return cycles;
-        }
-        base_cycles.saturating_add(
-            self.leaf_count.saturating_add(self.anchor_count).saturating_mul(per_input_cycles),
-        )
+    /// Stage-1 conservative estimate, before complete witness reconstruction.
+    pub fn estimated_cycles(&self, program: Program) -> u64 {
+        crate::work::WorkProfile::from_raw_bounds(program, *self).estimate().total
     }
 }
 
@@ -444,6 +441,14 @@ pub enum AvailabilityStage {
 #[serde(rename_all = "snake_case", tag = "skip")]
 pub enum SkipReason {
     UnsupportedProgram(Program),
+    /// This host's published capability profile refuses the work. The checkpoint remains valid;
+    /// another prover may accept it.
+    CapabilityExceeded {
+        profile_version: u16,
+        dimension: crate::work::CapabilityDimension,
+        observed: u64,
+        limit: u64,
+    },
     TooLarge {
         estimated_cycles: u64,
         limit: u64,

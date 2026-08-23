@@ -7,7 +7,11 @@ import {console2} from "forge-std/console2.sol";
 
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
-import {IEAS, AttestationRequest, AttestationRequestData} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {
+    IEAS,
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
@@ -142,8 +146,7 @@ contract ContributionsFactoryTest is Test {
 
         // --- Contributions factory under test: a REAL SP1JournalVerifier over a mock gateway, ---
         // --- so the constructor's programVKey() cross-check runs against the real seam.       ---
-        contributionsVerifier =
-            new SP1JournalVerifier(ISP1Verifier(address(new MockSP1Gateway())), CONTRIBUTIONS_VKEY);
+        contributionsVerifier = new SP1JournalVerifier(ISP1Verifier(address(new MockSP1Gateway())), CONTRIBUTIONS_VKEY);
         contributionsControllerDeployer = new ContributionsParamsControllerDeployer();
         factory = new ContributionsFactory(
             IEAS(address(eas)),
@@ -179,7 +182,6 @@ contract ContributionsFactoryTest is Test {
         p.maxIterations = 50;
         p.minWeightFp = 0;
         p.maxWeightFp = 100e18;
-        p.trustMultiplierFp = 3e18;
         p.trustShareFp = 0.5e18;
         p.trustDecayFp = 0.5e18;
         p.trustedSeeds = new address[](2);
@@ -205,7 +207,6 @@ contract ContributionsFactoryTest is Test {
         p.maxIterations = 50;
         p.minWeightFp = 0;
         p.maxWeightFp = 100e18;
-        p.trustMultiplierFp = 3e18;
         p.trustShareFp = 0.5e18;
         p.trustDecayFp = 0.5e18;
         p.trustedSeeds = new address[](2);
@@ -267,25 +268,26 @@ contract ContributionsFactoryTest is Test {
                 e.responseSchemaUid,
                 e.valuationSchemaUid,
                 e.params
-            ) = abi.decode(
-                logs[i].data,
-                (
-                    address,
-                    string,
-                    string,
-                    address,
-                    address,
-                    address,
-                    address,
-                    address,
-                    address,
-                    uint64,
-                    bytes32,
-                    bytes32,
-                    bytes32,
-                    ContributionsParamsCodec.Params
-                )
-            );
+            ) =
+                abi.decode(
+                    logs[i].data,
+                    (
+                        address,
+                        string,
+                        string,
+                        address,
+                        address,
+                        address,
+                        address,
+                        address,
+                        address,
+                        uint64,
+                        bytes32,
+                        bytes32,
+                        bytes32,
+                        ContributionsParamsCodec.Params
+                    )
+                );
             return e;
         }
         revert("ContributionsInstanceCreated was not emitted");
@@ -431,9 +433,7 @@ contract ContributionsFactoryTest is Test {
         }
         assertTrue(firstParamsUpdateAt != type(uint256).max, "version 1 must be published");
         assertLt(createdAt, controllerCreatedAt, "creation event must precede controller discovery");
-        assertLt(
-            controllerCreatedAt, firstParamsUpdateAt, "controller discovery must precede its first consumed event"
-        );
+        assertLt(controllerCreatedAt, firstParamsUpdateAt, "controller discovery must precede its first consumed event");
     }
 
     function test_MultipleRoundsPerParent() public {
@@ -473,9 +473,7 @@ contract ContributionsFactoryTest is Test {
 
     function test_RevertWhen_CallerIsNotParentAuthority() public {
         ContributionsFactory.CreateArgs memory args = _args("ambush-round");
-        vm.expectRevert(
-            abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, stranger)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, stranger));
         vm.prank(stranger);
         factory.createInstance(args);
     }
@@ -483,9 +481,7 @@ contract ContributionsFactoryTest is Test {
     function test_RevertWhen_ParentIsUnknown() public {
         ContributionsFactory.CreateArgs memory args = _args("orphan-round");
         args.parentInstanceId = keccak256("no such parent");
-        vm.expectRevert(
-            abi.encodeWithSelector(IInstanceRegistry.InstanceNotFound.selector, args.parentInstanceId)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IInstanceRegistry.InstanceNotFound.selector, args.parentInstanceId));
         vm.prank(parentAdmin);
         factory.createInstance(args);
     }
@@ -506,9 +502,7 @@ contract ContributionsFactoryTest is Test {
 
     function test_ValidateParentView() public {
         assertEq(factory.validateParent(parentId, parentAdmin), parentResolver);
-        vm.expectRevert(
-            abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, stranger)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, stranger));
         factory.validateParent(parentId, stranger);
     }
 
@@ -525,17 +519,13 @@ contract ContributionsFactoryTest is Test {
         ContributionsFactory.CreateArgs memory args = _args("hybrid-child");
         args.parentInstanceId = hybridId;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry
-            )
+            abi.encodeWithSelector(ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry)
         );
         vm.prank(parentAdmin);
         factory.createInstance(args);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry
-            )
+            abi.encodeWithSelector(ContributionsFactory.HybridParentUnsupported.selector, hybridId, anchorRegistry)
         );
         factory.validateParent(hybridId, parentAdmin);
     }
@@ -549,9 +539,7 @@ contract ContributionsFactoryTest is Test {
         MerkleSnapshot(parentSnapshot).acceptConstitutionalTransfer();
 
         ContributionsFactory.CreateArgs memory args = _args("post-handoff-round");
-        vm.expectRevert(
-            abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, parentAdmin)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ContributionsFactory.NotParentAuthority.selector, parentId, parentAdmin));
         vm.prank(parentAdmin);
         factory.createInstance(args);
 
@@ -599,7 +587,7 @@ contract ContributionsFactoryTest is Test {
         for (uint256 i = 0; i < c.logs.length; i++) {
             assertTrue(
                 !(c.logs[i].emitter == address(factory)
-                    && c.logs[i].topics[0] == ContributionsFactory.SchemaAdopted.selector),
+                        && c.logs[i].topics[0] == ContributionsFactory.SchemaAdopted.selector),
                 "no adoption event on the clean path"
             );
         }
@@ -673,17 +661,14 @@ contract ContributionsFactoryTest is Test {
     function test_RevertWhen_CarveoutOver100Percent() public {
         ContributionsParamsCodec.Params memory p = _contribParams();
         p.evaluatorCarveoutBps = 10_001;
-        _expectCreateRevert(
-            p, abi.encodeWithSelector(ContributionsParamsValidator.InvalidCarveout.selector, 10_001)
-        );
+        _expectCreateRevert(p, abi.encodeWithSelector(ContributionsParamsValidator.InvalidCarveout.selector, 10_001));
     }
 
     function test_RevertWhen_UnacceptedMultiplierOverScale() public {
         ContributionsParamsCodec.Params memory p = _contribParams();
         p.unacceptedMultFp = 1e18 + 1;
         _expectCreateRevert(
-            p,
-            abi.encodeWithSelector(ContributionsParamsValidator.InvalidUnacceptedMultiplier.selector, 1e18 + 1)
+            p, abi.encodeWithSelector(ContributionsParamsValidator.InvalidUnacceptedMultiplier.selector, 1e18 + 1)
         );
     }
 
@@ -691,8 +676,7 @@ contract ContributionsFactoryTest is Test {
         ContributionsParamsCodec.Params memory p = _contribParams();
         p.collaboratorMultFp = 1e18 + 1;
         _expectCreateRevert(
-            p,
-            abi.encodeWithSelector(ContributionsParamsValidator.InvalidCollaboratorMultiplier.selector, 1e18 + 1)
+            p, abi.encodeWithSelector(ContributionsParamsValidator.InvalidCollaboratorMultiplier.selector, 1e18 + 1)
         );
     }
 
@@ -737,12 +721,9 @@ contract ContributionsFactoryTest is Test {
         );
 
         p = _contribParams();
-        p.dampingFp = 0.99e18;
-        p.trustMultiplierFp = 100e18;
-        p.maxIterations = 500;
+        p.toleranceFp = 1e6 - 1;
         _expectCreateRevert(
-            p,
-            abi.encodeWithSelector(ContributionsParamsValidator.RankGrowthUnbounded.selector, uint256(99e18), 500)
+            p, abi.encodeWithSelector(ContributionsParamsValidator.InvalidTolerance.selector, uint256(1e6 - 1))
         );
     }
 

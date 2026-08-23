@@ -36,7 +36,6 @@ export type SimulationExportProvenance = {
   }
   params: {
     dampingFactor: number
-    trustMultiplier: number
     trustShare: number
     trustDecay: number
     maxIterations: number

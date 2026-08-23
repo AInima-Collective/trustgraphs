@@ -11,7 +11,10 @@ use clap::Parser;
 use input_exporter::envelope0_fetch::{fetch_payloads, FetchConfig, FetchRequest};
 use input_exporter::reconstruct;
 use input_exporter::rpc::{parse_addr, Rpc};
-use pagerank_core::{AnchorRecord, Binding, Params, RawEdge, SelectionParams, SignerInput};
+use pagerank_core::{
+    signer::fold_activity, ActivityCheckpoint, AnchorRecord, Binding, Params, RawEdge,
+    SelectionParams, SignerActivity, SignerInput,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 use trustgraph_core::{
@@ -39,6 +42,20 @@ sol! {
     );
 
     function anchorCheckpoints(uint256 checkpointId) external view returns (bytes32 anchorAcc, uint64 anchorCount);
+
+    function activitySource() external view returns (address);
+    function target() external view returns (address);
+    function hasAppliedCheckpoint() external view returns (bool);
+    function getOwners() external view returns (address[]);
+    function getThreshold() external view returns (uint256);
+
+    struct SolActivityCheckpoint { bytes32 acc; uint64 count; uint64 blockNumber; }
+    function activityCheckpointCount() external view returns (uint256);
+    function getActivityCheckpoint(uint256 id) external view returns (SolActivityCheckpoint);
+    event DirectGovernanceActivity(
+        uint64 indexed sequence, address indexed account, uint256 indexed proposalId,
+        uint64 blockNumber, bytes32 acc
+    );
 }
 
 #[derive(Parser, Debug)]
@@ -195,6 +212,7 @@ async fn main() -> Result<()> {
     // `MerkleSnapshot.submitProof` — so naming the wrong snapshot fails here, at export time,
     // instead of after a proof has been paid for. A `SignerInput` binds the analogous module
     // domain (audit M-3), derived below from --module.
+    let mut signer_module = None;
     let signer_domain = if args.signer {
         let Some(m) = &args.module else {
             bail!(
@@ -205,6 +223,7 @@ async fn main() -> Result<()> {
             );
         };
         let module = parse_addr(m)?;
+        signer_module = Some(module);
         let d = pagerank_core::encode::instance_domain(module, chain_id);
         eprintln!("signer instanceDomain: module={module:#x} chainId={chain_id} domain={d:#x}");
         Some(d)
@@ -247,6 +266,131 @@ async fn main() -> Result<()> {
     if cp.leafCount == 0 {
         eprintln!("checkpoint has 0 edges — emitting an empty input set.");
     }
+
+    // Signer liveness is a separate authenticated input. Direct member votes are hash-chained by
+    // the governed instance; the exporter reconstructs the COMPLETE chain through its latest
+    // immutable checkpoint and also captures the Safe state the proof is allowed to replace.
+    let signer_liveness = if let Some(module) = signer_module {
+        let activity_source = activitySourceCall::abi_decode_returns(
+            &rpc.eth_call(module, activitySourceCall {}.abi_encode())
+                .await
+                .context("signer activitySource() failed")?,
+        )?;
+        let safe = targetCall::abi_decode_returns(
+            &rpc.eth_call(module, targetCall {}.abi_encode())
+                .await
+                .context("signer target() failed")?,
+        )?;
+        let was_initialized = hasAppliedCheckpointCall::abi_decode_returns(
+            &rpc.eth_call(module, hasAppliedCheckpointCall {}.abi_encode())
+                .await
+                .context("signer hasAppliedCheckpoint() failed")?,
+        )?;
+        let current_signers = getOwnersCall::abi_decode_returns(
+            &rpc.eth_call(safe, getOwnersCall {}.abi_encode())
+                .await
+                .context("Safe getOwners() failed")?,
+        )?;
+        let current_threshold = getThresholdCall::abi_decode_returns(
+            &rpc.eth_call(safe, getThresholdCall {}.abi_encode())
+                .await
+                .context("Safe getThreshold() failed")?,
+        )?;
+        let checkpoint_count = activityCheckpointCountCall::abi_decode_returns(
+            &rpc.eth_call(activity_source, activityCheckpointCountCall {}.abi_encode())
+                .await
+                .context("activityCheckpointCount() failed")?,
+        )?;
+        if checkpoint_count == U256::ZERO {
+            (
+                Vec::new(),
+                ActivityCheckpoint::default(),
+                0,
+                current_signers,
+                current_threshold,
+                was_initialized,
+            )
+        } else {
+            let activity_id = checkpoint_count - U256::from(1u8);
+            let activity_id_u64 =
+                u64::try_from(activity_id).context("activity checkpoint id exceeds u64")?;
+            let checkpoint = getActivityCheckpointCall::abi_decode_returns(
+                &rpc.eth_call(
+                    activity_source,
+                    getActivityCheckpointCall { id: activity_id }.abi_encode(),
+                )
+                .await
+                .context("getActivityCheckpoint() failed")?,
+            )?;
+            let logs = rpc
+                .get_logs(
+                    activity_source,
+                    &[Some(DirectGovernanceActivity::SIGNATURE_HASH)],
+                    args.from_block,
+                    checkpoint.blockNumber,
+                    args.chunk,
+                )
+                .await
+                .context("querying DirectGovernanceActivity logs")?;
+            let mut indexed = Vec::new();
+            for log in &logs {
+                let event =
+                    DirectGovernanceActivity::decode_raw_log(log.topics.iter().copied(), &log.data)
+                        .context("decoding DirectGovernanceActivity")?;
+                if event.sequence <= checkpoint.count {
+                    indexed.push((
+                        event.sequence,
+                        SignerActivity {
+                            account: event.account,
+                            proposal_id: event.proposalId,
+                            block_number: event.blockNumber,
+                        },
+                        event.acc,
+                    ));
+                }
+            }
+            indexed.sort_by_key(|(sequence, _, _)| *sequence);
+            let mut reconstructed = B256::ZERO;
+            let mut activity = Vec::with_capacity(indexed.len());
+            for (offset, (sequence, record, emitted_acc)) in indexed.into_iter().enumerate() {
+                let expected = u64::try_from(offset + 1).context("activity sequence overflow")?;
+                if sequence != expected {
+                    bail!(
+                        "activity sequence not contiguous: expected {expected}, found {sequence}"
+                    );
+                }
+                reconstructed = fold_activity(reconstructed, sequence, &record);
+                if reconstructed != emitted_acc {
+                    bail!("activity accumulator mismatch at sequence {sequence}");
+                }
+                activity.push(record);
+            }
+            if activity.len() != checkpoint.count as usize || reconstructed != checkpoint.acc {
+                bail!(
+                    "activity witness incomplete: reconstructed {} records / {reconstructed:#x}, checkpoint names {} / {:#x}",
+                    activity.len(), checkpoint.count, checkpoint.acc
+                );
+            }
+            eprintln!(
+                "signer liveness: source={activity_source:#x} checkpoint={activity_id} records={} block={} initialized={was_initialized}",
+                activity.len(), checkpoint.blockNumber
+            );
+            (
+                activity,
+                ActivityCheckpoint {
+                    acc: checkpoint.acc,
+                    count: checkpoint.count,
+                    block_number: checkpoint.blockNumber,
+                },
+                activity_id_u64,
+                current_signers,
+                current_threshold,
+                was_initialized,
+            )
+        }
+    } else {
+        (Vec::new(), ActivityCheckpoint::default(), 0, Vec::new(), U256::ZERO, false)
+    };
 
     // 2. Ordered fold leaves (EdgeFolded), index 0..leafCount-1.
     let fold_logs = rpc
@@ -597,6 +741,12 @@ async fn main() -> Result<()> {
             edges,
             params: params.expect("binary params parsed"),
             selection,
+            activity: signer_liveness.0,
+            activity_checkpoint: signer_liveness.1,
+            activity_checkpoint_id: signer_liveness.2,
+            current_signers: signer_liveness.3,
+            current_threshold: signer_liveness.4,
+            was_initialized: signer_liveness.5,
             instance_domain,
         })?
     } else {

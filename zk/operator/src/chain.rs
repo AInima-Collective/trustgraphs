@@ -21,7 +21,7 @@ sol! {
     /// Mirror of `ParamsCodec.Params` (params schema v2 — 17 fields, order FROZEN).
     struct SolParams {
         uint256 dampingFp; uint256 toleranceFp; uint32 maxIterations; uint256 minWeightFp;
-        uint256 maxWeightFp; uint256 trustMultiplierFp; uint256 trustShareFp; uint256 trustDecayFp;
+        uint256 maxWeightFp; uint256 trustShareFp; uint256 trustDecayFp;
         address[] trustedSeeds; uint256 totalPool; uint256 precisionScale; bytes32 schemaUid;
         uint32 weightFieldIndex; bytes32[] envelope0DomainSeparators; uint64 lane2MaxHeadAge;
         address accumulator; uint64 chainId;
@@ -29,7 +29,7 @@ sol! {
 
     struct SolContributionsParams {
         uint256 dampingFp; uint256 toleranceFp; uint32 maxIterations; uint256 minWeightFp;
-        uint256 maxWeightFp; uint256 trustMultiplierFp; uint256 trustShareFp; uint256 trustDecayFp;
+        uint256 maxWeightFp; uint256 trustShareFp; uint256 trustDecayFp;
         address[] trustedSeeds; uint256 precisionScale; uint32 weightFieldIndex;
         uint64 roundStart; uint64 roundEnd; uint256 unacceptedMultFp; uint256 collaboratorMultFp;
         uint256 minRaterRepFp; uint32 evaluatorCarveoutBps; uint256 totalPool;
@@ -70,9 +70,10 @@ sol! {
     /// `SignerSyncModuleDeployer`: emitted in the same governed creation receipt.
     event SignerSyncModuleConfigured(
         bytes32 indexed instanceId, address indexed safe, address indexed signerSyncModule,
-        bytes32 operatorInstanceId, address scoreSnapshot, address accumulator, address verifier,
+        bytes32 operatorInstanceId, address scoreSnapshot, address activitySource,
+        address accumulator, address verifier,
         bytes32 programVKey, bytes32 selectionParamsHash, uint32 topN, uint32 minThreshold,
-        uint32 targetThresholdBps
+        uint32 targetThresholdBps, uint64 maxInactiveBlocks, uint32 minActivityWitnesses
     );
 
     struct Instance {
@@ -182,7 +183,8 @@ sol! {
     function selectionParamsHash() external view returns (bytes32);
     function scoreSnapshot() external view returns (address);
     function submitSignerProof(
-        uint256 checkpointId, address[] signers, uint256 targetThreshold, bytes proof
+        uint256 checkpointId, uint256 activityCheckpointId, address[] signers,
+        uint256 targetThreshold, bytes proof
     ) external;
 
     /// `AttestationAccumulator`.
@@ -668,6 +670,7 @@ impl ChainReader for RpcCatalog<'_> {
                     module: configured.signerSyncModule,
                     safe: configured.safe,
                     score_snapshot: configured.scoreSnapshot,
+                    activity_source: configured.activitySource,
                     accumulator: configured.accumulator,
                     verifier: configured.verifier,
                     program_vkey: configured.programVKey,
@@ -676,6 +679,8 @@ impl ChainReader for RpcCatalog<'_> {
                         top_n: configured.topN,
                         min_threshold: configured.minThreshold,
                         target_threshold_bps: configured.targetThresholdBps,
+                        max_inactive_blocks: configured.maxInactiveBlocks,
+                        min_activity_witnesses: configured.minActivityWitnesses,
                     },
                 })
             })
@@ -826,7 +831,6 @@ fn to_core_params(p: &SolParams) -> Params {
         max_iterations: p.maxIterations,
         min_weight_fp: p.minWeightFp,
         max_weight_fp: p.maxWeightFp,
-        trust_multiplier_fp: p.trustMultiplierFp,
         trust_share_fp: p.trustShareFp,
         trust_decay_fp: p.trustDecayFp,
         trusted_seeds: p.trustedSeeds.clone(),
@@ -848,7 +852,6 @@ fn to_contributions_params(p: &SolContributionsParams) -> contributions_core::Pa
         max_iterations: p.maxIterations,
         min_weight_fp: p.minWeightFp,
         max_weight_fp: p.maxWeightFp,
-        trust_multiplier_fp: p.trustMultiplierFp,
         trust_share_fp: p.trustShareFp,
         trust_decay_fp: p.trustDecayFp,
         trusted_seeds: p.trustedSeeds.clone(),
@@ -1728,12 +1731,14 @@ pub fn submit_calldata(
 /// owner set and needs no IPFS publication step.
 pub fn submit_signer_calldata(
     checkpoint_id: u64,
+    activity_checkpoint_id: u64,
     signers: Vec<Address>,
     target_threshold: U256,
     proof: Vec<u8>,
 ) -> Vec<u8> {
     submitSignerProofCall {
         checkpointId: U256::from(checkpoint_id),
+        activityCheckpointId: U256::from(activity_checkpoint_id),
         signers,
         targetThreshold: target_threshold,
         proof: proof.into(),

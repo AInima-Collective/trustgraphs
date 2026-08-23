@@ -15,6 +15,9 @@
 use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 
+/// Params-hash schema/domain word shared by the M2 scoring migration.
+pub const PARAMS_SCHEMA_VERSION: u32 = 3;
+
 pub mod compute;
 pub mod kind;
 pub mod params;
@@ -40,7 +43,6 @@ pub struct Params {
     pub max_iterations: u32,
     pub min_weight_fp: U256,
     pub max_weight_fp: U256,
-    pub trust_multiplier_fp: U256,
     pub trust_share_fp: U256,
     pub trust_decay_fp: U256,
     /// Trusted seed addresses. `seedSetRoot` is computed over the *sorted* set.

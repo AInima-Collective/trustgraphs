@@ -273,14 +273,14 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         bytes32 signerVKey = keccak256("weighted factory signer guest");
         WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(signerVKey);
         GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 5,
-            minThreshold: 1,
-            targetThresholdBps: 5000
-        });
+            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
+                enabled: true,
+                verifier: address(signerVerifier),
+                programVKey: signerVKey,
+                topN: 5,
+                minThreshold: 2,
+                targetThresholdBps: 5000
+            });
 
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted signer sync", 2);
         vm.prank(creator);
@@ -312,6 +312,23 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         bytes32 signerSetRoot = firstLeaf < secondLeaf
             ? keccak256(abi.encode(firstLeaf, secondLeaf))
             : keccak256(abi.encode(secondLeaf, firstLeaf));
+        bytes32 activityAcc = keccak256("weighted factory activity");
+        uint64 activityBlock = uint64(block.number);
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityAccumulator()"))),
+            abi.encode(activityAcc)
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityCount()"))),
+            abi.encode(uint64(2))
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(MerkleGovModule.getActivityCheckpoint.selector, uint256(0)),
+            abi.encode(MerkleGovModule.ActivityCheckpoint(activityAcc, 2, activityBlock))
+        );
         signerVerifier.setExpectedDigest(
             keccak256(
                 abi.encode(
@@ -319,6 +336,12 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
                     checkpoint.leafCount,
                     scoreSnapshot.checkpointParamsHash(checkpointId),
                     signer.selectionParamsHash(),
+                    activityAcc,
+                    uint64(2),
+                    activityBlock,
+                    false,
+                    keccak256(abi.encode(creator)),
+                    uint256(1),
                     signerSetRoot,
                     uint256(2),
                     keccak256(abi.encode(address(signer), block.chainid))
@@ -327,7 +350,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         );
 
         vm.prank(address(0xBEEF));
-        signer.submitSignerProof(checkpointId, desired, 2, hex"1234");
+        signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
 
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
@@ -340,14 +363,14 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         bytes32 suppliedVKey = keccak256("different weighted signer guest");
         WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(verifierVKey);
         GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: suppliedVKey,
-            topN: 5,
-            minThreshold: 1,
-            targetThresholdBps: 5000
-        });
+            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
+                enabled: true,
+                verifier: address(signerVerifier),
+                programVKey: suppliedVKey,
+                topN: 5,
+                minThreshold: 2,
+                targetThresholdBps: 5000
+            });
 
         vm.prank(creator);
         vm.expectRevert(
@@ -363,19 +386,19 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         bytes32 signerVKey = keccak256("weighted factory signer guest");
         WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(signerVKey);
         GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 65,
-            minThreshold: 1,
-            targetThresholdBps: 5000
-        });
+            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
+                enabled: true,
+                verifier: address(signerVerifier),
+                programVKey: signerVKey,
+                topN: 65,
+                minThreshold: 2,
+                targetThresholdBps: 5000
+            });
 
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(1), uint32(5000)
+                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(2), uint32(5000)
             )
         );
         governedFactory.createGovernedInstance(_args("unsafe weighted selection", 2), _unpaidPolicy(), signerConfig);
@@ -436,8 +459,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted delayed recovery", 2);
         vm.prank(creator);
         (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
 
         uint64 nextEpochLength = EPOCH_FLOOR + 1;
         bytes memory data = abi.encodeCall(MerkleSnapshot.setEpochLength, (nextEpochLength));
@@ -465,8 +487,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted recovery veto", 2);
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
         bytes memory data = abi.encodeCall(MerkleSnapshot.setParamsHash, (bytes32(uint256(0xA))));
 
         vm.prank(creator);
@@ -486,8 +507,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted recovery batch", 2);
         vm.prank(creator);
         (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
 
         MultiSend multiSend = new MultiSend();
         uint64 nextEpochLength = EPOCH_FLOOR + 2;
@@ -592,8 +612,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
             GovernedWeightedTrustgraphsFactory.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR - 1,
-                maxPerRootUsd: 25e8
+                minPaidIntervalBlocks: EPOCH_FLOOR - 1, maxPerRootUsd: 25e8
             }),
             _noSigner()
         );
@@ -605,8 +624,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,
             GovernedWeightedTrustgraphsFactory.InitialPolicy({
-                minPaidIntervalBlocks: EPOCH_FLOOR,
-                maxPerRootUsd: maximum + 1
+                minPaidIntervalBlocks: EPOCH_FLOOR, maxPerRootUsd: maximum + 1
             }),
             _noSigner()
         );

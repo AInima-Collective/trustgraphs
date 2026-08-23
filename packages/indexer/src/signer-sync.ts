@@ -17,6 +17,7 @@ ponder.on(
       signerSyncModule: address,
       operatorInstanceId,
       scoreSnapshot,
+      activitySource,
       accumulator,
       verifier,
       programVKey,
@@ -24,6 +25,8 @@ ponder.on(
       topN,
       minThreshold,
       targetThresholdBps,
+      maxInactiveBlocks,
+      minActivityWitnesses,
     } = event.args
 
     await context.db.insert(signerSyncModule).values({
@@ -32,6 +35,7 @@ ponder.on(
       operatorInstanceId,
       safe,
       scoreSnapshot,
+      activitySource,
       accumulator,
       verifier,
       programVKey,
@@ -39,6 +43,8 @@ ponder.on(
       topN,
       minThreshold,
       targetThresholdBps,
+      maxInactiveBlocks,
+      minActivityWitnesses,
       paused: false,
       safeModuleEnabled: true,
       hasAppliedCheckpoint: false,

@@ -16,13 +16,11 @@ cargo fmt --all --check
 | `contributions-core` | Contribution claims, reconciliation, funding allocation, and journal encodings |
 | `eas-offchain-v2` | Strict EAS offchain v2 payload and typed-head verification |
 | `envelopes` | Authenticated offchain envelope verification, including AT Protocol and Nostr |
-| `graph-reputation-core` | Shared graph-reputation types and computation primitives |
 | `hypercerts-core` | Hypercert record semantics, trust-edge derivation, and journal encodings |
 | `input-exporter` | CLI and library for reconstructing proof inputs from onchain state |
 | `nostr-envelope` | Verification for authenticated Nostr and Buzz audit envelopes |
 | `nostr-workspace-core` | Deterministic Nostr workspace scoring and journal encodings |
 | `operator-core` | Pure decision engine for proof-operator scheduling and safety checks |
-| `pagerank` | General Trust Aware PageRank implementation and WASM-compatible library |
 | `pagerank-core` | Canonical fixed-point trustgraph ranking and byte encodings |
 | `trustgraph-core` | Strict hybrid trustgraph statement layered over the canonical scorer |
 | `weighted-prior-core` | Weighted-prior manifest, scoring, and journal encodings |
@@ -34,3 +32,6 @@ guest ELF and verification key even when the guest source itself is untouched. F
 golden-vector process in
 [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md) when changing
 consensus-sensitive code or encodings.
+
+Non-shipping graph-reputation and weighted-prior experiments live under [`research/`](../research/)
+with standalone manifests. They are intentionally outside this production workspace.

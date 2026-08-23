@@ -34,7 +34,6 @@ export type InstanceParamsJson = {
   maxIterations: number
   minWeightFp: string
   maxWeightFp: string
-  trustMultiplierFp: string
   trustShareFp: string
   trustDecayFp: string
   trustedSeeds: Hex[]
@@ -56,7 +55,6 @@ type OnchainInstanceParams = {
   maxIterations: number
   minWeightFp: bigint
   maxWeightFp: bigint
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   trustedSeeds: readonly Hex[]
@@ -80,7 +78,6 @@ export const normalizeInstanceParams = (params: OnchainInstanceParams) => {
     maxIterations: params.maxIterations,
     minWeightFp: params.minWeightFp.toString(),
     maxWeightFp: params.maxWeightFp.toString(),
-    trustMultiplierFp: params.trustMultiplierFp.toString(),
     trustShareFp: params.trustShareFp.toString(),
     trustDecayFp: params.trustDecayFp.toString(),
     trustedSeeds,

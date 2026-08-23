@@ -2,7 +2,7 @@
 //! `crates/pagerank-core` crate (the single source of truth). Browser-recomputed scores, merkle
 //! roots, and CIDs produced here are byte-identical to what the SP1 zk guest commits.
 //!
-//! See `PLAN.md` §1 (frozen byte formats) and §2 (fixed-point algorithm spec).
+//! See `research/ZK_ARCHITECTURE.md` §4.1 (committed byte formats and fixed-point guest contract).
 
 export * from './types'
 export { compute, journalDigest } from './compute'

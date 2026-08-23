@@ -11,6 +11,8 @@ pragma solidity ^0.8.22;
 ///         the Rust guest hand-rolls. Field order/types are FROZEN; changing them requires updating
 ///         the golden vectors and the Rust/TS ports in lockstep.
 library ParamsCodec {
+    uint256 internal constant PARAMS_SCHEMA_VERSION = 3;
+
     /// @notice The governance-pinned PageRank parameters (mirror of `pagerank_core::Params`).
     /// @dev `trustedSeeds` is the raw (unsorted) seed set; `seedSetRoot` sorts internally, so the
     ///      root depends only on the set, not the input order.
@@ -20,7 +22,6 @@ library ParamsCodec {
         uint32 maxIterations;
         uint256 minWeightFp;
         uint256 maxWeightFp;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         address[] trustedSeeds;
@@ -39,33 +40,35 @@ library ParamsCodec {
         uint64 chainId;
     }
 
-    /// @notice The 17-field `paramsHash` (params-schema v2). Field order + types are frozen against
+    /// @notice The 17-word `paramsHash` (params-schema v3): version word + 16 struct fields.
+    ///         Field order + types are frozen against
     ///         `params_hash` in `pagerank-core` (slot 9 is the `seedSetRoot` over the sorted seeds;
     ///         slot 14 is keccak over the concatenated lane-2 domain separators, 0 when the list is
-    ///         empty; slots 16-17 are the v2 domain separators — the instance's accumulator address
+    ///         empty; slots 16-17 retain the v2 domain separators — the instance's accumulator address
     ///         and its chain id, so two identical clones cannot accept each other's proofs).
     function hash(Params memory p) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                p.dampingFp,
-                p.toleranceFp,
-                p.maxIterations,
-                p.minWeightFp,
-                p.maxWeightFp,
-                p.trustMultiplierFp,
-                p.trustShareFp,
-                p.trustDecayFp,
-                seedSetRoot(p.trustedSeeds),
-                p.totalPool,
-                p.precisionScale,
-                p.schemaUid,
-                p.weightFieldIndex,
-                domainSetHash(p.envelope0DomainSeparators),
-                p.lane2MaxHeadAge,
-                p.accumulator,
-                p.chainId
-            )
+        bytes memory head = abi.encode(
+            PARAMS_SCHEMA_VERSION,
+            p.dampingFp,
+            p.toleranceFp,
+            p.maxIterations,
+            p.minWeightFp,
+            p.maxWeightFp,
+            p.trustShareFp,
+            p.trustDecayFp,
+            seedSetRoot(p.trustedSeeds)
         );
+        bytes memory tail = abi.encode(
+            p.totalPool,
+            p.precisionScale,
+            p.schemaUid,
+            p.weightFieldIndex,
+            domainSetHash(p.envelope0DomainSeparators),
+            p.lane2MaxHeadAge,
+            p.accumulator,
+            p.chainId
+        );
+        return keccak256(bytes.concat(head, tail));
     }
 
     /// @notice keccak over the concatenated lane-2 domain separators; bytes32(0) when empty

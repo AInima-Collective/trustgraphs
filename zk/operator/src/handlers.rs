@@ -17,6 +17,7 @@ use alloy_sol_types::{sol, SolCall};
 use anyhow::{anyhow, bail, Context, Result};
 use operator_core::catalog::CatalogEntry;
 use operator_core::types::{Program, VaultView};
+use operator_core::work::{WorkProfile, COST_MODEL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
@@ -54,6 +55,18 @@ pub struct Built {
     /// Populated only by the signer guest; submitted verbatim and bound by `signer_set_root`.
     pub signers: Vec<Address>,
     pub target_threshold: U256,
+    /// Activity-source checkpoint whose committed fields are in the signer journal.
+    pub activity_checkpoint_id: u64,
+    /// False means the signer result exactly preserves the current Safe state; proving it would
+    /// spend money on the protocol's explicit "absent signal means no change" branch.
+    pub signer_activity_applied: bool,
+    /// Exact prepared-input shape and deterministic iteration count, evaluated immediately before
+    /// the request intent puts money at risk.
+    pub work: WorkProfile,
+}
+
+fn count(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
 /// A finished proof plus the fields the submit needs.
@@ -89,6 +102,8 @@ pub struct HeldProof {
     pub signers: Vec<Address>,
     #[serde(default)]
     pub target_threshold: U256,
+    #[serde(default)]
+    pub activity_checkpoint_id: u64,
     /// The canonical score bytes committed by `ipfs_hash` and `cid`. Older held files predate
     /// this field; they are repaired deterministically from the retained `input.json` on load.
     #[serde(default, with = "hex_bytes")]
@@ -431,6 +446,25 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
     if program == Program::Weighted {
         let input: weighted_prior_core::GuestInput = serde_json::from_str(&text)?;
         let result = weighted_prior_core::compute::compute(&input)?;
+        let graph = weighted_prior_core::reconcile::build_graph(&input.edges, &input.params);
+        let live_edges =
+            graph.outgoing.values().fold(0u64, |total, row| total.saturating_add(count(row.len())));
+        let max_out_degree = graph.outgoing.values().map(|row| count(row.len())).max().unwrap_or(0);
+        let work = WorkProfile {
+            version: COST_MODEL_VERSION,
+            program,
+            raw_records: count(input.edges.len()),
+            live_edges,
+            unique_nodes: count(graph.nodes.len()),
+            max_out_degree,
+            witness_bytes: count(text.len()),
+            lane2_anchors: 0,
+            signature_checks: 0,
+            max_iterations: input.params.max_iterations,
+            iterations_run: result.iterations,
+            output_leaves: count(result.scores.len()),
+            authenticated_cycle_bound: None,
+        };
         if result.journal.recipient != recipient {
             bail!(
                 "input names recipient {:#x}, config says {recipient:#x}",
@@ -453,11 +487,30 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
             blob: result.blob,
             signers: Vec::new(),
             target_threshold: U256::ZERO,
+            activity_checkpoint_id: 0,
+            signer_activity_applied: false,
+            work,
         });
     }
     if program == Program::Composition {
         let input: composition_core::GuestInput = serde_json::from_str(&text)?;
         let result = composition_core::compute::compute(&input)?;
+        let shape = crate::composition::work_shape(&input)?;
+        let work = WorkProfile {
+            version: COST_MODEL_VERSION,
+            program,
+            raw_records: input.capture_count,
+            live_edges: 0,
+            unique_nodes: count(result.scores.len()),
+            max_out_degree: 0,
+            witness_bytes: count(text.len()),
+            lane2_anchors: 0,
+            signature_checks: 0,
+            max_iterations: 0,
+            iterations_run: 0,
+            output_leaves: count(result.scores.len()),
+            authenticated_cycle_bound: Some(shape.measured_cycles),
+        };
         if result.journal.recipient != recipient {
             bail!(
                 "input names recipient {:#x}, config says {recipient:#x}",
@@ -480,12 +533,24 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
             blob: result.blob,
             signers: Vec::new(),
             target_threshold: U256::ZERO,
+            activity_checkpoint_id: 0,
+            signer_activity_applied: false,
+            work,
         });
     }
     if program == Program::NostrWorkspace {
         let input: nostr_workspace_core::compute::GuestInput = serde_json::from_str(&text)?;
         let result = nostr_workspace_core::compute::compute(&input)
             .map_err(|error| anyhow!("nostr-workspace native compute: {error:?}"))?;
+        let work = WorkProfile::ranked(
+            program,
+            count(result.events.len()),
+            count(text.len()),
+            count(input.anchors.len()),
+            result.signature_checks,
+            count(result.scores.len()).saturating_add(count(result.bindings.len())),
+            result.rank,
+        );
         if result.journal.recipient != recipient {
             bail!(
                 "input names recipient {:#x}, config says {recipient:#x}",
@@ -509,22 +574,44 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
             blob: result.blob,
             signers: Vec::new(),
             target_threshold: U256::ZERO,
+            activity_checkpoint_id: 0,
+            signer_activity_applied: false,
+            work,
         });
     }
-    let (j, cid, vk, blob) = match program {
+    let (j, cid, vk, blob, work) = match program {
         Program::Trustgraphs => {
             let input: trustgraph_core::GuestInput = serde_json::from_str(&text)?;
             let r = trustgraph_core::compute::compute(&input);
+            let lane2_anchors = input.lane2.as_ref().map_or(0, |lane| count(lane.anchors.len()));
+            let work = WorkProfile::ranked(
+                program,
+                count(input.edges.len()).saturating_add(lane2_anchors),
+                count(text.len()),
+                lane2_anchors,
+                r.signature_checks,
+                count(r.scores.len()),
+                r.rank,
+            );
             let vk =
                 trustgraph_prover::common::vkey(trustgraph_prover::programs::trust_graph::elf())?;
-            (r.journal, r.cid, vk, r.blob)
+            (r.journal, r.cid, vk, r.blob, work)
         }
         Program::Contributions => {
             let input: contributions_core::compute::GuestInput = serde_json::from_str(&text)?;
             let r = contributions_core::compute::compute(&input);
+            let work = WorkProfile::ranked(
+                program,
+                count(input.trust_edges.len()).saturating_add(count(input.records.len())),
+                count(text.len()),
+                0,
+                0,
+                count(r.scores.len()),
+                r.rank,
+            );
             let vk =
                 trustgraph_prover::common::vkey(trustgraph_prover::programs::contributions::elf())?;
-            (r.journal, r.cid, vk, r.blob)
+            (r.journal, r.cid, vk, r.blob, work)
         }
         _ => bail!("{} does not produce a root journal here", program.name()),
     };
@@ -548,6 +635,9 @@ fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) ->
         blob,
         signers: Vec::new(),
         target_threshold: U256::ZERO,
+        activity_checkpoint_id: 0,
+        signer_activity_applied: false,
+        work,
     })
 }
 
@@ -559,6 +649,15 @@ fn native_signer_journal(
     vk_hash: B256,
 ) -> Built {
     let result = pagerank_core::signer::compute_signers(input);
+    let work = WorkProfile::ranked(
+        Program::Signer,
+        count(input.edges.len()).saturating_add(count(input.activity.len())),
+        std::fs::metadata(input_path).map(|metadata| metadata.len()).unwrap_or(0),
+        0,
+        0,
+        count(result.signers.len()),
+        result.rank,
+    );
     let encoded = pagerank_core::encode::signer_journal_encoded(&result.journal);
     Built {
         program: Program::Signer,
@@ -574,6 +673,9 @@ fn native_signer_journal(
         blob: Vec::new(),
         signers: result.signers,
         target_threshold: result.target_threshold,
+        activity_checkpoint_id: input.activity_checkpoint_id,
+        signer_activity_applied: result.activity_applied,
+        work,
     }
 }
 
@@ -808,6 +910,7 @@ pub fn save_held(
         recipient: built.recipient,
         signers: built.signers.clone(),
         target_threshold: built.target_threshold,
+        activity_checkpoint_id: built.activity_checkpoint_id,
         score_blob: built.blob.clone(),
         blob: proved.blob.clone(),
     };
@@ -995,7 +1098,9 @@ mod readback_tests {
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolValue;
     use operator_core::types::Program;
-    use pagerank_core::{Params, RawEdge, SelectionParams, SignerInput};
+    use pagerank_core::{
+        ActivityCheckpoint, Params, RawEdge, SelectionParams, SignerActivity, SignerInput,
+    };
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
@@ -1087,7 +1192,6 @@ mod readback_tests {
                 max_iterations: 100,
                 min_weight_fp: U256::ZERO,
                 max_weight_fp: scale * U256::from(100),
-                trust_multiplier_fp: scale * U256::from(2),
                 trust_share_fp: scale,
                 trust_decay_fp: scale,
                 trusted_seeds: vec![seed],
@@ -1100,7 +1204,19 @@ mod readback_tests {
                 accumulator: Address::from([0x33; 20]),
                 chain_id: 31_337,
             },
-            selection: SelectionParams { top_n: 5, min_threshold: 1, target_threshold_bps: 5_000 },
+            selection: SelectionParams {
+                top_n: 5,
+                min_threshold: 2,
+                target_threshold_bps: 5_000,
+                max_inactive_blocks: 151_200,
+                min_activity_witnesses: 2,
+            },
+            activity: Vec::new(),
+            activity_checkpoint: Default::default(),
+            activity_checkpoint_id: 0,
+            current_signers: vec![seed],
+            current_threshold: U256::from(1),
+            was_initialized: false,
             instance_domain: B256::from([0x44; 32]),
         };
         let path = std::path::PathBuf::from("signer.json");
@@ -1110,10 +1226,21 @@ mod readback_tests {
         assert_eq!(built.vk_hash, vkey);
         assert_eq!(built.signers, vec![seed]);
         assert_eq!(built.target_threshold, U256::from(1));
+        assert!(!built.signer_activity_applied, "absent activity must stay a no-op before proving");
         assert_eq!(built.output_root, pagerank_core::signer::signer_set_root(&[seed]));
         assert_eq!(built.recipient, Address::ZERO);
         assert!(built.cid.is_empty());
         assert!(built.blob.is_empty(), "signer receipts need no score publication blob");
+        assert_eq!(built.work.raw_records, 1, "the score edge is authenticated work");
+
+        let mut with_activity = input;
+        let record = SignerActivity { account: seed, proposal_id: U256::from(1), block_number: 10 };
+        let activity_acc = pagerank_core::signer::fold_activity(B256::ZERO, 1, &record);
+        with_activity.activity = vec![record];
+        with_activity.activity_checkpoint =
+            ActivityCheckpoint { acc: activity_acc, count: 1, block_number: 10 };
+        let charged = native_signer_journal(&path, &with_activity, vkey);
+        assert_eq!(charged.work.raw_records, 2, "the direct-vote chain is authenticated work too");
     }
 
     /// A one-shot HTTP server that answers the first request with `status`, then stops.

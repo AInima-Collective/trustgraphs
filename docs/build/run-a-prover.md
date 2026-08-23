@@ -143,9 +143,9 @@ track_block_hash = true
 backend      = "network"        # network | cpu | mock
 groth16      = true
 timeout_s    = 3_600
-# The refuse-to-prove cycle ceiling is deliberately NOT configurable: it is derived from the
-# vault's top fee band (MAX_PRICED_INPUTS) so both sides name the same boundary, and a test on
-# each side asserts the agreement.
+# The refuse-to-prove cycle ceiling and capability profile are deliberately NOT configurable.
+# They describe this host release, are versioned in its status heartbeat, and are independent of
+# the vault's pricing bands. They are operator policy, never guest/consensus assertions.
 
 # ── loss budgets ────────────────────────────────────────────────────────────
 # Unpreventable spend is real. When one of these is exceeded the instance is HALTED and alerted,
@@ -250,6 +250,26 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `weighted_manifests.retry_seconds` | retry/alert cadence for degraded mirrors | 300 |
 | `ops.submit_failure_threshold` | deterministic submit reverts before advancing past a checkpoint | 3 |
 | `ops.*` | journal, heartbeat, alerts, logging | see above |
+
+### Host capability and cost admission
+
+The daemon uses two gates before it puts proving money at risk. The cheap gate uses authenticated
+checkpoint counts, program parameters, and conservative bounds (`live_edges <= raw_records`,
+`unique_nodes <= 2 * raw_records + seeds`) with the configured `max_iterations`. After it has
+reconstructed and natively executed the exact input, the prepared-input gate checks the real graph
+shape, witness bytes, signature calls, and `iterations_run` immediately before writing the request
+intent. The intent retains cost-model version, estimated cycles, `max_iterations`, and
+`iterations_run`, so estimate drift and convergence drift are observable after a restart.
+
+Capability profile v1 permits at most 50,000 raw records, 50,000 live edges, 10,000 unique nodes,
+10,000 maximum out-degree, 128 MiB of witness bytes, 10,000 lane-2 anchors, 25,000 signature checks,
+and 100 iterations. The status heartbeat publishes this exact profile and cost-model version. A
+refusal is logged as `skip/capability/<dimension>` with profile version, observed value, and limit.
+It means only that **this host declines the work**: the checkpoint remains valid and another prover
+may accept it. No cost-only ceiling is present in a guest or verification key.
+
+The named model terms and the SP1 executor calibration matrix are published in the
+[trust-graph operator runbook](./trust-graph/runbook.md#m1-full-guest-cost-calibration).
 
 ### Keys and balances
 

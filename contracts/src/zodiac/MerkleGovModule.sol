@@ -39,6 +39,8 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     error NotVoteDelegate(address principal, address caller);
     error VotingPowerMismatch(uint256 recorded, uint256 provided);
     error DelegateReasonTooLong(uint256 length);
+    error NoSignerActivity();
+    error ActivityCheckpointTooSoon(uint256 nextBlock);
 
     /*///////////////////////////////////////////////////////////////
                                 TYPES
@@ -84,6 +86,12 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         uint256 quorumFraction; // Snapshot of the quorum fraction at proposal creation (startBlock)
     }
 
+    struct ActivityCheckpoint {
+        bytes32 acc;
+        uint64 count;
+        uint64 blockNumber;
+    }
+
     /*///////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -126,6 +134,13 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         VoteType newVoteType,
         uint256 votingPower
     );
+
+    /// @notice One identity-authenticated liveness fact: the principal directly exercised their
+    ///         own proposal-pinned voting power. Delegate votes deliberately do not count.
+    event DirectGovernanceActivity(
+        uint64 indexed sequence, address indexed account, uint256 indexed proposalId, uint64 blockNumber, bytes32 acc
+    );
+    event SignerActivityCheckpointed(uint256 indexed checkpointId, bytes32 acc, uint64 count, uint64 blockNumber);
 
     event ProposalExecuted(uint256 indexed proposalId);
     event ProposalCancelled(uint256 indexed proposalId);
@@ -185,7 +200,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Governance parameters
     uint256 public votingDelay = 1; // blocks
     uint256 public votingPeriod = 50400; // ~1 week at 12s blocks
-    uint256 public quorum = 4e16; // 4% in basis points (4e16 = 4% of 1e18)
+    uint256 public quorum = 15e16; // 15% of decisive voting power (M2 scenario table)
 
     /// @notice Blocks between a proposal passing (endBlock) and becoming executable (M-4,
     ///         2026-08-13 audit). The exit window: a passed-but-hostile proposal cannot reach the
@@ -204,6 +219,16 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice Maximum UTF-8 byte length of the event-only delegate rationale.
     uint256 public constant MAX_DELEGATE_REASON_BYTES = 512;
+
+    /// @notice Limits permissionless refresh checkpoints to roughly hourly cadence on mainnet.
+    ///         A direct vote always checkpoints immediately regardless of this interval.
+    uint64 public constant MIN_ACTIVITY_CHECKPOINT_INTERVAL = 300;
+
+    /// @notice Hash-chain head and record count for direct, non-delegated governance votes.
+    bytes32 public activityAccumulator;
+    uint64 public activityCount;
+    mapping(address account => uint64 blockNumber) public lastDirectActivityBlock;
+    ActivityCheckpoint[] private _activityCheckpoints;
 
     /// @notice Whether the module is initialized
     bool private _initialized;
@@ -314,6 +339,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         // Record the proposer's vote immediately
         // The proof was already verified in _propose, so we can record the vote directly
         _castVote(proposalId, msg.sender, voteType, votingPower);
+        _recordDirectActivity(msg.sender, proposalId);
     }
 
     /// @notice Cast a vote with merkle proof verification
@@ -333,12 +359,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
         if (!alreadyVoted) {
             _castVote(proposalId, msg.sender, voteType, votingPower);
+            _recordDirectActivity(msg.sender, proposalId);
             return;
         }
 
         // Human votes are final. The sole exception is a principal replacing their own
         // delegate's provisional vote; that replacement can happen exactly once.
         _overrideDelegateVote(proposalId, msg.sender, voteType, votingPower);
+        _recordDirectActivity(msg.sender, proposalId);
     }
 
     /// @notice Set or revoke the one account allowed to cast provisional votes for the caller.
@@ -451,7 +479,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         if (currentBlock <= proposal.endBlock) return ProposalState.Active;
 
         // Check if proposal passed
-        // Quorum is a percentage of snapshotted totalVotingPower (e.g., 4e16 = 4%).
+        // Quorum is a percentage of snapshotted totalVotingPower (e.g., 15e16 = 15%).
         // M-5 (2026-08-13 audit): abstain votes are EXCLUDED from the quorum sum. Counting them
         // let a tiny "for" minority pass a proposal whose participation was mostly abstentions —
         // quorum must measure decisive (yes/no) participation.
@@ -486,6 +514,25 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     /// @notice Get proposal actions
     function getActions(uint256 proposalId) external view returns (ProposalAction[] memory) {
         return proposalActions[proposalId];
+    }
+
+    /// @notice Number of immutable activity checkpoints available to signer proofs.
+    function activityCheckpointCount() external view returns (uint256) {
+        return _activityCheckpoints.length;
+    }
+
+    function getActivityCheckpoint(uint256 checkpointId) external view returns (ActivityCheckpoint memory) {
+        return _activityCheckpoints[checkpointId];
+    }
+
+    /// @notice Refresh the block reference used for inactivity without claiming any new account
+    ///         activity. Permissionless and non-censorable; the accumulator/count stay unchanged.
+    function checkpointSignerActivity() external returns (uint256 checkpointId) {
+        if (activityCount == 0) revert NoSignerActivity();
+        uint256 length = _activityCheckpoints.length;
+        uint256 nextBlock = uint256(_activityCheckpoints[length - 1].blockNumber) + MIN_ACTIVITY_CHECKPOINT_INTERVAL;
+        if (block.number < nextBlock) revert ActivityCheckpointTooSoon(nextBlock);
+        checkpointId = _checkpointSignerActivity();
     }
 
     // Note: hasVoted(proposalId, voter) and votes(proposalId, voter) are auto-generated
@@ -654,6 +701,23 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         _addToTally(proposal, voteType, votingPower);
 
         emit VoteCast(voter, proposalId, voteType, votingPower);
+    }
+
+    function _recordDirectActivity(address account, uint256 proposalId) internal {
+        uint64 sequence = ++activityCount;
+        uint64 activityBlock = uint64(block.number);
+        activityAccumulator = keccak256(abi.encode(activityAccumulator, sequence, account, proposalId, activityBlock));
+        lastDirectActivityBlock[account] = activityBlock;
+        emit DirectGovernanceActivity(sequence, account, proposalId, activityBlock, activityAccumulator);
+        _checkpointSignerActivity();
+    }
+
+    function _checkpointSignerActivity() internal returns (uint256 checkpointId) {
+        checkpointId = _activityCheckpoints.length;
+        ActivityCheckpoint memory checkpoint =
+            ActivityCheckpoint({acc: activityAccumulator, count: activityCount, blockNumber: uint64(block.number)});
+        _activityCheckpoints.push(checkpoint);
+        emit SignerActivityCheckpointed(checkpointId, checkpoint.acc, checkpoint.count, checkpoint.blockNumber);
     }
 
     /// @dev Replace one provisional vote without minting or burning voting power. The power must

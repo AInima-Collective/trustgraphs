@@ -15,7 +15,11 @@ import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -171,10 +175,7 @@ contract GovernedTrustgraphsFactory {
         SignerSyncConfig calldata signerSync,
         TrustgraphsFactory.OffchainEasConfig memory offchain,
         bool hybrid
-    )
-        internal
-        returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot)
-    {
+    ) internal returns (bytes32 instanceId, address safeAddress, address merkleGovModule, address snapshot) {
         IProvingVault vault = FACTORY.VAULT();
         if (msg.value == 0) {
             if (policy.minPaidIntervalBlocks != 0 || policy.maxPerRootUsd != 0) revert PolicyRequiresPrepay();
@@ -260,11 +261,14 @@ contract GovernedTrustgraphsFactory {
                 IZkVerifier(signerSync.verifier),
                 IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator())),
                 ISignerSyncCheckpointSource(snapshot),
+                ISignerActivitySource(merkleGovModule),
                 MerkleSnapshot(snapshot).paramsHash(),
                 signerSync.programVKey,
                 signerSync.topN,
                 signerSync.minThreshold,
-                signerSync.targetThresholdBps
+                signerSync.targetThresholdBps,
+                151_200,
+                2
             );
         }
 

@@ -88,16 +88,9 @@ pub struct Policy {
     /// Blocks before a checkpoint is safe to spend on. A reorg must not erase a checkpoint we
     /// already paid to prove.
     pub confirmations: u64,
-    /// Refuse instances whose proof would exceed this.
-    ///
-    /// It must name the same boundary as the vault's top fee band, or one of two things is true:
-    /// we price proofs we will not produce, or we produce proofs nobody will pay for. So it is
-    /// DERIVED from [`MAX_PRICED_INPUTS`] rather than chosen, and both sides assert the boundary
-    /// (`crates/operator-core/tests/decide.rs` and `contracts/test/unit/vault/ProvingVault.t.sol`).
+    /// Operator-local cycle envelope. It is independent of the vault's fee bands: another prover
+    /// may accept a checkpoint this host refuses.
     pub cycle_limit: u64,
-    /// Crude cycles-per-input used with `cycle_limit`. See [`CYCLES_PER_INPUT`].
-    pub cycles_per_input: u64,
-    pub base_cycles: u64,
     /// Programs this binary has a guest for.
     pub supported_programs: BTreeSet<Program>,
     pub loss_budget: LossBudget,
@@ -110,12 +103,6 @@ pub struct Policy {
 /// agree is a test on each side, not a shared constant.
 pub const MAX_PRICED_INPUTS: u64 = 200_000;
 
-/// Measured, not guessed: the trust-graph guest runs ~1.83M cycles on the 3-edge golden fixture
-/// (so the fixed cost dominates at small sizes), and the M1 atproto spike measured ~27.3k cycles
-/// per ecrecover. 40k per input leaves headroom over that.
-pub const CYCLES_PER_INPUT: u64 = 40_000;
-pub const BASE_CYCLES: u64 = 2_000_000;
-
 impl Default for Policy {
     fn default() -> Self {
         Self {
@@ -124,9 +111,7 @@ impl Default for Policy {
             subsidy_min_blocks: 216_000,     // ~1 month at 12s blocks
             max_basefee_wei: 40_000_000_000, // 40 gwei
             confirmations: 12,
-            cycle_limit: BASE_CYCLES + MAX_PRICED_INPUTS * CYCLES_PER_INPUT,
-            cycles_per_input: CYCLES_PER_INPUT,
-            base_cycles: BASE_CYCLES,
+            cycle_limit: crate::work::OPERATOR_CYCLE_LIMIT,
             supported_programs: BTreeSet::from([
                 Program::Trustgraphs,
                 Program::Contributions,

@@ -117,8 +117,7 @@ export const CADENCE_OPTIONS: { value: Cadence; label: string }[] = [
 
 /**
  * The knobs the "advanced" section exposes, in the units a person reads them in. The full seed
- * share is deliberate: with less than 100%, disconnected accounts retain baseline teleport mass
- * even though no trusted path reaches them.
+ * share is the safe default; any remainder is divided only among accounts reachable from a seed.
  */
 export type Tuning = {
   /** Damping, as a percentage. */
@@ -127,8 +126,6 @@ export type Tuning = {
   headStartPct: number
   /** Trust decay, as a percentage kept per step. */
   headStartKeptPct: number
-  /** Trust multiplier, as a plain "counts N times more". */
-  startingAccountBoost: number
   /** Total pool, in whole points. */
   totalPoints: number
   cadence: Cadence
@@ -138,7 +135,6 @@ export const DEFAULT_TUNING: Tuning = {
   vouchWeightPct: 85,
   headStartPct: FULL_SEED_TRUST_SHARE_PCT,
   headStartKeptPct: 80,
-  startingAccountBoost: 2,
   totalPoints: 1_000_000,
   cadence: IS_LOCAL_CHAIN ? 'fastest' : 'monthly',
 }
@@ -198,7 +194,7 @@ export const EMPTY_WIZARD_DATA: WizardData = {
   withOffchainVouches: false,
   offchainMaxTotalInputs: MAX_OFFCHAIN_TOTAL_INPUTS,
   signerTopN: 5,
-  signerMinThreshold: 1,
+  signerMinThreshold: 2,
   signerTargetThresholdPct: 50,
 }
 
@@ -225,10 +221,6 @@ export const metadataFingerprint = (metadata: NetworkMetadata) =>
 
 /** A percentage the screens show (85) into the fixed-point fraction the chain wants (0.85 * 1e18). */
 const pctToFp = (pct: number) => BigInt(Math.round(pct * 100)) * 10n ** 14n
-
-/** A plain multiplier the screens show (2x) into fixed point (2 * 1e18). */
-const multiplierToFp = (times: number) =>
-  BigInt(Math.round(times * 100)) * 10n ** 16n
 
 /**
  * A fresh 32-byte salt per wizard session. It only exists so the same person can create two
@@ -412,17 +404,17 @@ export const signerSyncProblem = (data: WizardData): string | null => {
   }
   if (
     !Number.isInteger(data.signerTopN) ||
-    data.signerTopN < 1 ||
+    data.signerTopN < 2 ||
     data.signerTopN > 64
   ) {
-    return 'Choose between 1 and 64 score-selected signers.'
+    return 'Choose between 2 and 64 score-selected signers.'
   }
   if (
     !Number.isInteger(data.signerMinThreshold) ||
-    data.signerMinThreshold < 1 ||
+    data.signerMinThreshold < 2 ||
     data.signerMinThreshold > data.signerTopN
   ) {
-    return 'The minimum threshold must be at least 1 and no larger than the signer count.'
+    return 'The minimum threshold must be at least 2 and no larger than the signer count.'
   }
   if (
     !Number.isFinite(data.signerTargetThresholdPct) ||
@@ -462,7 +454,6 @@ export type FactoryParams = {
   maxIterations: number
   minWeightFp: bigint
   maxWeightFp: bigint
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   trustedSeeds: readonly Hex[]
@@ -536,7 +527,6 @@ export const buildParams = (data: WizardData): FactoryParams => ({
   maxIterations: FIXED_PARAMS.maxIterations,
   minWeightFp: FIXED_PARAMS.minWeightFp,
   maxWeightFp: FIXED_PARAMS.maxWeightFp,
-  trustMultiplierFp: multiplierToFp(data.tuning.startingAccountBoost),
   trustShareFp: pctToFp(data.tuning.headStartPct),
   trustDecayFp: pctToFp(data.tuning.headStartKeptPct),
   trustedSeeds: data.seeds,
@@ -624,10 +614,6 @@ const FACTORY_ERROR_COPY: [string, string][] = [
   [
     'InvalidTrustDecay',
     "The amount of weight kept at each step can't be more than 100%.",
-  ],
-  [
-    'InvalidTrustMultiplier',
-    'A vouch from a starting account can count at most 1000 times more than an ordinary one.',
   ],
   [
     'InvalidTotalPool',

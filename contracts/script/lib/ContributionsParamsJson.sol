@@ -28,7 +28,6 @@ library ContributionsParamsJson {
         p.maxIterations = uint32(vm.parseJsonUint(j, ".max_iterations"));
         p.minWeightFp = vm.parseJsonUint(j, ".min_weight_fp");
         p.maxWeightFp = vm.parseJsonUint(j, ".max_weight_fp");
-        p.trustMultiplierFp = vm.parseJsonUint(j, ".trust_multiplier_fp");
         p.trustShareFp = vm.parseJsonUint(j, ".trust_share_fp");
         p.trustDecayFp = vm.parseJsonUint(j, ".trust_decay_fp");
         p.trustedSeeds = vm.parseJsonAddressArray(j, ".trusted_seeds");

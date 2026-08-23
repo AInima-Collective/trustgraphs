@@ -1,6 +1,7 @@
 //! OpenZeppelin Standard Merkle Tree, reproduced exactly so the frontend can use
 //! `@openzeppelin/merkle-tree` and the on-chain `MerkleProof.verifyCalldata` (commutative /
-//! sorted-pair hashing) verifies guest-produced proofs unchanged (PLAN.md §1.4).
+//! sorted-pair hashing) verifies guest-produced proofs unchanged
+//! (`research/ZK_ARCHITECTURE.md` §4.1).
 
 use crate::words::{word_addr, word_u256};
 use alloy_primitives::{keccak256, Address, B256, U256};

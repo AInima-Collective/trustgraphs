@@ -39,7 +39,6 @@
     "pagerank": {
       "enabled": true,
       "pointsPool": 10000,
-      "trustMultiplier": 3.0,
       "trustShare": 1.0,
       "trustDecay": 0.8,
       "minWeight": 0,

@@ -90,7 +90,6 @@ export interface HypercertsParams {
   dampingFp: bigint
   toleranceFp: bigint
   maxIterations: number
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   precisionScale: bigint
@@ -166,10 +165,10 @@ export const paramsHash = (p: HypercertsParams): Hex => {
   const seedIds = p.trustedSeedDids.map(didNodeId)
   return keccak256(
     concat([
+      wordU256(3n),
       wordU256(p.dampingFp),
       wordU256(p.toleranceFp),
       wordU256(BigInt(p.maxIterations)), // uint32, left-padded like any uintN
-      wordU256(p.trustMultiplierFp),
       wordU256(p.trustShareFp),
       wordU256(p.trustDecayFp),
       wordU256(p.precisionScale),
@@ -237,7 +236,6 @@ const asRankParams = (
   maxIterations: p.maxIterations,
   minWeightFp: 0n,
   maxWeightFp: 0n,
-  trustMultiplierFp: p.trustMultiplierFp,
   trustShareFp: p.trustShareFp,
   trustDecayFp: p.trustDecayFp,
   trustedSeeds: seedNodeIds,

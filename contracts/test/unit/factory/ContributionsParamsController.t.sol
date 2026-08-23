@@ -135,7 +135,6 @@ contract ContributionsParamsControllerTest is Test {
         p.toleranceFp = 1e12;
         p.maxIterations = 100;
         p.maxWeightFp = 100e18;
-        p.trustMultiplierFp = 2e18;
         p.trustShareFp = 15e16;
         p.trustDecayFp = 80e16;
         p.trustedSeeds = new address[](2);

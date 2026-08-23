@@ -23,7 +23,6 @@ export interface ContributionsParams {
   maxIterations: number
   minWeightFp: bigint
   maxWeightFp: bigint
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   /** Trusted seed addresses. `seedSetRoot` is computed over the *sorted* set. */

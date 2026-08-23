@@ -97,7 +97,8 @@ transient file from that call on every catalog refresh. A local file remains a
 deployment input for the legacy `DeployNetwork` path and a useful independent
 hash check; it must never shadow a controller-backed registry entry.
 
-> **params schema v2.** `Params` carries two domain separators at the end — `accumulator` (the
+> **params schema v3.** The params hash prepends version word `3`, removes the retired founder
+> multiplier, and retains two domain separators at the end — `accumulator` (the
 > instance's `EASIndexerResolver`) and `chain_id` — so two identically-configured instances cannot
 > accept each other's proofs ([`../create-a-network.md`](../create-a-network.md) §1.1). They are properties of an _instance_, not of the
 > governance file: `DeployNetwork` / `TrustgraphsFactory` supply them at creation, and
@@ -338,7 +339,8 @@ cd ../..
 # No PARAMS_HASH: DeployNetwork computes it on-chain from params.json after registering the schema.
 ```
 
-The signer program's deploy constants (`SP1_SIGNER_PROGRAM_VKEY`, `SELECTION_PARAMS_HASH`) are in
+The signer program's deploy constant (`SP1_SIGNER_PROGRAM_VKEY`) and the module's five-field
+selection/liveness policy are in
 [`../signer-sync/runbook.md`](../signer-sync/runbook.md).
 
 ### Rotating the trust-graph vkey (guest change runbook)
@@ -411,14 +413,70 @@ MerkleSnapshot and the typed trust-graph controller:
 The signer module's governance surface is documented in
 [`../signer-sync/runbook.md`](../signer-sync/runbook.md).
 
+## M1 full-guest cost calibration
+
+Operator cost model v1 prices the complete prepared witness, not just its attestation count. Its
+named terms are retained in logs and the request intent:
+
+```
+base(program)
++ 64 * witness_bytes + 8,000 * raw_records + 75,000 * signature_checks
++ 2,000 * raw_records * ceil(log2(max(raw_records, 2)))
++ 4,000 * (unique_nodes + live_edges) + 2,000 * max_out_degree
++ iterations_run * (5,000 * unique_nodes + 10,000 * live_edges)
++ 10,000 * output_leaves * ceil(log2(max(output_leaves, 2)))
+```
+
+The per-program base is 3M cycles for trust root and signer, 4M for contributions, and 5M for
+Hypercerts and Nostr. Arithmetic saturates rather than wrapping. Stage 1 applies conservative
+algebraic bounds from authenticated checkpoint counts and uses `max_iterations`; after input
+reconstruction, Stage 2 substitutes the exact graph shape and deterministic `iterations_run`
+immediately before the paid request intent. The intent records both iteration fields, the estimate,
+and the model version. For signer-sync, `raw_records` at the prepared gate includes both score-edge
+records and the complete authenticated direct-vote activity chain.
+
+This calibration was rerun on 2026-08-23 with SP1 v6.3.1 on aarch64 Linux. Every row executed the
+fresh guest ELF, byte-asserted `guest == native`, and then compared the v1 estimate with the guest's
+global instruction clock. The disconnected-tail row preserves the schema-v3 consensus rule that
+unreachable nodes remain exactly zero and do not participate in the stopping delta.
+
+| Case | Raw | Live edges | Nodes | Max out | Iterations | Measured cycles | Estimated cycles | Headroom |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| trust sample | 6 | 3 | 3 | 1 | 57 | 903,623 | 5,958,808 | 6.59x |
+| signer sample (6 edges + 2 activity) | 8 | 3 | 3 | 1 | 57 | 991,874 | 5,989,112 | 6.04x |
+| contributions sample | 25 | 6 | 5 | 4 | 4 | 1,308,761 | 5,992,192 | 4.58x |
+| Hypercerts sample | 5 | 4 | 5 | 2 | 3 | 1,711,762 | 6,338,512 | 3.70x |
+| Nostr sample | 24 | 4 | 3 | 2 | 41 | 5,289,098 | 22,677,824 | 4.29x |
+| connected V=25, degree<=2, maxIterations=1 | 38 | 38 | 25 | 2 | 1 | 2,335,137 | 5,656,456 | 2.42x |
+| connected V=100, degree<=4 | 250 | 250 | 100 | 4 | 30 | 66,973,643 | 108,664,096 | 1.62x |
+| connected V=200, degree<=8 | 900 | 900 | 200 | 8 | 34 | 244,915,295 | 399,802,496 | 1.63x |
+| V=200, degree<=4, unreachable tail=80 | 500 | 500 | 200 | 4 | 30 | 114,210,886 | 213,768,096 | 1.87x |
+| connected V=400, degree<=8 | 1,800 | 1,800 | 400 | 8 | 34 | 538,786,913 | 797,188,160 | 1.48x |
+
+Reproduce the matrix after rebuilding every guest:
+
+```bash
+cargo build --release --manifest-path zk/prover/Cargo.toml
+SP1_SKIP_PROGRAM_BUILD=true cargo run --release --manifest-path zk/prover/Cargo.toml \
+  --example m1_guest_cost_matrix
+```
+
+The host publishes capability profile v1 in its status heartbeat: 50,000 raw records, 50,000 live
+edges, 10,000 unique nodes, 10,000 maximum out-degree, 128 MiB of witness bytes, 10,000 lane-2
+anchors, 25,000 signature checks, and 100 iterations. Boundary and one-over tests lock every
+dimension. These are this operator's economic limits, not protocol rules and not guest assertions:
+the refusal names the profile version, dimension, observed value, and limit, and **another prover
+may accept the same valid checkpoint**.
+
 ## Proving & on-chain gas — status and requirements
 
 What is validated end-to-end in CI-class hardware:
 
 - **Guest correctness**: `trust-graph execute` runs the real guest ELF in the SP1 RISC-V executor and
   its committed public values are asserted **byte-identical** to native `pagerank-core::compute` and to
-  the Solidity golden vectors (`tests/golden/trust-graph.json`) and the frontend TS port. Guest cost ≈
-  **1.79M cycles** for the sample (seconds-to-minutes to prove on adequate hardware).
+  the Solidity golden vectors (`tests/golden/trust-graph.json`) and the frontend TS port. The current
+  strict trust sample measures **903,623 cycles**; the calibrated matrix above covers all five
+  PageRank-bearing production guests.
 - **Verification key** (deploy constant): recorded in
   [`networks-and-programs.md`](../../concepts/networks-and-programs.md) — `cargo run -p trustgraph-prover -- trust-graph vkey`. Re-derive
   after any guest change.
@@ -441,10 +499,31 @@ Expected on-chain cost of `submitProof`:
 - SP1 Groth16 verify via the gateway ≈ **~270–330k gas** (SP1 constant, version-dependent).
 - Total ≈ **~0.6M gas** per root update. This is a per-snapshot cost, not per-user.
 
-## Notes / limits (v1)
+## Tolerance floor and fixed-iteration semantics
+
+The validator accepts `toleranceFp` from `1e6` through `1e15`. The lower bound is an
+**empirical operating margin**, not a proof that integer PageRank cannot cycle. At damping
+0.85, periodic graphs do form finite fixed-point limit cycles when tolerance is one unit,
+but the measured residual movement stayed between zero and six units:
+
+| Nodes | Out-degree | Largest measured residual movement |
+|---:|---:|---:|
+| 10 | 3 | 2 units |
+| 50 | 3 / 10 | 0 units |
+| 200 | 6 / 20 | 2 / 0 units |
+| 800 | 6 / 20 | 6 / 1 units |
+| 2,000 | 6 | 5 units |
+
+The `1e6` floor is therefore six orders of magnitude above the largest observed cycle and
+six below the shipped `1e12` tolerance. This finite sweep is evidence, not a no-cycle
+theorem. `maxIterations` remains consensus: exhausting it produces the canonical result;
+`converged`, `iterations_run`, and `final_max_delta` are operator telemetry.
+
+## Notes / limits (params schema v3)
 
 - Privacy is out of scope (inputs are public by construction).
-- The fixed-point port **redefines** the canonical scores (validated bounded-close to the legacy f64:
-  `cargo run -p pagerank-core --example diff_harness` → 0.0% of pool delta across random graphs).
-- Trust-weighted PageRank can fail to converge for some weight configs; both the guest and the legacy
-  impl then stop at `max_iterations` and agree — the cap defines the canonical output.
+- The fixed-point port **redefines** the canonical scores. The retired f64 engine's deterministic
+  migration fixture remains frozen in `pagerank-core`'s `legacy_float_fixture_is_preserved` test;
+  the original eight generated cases had 0.0% whole-point payout delta.
+- Fixed-point PageRank can fail to converge for some periodic graphs; the guest then stops at
+  `max_iterations` — the cap defines the canonical output.

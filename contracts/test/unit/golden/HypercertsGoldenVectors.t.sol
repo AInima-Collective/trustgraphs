@@ -69,7 +69,6 @@ contract HypercertsGoldenVectorsTest is Test {
             dampingFp: json.readUint(".params.dampingFp"),
             toleranceFp: json.readUint(".params.toleranceFp"),
             maxIterations: uint32(json.readUint(".params.maxIterations")),
-            trustMultiplierFp: json.readUint(".params.trustMultiplierFp"),
             trustShareFp: json.readUint(".params.trustShareFp"),
             trustDecayFp: json.readUint(".params.trustDecayFp"),
             precisionScale: json.readUint(".params.precisionScale"),

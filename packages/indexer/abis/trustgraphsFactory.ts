@@ -46,6 +46,11 @@ export const trustgraphsFactoryAbi = [
         internalType: 'contract TrustgraphsParamsControllerDeployer',
       },
       {
+        name: 'easRegistryDeployer',
+        type: 'address',
+        internalType: 'contract EasOffchainAnchorRegistryDeployer',
+      },
+      {
         name: 'epochFloor',
         type: 'uint64',
         internalType: 'uint64',
@@ -151,7 +156,7 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'function',
-    name: 'MAX_TRUSTED_SEEDS',
+    name: 'MIN_TOLERANCE_FP',
     inputs: [],
     outputs: [
       {
@@ -164,7 +169,7 @@ export const trustgraphsFactoryAbi = [
   },
   {
     type: 'function',
-    name: 'MAX_TRUST_MULTIPLIER_FP',
+    name: 'MAX_TRUSTED_SEEDS',
     inputs: [],
     outputs: [
       {
@@ -345,11 +350,6 @@ export const trustgraphsFactoryAbi = [
                 internalType: 'uint256',
               },
               {
-                name: 'trustMultiplierFp',
-                type: 'uint256',
-                internalType: 'uint256',
-              },
-              {
                 name: 'trustShareFp',
                 type: 'uint256',
                 internalType: 'uint256',
@@ -461,7 +461,7 @@ export const trustgraphsFactoryAbi = [
         internalType: 'bytes32',
       },
     ],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -494,11 +494,6 @@ export const trustgraphsFactoryAbi = [
           },
           {
             name: 'maxWeightFp',
-            type: 'uint256',
-            internalType: 'uint256',
-          },
-          {
-            name: 'trustMultiplierFp',
             type: 'uint256',
             internalType: 'uint256',
           },
@@ -690,11 +685,6 @@ export const trustgraphsFactoryAbi = [
             internalType: 'uint256',
           },
           {
-            name: 'trustMultiplierFp',
-            type: 'uint256',
-            internalType: 'uint256',
-          },
-          {
             name: 'trustShareFp',
             type: 'uint256',
             internalType: 'uint256',
@@ -880,17 +870,6 @@ export const trustgraphsFactoryAbi = [
     inputs: [
       {
         name: 'trustDecayFp',
-        type: 'uint256',
-        internalType: 'uint256',
-      },
-    ],
-  },
-  {
-    type: 'error',
-    name: 'InvalidTrustMultiplier',
-    inputs: [
-      {
-        name: 'trustMultiplierFp',
         type: 'uint256',
         internalType: 'uint256',
       },

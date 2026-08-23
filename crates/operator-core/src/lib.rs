@@ -31,6 +31,7 @@ pub mod manifest;
 pub mod policy;
 pub mod types;
 pub mod weighted_manifest;
+pub mod work;
 
 pub use decide::plan;
 pub use journal::SubmitFailureClass;
@@ -39,3 +40,4 @@ pub use types::{
     Action, AvailabilityStage, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight,
     InFlightState, InstanceSize, InstanceState, Program, SkipReason, VaultView,
 };
+pub use work::{CapabilityProfile, CostEstimate, WorkProfile};

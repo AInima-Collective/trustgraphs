@@ -1,8 +1,14 @@
 # Graph-reputation simulation record
 
-The production recurrence is integer-only and lives in `packages/indexer/src/graph-reputation.ts`; the
-independent Rust reproduction is `crates/graph-reputation-core`. Both are fixed by
-`tests/golden/graph-reputation.json`.
+This directory preserves the graph-reputation research spike and its provenance. It is not a
+shipped scoring program. The explorer's advisory recurrence is integer-only and lives in
+`packages/indexer/src/graph-reputation.ts`; the independent Rust reproduction is in `core/`.
+Both are fixed by `golden/graph-reputation.json`, which their test suites read directly.
+
+The former production-looking paths were retired together: `core/` moved from `crates/`, the
+golden moved from `tests/golden/`, and the design/operation notes moved from `docs/build/` to
+`docs/`. Keeping them together prevents the spike from being mistaken for an SP1 program while
+retaining the cross-language evidence.
 
 The simulations establish the V1 advisory boundary:
 

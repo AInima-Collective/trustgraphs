@@ -13,8 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
-import { hasUnreservedTrustShare } from '@/lib/trust-share'
-
 import {
   CADENCE_OPTIONS,
   Cadence,
@@ -134,15 +132,6 @@ export const TuningStep = ({
             description="Of everything handed out before any vouching happens, this share is split between the accounts you picked. At 100%, an account disconnected from them starts at zero."
           />
 
-          {hasUnreservedTrustShare(tuning.headStartPct) && (
-            <Note tone="warning" className="-mt-6">
-              Below 100%, the remainder is split among every other account. A
-              disconnected group can then gain scoreboard share by adding
-              accounts, even when no trust reaches it from your starting
-              accounts.
-            </Note>
-          )}
-
           <PercentSetting
             label="Weight kept at each step away from a starting account"
             value={tuning.headStartKeptPct}
@@ -150,18 +139,46 @@ export const TuningStep = ({
             description="A vouch from someone one step from a starting account carries this much of its weight. Two steps away, that much again, and so on. Set it low and only people close to your starting accounts count for much."
           />
 
-          {/* Capped at 4x, not by taste: scores are worked out by repeated passes over the graph,
-              and a boost above roughly 4.5x makes the numbers grow faster than they can be
-              represented, which the network refuses at creation. 4x leaves margin. */}
-          <PercentSetting
-            label="How much a vouch from a starting account counts"
-            value={tuning.startingAccountBoost}
-            min={1}
-            max={4}
-            suffix="x"
-            onChange={(value) => setTuning({ startingAccountBoost: value })}
-            description="A vouch from one of the accounts you picked counts this many times more than a vouch from anyone else. Above about four times, the scores grow too fast to work out reliably, so that is the limit."
-          />
+          <Card type="outline" size="md" className="space-y-3">
+            <div className="text-sm font-medium">
+              What distance decay changes
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[30rem] text-left text-xs">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th className="pb-2 pr-4 font-medium">Weight kept</th>
+                    <th className="pb-2 pr-4 font-medium">
+                      Reciprocal fake-account gain
+                    </th>
+                    <th className="pb-2 font-medium">Useful reach</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  <tr>
+                    <td className="py-2 pr-4">60%</td>
+                    <td className="py-2 pr-4">1.21×</td>
+                    <td className="py-2">5 hops</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4">80% (default)</td>
+                    <td className="py-2 pr-4">1.68×</td>
+                    <td className="py-2">7 hops</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4">100%</td>
+                    <td className="py-2 pr-4">6.17×</td>
+                    <td className="py-2">No distance limit</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <Note>
+              Lower decay limits how much a closed reciprocal loop can amplify
+              its holder, but legitimate trust also stops travelling sooner.
+              These are measured model results, not universal attack bounds.
+            </Note>
+          </Card>
 
           <Field
             label="Total points shared out"

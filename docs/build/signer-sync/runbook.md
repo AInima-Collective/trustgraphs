@@ -50,15 +50,15 @@ cargo run --release -- signer selectionparamshash signer_input.json   # -> selec
 > **vkey:** the current signer vkey is recorded in [`networks-and-programs.md`](../../concepts/networks-and-programs.md) (it rotates
 > whenever the guest ELF changes, even for refactors that don't change semantics).
 
-`SignerSyncZkModule` is deployed + enabled by `contracts/script/DeployZodiacSafes.s.sol`, reusing the
-MerkleSnapshot's `zkVerifier`/`accumulator`/`paramsHash`. Set `selectionParamsHash` at deploy via the
-`SELECTION_PARAMS_HASH` env var (default `0` → inert until governance sets it). In the full mainnet-fork
-deploy (trust-graph runbook → "Two programs, two verifiers"), export it alongside the root constant:
+`SignerSyncZkModule` is deployed + enabled by the governed factory, reusing the MerkleSnapshot's
+accumulator and pinned params while binding the sibling `MerkleGovModule` as its authenticated
+activity source. The deployer validates the signer verifier's program vkey and hashes the complete
+selection/liveness tuple. The production defaults are top 5, minimum threshold 2, 50% target,
+151,200 inactive blocks, and two activity witnesses.
 
 ```bash
 cd zk/prover
 export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer vkey)
-export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer selectionparamshash)   # no arg → default selection
 cd ../..
 ```
 
@@ -67,7 +67,11 @@ cd ../..
 Build the signer input, validate, then run the loop:
 
 ```bash
-# Reconstruct the SignerInput (GuestInput + selection + instanceDomain) from chain:
+# Direct votes checkpoint automatically. If no vote happened recently, refresh the immutable
+# reference block without inventing activity (rate-limited by the governance module):
+cast send $MERKLE_GOV_MODULE "checkpointSignerActivity()"
+
+# Reconstruct score inputs, the complete activity chain, and the Safe pre-state from chain:
 cargo run -p input-exporter -- \
   --rpc $RPC --accumulator $ACCUMULATOR --eas $EAS \
   --checkpoint $CHECKPOINT_ID --params params.json \
@@ -88,24 +92,25 @@ cargo run --release -- signer prove ../../.trustgraph/signer-sync/signer_input.j
 ```bash
 # 1. Freeze a checkpoint (same trigger() as the root):
 cast send $MERKLE_SNAPSHOT "trigger()"
-# 2. Submit. SIGNERS must be strictly ascending + unique; THRESHOLD in [1, |SIGNERS|]:
+# 2. Submit. ACTIVITY_CHECKPOINT_ID is recorded in signer_input.json; SIGNERS are ascending:
 cast send $SIGNER_SYNC_MODULE \
-  "submitSignerProof(uint256,address[],uint256,bytes)" \
-  $CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD $(xxd -p -c0 .trustgraph/signer-sync/signer_proof.bin)
+  "submitSignerProof(uint256,uint256,address[],uint256,bytes)" \
+  $CHECKPOINT_ID $ACTIVITY_CHECKPOINT_ID "[$SIGNERS]" $THRESHOLD \
+  $(xxd -p -c0 .trustgraph/signer-sync/signer_proof.bin)
 ```
 
 `submitSignerProof` rebuilds the signer journal digest from the chain-pinned checkpoint + stored
-`paramsHash`/`selectionParamsHash` + the submitted `signerSetRoot`/`targetThreshold` + an
+`paramsHash`/`selectionParamsHash`, the current activity-chain checkpoint, the Safe's live owner
+root and threshold, the submitted `signerSetRoot`/`targetThreshold`, and an
 `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` it derives itself (audit
 M-3 — a proof made for one module cannot be replayed against a same-params sibling or a mirrored
 deployment on another chain), verifies, then
 diffs the proven set against the Safe's **live** owner linked list on-chain (correct `prevOwner`
-pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/remove/swap). Signer guest
-cost ≈ **1.85M cycles**.
+pointers; `1 ≤ threshold ≤ ownerCount` preserved at every intermediate add/remove/swap).
 
-The selection rule (`topN` / `minThreshold` / `targetThresholdBps`) is governance-pinned as
-`selectionParamsHash` — set it at deploy (`SELECTION_PARAMS_HASH`) or later via the module owner's
-`setSelectionParamsHash`.
+The five-field selection/liveness rule is governance-pinned as `selectionParamsHash`. Governance
+changes it through `setSelectionParams(...)`, which revalidates the two-witness and threshold floors
+and derives the hash on-chain.
 
 ## Rotating the signer vkey (guest change runbook)
 
@@ -127,7 +132,7 @@ sequence, per the batching rule (one rotation per program, all guest edits group
 ## Governance
 
 `SignerSyncZkModule`: its `owner` (set a `TimelockController` in production) governs `setZkVerifier`,
-`setAccumulator`, and `setSelectionParamsHash`. `setParamsHash` is held by a separate
+`setAccumulator`, `setActivitySource`, and `setSelectionParams`. `setParamsHash` is held by a separate
 `paramsAuthority` — initialized to the owner, handed off by the owner via a two-step
 transfer/accept — so params rotation can sit with a different governance lane than the
 truth-defining knobs. Deploy a new

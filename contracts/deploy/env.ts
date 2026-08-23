@@ -421,7 +421,8 @@ export class DevEnv extends EnvBase {
         // rewriting a record stays with the operational timelock.
         {
           name: 'Instance Registry',
-          script: 'contracts/script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry',
+          script:
+            'contracts/script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry',
           sig: 'run(string,string)',
           args: () => ['', ''],
         },
@@ -432,7 +433,8 @@ export class DevEnv extends EnvBase {
         // feed and TestUSDC; off-devnet both are required from the environment.
         {
           name: 'Proving Vault',
-          script: 'contracts/script/DeployProvingVault.s.sol:DeployProvingVault',
+          script:
+            'contracts/script/DeployProvingVault.s.sol:DeployProvingVault',
           sig: 'run(string)',
           args: () => [
             readJsonKey(
@@ -576,7 +578,10 @@ export class DevEnv extends EnvBase {
             'contracts/script/DeployGovernedWeightedTrustgraphsFactory.s.sol:DeployGovernedWeightedTrustgraphsFactory',
           sig: 'run(string)',
           args: () => [
-            readJsonKey('.docker/weighted_factory_deploy.json', 'weighted_factory'),
+            readJsonKey(
+              '.docker/weighted_factory_deploy.json',
+              'weighted_factory'
+            ),
           ],
         },
         // Governed wrapper for the trust-compose factory; same shape and shared singletons.
@@ -599,7 +604,8 @@ export class DevEnv extends EnvBase {
         // seed list shrinks so an old index cannot be mistaken for a current network.
         {
           name: 'Create Instances',
-          script: 'contracts/script/CreateDevInstances.s.sol:CreateDevInstances',
+          script:
+            'contracts/script/CreateDevInstances.s.sol:CreateDevInstances',
           sig: 'run(string,string,string,string,uint256,uint256,bool,uint256,uint96)',
           args: () => [
             readJsonKey('.docker/factory_deploy.json', 'factory'),
@@ -706,7 +712,8 @@ export class DevEnv extends EnvBase {
           { length: numNetworks },
           (_, index): ContractDeployment => ({
             name: `Safe: ${index}`,
-            script: 'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
+            script:
+              'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
             sig: 'run(string,string,string)',
             args: () => [
               readJsonKey(
@@ -730,9 +737,18 @@ export class DevEnv extends EnvBase {
         {
           name: 'Timelocks',
           script: 'contracts/script/DeployTimelocks.s.sol:DeployTimelocks',
-          sig: 'run(string,string,uint256,uint256,string,uint256,uint256)',
+          sig: 'run(string,string,string,string,string,uint256,uint256,string,uint256,uint256)',
           args: () => [
-            process.env.TIMELOCK_PROPOSER || '', // '' -> deployer
+            process.env.CONSTITUTIONAL_TIMELOCK_PROPOSER ||
+              process.env.TIMELOCK_PROPOSER ||
+              '', // '' -> deployer
+            process.env.CONSTITUTIONAL_TIMELOCK_CANCELLER ||
+              '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', // local Anvil account #1
+            process.env.OPERATIONAL_TIMELOCK_PROPOSER ||
+              process.env.TIMELOCK_PROPOSER ||
+              '', // '' -> deployer
+            process.env.OPERATIONAL_TIMELOCK_CANCELLER ||
+              '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', // local Anvil account #1
             process.env.TIMELOCK_EXECUTOR || '', // '' -> deployer
             process.env.CONSTITUTIONAL_DELAY || '0', // 0 -> 14 days
             process.env.OPERATIONAL_DELAY || '0', // 0 -> 2 days
@@ -902,7 +918,8 @@ export class ProdEnv extends EnvBase {
           },
           {
             name: `Safe: ${network.name}`,
-            script: 'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
+            script:
+              'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
             sig: 'run(string,string)',
             args: () => [
               readJsonKey(
@@ -923,9 +940,16 @@ export class ProdEnv extends EnvBase {
           {
             name: `Timelocks: ${network.name}`,
             script: 'contracts/script/DeployTimelocks.s.sol:DeployTimelocks',
-            sig: 'run(string,string,uint256,uint256,string,uint256,uint256)',
+            sig: 'run(string,string,string,string,string,uint256,uint256,string,uint256,uint256)',
             args: () => [
-              process.env.TIMELOCK_PROPOSER || '', // '' -> deployer (set to the founding multisig)
+              process.env.CONSTITUTIONAL_TIMELOCK_PROPOSER ||
+                process.env.TIMELOCK_PROPOSER ||
+                '', // '' -> deployer
+              process.env.CONSTITUTIONAL_TIMELOCK_CANCELLER || '', // required by script
+              process.env.OPERATIONAL_TIMELOCK_PROPOSER ||
+                process.env.TIMELOCK_PROPOSER ||
+                '', // '' -> deployer
+              process.env.OPERATIONAL_TIMELOCK_CANCELLER || '', // required by script
               process.env.TIMELOCK_EXECUTOR || '', // '' -> deployer
               process.env.CONSTITUTIONAL_DELAY || '0', // 0 -> 14 days
               process.env.OPERATIONAL_DELAY || '0', // 0 -> 2 days

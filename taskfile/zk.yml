@@ -54,7 +54,7 @@ tasks:
     vars:
       PROGRAM: '{{.PROGRAM | default "trust-graph"}}'
     cmds:
-      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > tests/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > tests/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > tests/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > tests/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json{{end}}'
+      - '{{if eq .PROGRAM "trust-compose"}}pnpm exec tsx research/composition/export-fixture.ts && pnpm exec tsx research/composition/export-production-fixture.ts{{else if eq .PROGRAM "trust-graph-weighted"}}cargo run -p weighted-prior-core --example export_golden > tests/golden/weighted-prior.json{{else if eq .PROGRAM "hypercerts"}}cargo run -p hypercerts-core --example export_golden > tests/golden/hypercerts.json{{else if eq .PROGRAM "contributions"}}cargo run -p contributions-core --example export_golden > tests/golden/contributions.json{{else if eq .PROGRAM "nostr-workspace"}}cargo run -p nostr-workspace-core --example export_golden > tests/golden/nostr-workspace.json{{else}}cargo run -p pagerank-core --example export_golden > tests/golden/trust-graph.json{{end}}'
 
   vkey:
     desc: 'Print the SP1 program vkey for PROGRAM'

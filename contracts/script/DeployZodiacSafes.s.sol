@@ -14,7 +14,11 @@ import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSa
 
 // Our modules
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
 
 // MerkleSnapshot + verifier interfaces
@@ -27,9 +31,8 @@ import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator
 ///      the SignerSyncZkModule (ZK-proven owner rotation). Both consume the ZK-proven MerkleSnapshot
 ///      state (see ZK_ARCHITECTURE.md and SIGNER_SYNC_ZK_PLAN.md).
 ///
-///      The signer module's selection params hash is read from the `SELECTION_PARAMS_HASH` env var
-///      (default 0 → deploy inert; governance sets it via `setSelectionParamsHash` before use, the
-///      same fail-closed pattern as `PARAMS_HASH`).
+///      The signer module uses the production five-field selection/liveness defaults. Governed
+///      factory instances carry the same complete tuple in their creation receipt.
 contract DeployZodiacSafes is Common {
     using stdJson for string;
 
@@ -201,8 +204,9 @@ contract DeployZodiacSafes is Common {
         );
 
         // Deploy the SignerSyncZkModule, reusing the verifier / accumulator / paramsHash the
-        // MerkleSnapshot already trusts. selectionParamsHash comes from env (default 0 => inert).
-        address signerSyncModule = _deploySignerModule(deployer, safeProxy, merkleSnapshot, signerVerifier);
+        // MerkleSnapshot already trusts and binding the governance module's activity chain.
+        address signerSyncModule =
+            _deploySignerModule(deployer, safeProxy, merkleSnapshot, merkleGovModule, signerVerifier);
         bytes memory enableSignerModuleData = abi.encodeWithSignature("enableModule(address)", signerSyncModule);
         bool signerEnabled = safe.execTransaction(
             address(safe),
@@ -248,9 +252,9 @@ contract DeployZodiacSafes is Common {
         address deployer,
         address safeProxy,
         MerkleSnapshot merkleSnapshot,
+        MerkleGovModule merkleGovModule,
         address signerVerifier
     ) internal returns (address) {
-        bytes32 selectionParamsHash = vm.envOr("SELECTION_PARAMS_HASH", bytes32(0));
         SignerSyncZkModule signerModule = new SignerSyncZkModule(
             deployer, // owner (transfer to a timelock for production)
             safeProxy, // avatar
@@ -258,8 +262,13 @@ contract DeployZodiacSafes is Common {
             IZkVerifier(signerVerifier),
             IAttestationAccumulator(address(merkleSnapshot.accumulator())),
             ISignerSyncCheckpointSource(address(merkleSnapshot)),
+            ISignerActivitySource(address(merkleGovModule)),
             merkleSnapshot.paramsHash(),
-            selectionParamsHash
+            5,
+            2,
+            5_000,
+            151_200,
+            2
         );
         return address(signerModule);
     }

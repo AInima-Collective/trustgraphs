@@ -1,4 +1,7 @@
-# Graph-reputation runbook
+# Graph-reputation research runbook
+
+This records how to reproduce and inspect the advisory explorer experiment. It is not an operator
+runbook for a shipped scoring or proof program.
 
 ## Operator checks
 

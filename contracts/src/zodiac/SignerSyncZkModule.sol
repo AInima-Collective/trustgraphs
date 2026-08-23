@@ -11,13 +11,27 @@ interface ISignerSyncCheckpointSource {
     function checkpointParamsHash(uint256 checkpointId) external view returns (bytes32);
 }
 
+interface ISignerActivitySource {
+    struct ActivityCheckpoint {
+        bytes32 acc;
+        uint64 count;
+        uint64 blockNumber;
+    }
+
+    function activityAccumulator() external view returns (bytes32);
+    function activityCount() external view returns (uint64);
+    function getActivityCheckpoint(uint256 checkpointId) external view returns (ActivityCheckpoint memory);
+}
+
 /// @title SignerSyncZkModule
 /// @notice Zodiac module that rotates a Safe's owner set to the top-scored trustgraph accounts,
 ///         gated by a permissionless zero-knowledge proof (the signer-sync analogue of
 ///         `MerkleSnapshot.submitProof`). A proof binds:
 ///           (a) the chain-pinned input commitment `(acc, leafCount)` of a checkpoint,
 ///           (b) the score snapshot's checkpoint-pinned PageRank `paramsHash`,
-///           (c) the governance-pinned `selectionParamsHash` (topN / minThreshold / targetBps),
+///           (c) the governance-pinned selection and liveness policy,
+///           (d) a complete direct-governance activity hash chain and the Safe's actual current
+///               owner set,
 ///         and commits the resulting `signerSetRoot` + `targetThreshold`. The guest proves the
 ///         selection is the correct deterministic function of those inputs; this contract does the
 ///         owner-set *diff* on-chain against the Safe's real linked list (so `prevOwner` pointers
@@ -25,6 +39,8 @@ interface ISignerSyncCheckpointSource {
 ///         old off-chain WAVS component got wrong). See SIGNER_SYNC_ZK_PLAN.md.
 /// @dev The signer journal (frozen, reproduced by `pagerank-core::encode::signer_journal_encoded`):
 ///      `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
+///                  bytes32 activityAcc, uint64 activityCount, uint64 activityBlock,
+///                  bool wasInitialized, bytes32 currentSignerSetRoot, uint256 currentThreshold,
 ///                  bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
 ///      `instanceDomain = keccak256(abi.encode(address(this), block.chainid))` is REBUILT here
 ///      rather than accepted as an argument (audit M-3), so an owner-rotation proof made for one
@@ -49,6 +65,9 @@ contract SignerSyncZkModule is Module {
     ///      hash here prevents a scoring rotation during proving from invalidating paid work.
     ISignerSyncCheckpointSource public scoreSnapshot;
 
+    /// @notice The governed instance's authenticated direct-vote activity hash chain.
+    ISignerActivitySource public activitySource;
+
     /// @notice Governance's live PageRank params reference for status and coordinated rotations.
     /// @dev Proofs bind `scoreSnapshot.checkpointParamsHash(checkpointId)` instead, so updating
     ///      this reference while a proof is running cannot invalidate already-paid work.
@@ -64,6 +83,7 @@ contract SignerSyncZkModule is Module {
     /// @notice keccak256 of the selection parameters: `abi.encode(uint32 topN, uint32 minThreshold,
     ///         uint32 targetThresholdBps)`.
     bytes32 public selectionParamsHash;
+    uint64 public maxInactiveBlocks;
 
     /// @notice The last checkpoint id whose proof was applied (monotonic).
     uint256 public lastAppliedCheckpoint;
@@ -94,6 +114,9 @@ contract SignerSyncZkModule is Module {
     error InvalidParamsAuthority(address authority);
     error UnpinnedCheckpoint(uint256 checkpointId);
     error SignerSyncPaused();
+    error InvalidSelectionParams();
+    error ActivityCheckpointSuperseded();
+    error ActivityCheckpointStale(uint64 checkpointBlock, uint256 currentBlock);
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
@@ -101,6 +124,7 @@ contract SignerSyncZkModule is Module {
     event ParamsAuthorityTransferStarted(address indexed currentAuthority, address indexed pendingAuthority);
     event ParamsAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
     event SelectionParamsHashUpdated(bytes32 selectionParamsHash);
+    event ActivitySourceUpdated(address indexed activitySource);
     event SignerSyncPausedUpdated(bool paused);
     event SignersSynced(
         uint256 indexed checkpointId,
@@ -121,7 +145,7 @@ contract SignerSyncZkModule is Module {
     /// @param _accumulator The attestation accumulator producing checkpoints.
     /// @param _scoreSnapshot The score snapshot that pins params per checkpoint.
     /// @param _paramsHash The initial live PageRank params reference exposed for governance status.
-    /// @param _selectionParamsHash The canonical selection params hash.
+    /// @param _activitySource The governed instance's direct-vote activity source.
     constructor(
         address _owner,
         address _avatar,
@@ -129,10 +153,29 @@ contract SignerSyncZkModule is Module {
         IZkVerifier _zkVerifier,
         IAttestationAccumulator _accumulator,
         ISignerSyncCheckpointSource _scoreSnapshot,
+        ISignerActivitySource _activitySource,
         bytes32 _paramsHash,
-        bytes32 _selectionParamsHash
+        uint32 _topN,
+        uint32 _minThreshold,
+        uint32 _targetThresholdBps,
+        uint64 _maxInactiveBlocks,
+        uint32 _minActivityWitnesses
     ) {
-        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _scoreSnapshot, _paramsHash, _selectionParamsHash);
+        _init(
+            _owner,
+            _avatar,
+            _target,
+            _zkVerifier,
+            _accumulator,
+            _scoreSnapshot,
+            _activitySource,
+            _paramsHash,
+            _topN,
+            _minThreshold,
+            _targetThresholdBps,
+            _maxInactiveBlocks,
+            _minActivityWitnesses
+        );
     }
 
     /// @notice Factory (proxy) setup.
@@ -144,8 +187,13 @@ contract SignerSyncZkModule is Module {
             IZkVerifier _zkVerifier,
             IAttestationAccumulator _accumulator,
             ISignerSyncCheckpointSource _scoreSnapshot,
+            ISignerActivitySource _activitySource,
             bytes32 _paramsHash,
-            bytes32 _selectionParamsHash
+            uint32 _topN,
+            uint32 _minThreshold,
+            uint32 _targetThresholdBps,
+            uint64 _maxInactiveBlocks,
+            uint32 _minActivityWitnesses
         ) = abi.decode(
             initializeParams,
             (
@@ -155,11 +203,30 @@ contract SignerSyncZkModule is Module {
                 IZkVerifier,
                 IAttestationAccumulator,
                 ISignerSyncCheckpointSource,
+                ISignerActivitySource,
                 bytes32,
-                bytes32
+                uint32,
+                uint32,
+                uint32,
+                uint64,
+                uint32
             )
         );
-        _init(_owner, _avatar, _target, _zkVerifier, _accumulator, _scoreSnapshot, _paramsHash, _selectionParamsHash);
+        _init(
+            _owner,
+            _avatar,
+            _target,
+            _zkVerifier,
+            _accumulator,
+            _scoreSnapshot,
+            _activitySource,
+            _paramsHash,
+            _topN,
+            _minThreshold,
+            _targetThresholdBps,
+            _maxInactiveBlocks,
+            _minActivityWitnesses
+        );
     }
 
     function _init(
@@ -169,14 +236,20 @@ contract SignerSyncZkModule is Module {
         IZkVerifier _zkVerifier,
         IAttestationAccumulator _accumulator,
         ISignerSyncCheckpointSource _scoreSnapshot,
+        ISignerActivitySource _activitySource,
         bytes32 _paramsHash,
-        bytes32 _selectionParamsHash
+        uint32 _topN,
+        uint32 _minThreshold,
+        uint32 _targetThresholdBps,
+        uint64 _maxInactiveBlocks,
+        uint32 _minActivityWitnesses
     ) internal {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
         if (
             _avatar == address(0) || _target == address(0) || address(_zkVerifier) == address(0)
                 || address(_accumulator) == address(0) || address(_scoreSnapshot) == address(0)
+                || address(_activitySource) == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -187,9 +260,10 @@ contract SignerSyncZkModule is Module {
         zkVerifier = _zkVerifier;
         accumulator = _accumulator;
         scoreSnapshot = _scoreSnapshot;
+        activitySource = _activitySource;
         paramsHash = _paramsHash;
         paramsAuthority = _owner;
-        selectionParamsHash = _selectionParamsHash;
+        _setSelectionParams(_topN, _minThreshold, _targetThresholdBps, _maxInactiveBlocks, _minActivityWitnesses);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -232,9 +306,20 @@ contract SignerSyncZkModule is Module {
         emit ParamsHashUpdated(_paramsHash);
     }
 
-    function setSelectionParamsHash(bytes32 _selectionParamsHash) external onlyOwner {
-        selectionParamsHash = _selectionParamsHash;
-        emit SelectionParamsHashUpdated(_selectionParamsHash);
+    function setSelectionParams(
+        uint32 topN,
+        uint32 minThreshold,
+        uint32 targetThresholdBps,
+        uint64 maxInactiveBlocks_,
+        uint32 minActivityWitnesses
+    ) external onlyOwner {
+        _setSelectionParams(topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses);
+    }
+
+    function setActivitySource(ISignerActivitySource activitySource_) external onlyOwner {
+        if (address(activitySource_) == address(0)) revert ZeroAddress();
+        activitySource = activitySource_;
+        emit ActivitySourceUpdated(address(activitySource_));
     }
 
     /// @notice Stop or resume proof-authorized owner rotation through a delayed Safe action.
@@ -255,6 +340,7 @@ contract SignerSyncZkModule is Module {
     /// @param proof The verifier-specific proof blob.
     function submitSignerProof(
         uint256 checkpointId,
+        uint256 activityCheckpointId,
         address[] calldata signers,
         uint256 targetThreshold,
         bytes calldata proof
@@ -269,6 +355,19 @@ contract SignerSyncZkModule is Module {
         IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(checkpointId);
         bytes32 pinnedParamsHash = scoreSnapshot.checkpointParamsHash(checkpointId);
         if (pinnedParamsHash == bytes32(0)) revert UnpinnedCheckpoint(checkpointId);
+
+        ISignerActivitySource.ActivityCheckpoint memory activity =
+            activitySource.getActivityCheckpoint(activityCheckpointId);
+        if (activity.acc != activitySource.activityAccumulator() || activity.count != activitySource.activityCount()) {
+            revert ActivityCheckpointSuperseded();
+        }
+        if (block.number > uint256(activity.blockNumber) + maxInactiveBlocks) {
+            revert ActivityCheckpointStale(activity.blockNumber, block.number);
+        }
+
+        address[] memory currentOwners = _currentOwners();
+        uint256 currentThreshold = _currentThreshold();
+        bytes32 currentSignerSetRoot = _ownerSetRoot(currentOwners);
 
         // Validate the canonical form and recompute the set commitment the guest proved.
         bytes32 signerSetRoot = _validateAndRoot(signers);
@@ -285,6 +384,12 @@ contract SignerSyncZkModule is Module {
                 c.leafCount,
                 pinnedParamsHash,
                 selectionParamsHash,
+                activity.acc,
+                activity.count,
+                activity.blockNumber,
+                hasAppliedCheckpoint,
+                currentSignerSetRoot,
+                currentThreshold,
                 signerSetRoot,
                 targetThreshold,
                 keccak256(abi.encode(address(this), block.chainid))
@@ -386,6 +491,32 @@ contract SignerSyncZkModule is Module {
             leaves[i] = keccak256(abi.encode(sgn));
         }
         return _ozRoot(leaves);
+    }
+
+    function _ownerSetRoot(address[] memory owners) internal pure returns (bytes32) {
+        bytes32[] memory leaves = new bytes32[](owners.length);
+        for (uint256 i = 0; i < owners.length; i++) {
+            leaves[i] = keccak256(abi.encode(owners[i]));
+        }
+        return _ozRoot(leaves);
+    }
+
+    function _setSelectionParams(
+        uint32 topN,
+        uint32 minThreshold,
+        uint32 targetThresholdBps,
+        uint64 maxInactiveBlocks_,
+        uint32 minActivityWitnesses
+    ) internal {
+        if (
+            topN < 2 || minThreshold < 2 || minThreshold > topN || targetThresholdBps == 0
+                || targetThresholdBps > 10_000 || maxInactiveBlocks_ == 0 || minActivityWitnesses < 2
+                || minActivityWitnesses > topN
+        ) revert InvalidSelectionParams();
+        selectionParamsHash =
+            keccak256(abi.encode(topN, minThreshold, targetThresholdBps, maxInactiveBlocks_, minActivityWitnesses));
+        maxInactiveBlocks = maxInactiveBlocks_;
+        emit SelectionParamsHashUpdated(selectionParamsHash);
     }
 
     /// @dev Minimal OpenZeppelin StandardMerkleTree root (sorted leaves, commutative parent hashing).

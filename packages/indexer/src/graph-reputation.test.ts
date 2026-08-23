@@ -21,7 +21,10 @@ const address = (value: number) =>
 
 const golden = JSON.parse(
   readFileSync(
-    new URL('../../../tests/golden/graph-reputation.json', import.meta.url),
+    new URL(
+      '../../../research/graph-reputation/golden/graph-reputation.json',
+      import.meta.url
+    ),
     'utf8'
   )
 ) as {

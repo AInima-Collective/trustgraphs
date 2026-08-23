@@ -129,7 +129,6 @@ fn load_params(path: Option<&String>) -> Result<Params> {
         max_iterations: as_u32(field(o, "maxIterations", "max_iterations")?)?,
         min_weight_fp: as_u256(field(o, "minWeightFp", "min_weight_fp")?)?,
         max_weight_fp: as_u256(field(o, "maxWeightFp", "max_weight_fp")?)?,
-        trust_multiplier_fp: as_u256(field(o, "trustMultiplierFp", "trust_multiplier_fp")?)?,
         trust_share_fp: as_u256(field(o, "trustShareFp", "trust_share_fp")?)?,
         trust_decay_fp: as_u256(field(o, "trustDecayFp", "trust_decay_fp")?)?,
         trusted_seeds: as_addr_vec(field(o, "trustedSeeds", "trusted_seeds")?)?,

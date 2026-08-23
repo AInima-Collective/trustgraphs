@@ -19,7 +19,6 @@ export type ExactParamsJson = {
   maxIterations: number
   minWeightFp: string
   maxWeightFp: string
-  trustMultiplierFp: string
   trustShareFp: string
   trustDecayFp: string
   trustedSeeds: Hex[]
@@ -34,13 +33,11 @@ export type ExactParamsJson = {
 }
 
 export const PARAMS_SCALE = 10n ** 18n
+export const MIN_TOLERANCE_FP = 1_000_000n
 export const MAX_TOLERANCE_FP = 10n ** 15n
 export const MAX_ITERATIONS = 500
-export const MAX_TRUST_MULTIPLIER_FP = 100n * PARAMS_SCALE
 export const MAX_WEIGHT_FP = 1_000_000n * PARAMS_SCALE
 export const MAX_TRUSTED_SEEDS = 64
-const MAX_UINT256 = (1n << 256n) - 1n
-const MAX_RANK_FP = MAX_UINT256 / PARAMS_SCALE
 
 export const paramsComponents = [
   { name: 'dampingFp', internalType: 'uint256', type: 'uint256' },
@@ -48,11 +45,6 @@ export const paramsComponents = [
   { name: 'maxIterations', internalType: 'uint32', type: 'uint32' },
   { name: 'minWeightFp', internalType: 'uint256', type: 'uint256' },
   { name: 'maxWeightFp', internalType: 'uint256', type: 'uint256' },
-  {
-    name: 'trustMultiplierFp',
-    internalType: 'uint256',
-    type: 'uint256',
-  },
   { name: 'trustShareFp', internalType: 'uint256', type: 'uint256' },
   { name: 'trustDecayFp', internalType: 'uint256', type: 'uint256' },
   { name: 'trustedSeeds', internalType: 'address[]', type: 'address[]' },
@@ -341,18 +333,17 @@ export const paramsFromChain = (tuple: unknown): Params => ({
   maxIterations: numberAt(tuple, 'maxIterations', 2),
   minWeightFp: bigintAt(tuple, 'minWeightFp', 3),
   maxWeightFp: bigintAt(tuple, 'maxWeightFp', 4),
-  trustMultiplierFp: bigintAt(tuple, 'trustMultiplierFp', 5),
-  trustShareFp: bigintAt(tuple, 'trustShareFp', 6),
-  trustDecayFp: bigintAt(tuple, 'trustDecayFp', 7),
-  trustedSeeds: hexArrayAt(tuple, 'trustedSeeds', 8),
-  totalPool: bigintAt(tuple, 'totalPool', 9),
-  precisionScale: bigintAt(tuple, 'precisionScale', 10),
-  schemaUid: hexAt(tuple, 'schemaUid', 11),
-  weightFieldIndex: numberAt(tuple, 'weightFieldIndex', 12),
-  envelope0DomainSeparators: hexArrayAt(tuple, 'envelope0DomainSeparators', 13),
-  lane2MaxHeadAge: bigintAt(tuple, 'lane2MaxHeadAge', 14),
-  accumulator: hexAt(tuple, 'accumulator', 15),
-  chainId: bigintAt(tuple, 'chainId', 16),
+  trustShareFp: bigintAt(tuple, 'trustShareFp', 5),
+  trustDecayFp: bigintAt(tuple, 'trustDecayFp', 6),
+  trustedSeeds: hexArrayAt(tuple, 'trustedSeeds', 7),
+  totalPool: bigintAt(tuple, 'totalPool', 8),
+  precisionScale: bigintAt(tuple, 'precisionScale', 9),
+  schemaUid: hexAt(tuple, 'schemaUid', 10),
+  weightFieldIndex: numberAt(tuple, 'weightFieldIndex', 11),
+  envelope0DomainSeparators: hexArrayAt(tuple, 'envelope0DomainSeparators', 12),
+  lane2MaxHeadAge: bigintAt(tuple, 'lane2MaxHeadAge', 13),
+  accumulator: hexAt(tuple, 'accumulator', 14),
+  chainId: bigintAt(tuple, 'chainId', 15),
 })
 
 export const paramsFromJson = (params: ExactParamsJson): Params => ({
@@ -361,7 +352,6 @@ export const paramsFromJson = (params: ExactParamsJson): Params => ({
   maxIterations: params.maxIterations,
   minWeightFp: BigInt(params.minWeightFp),
   maxWeightFp: BigInt(params.maxWeightFp),
-  trustMultiplierFp: BigInt(params.trustMultiplierFp),
   trustShareFp: BigInt(params.trustShareFp),
   trustDecayFp: BigInt(params.trustDecayFp),
   trustedSeeds: params.trustedSeeds.map((seed) => seed.toLowerCase() as Hex),
@@ -383,7 +373,6 @@ export const paramsToJson = (params: Params): ExactParamsJson => ({
   maxIterations: params.maxIterations,
   minWeightFp: params.minWeightFp.toString(),
   maxWeightFp: params.maxWeightFp.toString(),
-  trustMultiplierFp: params.trustMultiplierFp.toString(),
   trustShareFp: params.trustShareFp.toString(),
   trustDecayFp: params.trustDecayFp.toString(),
   trustedSeeds: params.trustedSeeds,
@@ -478,8 +467,12 @@ export const validateParamsUpdate = (
   if (next.dampingFp <= 0n || next.dampingFp >= PARAMS_SCALE) {
     errors.dampingFp = 'Damping must be greater than 0 and less than 1.'
   }
-  if (next.toleranceFp <= 0n || next.toleranceFp > MAX_TOLERANCE_FP) {
-    errors.toleranceFp = 'Tolerance must be greater than 0 and at most 0.001.'
+  if (
+    next.toleranceFp < MIN_TOLERANCE_FP ||
+    next.toleranceFp > MAX_TOLERANCE_FP
+  ) {
+    errors.toleranceFp =
+      'Tolerance must be between 0.000000000001 and 0.001.'
   }
   if (next.maxIterations < 1 || next.maxIterations > MAX_ITERATIONS) {
     errors.maxIterations = `Iterations must be between 1 and ${MAX_ITERATIONS}.`
@@ -497,13 +490,6 @@ export const validateParamsUpdate = (
   }
   if (next.trustDecayFp < 0n || next.trustDecayFp > PARAMS_SCALE) {
     errors.trustDecayFp = 'Distance decay must be between 0 and 1.'
-  }
-  if (
-    next.trustMultiplierFp < 0n ||
-    next.trustMultiplierFp > MAX_TRUST_MULTIPLIER_FP
-  ) {
-    errors.trustMultiplierFp =
-      'Trusted-account boost must be between 0 and 100.'
   }
   if (next.precisionScale !== PARAMS_SCALE) {
     errors.precisionScale = 'This program requires a precision scale of 1e18.'
@@ -546,24 +532,6 @@ export const validateParamsUpdate = (
       'Fixed program and instance identity fields cannot change here.'
   }
 
-  const factor = (next.dampingFp * next.trustMultiplierFp) / PARAMS_SCALE
-  if (factor > PARAMS_SCALE) {
-    let growth = PARAMS_SCALE
-    for (let i = 0; i < next.maxIterations; i++) {
-      if (growth > MAX_UINT256 / factor) {
-        errors.growth =
-          'Damping × trusted boost compounds beyond the guest safety bound at this iteration cap.'
-        break
-      }
-      growth = (growth * factor) / PARAMS_SCALE
-      if (growth > MAX_RANK_FP) {
-        errors.growth =
-          'Damping × trusted boost compounds beyond the guest safety bound at this iteration cap.'
-        break
-      }
-    }
-  }
-
   if (
     currentHash &&
     paramsHash(next).toLowerCase() === currentHash.toLowerCase()
@@ -571,16 +539,7 @@ export const validateParamsUpdate = (
     errors.noop = 'Change at least one editable field before proposing.'
   }
 
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors,
-    ...(factor > PARAMS_SCALE
-      ? {
-          interactionWarning:
-            'Damping and trusted-account boost compound on every iteration. The contract checks their combined worst-case growth, not either field alone.',
-        }
-      : {}),
-  }
+  return { valid: Object.keys(errors).length === 0, errors }
 }
 
 export type ParamsDiff = {
@@ -599,7 +558,6 @@ const DISPLAY_FIELDS: Array<{
 }> = [
   { field: 'trustedSeeds', label: 'Trusted accounts', important: true },
   { field: 'trustShareFp', label: 'Starting share', fixed: true },
-  { field: 'trustMultiplierFp', label: 'Trusted-account boost', fixed: true },
   { field: 'trustDecayFp', label: 'Distance decay', fixed: true },
   { field: 'dampingFp', label: 'Damping', fixed: true },
   { field: 'minWeightFp', label: 'Minimum vouch weight', fixed: true },

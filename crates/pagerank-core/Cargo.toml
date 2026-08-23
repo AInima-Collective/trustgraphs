@@ -21,8 +21,7 @@ serde = { workspace = true, features = ["derive"] }
 k256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 serde_json = { workspace = true }
 hex = { workspace = true }
-# The legacy f64 implementation, for the off-chain fixed-point-vs-f64 diff harness (WP11 acceptance).
-pagerank = { path = "../pagerank" }
+proptest = "1.7"
 
 [lints.clippy]
 manual_div_ceil = "allow"

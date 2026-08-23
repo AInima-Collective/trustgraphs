@@ -2,9 +2,9 @@
   "sourceStates": [
     {
       "sourceId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "blobSha256": "0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f",
-      "cid": "bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4",
-      "outputRoot": "0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27",
+      "blobSha256": "0x2a2d60868eef3792a13136cfd18d7520d9e7b1e2fbabe3ebd1f4b229069059a1",
+      "cid": "bafkreibkfvqindxpg6jkcmjwz7iy25ja3ht3dyx3vpr6xupuwiuqneczue",
+      "outputRoot": "0x28487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f",
       "totalValue": "1000000000000000000000000"
     },
     {
@@ -22,7 +22,7 @@
       "totalValue": "7"
     }
   ],
-  "manifestSha256": "0xa4e784186aaf288e625d5b459f2902f1d0394ad1558c1e0ce86871562276ba79",
+  "manifestSha256": "0x3e3bacfaf46e6a3bc62a0f78335014d15817fc1cb2caa7876cf7cacffa72c3d9",
   "sourceQuotas": {
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "333000",
     "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "333000",
@@ -30,9 +30,9 @@
   },
   "sourceAllocations": {
     "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
-      "0x0101010101010101010101010101010101010101": "73266",
-      "0x0202020202020202020202020202020202020202": "99963",
-      "0x0303030303030303030303030303030303030303": "159771"
+      "0x0101010101010101010101010101010101010101": "123198",
+      "0x0202020202020202020202020202020202020202": "104718",
+      "0x0303030303030303030303030303030303030303": "105084"
     },
     "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
       "0x0202020202020202020202020202020202020202": "166500",
@@ -47,21 +47,21 @@
     }
   },
   "output": {
-    "0x0101010101010101010101010101010101010101": "120980",
-    "0x0202020202020202020202020202020202020202": "266463",
-    "0x0303030303030303030303030303030303030303": "159771",
+    "0x0101010101010101010101010101010101010101": "170912",
+    "0x0202020202020202020202020202020202020202": "271218",
+    "0x0303030303030303030303030303030303030303": "105084",
     "0x0404040404040404040404040404040404040404": "99900",
     "0x0505050505050505050505050505050505050505": "114314",
     "0x0606060606060606060606060606060606060606": "95429",
     "0x0707070707070707070707070707070707070707": "143143"
   },
-  "outputBlobSha256": "0x23988f69ce34c5b9b3fbbf02189dad5da66875a0a6f5b475fbdfa2f7d2b5e546",
-  "outputCid": "bafkreibdtchwttruyw43h657aimj3lk5uzuhlifg6w2hl667ul35fnpfiy",
-  "outputRoot": "0x409eefd533c9193d333d390168c836fc02a0e718a696d515c4262984e3a70b15",
+  "outputBlobSha256": "0x642511060500c6b032c29299009454fa9331f652931e5327bce5d3cd5ae73f6b",
+  "outputCid": "bafkreideeuiqmbiay2ydfqusteajivh2smy7muutdzjspphf2pgvvzz7nm",
+  "outputRoot": "0x5b8873aa3f886fdebaf4b66e859d8b81c771157de8ed8209c08194f6f0624f8c",
   "totalValue": "1000000",
   "postTriggerUpdate": {
-    "outputRoot": "0x58bbcf0b1579177149330c6eb6b2aca6fa3f5cb0040dd22bd98fe9623d513130",
-    "manifestSha256": "0x24c7c94af777e4fcf962100a5d79427cf2aa67bfe6f72f7ebcc58c2a224a47f5"
+    "outputRoot": "0xb55172d5ad3a8b169c657a7379a68292d65b02a789b8690387a852d89178367d",
+    "manifestSha256": "0xa79d322fefb98a89236d9f3682cbf1f10de61b205b361b324c31389c90c4ad04"
   },
   "expectedFailures": {
     "stale": "is stale at capture",

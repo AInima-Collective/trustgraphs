@@ -25,8 +25,8 @@ library ContributionsParamsValidator {
     uint32 internal constant MAX_ITERATIONS = 500;
     /// @notice Convergence tolerance must be meaningfully below S; 1e15 is 0.1% of a unit score.
     uint256 internal constant MAX_TOLERANCE_FP = 1e15;
-    /// @notice Ceiling on the seed boost; `_validateGrowth` is the real decision-maker.
-    uint256 internal constant MAX_TRUST_MULTIPLIER_FP = 100e18;
+    /// @notice Empirical floor: below this, real fixed-point limit cycles can miss convergence.
+    uint256 internal constant MIN_TOLERANCE_FP = 1e6;
     /// @notice Ceiling on a single vouch's weight (four orders of headroom over the live cap).
     uint256 internal constant MAX_WEIGHT_FP = 1e6 * PRECISION_SCALE;
     /// @notice The largest rank the fixed-point core can hold with headroom for one more multiply.
@@ -43,10 +43,8 @@ library ContributionsParamsValidator {
     error InvalidTolerance(uint256 toleranceFp);
     error InvalidIterations(uint32 maxIterations);
     error InvalidWeightBounds(uint256 minWeightFp, uint256 maxWeightFp);
-    error RankGrowthUnbounded(uint256 factorFp, uint32 maxIterations);
     error InvalidTrustShare(uint256 trustShareFp);
     error InvalidTrustDecay(uint256 trustDecayFp);
-    error InvalidTrustMultiplier(uint256 trustMultiplierFp);
     error InvalidPrecisionScale(uint256 precisionScale);
     error InvalidWeightFieldIndex(uint32 weightFieldIndex);
     error NoTrustedSeeds();
@@ -72,8 +70,7 @@ library ContributionsParamsValidator {
     ///      copy-pasted tuple from another round would otherwise bind this instance's kind tags to
     ///      a foreign resolver's schemas.
     function validateCreation(ContributionsParamsCodec.Params memory p) internal pure {
-        if (p.claimSchemaUid != bytes32(0) || p.responseSchemaUid != bytes32(0) || p.valuationSchemaUid != bytes32(0))
-        {
+        if (p.claimSchemaUid != bytes32(0) || p.responseSchemaUid != bytes32(0) || p.valuationSchemaUid != bytes32(0)) {
             revert DerivedFieldNotZero();
         }
         validateComputationalEnvelope(p);
@@ -88,7 +85,7 @@ library ContributionsParamsValidator {
     function validateComputationalEnvelope(ContributionsParamsCodec.Params memory p) internal pure {
         // ---- Stage-1 reputation bounds, re-derived from the trust program's validator. ----
         if (p.dampingFp == 0 || p.dampingFp >= PRECISION_SCALE) revert InvalidDamping(p.dampingFp);
-        if (p.toleranceFp == 0 || p.toleranceFp > MAX_TOLERANCE_FP) {
+        if (p.toleranceFp < MIN_TOLERANCE_FP || p.toleranceFp > MAX_TOLERANCE_FP) {
             revert InvalidTolerance(p.toleranceFp);
         }
         if (p.maxIterations == 0 || p.maxIterations > MAX_ITERATIONS) {
@@ -99,9 +96,6 @@ library ContributionsParamsValidator {
         }
         if (p.trustShareFp > PRECISION_SCALE) revert InvalidTrustShare(p.trustShareFp);
         if (p.trustDecayFp > PRECISION_SCALE) revert InvalidTrustDecay(p.trustDecayFp);
-        if (p.trustMultiplierFp > MAX_TRUST_MULTIPLIER_FP) {
-            revert InvalidTrustMultiplier(p.trustMultiplierFp);
-        }
         if (p.precisionScale != PRECISION_SCALE) revert InvalidPrecisionScale(p.precisionScale);
         if (p.weightFieldIndex != WEIGHT_FIELD_INDEX) {
             revert InvalidWeightFieldIndex(p.weightFieldIndex);
@@ -128,23 +122,5 @@ library ContributionsParamsValidator {
         // `minRaterRepFp` is deliberately unbounded: reputation is an open scale and a threshold
         // above every rater is a legal (if silly) configuration, not an unprovable one.
         if (p.totalPool == 0 || p.totalPool > MAX_RANK_FP) revert InvalidTotalPool(p.totalPool);
-
-        _validateGrowth(p);
-    }
-
-    /// @dev `damping x multiplier` compounding past what U256 can hold within `maxIterations`
-    ///      makes the instance unprovable (the guest aborts on overflow), not merely badly tuned.
-    function _validateGrowth(ContributionsParamsCodec.Params memory p) private pure {
-        uint256 factor = (p.dampingFp * p.trustMultiplierFp) / PRECISION_SCALE;
-        if (factor <= PRECISION_SCALE) return;
-
-        uint256 growth = PRECISION_SCALE;
-        for (uint256 i = 0; i < p.maxIterations; i++) {
-            if (growth > type(uint256).max / factor) {
-                revert RankGrowthUnbounded(factor, p.maxIterations);
-            }
-            growth = (growth * factor) / PRECISION_SCALE;
-            if (growth > MAX_RANK_FP) revert RankGrowthUnbounded(factor, p.maxIterations);
-        }
     }
 }

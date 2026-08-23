@@ -38,8 +38,6 @@ import {
 } from '@/lib/proving-prepay'
 import { priceFeedReadAbi, provingVaultReadAbi } from '@/lib/settings-contracts'
 import {
-  hasUnreservedTrustShare,
-  unreservedTrustSharePct,
 } from '@/lib/trust-share'
 import { txToast } from '@/lib/tx'
 
@@ -504,14 +502,6 @@ export const ReviewStep = ({
           )}
         </SummaryRow>
       </Card>
-
-      {hasUnreservedTrustShare(data.tuning.headStartPct) && (
-        <Note tone="warning">
-          The remaining {unreservedTrustSharePct(data.tuning.headStartPct)}% is
-          shared among every other account before vouches are applied. A
-          disconnected group can gain scoreboard share by adding accounts.
-        </Note>
-      )}
 
       <div className="flex flex-row flex-wrap gap-2">
         <Button

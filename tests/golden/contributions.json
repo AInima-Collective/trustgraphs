@@ -16,24 +16,24 @@
     ]
   },
   "compute": {
-    "blob": "{\"0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e\":\"5535018\",\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":\"3509435528\",\"0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0\":\"1184138552\",\"0xcacacacacacacacacacacacacacacacacacacaca\":\"206730620\",\"0xdadadadadadadadadadadadadadadadadadadada\":\"94160282\"}",
-    "cid": "bafkreibzcb6k7jdeoix4pp3ero33eeqrcamdsn65lfxq4cnhdrjkf7jaqq",
+    "blob": "{\"0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e\":\"25970054\",\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":\"2781395562\",\"0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0\":\"2038734077\",\"0xcacacacacacacacacacacacacacacacacacacaca\":\"110035220\",\"0xdadadadadadadadadadadadadadadadadadadada\":\"43865087\"}",
+    "cid": "bafkreifbl7652o5oaxq2qhdpe7tajpeoui7qdkgnn4mp6gws72yndrjzhm",
     "claimScores": [
       {
         "claimUid": "0x0101010101010101010101010101010101010101010101010101010101010101",
-        "scoreFp": "506824390837398103"
+        "scoreFp": "463682807641048419"
       },
       {
         "claimUid": "0x0202020202020202020202020202020202020202020202020202020202020202",
-        "scoreFp": "68631029410138147"
+        "scoreFp": "42481119502443358"
       },
       {
         "claimUid": "0x0303030303030303030303030303030303030303030303030303030303030303",
-        "scoreFp": "48379068918605035"
+        "scoreFp": "25238782763216347"
       },
       {
         "claimUid": "0x0505050505050505050505050505050505050505050505050505050505050505",
-        "scoreFp": "127318578491555229"
+        "scoreFp": "312736006219458024"
       }
     ],
     "input": {
@@ -53,8 +53,7 @@
         "toleranceFp": "1000000000000",
         "totalPool": "5000000000",
         "trustDecayFp": "800000000000000000",
-        "trustMultiplierFp": "2000000000000000000",
-        "trustShareFp": "150000000000000000",
+        "trustShareFp": "1000000000000000000",
         "trustedSeeds": [
           "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
         ],
@@ -271,14 +270,14 @@
       "acc": "0x1e591aa379b8446bc842622c4a6a0c214d69a96a52fecd888d9e742ae4e09429",
       "anchorAcc": "0x4f1199fca4f890146dadc3e4ed966853e8aaf3b661c6ec112169ce72d4c663ba",
       "anchorCount": 19,
-      "cidDigest": "0xbdc74cf830f18a48ad38bce75d341ec4b42e02e8648f35d8e80910c0d29b155d",
-      "digest": "0xe41e3be7cc4e404adb36c70f05a74abb24e7977b28bbe6c3935b6313d0b60835",
-      "encoded": "0x1e591aa379b8446bc842622c4a6a0c214d69a96a52fecd888d9e742ae4e0942900000000000000000000000000000000000000000000000000000000000000064f1199fca4f890146dadc3e4ed966853e8aaf3b661c6ec112169ce72d4c663ba0000000000000000000000000000000000000000000000000000000000000013d97af3c468b6729e94978364a500b51317586594ffd1f923ada5da3e3579f20accd384c4dafa91ac3cafc7eb96f2eef8e75b20073d7b65ccacad586c53ff512739107cafa464722fc7bf648bb7b2121110183937dd596f0e09a71c52a2fd2084bdc74cf830f18a48ad38bce75d341ec4b42e02e8648f35d8e80910c0d29b155d000000000000000000000000000000000000000000000000000000012a05f2000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be",
+      "cidDigest": "0x329b0f2d7d336bc79e4dd09bcad825d6301803ad3f1d058f55a51978b25a5849",
+      "digest": "0xf902e6ac09281c463cf4408f1f743a95d9d55c4ddc1ef40b148ce9e21f1efa5b",
+      "encoded": "0x1e591aa379b8446bc842622c4a6a0c214d69a96a52fecd888d9e742ae4e0942900000000000000000000000000000000000000000000000000000000000000064f1199fca4f890146dadc3e4ed966853e8aaf3b661c6ec112169ce72d4c663ba00000000000000000000000000000000000000000000000000000000000000136306ab5e8e3059a992b74ba7c288b736a859b7e05ca1ee4c0585f38c81bc4377348444566becc95d3468101870f81ca64ea28c30276d5c516ede35e4e710f34fa15ffddd3bae05e1a81c6f27e604bc8ea23f01a8cd6f18ff1ad2feb0d1c5393b329b0f2d7d336bc79e4dd09bcad825d6301803ad3f1d058f55a51978b25a5849000000000000000000000000000000000000000000000000000000012a05f2000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be",
       "instanceDomain": "0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be",
-      "ipfsHash": "0x39107cafa464722fc7bf648bb7b2121110183937dd596f0e09a71c52a2fd2084",
+      "ipfsHash": "0xa15ffddd3bae05e1a81c6f27e604bc8ea23f01a8cd6f18ff1ad2feb0d1c5393b",
       "leafCount": 6,
-      "outputRoot": "0xccd384c4dafa91ac3cafc7eb96f2eef8e75b20073d7b65ccacad586c53ff5127",
-      "paramsHash": "0xd97af3c468b6729e94978364a500b51317586594ffd1f923ada5da3e3579f20a",
+      "outputRoot": "0x348444566becc95d3468101870f81ca64ea28c30276d5c516ede35e4e710f34f",
+      "paramsHash": "0x6306ab5e8e3059a992b74ba7c288b736a859b7e05ca1ee4c0585f38c81bc4377",
       "recipient": "0xbebebebebebebebebebebebebebebebebebebebe",
       "skippedDigest": "0x0000000000000000000000000000000000000000000000000000000000000000",
       "totalValue": "5000000000"
@@ -286,45 +285,45 @@
     "payouts": [
       {
         "account": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
-        "value": "5535018"
+        "value": "25970054"
       },
       {
         "account": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "value": "3509435528"
+        "value": "2781395562"
       },
       {
         "account": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
-        "value": "1184138552"
+        "value": "2038734077"
       },
       {
         "account": "0xcacacacacacacacacacacacacacacacacacacaca",
-        "value": "206730620"
+        "value": "110035220"
       },
       {
         "account": "0xdadadadadadadadadadadadadadadadadadadada",
-        "value": "94160282"
+        "value": "43865087"
       }
     ],
     "reputation": [
       {
         "account": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
-        "repFp": "91249958522746128"
+        "repFp": "458129720124389172"
       },
       {
         "account": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "repFp": "176278328964395926"
+        "repFp": "118003109729009327"
       },
       {
         "account": "0xb0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
-        "repFp": "286746081782084039"
+        "repFp": "174644602398933802"
       },
       {
         "account": "0xcacacacacacacacacacacacacacacacacacacaca",
-        "repFp": "274148057205428537"
+        "repFp": "143019768991559303"
       },
       {
         "account": "0xdadadadadadadadadadadadadadadadadadadada",
-        "repFp": "171577573525345368"
+        "repFp": "106202798756108396"
       }
     ]
   },
@@ -382,7 +381,7 @@
     "maxWeightFp": "100000000000000000000",
     "minRaterRepFp": "1000000000",
     "minWeightFp": "0",
-    "paramsHash": "0x915ae773cd71d242c38cba1288b1015cd3d55cdf53311fb3b9b0a5435c71b6f1",
+    "paramsHash": "0x115ccdd576e4848b2f9db5a8a0d2a3f7bd22ade88003fef951ef8e5dfa5c33fe",
     "precisionScale": "1000000000000000000",
     "responseSchemaUid": "0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
     "roundEnd": 1760604800,
@@ -391,8 +390,7 @@
     "toleranceFp": "1000000000000",
     "totalPool": "5000000000",
     "trustDecayFp": "800000000000000000",
-    "trustMultiplierFp": "2000000000000000000",
-    "trustShareFp": "150000000000000000",
+    "trustShareFp": "1000000000000000000",
     "trustedSeeds": [
       "0xbebebebebebebebebebebebebebebebebebebebe",
       "0x1111111111111111111111111111111111111111",

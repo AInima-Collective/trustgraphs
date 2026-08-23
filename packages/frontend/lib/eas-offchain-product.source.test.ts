@@ -78,7 +78,6 @@ test('browser recompute independently checks exact CIDs, signatures, prefixes an
   assert.match(audit, /body\.time > BigInt\(firstAnchor\.blockTimestamp\)/)
   assert.match(context, /strictAudit\?\.edges \?\? \[\]/)
   assert.match(context, /provenance\?\.source !== 'off-chain-eas'/)
-  assert.match(context, /trustMultiplier: network\.pagerank\.trustMultiplier/)
   assert.match(
     context,
     /exact-parameter browser root matches the published root/

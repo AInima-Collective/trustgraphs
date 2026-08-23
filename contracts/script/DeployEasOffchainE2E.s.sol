@@ -78,8 +78,7 @@ contract DeployEasOffchainE2E is Common {
         params.maxIterations = 100;
         params.minWeightFp = 0;
         params.maxWeightFp = 100_000_000_000_000_000_000;
-        params.trustMultiplierFp = 1_000_000_000_000_000_000;
-        params.trustShareFp = 150_000_000_000_000_000;
+        params.trustShareFp = 1_000_000_000_000_000_000;
         params.trustDecayFp = 800_000_000_000_000_000;
         params.trustedSeeds = new address[](2);
         params.trustedSeeds[0] = deployer;

@@ -158,7 +158,6 @@ export type Network = {
   pagerank: {
     enabled: boolean
     pointsPool: number
-    trustMultiplier: number
     trustShare: number
     trustDecay: number
     minWeight: number

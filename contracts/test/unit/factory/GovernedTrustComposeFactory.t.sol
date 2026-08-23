@@ -9,10 +9,7 @@ import {Enum} from "@gnosis.pm/safe-contracts/common/Enum.sol";
 import {MultiSend} from "@gnosis.pm/safe-contracts/libraries/MultiSend.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {GovernedTrustComposeFactory} from "src/factory/GovernedTrustComposeFactory.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
 import {TrustComposeParamsController} from "src/factory/TrustComposeParamsController.sol";
@@ -286,13 +283,12 @@ contract GovernedTrustComposeFactoryTest is Test {
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
         bytes32 signerVKey = keccak256("compose factory signer guest");
         ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(signerVKey);
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory
-            .SignerSyncConfig({
+        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
             enabled: true,
             verifier: address(signerVerifier),
             programVKey: signerVKey,
             topN: 5,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
@@ -307,9 +303,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
-        assertEq(
-            address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator"
-        );
+        assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
 
         MerkleSnapshot scoreSnapshot = MerkleSnapshot(snapshot);
         vm.roll(uint256(scoreSnapshot.epochOriginBlock()) + EPOCH_FLOOR + 100);
@@ -324,6 +318,23 @@ contract GovernedTrustComposeFactoryTest is Test {
         bytes32 signerSetRoot = firstLeaf < secondLeaf
             ? keccak256(abi.encode(firstLeaf, secondLeaf))
             : keccak256(abi.encode(secondLeaf, firstLeaf));
+        bytes32 activityAcc = keccak256("compose factory activity");
+        uint64 activityBlock = uint64(block.number);
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityAccumulator()"))),
+            abi.encode(activityAcc)
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityCount()"))),
+            abi.encode(uint64(2))
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(MerkleGovModule.getActivityCheckpoint.selector, uint256(0)),
+            abi.encode(MerkleGovModule.ActivityCheckpoint(activityAcc, 2, activityBlock))
+        );
         signerVerifier.setExpectedDigest(
             keccak256(
                 abi.encode(
@@ -331,6 +342,12 @@ contract GovernedTrustComposeFactoryTest is Test {
                     checkpoint.leafCount,
                     scoreSnapshot.checkpointParamsHash(checkpointId),
                     signer.selectionParamsHash(),
+                    activityAcc,
+                    uint64(2),
+                    activityBlock,
+                    false,
+                    keccak256(abi.encode(creator)),
+                    uint256(1),
                     signerSetRoot,
                     uint256(2),
                     keccak256(abi.encode(address(signer), block.chainid))
@@ -339,7 +356,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         );
 
         vm.prank(address(0xBEEF));
-        signer.submitSignerProof(checkpointId, desired, 2, hex"1234");
+        signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
 
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
@@ -351,13 +368,12 @@ contract GovernedTrustComposeFactoryTest is Test {
         bytes32 verifierVKey = keccak256("deployed compose signer guest");
         bytes32 suppliedVKey = keccak256("different compose signer guest");
         ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(verifierVKey);
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory
-            .SignerSyncConfig({
+        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
             enabled: true,
             verifier: address(signerVerifier),
             programVKey: suppliedVKey,
             topN: 5,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
@@ -378,13 +394,12 @@ contract GovernedTrustComposeFactoryTest is Test {
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
         bytes32 signerVKey = keccak256("compose factory signer guest");
         ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(signerVKey);
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory
-            .SignerSyncConfig({
+        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
             enabled: true,
             verifier: address(signerVerifier),
             programVKey: signerVKey,
             topN: 65,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
@@ -393,7 +408,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(1), uint32(5000)
+                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(2), uint32(5000)
             )
         );
         governedFactory.createGovernedInstance(args, policy, signerConfig);
@@ -452,8 +467,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         TrustComposeFactory.CreateArgs memory args = _args("compose delayed recovery");
         vm.prank(creator);
         (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
 
         uint64 nextEpochLength = EPOCH_FLOOR + 1;
         bytes memory data = abi.encodeCall(MerkleSnapshot.setEpochLength, (nextEpochLength));
@@ -481,8 +495,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         TrustComposeFactory.CreateArgs memory args = _args("compose recovery veto");
         vm.prank(creator);
         (bytes32 instanceId, address safe,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
         bytes memory data = abi.encodeCall(MerkleSnapshot.setParamsHash, (bytes32(uint256(0xA))));
 
         vm.prank(creator);
@@ -502,8 +515,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         TrustComposeFactory.CreateArgs memory args = _args("compose recovery batch");
         vm.prank(creator);
         (bytes32 instanceId,,, address snapshot) = _createGoverned(args, _unpaidPolicy());
-        DelayedRecoveryModule recovery =
-            DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
+        DelayedRecoveryModule recovery = DelayedRecoveryModule(governedFactory.authorityOf(instanceId).recoveryModule);
 
         MultiSend multiSend = new MultiSend();
         uint64 nextEpochLength = EPOCH_FLOOR + 2;
@@ -580,9 +592,7 @@ contract GovernedTrustComposeFactoryTest is Test {
         vm.prank(creator);
         // The error names band 3 — proof the wrapper asked the vault instead of assuming band 1.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                GovernedTrustComposeFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(3)
-            )
+            abi.encodeWithSelector(GovernedTrustComposeFactory.InitialFeeUnpriced.selector, factory.PROGRAM(), uint8(3))
         );
         governedFactory.createGovernedInstance{value: 1 ether}(
             args,

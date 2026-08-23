@@ -37,11 +37,8 @@ use crate::tx::Sender;
 /// Crude on purpose, and crude in the safe direction: it prices the whole guest run at a flat
 /// cents-per-billion-cycles, using the same cycle estimate that decides whether an instance is
 /// provable at all. The budget it feeds exists to stop a runaway, not to bill anyone.
-fn estimated_cost_cents(cfg: &Config, state: &InstanceState) -> u64 {
-    let cycles = state.size.estimated_cycles(
-        operator_core::policy::CYCLES_PER_INPUT,
-        operator_core::policy::BASE_CYCLES,
-    );
+fn estimated_cost_cents(cfg: &Config, work: operator_core::WorkProfile) -> u64 {
+    let cycles = work.estimate().total;
     // Round UP: a per-proof estimate that rounds to zero would make small instances free forever.
     cycles.saturating_mul(cfg.budget.cents_per_billion_cycles).div_ceil(1_000_000_000).max(1)
 }
@@ -707,6 +704,7 @@ fn tick(
                     logger,
                     entry,
                     &state,
+                    &policy,
                     &action,
                     prepared_input.as_ref(),
                 ) {
@@ -730,10 +728,8 @@ fn tick(
                 .last_applied_checkpoint
                 .and_then(|id| state.checkpoints.iter().find(|c| c.id == id))
                 .map(|c| head.saturating_sub(c.block_number));
-            let input_unavailable = matches!(
-                &action,
-                Action::Hold(HoldReason::InputUnavailable { .. })
-            );
+            let input_unavailable =
+                matches!(&action, Action::Hold(HoldReason::InputUnavailable { .. }));
             let unprovable_age_blocks = match &action {
                 Action::Hold(HoldReason::InputUnavailable {
                     checkpoint_id: Some(checkpoint_id),
@@ -793,6 +789,8 @@ fn tick(
                 .unwrap_or(0),
             instances: statuses,
             settings: PublicSettings {
+                capability_profile: operator_core::CapabilityProfile::default(),
+                cost_model_version: operator_core::work::COST_MODEL_VERSION,
                 paid_enabled: cfg.paid.enabled,
                 paid_vault: cfg.paid.vault.map(|v| format!("{v:#x}")),
                 paid_recipient: cfg.paid.recipient.map(|r| format!("{r:#x}")),
@@ -992,6 +990,7 @@ fn build_state(
             matches!(journal.status(&key), Status::Abandoned { .. }).then_some(c.id)
         })
         .collect();
+    let (max_iterations, seed_count) = stage1_rank_params(&proving_entry)?;
     let in_flight = if let Some(id) = newest {
         let key = WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: id };
         match journal.status(&key) {
@@ -1096,6 +1095,8 @@ fn build_state(
         size: InstanceSize {
             leaf_count: proof_leaf_count,
             anchor_count: proof_anchor_work,
+            max_iterations,
+            seed_count,
             authenticated_cycles,
         },
         live_input_work,
@@ -1103,6 +1104,58 @@ fn build_state(
         in_flight,
         vault,
     })
+}
+
+fn stage1_rank_params(entry: &CatalogEntry) -> Result<(u32, u64)> {
+    let manifest_params = || -> Result<String> {
+        let path = &entry
+            .manifest
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("{} has no parameter preimage", entry.name))?
+            .params;
+        std::fs::read_to_string(path).with_context(|| format!("reading params preimage {path}"))
+    };
+
+    match entry.program {
+        Program::Trustgraphs | Program::Signer => {
+            let owned;
+            let params = if let Some(params) = entry.params.as_ref() {
+                params
+            } else {
+                owned = serde_json::from_str::<pagerank_core::Params>(&manifest_params()?)?;
+                &owned
+            };
+            Ok((params.max_iterations, params.trusted_seeds.len() as u64))
+        }
+        Program::Contributions => {
+            let owned;
+            let params = if let Some(params) = entry.contributions_params.as_ref() {
+                params
+            } else {
+                owned = serde_json::from_str::<contributions_core::Params>(&manifest_params()?)?;
+                &owned
+            };
+            Ok((params.max_iterations, params.trusted_seeds.len() as u64))
+        }
+        Program::Weighted => {
+            let owned;
+            let params = if let Some(params) = entry.weighted_params.as_ref() {
+                params
+            } else {
+                owned = serde_json::from_str::<weighted_prior_core::Params>(&manifest_params()?)?;
+                &owned
+            };
+            Ok((params.max_iterations, u64::from(params.prior_count)))
+        }
+        Program::NostrWorkspace => {
+            let params =
+                serde_json::from_str::<nostr_workspace_core::params::Params>(&manifest_params()?)?;
+            Ok((params.max_iterations, params.trusted_seed_pubkeys.len() as u64))
+        }
+        // Composition has no iterative rank kernel. Hypercerts is explicitly unsupported by this
+        // operator and is refused before this bound is consulted.
+        Program::Composition | Program::Hypercerts => Ok((0, 0)),
+    }
 }
 
 fn composition_required_usd_1e8(cycles: u64, cents_per_billion_cycles: u64) -> u128 {
@@ -1131,6 +1184,7 @@ fn act(
     logger: &Logger,
     entry: &CatalogEntry,
     state: &InstanceState,
+    policy: &operator_core::Policy,
     action: &Action,
     prepared_input: Option<&handlers::Built>,
 ) -> Result<()> {
@@ -1214,17 +1268,61 @@ fn act(
                 &owned_built
             };
 
+            if entry.program == Program::Signer && !built.signer_activity_applied {
+                logger.event(
+                    "signer_liveness_no_change",
+                    json!({
+                        "instance": format!("{:#x}", entry.instance_id),
+                        "checkpoint": checkpoint_id,
+                        "reason": "fewer than two authenticated fresh witnesses; absence means no owner change",
+                    }),
+                );
+                return Ok(());
+            }
+
+            let capability = operator_core::CapabilityProfile::default();
+            if let Err(violation) = capability.check(built.work) {
+                bail!(
+                    "operator capability profile v{} refuses {:?}: observed {}, limit {}. The checkpoint is valid; another prover may accept it",
+                    violation.profile_version,
+                    violation.dimension,
+                    violation.observed,
+                    violation.limit
+                );
+            }
+            let estimate = built.work.estimate();
+            anyhow::ensure!(
+                estimate.total <= policy.cycle_limit,
+                "prepared-input cost model v{} estimates {} cycles above this operator's {}-cycle limit; another prover may accept the same checkpoint",
+                estimate.version,
+                estimate.total,
+                policy.cycle_limit
+            );
+            logger.event(
+                "prepared_work_profile",
+                json!({
+                    "instance": format!("{:#x}", entry.instance_id),
+                    "checkpoint": checkpoint_id,
+                    "profile": built.work,
+                    "estimate": estimate,
+                }),
+            );
+
             // fsync the intent BEFORE the request. Everything after this line is money at risk,
             // and a buffered intent that a crash loses turns "did I already pay?" into "no".
             // What this is about to cost us, priced from the size we are about to prove. Recorded
             // now because it is only knowable now — by the next tick the graph has moved.
-            let cost_cents = estimated_cost_cents(cfg, state);
+            let cost_cents = estimated_cost_cents(cfg, built.work);
             journal.append(Record::Intent {
                 key,
                 public_values_hash: built.public_values_hash,
                 vk_hash: built.vk_hash,
                 at: now(),
                 cost_cents,
+                cost_model_version: estimate.version,
+                estimated_cycles: estimate.total,
+                max_iterations: built.work.max_iterations,
+                iterations_run: built.work.iterations_run,
             })?;
 
             let proof = handlers::prove(cfg, &built)?;
@@ -1293,6 +1391,7 @@ fn act(
                     entry.submit_to,
                     crate::chain::submit_signer_calldata(
                         *checkpoint_id,
+                        held.activity_checkpoint_id,
                         held.signers.clone(),
                         held.target_threshold,
                         held.blob.clone(),

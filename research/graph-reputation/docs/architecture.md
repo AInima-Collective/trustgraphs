@@ -3,7 +3,8 @@
 Graph reputation recommends source weights; it is not a scoring program, policy governor, or
 transaction builder. `POST /graph-lineages/recommendations` reads indexed lineage history,
 confirms the finalized canonical chain state, runs a bounded deterministic fixed point, and returns
-diagnostics. It has no database write and no trust-compose mutation path.
+diagnostics. It has no database write and no trust-compose mutation path. This is a research
+artifact, not a deployed or SP1-proven scoring program.
 
 ## Exact input boundary
 
@@ -25,7 +26,7 @@ supersession, and rotation are excluded or reject a required root.
 The canonical `TGRP` binary and its Keccak commitment make that captured state portable. The
 `TGRR` result commits the input, iteration count, residual, score/rank, root-ingress matrix, and
 effective family masses. TypeScript and Rust independently match the frozen vectors in
-`tests/golden/graph-reputation.json`.
+`research/graph-reputation/golden/graph-reputation.json`.
 
 ## Fixed-point recurrence
 

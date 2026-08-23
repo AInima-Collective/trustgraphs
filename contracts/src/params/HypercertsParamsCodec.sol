@@ -14,6 +14,8 @@ pragma solidity ^0.8.22;
 ///         order/types are FROZEN; changing them requires regenerating the golden vectors and the
 ///         Rust/TS ports in lockstep.
 library HypercertsParamsCodec {
+    uint256 internal constant PARAMS_SCHEMA_VERSION = 3;
+
     /// @notice The governance-pinned hypercerts parameters (mirror of `hypercerts_core::Params`).
     /// @dev `trustedSeedDids` is the raw seed DID set; `seedSetRoot` derives nodeIds and sorts
     ///      internally, so the root depends only on the set, not the input order.
@@ -21,7 +23,6 @@ library HypercertsParamsCodec {
         uint256 dampingFp;
         uint256 toleranceFp;
         uint32 maxIterations;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         uint256 precisionScale;
@@ -44,10 +45,10 @@ library HypercertsParamsCodec {
         // their 32-byte words. Encode in two chunks (avoids stack-too-deep) and concat: the bytes
         // are byte-identical to a single 17-arg `abi.encode`, and to the Rust hand-rolled words.
         bytes memory head = abi.encode(
+            PARAMS_SCHEMA_VERSION,
             p.dampingFp,
             p.toleranceFp,
             p.maxIterations,
-            p.trustMultiplierFp,
             p.trustShareFp,
             p.trustDecayFp,
             p.precisionScale,

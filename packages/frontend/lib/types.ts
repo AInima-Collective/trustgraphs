@@ -80,14 +80,13 @@ export type Network = {
      * `paramsHash`. Numbers are still accepted for the hand-written config entries.
      */
     pointsPool: number | string
-    trustMultiplier: number
     trustShare: number
     trustDecay: number
     minWeight: number
     maxWeight: number
     trustedSeeds: Hex[]
     // Lane-2 (envelope-0) params. Both are hashed into the governance-pinned paramsHash
-    // (params schema v2 hashes 17 fields), so they must be threaded into the browser
+    // (params schema v3 hashes 17 words: version + 16 fields), so they must be threaded into the browser
     // recompute even though envelope signatures are verified only in-guest. Absent/empty
     // = lane 2 disabled (lane-1-only network). The other two v2 fields — the instance's
     // accumulator address and its chain id — are read from `contracts.easIndexerResolver`
@@ -106,6 +105,9 @@ export type Network = {
     verifier?: Hex
     programVKey?: Hex
     selectionParamsHash?: Hex
+    activitySource?: Hex
+    maxInactiveBlocks?: string
+    minActivityWitnesses?: number
     lastAppliedCheckpoint?: string | null
     lastSyncedTimestamp?: string | null
     lastSyncedTxHash?: Hex | null

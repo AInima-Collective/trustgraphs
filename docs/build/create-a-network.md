@@ -201,17 +201,16 @@ but the controller is the sole operational holder on new trust graphs.
 | Bound                          | Value                                                                  |
 | ------------------------------ | ---------------------------------------------------------------------- |
 | `dampingFp`                    | `0 < d < 1e18`                                                         |
-| `toleranceFp`                  | `0 < t ≤ 1e15`                                                         |
+| `toleranceFp`                  | `1e6 ≤ t ≤ 1e15` (lower margin is empirical; see the trust-graph runbook) |
 | `maxIterations`                | `1 … 500`                                                              |
 | weights                        | `maxWeightFp > 0`, `minWeightFp ≤ maxWeightFp`                         |
 | `trustShareFp`, `trustDecayFp` | `≤ 1e18`                                                               |
-| `trustMultiplierFp`            | `≤ 100e18` (defence in depth; the growth rule below is the real bound) |
 | `precisionScale`               | exactly `1e18`                                                         |
 | `totalPool`                    | `> 0` (a zero pool scores everyone zero, forever)                      |
 | `weightFieldIndex`             | exactly `1`                                                            |
 | `maxWeightFp`                  | `≤ 1e6 × S`                                                            |
 | `trustedSeeds`                 | 1 … 64, no zero address, no duplicates                                 |
-| rank growth                    | `(damping × multiplier)^maxIterations × S` must stay under 2²⁵⁶        |
+| rank mass                      | asserted by the guest to stay `≤ precisionScale` every iteration       |
 | lane-2 fields                  | must be empty — the v1 bundle is lane-1-only                           |
 | derived fields                 | must be zero                                                           |
 | `name`                         | 1 … 64 bytes                                                           |
@@ -255,6 +254,30 @@ start at [`../learn/what-is-trustgraphs.md`](../learn/what-is-trustgraphs.md); f
 mechanics of damping, seed share and decay, read
 [`../concepts/algorithm.md`](../concepts/algorithm.md); for the design work on seed selection,
 [`../../research/GRAPH_SEEDING.md`](../../research/GRAPH_SEEDING.md).
+
+Use **three to five independent founding accounts** for a real network. The starting
+endowment is split equally, so a founder retains a floor even when nobody vouches for it.
+In the measured 40-member reference topology, one founder holds 33.65%; with three founders
+each holds 10.76%; with five each holds 6.25%. Five is the safest default for a governed
+network. A founder the community no longer accepts is not mechanically removed from scoring,
+but the community can rotate the seed set through governance.
+
+The governance default is 15% of snapshotted total voting power. The earlier provisional
+10% failed its own test: one of three founders could clear it alone. This table is produced
+by the production M2 kernel (`cargo run -p pagerank-core --example governance_scenarios`),
+using 40 ordinary members in a two-neighbour ring and, for the attack column, a disconnected
+160-account ring:
+
+| Founders | Largest one | All founders | Fabricated bloc | Top 1 / 3 / 5 / 10 ordinary accounts |
+|---:|---:|---:|---:|---:|
+| 1 | 33.64% | 33.64% | 0.00% | 28.60% / 50.69% / 61.37% / 66.25% |
+| 3 | 10.75% | 32.27% | 0.00% | 16.42% / 38.42% / 55.80% / 67.30% |
+| 5 | 6.24% | 31.22% | 0.00% | 12.27% / 32.77% / 47.79% / 67.26% |
+
+“Top ordinary accounts” is an upper-bound coalition made by sorting individual scores; it
+does not assert those members coordinate. The table is topology evidence, not a universal
+governance-safety proof. At least three founders is the operating precondition behind the 15%
+default; a one-founder network is visibly founder-controlled and should not hold shared funds.
 
 `epochLength` is the other visible choice: how often scores are recounted and reproven. Shorter
 epochs mean fresher scores and more proving spend; the factory's `EPOCH_FLOOR` (roughly 30 days of
@@ -498,19 +521,21 @@ hang a contribution round on it. See
 [`./contributions/runbook.md`](./contributions/runbook.md) for the flow and the honest mainnet gas
 number.
 
-## 7. The frozen identity: params schema v2
+## 7. The frozen identity: params schema v3
 
 Three things are load-bearing across the prover, the indexer, the frontend and any third party
 auditing a community's graph: the params schema, `CreateArgs` (§1.1), and `InstanceCreated` (§2.1).
 This section is the params half: why the derived fields exist at all.
 
-`pagerank_core::Params` / `ParamsCodec.Params` / the TS `Params` all carry **17** fields. The last
-two were appended for the factory:
+`pagerank_core::Params` / `ParamsCodec.Params` / the TS `Params` all carry **16** fields. The
+hash preimage is 17 words because schema v3 prepends the literal version word `3`. This makes
+the multiplier-free tuple unambiguous to offline consumers. The final two struct fields remain
+the instance-domain fields introduced in v2:
 
 | #   | Field                   | Why                                 |
 | --- | ----------------------- | ----------------------------------- |
-| 16  | `accumulator` (address) | The instance's `EASIndexerResolver` |
-| 17  | `chainId` (uint64)      | `block.chainid` at creation         |
+| 15  | `accumulator` (address) | The instance's `EASIndexerResolver` |
+| 16  | `chainId` (uint64)      | `block.chainid` at creation         |
 
 The journal is **untouched** by this change — domain separation lives in the params, not the journal.
 

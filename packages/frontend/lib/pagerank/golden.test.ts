@@ -26,7 +26,7 @@ import {
   signerJournalEncoded,
 } from './encode'
 import { signerSetRoot } from './merkle'
-import { computeSigners, selectSigners } from './signer'
+import { computeSigners, foldActivity, selectSigners } from './signer'
 import {
   type GuestInput,
   type Params,
@@ -70,8 +70,7 @@ const params: Params = {
   maxIterations: 100,
   minWeightFp: 0n,
   maxWeightFp: 100n * S,
-  trustMultiplierFp: 2n * S, // 2.0
-  trustShareFp: (15n * S) / 100n, // 0.15
+  trustShareFp: S, // 1.0
   trustDecayFp: (80n * S) / 100n, // 0.8
   trustedSeeds: [addr(1), addr(3)],
   totalPool: 10n ** 24n, // 1e24
@@ -106,8 +105,10 @@ const input: GuestInput = {
 
 const selection: SelectionParams = {
   topN: 3,
-  minThreshold: 1,
+  minThreshold: 2,
   targetThresholdBps: 5000,
+  maxInactiveBlocks: 151_200n,
+  minActivityWitnesses: 2,
 }
 
 // Golden expectations (from tests/golden/trust-graph.json).
@@ -115,18 +116,18 @@ const GOLDEN = {
   acc: '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a',
   leafCount: 6n,
   paramsHash:
-    '0x4c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757', // 17-field (v2: + accumulator, chainId)
+    '0xa27bc7ee11e51a36945dba9ffb9f4351e02d4c1c69509d357df39ffc314ca0f1', // 17-word params schema v3
   outputRoot:
-    '0x0eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27',
+    '0x28487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f',
   ipfsHash:
-    '0x581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f',
-  cid: 'bafkreicydxucaj34cso6mi5desaj5nseysd7bbmipj6yr6ca4nerpsh6d4',
+    '0x2a2d60868eef3792a13136cfd18d7520d9e7b1e2fbabe3ebd1f4b229069059a1',
+  cid: 'bafkreibkfvqindxpg6jkcmjwz7iy25ja3ht3dyx3vpr6xupuwiuqneczue',
   cidDigest:
-    '0x4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f418',
+    '0x439bc4ab549608c1a887b5eef17a253e7e8b56ae63875fae3b581bad28156688',
   journalEncoded:
-    '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a0000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d7570eda9f4e92cd62624c67b676144f51a75fa8269fbc333129ee014a6e7b448d27581de820277c149de623a324809eb644c487f085887a7d88f840e34917c8fe1f4e8914b7f3f0bcc0d5cb3e54f7e21b3406a0febae224c4b8eb18dda3ac71f41800000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
+    '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a27bc7ee11e51a36945dba9ffb9f4351e02d4c1c69509d357df39ffc314ca0f128487cf1f154e4c7675af9751d2b368bd4980318e3555433eba2d69b9e92ec1f2a2d60868eef3792a13136cfd18d7520d9e7b1e2fbabe3ebd1f4b229069059a1439bc4ab549608c1a887b5eef17a253e7e8b56ae63875fae3b581bad2815668800000000000000000000000000000000000000000000d3c21bcecceda10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bebebebebebebebebebebebebebebebebebebebe84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
   journalDigest:
-    '0x35bd9bd4c23a17ccde035938c8457b2614f308e6edba46beece6f3fc9c2167d5', // journal v3 (two-lane + recipient/instanceDomain)
+    '0x99a3ed1b35b25a3e96dfbd27630ed046f552a8d29fa5fd54b591ee1f8cc8b7a1', // journal v3 (two-lane + recipient/instanceDomain)
   recipient: '0xbebebebebebebebebebebebebebebebebebebebe',
   instanceDomain:
     '0x84b91a0d16f37dad396b7cbf632e697cef56026c1b848c751127dc4568f0c3be',
@@ -138,25 +139,24 @@ const GOLDEN = {
   edge0Leaf:
     '0x0edaa7e7a8c4f17211cf3ffc8c8dad280b9a8c3792fec297f1b090dc1e0d50c5',
   blob:
-    '{"0x0101010101010101010101010101010101010101":"220016440032880065760133",' +
-    '"0x0202020202020202020202020202020202020202":"300189600379200758401516",' +
-    '"0x0303030303030303030303030303030303030303":"479793959587919175838351"}',
+    '{"0x0101010101010101010101010101010101010101":"369963739927479854959709",' +
+    '"0x0202020202020202020202020202020202020202":"314467628935257870515742",' +
+    '"0x0303030303030303030303030303030303030303":"315568631137262274524549"}',
   values: {
-    [addr(1)]: 220016440032880065760133n,
-    [addr(2)]: 300189600379200758401516n,
-    [addr(3)]: 479793959587919175838351n,
+    [addr(1)]: 369963739927479854959709n,
+    [addr(2)]: 314467628935257870515742n,
+    [addr(3)]: 315568631137262274524549n,
   } as Record<string, bigint>,
   // Signer-sync section (from tests/golden/trust-graph.json `.signer`).
   signer: {
     selectionParamsHash:
-      '0xae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c5204310',
+      '0xef1faf0e7ffab6f28cbc81990983481ccd18c327738cb770ad5fb3c296508c4b',
     signers: [
       '0x0101010101010101010101010101010101010101',
       '0x0202020202020202020202020202020202020202',
-      '0x0303030303030303030303030303030303030303',
     ] as Hex[],
     signerSetRoot:
-      '0x2a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3',
+      '0xaecb023ce0c4eea427a3edb2e62eaa398eb9c74b501848f147b6afe238776689',
     targetThreshold: 2n,
     // M-3 instance/chain binding (matches export_golden.rs: module addr(0x5B) / chain 31337).
     instanceDomainModule: '0x5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b',
@@ -164,9 +164,13 @@ const GOLDEN = {
     instanceDomain:
       '0x22c5deaa03c018b95ed96ec7c4920aa51e3ed68cfa011c336d43c3d165061fae',
     journalEncoded:
-      '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a00000000000000000000000000000000000000000000000000000000000000064c36612cfda4bfc377f87bd0b4d66da9c06162ad9c079bdf215d0362e570d757ae2d1032599756c83d4983d00779c8d219dde056cb890378511e0237c52043102a003402caab905ccb03be65b010037277f9381fe0dc0081465c0de866bcfac3000000000000000000000000000000000000000000000000000000000000000222c5deaa03c018b95ed96ec7c4920aa51e3ed68cfa011c336d43c3d165061fae',
+      '0xd0f947468ef34a60000e8e43a01f57220b83e2b4fb6c4c0a06dcfde8878a658a0000000000000000000000000000000000000000000000000000000000000006a27bc7ee11e51a36945dba9ffb9f4351e02d4c1c69509d357df39ffc314ca0f1ef1faf0e7ffab6f28cbc81990983481ccd18c327738cb770ad5fb3c296508c4b1bec34fe7de3e75daaa6c2ac2ab0eb05ebac0abaa5bc38237fe337eab7c2ce73000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000650000000000000000000000000000000000000000000000000000000000000000e4d47a1e33cbc779a23009a9cb602e84ba1bb1b9906177d37611329debea88110000000000000000000000000000000000000000000000000000000000000001aecb023ce0c4eea427a3edb2e62eaa398eb9c74b501848f147b6afe238776689000000000000000000000000000000000000000000000000000000000000000222c5deaa03c018b95ed96ec7c4920aa51e3ed68cfa011c336d43c3d165061fae',
     journalDigest:
-      '0xf5fb579e35d3b25f056fa29f8d35d3e3ea4714b6d5da5804d2c5b39feb5c6064',
+      '0x0f11fe2ed1edf661949d080d2bd603f6eac8a659a47a910e30ec7e61f8f0d4cf',
+    activityAcc:
+      '0x1bec34fe7de3e75daaa6c2ac2ab0eb05ebac0abaa5bc38237fe337eab7c2ce73',
+    currentSignerSetRoot:
+      '0xe4d47a1e33cbc779a23009a9cb602e84ba1bb1b9906177d37611329debea8811',
   },
 }
 
@@ -259,7 +263,7 @@ const selected = selectSigners(result.scores, selection)
 check(
   'selectSigners signers',
   selected.signers.map((a) => a.toLowerCase()),
-  GOLDEN.signer.signers.map((a) => a.toLowerCase())
+  [addr(1), addr(2), addr(3)]
 )
 check(
   'selectSigners threshold',
@@ -286,8 +290,26 @@ const signerResult = computeSigners({
   edges: input.edges,
   params,
   selection,
+  activity: [
+    { account: addr(1) as Hex, proposalId: 1n, blockNumber: 100n },
+    { account: addr(2) as Hex, proposalId: 2n, blockNumber: 101n },
+  ],
+  activityCheckpoint: {
+    acc: GOLDEN.signer.activityAcc as Hex,
+    count: 2n,
+    blockNumber: 101n,
+  },
+  activityCheckpointId: 1n,
+  currentSigners: [addr(1) as Hex],
+  currentThreshold: 1n,
+  wasInitialized: false,
   instanceDomain: GOLDEN.signer.instanceDomain as Hex,
 })
+check(
+  'signer journal currentSignerSetRoot',
+  signerResult.journal.currentSignerSetRoot.toLowerCase(),
+  GOLDEN.signer.currentSignerSetRoot
+)
 check(
   'computeSigners signers',
   signerResult.signers.map((a) => a.toLowerCase()),
@@ -323,6 +345,40 @@ check(
   signerJournalDigest(signerResult.journal).toLowerCase(),
   GOLDEN.signer.journalDigest
 )
+
+const absent = computeSigners({
+  edges: input.edges,
+  params,
+  selection,
+  currentSigners: [addr(1) as Hex, addr(2) as Hex, addr(3) as Hex],
+  currentThreshold: 2n,
+  wasInitialized: true,
+  instanceDomain: GOLDEN.signer.instanceDomain as Hex,
+})
+check('absent activity means no change', absent.activityApplied, false)
+check(
+  'absent activity preserves owners',
+  absent.signers.map((address) => address.toLowerCase()),
+  [addr(1), addr(2), addr(3)]
+)
+
+const loneRecord = { account: addr(1) as Hex, proposalId: 9n, blockNumber: 500n }
+const lone = computeSigners({
+  edges: input.edges,
+  params,
+  selection,
+  activity: [loneRecord],
+  activityCheckpoint: {
+    acc: foldActivity(`0x${'00'.repeat(32)}` as Hex, 1n, loneRecord),
+    count: 1n,
+    blockNumber: 500n,
+  },
+  currentSigners: [addr(1) as Hex, addr(2) as Hex, addr(3) as Hex],
+  currentThreshold: 2n,
+  wasInitialized: true,
+  instanceDomain: GOLDEN.signer.instanceDomain as Hex,
+})
+check('one current owner cannot activate removals', lone.activityApplied, false)
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) FAILED`)

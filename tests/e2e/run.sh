@@ -15,6 +15,8 @@ cd "$(dirname "$0")/../.."   # repo root
 
 RPC="${RPC:-http://127.0.0.1:8545}"
 PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"  # anvil key 0
+K1=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+K2=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a
 # Foundry auto-loads .env, and contracts/script/Common.s.sol broadcasts with FUNDED_KEY — pin it to PK so the
 # scripts and the cast/prover steps act as one funded account regardless of the developer's .env.
 export FUNDED_KEY="$PK"
@@ -77,14 +79,14 @@ echo "   SNAPSHOT=$SNAPSHOT (accumulator bound; trigger() is the only checkpoint
 
 # Wire lane 2 before checkpoint 0. Input-lane rotation is intentionally locked once history exists.
 DEPLOYER=$(cast wallet address --private-key "$PK")
-REGISTRY=$(forge create contracts/src/registry/AnchorRegistry.sol:AnchorRegistry \
+REGISTRY=$(forge create contracts/src/registry/EasOffchainAnchorRegistry.sol:EasOffchainAnchorRegistry \
   --rpc-url "$RPC" --private-key "$PK" --broadcast --json \
-  --constructor-args "$DEPLOYER" 200000 | jq -r .deployedTo)
+  --constructor-args "$EAS" "$SCHEMA" 200000 "$DEPLOYER" "$DEPLOYER" "[$DEPLOYER]" | jq -r .deployedTo)
 cast send "$SNAPSHOT" "setAnchorRegistry(address)" "$REGISTRY" \
   --rpc-url "$RPC" --private-key "$PK" >/dev/null
 cast send "$REGISTRY" "bindSnapshot(address)" "$SNAPSHOT" \
   --rpc-url "$RPC" --private-key "$PK" >/dev/null
-echo "   REGISTRY=$REGISTRY (bounded, snapshot-bound, deployer admitted as relayer)"
+echo "   REGISTRY=$REGISTRY (strict envelope-0, bounded, snapshot-bound, deployer admitted as relayer)"
 
 # --- attest ------------------------------------------------------------------
 echo "== attest ring (3) =="
@@ -133,21 +135,13 @@ cargo run -q -p input-exporter -- \
   --checkpoint 0 --params "$WORK/params.json" --snapshot "$SNAPSHOT" \
   --recipient "$RECIPIENT" --out "$WORK/input.json"
 
-echo "== export SignerInput =="
-cargo run -q -p input-exporter -- \
-  --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
-  --checkpoint 0 --params "$WORK/params.json" \
-  --signer --selection tests/e2e/selection.json \
-  --module 0x0000000000000000000000000000000000000001 --out "$WORK/signer_input.json"
-
 # --- prove-execute cross-check ----------------------------------------------
 echo "== prover execute (guest == native) =="
 EXEC_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph execute "$WORK/input.json" )
 echo "$EXEC_OUT"
 
-echo "== prover signer-execute (guest == native) =="
-SIGNER_EXEC_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer execute "$WORK/signer_input.json" )
-echo "$SIGNER_EXEC_OUT"
+echo "== prover signer sample execute (guest == native) =="
+( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer execute )
 
 # --- on-chain submit (E2E_ONCHAIN=1, default) ---------------------------------
 # Proves both programs through the CLI with SP1_PROVER=mock and lands the proofs on anvil through
@@ -168,7 +162,6 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   EXPORTED_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- trust-graph paramshash "$WORK/input.json" )
   [ "$EXPORTED_PARAMS_HASH" = "$PARAMS_HASH" ] || {
     echo "FATAL: exporter paramsHash $EXPORTED_PARAMS_HASH != deployed $PARAMS_HASH"; exit 1; }
-  SELECTION_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer selectionparamshash "$WORK/signer_input.json" )
   echo "   vkey=$VKEY signerVkey=$SIGNER_VKEY"
 
   echo "== deploy mock gateway + real SP1JournalVerifiers, re-point the snapshot =="
@@ -212,29 +205,56 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "   root landed on-chain: $ROOT_ONCHAIN ✓"
 
   echo "== deploy Safe + SignerSyncZkModule, submitSignerProof =="
-  SELECTION_PARAMS_HASH="$SELECTION_PARAMS_HASH" forge script contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
+  forge script contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
     --sig "run(string,string)" "$SNAPSHOT" "$SIGNER_VERIFIER" \
     --rpc-url "$RPC" --private-key "$PK" --broadcast --skip-simulation >/dev/null
   SIGNER_MODULE=$(jq -r '.safe.signer_sync_module' .docker/zodiac_safes_deploy.json)
+  GOV_MODULE=$(jq -r '.safe.merkle_gov_module' .docker/zodiac_safes_deploy.json)
   SAFE=$(jq -r '.safe.address' .docker/zodiac_safes_deploy.json)
 
-  # Rebuild the signer journal for the real module domain, then execute/prove that exact input.
+  # Two scored principals vote directly. These votes are the authenticated, non-delegable signer
+  # liveness signal; each appends to MerkleGovModule's hash chain and freezes an immutable activity
+  # checkpoint. The membership values/proofs are recomputed from the exact proven guest input.
+  A1=$(cast wallet address --private-key "$K1")
+  A2=$(cast wallet address --private-key "$K2")
+  MEMBER1=$(cargo run -q -p pagerank-core --example score_proof -- "$WORK/input.json" "$A1")
+  MEMBER2=$(cargo run -q -p pagerank-core --example score_proof -- "$WORK/input.json" "$A2")
+  POWER1=$(echo "$MEMBER1" | jq -r .value)
+  POWER2=$(echo "$MEMBER2" | jq -r .value)
+  # `cast` array syntax is `[0x…,0x…]`, not JSON's quoted string array.
+  PROOF1=$(echo "$MEMBER1" | jq -r '"[" + (.proof | join(",")) + "]"')
+  PROOF2=$(echo "$MEMBER2" | jq -r '"[" + (.proof | join(",")) + "]"')
+  cast send "$GOV_MODULE" \
+    "proposeWithVote(string,string,address[],uint256[],bytes[],uint8[],string[],uint256,bytes32[],uint8)" \
+    "E2E signer liveness" "Authenticate two live principals" "[]" "[]" "[]" "[]" "[]" \
+    "$POWER1" "$PROOF1" 1 --rpc-url "$RPC" --private-key "$K1" >/dev/null
+  cast send "$GOV_MODULE" "castVote(uint256,uint8,uint256,bytes32[])" \
+    1 1 "$POWER2" "$PROOF2" --rpc-url "$RPC" --private-key "$K2" >/dev/null
+  ACTIVITY_COUNT=$(cast call "$GOV_MODULE" "activityCount()(uint64)" --rpc-url "$RPC")
+  [ "$ACTIVITY_COUNT" = "2" ] || { echo "FATAL: expected two direct-vote activity records, got $ACTIVITY_COUNT"; exit 1; }
+  echo "   authenticated direct-vote activity: $A1, $A2 ✓"
+
+  # Rebuild the signer journal for the real module domain, current Safe state, and latest activity
+  # checkpoint, then execute/prove that exact input.
   cargo run -q -p input-exporter -- \
     --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
     --checkpoint 0 --params "$WORK/params.json" \
     --signer --selection tests/e2e/selection.json \
     --module "$SIGNER_MODULE" --out "$WORK/signer_input.json"
+  SELECTION_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer selectionparamshash "$WORK/signer_input.json" )
+  ONCHAIN_SELECTION_PARAMS_HASH=$(cast call "$SIGNER_MODULE" "selectionParamsHash()(bytes32)" --rpc-url "$RPC")
+  [ "$SELECTION_PARAMS_HASH" = "$ONCHAIN_SELECTION_PARAMS_HASH" ] || {
+    echo "FATAL: exporter selection hash $SELECTION_PARAMS_HASH != module $ONCHAIN_SELECTION_PARAMS_HASH"; exit 1; }
   SIGNER_EXEC_OUT=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer execute "$WORK/signer_input.json" )
   echo "$SIGNER_EXEC_OUT"
-  LIVE_SELECTION_PARAMS_HASH=$( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer selectionparamshash "$WORK/signer_input.json" )
-  [ "$LIVE_SELECTION_PARAMS_HASH" = "$SELECTION_PARAMS_HASH" ] || {
-    echo "FATAL: signer selection hash moved with the module domain"; exit 1; }
   ( cd zk/prover && SP1_PROVER=mock cargo run -q --release -- signer prove "$WORK/signer_input.json" --groth16 )
 
   TARGET_THRESHOLD=$(echo "$SIGNER_EXEC_OUT" | awk '/^targetThreshold:/{print $2}')
   SIGNERS=$(echo "$SIGNER_EXEC_OUT" | awk '/^  0x/{print $1}' | paste -sd, -)
-  cast send "$SIGNER_MODULE" "submitSignerProof(uint256,address[],uint256,bytes)" \
-    0 "[$SIGNERS]" "$TARGET_THRESHOLD" "$(hex_file .trustgraph/signer-sync/signer_proof.bin)" \
+  ACTIVITY_CHECKPOINT_ID=$(jq -r .activity_checkpoint_id "$WORK/signer_input.json")
+  cast send "$SIGNER_MODULE" "submitSignerProof(uint256,uint256,address[],uint256,bytes)" \
+    0 "$ACTIVITY_CHECKPOINT_ID" "[$SIGNERS]" "$TARGET_THRESHOLD" \
+    "$(hex_file .trustgraph/signer-sync/signer_proof.bin)" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
   OWNERS=$(cast call "$SAFE" "getOwners()(address[])" --rpc-url "$RPC")
   THRESHOLD=$(cast call "$SAFE" "getThreshold()(uint256)" --rpc-url "$RPC")
@@ -251,32 +271,37 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
 
   echo "== two-lane: attester builds + anchors a signed envelope-0 log =="
   ATTESTER_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d  # anvil key 1
-  DS=$(cast keccak "e2e-envelope0-domain")
+  EAS_DS=$(cast call "$REGISTRY" "easDomainSeparator()(bytes32)" --rpc-url "$RPC")
+  HEAD_DS=$(cast call "$REGISTRY" "headDomainSeparator()(bytes32)" --rpc-url "$RPC")
   GEN_OUT=$(cargo run -q -p input-exporter --bin envelope0-gen -- \
-    --key "$ATTESTER_KEY" --domain-separator "$DS" --schema "$SCHEMA" \
+    --key "$ATTESTER_KEY" --eas-domain-separator "$EAS_DS" \
+    --head-domain-separator "$HEAD_DS" --schema "$SCHEMA" \
     --attest "$A0:80" --attest "0x0000000000000000000000000000000000000005:40" --revoke 1 \
     --out "$WORK/envelope0_log.json")
   echo "$GEN_OUT"
   NODE_ID=$(echo "$GEN_OUT" | awk '/^nodeId:/{print $2}')
   HEAD=$(echo "$GEN_OUT" | awk '/^head:/{print $2}')
   HEAD_COUNT=$(echo "$GEN_OUT" | awk '/^count:/{print $2}')
-  HEAD_SIG=$(echo "$GEN_OUT" | awk '/^headSig:/{print $2}')
-  cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$ATTESTER_KEY" >/dev/null
-  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" \
-    "$NODE_ID" 0 "$HEAD" "$HEAD_COUNT" "$ZERO32" "$HEAD_SIG" \
+  DATA_COMMITMENT=$(echo "$GEN_OUT" | awk '/^dataCommitment:/{print $2}')
+  HEAD_SIG=$(echo "$GEN_OUT" | awk '/^headSignature:/{print $2}')
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32,uint64,bytes32,bytes)" \
+    "$NODE_ID" 0 "$ZERO32" "$HEAD" "$HEAD_COUNT" "$DATA_COMMITMENT" "$HEAD_SIG" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null   # admitted third-party relay
 
-  echo "== two-lane: a second node anchors a head and WITHHOLDS the data (rule Φ) =="
+  echo "== two-lane: a second node anchors a head; first exercise strict missing-data refusal =="
   WITHHELD_KEY=0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a  # anvil key 2
-  WITHHELD_ADDR=$(cast wallet address --private-key "$WITHHELD_KEY")
-  WITHHELD_NODE=$(cast keccak "$(cast abi-encode "f(address)" "$WITHHELD_ADDR")")
-  WITHHELD_HEAD=0x00000000000000000000000000000000000000000000000000000000deadbeef
-  HEAD_DOMAIN_TAG=$(cast call "$REGISTRY" "HEAD_DOMAIN_TAG()(bytes32)" --rpc-url "$RPC")
-  WITHHELD_PAYLOAD=$(cast keccak "$(cast abi-encode "f(bytes32,bytes32,uint64)" "$HEAD_DOMAIN_TAG" "$WITHHELD_HEAD" 1)")
-  WITHHELD_SIG=$(cast wallet sign "$WITHHELD_PAYLOAD" --private-key "$WITHHELD_KEY")
-  cast send "$REGISTRY" "register()" --rpc-url "$RPC" --private-key "$WITHHELD_KEY" >/dev/null
-  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,uint64,bytes32,bytes)" \
-    "$WITHHELD_NODE" 0 "$WITHHELD_HEAD" 1 "$ZERO32" "$WITHHELD_SIG" \
+  WITHHELD_OUT=$(cargo run -q -p input-exporter --bin envelope0-gen -- \
+    --key "$WITHHELD_KEY" --eas-domain-separator "$EAS_DS" \
+    --head-domain-separator "$HEAD_DS" --schema "$SCHEMA" --attest "$A0:60" \
+    --out "$WORK/withheld_envelope0_log.bin")
+  WITHHELD_NODE=$(echo "$WITHHELD_OUT" | awk '/^nodeId:/{print $2}')
+  WITHHELD_HEAD=$(echo "$WITHHELD_OUT" | awk '/^head:/{print $2}')
+  WITHHELD_COUNT=$(echo "$WITHHELD_OUT" | awk '/^count:/{print $2}')
+  WITHHELD_COMMITMENT=$(echo "$WITHHELD_OUT" | awk '/^dataCommitment:/{print $2}')
+  WITHHELD_SIG=$(echo "$WITHHELD_OUT" | awk '/^headSignature:/{print $2}')
+  cast send "$REGISTRY" "anchor(bytes32,uint8,bytes32,bytes32,uint64,bytes32,bytes)" \
+    "$WITHHELD_NODE" 0 "$ZERO32" "$WITHHELD_HEAD" "$WITHHELD_COUNT" \
+    "$WITHHELD_COMMITMENT" "$WITHHELD_SIG" \
     --rpc-url "$RPC" --private-key "$PK" >/dev/null
 
   # Enabling lane 2 changes the params, and params take effect at the NEXT boundary: every
@@ -284,8 +309,8 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   # trigger. (Rotating after the trigger would leave checkpoint 1 pinned to the lane-1 params and
   # this lane-2 proof would not verify — which is the point of pinning, exercised below.)
   echo "== two-lane: rotate params (lane 2 on) BEFORE the boundary =="
-  jq --arg s "$SCHEMA" --arg d "$DS" \
-    '.schema_uid = $s | .envelope0_domain_separators = [$d] | .lane2_max_head_age = 1000000000' \
+  jq --arg s "$SCHEMA" --arg e "$EAS_DS" --arg h "$HEAD_DS" \
+    '.schema_uid = $s | .envelope0_domain_separators = [$e, $h] | .lane2_max_head_age = 0' \
     tests/e2e/params.template.json > "$WORK/params2.json"
   # Filled from the connection the way input-exporter does, so the hash matches what the guest
   # will commit for this instance.
@@ -306,11 +331,22 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   echo "   checkpoint 1 pinned the ROTATED paramsHash ✓ (checkpoint 0 keeps $PARAMS_HASH)"
 
   echo "== two-lane: export (lane-1 re-fold + lane-2 anchor re-fold self-checks) =="
+  if cargo run -q -p input-exporter -- \
+      --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
+      --checkpoint 1 --params "$WORK/params2.json" \
+      --anchor-registry "$REGISTRY" --snapshot "$SNAPSHOT" --recipient "$RECIPIENT" \
+      --envelope0-log "$WORK/envelope0_log.json" \
+      --out "$WORK/incomplete_input2.json" >/dev/null 2>&1; then
+    echo "FATAL: strict lane 2 accepted a missing newest payload"
+    exit 1
+  fi
+  echo "   missing newest payload rejected before proving ✓"
   cargo run -q -p input-exporter -- \
     --rpc "$RPC" --accumulator "$RESOLVER" --eas "$EAS" \
     --checkpoint 1 --params "$WORK/params2.json" \
     --anchor-registry "$REGISTRY" --snapshot "$SNAPSHOT" --recipient "$RECIPIENT" \
     --envelope0-log "$WORK/envelope0_log.json" \
+    --envelope0-log "$WORK/withheld_envelope0_log.bin" \
     --out "$WORK/input2.json"
 
   echo "== two-lane: prove via the CLI and land the journal-v3 proof =="
@@ -322,8 +358,6 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   CID2=$(echo "$EXEC2_OUT" | awk '/^cid:/{print $2}')
   TOTAL_VALUE2=$(echo "$EXEC2_OUT" | awk '/^totalValue:/{print $2}')
   SKIPPED2=$(echo "$EXEC2_OUT" | awk '/^skippedDigest:/{print $2}')
-  [ "$SKIPPED2" != "$ZERO32" ] || { echo "FATAL: withheld head did not produce a skippedDigest"; exit 1; }
-  echo "   skippedDigest (withheld node recorded): $SKIPPED2 ✓"
   RECIPIENT2=$(echo "$EXEC2_OUT" | awk '/^recipient:/{print $2}')
   cast send "$SNAPSHOT" "submitProof(uint256,bytes32,bytes32,string,uint256,bytes32,address,bytes)" \
     1 "$OUTPUT_ROOT2" "$IPFS_HASH2" "$CID2" "$TOTAL_VALUE2" "$SKIPPED2" "$RECIPIENT2" \
@@ -333,8 +367,8 @@ if [ "${E2E_ONCHAIN:-1}" = "1" ]; then
   [ "$ROOT2_ONCHAIN" = "$OUTPUT_ROOT2" ] || { echo "FATAL: two-lane root $ROOT2_ONCHAIN != proven $OUTPUT_ROOT2"; exit 1; }
   echo "   two-lane root landed on-chain: $ROOT2_ONCHAIN ✓"
   echo
-  echo "E2E TWO-LANE PASS — lane-1 EAS edges + lane-2 envelope-0 in one proven journal,"
-  echo "with a withheld head degraded via rule Φ and publicly committed in skippedDigest."
+  echo "E2E TWO-LANE PASS — lane-1 EAS edges + strict lane-2 envelope-0 in one proven journal;"
+  echo "a missing newest payload was rejected before proving, then the complete witness landed."
 
   # --- HYPERCERTS instance (M4 exit): lane-2-only, envelope 1, seeded two-repo fixture ------
   echo

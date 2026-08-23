@@ -21,7 +21,11 @@ import {EasOffchainAnchorRegistry} from "src/registry/EasOffchainAnchorRegistry.
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
@@ -169,9 +173,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         TrustgraphsFactory.OffchainEasConfig memory offchain = _governedOffchainConfig();
 
         vm.prank(creator);
-        (bytes32 instanceId, address safe,, address snapshot) = governedFactory.createGovernedHybridInstance(
-            args, offchain, _unpaidPolicy(), _noSigner()
-        );
+        (bytes32 instanceId, address safe,, address snapshot) =
+            governedFactory.createGovernedHybridInstance(args, offchain, _unpaidPolicy(), _noSigner());
 
         EasOffchainAnchorRegistry anchors =
             EasOffchainAnchorRegistry(address(MerkleSnapshot(snapshot).anchorRegistry()));
@@ -199,9 +202,9 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             _args("hybrid-defense"), _governedOffchainConfig(), _unpaidPolicy(), _noSigner()
         );
         address anchorRegistry = address(MerkleSnapshot(snapshot).anchorRegistry());
-        IAttestationAccumulator accumulator =
-            IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator()));
+        IAttestationAccumulator accumulator = IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator()));
         bytes32 paramsHash = MerkleSnapshot(snapshot).paramsHash();
+        address activitySource = governedFactory.authorityOf(instanceId).governanceModule;
         vm.expectRevert(
             abi.encodeWithSelector(SignerSyncModuleDeployer.HybridScoreSnapshotUnsupported.selector, anchorRegistry)
         );
@@ -211,19 +214,18 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             IZkVerifier(address(verifier)),
             accumulator,
             ISignerSyncCheckpointSource(snapshot),
+            ISignerActivitySource(activitySource),
             paramsHash,
             bytes32(uint256(1)),
-            1,
-            1,
-            10_000
+            2,
+            2,
+            10_000,
+            151_200,
+            2
         );
     }
 
-    function _governedOffchainConfig()
-        internal
-        pure
-        returns (TrustgraphsFactory.OffchainEasConfig memory config)
-    {
+    function _governedOffchainConfig() internal pure returns (TrustgraphsFactory.OffchainEasConfig memory config) {
         config.maxTotalInputs = 200_000;
         config.initialRelayers = new address[](2);
         config.initialRelayers[0] = address(0x111);
@@ -238,7 +240,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             verifier: address(signerVerifier),
             programVKey: signerVKey,
             topN: 5,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
@@ -260,7 +262,10 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
         assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
         assertEq(address(signer.zkVerifier()), address(signerVerifier), "dedicated signer verifier");
-        assertEq(signer.selectionParamsHash(), keccak256(abi.encode(uint32(5), uint32(1), uint32(5000))));
+        assertEq(
+            signer.selectionParamsHash(),
+            keccak256(abi.encode(uint32(5), uint32(2), uint32(5000), uint64(151_200), uint32(2)))
+        );
 
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
@@ -279,6 +284,23 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         bytes32 signerSetRoot = firstLeaf < secondLeaf
             ? keccak256(abi.encode(firstLeaf, secondLeaf))
             : keccak256(abi.encode(secondLeaf, firstLeaf));
+        bytes32 activityAcc = keccak256("factory activity");
+        uint64 activityBlock = uint64(block.number);
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityAccumulator()"))),
+            abi.encode(activityAcc)
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(bytes4(keccak256("activityCount()"))),
+            abi.encode(uint64(2))
+        );
+        vm.mockCall(
+            authority.governanceModule,
+            abi.encodeWithSelector(MerkleGovModule.getActivityCheckpoint.selector, uint256(0)),
+            abi.encode(MerkleGovModule.ActivityCheckpoint(activityAcc, 2, activityBlock))
+        );
         signerVerifier.setExpectedDigest(
             keccak256(
                 abi.encode(
@@ -286,6 +308,12 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
                     checkpoint.leafCount,
                     scoreSnapshot.checkpointParamsHash(checkpointId),
                     signer.selectionParamsHash(),
+                    activityAcc,
+                    uint64(2),
+                    activityBlock,
+                    false,
+                    keccak256(abi.encode(creator)),
+                    uint256(1),
                     signerSetRoot,
                     uint256(2),
                     keccak256(abi.encode(address(signer), block.chainid))
@@ -295,7 +323,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         address relayer = address(0xBEEF);
         vm.prank(relayer);
-        signer.submitSignerProof(checkpointId, desired, 2, hex"1234");
+        signer.submitSignerProof(checkpointId, 0, desired, 2, hex"1234");
 
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[0]));
         assertTrue(GnosisSafe(payable(safe)).isOwner(desired[1]));
@@ -313,7 +341,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             verifier: address(signerVerifier),
             programVKey: suppliedVKey,
             topN: 5,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
@@ -335,14 +363,14 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             verifier: address(signerVerifier),
             programVKey: signerVKey,
             topN: 65,
-            minThreshold: 1,
+            minThreshold: 2,
             targetThresholdBps: 5000
         });
 
         vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(1), uint32(5000)
+                SignerSyncModuleDeployer.InvalidSignerSelection.selector, uint32(65), uint32(2), uint32(5000)
             )
         );
         governedFactory.createGovernedInstance(_args("unsafe-signer-selection"), _unpaidPolicy(), signerConfig);
@@ -643,9 +671,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertTrue(discoveryIndex != type(uint256).max, "GovernedInstanceCreated must be emitted");
         assertTrue(bindingIndex != type(uint256).max, "the snapshot binding must be announced");
         assertLt(
-            discoveryIndex,
-            bindingIndex,
-            "an indexer must learn the module exists before its binding announcement"
+            discoveryIndex, bindingIndex, "an indexer must learn the module exists before its binding announcement"
         );
         assertTrue(MerkleGovModule(module).initialBindingPublished(), "one-shot publisher consumed");
         vm.expectRevert(MerkleGovModule.AlreadyInitialized.selector);
@@ -667,8 +693,13 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(created.resolver),
             ISignerSyncCheckpointSource(created.snapshot),
+            ISignerActivitySource(address(gov)),
             MerkleSnapshot(created.snapshot).paramsHash(),
-            bytes32(uint256(1))
+            5,
+            2,
+            5_000,
+            151_200,
+            2
         );
 
         address[] memory initialSigners = new address[](1);

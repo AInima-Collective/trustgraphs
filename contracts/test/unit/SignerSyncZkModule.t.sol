@@ -6,7 +6,11 @@ import {Test} from "forge-std/Test.sol";
 import {GnosisSafe} from "@gnosis.pm/safe-contracts/GnosisSafe.sol";
 import {GnosisSafeProxyFactory} from "@gnosis.pm/safe-contracts/proxies/GnosisSafeProxyFactory.sol";
 
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
@@ -20,6 +24,22 @@ contract MockSignerSyncCheckpointSource is ISignerSyncCheckpointSource {
     }
 }
 
+contract MockSignerActivitySource is ISignerActivitySource {
+    bytes32 public activityAccumulator;
+    uint64 public activityCount;
+    ActivityCheckpoint[] internal checkpoints;
+
+    function push(bytes32 acc_, uint64 count_, uint64 blockNumber_) external {
+        activityAccumulator = acc_;
+        activityCount = count_;
+        checkpoints.push(ActivityCheckpoint(acc_, count_, blockNumber_));
+    }
+
+    function getActivityCheckpoint(uint256 id) external view returns (ActivityCheckpoint memory) {
+        return checkpoints[id];
+    }
+}
+
 contract SignerSyncZkModuleTest is Test {
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
@@ -29,6 +49,7 @@ contract SignerSyncZkModuleTest is Test {
     MockZkVerifier internal verifier;
     MockAccumulator internal accumulator;
     MockSignerSyncCheckpointSource internal scoreSnapshot;
+    MockSignerActivitySource internal activitySource;
 
     address internal owner = address(0xABCD);
 
@@ -41,7 +62,7 @@ contract SignerSyncZkModuleTest is Test {
     address internal F = address(0xF6);
 
     bytes32 internal constant PARAMS_HASH = keccak256("params");
-    bytes32 internal constant SEL_HASH = keccak256("selection");
+    bytes32 internal SEL_HASH;
     bytes internal constant PROOF = hex"1234";
 
     function setUp() public {
@@ -78,6 +99,9 @@ contract SignerSyncZkModuleTest is Test {
         scoreSnapshot = new MockSignerSyncCheckpointSource();
         scoreSnapshot.set(0, PARAMS_HASH);
         scoreSnapshot.set(1, PARAMS_HASH);
+        activitySource = new MockSignerActivitySource();
+        activitySource.push(keccak256("activity"), 2, uint64(block.number));
+        SEL_HASH = keccak256(abi.encode(uint32(5), uint32(2), uint32(5000), uint64(151_200), uint32(2)));
 
         module = new SignerSyncZkModule(
             owner,
@@ -86,8 +110,13 @@ contract SignerSyncZkModuleTest is Test {
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
+            activitySource,
             PARAMS_HASH,
-            SEL_HASH
+            5,
+            2,
+            5_000,
+            151_200,
+            2
         );
 
         // Enable the module on the Safe (only the Safe itself may enable a module).
@@ -162,8 +191,13 @@ contract SignerSyncZkModuleTest is Test {
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
+            activitySource,
             PARAMS_HASH,
-            SEL_HASH
+            5,
+            2,
+            5_000,
+            151_200,
+            2
         );
     }
 
@@ -172,7 +206,7 @@ contract SignerSyncZkModuleTest is Test {
         vm.expectRevert();
         module.setParamsHash(bytes32(uint256(1)));
         vm.expectRevert();
-        module.setSelectionParamsHash(bytes32(uint256(1)));
+        module.setSelectionParams(5, 2, 5_000, 151_200, 2);
         vm.expectRevert();
         module.setZkVerifier(IZkVerifier(address(0x1234)));
         vm.expectRevert();
@@ -183,10 +217,13 @@ contract SignerSyncZkModuleTest is Test {
     function test_Governance_OwnerUpdates() public {
         vm.startPrank(owner);
         module.setParamsHash(bytes32(uint256(7)));
-        module.setSelectionParamsHash(bytes32(uint256(8)));
+        module.setSelectionParams(4, 2, 6_000, 100_000, 2);
         vm.stopPrank();
         assertEq(module.paramsHash(), bytes32(uint256(7)));
-        assertEq(module.selectionParamsHash(), bytes32(uint256(8)));
+        assertEq(
+            module.selectionParamsHash(),
+            keccak256(abi.encode(uint32(4), uint32(2), uint32(6000), uint64(100_000), uint32(2)))
+        );
     }
 
     function test_PauseIsGovernedAndStopsProofs() public {
@@ -198,17 +235,17 @@ contract SignerSyncZkModuleTest is Test {
         module.setPaused(true);
         assertTrue(module.paused());
         vm.expectRevert(SignerSyncZkModule.SignerSyncPaused.selector);
-        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
 
         vm.prank(owner);
         module.setPaused(false);
-        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
     }
 
     function test_UnpinnedCheckpointRevertsBeforeVerification() public {
         scoreSnapshot.set(0, bytes32(0));
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.UnpinnedCheckpoint.selector, uint256(0)));
-        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
     }
 
     function test_ParamsRotationDoesNotInvalidatePinnedCheckpoint() public {
@@ -220,7 +257,7 @@ contract SignerSyncZkModuleTest is Test {
         module.setParamsHash(keccak256("next params"));
         assertTrue(module.paramsHash() != PARAMS_HASH, "live status should show the rotation");
 
-        module.submitSignerProof(0, signers, 2, PROOF);
+        module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
     }
 
@@ -249,20 +286,20 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_Rotate_FullSwap() public {
         // {A,B,C} -> {D,E,F} : 3 removes, 3 adds -> 3 swaps, count unchanged.
-        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
         _assertOwnerSet(_arr(D, E, F), 2);
         assertFalse(safe.isOwner(A));
     }
 
     function test_Rotate_NetAdd() public {
         // {A,B,C} -> {A,B,C,D,E} : 2 adds, threshold up to 3.
-        module.submitSignerProof(0, _arr(A, B, C, D, E), 3, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, C, D, E), 3, PROOF);
         _assertOwnerSet(_arr(A, B, C, D, E), 3);
     }
 
     function test_Rotate_NetRemove() public {
         // {A,B,C} -> {A} : 2 removes, threshold down to 1 (invariant preserved throughout).
-        module.submitSignerProof(0, _arr(A), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(A), 1, PROOF);
         _assertOwnerSet(_arr(A), 1);
         assertFalse(safe.isOwner(B));
         assertFalse(safe.isOwner(C));
@@ -270,83 +307,83 @@ contract SignerSyncZkModuleTest is Test {
 
     function test_Rotate_MixedSwapOnly() public {
         // {A,B,C} -> {A,D,E} : keep A, swap B->D, C->E.
-        module.submitSignerProof(0, _arr(A, D, E), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, D, E), 2, PROOF);
         _assertOwnerSet(_arr(A, D, E), 2);
     }
 
     function test_Rotate_MixedSwapAndAdd() public {
         // {A,B,C} -> {A,B,D,E,F} : keep A,B; swap C->D; add E,F.
-        module.submitSignerProof(0, _arr(A, B, D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, D, E, F), 2, PROOF);
         _assertOwnerSet(_arr(A, B, D, E, F), 2);
     }
 
     function test_Rotate_MixedSwapAndRemove() public {
         // {A,B,C} -> {A,D} : keep A; swap B->D; remove C. Final count 2.
-        module.submitSignerProof(0, _arr(A, D), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, D), 1, PROOF);
         _assertOwnerSet(_arr(A, D), 1);
     }
 
     function test_Rotate_NoMemberChange_ThresholdOnly() public {
         // Same set, lower threshold 2 -> 1.
-        module.submitSignerProof(0, _arr(A, B, C), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, C), 1, PROOF);
         _assertOwnerSet(_arr(A, B, C), 1);
     }
 
     function test_Rotate_SequentialCheckpoints() public {
-        module.submitSignerProof(0, _arr(A, D), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, D), 1, PROOF);
         _assertOwnerSet(_arr(A, D), 1);
         // Second, higher checkpoint rotates again from the new state.
-        module.submitSignerProof(1, _arr(A, B, C, D), 2, PROOF);
+        module.submitSignerProof(1, 0, _arr(A, B, C, D), 2, PROOF);
         _assertOwnerSet(_arr(A, B, C, D), 2);
     }
 
     /*//////////////////////// guards ////////////////////////*/
 
     function test_StaleCheckpointReverts() public {
-        module.submitSignerProof(1, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(1, 0, _arr(D, E, F), 2, PROOF);
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(1), uint256(1)));
-        module.submitSignerProof(1, _arr(A, B, C), 2, PROOF);
+        module.submitSignerProof(1, 0, _arr(A, B, C), 2, PROOF);
         // A strictly-lower checkpoint is also stale.
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, uint256(0), uint256(1)));
-        module.submitSignerProof(0, _arr(A, B, C), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, C), 2, PROOF);
     }
 
     function test_EmptySignerSetReverts() public {
         address[] memory empty = new address[](0);
         vm.expectRevert(SignerSyncZkModule.EmptySignerSet.selector);
-        module.submitSignerProof(0, empty, 1, PROOF);
+        module.submitSignerProof(0, 0, empty, 1, PROOF);
     }
 
     function test_NonAscendingReverts() public {
         vm.expectRevert(SignerSyncZkModule.SignersNotStrictlyAscending.selector);
-        module.submitSignerProof(0, _arr(B, A), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(B, A), 1, PROOF);
     }
 
     function test_DuplicateReverts() public {
         vm.expectRevert(SignerSyncZkModule.SignersNotStrictlyAscending.selector);
-        module.submitSignerProof(0, _arr(A, A), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, A), 1, PROOF);
     }
 
     function test_ZeroAndSentinelSignerRevert() public {
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0)));
-        module.submitSignerProof(0, _arr(address(0)), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(address(0)), 1, PROOF);
 
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidSigner.selector, address(0x1)));
-        module.submitSignerProof(0, _arr(address(0x1)), 1, PROOF);
+        module.submitSignerProof(0, 0, _arr(address(0x1)), 1, PROOF);
     }
 
     function test_InvalidThresholdReverts() public {
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(0), uint256(3)));
-        module.submitSignerProof(0, _arr(A, B, C), 0, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, C), 0, PROOF);
 
         vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.InvalidThreshold.selector, uint256(4), uint256(3)));
-        module.submitSignerProof(0, _arr(A, B, C), 4, PROOF);
+        module.submitSignerProof(0, 0, _arr(A, B, C), 4, PROOF);
     }
 
     function test_RejectedProofReverts() public {
         verifier.setAccept(false);
         vm.expectRevert(bytes("MockZkVerifier: rejected"));
-        module.submitSignerProof(0, _arr(D, E, F), 2, PROOF);
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
     }
 
     /*//////////////////////// fuzz: owner diff always lands on desired ////////////////////////*/
@@ -368,15 +405,16 @@ contract SignerSyncZkModuleTest is Test {
             if (mask & (uint8(1) << uint8(i)) != 0) desired[j++] = pool[i];
         }
         uint256 threshold = bound(thresholdSeed, 1, count);
+        vm.assume(_ozRoot(desired) != _ozRoot(safe.getOwners()) || threshold != safe.getThreshold());
 
-        module.submitSignerProof(0, desired, threshold, PROOF);
+        module.submitSignerProof(0, 0, desired, threshold, PROOF);
         _assertOwnerSet(desired, threshold);
     }
 
     /*//////////////////////// journal digest binding ////////////////////////*/
 
     /// @dev The exact digest `submitSignerProof` rebuilds for `mod_` on the current chain: the
-    ///      frozen 7-word signer journal, whose final word is the M-3 instance/chain binding.
+    ///      frozen 13-word signer journal, whose final word is the M-3 instance/chain binding.
     function _expectedDigest(
         SignerSyncZkModule mod_,
         bytes32 acc,
@@ -384,12 +422,19 @@ contract SignerSyncZkModuleTest is Test {
         address[] memory signers,
         uint256 threshold
     ) internal view returns (bytes32) {
+        ISignerActivitySource.ActivityCheckpoint memory activity = activitySource.getActivityCheckpoint(0);
         return keccak256(
             abi.encode(
                 acc,
                 leafCount,
                 mod_.paramsHash(),
                 mod_.selectionParamsHash(),
+                activity.acc,
+                activity.count,
+                activity.blockNumber,
+                mod_.hasAppliedCheckpoint(),
+                _ozRoot(safe.getOwners()),
+                safe.getThreshold(),
                 _ozRoot(signers),
                 threshold,
                 keccak256(abi.encode(address(mod_), block.chainid))
@@ -403,7 +448,7 @@ contract SignerSyncZkModuleTest is Test {
         address[] memory signers = _arr(D, E, F);
         bytes32 expected = _expectedDigest(module, keccak256("acc0"), 10, signers, 2);
         verifier.setExpectedDigest(expected);
-        module.submitSignerProof(0, signers, 2, PROOF);
+        module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
     }
 
@@ -417,6 +462,12 @@ contract SignerSyncZkModuleTest is Test {
                 uint64(10),
                 keccak256("OTHER"),
                 SEL_HASH,
+                activitySource.activityAccumulator(),
+                activitySource.activityCount(),
+                uint64(block.number),
+                false,
+                _ozRoot(safe.getOwners()),
+                safe.getThreshold(),
                 signerSetRoot,
                 uint256(2),
                 keccak256(abi.encode(address(module), block.chainid))
@@ -424,7 +475,7 @@ contract SignerSyncZkModuleTest is Test {
         );
         verifier.setExpectedDigest(madeForDifferentParams);
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        module.submitSignerProof(0, signers, 2, PROOF);
+        module.submitSignerProof(0, 0, signers, 2, PROOF);
     }
 
     /*//////////////////////// M-3: instance/chain binding ////////////////////////*/
@@ -441,8 +492,13 @@ contract SignerSyncZkModuleTest is Test {
             IZkVerifier(address(verifier)),
             IAttestationAccumulator(address(accumulator)),
             scoreSnapshot,
+            activitySource,
             PARAMS_HASH,
-            SEL_HASH
+            5,
+            2,
+            5_000,
+            151_200,
+            2
         );
         vm.prank(address(safe));
         safe.enableModule(address(sibling));
@@ -454,10 +510,10 @@ contract SignerSyncZkModuleTest is Test {
         // Replaying it against the sibling module fails: the sibling rebuilds the domain word from
         // ITS OWN address, producing a digest the proof does not verify against.
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        sibling.submitSignerProof(0, signers, 2, PROOF);
+        sibling.submitSignerProof(0, 0, signers, 2, PROOF);
 
         // The module it was made for still accepts it.
-        module.submitSignerProof(0, signers, 2, PROOF);
+        module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
     }
 
@@ -470,7 +526,7 @@ contract SignerSyncZkModuleTest is Test {
 
         // Sanity: the proof verifies on the chain it was made for (the test chain, 31337).
         verifier.setExpectedDigest(_expectedDigest(module, keccak256("acc0"), 10, signers, 2));
-        module.submitSignerProof(0, signers, 2, PROOF);
+        module.submitSignerProof(0, 0, signers, 2, PROOF);
         _assertOwnerSet(signers, 2);
 
         // A second proof also made for chain 31337 (digest computed BEFORE the switch) ...
@@ -481,7 +537,7 @@ contract SignerSyncZkModuleTest is Test {
         // word from ITS chain id, producing a digest the proof does not verify against.
         vm.chainId(1);
         vm.expectRevert(bytes("MockZkVerifier: digest mismatch"));
-        module.submitSignerProof(1, next, 2, PROOF);
+        module.submitSignerProof(1, 0, next, 2, PROOF);
     }
 
     /// @dev Mirror of the module/pagerank-core OZ root (leaf = keccak256(abi.encode(address))).

@@ -70,6 +70,8 @@ pub struct Lane2Result {
     /// Ordered by `(first-commit anchor fold index, log entry index)` before reconciliation.
     pub edges: Vec<RawEdge>,
     pub skips: Vec<SkipEntry>,
+    /// Number of ECDSA verification calls performed by this exact witness.
+    pub signature_checks: u64,
 }
 
 fn anchor_message(
@@ -147,6 +149,7 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
     }
 
     let mut ordered_mutations: Vec<(usize, usize, RawEdge)> = Vec::new();
+    let mut signature_checks = 0u64;
 
     for (node_id, anchors) in per_node {
         let payload_witness = payloads.remove(&node_id).ok_or(Lane2Error::MissingPayload)?;
@@ -173,6 +176,7 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
                 &message,
                 &authorization.head_signature,
             )?;
+            signature_checks = signature_checks.saturating_add(1);
             if eas_offchain::address_node_id(signer) != node_id {
                 return Err(payload_v1::PayloadError::NodeId.into());
             }
@@ -201,6 +205,10 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
             head_signature: &latest_authorization.head_signature,
         };
         let payload = payload_v1::verify(&payload_witness.payload, &context)?;
+        // `verify` checks the latest head again in its single-record context, plus every
+        // EAS-offchain attestation signature in the payload.
+        signature_checks =
+            signature_checks.saturating_add(1).saturating_add(payload.attestations.len() as u64);
         if payload_witness.node_id != eas_offchain::address_node_id(payload.owner) {
             return Err(payload_v1::PayloadError::NodeId.into());
         }
@@ -290,6 +298,7 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Result<Lane2Result, L
         anchor_count: witness.anchors.len() as u64,
         edges,
         skips: Vec::new(),
+        signature_checks,
     })
 }
 

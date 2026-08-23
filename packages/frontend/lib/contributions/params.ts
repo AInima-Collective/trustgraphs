@@ -9,6 +9,8 @@ import { type ContributionsParams } from './types'
 import { seedSetRoot } from '../pagerank/merkle'
 import { cmpHex, wordU256, wordU32, wordU64 } from '../pagerank/words'
 
+export const PARAMS_SCHEMA_VERSION = 3
+
 /**
  * The `seedSetRoot` folded into slot 9: an OZ StandardMerkleTree over the *sorted* trusted-seed
  * set, leaf = `keccak256(abi.encode(address))` — same builder as the trust program. The struct
@@ -28,12 +30,12 @@ export const contributionsSeedSetRoot = (seeds: Hex[]): Hex => {
 export const paramsHash = (p: ContributionsParams): Hex =>
   keccak256(
     concat([
+      wordU32(PARAMS_SCHEMA_VERSION),
       wordU256(p.dampingFp),
       wordU256(p.toleranceFp),
       wordU32(p.maxIterations),
       wordU256(p.minWeightFp),
       wordU256(p.maxWeightFp),
-      wordU256(p.trustMultiplierFp),
       wordU256(p.trustShareFp),
       wordU256(p.trustDecayFp),
       contributionsSeedSetRoot(p.trustedSeeds),

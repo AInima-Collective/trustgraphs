@@ -1,1 +1,7 @@
-{ "top_n": 3, "min_threshold": 1, "target_threshold_bps": 5000 }
+{
+  "top_n": 5,
+  "min_threshold": 2,
+  "target_threshold_bps": 5000,
+  "max_inactive_blocks": 151200,
+  "min_activity_witnesses": 2
+}

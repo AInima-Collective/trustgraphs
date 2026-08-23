@@ -9,7 +9,7 @@ use nostr_envelope::nostr::{
     NostrVerifyConfig, VerificationCache,
 };
 use pagerank_core::distribute::distribute_points_generic;
-use pagerank_core::pagerank::{calculate_generic, RankConfig};
+use pagerank_core::pagerank::{calculate_generic_detailed, RankConfig};
 use pagerank_core::{cid, merkle, AnchorRecord, Binding, Journal};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -66,6 +66,10 @@ pub struct ComputeResult {
     pub skips: Vec<SkipEntry>,
     pub blob: Vec<u8>,
     pub cid: String,
+    pub rank: pagerank_core::RankTelemetry,
+    /// Exact number of guest cryptographic signature-verification attempts accounted by the
+    /// authenticated Nostr work meter (NIP-01 plus OpenAgents authorization signatures).
+    pub signature_checks: u64,
 }
 
 struct DecodedWitness {
@@ -354,13 +358,14 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, ComputeError> {
         damping_fp: params.damping_fp,
         tolerance_fp: params.tolerance_fp,
         max_iterations: params.max_iterations,
-        trust_multiplier_fp: params.trust_multiplier_fp,
         trust_share_fp: params.trust_share_fp,
         trust_decay_fp: params.trust_decay_fp,
         scale: params.precision_scale,
         seeds,
     };
-    let scores_fp = calculate_generic(&graph.nodes, &graph.outgoing, &rank);
+    let rank_result = calculate_generic_detailed(&graph.nodes, &graph.outgoing, &rank);
+    let rank_telemetry = rank_result.telemetry(params.max_iterations);
+    let scores_fp = rank_result.scores;
     let filtered: Vec<_> = scores_fp.into_iter().filter(|(_, value)| !value.is_zero()).collect();
     let (mut scores, total_value) =
         distribute_points_generic(&filtered, params.precision_scale, params.total_pool);
@@ -403,5 +408,7 @@ pub fn compute(input: &GuestInput) -> Result<ComputeResult, ComputeError> {
         skips,
         blob,
         cid,
+        rank: rank_telemetry,
+        signature_checks: event_occurrences.saturating_add(oa_occurrences),
     })
 }

@@ -94,10 +94,14 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
 
     /// Tolerance zero never converges within the iteration cap; too loose and "converged" stops
     /// meaning anything (1e15 is 0.1% of a unit score).
-    function test_RejectsZeroTolerance() public {
+    function test_RejectsToleranceBelowMin() public {
+        uint256 min = factory.MIN_TOLERANCE_FP();
         ParamsCodec.Params memory p = _baseParams();
-        p.toleranceFp = 0;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, 0));
+        p.toleranceFp = min - 1;
+        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTolerance.selector, min - 1));
+
+        p.toleranceFp = min;
+        factory.validateParams(p);
     }
 
     function test_RejectsToleranceAboveMax() public {
@@ -118,9 +122,6 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
     }
 
     /// Past the cap the guest's cycle count, not the mathematics, becomes the limit.
-    /// @dev The accept-at-boundary leg pairs `MAX_ITERATIONS` with a NON-growing multiplier
-    ///      (`damping x multiplier <= 1`). With a growing one, 500 iterations is legitimately
-    ///      rejected by `_validateGrowth` — that pairing is covered in `test_RejectsRunawayGrowth`.
     function test_RejectsIterationsAboveMax() public {
         uint32 max = factory.MAX_ITERATIONS();
         ParamsCodec.Params memory p = _baseParams();
@@ -128,31 +129,6 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidIterations.selector, max + 1));
 
         p.maxIterations = max;
-        p.trustMultiplierFp = 1e18; // no boost => ranks cannot grow at any iteration count
-        factory.validateParams(p);
-    }
-
-    /// The joint bound: damping x multiplier compounds every iteration because ranks are
-    /// normalized only AFTER the loop, so safety is not a property of any single field. A
-    /// configuration whose ranks would run past what U256 can hold is refused at creation —
-    /// otherwise the instance is created and then can never be proven (the guest aborts).
-    function test_RejectsRunawayGrowth() public {
-        ParamsCodec.Params memory p = _baseParams();
-        // The blessed live params (0.85 damping, 2x boost) grow 1.7x per iteration: fine for the
-        // 100 iterations the wizard pins, unrepresentable by 500.
-        p.trustMultiplierFp = 2e18;
-        p.maxIterations = 100;
-        factory.validateParams(p);
-
-        p.maxIterations = 500;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.RankGrowthUnbounded.selector, 1.7e18, 500));
-    }
-
-    /// ...and a multiplier at or below `1 / damping` never grows, so no iteration count rejects it.
-    function test_AcceptsNonGrowingMultiplierAtEveryIterationCount() public view {
-        ParamsCodec.Params memory p = _baseParams();
-        p.trustMultiplierFp = 1e18;
-        p.maxIterations = factory.MAX_ITERATIONS();
         factory.validateParams(p);
     }
 
@@ -199,22 +175,6 @@ contract TrustgraphsFactoryBoundsTest is TrustgraphsFactoryBase {
         _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustDecay.selector, scale + 1));
 
         p.trustDecayFp = scale;
-        factory.validateParams(p);
-    }
-
-    /// The seed boost has a flat ceiling as defence in depth; `_validateGrowth` is what actually
-    /// decides whether a given multiplier is safe (see `test_RejectsRunawayGrowth`).
-    /// @dev So the accept-at-cap leg has to drop `maxIterations` to a count the cap survives —
-    ///      at the ceiling multiplier the growth check permits only a handful of iterations, which
-    ///      is exactly the joint constraint being enforced.
-    function test_RejectsTrustMultiplierAboveCap() public {
-        uint256 cap = factory.MAX_TRUST_MULTIPLIER_FP();
-        ParamsCodec.Params memory p = _baseParams();
-        p.trustMultiplierFp = cap + 1;
-        _expectRejected(p, abi.encodeWithSelector(TrustgraphsFactory.InvalidTrustMultiplier.selector, cap + 1));
-
-        p.trustMultiplierFp = cap;
-        p.maxIterations = 20;
         factory.validateParams(p);
     }
 

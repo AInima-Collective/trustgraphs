@@ -147,18 +147,12 @@ contract TrustgraphsFactory {
     uint32 public constant MAX_ITERATIONS = 500;
     /// @notice Convergence tolerance must be meaningfully below S; 1e15 is 0.1% of a unit score.
     uint256 public constant MAX_TOLERANCE_FP = 1e15;
-    /// @notice A ceiling on the seed boost. Defence in depth only — `_validateGrowth` is what
-    ///         actually decides whether a multiplier is safe, because safety depends jointly on
-    ///         damping and the iteration count, not on this number alone.
-    uint256 public constant MAX_TRUST_MULTIPLIER_FP = 100e18;
+    /// @notice Empirical floor: below this, real fixed-point limit cycles can miss convergence.
+    uint256 public constant MIN_TOLERANCE_FP = 1e6;
     /// @notice Ceiling on a single vouch's weight. The canonical schema's `confidence` is a small
     ///         integer (the live network caps at 100), so a million units is four orders of
     ///         headroom while still bounding the per-attester weight sums the guest accumulates.
     uint256 public constant MAX_WEIGHT_FP = 1e6 * PRECISION_SCALE;
-    /// @notice The largest rank the fixed-point core can hold with headroom for one more multiply.
-    ///         Past `type(uint256).max` the guest ABORTS (`zk_core::fixed::mul_div`), so an
-    ///         instance whose ranks can reach here is not merely badly tuned — it is unprovable.
-    uint256 public constant MAX_RANK_FP = type(uint256).max / PRECISION_SCALE;
     /// @notice Seeds are hashed into a merkle root at creation; keep the loop bounded.
     uint256 public constant MAX_TRUSTED_SEEDS = 64;
     /// @notice `name` bound — it is part of `instanceId` and of every directory row.
@@ -223,8 +217,6 @@ contract TrustgraphsFactory {
     error InvalidTolerance(uint256 toleranceFp);
     error InvalidIterations(uint32 maxIterations);
     error InvalidWeightBounds(uint256 minWeightFp, uint256 maxWeightFp);
-    /// @notice `damping x multiplier` compounds past what U256 can hold within `maxIterations`.
-    error RankGrowthUnbounded(uint256 factorFp, uint32 maxIterations);
     /// @notice EAS returned a schema UID other than the one its documented derivation implies.
     error SchemaUidMismatch(bytes32 registered, bytes32 expected);
 
@@ -234,7 +226,6 @@ contract TrustgraphsFactory {
     event SchemaAdopted(bytes32 indexed instanceId, bytes32 schemaUid);
     error InvalidTrustShare(uint256 trustShareFp);
     error InvalidTrustDecay(uint256 trustDecayFp);
-    error InvalidTrustMultiplier(uint256 trustMultiplierFp);
     error InvalidPrecisionScale(uint256 precisionScale);
     error InvalidTotalPool();
     error InvalidWeightFieldIndex(uint32 weightFieldIndex);

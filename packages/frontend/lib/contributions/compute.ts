@@ -53,7 +53,6 @@ const trustParams = (p: ContributionsParams): PagerankParams => ({
   maxIterations: p.maxIterations,
   minWeightFp: p.minWeightFp,
   maxWeightFp: p.maxWeightFp,
-  trustMultiplierFp: p.trustMultiplierFp,
   trustShareFp: p.trustShareFp,
   trustDecayFp: p.trustDecayFp,
   trustedSeeds: p.trustedSeeds,

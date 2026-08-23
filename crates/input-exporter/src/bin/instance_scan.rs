@@ -35,14 +35,13 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 sol! {
-    /// Mirror of `ParamsCodec.Params` (params schema v2 — 17 fields, order FROZEN).
+    /// Mirror of `ParamsCodec.Params` (params schema v3 — 16 fields; hash adds a version word).
     struct SolParams {
         uint256 dampingFp;
         uint256 toleranceFp;
         uint32 maxIterations;
         uint256 minWeightFp;
         uint256 maxWeightFp;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         address[] trustedSeeds;
@@ -63,7 +62,6 @@ sol! {
         uint32 maxIterations;
         uint256 minWeightFp;
         uint256 maxWeightFp;
-        uint256 trustMultiplierFp;
         uint256 trustShareFp;
         uint256 trustDecayFp;
         address[] trustedSeeds;
@@ -793,7 +791,6 @@ fn to_core_params(p: &SolParams) -> Params {
         max_iterations: p.maxIterations,
         min_weight_fp: p.minWeightFp,
         max_weight_fp: p.maxWeightFp,
-        trust_multiplier_fp: p.trustMultiplierFp,
         trust_share_fp: p.trustShareFp,
         trust_decay_fp: p.trustDecayFp,
         trusted_seeds: p.trustedSeeds.clone(),
@@ -816,7 +813,6 @@ fn to_contributions_params(p: &SolContributionsParams) -> contributions_core::Pa
         max_iterations: p.maxIterations,
         min_weight_fp: p.minWeightFp,
         max_weight_fp: p.maxWeightFp,
-        trust_multiplier_fp: p.trustMultiplierFp,
         trust_share_fp: p.trustShareFp,
         trust_decay_fp: p.trustDecayFp,
         trusted_seeds: p.trustedSeeds.clone(),

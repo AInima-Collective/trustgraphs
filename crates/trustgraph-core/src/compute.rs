@@ -39,7 +39,21 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
     all_edges.extend_from_slice(&input.edges);
     all_edges.extend_from_slice(&lane2_result.edges);
     let graph = reconcile::build_graph(&all_edges, &input.params);
-    let scores_fp = pagerank::calculate(&graph, &input.params);
+    let rank_result = pagerank::calculate_generic_detailed(
+        &graph.nodes,
+        &graph.outgoing,
+        &pagerank::RankConfig {
+            damping_fp: input.params.damping_fp,
+            tolerance_fp: input.params.tolerance_fp,
+            max_iterations: input.params.max_iterations,
+            trust_share_fp: input.params.trust_share_fp,
+            trust_decay_fp: input.params.trust_decay_fp,
+            scale: input.params.precision_scale,
+            seeds: input.params.trusted_seeds.iter().copied().collect(),
+        },
+    );
+    let rank = rank_result.telemetry(input.params.max_iterations);
+    let scores_fp = rank_result.scores;
     let filtered: Vec<(Address, U256)> =
         scores_fp.into_iter().filter(|(_, v)| !v.is_zero()).collect();
 
@@ -77,7 +91,14 @@ pub fn compute(input: &GuestInput) -> ComputeResult {
         recipient: input.binding.recipient,
         instance_domain: input.binding.instance_domain,
     };
-    ComputeResult { journal, scores: assigned, blob, cid: cid_str }
+    ComputeResult {
+        journal,
+        scores: assigned,
+        blob,
+        cid: cid_str,
+        rank,
+        signature_checks: lane2_result.signature_checks,
+    }
 }
 
 /// The journal digest the on-chain verifier binds.

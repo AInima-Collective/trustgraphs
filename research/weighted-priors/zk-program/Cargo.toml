@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"
-weighted-prior-research = { path = "../../../crates/weighted-prior-research" }
+weighted-prior-research = { path = "../core" }
 
 [workspace]
 

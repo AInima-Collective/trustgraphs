@@ -19,6 +19,10 @@ fn priced_intent(k: WorkKey, at: u64, cost_cents: u64) -> Record {
         vk_hash: B256::from([0x9C; 32]),
         at,
         cost_cents,
+        cost_model_version: 1,
+        estimated_cycles: cost_cents.saturating_mul(1_000_000_000),
+        max_iterations: 100,
+        iterations_run: 17,
     }
 }
 

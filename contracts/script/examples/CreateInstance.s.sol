@@ -54,8 +54,7 @@ contract CreateInstance is Script {
         p.maxIterations = 100;
         p.minWeightFp = 0;
         p.maxWeightFp = 100 * S;
-        p.trustMultiplierFp = 2 * S;
-        p.trustShareFp = (15 * S) / 100;
+        p.trustShareFp = S;
         p.trustDecayFp = (80 * S) / 100;
         p.trustedSeeds = new address[](1);
         p.trustedSeeds[0] = trustedSeed;

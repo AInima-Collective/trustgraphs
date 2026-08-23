@@ -1,4 +1,4 @@
-//! The representable-range backstop, and the factory bounds that keep real instances away from it.
+//! The representable-range backstop and the schema-v3 mass invariant.
 //!
 //! Provenance: the M6 security review refuted "the creation-time bounds keep every instance inside
 //! the envelope the guest is proven safe over" (`docs/build/create-a-network.md` §3). At the time,
@@ -8,15 +8,10 @@
 //! therefore did not fail to prove — it proved the WRONG scores, and disagreed with the
 //! arbitrary-precision TS port about both payouts and ranking order.
 //!
-//! Both halves are now closed and this file locks them:
-//!   1. `mul_div` and the rank-loop accumulations panic instead of wrapping, so an out-of-range
-//!      instance is UNPROVABLE rather than wrong (and the TS port throws in the same place).
-//!   2. The factory's bounds were tightened so the wizard's own range stays far from the ceiling.
-//!
-//! Note (1) is the load-bearing one. Ranks are normalized once, AFTER the loop, so a seed whose
-//! only out-edge points at another seed multiplies its rank by `damping x multiplier` every
-//! iteration. No static bound can both permit the blessed live params and prove non-growth, which
-//! is exactly why the backstop has to exist.
+//! Schema v3 removes the founder multiplier and divides every row by the same base weights used
+//! in its numerators. The rank core now asserts the resulting load-bearing invariant directly:
+//! total standing never exceeds the precision scale at any iteration. `mul_div` still refuses a
+//! quotient that cannot fit in U256 as a primitive-level backstop.
 
 use alloy_primitives::{Address, B256, U256};
 use pagerank_core::{pagerank, reconcile, Params, RawEdge};
@@ -51,8 +46,7 @@ fn live_params(max_iterations: u32) -> Params {
         max_iterations,
         min_weight_fp: U256::ZERO,
         max_weight_fp: U256::from(100u64) * s(),
-        trust_multiplier_fp: U256::from(2u64) * s(), // 2x — the live value
-        trust_share_fp: U256::from(15u64) * s() / U256::from(100u64),
+        trust_share_fp: s(),
         trust_decay_fp: U256::from(80u64) * s() / U256::from(100u64),
         trusted_seeds: vec![addr(1), addr(2)],
         total_pool: U256::from(1_000_000u64),
@@ -71,38 +65,30 @@ fn scores(p: &Params, edges: &[RawEdge]) -> Vec<U256> {
     pagerank::calculate(&g, p).into_values().collect()
 }
 
-/// The mutual-seed graph: the shape that makes ranks grow without bound.
+/// A mutual-seed graph exercises the former multiplier-growth shape.
 fn mutual_seeds() -> Vec<RawEdge> {
     vec![attest(1, 2, 1, 100, 50), attest(2, 1, 2, 101, 50)]
 }
 
-/// The post-condition `calculate_generic` states in its own doc comment — "scores scaled by S;
-/// sum ~= S" — holds for the live params, at every iteration count. This is the control the
-/// original refutation used, and it must stay true.
+/// Scores normalize to exactly S at every accepted iteration count.
 #[test]
 fn live_params_normalize_exactly_at_every_iteration_count() {
-    // 500 is deliberately absent: at 1.7x growth per iteration that is genuinely past what U256
-    // can represent, and `TrustgraphsFactory._validateGrowth` refuses the pairing at creation.
-    for iters in [1u32, 5, 24, 100, 200] {
+    for iters in [1u32, 5, 24, 100, 200, 500] {
         let sum: U256 =
             scores(&live_params(iters), &mutual_seeds()).into_iter().fold(U256::ZERO, |a, b| a + b);
         assert_eq!(sum, s(), "normalized scores must sum to S (iterations = {iters})");
     }
 }
 
-/// The backstop: a configuration whose ranks run past 2^256 now PANICS. Before the fix this
-/// returned wrapped ranks and a normalized total of 5.19x S — a wrong answer that still proved.
+/// Maximum accepted damping, decay and iteration count remain representable by construction.
 #[test]
-#[should_panic(expected = "exceeds 256 bits")]
-fn ranks_that_exceed_the_representable_range_panic_instead_of_wrapping() {
-    let mut runaway = live_params(64);
-    // 850x per iteration: far outside anything the factory will now accept, and reachable only by
-    // calling the core crate directly — which is the point. The core must not be the last line of
-    // defence AND silent.
-    runaway.trust_multiplier_fp = U256::from(1000u64) * s();
-    runaway.trust_decay_fp = s();
-    runaway.tolerance_fp = U256::from(1u64);
-    let _ = scores(&runaway, &mutual_seeds());
+fn accepted_extreme_params_do_not_panic_or_create_mass() {
+    let mut extreme = live_params(500);
+    extreme.damping_fp = s() - U256::from(1u64);
+    extreme.trust_decay_fp = s();
+    extreme.tolerance_fp = U256::from(1_000_000u64);
+    let sum = scores(&extreme, &mutual_seeds()).into_iter().sum::<U256>();
+    assert_eq!(sum, s());
 }
 
 /// `mul_div` itself refuses a quotient that does not fit, rather than returning its low 256 bits.
@@ -113,19 +99,15 @@ fn mul_div_refuses_an_unrepresentable_quotient() {
     let _ = pagerank_core::fixed::fp_mul(a, U256::from(1000u64) * s(), s());
 }
 
-/// Why the backstop cannot be replaced by a bound: alloy's `U256` addition wraps silently, so
-/// every accumulation in the rank loop had to be made explicitly checked. If this ever starts
-/// panicking on its own, the guards below can be relaxed.
+/// Alloy's `U256` addition wraps silently, so the rank loop must keep explicit checked sums even
+/// though the schema-v3 mass invariant makes overflow unreachable for accepted parameters.
 #[test]
 fn alloy_u256_addition_still_wraps_silently() {
     assert_eq!(U256::MAX + U256::from(1u64), U256::ZERO, "U256 `+` wraps, it does not panic");
 }
 
-/// The cross-language consequence, now closed from both sides. The TS port
-/// (`packages/frontend/lib/pagerank/fixed.ts`) is arbitrary-precision `bigint`, so it CANNOT reproduce a
-/// wrapped U256 result; before the fix the two ports silently computed different scores, a
-/// different `outputRoot` and a different ranking order for the same factory-legal instance.
-/// Both now refuse in the same place, so "the ports agree" is true without a range caveat.
+/// The TS port uses arbitrary-precision `bigint`; this ordinary accepted case guards the shared
+/// normalization and output-root path. Differential fuzzing covers arbitrary admissible graphs.
 #[test]
 fn the_ports_agree_wherever_both_are_defined() {
     let edges = vec![
@@ -134,14 +116,7 @@ fn the_ports_agree_wherever_both_are_defined() {
         attest(1, 3, 3, 102, 70),
         attest(3, 1, 4, 103, 10),
     ];
-    // 4x boost at 100 iterations: inside the representable range (0.85 x 4 = 3.4 per iteration,
-    // and 3.4^100 is comfortably under 2^256) and accepted by the factory's growth check.
-    // The wizard's ORIGINAL 20x maximum was not, and used to diverge across the ports:
-    //   RUST 305315 / 553089 / 141596   root 0x4a6c885e…
-    //   TS   236492 / 318128 / 445380   root 0x38295e58…
-    // which is why the slider was lowered to match what the maths can actually represent.
-    let mut p = live_params(100);
-    p.trust_multiplier_fp = U256::from(4u64) * s();
+    let p = live_params(100);
     let input =
         pagerank_core::GuestInput { edges, params: p, lane2: None, binding: Default::default() };
     let r = pagerank_core::compute::compute(&input);

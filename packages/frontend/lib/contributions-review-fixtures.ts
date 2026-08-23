@@ -265,7 +265,6 @@ const round = (
     maxIterations: 100,
     minWeightFp: 0n,
     maxWeightFp: 100_000_000_000_000_000_000n,
-    trustMultiplierFp: 3_000_000_000_000_000_000n,
     trustShareFp: 1_000_000_000_000_000_000n,
     trustDecayFp: 800_000_000_000_000_000n,
     trustedSeeds: [TRUST_SEED],

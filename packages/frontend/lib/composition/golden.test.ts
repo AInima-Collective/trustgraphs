@@ -12,7 +12,10 @@ const research = JSON.parse(
   )
 )
 const production = JSON.parse(
-  readFileSync(join(process.cwd(), '../../tests/golden/trust-compose.json'), 'utf8')
+  readFileSync(
+    join(process.cwd(), '../../tests/golden/trust-compose.json'),
+    'utf8'
+  )
 )
 const config = compositionGoldenFixture()
 const preview = computeCompositionPreview(config)
@@ -69,15 +72,15 @@ for (const output of preview.output) {
 }
 assert.deepEqual(
   preview.metrics.pairwise.map((pair) => pair.disagreement),
-  [0.6998103996207993, 0.8571428571428571, 0.8571428571428571]
+  [0.6855323710647422, 0.8571428571428571, 0.8571428571428571]
 )
 assert.deepEqual(
   preview.metrics.leaveOneOut.map((row) => row.disagreement),
-  [0.226053, 0.25927100000000003, 0.263858]
+  [0.226053, 0.256898, 0.25288599999999994]
 )
 assert.equal(preview.metrics.supportCoverage, 10 / 21)
-assert.equal(preview.metrics.largestShare, 0.266463)
-assert.equal(preview.metrics.hhi, 0.16380977629600002)
+assert.equal(preview.metrics.largestShare, 0.271218)
+assert.equal(preview.metrics.hhi, 0.16645707541000002)
 
 const simplex = compositionSimplex(config, 20)
 assert.deepEqual(
@@ -99,7 +102,7 @@ assert.deepEqual(
     '0x0202020202020202020202020202020202020202',
     '0x0202020202020202020202020202020202020202',
     '0x0202020202020202020202020202020202020202',
-    '0x0303030303030303030303030303030303030303',
+    '0x0202020202020202020202020202020202020202',
   ]
 )
 assert.ok(simplex.every((sample) => sample.changedTopAccounts.length > 0))

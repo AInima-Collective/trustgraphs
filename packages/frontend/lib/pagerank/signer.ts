@@ -6,18 +6,20 @@
 //! root producer), then applies a deterministic top-N selection rule. It is float-free and
 //! deterministic so the SP1 guest, host, and browser all agree byte-for-byte.
 
-import { type Hex } from 'viem'
+import { concat, keccak256, type Hex } from 'viem'
 
 import { compute } from './compute'
 import { selectionParamsHash, signerJournalDigest } from './encode'
 import { signerSetRoot } from './merkle'
 import {
   type GuestInput,
+  type SignerActivity,
   type SelectionParams,
   type SignerComputeResult,
   type SignerInput,
   type SignerJournal,
 } from './types'
+import { ZERO_HASH, wordAddr, wordU256, wordU64 } from './words'
 
 /** `ceil(a / b)` for `b > 0`. */
 const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
@@ -28,6 +30,22 @@ const cmpAddr = (a: Hex, b: Hex): number => {
   const bv = BigInt(b)
   return av < bv ? -1 : av > bv ? 1 : 0
 }
+
+/** Mirrors `MerkleGovModule._recordDirectActivity` and Rust `fold_activity`. */
+export const foldActivity = (
+  previous: Hex,
+  sequence: bigint,
+  record: SignerActivity
+): Hex =>
+  keccak256(
+    concat([
+      previous,
+      wordU64(sequence),
+      wordAddr(record.account),
+      wordU256(record.proposalId),
+      wordU64(record.blockNumber),
+    ])
+  )
 
 /**
  * Deterministically select the Safe owner set and threshold from the scored accounts.
@@ -85,10 +103,78 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
   } as GuestInput)
 
   const selectionHash = selectionParamsHash(input.selection)
-  const { signers, threshold: targetThreshold } = selectSigners(
-    base.scores,
-    input.selection
+  const activity = input.activity ?? []
+  const activityCheckpoint = input.activityCheckpoint ?? {
+    acc: ZERO_HASH,
+    count: 0n,
+    blockNumber: 0n,
+  }
+  let activityAcc = ZERO_HASH
+  const latest = new Map<Hex, bigint>()
+  activity.forEach((record, index) => {
+    if (record.blockNumber > activityCheckpoint.blockNumber) {
+      throw new Error('activity record after checkpoint')
+    }
+    activityAcc = foldActivity(activityAcc, BigInt(index + 1), record)
+    const account = record.account.toLowerCase() as Hex
+    const previous = latest.get(account) ?? 0n
+    latest.set(account, record.blockNumber > previous ? record.blockNumber : previous)
+  })
+  if (activityCheckpoint.count !== BigInt(activity.length)) {
+    throw new Error('activity count mismatch')
+  }
+  if (activityCheckpoint.acc.toLowerCase() !== activityAcc.toLowerCase()) {
+    throw new Error('activity accumulator mismatch')
+  }
+
+  const currentSigners = [...(input.currentSigners ?? [])].map(
+    (address) => address.toLowerCase() as Hex
   )
+  currentSigners.sort(cmpAddr)
+  if (currentSigners.length === 0 || new Set(currentSigners).size !== currentSigners.length) {
+    throw new Error('invalid current Safe owner set')
+  }
+  const currentThreshold = input.currentThreshold ?? 0n
+  if (currentThreshold < 1n || currentThreshold > BigInt(currentSigners.length)) {
+    throw new Error('invalid current Safe threshold')
+  }
+
+  const cutoff =
+    activityCheckpoint.blockNumber > input.selection.maxInactiveBlocks
+      ? activityCheckpoint.blockNumber - input.selection.maxInactiveBlocks
+      : 0n
+  const fresh = new Set(
+    [...latest.entries()]
+      .filter(([, block]) => block >= cutoff)
+      .map(([account]) => account)
+  )
+  const positiveScores = new Set(
+    base.scores
+      .filter(([, value]) => value !== 0n)
+      .map(([account]) => account.toLowerCase() as Hex)
+  )
+  const witnessPool = input.wasInitialized
+    ? currentSigners
+    : [...positiveScores]
+  const witnessCount = witnessPool.filter((account) => fresh.has(account)).length
+  const minimum = input.selection.minActivityWitnesses
+  let activityApplied =
+    activityCheckpoint.count !== 0n &&
+    minimum >= 2 &&
+    witnessCount >= minimum
+  let chosen = activityApplied
+    ? selectSigners(
+        base.scores.filter(([account]) =>
+          fresh.has(account.toLowerCase() as Hex)
+        ),
+        input.selection
+      )
+    : { signers: currentSigners, threshold: currentThreshold }
+  if (chosen.signers.length < minimum) {
+    activityApplied = false
+    chosen = { signers: currentSigners, threshold: currentThreshold }
+  }
+  const { signers, threshold: targetThreshold } = chosen
   const setRoot = signerSetRoot(signers)
 
   const journal: SignerJournal = {
@@ -96,13 +182,19 @@ export const computeSigners = (input: SignerInput): SignerComputeResult => {
     leafCount: base.journal.leafCount,
     paramsHash: base.journal.paramsHash,
     selectionParamsHash: selectionHash,
+    activityAcc: activityCheckpoint.acc,
+    activityCount: activityCheckpoint.count,
+    activityBlock: activityCheckpoint.blockNumber,
+    wasInitialized: input.wasInitialized ?? false,
+    currentSignerSetRoot: signerSetRoot(currentSigners),
+    currentThreshold,
     signerSetRoot: setRoot,
     targetThreshold,
     // M-3: committed verbatim; a missing value commits the zero word, which no module accepts
     // (submitSignerProof rebuilds the domain from address(this) + block.chainid).
     instanceDomain: input.instanceDomain ?? (`0x${'00'.repeat(32)}` as Hex),
   }
-  return { journal, signers, targetThreshold }
+  return { journal, signers, targetThreshold, activityApplied }
 }
 
 /** The signer journal digest the on-chain `SignerSyncZkModule` binds. Re-exported for convenience. */

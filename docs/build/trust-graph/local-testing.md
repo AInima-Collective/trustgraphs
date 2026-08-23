@@ -106,13 +106,12 @@ fills it in:
 cp tests/e2e/params.template.json params.json    # tune seeds / pool / damping… to taste
 ```
 
-**Deploy constants** (vkeys + the signer selection hash — all derived from source, no chain state):
+**Deploy constants** (the two program vkeys, both derived from source):
 
 ```bash
 cd zk/prover
 export SP1_PROGRAM_VKEY=$(cargo run -q --release -- trust-graph vkey)
 export SP1_SIGNER_PROGRAM_VKEY=$(cargo run -q --release -- signer vkey)
-export SELECTION_PARAMS_HASH=$(cargo run -q --release -- signer selectionparamshash)   # no arg → default selection
 cd ../..
 ```
 

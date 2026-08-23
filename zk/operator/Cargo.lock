@@ -7637,7 +7637,6 @@ dependencies = [
  "sp1-sdk",
  "trustgraph-core",
  "weighted-prior-core",
- "weighted-prior-research",
  "zk-core",
 ]
 
@@ -7965,16 +7964,6 @@ dependencies = [
  "serde",
  "serde_bytes",
  "zk-core",
-]
-
-[[package]]
-name = "weighted-prior-research"
-version = "0.9.3"
-dependencies = [
- "alloy-primitives",
- "hex",
- "serde",
- "sha2 0.10.9",
 ]
 
 [[package]]

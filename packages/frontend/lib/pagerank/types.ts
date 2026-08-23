@@ -30,7 +30,6 @@ export interface Params {
   maxIterations: number
   minWeightFp: bigint
   maxWeightFp: bigint
-  trustMultiplierFp: bigint
   trustShareFp: bigint
   trustDecayFp: bigint
   /** Trusted seed addresses. `seedSetRoot` is computed over the *sorted* set. */
@@ -46,13 +45,14 @@ export interface Params {
   /** Rule-Φ staleness horizon in seconds (nonzero when lane 2 is enabled). */
   lane2MaxHeadAge?: number | bigint
   /**
-   * Domain separation (params-schema v2): the instance's `EASIndexerResolver` address. Together
+   * Domain separation (introduced in params-schema v2 and retained in v3): the instance's
+   * `EASIndexerResolver` address. Together
    * with `chainId` this is what stops two identically-configured instances from accepting each
    * other's proofs. Required — a recompute that guesses these produces a paramsHash that will not
    * match the chain, and silently defaulting them is exactly the bug the field exists to prevent.
    */
   accumulator: Hex
-  /** Domain separation (params-schema v2): the chain id the instance was created on. */
+  /** Domain separation (introduced in params-schema v2 and retained in v3): creation chain id. */
   chainId: number | bigint
 }
 
@@ -131,6 +131,22 @@ export interface SelectionParams {
   minThreshold: number
   /** Target threshold as a fraction of the selected owner count, in basis points (e.g. 5000 = 50%). */
   targetThresholdBps: number
+  /** Direct-governance activity remains fresh for this many blocks. */
+  maxInactiveBlocks: bigint
+  /** Distinct fresh principals required before inactivity may change the Safe owner set. */
+  minActivityWitnesses: number
+}
+
+export interface SignerActivity {
+  account: Hex
+  proposalId: bigint
+  blockNumber: bigint
+}
+
+export interface ActivityCheckpoint {
+  acc: Hex
+  count: bigint
+  blockNumber: bigint
 }
 
 /**
@@ -141,6 +157,12 @@ export interface SignerInput {
   edges: RawEdge[]
   params: Params
   selection: SelectionParams
+  activity?: SignerActivity[]
+  activityCheckpoint?: ActivityCheckpoint
+  activityCheckpointId?: bigint
+  currentSigners?: Hex[]
+  currentThreshold?: bigint
+  wasInitialized?: boolean
   /**
    * `keccak256(abi.encode(module, chainId))` — see `encode.instanceDomain`, with the
    * `SignerSyncZkModule` address in the snapshot slot. Committed verbatim into the signer journal
@@ -152,7 +174,7 @@ export interface SignerInput {
 }
 
 /**
- * The 7 public signer-journal fields. `keccak256(abi.encode(..))` is the digest the on-chain
+ * The 13 public signer-journal fields. `keccak256(abi.encode(..))` is the digest the on-chain
  * `SignerSyncZkModule` binds. Field order is FROZEN — see `encode.signerJournalEncoded`.
  * Mirrors `pagerank_core::SignerJournal`.
  */
@@ -161,6 +183,12 @@ export interface SignerJournal {
   leafCount: bigint
   paramsHash: Hex
   selectionParamsHash: Hex
+  activityAcc: Hex
+  activityCount: bigint
+  activityBlock: bigint
+  wasInitialized: boolean
+  currentSignerSetRoot: Hex
+  currentThreshold: bigint
   /**
    * OZ StandardMerkleTree root over the canonically-sorted selected owner set (leaf =
    * `keccak256(abi.encode(address))`), identical to `seedSetRoot`.
@@ -179,4 +207,5 @@ export interface SignerComputeResult {
   /** The selected owner set, sorted ascending by address (lowercase `0x` addresses). */
   signers: Hex[]
   targetThreshold: bigint
+  activityApplied: boolean
 }

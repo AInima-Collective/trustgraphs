@@ -5,10 +5,14 @@
 //! operations, NO async, and NO wasm-bindgen — so the identical logic compiles to the SP1 zkVM
 //! guest, native (host + tests), and (via a thin wrapper) WASM for the browser.
 //!
-//! See `PLAN.md` §1 (frozen byte formats) and §2 (fixed-point algorithm spec).
+//! See `research/ZK_ARCHITECTURE.md` §4.1 (committed byte formats and fixed-point guest contract).
 
 use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
+
+/// Params-hash schema/domain word. Version 3 removes the founder multiplier and closes the
+/// reachability gate; it intentionally cannot collide with either earlier tuple shape.
+pub const PARAMS_SCHEMA_VERSION: u32 = 3;
 
 // Program-agnostic building blocks live in `zk-core` (shared with every program crate);
 // re-exported here so this crate's public API is unchanged by the extraction.
@@ -22,6 +26,12 @@ pub mod pagerank;
 pub mod reconcile;
 pub mod signer;
 
+#[cfg(test)]
+mod pagerank_oracle;
+#[cfg(test)]
+mod pagerank_properties;
+#[cfg(test)]
+mod pagerank_test_support;
 #[cfg(test)]
 mod tests;
 
@@ -52,7 +62,6 @@ pub struct Params {
     pub max_iterations: u32,
     pub min_weight_fp: U256,
     pub max_weight_fp: U256,
-    pub trust_multiplier_fp: U256,
     pub trust_share_fp: U256,
     pub trust_decay_fp: U256,
     /// Trusted seed addresses. `seedSetRoot` is computed over the *sorted* set.
@@ -208,6 +217,20 @@ pub struct ComputeResult {
     pub blob: Vec<u8>,
     /// The CIDv1 (raw, sha2-256) string.
     pub cid: String,
+    /// Non-consensus work telemetry used by operator admission and drift monitoring.
+    pub rank: RankTelemetry,
+    /// Number of witness signature verification calls in the full computation.
+    pub signature_checks: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RankTelemetry {
+    pub unique_nodes: u64,
+    pub live_edges: u64,
+    pub max_out_degree: u64,
+    pub max_iterations: u32,
+    pub iterations_run: u32,
+    pub converged: bool,
 }
 
 /// Governance-pinned parameters for the Safe signer-sync selection rule. Hashed to
@@ -220,6 +243,29 @@ pub struct SelectionParams {
     pub min_threshold: u32,
     /// Target threshold as a fraction of the selected owner count, in basis points (e.g. 5000 = 50%).
     pub target_threshold_bps: u32,
+    /// Direct-governance activity remains fresh for this many blocks.
+    pub max_inactive_blocks: u64,
+    /// Distinct fresh principals required before inactivity may change the owner set. Production
+    /// deployments enforce a minimum of two so one account cannot activate removals alone.
+    pub min_activity_witnesses: u32,
+}
+
+/// One authenticated direct-vote record emitted by the instance's `MerkleGovModule`. The source
+/// folds these records into a hash chain; the signer guest refuses any incomplete or reordered
+/// witness by comparing its reconstruction with [`ActivityCheckpoint::acc`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignerActivity {
+    pub account: Address,
+    pub proposal_id: U256,
+    pub block_number: u64,
+}
+
+/// An immutable on-chain snapshot of the direct-governance activity hash chain.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityCheckpoint {
+    pub acc: B256,
+    pub count: u64,
+    pub block_number: u64,
 }
 
 /// The input the signer-sync guest receives: the same folded edges + params as the root producer,
@@ -229,6 +275,25 @@ pub struct SignerInput {
     pub edges: Vec<RawEdge>,
     pub params: Params,
     pub selection: SelectionParams,
+    /// Complete, ordered direct-vote history through `activity_checkpoint`.
+    #[serde(default)]
+    pub activity: Vec<SignerActivity>,
+    #[serde(default)]
+    pub activity_checkpoint: ActivityCheckpoint,
+    /// Source-local checkpoint id used only to address the on-chain snapshot at submission; its
+    /// committed fields, not this id, are consensus inputs.
+    #[serde(default)]
+    pub activity_checkpoint_id: u64,
+    /// Safe owners immediately before this proof. The on-chain module independently recomputes
+    /// their root, preventing an operator from inventing the pre-rotation state.
+    #[serde(default)]
+    pub current_signers: Vec<Address>,
+    #[serde(default)]
+    pub current_threshold: U256,
+    /// Whether the signer module has applied a prior rotation. Before the first rotation, fresh
+    /// scored members can bootstrap the gate; afterwards the witnesses must be current owners.
+    #[serde(default)]
+    pub was_initialized: bool,
     /// `keccak256(abi.encode(module, chainId))` — see [`zk_core::journal::instance_domain`], with
     /// the `SignerSyncZkModule` address in the snapshot slot. Committed verbatim by the guest and
     /// made binding by `submitSignerProof`, which REBUILDS it from `address(this)` and
@@ -240,7 +305,7 @@ pub struct SignerInput {
     pub instance_domain: B256,
 }
 
-/// The 7 public fields the signer-sync guest commits. `keccak256(abi.encode(..))` is the digest the
+/// The 13 public fields the signer-sync guest commits. `keccak256(abi.encode(..))` is the digest the
 /// on-chain `SignerSyncZkModule` binds. Field order is FROZEN — see [`encode::signer_journal_encoded`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignerJournal {
@@ -248,6 +313,12 @@ pub struct SignerJournal {
     pub leaf_count: u64,
     pub params_hash: B256,
     pub selection_params_hash: B256,
+    pub activity_acc: B256,
+    pub activity_count: u64,
+    pub activity_block: u64,
+    pub was_initialized: bool,
+    pub current_signer_set_root: B256,
+    pub current_threshold: U256,
     /// OZ StandardMerkleTree root over the canonically-sorted selected owner set (leaf =
     /// `keccak256(abi.encode(address))`), identical to `seedSetRoot`.
     pub signer_set_root: B256,
@@ -263,6 +334,10 @@ pub struct SignerComputeResult {
     /// The selected owner set, sorted ascending by address (the canonical order the root commits to).
     pub signers: Vec<Address>,
     pub target_threshold: U256,
+    /// False means the authenticated signal was absent or insufficient and the result is exactly
+    /// the pre-rotation Safe state.
+    pub activity_applied: bool,
+    pub rank: RankTelemetry,
 }
 
 /// Minimal `serde` helper so `RawEdge::data` round-trips as a `0x`-hex string in golden vectors.

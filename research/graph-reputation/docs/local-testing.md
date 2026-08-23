@@ -3,11 +3,12 @@
 Run the independent fixed-point cores and the indexer tests:
 
 ```bash
-cargo test -p graph-reputation-core
+cargo test --manifest-path research/graph-reputation/core/Cargo.toml
 pnpm --dir packages/indexer test
 ```
 
-The Rust and TypeScript tests consume `tests/golden/graph-reputation.json`. The vectors freeze the
+The Rust and TypeScript tests consume
+`research/graph-reputation/golden/graph-reputation.json`. The vectors freeze the
 disconnected-cartel zero result, the 10% trusted-ingress 16.3225% result, exact node scores,
 residuals, and both canonical commitments.
 

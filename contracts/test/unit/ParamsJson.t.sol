@@ -26,10 +26,12 @@ contract ParamsJsonTest is Test {
         assertEq(p.minWeightFp, 0, "minWeightFp");
         assertEq(p.precisionScale, 1e18, "precisionScale (1e18)");
         assertEq(p.weightFieldIndex, 1, "weightFieldIndex");
-        assertEq(p.trustedSeeds.length, 2, "seed count");
-        assertEq(p.trustedSeeds[0], 0x0101010101010101010101010101010101010101, "seed 0");
-        // schema_uid in the file is ignored; the passed-in UID is used. Same for the two
-        // params-schema v2 domain separators — the deploy, not the file, is their source of truth.
+        assertEq(p.trustedSeeds.length, 3, "seed count");
+        assertEq(p.trustedSeeds[0], 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266, "seed 0");
+        assertEq(p.trustedSeeds[1], 0x70997970C51812dc3A010C7d01b50e0d17dc79C8, "seed 1");
+        assertEq(p.trustedSeeds[2], 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC, "seed 2");
+        // schema_uid in the file is ignored; the passed-in UID is used. Same for the
+        // instance-domain separators — the deploy, not the file, is their source of truth.
         assertEq(p.schemaUid, DUMMY_UID, "schemaUid override");
         assertEq(p.accumulator, DUMMY_ACC, "accumulator override");
         assertEq(p.chainId, DUMMY_CHAIN, "chainId override");

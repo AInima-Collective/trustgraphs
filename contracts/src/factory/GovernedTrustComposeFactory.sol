@@ -15,7 +15,11 @@ import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {MerkleGovModule} from "src/zodiac/MerkleGovModule.sol";
 import {SafeExecutionGuard} from "src/zodiac/SafeExecutionGuard.sol";
 import {DelayedRecoveryModule} from "src/zodiac/DelayedRecoveryModule.sol";
-import {SignerSyncZkModule, ISignerSyncCheckpointSource} from "src/zodiac/SignerSyncZkModule.sol";
+import {
+    SignerSyncZkModule,
+    ISignerSyncCheckpointSource,
+    ISignerActivitySource
+} from "src/zodiac/SignerSyncZkModule.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -226,11 +230,14 @@ contract GovernedTrustComposeFactory {
                 IZkVerifier(signerSync.verifier),
                 IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator())),
                 ISignerSyncCheckpointSource(snapshot),
+                ISignerActivitySource(merkleGovModule),
                 MerkleSnapshot(snapshot).paramsHash(),
                 signerSync.programVKey,
                 signerSync.topN,
                 signerSync.minThreshold,
-                signerSync.targetThresholdBps
+                signerSync.targetThresholdBps,
+                151_200,
+                2
             );
         }
 

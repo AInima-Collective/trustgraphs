@@ -21,6 +21,8 @@ import {
   wordU8,
 } from './words'
 
+export const PARAMS_SCHEMA_VERSION = 3
+
 /**
  * The accumulator edge leaf:
  * `keccak256(abi.encode(uint8 kind, address attester, address recipient, bytes32 uid,
@@ -107,7 +109,7 @@ export const instanceDomain = (snapshot: Hex, chainId: bigint): Hex =>
 export const journalDigest = (j: Journal): Hex => keccak256(journalEncoded(j))
 
 /**
- * The governance-pinned `paramsHash` (PLAN.md §1.3). `seedSetRoot` is computed over the sorted
+ * The governance-pinned `paramsHash` (`research/ZK_ARCHITECTURE.md` §4.1). `seedSetRoot` is computed over the sorted
  * trusted-seed set.
  */
 export const paramsHash = (p: Params): Hex => {
@@ -121,12 +123,12 @@ export const paramsHash = (p: Params): Hex => {
   const seedRoot = seedSetRoot(seeds)
   return keccak256(
     concat([
+      wordU32(PARAMS_SCHEMA_VERSION),
       wordU256(p.dampingFp),
       wordU256(p.toleranceFp),
       wordU32(p.maxIterations),
       wordU256(p.minWeightFp),
       wordU256(p.maxWeightFp),
-      wordU256(p.trustMultiplierFp),
       wordU256(p.trustShareFp),
       wordU256(p.trustDecayFp),
       seedRoot,
@@ -150,7 +152,8 @@ export const domainSetHash = (separators: Hex[]): Hex =>
 
 /**
  * The governance-pinned `selectionParamsHash` for the Safe signer-sync proof:
- * `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps))`.
+ * `keccak256(abi.encode(uint32 topN, uint32 minThreshold, uint32 targetThresholdBps,
+ *                       uint64 maxInactiveBlocks, uint32 minActivityWitnesses))`.
  * Mirrors `pagerank_core::encode::selection_params_hash`.
  */
 export const selectionParamsHash = (sp: SelectionParams): Hex =>
@@ -159,12 +162,16 @@ export const selectionParamsHash = (sp: SelectionParams): Hex =>
       wordU32(sp.topN),
       wordU32(sp.minThreshold),
       wordU32(sp.targetThresholdBps),
+      wordU64(sp.maxInactiveBlocks),
+      wordU32(sp.minActivityWitnesses),
     ])
   )
 
 /**
  * The ABI-encoded signer journal tuple — the exact bytes the signer guest commits as `publicValues`:
  * `abi.encode(bytes32 acc, uint64 leafCount, bytes32 paramsHash, bytes32 selectionParamsHash,
+ *             bytes32 activityAcc, uint64 activityCount, uint64 activityBlock,
+ *             bool wasInitialized, bytes32 currentSignerSetRoot, uint256 currentThreshold,
  *             bytes32 signerSetRoot, uint256 targetThreshold, bytes32 instanceDomain)`.
  * `instanceDomain` is made binding by `SignerSyncZkModule.submitSignerProof`, which rebuilds the
  * digest with a domain derived from `address(this)` + `block.chainid` (audit M-3).
@@ -175,6 +182,12 @@ export const signerJournalEncoded = (j: SignerJournal): Hex =>
     wordU64(j.leafCount),
     j.paramsHash,
     j.selectionParamsHash,
+    j.activityAcc,
+    wordU64(j.activityCount),
+    wordU64(j.activityBlock),
+    wordU32(j.wasInitialized ? 1 : 0),
+    j.currentSignerSetRoot,
+    wordU256(j.currentThreshold),
     j.signerSetRoot,
     wordU256(j.targetThreshold),
     j.instanceDomain,
