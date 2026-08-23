@@ -82,8 +82,29 @@ before `bindSchema`, and an immutable schema admin. The second half edits
 bind atomically, so fail-closed alone closes the finding, and the collision
 disappears. *Ruled here to protect lane independence.*
 
-**Open, and blocking nothing yet:** whether the ingress ceiling in M1-F becomes a
-hard cap, a price, or a stake (see Operator ledger).
+**D4 — 200,000 stays the protocol ceiling, and the operator's cycle limit does
+not move.** The instinct is to make the declared number true by raising the
+operator budget until 200,000 fits. That is the wrong direction, because the
+ceiling is not a capacity knob, it is the denial-of-service threshold.
+
+Re-read the audit's own arithmetic: 78,191 gas per leaf times 3,467 leaves is
+the 271M gas figure. It was never the cost of filling 200,000; it is the cost of
+reaching the *real* ceiling. An attacker makes an instance unprovable today for
+about 0.0027 ETH. Raise the operator's limit so one proof covers 200,000 and the
+attacker pays roughly 58x more, still only ~0.16 ETH, while the operator becomes
+willing to attempt a ~330B-cycle proof nobody has ever measured, on inputs the
+attacker chose. That moves the defender's worst case far more than the
+attacker's cost. **A higher ceiling is a larger commitment to absorb whatever
+gets pushed at you.**
+
+So: keep `MAX_TOTAL_INPUTS = 200_000` as the protocol ceiling, which is what
+this repo's own principle already asks for ("the protocol stays permissive;
+operator policy fails loudly"). Two ceilings differing is correct. Four ceilings
+where nobody can name which one binds is the defect. *Ruled here.*
+
+**Open, and now the real question:** ingress admission. The ceiling was never the
+defense; pricing or staking who may add inputs is. That is the prior audit's D2,
+still open, and lane F does not close it (see Operator ledger).
 
 ---
 
@@ -183,9 +204,21 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       PoCs at assert time with no compiler error pointing at them; they land in the
       same commit. L-1: assert the stablecoin's decimals as the constructor already
       does for the feed.
-- [ ] **F — H-1.** The headline finding. Derive the cap from the operator's real
-      cycle budget, make the budget configurable (neither `CapabilityProfile::default()`
-      nor `cycle_limit` is today), and move the alert below the real cliff.
+- [ ] **F — H-1.** Per D4 this lane makes the system stop lying about its own
+      edge; it does not raise the edge. Four ceilings exist and only the last one
+      binds: `MAX_TOTAL_INPUTS = 200_000` (protocol), `CapabilityProfile::default()`
+      capping `max_unique_nodes` at 10,000 which is ~5,000 leaves and is documented
+      nowhere, `max_raw_records` at 50,000, and `OPERATOR_CYCLE_LIMIT = 8e9` which
+      refuses at **3,467**. Publish all four and which binds first.
+      Make `cycle_limit` and `CapabilityProfile` configurable — neither is today —
+      so a better-resourced prover can raise them; policy is cheap to change and a
+      pinned vkey is not. Delete `ProvingVault`'s claim that the operator derives
+      its limit from `MAX_PRICED_INPUTS`, which `work.rs:202` contradicts outright.
+      Move the alert onto the operator's **own** limit so it fires before the cliff
+      instead of 46x after it. Set the shipped default from the measured envelope
+      in `docs/build/trust-graph/runbook.md:443` rather than from either number
+      standing today: 8e9 was picked to look round and 3,467 is where it lands by
+      accident, and neither was chosen.
       **Constraint:** `MAX_TOTAL_INPUTS` is pinned cross-language by hand-written
       asserts on both sides (`ProvingVault.t.sol:733` and
       `operator-core/policy.rs:104`), so the Solidity and Rust edits are one commit.
@@ -363,10 +396,19 @@ people's funds.
 1. **The SP1 6.3.1 verifier-route check** against Succinct's supported-version
    data. Not answerable from the repo, and it decides whether a toolchain bump
    rides with M2. Carried over from the last program, still open, now blocking.
-2. **The ingress ceiling decision (H-1).** Once the real number is known, decide
-   whether the ceiling is a hard cap, a price, or a stake. The audit prices the
-   attack at 271M gas and 0.0027 ETH to reach the true cliff, so "accept with
-   monitoring" needs re-taking rather than re-affirming.
+2. **Ingress admission — the decision H-1 actually surfaces.** Per D4 the ceiling
+   is ruled and lane F is scoped, but lane F only makes the edge honest. It does
+   not stop an attacker reaching that edge for ~0.0027 ETH. Pricing or staking
+   who may add inputs is what closes it, and that is a product decision about who
+   a network is open to. The prior audit's "accept with monitoring" needs
+   re-taking rather than re-affirming, because the monitoring it relied on fires
+   46x late.
+   *Related and unmeasured:* nobody has proving wall time, peak memory or cost at
+   any scale. The 150-330B cycle figure for 200,000 inputs is the shipped cost
+   model run 300x past its largest validated point (V=400, 539M measured cycles).
+   Treat it as an order of magnitude. If 200,000 is ever to be a real
+   single-proof target, that measurement is the prerequisite, and it likely needs
+   chunking or recursion rather than a bigger constant.
 3. **Who owns a minted instance's distributor (lane D).** Creator EOA, instance
    Safe, or timelock. This is a product decision about what a network operator is
    trusted with, not a code decision.
@@ -393,6 +435,14 @@ people's funds.
 ---
 
 ## Program log
+
+**2026-08-23 — D4 ruled.** "Let's make it 200,000" was raised and resolved
+against, on the DoS-economics argument recorded in D4: raising the operator's
+cycle limit moves the defender's worst case far more than the attacker's cost.
+200,000 stays as the protocol ceiling, the operator limit stays put and becomes
+configurable and honest, and the live question moves to ingress admission. The
+extrapolated cost of a 200,000-input proof (150-330B cycles) is recorded in the
+operator ledger as an order of magnitude, not a measurement.
 
 **2026-08-23 — opened.** Written directly from the pre-testnet audit
 (`f8e434e`) and a dependency pass over all 19 confirmed findings. The dependency
