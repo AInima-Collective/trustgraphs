@@ -5,11 +5,11 @@ Releases 4 and 5 in this document are no longer planned: the single-core rewrite
 code-quality item without a forcing reason, and complaints moved to
 [trustgraphs#104](https://github.com/JakeHartnell/trustgraphs/issues/104). The earned founder
 prior in Release 3 is also out, replaced by a template default of three to five founders. The
-findings and measurements below stand; [`GOAL.md`](../GOAL.md) is the live plan.
-Tracked as a program in [`GOAL.md`](../GOAL.md), which carries the milestone checklists, the
-open decisions, and the testnet release gate, and is the live document where this one and the
-review disagree. The review record is [`DISCUSSION.md`](../DISCUSSION.md); its threads are
-numbered `F1`-`F9` and are cited below. Two corrections to this document's original claims are
+findings and measurements below stand; the completed program is archived as
+[`plans/scoring-engine.md`](./plans/scoring-engine.md).
+That closeout carries the milestone checklists, final decisions, and testnet release gate, and
+records where this document and the review disagree. The review threads are numbered `F1`-`F9`
+and are cited below. Two corrections to this document's original claims are
 marked inline.
 Companion to [`SCORING_NEXT_STEPS.md`](./SCORING_NEXT_STEPS.md), which covered what the score
 *says*. This one covers whether the thing that computes it is ready to be run by strangers, on

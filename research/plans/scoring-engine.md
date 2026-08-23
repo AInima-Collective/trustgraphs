@@ -18,15 +18,15 @@ deployed to a public chain: the Optimism path is retiring, Sepolia has not
 happened, mainnet is the target. The testnet deploy is the door closing.
 
 **Evidence record:**
-[research/SCORING_PRODUCTION_PLAN.md](research/SCORING_PRODUCTION_PLAN.md) — the
+[research/SCORING_PRODUCTION_PLAN.md](../SCORING_PRODUCTION_PLAN.md) — the
 engine findings, measured against the production Rust and the real SP1 executor.
-[research/SCORING_NEXT_STEPS.md](research/SCORING_NEXT_STEPS.md) — the mechanism
+[research/SCORING_NEXT_STEPS.md](../SCORING_NEXT_STEPS.md) — the mechanism
 half: the admission gate, the founder floor, closed loops, complaints.
-[research/scoring-sim/](research/scoring-sim/) — the model that reproduces the
+[research/scoring-sim/](../scoring-sim/) — the model that reproduces the
 shipped payouts digit for digit.
-[docs/build/sepolia.md](docs/build/sepolia.md) — the deployment-path work this
+[docs/build/sepolia.md](../../docs/build/sepolia.md) — the deployment-path work this
 program does *not* cover, and the SP1 6.3.1 compatibility gate it shares.
-[DISCUSSION.md](DISCUSSION.md) — cross-agent review record, threads `F1`-`F9`.
+Cross-agent review outcomes — recorded in the program log below, threads `F1`-`F9`.
 
 Convention: this file would normally be deleted when the program closes. It is
 retained here as the closeout record; the program log below records rulings that
@@ -326,7 +326,7 @@ signal for a signer they want removed.
 
 **M0 + M1 + M2**, deployed as one bundle. M1 is reviewed separately and never
 launched on its own. Beyond this program, Sepolia additionally needs the
-deployment-path work in [docs/build/sepolia.md](docs/build/sepolia.md): a chain
+deployment-path work in [docs/build/sepolia.md](../../docs/build/sepolia.md): a chain
 profile separate from deployment stage, a sanitized `deployments/sepolia.json`
 release manifest, and the **SP1 6.3.1 compatibility check**. If that toolchain
 has no supported verifier route, the bump rebuilds every ELF and regenerates
@@ -440,7 +440,7 @@ my vouch counts", and derive the affordable graph size from it.
   findings from the 2026-08-21 review re-confirmed against production semantics.
   4.0 GB of untracked build output removed from `research/`.
 
-- 2026-08-22 — **Cross-agent review** ([DISCUSSION.md](DISCUSSION.md)), nine
+- 2026-08-22 — **Cross-agent review**, nine
   threads, all closed. Three defects surfaced only because a claim was checked
   rather than accepted: real limit cycles at the shipped damping, the
   absent-seed endowment loss, and `decay_pow` still being quadratic when hoisted
