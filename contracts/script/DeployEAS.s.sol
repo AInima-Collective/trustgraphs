@@ -23,18 +23,14 @@ import {Common} from "./Common.s.sol";
 contract DeployEAS is Common {
     using stdJson for string;
 
+    error ExplicitEASAddressesRequired(uint256 chainId);
+    error ExternalContractHasNoCode(address target);
+
     string public root = vm.projectRoot();
     string public script_output_path = string.concat(root, "/.docker/eas_deploy.json");
 
     /// @notice Deploy EAS contracts
     function run() public {
-        vm.startBroadcast(_privateKey);
-
-        console.log("Deploying EAS contracts...");
-
-        string memory _contractsJson = "contracts";
-        // string memory _schemasJson = 'schemas';
-
         // Base network native EAS addresses (predeploy contracts)
         // See: https://docs.base.org/docs/contracts/
         address BASE_EAS = 0x4200000000000000000000000000000000000021;
@@ -44,92 +40,52 @@ contract DeployEAS is Common {
         bool isBase = (chainId == 8453 || chainId == 84532); // Base Mainnet (8453) or Base Sepolia (84532)
         bool isOptimism = (chainId == 10);
 
-        SchemaRegistry schemaRegistry;
-        EAS eas;
-
         if (isBase || isOptimism) {
-            console.log("Detected Base/Optimism network (chainId:", chainId, ") - using native EAS contracts");
-            schemaRegistry = SchemaRegistry(BASE_SCHEMA_REGISTRY);
-            eas = EAS(BASE_EAS);
-            console.log("Using Base/Optimism SchemaRegistry at:", address(schemaRegistry));
-            console.log("Using Base/Optimism EAS at:", address(eas));
-        } else {
-            // Deploy our own EAS contracts for non-Base networks
-            console.log("Deploying EAS contracts for chainId:", chainId);
-
-            // 1. Deploy SchemaRegistry
-            schemaRegistry = new SchemaRegistry();
-            console.log("SchemaRegistry deployed at:", address(schemaRegistry));
-
-            // 2. Deploy EAS
-            eas = new EAS(ISchemaRegistry(address(schemaRegistry)));
-            console.log("EAS deployed at:", address(eas));
+            _requireCode(BASE_EAS);
+            _requireCode(BASE_SCHEMA_REGISTRY);
+            _deployRegistrar(EAS(BASE_EAS), SchemaRegistry(BASE_SCHEMA_REGISTRY));
+            return;
         }
+        if (chainId != 31337) revert ExplicitEASAddressesRequired(chainId);
 
-        _contractsJson.serialize("schema_registry", Strings.toChecksumHexString(address(schemaRegistry)));
-        _contractsJson.serialize("eas", Strings.toChecksumHexString(address(eas)));
+        _startBroadcast();
+        SchemaRegistry schemaRegistry = new SchemaRegistry();
+        EAS eas = new EAS(ISchemaRegistry(address(schemaRegistry)));
+        _finishRegistrarDeployment(eas, schemaRegistry);
+    }
 
-        // 3. Deploy EASIndexerResolver
-        // EASIndexerResolver indexerResolver = new EASIndexerResolver(
-        //   IEAS(address(eas))
-        // );
-        // _contractsJson.serialize(
-        //   'indexer_resolver',
-        //   Strings.toChecksumHexString(address(indexerResolver))
-        // );
-        // console.log('EASIndexerResolver deployed at:', address(indexerResolver));
+    /// @notice Reuse canonical public-chain EAS contracts and deploy only Trustgraphs' registrar.
+    function run(string memory easAddress, string memory schemaRegistryAddress) public {
+        address eas = vm.parseAddress(easAddress);
+        address schemaRegistry = vm.parseAddress(schemaRegistryAddress);
+        _requireCode(eas);
+        _requireCode(schemaRegistry);
+        _deployRegistrar(EAS(eas), SchemaRegistry(schemaRegistry));
+    }
 
-        // // 4. Deploy PayableEASIndexerResolver (0.001 ETH target value)
-        // PayableEASIndexerResolver payableIndexerResolver = new PayableEASIndexerResolver(
-        //     IEAS(address(eas)),
-        //     0.001 ether, // Target value for attestations
-        //     msg.sender // Owner (deployer)
-        // );
-        // _contractsJson.serialize(
-        //     "payable_indexer_resolver", Strings.toChecksumHexString(address(payableIndexerResolver))
-        // );
-        // console.log("PayableEASIndexerResolver deployed at:", address(payableIndexerResolver));
+    function _deployRegistrar(EAS eas, SchemaRegistry schemaRegistry) internal {
+        _startBroadcast();
+        _finishRegistrarDeployment(eas, schemaRegistry);
+    }
 
-        // 5. Deploy SchemaRegistrar
+    function _finishRegistrarDeployment(EAS eas, SchemaRegistry schemaRegistry) internal {
+        string memory contractsJson = "contracts";
+        contractsJson.serialize("schema_registry", Strings.toChecksumHexString(address(schemaRegistry)));
+        contractsJson.serialize("eas", Strings.toChecksumHexString(address(eas)));
         SchemaRegistrar schemaRegistrar = new SchemaRegistrar(ISchemaRegistry(address(schemaRegistry)));
         string memory finalContractsJson =
-            _contractsJson.serialize("schema_registrar", Strings.toChecksumHexString(address(schemaRegistrar)));
-        console.log("SchemaRegistrar deployed at:", address(schemaRegistrar));
-
-        // // 6. Register basic schemas
-        // console.log('Registering schemas...');
-
-        // // Vouching schema for weighted endorsements
-        // createSchema(
-        //   schemaRegistrar,
-        //   _schemasJson,
-        //   address(indexerResolver),
-        //   'vouching',
-        //   'Weighted endorsement',
-        //   'string comment,uint256 confidence',
-        //   true
-        // );
-
-        // string memory finalSchemasJson = vm.serializeString(_schemasJson, '_', '_');
-
+            contractsJson.serialize("schema_registrar", Strings.toChecksumHexString(address(schemaRegistrar)));
         vm.stopBroadcast();
-
-        // string memory rootJson = 'root';
-        // rootJson.serialize('contracts', finalContractsJson);
-        // rootJson = rootJson.serialize('schemas', finalSchemasJson);
         vm.writeFile(script_output_path, finalContractsJson);
 
-        // Log deployment summary
         console.log("\n=== EAS Deployment Summary ===");
         console.log("SchemaRegistry:", address(schemaRegistry));
         console.log("EAS:", address(eas));
         console.log("SchemaRegistrar:", address(schemaRegistrar));
-        // console.log('EASIndexerResolver:', address(indexerResolver));
-        // console.log('PayableEASIndexerResolver:', address(payableIndexerResolver));
-        // console.log(
-        //   'AttesterEASIndexerResolver:',
-        //   address(attesterIndexerResolver)
-        // );
+    }
+
+    function _requireCode(address target) internal view {
+        if (target.code.length == 0) revert ExternalContractHasNoCode(target);
     }
 
     //   /// @notice Create a new schema

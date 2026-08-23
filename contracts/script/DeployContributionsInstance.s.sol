@@ -99,7 +99,7 @@ contract DeployContributionsInstance is Common {
         address constitutional = vm.envOr("CONSTITUTIONAL_ADMIN", deployer);
         address operational = vm.envOr("OPERATIONAL_ADMIN", deployer);
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         // The resolver is deployed first: the three schema UIDs = f(schema string, resolver,
         // revocable) depend on its address, so registration (and the one-shot allowlist) must follow.

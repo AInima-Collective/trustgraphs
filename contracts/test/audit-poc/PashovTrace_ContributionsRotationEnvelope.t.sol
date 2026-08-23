@@ -20,13 +20,8 @@ contract ValidatorProbe2 {
     }
 }
 
-/// @notice Audit PoC (execution-trace pass): `ContributionsParamsController.updateParams` performs
-///         NO computational-envelope validation. Every sibling controller re-validates on rotation
-///         (`TrustgraphsParamsController` -> `validateUpdate`, `WeightedPriorParamsController` and
-///         `TrustComposeParamsController` -> `validateRotation`); this one checks only the three
-///         schema UIDs. `ContributionsParamsValidator.validateFinal` /
-///         `validateComputationalEnvelope` are never referenced from `contracts/src` outside the
-///         factory's CREATION path, so the rotation path has no envelope at all.
+/// @notice Regression for the audit execution trace: the contributions controller must apply the
+///         same computational envelope on rotation that the factory applies at creation.
 contract PashovTrace_ContributionsRotationEnvelope is Test {
     bytes32 constant INSTANCE_ID = keccak256("contributions-instance");
     bytes32 constant PROGRAM = keccak256("contributions");
@@ -70,9 +65,7 @@ contract PashovTrace_ContributionsRotationEnvelope is Test {
         controller.publishInitialVersion();
     }
 
-    /// The rotation lands a tuple the creation validator would have refused on five separate
-    /// counts, and it becomes the live `paramsHash` every future proof must be produced under.
-    function test_RotationAcceptsATupleOutsideTheProvenEnvelope() public {
+    function test_RotationRejectsATupleOutsideTheProvenEnvelope() public {
         ContributionsParamsCodec.Params memory next = controller.getContributionsParams();
 
         next.precisionScale = 1; // guest constant S is 1e18; anything else is not the same maths
@@ -83,27 +76,17 @@ contract PashovTrace_ContributionsRotationEnvelope is Test {
         next.trustedSeeds = new address[](0); // no seeds at all -> seedSetRoot == 0
 
         // The creation-time validator refuses this tuple.
-        vm.expectRevert(
-            abi.encodeWithSelector(ContributionsParamsValidator.InvalidDamping.selector, uint256(2e18))
-        );
+        vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidDamping.selector, uint256(2e18)));
         probe.validateFinal(next);
 
-        // The rotation path accepts it.
-        bytes32 nextHash = ContributionsParamsCodec.hash(next);
+        bytes32 before = snapshot.paramsHash();
+        vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidDamping.selector, uint256(2e18)));
         vm.prank(OWNER);
-        (uint64 version, bytes32 published) = controller.updateParams(next, "ipfs://round-2");
+        controller.updateParams(next, "ipfs://round-2");
 
-        assertEq(version, 2);
-        assertEq(published, nextHash);
-        assertEq(snapshot.paramsHash(), nextHash, "the unprovable tuple is now the live commitment");
-        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, nextHash, "and the directory copy too");
-
-        ContributionsParamsCodec.Params memory live = controller.getContributionsParams();
-        assertEq(live.precisionScale, 1);
-        assertEq(live.dampingFp, 2e18);
-        assertEq(live.maxIterations, 0);
-        assertEq(live.totalPool, 0);
-        assertEq(live.trustedSeeds.length, 0);
+        assertEq(controller.version(), 1);
+        assertEq(snapshot.paramsHash(), before, "snapshot commitment must remain unchanged");
+        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, before, "directory commitment must remain unchanged");
     }
 
     function _params() internal pure returns (ContributionsParamsCodec.Params memory p) {

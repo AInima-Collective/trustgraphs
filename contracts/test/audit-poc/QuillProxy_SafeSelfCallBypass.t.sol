@@ -59,9 +59,8 @@ contract QuillProxy_SafeSelfCallBypass is MerkleGovModuleTest {
 
     /// The same route reaches the guard slot, defeating SafeExecutionGuard's stated seal.
     function test_QP001_call_to_safe_can_clear_the_guard() public {
-        uint256 pid = _proposeAction(
-            address(safe), abi.encodeWithSignature("setGuard(address)", address(0)), Operation.Call
-        );
+        uint256 pid =
+            _proposeAction(address(safe), abi.encodeWithSignature("setGuard(address)", address(0)), Operation.Call);
         _passWithAliceYes(pid);
         (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
         vm.roll(p.endBlock + govModule.executionDelay() + 1);

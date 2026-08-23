@@ -11,7 +11,14 @@ import {
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
+
+contract VerifyC6GasSignerVerifier is IZkVerifier {
+    bytes32 public constant programVKey = keccak256("verify-c6-gas-signer");
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
 
 contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
@@ -25,13 +32,16 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         super.setUp();
         singleton = new GnosisSafe();
         proxyFactory = new GnosisSafeProxyFactory();
+        VerifyC6GasSignerVerifier signerVerifier = new VerifyC6GasSignerVerifier();
         gf = new GovernedTrustgraphsFactory(
             factory,
             proxyFactory,
             address(singleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            signerVerifier,
+            signerVerifier.programVKey()
         );
     }
 
@@ -40,15 +50,22 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         owners[0] = address(gf);
         return abi.encodeWithSignature(
             "setup(address[],uint256,address,bytes,address,address,uint256,address)",
-            owners, uint256(1), address(0), bytes(""), address(0), address(0), uint256(0), address(0)
+            owners,
+            uint256(1),
+            address(0),
+            bytes(""),
+            address(0),
+            address(0),
+            uint256(0),
+            address(0)
         );
     }
 
     function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig(false, address(0), bytes32(0), 0, 0, 0);
+        return GovernedTrustgraphsFactory.SignerSyncConfig(false, 0, 0, 0);
     }
 
-    function test_HonestCostThenBurn() public {
+    function test_HonestCostThenFrontRunAdoption() public {
         TrustgraphsFactory.CreateArgs memory args = _args("acme");
         args.salt = bytes32(uint256(7));
 
@@ -70,7 +87,7 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         emit log_named_uint("attacker squat gas", squat);
 
         // 3. The victim resubmits with a realistic gas limit (honest cost + 20% headroom) and
-        //    measures how much of it the CREATE2 collision destroys.
+        //    confirms the CREATE2 collision is handled without a gas-burning revert.
         uint256 limit = (honest * 120) / 100;
         bytes memory data = abi.encodeCall(
             GovernedTrustgraphsFactory.createGovernedInstance,
@@ -79,9 +96,9 @@ contract VerifyC6_GasBurn is TrustgraphsFactoryBase {
         uint256 g3 = gasleft();
         vm.prank(victim);
         (bool ok,) = address(gf).call{gas: limit}(data);
-        uint256 burned = g3 - gasleft();
-        assertFalse(ok, "victim creation must fail");
+        uint256 used = g3 - gasleft();
+        assertTrue(ok, "victim must adopt the exact bootstrap Safe");
         emit log_named_uint("victim gas limit    ", limit);
-        emit log_named_uint("victim gas destroyed", burned);
+        emit log_named_uint("victim gas used     ", used);
     }
 }

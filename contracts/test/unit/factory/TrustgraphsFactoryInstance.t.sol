@@ -174,19 +174,19 @@ contract TrustgraphsFactoryInstanceTest is TrustgraphsFactoryBase {
     function test_DistributorIsWiredAndAdminOwned() public {
         TrustgraphsFactory.CreateArgs memory args = _args("funded");
         args.withDistributor = true;
-        args.admin = member;
+        args.admin = address(safeAdmin);
         Created memory c = _create(args);
 
         MerkleFundDistributor dist = MerkleFundDistributor(payable(c.distributor));
         assertEq(dist.merkleSnapshot(), c.snapshot, "reads this instance's root");
-        assertEq(dist.owner(), member);
-        assertEq(dist.feeRecipient(), member, "a fee, if ever enabled, cannot route to a stranger");
+        assertEq(dist.owner(), address(safeAdmin));
+        assertEq(dist.feeRecipient(), address(safeAdmin), "a fee, if ever enabled, cannot route to a stranger");
         assertEq(dist.feePercentage(), 0, "no fee by default");
         assertFalse(dist.allowlistEnabled(), "anyone may fund a round by default");
 
         // M-7: raising the fee from zero is an INCREASE, so it schedules and waits out the delay
         // before applying — the admin cannot front-run a funder's round.
-        vm.prank(member);
+        vm.prank(address(safeAdmin));
         dist.setFeePercentage(1e15);
         assertEq(dist.feePercentage(), 0, "increase must not be immediate");
         vm.warp(block.timestamp + dist.FEE_INCREASE_DELAY());

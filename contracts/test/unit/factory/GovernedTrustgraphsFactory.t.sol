@@ -59,6 +59,7 @@ contract DeployZodiacSafesHarness is DeployZodiacSafes {
 
 contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     bytes32 internal constant GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+    bytes32 internal constant SIGNER_VKEY = keccak256("factory signer guest");
 
     GovernedTrustgraphsFactory internal governedFactory;
     GnosisSafe internal safeSingleton;
@@ -66,6 +67,7 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    FactorySignerVerifier internal signerVerifier;
     DeployZodiacSafesHarness internal zodiacHarness;
 
     address internal creator = address(0xA11CE);
@@ -75,14 +77,10 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: false,
-            verifier: address(0),
-            programVKey: bytes32(0),
-            topN: 0,
-            minThreshold: 0,
-            targetThresholdBps: 0
-        });
+        return
+            GovernedTrustgraphsFactory.SignerSyncConfig({
+                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
+            });
     }
 
     function _createGoverned(
@@ -99,8 +97,16 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        signerVerifier = new FactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedTrustgraphsFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            signerVerifier,
+            SIGNER_VKEY
         );
         zodiacHarness = new DeployZodiacSafesHarness();
     }
@@ -233,15 +239,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        bytes32 signerVKey = keccak256("factory signer guest");
-        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(signerVKey);
         GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 5,
-            minThreshold: 2,
-            targetThresholdBps: 5000
+            enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustgraphsFactory.CreateArgs memory args = _args("self-serve-signer-sync");
@@ -251,6 +250,8 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
+        assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
+        assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
         assertTrue(
             GnosisSafe(payable(safe)).isModuleEnabled(authority.governanceModule),
             "governance module must remain discoverable and enabled"
@@ -332,39 +333,31 @@ contract GovernedTrustgraphsFactoryTest is TrustgraphsFactoryBase {
         assertEq(signer.lastAppliedCheckpoint(), checkpointId);
     }
 
-    function test_OptionalSignerRejectsVerifierProgramMismatchAtomically() public {
+    function test_ConstructorRejectsSignerVerifierProgramMismatch() public {
         bytes32 verifierVKey = keccak256("deployed signer guest");
         bytes32 suppliedVKey = keccak256("different signer guest");
-        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(verifierVKey);
-        GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: suppliedVKey,
-            topN: 5,
-            minThreshold: 2,
-            targetThresholdBps: 5000
-        });
+        FactorySignerVerifier mismatchedVerifier = new FactorySignerVerifier(verifierVKey);
 
-        vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.SignerProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+                GovernedTrustgraphsFactory.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
             )
         );
-        governedFactory.createGovernedInstance(_args("mismatched-signer-program"), _unpaidPolicy(), signerConfig);
-        assertEq(registry.instanceCount(), 0, "invalid signer identity must roll back base creation");
+        new GovernedTrustgraphsFactory(
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            mismatchedVerifier,
+            suppliedVKey
+        );
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        bytes32 signerVKey = keccak256("factory signer guest");
-        FactorySignerVerifier signerVerifier = new FactorySignerVerifier(signerVKey);
         GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 65,
-            minThreshold: 2,
-            targetThresholdBps: 5000
+            enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
         });
 
         vm.prank(creator);

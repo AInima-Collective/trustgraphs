@@ -7,11 +7,11 @@ epoch, forever. This document is about the thing that does that without a human 
 
 Three ways a network's scores stay fresh, and you should pick one deliberately:
 
-| | who proves | what it costs you | what you depend on |
-|---|---|---|---|
-| **Self-prove** | you | your own gas + proving | nothing. Permissionless, documented, free forever |
-| **Curated** | us | nothing | our goodwill and our uptime |
-| **Funded** | anyone | whatever you top up | a public bounty, and whoever chooses to collect it |
+|                | who proves | what it costs you      | what you depend on                                 |
+| -------------- | ---------- | ---------------------- | -------------------------------------------------- |
+| **Self-prove** | you        | your own gas + proving | nothing. Permissionless, documented, free forever  |
+| **Curated**    | us         | nothing                | our goodwill and our uptime                        |
+| **Funded**     | anyone     | whatever you top up    | a public bounty, and whoever chooses to collect it |
 
 There is no fourth tier where everybody gets proven for free. A permissionless factory plus an
 unconditional free tier is an unbounded liability: an attacker pays roughly one attestation of gas
@@ -41,7 +41,7 @@ Once per tick, per instance:
                      └─ something is off ........................ Hold + alert
 ```
 
-Everything that can be *wrong* — when to trigger, which checkpoint to prove, when to hold, when to
+Everything that can be _wrong_ — when to trigger, which checkpoint to prove, when to hold, when to
 claim — lives in `crates/operator-core`, a plain crate in the root workspace that CI tests
 against a fake chain. Only the thin sp1-sdk adapter lives in the detached `zk/` workspace. If you
 are reading the code to answer "would it have paid twice here?", read `operator-core`.
@@ -53,7 +53,7 @@ Two rules shape the rest of the design:
   operator nothing.
 - **Preventable spend is prevented; unpreventable spend is budgeted.** A params mismatch, a
   pending verifier rotation, an unfinalized checkpoint, an empty vault, an oversized instance:
-  each is a hold or a skip *before* the proof request. But a creator-admin can rotate config one
+  each is a hold or a skip _before_ the proof request. But a creator-admin can rotate config one
   block after any preflight, so some waste is not preventable. That is what the loss budgets are
   for: the operator halts an instance rather than bleeding on it.
 
@@ -61,8 +61,8 @@ Two rules shape the rest of the design:
 
 ## 2. Configuration
 
-One TOML (or JSON) file. Every key below has a default except `rpc` and `registry`; anything not
-listed is not configurable.
+One TOML (or JSON) file. `rpc` is always required. `registry` is required unless a finalized public
+`release_manifest` supplies it; anything not listed is not configurable.
 
 ```toml
 # ── chain ───────────────────────────────────────────────────────────────────
@@ -70,6 +70,11 @@ rpc      = "https://…"          # required. JSON-RPC endpoint
 registry = "0x…"                # required. InstanceRegistry address
 chain_id = 1                    # optional; checked against eth_chainId at startup, never trusted over it
 registry_from_block = 21000000  # the block `registry` was deployed at. SET THIS on any real chain.
+
+# Sepolia alternative: omit registry/chain_id/registry_from_block and resolve them from the
+# sanitized tracked release record. Relative paths are resolved from this TOML. Explicit values
+# are allowed only when they exactly match the manifest; RPC credentials never come from JSON.
+# release_manifest = "../../deployments/sepolia.json"
 
 # ── which instances ─────────────────────────────────────────────────────────
 # Factory-minted trust-graph instances and their optional governed signer modules need ZERO
@@ -143,9 +148,21 @@ track_block_hash = true
 backend      = "network"        # network | cpu | mock
 groth16      = true
 timeout_s    = 3_600
-# The refuse-to-prove cycle ceiling and capability profile are deliberately NOT configurable.
-# They describe this host release, are versioned in its status heartbeat, and are independent of
-# the vault's pricing bands. They are operator policy, never guest/consensus assertions.
+cycle_limit  = 8_000_000_000    # operator-local; independent of vault pricing and every vkey
+
+# Profile v2 defaults come from the largest published calibrated graph row (1,800 raw/live
+# records). The cheap pre-download gate needs the conservative 2*raw+seeds node allowance.
+# Override any field for a differently provisioned host; omitted fields keep these defaults.
+[prover.capability_profile]
+max_raw_records      = 1_800
+max_live_edges       = 1_800
+max_unique_nodes     = 3_600
+max_out_degree       = 1_800
+max_witness_bytes    = 134_217_728 # independent 128 MiB memory-safety ceiling; matrix does not
+                                   # establish a witness-byte maximum
+max_lane2_anchors    = 1_800
+max_signature_checks = 1_800
+max_iterations       = 100
 
 # ── loss budgets ────────────────────────────────────────────────────────────
 # Unpreventable spend is real. When one of these is exceeded the instance is HALTED and alerted,
@@ -216,40 +233,43 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 
 ### Keys
 
-| key | meaning | default |
-|---|---|---|
-| `rpc` | JSON-RPC endpoint; must be an absolute `http(s)://` URL | required |
-| `registry` | `InstanceRegistry` address | required |
-| `chain_id` | expected chain; startup aborts on mismatch | read from chain |
-| `registry_from_block` | where the `InstanceRegistered` scan starts | 0 (alerts on any chain but 31337) |
-| `manifest[]` | instances the chain cannot describe | empty |
-| `curated.instances` | proven on us, no vault | empty |
-| `paid.enabled` / `paid.vault` / `paid.recipient` | the funded path | off |
-| `cadence.tick_seconds` | loop period | 60 |
-| `cadence.subsidy_min_blocks` | our cadence for curated instances | 216000 |
-| `cadence.max_concurrent` / `max_per_instance` | concurrency caps | 4 / 1 |
-| `gas.max_basefee_gwei` | basefee gate | 40 |
-| `gas.replacement_after_s` | stuck-tx bump | 300 |
-| `finality.confirmations` | before spending on a checkpoint | 12 |
-| `prover.backend` | `network` \| `cpu` \| `mock` | `network` |
-| `budget.*_usd_per_day` | halt thresholds | 25 / 250 |
-| `budget.cents_per_billion_cycles` | price used to cost a proof | 100 |
-| `budget.window_seconds` | rolling window for both caps | 86400 |
-| `budget.eth_usd` | crude ETH/USD for booking gas into the budget (H-3) | 5000 |
-| `signer_sync.enabled` | schedule factory-discovered signer modules | true |
-| `signer_sync.confirmations` / `track_block_hash` | signer-specific finality before proving | 24 / true |
-| `signer_sync.*_usd_per_day` | signer-only halt thresholds, isolated from root spend | 5 / 50 |
-| `signer_sync.budget_window_seconds` | rolling signer budget window | 86400 |
-| `ipfs.targets[]` | named independent kubo-compatible add API + reader gateway pairs | empty (nothing published) |
-| `ipfs.min_success` | targets that must add and serve the exact bytes before submit | all configured targets |
-| `ipfs.retry_seconds` | durable failed-publication retry cadence | 300 |
-| `ipfs.api` / `ipfs.gateway` | legacy single target; both required, cannot mix with `targets` | unset |
-| `weighted_manifests.cache_dir` | durable exact-byte TGWP cache | `.trustgraph/operator/weighted-manifests` |
-| `weighted_manifests.mirrors[]` | raw-CID readers tried before archival calldata | empty |
-| `weighted_manifests.max_versions` / `max_bytes` | deterministic cache ceilings | 128 / 16 MiB |
-| `weighted_manifests.retry_seconds` | retry/alert cadence for degraded mirrors | 300 |
-| `ops.submit_failure_threshold` | deterministic submit reverts before advancing past a checkpoint | 3 |
-| `ops.*` | journal, heartbeat, alerts, logging | see above |
+| key                                              | meaning                                                                                 | default                                        |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `rpc`                                            | JSON-RPC endpoint; must be an absolute `http(s)://` URL                                 | required                                       |
+| `release_manifest`                               | sanitized finalized public release JSON; supplies and checks chain/registry coordinates | unset                                          |
+| `registry`                                       | `InstanceRegistry` address                                                              | required unless supplied by `release_manifest` |
+| `chain_id`                                       | expected chain; startup aborts on mismatch                                              | read from chain                                |
+| `registry_from_block`                            | where the `InstanceRegistered` scan starts                                              | 0 (alerts on any chain but 31337)              |
+| `manifest[]`                                     | instances the chain cannot describe                                                     | empty                                          |
+| `curated.instances`                              | proven on us, no vault                                                                  | empty                                          |
+| `paid.enabled` / `paid.vault` / `paid.recipient` | the funded path                                                                         | off                                            |
+| `cadence.tick_seconds`                           | loop period                                                                             | 60                                             |
+| `cadence.subsidy_min_blocks`                     | our cadence for curated instances                                                       | 216000                                         |
+| `cadence.max_concurrent` / `max_per_instance`    | concurrency caps                                                                        | 4 / 1                                          |
+| `gas.max_basefee_gwei`                           | basefee gate                                                                            | 40                                             |
+| `gas.replacement_after_s`                        | stuck-tx bump                                                                           | 300                                            |
+| `finality.confirmations`                         | before spending on a checkpoint                                                         | 12                                             |
+| `prover.backend`                                 | `network` \| `cpu` \| `mock`                                                            | `network`                                      |
+| `prover.cycle_limit`                             | local estimated-cycle refusal; not a protocol/vkey limit                                | 8000000000                                     |
+| `prover.capability_profile.*`                    | versioned local work-shape limits; partial overrides allowed                            | profile v2 below                               |
+| `budget.*_usd_per_day`                           | halt thresholds                                                                         | 25 / 250                                       |
+| `budget.cents_per_billion_cycles`                | price used to cost a proof                                                              | 100                                            |
+| `budget.window_seconds`                          | rolling window for both caps                                                            | 86400                                          |
+| `budget.eth_usd`                                 | crude ETH/USD for booking gas into the budget (H-3)                                     | 5000                                           |
+| `signer_sync.enabled`                            | schedule factory-discovered signer modules                                              | true                                           |
+| `signer_sync.confirmations` / `track_block_hash` | signer-specific finality before proving                                                 | 24 / true                                      |
+| `signer_sync.*_usd_per_day`                      | signer-only halt thresholds, isolated from root spend                                   | 5 / 50                                         |
+| `signer_sync.budget_window_seconds`              | rolling signer budget window                                                            | 86400                                          |
+| `ipfs.targets[]`                                 | named independent kubo-compatible add API + reader gateway pairs                        | empty (nothing published)                      |
+| `ipfs.min_success`                               | targets that must add and serve the exact bytes before submit                           | all configured targets                         |
+| `ipfs.retry_seconds`                             | durable failed-publication retry cadence                                                | 300                                            |
+| `ipfs.api` / `ipfs.gateway`                      | legacy single target; both required, cannot mix with `targets`                          | unset                                          |
+| `weighted_manifests.cache_dir`                   | durable exact-byte TGWP cache                                                           | `.trustgraph/operator/weighted-manifests`      |
+| `weighted_manifests.mirrors[]`                   | raw-CID readers tried before archival calldata                                          | empty                                          |
+| `weighted_manifests.max_versions` / `max_bytes`  | deterministic cache ceilings                                                            | 128 / 16 MiB                                   |
+| `weighted_manifests.retry_seconds`               | retry/alert cadence for degraded mirrors                                                | 300                                            |
+| `ops.submit_failure_threshold`                   | deterministic submit reverts before advancing past a checkpoint                         | 3                                              |
+| `ops.*`                                          | journal, heartbeat, alerts, logging                                                     | see above                                      |
 
 ### Host capability and cost admission
 
@@ -261,12 +281,32 @@ shape, witness bytes, signature calls, and `iterations_run` immediately before w
 intent. The intent retains cost-model version, estimated cycles, `max_iterations`, and
 `iterations_run`, so estimate drift and convergence drift are observable after a restart.
 
-Capability profile v1 permits at most 50,000 raw records, 50,000 live edges, 10,000 unique nodes,
-10,000 maximum out-degree, 128 MiB of witness bytes, 10,000 lane-2 anchors, 25,000 signature checks,
-and 100 iterations. The status heartbeat publishes this exact profile and cost-model version. A
-refusal is logged as `skip/capability/<dimension>` with profile version, observed value, and limit.
-It means only that **this host declines the work**: the checkpoint remains valid and another prover
-may accept it. No cost-only ceiling is present in a guest or verification key.
+Capability profile v2 defaults to 1,800 raw records, 1,800 live edges, 3,600 conservatively bounded
+unique nodes, 1,800 maximum out-degree, 128 MiB of witness bytes, 1,800 lane-2 anchors, 1,800
+signature checks, and 100 iterations. The 1,800/3,600 graph envelope admits the largest published
+calibration row before and after reconstruction. The witness ceiling remains an independent memory
+safety bound because that matrix does not establish a maximum serialized witness size.
+
+There are four distinct ceilings; treating them as one was the H-1 defect:
+
+| ceiling                                                      |        shipped value | meaning                               | default binding order                                                                     |
+| ------------------------------------------------------------ | -------------------: | ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `InputCapacity.MAX_TOTAL_INPUTS` / vault `MAX_PRICED_INPUTS` |       200,000 inputs | protocol ingress/payment ceiling      | last; not a host-capacity claim                                                           |
+| profile `max_unique_nodes`                                   |          3,600 nodes | cheap bound is `2 * raw + seeds`      | co-binds near 1,800 raw inputs                                                            |
+| profile `max_raw_records`                                    |        1,800 records | largest calibrated raw/live graph row | **first (co-binding)**                                                                    |
+| `prover.cycle_limit`                                         | 8,000,000,000 cycles | local cost-model refusal              | would accept 3,467 and refuse 3,468 max-iteration trust inputs if the profile were raised |
+
+The profile and cycle limit are operator configuration, published verbatim in the status heartbeat
+alongside the 200,000 protocol ceiling. Each instance also publishes `limiting_capacity`, including
+the binding gate, its observed value, and its limit. A higher-capacity self-prover can raise the
+local ceilings without a guest or verification-key change. A refusal is logged as
+`skip/capability/<dimension>` or `skip/too_large` with observed and limit values. It means only that
+**this host declines the work**: the checkpoint remains valid and another prover may accept it. No
+cost-only ceiling is present in a guest or vkey.
+
+The irreversible-input warning uses whichever configured profile dimension, cycle limit, or lower
+instance ingress cap is nearest exhaustion and emits `operator_capacity_approaching` at 80%. It no
+longer waits for 80% of the unrelated 200,000 payment ceiling.
 
 The named model terms and the SP1 executor calibration matrix are published in the
 [trust-graph operator runbook](./trust-graph/runbook.md#m1-full-guest-cost-calibration).
@@ -295,11 +335,11 @@ The contracts are the database. Local state is an append-only JSONL journal whos
 The sequence is: **fsync an intent record carrying a client-side idempotency nonce → make the
 request → append the returned request id.** On restart:
 
-| journal state | meaning | action |
-|---|---|---|
-| intent + id | the request is ours and we know its handle | re-attach, poll it |
-| no intent | nothing was requested | proceed normally |
-| intent, no id | **ambiguous** | resolve by querying the backend for the nonce |
+| journal state | meaning                                    | action                                        |
+| ------------- | ------------------------------------------ | --------------------------------------------- |
+| intent + id   | the request is ours and we know its handle | re-attach, poll it                            |
+| no intent     | nothing was requested                      | proceed normally                              |
+| intent, no id | **ambiguous**                              | resolve by querying the backend for the nonce |
 
 That last row is the gap, and it is a real one: a request id cannot be journaled before the request
 that mints it. If the backend can answer "what happened to nonce N?", the window closes
@@ -326,12 +366,12 @@ property of the backend:
   (`NetworkProveBuilder::request()`) exposes no idempotency knob at all.
 - **But `public_values_hash` is a natural one, and it round-trips.** `request_proof` accepts it,
   and the `ProofRequest` record returned by both `get_proof_request_details` and
-  `get_filtered_proof_requests` carries it back. For this operator it is fully determined *before*
+  `get_filtered_proof_requests` carries it back. For this operator it is fully determined _before_
   the request — ground rule 4 computes the journal natively first — so it is a content-addressed
   request key we did not have to invent, and it distinguishes checkpoints because the journal
   commits the checkpoint's accumulator state.
 - **Status lookup by requester exists**: `get_filtered_proof_requests(version, fulfillment_status,
-  execution_status, minimum_deadline, vk_hash, requester, fulfiller, from, to, limit, page, …)`.
+execution_status, minimum_deadline, vk_hash, requester, fulfiller, from, to, limit, page, …)`.
 
 So the resolution is: filter on `requester = us`, `vk_hash = our program`, `from = intent time −
 slack`, and match `public_values_hash`. **`RequestOutcomeUnknown` is rare, not routine** — it
@@ -430,20 +470,20 @@ the browser; future heartbeat fields are private until they are explicitly added
 `ops.alert_webhook` receives a plain-text POST for anything a human has to act on. What raises one,
 and what each actually means:
 
-| alert | what happened | what to do |
-|---|---|---|
-| `tick failed: …` | a whole pass errored (usually RPC) | nothing, if it clears; the next tick re-reads everything from chain |
-| `N proof request(s) with an unknown outcome` | a crash landed in the ambiguous window (§3) | resolve each by hand; **never** auto-retried |
-| `registry_from_block is 0 on chain N` | the scan will start at genesis | set it, restart |
-| `submitter key has a zero balance` | every send will fail | fund it |
-| `<instance>: Unfunded` | a paid instance's tank will not cover the next root | tell the community, or move it to `curated` |
-| `<instance>: VerifierRotated` | its deployed verifier expects a vkey this binary cannot produce | rebuild against the new guest, or leave it — the operator will not spend on it |
-| `<instance>: LossBudget` | a rolling cap was exceeded | investigate before raising the budget; it does not clear until the window rolls |
-| `publication policy failed` / `publication_backoff` | fewer than `ipfs.min_success` targets added and served the exact blob | repair the named targets or lower the minimum only as an explicit durability decision; submission stays blocked and the journal retries automatically |
-| `the API accepted the blob but the gateway … answers 504` | one target's add API and reader gateway hit **different nodes** | compare `curl -X POST <api>/api/v0/id` with the gateway host; that target does not count until readers can fetch the exact bytes |
-| an already-landed CID is unreadable | content addressing proves which bytes belong at a CID, not that anyone still stores them | restore a retained copy or reconstruct from checkpoint history, then run `operator republish --instance … --checkpoint …`; the indexer retries once the CID is readable |
-| `checkpoint N abandoned after M deterministic submit failures` | the same immutable proof reverted during estimate, simulation, or in a mined receipt M times | no manual unstick is required. The proof remains rejected; after consumed inputs move, the operator triggers and proves a newer checkpoint. Investigate the named `failure_class` before lowering the threshold or restoring the underlying hook/policy. |
-| `journal … was written against a DIFFERENT chain` | a devnet restarted (or the config moved) and the old journal's keys collide with the new chain's work | point `ops.journal_path` at a fresh file for this chain. See below |
+| alert                                                          | what happened                                                                                         | what to do                                                                                                                                                                                                                                               |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tick failed: …`                                               | a whole pass errored (usually RPC)                                                                    | nothing, if it clears; the next tick re-reads everything from chain                                                                                                                                                                                      |
+| `N proof request(s) with an unknown outcome`                   | a crash landed in the ambiguous window (§3)                                                           | resolve each by hand; **never** auto-retried                                                                                                                                                                                                             |
+| `registry_from_block is 0 on chain N`                          | the scan will start at genesis                                                                        | set it, restart                                                                                                                                                                                                                                          |
+| `submitter key has a zero balance`                             | every send will fail                                                                                  | fund it                                                                                                                                                                                                                                                  |
+| `<instance>: Unfunded`                                         | a paid instance's tank will not cover the next root                                                   | tell the community, or move it to `curated`                                                                                                                                                                                                              |
+| `<instance>: VerifierRotated`                                  | its deployed verifier expects a vkey this binary cannot produce                                       | rebuild against the new guest, or leave it — the operator will not spend on it                                                                                                                                                                           |
+| `<instance>: LossBudget`                                       | a rolling cap was exceeded                                                                            | investigate before raising the budget; it does not clear until the window rolls                                                                                                                                                                          |
+| `publication policy failed` / `publication_backoff`            | fewer than `ipfs.min_success` targets added and served the exact blob                                 | repair the named targets or lower the minimum only as an explicit durability decision; submission stays blocked and the journal retries automatically                                                                                                    |
+| `the API accepted the blob but the gateway … answers 504`      | one target's add API and reader gateway hit **different nodes**                                       | compare `curl -X POST <api>/api/v0/id` with the gateway host; that target does not count until readers can fetch the exact bytes                                                                                                                         |
+| an already-landed CID is unreadable                            | content addressing proves which bytes belong at a CID, not that anyone still stores them              | restore a retained copy or reconstruct from checkpoint history, then run `operator republish --instance … --checkpoint …`; the indexer retries once the CID is readable                                                                                  |
+| `checkpoint N abandoned after M deterministic submit failures` | the same immutable proof reverted during estimate, simulation, or in a mined receipt M times          | no manual unstick is required. The proof remains rejected; after consumed inputs move, the operator triggers and proves a newer checkpoint. Investigate the named `failure_class` before lowering the threshold or restoring the underlying hook/policy. |
+| `journal … was written against a DIFFERENT chain`              | a devnet restarted (or the config moved) and the old journal's keys collide with the new chain's work | point `ops.journal_path` at a fresh file for this chain. See below                                                                                                                                                                                       |
 
 #### Why a restarted devnet wedges the journal
 
@@ -454,8 +494,8 @@ matches the new chain's first unit of work exactly, and the journal refuses it �
 what it knows. The daemon then re-plans the same doomed `Prove` every tick forever, because a
 settled record reads as "no work in flight" to `plan`.
 
-The daemon detects this rather than guessing: a `Landed`/`Superseded` record is a *claim about the
-chain*, so if that instance's snapshot reports no such root, the two cannot be describing the same
+The daemon detects this rather than guessing: a `Landed`/`Superseded` record is a _claim about the
+chain_, so if that instance's snapshot reports no such root, the two cannot be describing the same
 chain. Mainnet is unaffected — chains there do not restart.
 
 ### Recovering
@@ -512,7 +552,7 @@ status_path  = "./.trustgraph/operator/status.json"
 
 No `[paid]` section: with it off the operator is self-proving and pays for everything it proves.
 Listing your instance under `[curated]` is what tells it "this one is proven on us" — from your
-config's point of view, *you* are the host.
+config's point of view, _you_ are the host.
 
 Nothing about the on-chain path differs from what we run. `submitProof` is permissionless and
 monotonic, the journal binds the same values, and N operators on one instance compose rather than
@@ -560,7 +600,7 @@ works. Stealing does not.
 
 **Not run: a real Groth16 proof verified by the canonical gateway.** Local Groth16 needs 16–32 GiB
 (this box has 11) and there is no prover-network key, so every proof above wraps at a
-`MockSP1Gateway`. The fork e2e does the next best thing and asks the *real* mainnet gateway
+`MockSP1Gateway`. The fork e2e does the next best thing and asks the _real_ mainnet gateway
 directly: it has 1,975 bytes of deployed code and it refuses a fabricated proof. So the seam is
 demonstrably not something mainnet would accept — but the positive direction is unproven, and it is
 the one thing on this page that a deployment must do before trusting the rest. Recorded as

@@ -17,6 +17,7 @@ import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
+import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
 import {ParamsJson} from "script/lib/ParamsJson.sol";
 
 /// @dev Deployment script for network contracts
@@ -32,6 +33,8 @@ contract DeployScript is Common {
         bytes32 schemaUid;
     }
 
+    error InvalidDistributorSafe(address owner);
+
     /**
      * @dev Deploys the contracts and writes the results to a JSON file.
      * @param zkVerifierAddr The address of the ZK proof verifier gating root updates
@@ -43,6 +46,7 @@ contract DeployScript is Common {
      * @param easAddr The address of the EAS contract
      * @param schemaRegistrarAddr The address of the schema registrar contract
      * @param deployFundDistributor Whether to deploy the fund distributor contract
+     * @param distributorSafeAddr Initialized Safe that will own the distributor; required iff it is deployed
      * @param env The environment suffix for the deployment file name
      * @param firstIndex The index of the first network to deploy
      * @param count How many networks to deploy
@@ -54,6 +58,7 @@ contract DeployScript is Common {
         string calldata easAddr,
         string calldata schemaRegistrarAddr,
         bool deployFundDistributor,
+        string calldata distributorSafeAddr,
         string calldata env,
         uint256 firstIndex,
         uint256 count,
@@ -62,13 +67,18 @@ contract DeployScript is Common {
         address zkVerifier = vm.parseAddress(zkVerifierAddr);
         address eas = vm.parseAddress(easAddr);
         address schemaRegistrar = vm.parseAddress(schemaRegistrarAddr);
+        address distributorSafe =
+            bytes(distributorSafeAddr).length == 0 ? address(0) : vm.parseAddress(distributorSafeAddr);
 
         require(zkVerifier != address(0), "DeployNetwork: zkVerifier is zero");
         require(eas != address(0), "DeployNetwork: eas is zero");
         require(schemaRegistrar != address(0), "DeployNetwork: schemaRegistrar is zero");
         require(epochLength != 0, "DeployNetwork: epoch length is zero");
+        if (deployFundDistributor && !SafeOwnerPolicy.isSafe(distributorSafe)) {
+            revert InvalidDistributorSafe(distributorSafe);
+        }
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         for (uint256 i = firstIndex; i < firstIndex + count; i++) {
             string memory scriptOutputPath =
@@ -80,7 +90,14 @@ contract DeployScript is Common {
             address deployer = vm.addr(_privateKey);
 
             NetworkDeployment memory deployed = _deployNetwork(
-                zkVerifier, paramsPath, eas, schemaRegistrar, deployFundDistributor, epochLength, deployer
+                zkVerifier,
+                paramsPath,
+                eas,
+                schemaRegistrar,
+                deployFundDistributor,
+                distributorSafe,
+                epochLength,
+                deployer
             );
 
             _contractsJson.serialize("eas_indexer_resolver", Strings.toChecksumHexString(address(deployed.resolver)));
@@ -138,10 +155,14 @@ contract DeployScript is Common {
         address eas,
         address schemaRegistrar,
         bool deployFundDistributor,
+        address distributorSafe,
         uint64 epochLength,
         address deployer
     ) internal returns (NetworkDeployment memory deployed) {
         require(epochLength != 0, "DeployNetwork: epoch length is zero");
+        if (deployFundDistributor && !SafeOwnerPolicy.isSafe(distributorSafe)) {
+            revert InvalidDistributorSafe(distributorSafe);
+        }
 
         // The resolver is the attestation accumulator whose checkpoints MerkleSnapshot consumes.
         deployed.resolver = new EASIndexerResolver(IEAS(eas));
@@ -171,9 +192,9 @@ contract DeployScript is Common {
 
         if (deployFundDistributor) {
             deployed.distributor = new MerkleFundDistributor(
-                deployer, // owner
+                distributorSafe, // Safe owner
                 address(deployed.snapshot), // merkle snapshot
-                deployer, // fee recipient
+                distributorSafe, // fee recipient
                 3e16, // 3% fee
                 false // disable allowlist
             );

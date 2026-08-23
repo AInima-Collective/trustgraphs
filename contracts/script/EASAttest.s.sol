@@ -42,7 +42,7 @@ contract EASAttest is Common {
         string calldata comment,
         uint256 confidence
     ) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         address attester = vm.addr(_privateKey);
 
         IEAS eas = IEAS(vm.parseAddress(easAddr));
@@ -86,7 +86,7 @@ contract EASAttest is Common {
     function attest(string calldata easAddr, string calldata schema, string calldata recipient, string calldata data)
         public
     {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         IEAS eas = IEAS(vm.parseAddress(easAddr));
         bytes32 schemaUID = vm.parseBytes32(schema);
@@ -133,7 +133,7 @@ contract EASAttest is Common {
         string calldata data,
         uint256 value
     ) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         IEAS eas = IEAS(vm.parseAddress(easAddr));
         bytes32 schemaUID = vm.parseBytes32(schema);

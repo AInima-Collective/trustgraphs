@@ -173,6 +173,22 @@ fn pool_is_distributed_exactly_or_not_at_all() {
     }
 }
 
+#[test]
+fn out_of_envelope_carveout_clamps_instead_of_wrapping() {
+    for seed in 0..24 {
+        let mut sc = generate(seed);
+        sc.input.params.evaluator_carveout_bps = 10_001;
+        let r = compute(&sc.input);
+        let distributed = total(&r.scores);
+        assert!(
+            distributed == sc.input.params.total_pool || distributed.is_zero(),
+            "seed {seed}: a 100.01% historical carve-out distributed {distributed} of {}",
+            sc.input.params.total_pool
+        );
+        assert_eq!(distributed, r.journal.total_value);
+    }
+}
+
 /// Append an accept response from every listed address (idempotent for the scoring rules:
 /// explicit accept ≡ implicit accept for attester/self shares).
 fn accept_all(sc: &mut Scenario, claim_uid: B256, ts: u64, who: &[Address]) {

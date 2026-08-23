@@ -8,13 +8,13 @@ onchain capture and control plane make those inputs authoritative.
 
 ## Contract set
 
-| Contract | Responsibility |
-|---|---|
-| `CompositionSourceAdapterFactory` | Deploys provenance-pinned adapters and provides the append-only authenticity check that rejects ABI lookalikes. |
-| `CompositionSourceAdapter` | Pins a registry row, source controller, snapshot/verifier bytecode, SP1 vkey, lineage/family/output kind, and reviewed deployment-provenance digest. |
-| `CompositionSourceAccumulator` | Pulls the active adapters in source-ID order, enforces availability/freshness/bounds, encodes exact `TGCM`, and stores it under a standard checkpoint. |
-| `TrustComposeParamsController` | Validates complete `TGCP` proposals, timelocks them, and atomically advances the accumulator policy, snapshot params hash, and registry copy. |
-| `TrustComposeFactory` | Creates and registers an isolated accumulator/snapshot/controller instance using the dedicated composition verifier and vkey. |
+| Contract                          | Responsibility                                                                                                                                                                            |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CompositionSourceAdapterFactory` | Immutably pins the canonical instance registry, deploys provenance-pinned adapters only from that directory, and provides the append-only authenticity check that rejects ABI lookalikes. |
+| `CompositionSourceAdapter`        | Pins a registry row, source controller, snapshot/verifier bytecode, SP1 vkey, lineage/family/output kind, and reviewed deployment-provenance digest.                                      |
+| `CompositionSourceAccumulator`    | Pulls the active adapters in source-ID order, enforces availability/freshness/bounds, encodes exact `TGCM`, and stores it under a standard checkpoint.                                    |
+| `TrustComposeParamsController`    | Validates complete `TGCP` proposals, timelocks them, and atomically advances the accumulator policy, snapshot params hash, and registry copy.                                             |
+| `TrustComposeFactory`             | Creates and registers an isolated accumulator/snapshot/controller instance using the dedicated composition verifier and vkey.                                                             |
 
 `MerkleSnapshot` also exposes an additive `IMerkleSnapshotProvenance` interface. A snapshot meant
 to become a composition source constitutionally opts in once, before its first accepted state.

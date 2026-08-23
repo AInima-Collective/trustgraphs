@@ -35,6 +35,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 import {MockSP1Gateway} from "../mocks/MockSP1Gateway.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
+import {MockSafeOwner} from "../helpers/MockSafeOwner.sol";
 
 /// @notice Thin wrapper so the library's internal entry point is reachable through a real call
 ///         (so `vm.expectRevert` has an external frame to catch).
@@ -46,12 +47,8 @@ contract ValidatorProbe {
 }
 
 /// @title PashovAccess_ContributionsParamsEnvelope
-/// @notice `ContributionsParamsController.updateParams` performs NO envelope validation, unlike
-///         every sibling controller (`TrustgraphsParamsController.updateParams` ->
-///         `TrustgraphsParamsValidator.validateUpdate`, `WeightedPriorParamsController.activatePrior`
-///         -> `WeightedPriorValidator.validateRotation`, `TrustComposeParamsController.activatePolicy`
-///         -> `TrustComposeValidator.validateRotation`). The round owner can therefore rotate the
-///         live `paramsHash` to a tuple the factory would have refused at creation.
+/// @notice Regression coverage that `ContributionsParamsController.updateParams` applies the full
+///         validator before rotating the live `paramsHash`.
 contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
     SchemaRegistry internal schemaRegistry;
     EAS internal eas;
@@ -74,9 +71,11 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
 
     bytes32 internal parentId;
     ValidatorProbe internal probe;
+    MockSafeOwner internal roundSafe;
 
     function setUp() public {
         probe = new ValidatorProbe();
+        roundSafe = new MockSafeOwner(parentAdmin, 1);
         schemaRegistry = new SchemaRegistry();
         eas = new EAS(ISchemaRegistry(address(schemaRegistry)));
         registrar = new SchemaRegistrar(ISchemaRegistry(address(schemaRegistry)));
@@ -98,8 +97,7 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
             IProvingVault(address(0))
         );
 
-        contributionsVerifier =
-            new SP1JournalVerifier(ISP1Verifier(address(new MockSP1Gateway())), CONTRIBUTIONS_VKEY);
+        contributionsVerifier = new SP1JournalVerifier(ISP1Verifier(address(new MockSP1Gateway())), CONTRIBUTIONS_VKEY);
         factory = new ContributionsFactory(
             IEAS(address(eas)),
             registrar,
@@ -186,16 +184,14 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
         revert("ContributionsParamsControllerCreated was not emitted");
     }
 
-    /// @notice The round owner rotates the live params commitment to a tuple that the program's
-    ///         own validator rejects (`precisionScale != 1e18`, `maxIterations` past the ceiling,
-    ///         `roundEnd < roundStart`, empty seed set). Nothing stops it: the snapshot and the
-    ///         registry both accept the new hash.
-    function test_UpdateParamsAcceptsTupleTheValidatorRejects() public {
+    /// @notice A tuple that creation rejects cannot be installed through the rotation path either.
+    function test_UpdateParamsRejectsTupleTheValidatorRejects() public {
         ContributionsFactory.CreateArgs memory args;
         args.parentInstanceId = parentId;
         args.name = "round-1";
         args.metadataURI = "";
         args.params = _contribParams();
+        args.admin = address(roundSafe);
         args.epochLength = EPOCH_FLOOR;
 
         vm.recordLogs();
@@ -204,7 +200,9 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
         address controller = _decodeController(vm.getRecordedLogs(), instanceId);
 
         assertEq(
-            ContributionsParamsController(controller).owner(), parentAdmin, "round owner should be the round admin"
+            ContributionsParamsController(controller).owner(),
+            address(roundSafe),
+            "round owner should be the Safe admin"
         );
 
         // 1. The same out-of-envelope mutations, on a fresh creation-shaped tuple (derived fields
@@ -223,22 +221,21 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
         vm.expectRevert();
         probe.validateFinal(rogue);
 
-        // 3. ...and yet the controller installs it as the live commitment.
+        // 3. The controller applies the same gate before either commitment can change.
         bytes32 before = MerkleSnapshot(snapshot).paramsHash();
-        vm.prank(parentAdmin);
-        (uint64 newVersion, bytes32 newHash) =
-            ContributionsParamsController(controller).updateParams(rogue, "ipfs://evidence");
-
-        assertEq(newVersion, 2, "version should have advanced");
-        assertTrue(newHash != before, "the live params hash changed");
-        assertEq(MerkleSnapshot(snapshot).paramsHash(), newHash, "snapshot now pins the out-of-envelope tuple");
-        assertEq(
-            registry.getInstance(instanceId).paramsHash, newHash, "registry now pins the out-of-envelope tuple"
+        vm.prank(address(roundSafe));
+        vm.expectRevert(
+            abi.encodeWithSelector(ContributionsParamsValidator.InvalidIterations.selector, uint32(100_000))
         );
+        ContributionsParamsController(controller).updateParams(rogue, "ipfs://evidence");
+
+        assertEq(ContributionsParamsController(controller).version(), 1, "version must not advance");
+        assertEq(MerkleSnapshot(snapshot).paramsHash(), before, "snapshot commitment must remain unchanged");
+        assertEq(registry.getInstance(instanceId).paramsHash, before, "registry commitment must remain unchanged");
         assertEq(
             ContributionsParamsController(controller).getContributionsParams().precisionScale,
-            1,
-            "precisionScale escaped the fixed-point envelope"
+            1e18,
+            "stored params must remain unchanged"
         );
     }
 
@@ -262,9 +259,7 @@ contract PashovAccess_ContributionsParamsEnvelopeTest is Test {
         next.precisionScale = 1;
 
         vm.prank(parentAdmin);
-        vm.expectRevert(
-            abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidPrecisionScale.selector, uint256(1))
-        );
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsParamsValidator.InvalidPrecisionScale.selector, uint256(1)));
         tg.updateParams(next, "");
     }
 }

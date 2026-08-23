@@ -249,7 +249,7 @@ contract MerkleGovModuleTest is Test {
             uint256 abstainVotes,
             bool executed,
             bool cancelled,,
-            uint256 totalVotingPower,
+            uint256 totalVotingPower,,
         ) = govModule.proposals(proposalId);
 
         assertEq(id, proposalId);
@@ -317,7 +317,7 @@ contract MerkleGovModuleTest is Test {
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Abstain, votingPowers[charlie], proofs[charlie]);
 
         // Check vote tallies
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, votingPowers[alice]);
         assertEq(noVotes, votingPowers[bob]);
         assertEq(abstainVotes, votingPowers[charlie]);
@@ -1186,7 +1186,7 @@ contract MerkleGovModuleTest is Test {
             uint256 abstainVotes,
             bool executed,
             bool cancelled,,
-            uint256 totalVotingPower,
+            uint256 totalVotingPower,,
         ) = govModule.proposals(proposalId);
 
         assertEq(id, proposalId);
@@ -1215,7 +1215,7 @@ contract MerkleGovModuleTest is Test {
         govModule.castVote(proposalId, MerkleGovModule.VoteType.Yes, votingPowers[bob], proofs[bob]);
 
         // Check updated vote tallies
-        (,,,,,, yesVotes, noVotes, abstainVotes,,,,,) = govModule.proposals(proposalId);
+        (,,,,,, yesVotes, noVotes, abstainVotes,,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, votingPowers[alice] + votingPowers[bob]);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, 0);
@@ -1250,7 +1250,7 @@ contract MerkleGovModuleTest is Test {
         );
 
         // Check that No vote is recorded
-        (,,,,,, uint256 yesVotes, uint256 noVotes,,,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes,,,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, 0);
         assertEq(noVotes, votingPowers[bob]);
 
@@ -1286,7 +1286,7 @@ contract MerkleGovModuleTest is Test {
         );
 
         // Check that Abstain vote is recorded
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(proposalId);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,,) = govModule.proposals(proposalId);
         assertEq(yesVotes, 0);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, votingPowers[charlie]);
@@ -1345,6 +1345,50 @@ contract MerkleGovModuleTest is Test {
         vm.roll(executableAt + 1);
         govModule.execute(pid);
         assertEq(target_.value(), 7);
+    }
+
+    /// M-7 regression: proposal creation snapshots both edges of the execution interval. A later
+    /// delay change applies only to future proposals and cannot accelerate an already-passed one.
+    function test_M7_ExecutionIntervalIsSnapshottedPerProposal() public {
+        TestTarget target_ = new TestTarget();
+        uint256 pid = _proposeAction(address(target_), abi.encodeWithSignature("setValue(uint256)", 8), Operation.Call);
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
+        assertEq(
+            p.executionDeadlineBlock,
+            p.endBlock + govModule.executionDelay() + govModule.EXECUTION_WINDOW(),
+            "deadline does not snapshot delay plus window"
+        );
+
+        vm.prank(owner);
+        govModule.setExecutionDelay(0);
+        _passWithAliceYes(pid);
+
+        uint256 snapshottedExecutableAt = p.executionDeadlineBlock - govModule.EXECUTION_WINDOW();
+        vm.roll(p.endBlock + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(MerkleGovModule.ExecutionDelayNotElapsed.selector, snapshottedExecutableAt)
+        );
+        govModule.execute(pid);
+
+        // The closing edge is inclusive, yielding exactly EXECUTION_WINDOW eligible blocks.
+        vm.roll(p.executionDeadlineBlock);
+        assertEq(uint256(govModule.state(pid)), uint256(MerkleGovModule.ProposalState.Passed));
+        govModule.execute(pid);
+        assertEq(target_.value(), 8);
+    }
+
+    /// M-7 regression: an unexecuted winner has a closing edge and can never become a sleeper.
+    function test_M7_PassedProposalExpiresAndCannotExecute() public {
+        TestTarget target_ = new TestTarget();
+        uint256 pid = _proposeAction(address(target_), abi.encodeWithSignature("setValue(uint256)", 9), Operation.Call);
+        _passWithAliceYes(pid);
+        (MerkleGovModule.Proposal memory p,,) = govModule.getProposal(pid);
+
+        vm.roll(p.executionDeadlineBlock + 1);
+        assertEq(uint256(govModule.state(pid)), uint256(MerkleGovModule.ProposalState.Expired));
+        vm.expectRevert(MerkleGovModule.ProposalNotPassed.selector);
+        govModule.execute(pid);
+        assertEq(target_.value(), 0, "expired proposal reached its target");
     }
 
     /// M-4 regression: DelegateCall runs in the Safe's context and bypasses any Guard — it is
@@ -1498,7 +1542,7 @@ contract MerkleGovModuleTest is Test {
         assertEq(govModule.delegateVoter(pid, alice), bob);
         assertEq(govModule.votePower(pid, alice), votingPowers[alice]);
         assertEq(uint256(govModule.votes(pid, alice)), uint256(MerkleGovModule.VoteType.Yes));
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,,) = govModule.proposals(pid);
         assertEq(yesVotes, votingPowers[alice]);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, 0);
@@ -1632,7 +1676,7 @@ contract MerkleGovModuleTest is Test {
 
         vm.prank(alice);
         govModule.setVoteDelegate(address(0));
-        (,,,,,, uint256 yesBefore,,,,,,,) = govModule.proposals(pid);
+        (,,,,,, uint256 yesBefore,,,,,,,,) = govModule.proposals(pid);
         assertEq(yesBefore, votingPowers[alice]);
 
         vm.expectEmit(true, true, true, true);
@@ -1642,7 +1686,7 @@ contract MerkleGovModuleTest is Test {
         vm.prank(alice);
         govModule.castVote(pid, MerkleGovModule.VoteType.Abstain, votingPowers[alice], proofs[alice]);
 
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,,) = govModule.proposals(pid);
         assertEq(yesVotes, 0);
         assertEq(noVotes, 0);
         assertEq(abstainVotes, votingPowers[alice]);
@@ -1669,7 +1713,7 @@ contract MerkleGovModuleTest is Test {
         vm.prank(alice);
         govModule.castVote(pid, principalVote, votingPowers[alice], proofs[alice]);
 
-        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,) = govModule.proposals(pid);
+        (,,,,,, uint256 yesVotes, uint256 noVotes, uint256 abstainVotes,,,,,,) = govModule.proposals(pid);
         assertEq(yesVotes + noVotes + abstainVotes, votingPowers[alice], "override changed turnout");
         assertEq(yesVotes, principalVote == MerkleGovModule.VoteType.Yes ? votingPowers[alice] : 0);
         assertEq(noVotes, principalVote == MerkleGovModule.VoteType.No ? votingPowers[alice] : 0);

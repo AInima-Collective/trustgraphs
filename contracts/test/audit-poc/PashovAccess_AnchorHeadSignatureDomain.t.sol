@@ -2,7 +2,6 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
 
@@ -21,16 +20,9 @@ contract PashovAccessSnapshotMock {
 }
 
 /// @title PashovAccess_AnchorHeadSignatureDomain
-/// @notice `AnchorRegistry.anchor` authenticates an address-kind head with
-///         `keccak256(abi.encode(HEAD_DOMAIN_TAG, head, count))`. That preimage omits the registry
-///         address, the chain id, the `nodeId`, the `envelopeKind` and the `dataCommitment`. The
-///         sibling ingress (`EasOffchainAnchorRegistry.anchorDigest`) binds all of them through an
-///         EIP-712 domain over `address(this)` + `block.chainid` and a typehash that covers
-///         `nodeId, envelopeKind, schemaUid, previousHead, head, count, dataCommitment`.
-///
-///         Consequence: one owner co-signature authorises the SAME (head, count) in every
-///         `AnchorRegistry` on every chain, and lets the admitted relayer choose the envelope kind
-///         and the data-availability commitment the owner never signed.
+/// @notice Regression coverage for the address-kind head signature. The EIP-712 domain binds the
+///         registry address and chain id, while the typed `Anchor` claim binds every leaf field
+///         selected by the admitted relayer.
 contract PashovAccess_AnchorHeadSignatureDomainTest is Test {
     AnchorRegistry internal regA;
     AnchorRegistry internal regB;
@@ -69,58 +61,68 @@ contract PashovAccess_AnchorHeadSignatureDomainTest is Test {
         regB.register();
     }
 
-    function _sign(bytes32 head, uint64 count) internal view returns (bytes memory) {
-        bytes32 payload = keccak256(abi.encode(regA.HEAD_DOMAIN_TAG(), head, count));
+    function _sign(
+        AnchorRegistry target,
+        bytes32 nodeId,
+        uint8 envelopeKind,
+        bytes32 head,
+        uint64 count,
+        bytes32 dataCommitment
+    ) internal view returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(ownerKey, MessageHashUtils.toEthSignedMessageHash(payload));
+            vm.sign(ownerKey, target.anchorDigest(nodeId, envelopeKind, head, count, dataCommitment));
         return abi.encodePacked(r, s, v);
     }
 
-    function test_OneSignatureIsAcceptedByEveryRegistryAndAnyEnvelopeKindAndDataCommitment() public {
+    function test_OneSignatureCannotCrossRegistriesOrMutateClaimFields() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
         bytes32 head = keccak256("owner-authorised-head");
         uint64 count = 7;
-        bytes memory sig = _sign(head, count);
-
-        // 1. The owner authorises this head for network A, envelope kind 0, with the blob commitment
-        //    they actually published.
         bytes32 honestCommitment = keccak256("real-blob");
+        bytes memory sig = _sign(regA, nodeId, 0, head, count, honestCommitment);
+
         regA.anchor(nodeId, 0, head, count, honestCommitment, sig);
         assertEq(regA.anchorCount(), 1, "network A recorded the owner's head");
         assertEq(regA.lastCount(nodeId), count);
 
-        // 2. The SAME 65 bytes are replayed into a completely different network's registry, by a
-        //    relayer the owner has no relationship with. The digest carries no registry address,
-        //    so nothing rejects it.
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         vm.prank(relayerB);
         regB.anchor(nodeId, 0, head, count, honestCommitment, sig);
-        assertEq(regB.anchorCount(), 1, "network B accepted a signature that was never scoped to it");
-        assertEq(regB.lastCount(nodeId), count, "and it consumed the owner's count in network B");
+        assertEq(regB.anchorCount(), 0, "cross-registry replay did not consume the count");
 
-        // 3. Worse: neither `envelopeKind` nor `dataCommitment` is inside the signed preimage, so
-        //    the relayer picks both. Here a fresh count carries an envelope kind and an availability
-        //    commitment the owner never saw.
         bytes32 head2 = keccak256("another-owner-head");
         uint64 count2 = 9;
-        bytes memory sig2 = _sign(head2, count2);
+        bytes32 intendedCommitment = keccak256("owner-published-blob");
+        bytes memory sig2 = _sign(regB, nodeId, 0, head2, count2, intendedCommitment);
         bytes32 forgedCommitment = keccak256("relayer-chosen-garbage");
-        vm.prank(relayerB);
-        regB.anchor(nodeId, 3 /* not the kind the owner intended */, head2, count2, forgedCommitment, sig2);
-        assertEq(regB.anchorCount(), 2, "relayer chose the envelope kind and the data commitment");
 
-        // 4. Control: the sibling EAS-offchain ingress binds all of it. Its digest changes with the
-        //    contract address, the node id, the envelope kind and the data commitment, which is
-        //    exactly the domain separation missing above.
-        assertTrue(true);
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
+        vm.prank(relayerB);
+        regB.anchor(
+            nodeId,
+            3,
+            /* not the kind the owner intended */
+            head2,
+            count2,
+            forgedCommitment,
+            sig2
+        );
+
+        vm.prank(relayerB);
+        regB.anchor(nodeId, 0, head2, count2, intendedCommitment, sig2);
+        assertEq(regB.anchorCount(), 1, "the exact typed claim remains usable");
     }
 
-    /// @notice The signed preimage is literally independent of the registry: two different
-    ///         registries produce the identical digest for the same (head, count).
-    function test_SignedPreimageIsIdenticalAcrossRegistries() public view {
+    function test_DigestChangesAcrossRegistriesAndClaimFields() public view {
+        bytes32 nodeId = keccak256(abi.encode(owner));
         bytes32 head = keccak256("h");
         uint64 count = 1;
-        bytes32 payloadA = keccak256(abi.encode(regA.HEAD_DOMAIN_TAG(), head, count));
-        bytes32 payloadB = keccak256(abi.encode(regB.HEAD_DOMAIN_TAG(), head, count));
-        assertEq(payloadA, payloadB, "the head digest does not depend on which registry will consume it");
+        bytes32 commitment = keccak256("dc");
+        bytes32 digest = regA.anchorDigest(nodeId, 0, head, count, commitment);
+
+        assertNotEq(digest, regB.anchorDigest(nodeId, 0, head, count, commitment));
+        assertNotEq(digest, regA.anchorDigest(keccak256("other-node"), 0, head, count, commitment));
+        assertNotEq(digest, regA.anchorDigest(nodeId, 1, head, count, commitment));
+        assertNotEq(digest, regA.anchorDigest(nodeId, 0, head, count, keccak256("other-dc")));
     }
 }

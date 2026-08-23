@@ -34,7 +34,8 @@ contract CreateDevInstances is Common {
     /// @param env Output-file environment suffix (`dev`).
     /// @param firstIndex Index of the first network to create.
     /// @param count How many to create.
-    /// @param withDistributor Whether each instance gets a fund distributor.
+    /// @param withDistributor Must be false. The dev pipeline attaches a distributor after its
+    ///        Zodiac Safe exists, so the fund is never born under the bootstrap EOA.
     /// @param prepayWei ETH deposited into each instance's proving tank during creation.
     /// @param maxPerRootUsd Optional initial proving policy, set before governance is handed off.
     function run(
@@ -55,12 +56,13 @@ contract CreateDevInstances is Common {
             (maxPerRootUsd == 0) == (prepayWei == 0),
             "CreateDevInstances: prepay and policy must both be zero or nonzero"
         );
+        require(!withDistributor, "CreateDevInstances: attach distributor after Safe deployment");
 
         // The governance knobs, with every derived (instance-identity) field left at zero — the
         // factory rejects anything else, and fills them itself.
         ParamsCodec.Params memory params = ParamsJson.read(paramsPath, bytes32(0), address(0), 0);
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         for (uint256 i = firstIndex; i < firstIndex + count; i++) {
             string memory name = template.readString(string.concat("$[", Strings.toString(i), "].name"));

@@ -83,7 +83,7 @@ contract QuillSemGuard_GuardGaps is Test {
          per-node count jump. All fold irreversibly into anchorAcc.
     //////////////////////////////////////////////////////////////*/
 
-    function test_B_anchorRegistryFoldsZeroHeadForeignKindAndUnboundedCount() public {
+    function test_B_anchorRegistryRejectsUnboundedCountButStillFoldsOtherMalformedFields() public {
         address admin = address(this);
         AnchorRegistry reg = new AnchorRegistry(admin, 200_000);
 
@@ -95,21 +95,17 @@ contract QuillSemGuard_GuardGaps is Test {
         bytes32 nodeId = keccak256("did:plc:example");
         reg.registerNode(nodeId, reg.NODE_KIND_NOSTR());
 
-        // envelopeKind 199 exists in no guest; head and dataCommitment are zero; count jumps to
-        // the uint64 ceiling in one call. None of it is rejected.
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InvalidHeadCount.selector, type(uint64).max, reg.maxTotalInputs())
+        );
         reg.anchor(nodeId, 199, bytes32(0), type(uint64).max, bytes32(0), "");
+        assertEq(reg.anchorCount(), 0, "the out-of-range count was folded");
 
+        // The remaining seam is independent of M-1a: foreign kind and zero commitments still fold.
+        reg.anchor(nodeId, 199, bytes32(0), 1, bytes32(0), "");
         assertEq(reg.anchorCount(), 1, "the malformed anchor was folded");
         assertTrue(reg.anchorAcc() != bytes32(0), "anchorAcc irreversibly advanced");
-        assertEq(reg.lastCount(nodeId), type(uint64).max, "count ceiling consumed in one call");
-
-        // The node is now permanently un-anchorable: no strictly-greater count exists.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AnchorRegistry.StaleHeadCount.selector, nodeId, type(uint64).max, type(uint64).max
-            )
-        );
-        reg.anchor(nodeId, 0, keccak256("h"), type(uint64).max, keccak256("d"), "");
+        assertEq(reg.lastCount(nodeId), 1);
     }
 
     /// The sibling registry rejects every one of those inputs.
@@ -134,9 +130,7 @@ contract QuillSemGuard_GuardGaps is Test {
         eas.anchor(nodeId, 0, bytes32(0), bytes32(0), 1, keccak256("d"), "");
         // unbounded count
         vm.expectRevert(
-            abi.encodeWithSelector(
-                EasOffchainAnchorRegistry.InvalidEntryCount.selector, type(uint64).max, uint64(2048)
-            )
+            abi.encodeWithSelector(EasOffchainAnchorRegistry.InvalidEntryCount.selector, type(uint64).max, uint64(2048))
         );
         eas.anchor(nodeId, 0, bytes32(0), keccak256("h"), type(uint64).max, keccak256("d"), "");
     }

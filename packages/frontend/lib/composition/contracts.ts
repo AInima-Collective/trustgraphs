@@ -32,7 +32,8 @@ const PARAMS =
   '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
 /** `TrustComposeFactory.CreateArgs`, shared by the base and governed creation paths. */
-const CREATE_ARGS = `(string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
+const CREATE_ARGS =
+  `(string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
 
 export const trustComposeFactoryAbi = parseAbi([
   `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${PARAMS} params)`,
@@ -44,6 +45,7 @@ export const trustComposeFactoryAbi = parseAbi([
   'function POLICY_ACTIVATION_DELAY() view returns (uint48)',
   'function SOURCE_ADAPTER_FACTORY() view returns (address)',
   'function VAULT() view returns (address)',
+  'error SourceAdapterRegistryMismatch(address expected,address actual)',
 ])
 
 /**
@@ -79,7 +81,9 @@ export const trustComposeParamsControllerAbi = parseAbi([
 export const compositionSourceAdapterFactoryAbi = parseAbi([
   'event SourceAdapterCreated(address indexed adapter,address indexed registry,bytes32 indexed instanceId,bytes32 sourceId,address snapshot,bytes32 programId,bytes32 deploymentProvenance)',
   'function create(address registry,bytes32 instanceId,bytes32 sourceId,bytes32 familyId,bytes32 outputKind,bytes32 deploymentProvenance) returns (address adapter)',
+  'function registry() view returns (address)',
   'function isAdapter(address adapter) view returns (bool)',
+  'error ForeignRegistry(address expected,address actual)',
 ])
 
 export const compositionSourceAdapterAbi = parseAbi([

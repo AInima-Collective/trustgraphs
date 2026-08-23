@@ -3,10 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
 import {AttestationAccumulator} from "src/eas/AttestationAccumulator.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
@@ -75,7 +72,7 @@ contract VerifyVaultC4 is Test {
 
     function setUp() public {
         registry = new InstanceRegistry(address(this));
-        adapterFactory = new CompositionSourceAdapterFactory();
+        adapterFactory = new CompositionSourceAdapterFactory(registry);
         sourceVerifier = new VerifyVerifier(keccak256("source-vkey"));
         composeVerifier = new VerifyVerifier(keccak256("compose-vkey"));
         _createSource(0);
@@ -139,13 +136,7 @@ contract VerifyVaultC4 is Test {
         assertEq(snapshot.checkpointWorkCount(c2), 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-      C4 (a) — the steady state of a compose instance: the second root
-      cannot be landed THROUGH THE VAULT at all, and its prover can
-      never be paid, even via the recovery `claim` path.
-    //////////////////////////////////////////////////////////////*/
-
-    function test_V1_UnchangedSourcesWedgeSubmitAndClaimAndBurnTheBounty() public {
+    function test_V1_UnchangedSourcesProduceDistinctAccumulatorBoundStatements() public {
         bytes32 R = keccak256("composed-allocation");
 
         vm.roll(1_000);
@@ -161,25 +152,13 @@ contract VerifyVaultC4 is Test {
         uint256 c1 = snapshot.trigger();
 
         vm.prank(proverB);
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(R)));
         vault.submitAndClaim(COMPOSE_INSTANCE, _args(c1, R, proverB));
 
-        // minPayoutUsd was 0 — "land it regardless of payment" — and the root still did not land.
-        assertEq(snapshot.lastAppliedCheckpoint(), c0, "verified root rolled back with the payment");
-
-        // The prover can still land it bare (permissionless), but then cannot be paid either.
-        vm.prank(proverB);
-        snapshot.submitProof(c1, R, bytes32(uint256(2)), "cid", 1_000, bytes32(0), proverB, "");
-        assertEq(snapshot.lastAppliedCheckpoint(), c1);
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(R)));
-        vault.claim(COMPOSE_INSTANCE, c1);
-        assertEq(vault.creditOf(proverB, address(0)), 0, "prover B permanently unpaid for real work");
+        assertEq(snapshot.lastAppliedCheckpoint(), c1, "verified root remained applied");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "prover B paid for distinct proof work");
     }
 
-    /// The wedge's precondition is FUNDING: `_settle` checks PolicyDisabled and CadenceNotElapsed
-    /// (both `_skip`) BEFORE `_requireUnpaidStatement` (the only REVERT). An unfunded compose
-    /// instance can therefore re-file a repeated root forever; a funded one cannot.
-    function test_V1b_OnlyAPayingComposeInstanceIsWedged() public {
+    function test_V1b_PolicyStateDoesNotChangeWhetherRepeatedOutputLands() public {
         bytes32 R = keccak256("composed-allocation");
 
         vm.roll(1_000);
@@ -187,7 +166,7 @@ contract VerifyVaultC4 is Test {
         vm.prank(proverA);
         vault.submitAndClaim(COMPOSE_INSTANCE, _args(c0, R, proverA));
 
-        // Turn the policy off: the duplicate statement is never reached.
+        // With policy off the root lands unpaid.
         vault.setPolicy(COMPOSE_INSTANCE, 0, 0);
         vm.roll(1_100);
         uint256 c1 = snapshot.trigger();
@@ -195,23 +174,17 @@ contract VerifyVaultC4 is Test {
         vault.submitAndClaim(COMPOSE_INSTANCE, _args(c1, R, proverB));
         assertEq(snapshot.lastAppliedCheckpoint(), c1, "unfunded/disabled: the repeat root lands");
 
-        // Turn it back on and the very same shape reverts again.
+        // With policy back on a new accumulator-bound proof lands and pays.
         vault.setPolicy(COMPOSE_INSTANCE, 0, uint96(50 * 1e8));
         vm.roll(1_200);
         uint256 c2 = snapshot.trigger();
         vm.prank(proverB);
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(R)));
         vault.submitAndClaim(COMPOSE_INSTANCE, _args(c2, R, proverB));
-        assertEq(snapshot.lastAppliedCheckpoint(), c1, "paying: the repeat root is rolled back");
+        assertEq(snapshot.lastAppliedCheckpoint(), c2, "paying: the repeat output still lands");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "paying policy credits distinct proof");
     }
 
-    /*//////////////////////////////////////////////////////////////
-      C4 (b) — `claim` on an OLD checkpoint marks the NEWEST
-      checkpoint's statement. Anyone can trigger it; the newest
-      prover's bounty is destroyed.
-    //////////////////////////////////////////////////////////////*/
-
-    function test_V2_ClaimOfOldCheckpointBurnsNewestBounty_AnyoneCanDoIt() public {
+    function test_V2_ClaimOfOldCheckpointCannotBurnNewestBounty() public {
         vm.roll(1_000);
         uint256 c0 = snapshot.trigger();
         snapshot.submitProof(c0, keccak256("root-0"), bytes32(uint256(1)), "cid0", 1_000, bytes32(0), proverA, "");
@@ -225,11 +198,9 @@ contract VerifyVaultC4 is Test {
         assertGt(vault.creditOf(proverA, address(0)), 0);
         assertEq(vault.creditOf(griefer, address(0)), 0, "the griefer gains nothing");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(keccak256("root-1")))
-        );
         vault.claim(COMPOSE_INSTANCE, c1);
-        assertFalse(vault.isClaimed(COMPOSE_INSTANCE, c1));
+        assertTrue(vault.isClaimed(COMPOSE_INSTANCE, c1));
+        assertGt(vault.creditOf(proverB, address(0)), 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -248,10 +219,11 @@ contract VerifyVaultC4 is Test {
         uint256 c1 = snapshot.trigger();
         snapshot.submitProof(c1, keccak256("root-1"), bytes32(uint256(2)), "cid", 1_000, bytes32(0), proverB, "");
 
-        // Settle c0 while c1's root is the latest: the vault marks c1's statement, not c0's.
+        // Settle c0 while c1's root is latest; c0 still uses its own accepted state.
         vault.claim(COMPOSE_INSTANCE, c0);
 
-        // A later checkpoint reproduces the exact statement c0 already paid for.
+        // A later checkpoint reproduces c0's output but has a different accumulator, so it is a
+        // different journal and legitimately earns another payment.
         vm.roll(1_200);
         uint256 c2 = snapshot.trigger();
         snapshot.submitProof(c2, R0, bytes32(uint256(1)), "cid", 1_000, bytes32(0), proverA, "");
@@ -300,10 +272,6 @@ contract VerifyVaultC4 is Test {
     /*//////////////////////////////////////////////////////////////
                                  FIXTURE
     //////////////////////////////////////////////////////////////*/
-
-    function _statement(bytes32 root) internal view returns (bytes32) {
-        return keccak256(abi.encode(address(snapshot), uint64(2), uint64(0), root));
-    }
 
     function _journal(uint256 cp, bytes32 root, address recipient) internal view returns (bytes32) {
         IAttestationAccumulator.Checkpoint memory c = accumulator.getCheckpoint(cp);

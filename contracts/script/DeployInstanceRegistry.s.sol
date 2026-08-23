@@ -45,7 +45,7 @@ contract DeployInstanceRegistry is Common {
         }
         require(admin != address(0), "DeployInstanceRegistry: admin is zero");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         InstanceRegistry instanceRegistry = new InstanceRegistry(admin);
         registry = address(instanceRegistry);

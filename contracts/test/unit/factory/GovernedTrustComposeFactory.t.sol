@@ -82,6 +82,7 @@ contract GovernedTrustComposeFactoryTest is Test {
     bytes32 internal constant SOURCE_PROGRAM = keccak256("trust-graph-weighted");
     bytes32 internal constant COMPOSE_VKEY = keccak256("composition vkey");
     bytes32 internal constant SOURCE_VKEY = keccak256("source vkey");
+    bytes32 internal constant SIGNER_VKEY = keccak256("compose factory signer guest");
     bytes32 internal constant FAMILY = keccak256("weighted-allocation-v1");
     bytes32 internal constant OUTPUT_KIND = keccak256("allocation");
     address internal constant REGISTRY_ADMIN = address(0xBE7);
@@ -101,6 +102,7 @@ contract GovernedTrustComposeFactoryTest is Test {
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    ComposeFactorySignerVerifier internal signerVerifier;
 
     MerkleSnapshot[] internal sourceSnapshots;
     MockAccumulator[] internal sourceAccumulators;
@@ -111,7 +113,7 @@ contract GovernedTrustComposeFactoryTest is Test {
 
     function setUp() public {
         registry = new InstanceRegistry(REGISTRY_ADMIN);
-        adapterFactory = new CompositionSourceAdapterFactory();
+        adapterFactory = new CompositionSourceAdapterFactory(registry);
         sourceVerifier = new ComposeProgramVerifier(SOURCE_VKEY);
         composeVerifier = new ComposeProgramVerifier(COMPOSE_VKEY);
         usdc = new TestUSDC();
@@ -144,8 +146,16 @@ contract GovernedTrustComposeFactoryTest is Test {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        signerVerifier = new ComposeFactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedTrustComposeFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            signerVerifier,
+            SIGNER_VKEY
         );
 
         _createSources(2);
@@ -211,6 +221,32 @@ contract GovernedTrustComposeFactoryTest is Test {
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
+    }
+
+    function test_PredeployedBootstrapSafeIsAdopted() public {
+        TrustComposeFactory.CreateArgs memory args = _args("front-run composition");
+        args.salt = bytes32(uint256(0xA10));
+        address[] memory owners = new address[](1);
+        owners[0] = address(governedFactory);
+        bytes memory initializer = abi.encodeWithSignature(
+            "setup(address[],uint256,address,bytes,address,address,uint256,address)",
+            owners,
+            1,
+            address(0),
+            bytes(""),
+            address(0),
+            address(0),
+            0,
+            address(0)
+        );
+        uint256 nonce = uint256(keccak256(abi.encode(block.chainid, creator, args.name, args.salt)));
+        address frontRun = address(safeFactory.createProxyWithNonce(address(safeSingleton), initializer, nonce));
+
+        vm.prank(creator);
+        (, address safe,,) = _createGoverned(args, _unpaidPolicy());
+
+        assertEq(safe, frontRun, "exact compose bootstrap Safe must be adopted");
+        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "adopted Safe must graduate normally");
     }
 
     function test_FactoryWrapperAndDeployersAreInertAfterCreation() public {
@@ -281,15 +317,8 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        bytes32 signerVKey = keccak256("compose factory signer guest");
-        ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(signerVKey);
         GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 5,
-            minThreshold: 2,
-            targetThresholdBps: 5000
+            enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustComposeFactory.CreateArgs memory args = _args("compose signer sync");
@@ -299,11 +328,14 @@ contract GovernedTrustComposeFactoryTest is Test {
 
         GovernedTrustComposeFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
+        assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
+        assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
         assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
         assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
+        assertEq(address(signer.zkVerifier()), address(signerVerifier), "immutable signer verifier");
 
         MerkleSnapshot scoreSnapshot = MerkleSnapshot(snapshot);
         vm.roll(uint256(scoreSnapshot.epochOriginBlock()) + EPOCH_FLOOR + 100);
@@ -364,43 +396,30 @@ contract GovernedTrustComposeFactoryTest is Test {
         assertEq(GnosisSafe(payable(safe)).getThreshold(), 2);
     }
 
-    function test_OptionalSignerRejectsVerifierProgramMismatchAtomically() public {
+    function test_ConstructorRejectsSignerVerifierProgramMismatch() public {
         bytes32 verifierVKey = keccak256("deployed compose signer guest");
         bytes32 suppliedVKey = keccak256("different compose signer guest");
-        ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(verifierVKey);
-        GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: suppliedVKey,
-            topN: 5,
-            minThreshold: 2,
-            targetThresholdBps: 5000
-        });
-
-        // Built BEFORE expectRevert: the args builder reads the adapters externally, and the
-        // cheatcode would otherwise attach to that staticcall instead of the factory call.
-        TrustComposeFactory.CreateArgs memory args = _args("mismatched compose signer");
-        GovernedTrustComposeFactory.InitialPolicy memory policy = _unpaidPolicy();
-        vm.prank(creator);
+        ComposeFactorySignerVerifier mismatchedVerifier = new ComposeFactorySignerVerifier(verifierVKey);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.SignerProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+                GovernedTrustComposeFactory.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
             )
         );
-        governedFactory.createGovernedInstance(args, policy, signerConfig);
-        assertEq(registry.instanceCount(), baselineInstanceCount, "invalid signer identity must roll back creation");
+        new GovernedTrustComposeFactory(
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            mismatchedVerifier,
+            suppliedVKey
+        );
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        bytes32 signerVKey = keccak256("compose factory signer guest");
-        ComposeFactorySignerVerifier signerVerifier = new ComposeFactorySignerVerifier(signerVKey);
         GovernedTrustComposeFactory.SignerSyncConfig memory signerConfig = GovernedTrustComposeFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(signerVerifier),
-            programVKey: signerVKey,
-            topN: 65,
-            minThreshold: 2,
-            targetThresholdBps: 5000
+            enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustComposeFactory.CreateArgs memory args = _args("unsafe compose selection");
@@ -648,14 +667,10 @@ contract GovernedTrustComposeFactoryTest is Test {
     }
 
     function _noSigner() internal pure returns (GovernedTrustComposeFactory.SignerSyncConfig memory) {
-        return GovernedTrustComposeFactory.SignerSyncConfig({
-            enabled: false,
-            verifier: address(0),
-            programVKey: bytes32(0),
-            topN: 0,
-            minThreshold: 0,
-            targetThresholdBps: 0
-        });
+        return
+            GovernedTrustComposeFactory.SignerSyncConfig({
+                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
+            });
     }
 
     function _createGoverned(

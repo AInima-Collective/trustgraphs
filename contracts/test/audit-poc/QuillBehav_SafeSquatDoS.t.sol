@@ -11,13 +11,17 @@ import {
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
 
-/// @notice `GovernedTrustgraphsFactory._createBootstrapSafe` derives its Safe CREATE2 nonce from
-///         `keccak256(chainid, creator, name, salt)` and its initializer from a constant shape, so
-///         both are fully predictable. `GnosisSafeProxyFactory.createProxyWithNonce` is
-///         permissionless and reverts "Create2 call failed" when the address already has code,
-///         so anyone can deploy the exact proxy first and brick that creator's governed creation.
+contract QuillBootstrapSignerVerifier is IZkVerifier {
+    bytes32 public constant programVKey = keccak256("quill-bootstrap-signer");
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
+
+/// @notice Regression for the predictable bootstrap address: an exact permissionlessly deployed
+///         Safe is adopted and graduated, so occupying it cannot brick governed creation.
 contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
     GnosisSafe internal safeSingleton;
@@ -30,13 +34,16 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         super.setUp();
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
+        QuillBootstrapSignerVerifier signerVerifier = new QuillBootstrapSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
             safeFactory,
             address(safeSingleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            signerVerifier,
+            signerVerifier.programVKey()
         );
     }
 
@@ -57,17 +64,13 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: false,
-            verifier: address(0),
-            programVKey: bytes32(0),
-            topN: 0,
-            minThreshold: 0,
-            targetThresholdBps: 0
-        });
+        return
+            GovernedTrustgraphsFactory.SignerSyncConfig({
+                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
+            });
     }
 
-    function test_AnyoneCanPreDeployTheBootstrapSafeAndBrickGovernedCreation() public {
+    function test_PredeployedBootstrapSafeCannotBrickGovernedCreation() public {
         TrustgraphsFactory.CreateArgs memory args = _args("member-owned");
         args.salt = bytes32(uint256(7));
 
@@ -88,18 +91,16 @@ contract QuillBehav_SafeSquatDoS is TrustgraphsFactoryBase {
         address squatted = address(safeFactory.createProxyWithNonce(address(safeSingleton), initializer, nonce));
         assertTrue(squatted.code.length > 0, "squatter deployed the wrapper's bootstrap Safe");
 
-        // 3. The victim's governed creation is now permanently unavailable for this
-        //    (creator, name, salt) triple.
+        // 3. The victim adopts the exact pristine Safe and completes creation normally.
         vm.prank(victim);
-        vm.expectRevert(bytes("Create2 call failed"));
-        governedFactory.createGovernedInstance(
+        (, address safe,,) = governedFactory.createGovernedInstance(
             args, GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}), _noSigner()
         );
+        assertEq(safe, squatted, "the exact bootstrap Safe is reusable, not a collision");
 
-        // 4. The squatted Safe is inert: its only owner is the wrapper, which exposes no path to
-        //    drive it outside `createGovernedInstance`. So the address is burned, not captured.
+        // 4. Atomic graduation still replaces the wrapper with the intended creator.
         address[] memory owners = GnosisSafe(payable(squatted)).getOwners();
         assertEq(owners.length, 1);
-        assertEq(owners[0], address(governedFactory), "orphan Safe is owned by the wrapper and unusable");
+        assertEq(owners[0], victim, "adopted Safe must graduate to the intended creator");
     }
 }

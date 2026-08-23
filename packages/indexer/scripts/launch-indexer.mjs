@@ -15,6 +15,7 @@ import {
   sameChainIdentity,
   toBlockTag,
 } from './chain-identity.mjs'
+import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const { Client } = pg
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -31,11 +32,8 @@ if (!['dev', 'start', 'serve', 'preflight'].includes(mode)) {
 dotenv.config({ path: path.join(indexerDir, '.env.local'), quiet: true })
 dotenv.config({ path: path.join(repoDir, '.env'), quiet: true })
 
-const deployment = process.env.DEPLOY_ENV?.trim().toUpperCase()
-if (deployment !== 'DEV' && deployment !== 'PROD') {
-  throw new Error('DEPLOY_ENV must be DEV or PROD')
-}
-const production = deployment === 'PROD'
+const deploymentProfile = resolveDeploymentProfile(process.env, repoDir)
+const production = deploymentProfile.production
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required')
@@ -48,7 +46,7 @@ const configuredProductionSchema =
   process.env.PONDER_DATABASE_SCHEMA ?? process.env.DATABASE_SCHEMA
 
 const rpcUrl = production
-  ? process.env.PONDER_RPC_URL_10
+  ? process.env[deploymentProfile.rpcEnv]
   : (process.env.PONDER_RPC_URL_31337 ??
     process.env.PONDER_RPC_URL ??
     process.env.RPC_URL ??
@@ -57,19 +55,17 @@ const rpcUrl = production
 if (!rpcUrl) {
   throw new Error(
     production
-      ? 'PONDER_RPC_URL_10 is required in production'
+      ? `${deploymentProfile.rpcEnv} is required for ${deploymentProfile.target}`
       : 'No local RPC URL is configured'
   )
 }
 
-const expectedChainId = production ? 10 : 31337
-const startBlock = production
-  ? parseStartBlock(
-      process.env.PONDER_START_BLOCK_10,
-      142_786_328,
-      'PONDER_START_BLOCK_10'
-    )
-  : parseStartBlock(process.env.PONDER_START_BLOCK, 1, 'PONDER_START_BLOCK')
+const expectedChainId = deploymentProfile.chainId
+const startBlock = parseStartBlock(
+  process.env[deploymentProfile.startBlockEnv],
+  deploymentProfile.defaultStartBlock,
+  deploymentProfile.startBlockEnv
+)
 
 function filesUnder(directory) {
   if (!fs.existsSync(directory)) return []
@@ -92,7 +88,7 @@ function indexerAppFingerprint() {
     path.join(indexerDir, 'offchain.schema.ts'),
     path.join(indexerDir, 'config', 'networks.json'),
     path.join(repoDir, 'pnpm-lock.yaml'),
-    path.join(repoDir, '.docker', 'deployment_summary.json'),
+    deploymentProfile.deploymentFile,
     path.join(repoDir, 'frontend', 'lib', 'contract-abis.ts'),
     path.join(repoDir, 'frontend', 'lib', 'pagerank', 'merkle.ts'),
     ...filesUnder(path.join(indexerDir, 'abis')),
@@ -152,14 +148,16 @@ async function blockAt(blockNumber) {
 }
 
 function deploymentAddresses() {
-  const summaryPath = path.join(repoDir, '.docker', 'deployment_summary.json')
+  const summaryPath = deploymentProfile.deploymentFile
   if (!fs.existsSync(summaryPath)) {
     throw new Error(
       `Missing ${summaryPath}. Deploy contracts before starting the indexer.`
     )
   }
 
-  const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
+  const summary =
+    deploymentProfile.deploymentSummary ??
+    JSON.parse(fs.readFileSync(summaryPath, 'utf8'))
   const addresses = new Set()
   const add = (value) => {
     if (
@@ -196,7 +194,7 @@ async function rpcPreflight() {
   const chainId = parseRpcQuantity(await rpc('eth_chainId'), 'chain id')
   if (chainId !== expectedChainId) {
     throw new Error(
-      `RPC chain id is ${chainId}, expected ${expectedChainId} for DEPLOY_ENV=${deployment}`
+      `RPC chain id is ${chainId}, expected ${expectedChainId} for ${deploymentProfile.stage}/${deploymentProfile.target}`
     )
   }
 
@@ -233,7 +231,7 @@ async function rpcPreflight() {
   }
   if (missingCode.length > 0) {
     throw new Error(
-      `Deployment summary does not match this chain; no code at ${missingCode.slice(0, 4).join(', ')}${missingCode.length > 4 ? ` (+${missingCode.length - 4} more)` : ''}. Recontracts/deploy/regenerate .docker/deployment_summary.json before indexing.`
+      `Deployment record does not match this chain; no code at ${missingCode.slice(0, 4).join(', ')}${missingCode.length > 4 ? ` (+${missingCode.length - 4} more)` : ''}. Regenerate ${deploymentProfile.deploymentFile} before indexing.`
     )
   }
 

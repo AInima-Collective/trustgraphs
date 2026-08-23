@@ -52,7 +52,8 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         Rejected,
         Passed,
         Executed,
-        Cancelled
+        Cancelled,
+        Expired
     }
 
     enum VoteType {
@@ -84,6 +85,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         bytes32 merkleRoot; // Snapshot of merkle root at proposal creation (startBlock)
         uint256 totalVotingPower; // Snapshot of total voting power at proposal creation (startBlock)
         uint256 quorumFraction; // Snapshot of the quorum fraction at proposal creation (startBlock)
+        uint256 executionDeadlineBlock; // Snapshot of both execution delay and closing edge
     }
 
     struct ActivityCheckpoint {
@@ -207,6 +209,12 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
     ///         Safe's funds in the same block its voting closes. ~1 day by default; governance can
     ///         tune it, but there is deliberately no zero-delay fast path baked in.
     uint256 public executionDelay = 7200; // ~1 day at 12s blocks
+
+    /// @notice Number of blocks for which a passed proposal may execute after its exit delay.
+    /// @dev Fixed at one week, matching the default voting period. Each proposal snapshots an
+    ///      absolute deadline at creation, so later delay changes cannot move either edge of its
+    ///      execution interval. The eligible blocks are `(endBlock + snapshottedDelay, deadline]`.
+    uint256 public constant EXECUTION_WINDOW = 50_400;
 
     /// @notice Targets a proposal action may `DelegateCall` (M-4). A delegatecall executes
     ///         arbitrary code IN THE SAFE'S CONTEXT, bypassing any Guard and able to rewrite
@@ -410,17 +418,17 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
 
     /// @notice Execute a successful proposal
     /// @param proposalId The proposal to execute
-    /// @dev M-4: only after `executionDelay` blocks past the voting end — the exit window between
-    ///      "passed" and "touching the Safe". M-8: a failed action REVERTS the whole execution
-    ///      (the proposal stays Passed and retryable) instead of being silently swallowed while
-    ///      the proposal is marked executed forever.
+    /// @dev M-4: only after the proposal's snapshotted delay past the voting end — the exit window
+    ///      between "passed" and "touching the Safe". M-7: execution also has a snapshotted closing
+    ///      edge. M-8: a failed action REVERTS the whole execution (the proposal stays Passed and
+    ///      retryable until its deadline) instead of being silently swallowed while marked executed.
     function execute(uint256 proposalId) external {
         if (state(proposalId) != ProposalState.Passed) {
             revert ProposalNotPassed();
         }
 
         Proposal storage proposal = proposals[proposalId];
-        uint256 executableAt = proposal.endBlock + executionDelay;
+        uint256 executableAt = proposal.executionDeadlineBlock - EXECUTION_WINDOW;
         if (block.number <= executableAt) revert ExecutionDelayNotElapsed(executableAt);
 
         proposal.executed = true;
@@ -486,6 +494,7 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         uint256 decisiveVotes = proposal.yesVotes + proposal.noVotes;
         uint256 quorumThreshold = Math.mulDiv(proposal.totalVotingPower, proposal.quorumFraction, QUORUM_RANGE);
         if (decisiveVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
+            if (currentBlock > proposal.executionDeadlineBlock) return ProposalState.Expired;
             return ProposalState.Passed;
         }
 
@@ -509,6 +518,14 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         proposal = proposals[proposalId];
         proposalState = state(proposalId);
         actions = proposalActions[proposalId];
+    }
+
+    /// @notice Read the execution deadline without decoding the full dynamic Proposal tuple.
+    /// @dev Kept as a narrow indexer seam: adding the deadline to Proposal changes its tuple ABI,
+    ///      while this scalar getter lets consumers adopt the closing edge independently.
+    function proposalExecutionDeadline(uint256 proposalId) external view returns (uint256) {
+        if (proposalId == 0 || proposalId > proposalCount) revert ProposalNotFound();
+        return proposals[proposalId].executionDeadlineBlock;
     }
 
     /// @notice Get proposal actions
@@ -655,6 +672,9 @@ contract MerkleGovModule is Module, IMerkleSnapshotHook {
         proposal.description = description;
         proposal.startBlock = block.number + votingDelay;
         proposal.endBlock = proposal.startBlock + votingPeriod;
+        // Snapshot the complete execution interval. Keeping the one-week window immutable lets a
+        // single absolute deadline also pin the proposal's lower edge: deadline - EXECUTION_WINDOW.
+        proposal.executionDeadlineBlock = proposal.endBlock + executionDelay + EXECUTION_WINDOW;
         proposal.merkleRoot = currentMerkleRoot;
         proposal.totalVotingPower = totalVotingPower;
         // Snapshot the quorum fraction alongside the total, so a later `setQuorum` cannot

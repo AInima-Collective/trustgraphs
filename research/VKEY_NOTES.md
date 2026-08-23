@@ -2,6 +2,34 @@
 
 Measured vkey-rotation behavior, moved out of the public docs (`docs/concepts/networks-and-programs.md`) because it is an engineering field record, not product documentation. The values below are from the dev box; deployment-grade vkeys must be derived on the pinned toolchain recorded in the deploy runbook.
 
+## Pre-testnet M2 cryptographic hardening batch — 2026-08-23
+
+All guest workspaces were explicitly rebuilt after the generic envelope-0 authorization moved to
+the registry-bound EIP-712 claim and contributions arithmetic gained the over-100% carve-out clamp.
+This is one coordinated build/rotation record, not seven independently deployable migrations.
+
+Toolchain: `cargo-prove sp1` commit `8252c29` (2026-06-25), `rustc +succinct 1.94.0-dev`, SP1
+SDK/runtime `6.3.1`, on this x86_64 Linux workspace. `cargo prove vkey --elf` derived every value
+directly from the rebuilt artifact. The public `trust-graph` host loads `trustgraph-program-v2`, so
+its deployable key is the v2 row; the legacy row remains recorded for complete dependency-closure
+evidence only.
+
+| Guest | Rebuilt ELF SHA-256 | Previous recorded vkey | Rebuilt vkey | Result |
+|---|---|---|---|---|
+| trust-graph (legacy multi-bin) | `4e199a4bd60e580276bf19411de54dbc0e5871facdf4e72f90a5fb07e5e4bc9e` | `0x00723920a73c15a283366452b7c57249bcf50fe729ce554e59cc6048178ef81c` | `0x004d63aa5d25037c9ff63293efb56152b4f9de9735dbe8310e66b6cbf9026cf0` | rotated |
+| signer-sync | `b77da9b47e5d39a541a8883dc47ad4b8ae2741f94d7fdec3d6dfac744682272b` | `0x001c86a2f4e7142e4ccce77ff222ec33728150c3479bd03aebfdf3000167c033` | `0x00cdf2fd7b8c5e143a00d9ebe4fb3ff12b6f1ffd28701b2ff898582cf9caa7c2` | rotated |
+| hypercerts | `15986b78d78e2678e1f89c5ddc081da730115a527d56c19e0d580c94d88900ae` | `0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe` | `0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe` | unchanged; modified EAS code is unreachable |
+| contributions | `0d5327faff8d0ef8ba9245dcc3ac45add66981d924febfcd4495c648dc9ec235` | `0x00e99c3dd09a7ccf7c669411f4e735817706c82bc7dbdc5273579c1c1d120274` | `0x00af1ddd4aa160f3627e462502537748522703857cff5a42365cc126974897c3` | rotated |
+| atproto-conformance | `8cf03cf04b71e69ca113991fd389b9d6e46b38fdbde9687d149810836f6a5ded` | not previously recorded | `0x0081a37913724cf24987da9fac2561ba14fa94c7ef857e83cb8fe82226b66e19` | baseline recorded |
+| trustgraph-program-v2 | `9ac8e79e3e2c4eda190bfc649766c62500876a5595d91f8c2257ec293f21ff04` | `0x009fd32b243328e6fc18cca955c291275421e3d521a46e4cd6f7139d2d00c32b` | `0x0075af868e1b7f0f4a174ca6016b483b6f96b2cd0470b2e7442e57eab778ce2a` | rotated |
+| nostr-workspace | `8c7622ebbb9839e51b8b8b5e98688dee532d46347827902abb457529d4a0e0b5` | `0x005c0c02eea0c6525bac01ba2e8c7a24555018be59dce944354090a960115429` | `0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed` | rotated |
+
+The canonical trust-graph/signer golden params hash rotated from
+`0xa27bc7ee11e51a36945dba9ffb9f4351e02d4c1c69509d357df39ffc314ca0f1` to
+`0xa8ab5ec908b6a0ec70138497852a9ea2b351bda5c3d824b5a35a4489cc1a8b68`; it now pins a
+nonzero minimum weight, two ordered envelope-domain separators, their non-empty domain-set hash,
+and a nonzero lane-2 maximum head age.
+
 ## Scoring production release (M1 + M2 + M3a) — 2026-08-23
 
 Clean release evidence was derived after explicitly rebuilding every guest workspace with

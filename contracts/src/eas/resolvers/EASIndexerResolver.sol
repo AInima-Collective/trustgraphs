@@ -25,6 +25,10 @@ import {AttestationAccumulator} from "../AttestationAccumulator.sol";
 ///
 ///      A permissionless factory turns that from "one resolver we control" into "one per
 ///      community", so the binding is enforced here rather than left as a deployment convention.
+///
+///      Accepted vouches are deliberately non-expiring. Time passing cannot append the revocation
+///      leaf required to remove an edge from the proven graph, so a nonzero `expirationTime` is
+///      rejected at ingress; removing a vouch requires an explicit EAS revocation.
 contract EASIndexerResolver is SchemaResolver, AttestationAccumulator {
     /// @notice The one schema this resolver accepts. Zero until bound.
     bytes32 public boundSchema;
@@ -34,21 +38,22 @@ contract EASIndexerResolver is SchemaResolver, AttestationAccumulator {
 
     /// @notice `bindSchema` was called a second time, or with the zero UID.
     error SchemaAlreadyBound();
+    /// @notice An attestation arrived before this resolver was bound to its schema.
+    error SchemaNotBound();
     /// @notice An attestation arrived for a schema this resolver is not the accumulator for.
     error ForeignSchema(bytes32 schemaUid, bytes32 expected);
+    /// @notice Trust-graph vouches cannot expire without an explicit revocation accumulator leaf.
+    error ExpirationNotSupported(uint64 expirationTime);
 
     /// @notice Creates a new EASIndexerResolver instance.
     /// @param eas The EAS contract instance.
     constructor(IEAS eas) SchemaResolver(eas) {}
 
     /// @notice Bind this resolver to its vouching schema. Callable exactly once, by anyone.
-    /// @dev Permissionless and one-shot on purpose. The schema UID commits to this resolver's own
-    ///      address (`keccak256(schema, resolver, revocable)`), so the caller cannot choose a UID
-    ///      that belongs to anyone else's instance — there is nothing here worth gating, and an
-    ///      owner would be one more thing to lose. Until it is bound the resolver accepts
-    ///      everything, exactly as before, so the deployment sequence
-    ///      (deploy resolver → register schema → bind) is unchanged apart from the last step.
-    ///      `TrustgraphsFactory` does all three in one transaction, leaving no unbound window.
+    /// @dev Permissionless and one-shot by design. Deployers must register and bind atomically when
+    ///      availability matters because any caller can supply an arbitrary nonzero UID first.
+    ///      Until binding, every attestation reverts so a foreign leaf cannot poison the permanent
+    ///      chained accumulator. `TrustgraphsFactory` does deploy, register and bind atomically.
     function bindSchema(bytes32 schemaUid) external {
         if (boundSchema != bytes32(0) || schemaUid == bytes32(0)) revert SchemaAlreadyBound();
         boundSchema = schemaUid;
@@ -60,7 +65,8 @@ contract EASIndexerResolver is SchemaResolver, AttestationAccumulator {
     ///      be protected, since `acc` is a chained hash with no way to remove an entry.
     function _requireBoundSchema(bytes32 schemaUid) private view {
         bytes32 bound = boundSchema;
-        if (bound != bytes32(0) && schemaUid != bound) revert ForeignSchema(schemaUid, bound);
+        if (bound == bytes32(0)) revert SchemaNotBound();
+        if (schemaUid != bound) revert ForeignSchema(schemaUid, bound);
     }
 
     /// @notice Indexes the attestation upon creation and folds it into the accumulator.
@@ -75,6 +81,9 @@ contract EASIndexerResolver is SchemaResolver, AttestationAccumulator {
         returns (bool)
     {
         _requireBoundSchema(attestation.schema);
+        if (attestation.expirationTime != 0) {
+            revert ExpirationNotSupported(attestation.expirationTime);
+        }
 
         // Emitted so off-chain indexers can consume attestation events generically.
         emit IEAS.Attested(attestation.recipient, attestation.attester, attestation.uid, attestation.schema);

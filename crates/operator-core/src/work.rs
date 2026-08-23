@@ -7,8 +7,35 @@ use crate::types::{InstanceSize, Program};
 use serde::{Deserialize, Serialize};
 
 pub const COST_MODEL_VERSION: u16 = 1;
-pub const CAPABILITY_PROFILE_VERSION: u16 = 1;
+pub const CAPABILITY_PROFILE_VERSION: u16 = 2;
 pub const OPERATOR_CYCLE_LIMIT: u64 = 8_000_000_000;
+
+/// Largest fully calibrated raw/live-record row in the published SP1 v6.3.1 matrix.
+pub const DEFAULT_MAX_RAW_RECORDS: u64 = 1_800;
+/// Stage-1 must admit the calibrated row before reconstruction: two endpoints per raw record.
+pub const DEFAULT_MAX_UNIQUE_NODES: u64 = DEFAULT_MAX_RAW_RECORDS * 2;
+/// Independent memory-safety ceiling. The published matrix does not establish a byte maximum.
+pub const DEFAULT_MAX_WITNESS_BYTES: u64 = 128 * 1024 * 1024;
+
+fn default_profile_version() -> u16 {
+    CAPABILITY_PROFILE_VERSION
+}
+
+fn default_max_raw_records() -> u64 {
+    DEFAULT_MAX_RAW_RECORDS
+}
+
+fn default_max_unique_nodes() -> u64 {
+    DEFAULT_MAX_UNIQUE_NODES
+}
+
+fn default_max_witness_bytes() -> u64 {
+    DEFAULT_MAX_WITNESS_BYTES
+}
+
+fn default_max_iterations() -> u64 {
+    100
+}
 
 /// Authenticated work shape known after input reconstruction and native execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,14 +230,24 @@ pub struct CapabilityViolation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilityProfile {
+    /// The binary owns the profile schema version; configuration may tune limits, not relabel it.
+    #[serde(skip_deserializing, default = "default_profile_version")]
     pub version: u16,
+    #[serde(default = "default_max_raw_records", alias = "max_raw_records")]
     pub max_raw_records: u64,
+    #[serde(default = "default_max_raw_records", alias = "max_live_edges")]
     pub max_live_edges: u64,
+    #[serde(default = "default_max_unique_nodes", alias = "max_unique_nodes")]
     pub max_unique_nodes: u64,
+    #[serde(default = "default_max_raw_records", alias = "max_out_degree")]
     pub max_out_degree: u64,
+    #[serde(default = "default_max_witness_bytes", alias = "max_witness_bytes")]
     pub max_witness_bytes: u64,
+    #[serde(default = "default_max_raw_records", alias = "max_lane2_anchors")]
     pub max_lane2_anchors: u64,
+    #[serde(default = "default_max_raw_records", alias = "max_signature_checks")]
     pub max_signature_checks: u64,
+    #[serde(default = "default_max_iterations", alias = "max_iterations")]
     pub max_iterations: u64,
 }
 
@@ -218,16 +255,25 @@ impl Default for CapabilityProfile {
     fn default() -> Self {
         Self {
             version: CAPABILITY_PROFILE_VERSION,
-            max_raw_records: 50_000,
-            max_live_edges: 50_000,
-            max_unique_nodes: 10_000,
-            max_out_degree: 10_000,
-            max_witness_bytes: 128 * 1024 * 1024,
-            max_lane2_anchors: 10_000,
-            max_signature_checks: 25_000,
-            max_iterations: 100,
+            max_raw_records: DEFAULT_MAX_RAW_RECORDS,
+            max_live_edges: DEFAULT_MAX_RAW_RECORDS,
+            max_unique_nodes: DEFAULT_MAX_UNIQUE_NODES,
+            max_out_degree: DEFAULT_MAX_RAW_RECORDS,
+            max_witness_bytes: DEFAULT_MAX_WITNESS_BYTES,
+            max_lane2_anchors: DEFAULT_MAX_RAW_RECORDS,
+            max_signature_checks: DEFAULT_MAX_RAW_RECORDS,
+            max_iterations: default_max_iterations(),
         }
     }
+}
+
+/// Most-consumed monotonic-ingress dimension in a capability profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CapabilityDimensionUsage {
+    pub profile_version: u16,
+    pub dimension: CapabilityDimension,
+    pub observed: u64,
+    pub limit: u64,
 }
 
 impl CapabilityProfile {
@@ -267,6 +313,37 @@ impl CapabilityProfile {
         }
         Ok(())
     }
+
+    /// Returns the input-growing dimension nearest its configured ceiling. Witness bytes and
+    /// iteration limits are deliberately excluded: they are prepared-input/parameter gates, not
+    /// monotonic ingress counters, so using them for the irreversible-input alert would page on a
+    /// healthy empty instance whose configured `max_iterations` equals the host maximum.
+    pub fn limiting_ingress_dimension(self, work: WorkProfile) -> CapabilityDimensionUsage {
+        let checks = [
+            (CapabilityDimension::RawRecords, work.raw_records, self.max_raw_records),
+            (CapabilityDimension::LiveEdges, work.live_edges, self.max_live_edges),
+            (CapabilityDimension::UniqueNodes, work.unique_nodes, self.max_unique_nodes),
+            (CapabilityDimension::MaxOutDegree, work.max_out_degree, self.max_out_degree),
+            (CapabilityDimension::Lane2Anchors, work.lane2_anchors, self.max_lane2_anchors),
+            (
+                CapabilityDimension::SignatureChecks,
+                work.signature_checks,
+                self.max_signature_checks,
+            ),
+        ];
+        let mut limiting = checks[0];
+        for candidate in checks.into_iter().skip(1) {
+            let (_, observed, limit) = limiting;
+            let (_, candidate_observed, candidate_limit) = candidate;
+            if u128::from(candidate_observed) * u128::from(limit)
+                > u128::from(observed) * u128::from(candidate_limit)
+            {
+                limiting = candidate;
+            }
+        }
+        let (dimension, observed, limit) = limiting;
+        CapabilityDimensionUsage { profile_version: self.version, dimension, observed, limit }
+    }
 }
 
 #[cfg(test)]
@@ -298,6 +375,78 @@ mod tests {
             set(&mut work, dimension, limit + 1);
             assert_eq!(cap.check(work).unwrap_err().dimension, dimension);
         }
+    }
+
+    #[test]
+    fn shipped_profile_is_anchored_to_the_largest_calibrated_graph_row() {
+        let cap = CapabilityProfile::default();
+        let calibrated = WorkProfile::from_raw_bounds(
+            Program::Trustgraphs,
+            InstanceSize {
+                leaf_count: 1_800,
+                anchor_count: 0,
+                max_iterations: 100,
+                seed_count: 0,
+                authenticated_cycles: None,
+            },
+        );
+        assert_eq!(calibrated.raw_records, 1_800);
+        assert_eq!(calibrated.unique_nodes, 3_600);
+        assert_eq!(cap.check(calibrated), Ok(()));
+
+        let one_over = WorkProfile::from_raw_bounds(
+            Program::Trustgraphs,
+            InstanceSize { leaf_count: 1_801, ..InstanceSize::default() },
+        );
+        assert_eq!(cap.check(one_over).unwrap_err().dimension, CapabilityDimension::RawRecords);
+    }
+
+    #[test]
+    fn unchanged_cycle_limit_would_bind_at_3468_if_the_profile_were_raised() {
+        let estimate = |inputs| {
+            WorkProfile::from_raw_bounds(
+                Program::Trustgraphs,
+                InstanceSize {
+                    leaf_count: inputs,
+                    anchor_count: 0,
+                    max_iterations: 100,
+                    seed_count: 0,
+                    authenticated_cycles: None,
+                },
+            )
+            .estimate()
+            .total
+        };
+        assert!(estimate(3_467) <= OPERATOR_CYCLE_LIMIT);
+        assert!(estimate(3_468) > OPERATOR_CYCLE_LIMIT);
+    }
+
+    #[test]
+    fn partial_configuration_uses_profile_defaults_and_cannot_relabel_version() {
+        let cap: CapabilityProfile =
+            serde_json::from_str(r#"{"version":999,"maxRawRecords":42}"#).unwrap();
+        assert_eq!(cap.version, CAPABILITY_PROFILE_VERSION);
+        assert_eq!(cap.max_raw_records, 42);
+        assert_eq!(cap.max_unique_nodes, DEFAULT_MAX_UNIQUE_NODES);
+        assert_eq!(cap.max_witness_bytes, DEFAULT_MAX_WITNESS_BYTES);
+    }
+
+    #[test]
+    fn ingress_utilization_ignores_static_iteration_and_witness_limits() {
+        let cap = CapabilityProfile::default();
+        let work = WorkProfile {
+            raw_records: 900,
+            live_edges: 900,
+            unique_nodes: 1_800,
+            max_out_degree: 900,
+            witness_bytes: cap.max_witness_bytes,
+            max_iterations: 100,
+            iterations_run: 100,
+            ..WorkProfile::default()
+        };
+        let usage = cap.limiting_ingress_dimension(work);
+        assert_eq!(usage.dimension, CapabilityDimension::RawRecords);
+        assert_eq!((usage.observed, usage.limit), (900, 1_800));
     }
 
     fn set(work: &mut WorkProfile, dimension: CapabilityDimension, value: u64) {

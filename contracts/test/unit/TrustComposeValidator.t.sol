@@ -12,6 +12,11 @@ contract TrustComposeValidatorHarness {
         return TrustComposeParamsCodec.hash(params);
     }
 
+    function validateCreation(TrustComposeParamsCodec.Params calldata params) external pure {
+        TrustComposeParamsCodec.Params memory copy = params;
+        TrustComposeValidator.validateCreation(copy);
+    }
+
     function validate(TrustComposeParamsCodec.Params calldata params, bytes calldata manifest)
         external
         pure
@@ -177,6 +182,23 @@ contract TrustComposeValidatorTest is Test {
         params.admittedProgramId = params.programId;
         vm.expectPartialRevert(TrustComposeValidator.InvalidAdmittedProgram.selector);
         harness.validate(params, manifest);
+
+        params = _params();
+        params.outputPool = params.maxSources - 1;
+        vm.expectRevert(TrustComposeValidator.InvalidOutputPool.selector);
+        harness.validate(params, manifest);
+
+        // Creation has no derived sourceCount yet, so it must reserve enough pool for every
+        // source a later policy rotation may admit.
+        params = _params();
+        params.sourcePolicyRoot = bytes32(0);
+        params.sourceCount = 0;
+        params.policyManifestSha256 = bytes32(0);
+        params.accumulator = address(0);
+        params.chainId = 0;
+        params.outputPool = params.maxSources - 1;
+        vm.expectRevert(TrustComposeValidator.InvalidOutputPool.selector);
+        harness.validateCreation(params);
 
         params = _params();
         params.maxSources = 9;

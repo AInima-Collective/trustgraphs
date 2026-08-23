@@ -12,6 +12,7 @@ import {ContributionsParamsCodec} from "src/params/ContributionsParamsCodec.sol"
 import {ContributionsParamsValidator} from "src/params/ContributionsParamsValidator.sol";
 import {ContributionsParamsController} from "src/factory/ContributionsParamsController.sol";
 import {ContributionsParamsControllerDeployer} from "src/factory/ContributionsInstanceDeployers.sol";
+import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
@@ -67,8 +68,9 @@ contract ContributionsFactory {
         string metadataURI;
         /// The full 21-field contributions params (see `ContributionsParamsValidator`).
         ContributionsParamsCodec.Params params;
-        /// Holder of the snapshot's constitutional role, the controller, and the distributor.
-        /// Zero ⇒ `msg.sender`.
+        /// Initialized Safe holding the snapshot's constitutional role, controller, and
+        /// distributor. Zero resolves to `msg.sender` and therefore works only when the caller is
+        /// itself an initialized Safe.
         address admin;
         /// Requested epoch length in blocks; raised to `EPOCH_FLOOR` if lower.
         uint64 epochLength;
@@ -118,7 +120,8 @@ contract ContributionsFactory {
     ///         docs/build/contributions/interfaces.md §1 (comma-separated without spaces — the
     ///         canonical registered form). Uniform on purpose, like the vouch schema: the guest,
     ///         indexer and frontend all decode these exact field layouts.
-    string public constant CLAIM_SCHEMA = "string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares";
+    string public constant CLAIM_SCHEMA =
+        "string title,bytes32 contentHash,string uri,address[] contributors,uint32[] shares";
     string public constant RESPONSE_SCHEMA = "bytes32 claimUID,uint8 response";
     string public constant VALUATION_SCHEMA = "bytes32 claimUID,uint8 score";
 
@@ -163,6 +166,8 @@ contract ContributionsFactory {
     error ZeroAddress();
     error ZeroEpochFloor();
     error InvalidAdmin();
+    /// @notice Every contributions round includes funds, so its admin must be an initialized Safe.
+    error InvalidDistributorSafe(address owner);
     error EmptyName();
     error NameTooLong(uint256 length);
     /// @notice The verifier has no readable `programVKey()`, or the supplied vkey is zero.
@@ -261,6 +266,7 @@ contract ContributionsFactory {
         //        parent fails here with a typed error. The record's accumulator (the parent's
         //        `EASIndexerResolver`) is what the mirror wraps for journal slot A.
         address trustAccumulator = _requireParentAuthority(args.parentInstanceId, msg.sender);
+        if (!SafeOwnerPolicy.isSafe(admin)) revert InvalidDistributorSafe(admin);
 
         // --- 2. The contribution accumulator + its three schemas. ----------------------------
         //        The resolver is inline CREATE so this factory is its `schemaAdmin`-designate and
@@ -296,8 +302,9 @@ contract ContributionsFactory {
         // --- 5. The two-lane snapshot. The factory takes both roles transiently: --------------
         //        `setAnchorRegistry` / `setEpochLength` are constitutional-only and not
         //        constructor arguments, and the controller's constructor needs this address.
-        MerkleSnapshot merkleSnapshot =
-            SNAPSHOT_DEPLOYER.deploy(VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this));
+        MerkleSnapshot merkleSnapshot = SNAPSHOT_DEPLOYER.deploy(
+            VERIFIER, paramsHash, IAttestationAccumulator(mirror), address(this), address(this)
+        );
         snapshot = address(merkleSnapshot);
 
         //        Enable the accepted-state provenance history now, while zero states exist — the
@@ -321,9 +328,8 @@ contract ContributionsFactory {
         merkleSnapshot.setEpochLength(epochLength);
 
         // --- 6. The typed controller, then hand every role over. GRANT BEFORE RENOUNCE. -------
-        ContributionsParamsController controller = PARAMS_CONTROLLER_DEPLOYER.deploy(
-            instanceId, snapshot, address(EAS), INSTANCE_REGISTRY, params, admin
-        );
+        ContributionsParamsController controller =
+            PARAMS_CONTROLLER_DEPLOYER.deploy(instanceId, snapshot, address(EAS), INSTANCE_REGISTRY, params, admin);
         merkleSnapshot.grantRole(merkleSnapshot.OPERATIONAL_ROLE(), address(controller));
         merkleSnapshot.renounceRole(merkleSnapshot.OPERATIONAL_ROLE(), address(this));
         merkleSnapshot.grantRole(merkleSnapshot.CONSTITUTIONAL_ROLE(), admin);

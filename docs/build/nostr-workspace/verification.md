@@ -27,7 +27,7 @@ are available.
 
 Expected frozen facts:
 
-- vkey `0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3`;
+- vkey `0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed`;
 - params hash `0xaf83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd`;
 - epoch-1 production execution: 6,845,293 cycles, root
   `0xc4de11709437734678cc026014c6162ffb7cda01b5aac93c8ba5a8091bd96678`;

@@ -3,10 +3,15 @@ pragma solidity ^0.8.22;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
-import {IEAS, AttestationRequest, AttestationRequestData} from
-    "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
-import {ISchemaRegistry, SchemaRegistry} from
-    "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
+import {
+    IEAS,
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {
+    ISchemaRegistry,
+    SchemaRegistry
+} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";

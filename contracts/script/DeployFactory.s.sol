@@ -94,7 +94,7 @@ contract DeployFactory is Common {
                 : vm.envOr("PROVING_VAULT", address(0))
         );
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         // The two children whose creation code will not fit inside the factory (EIP-170).
         MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();

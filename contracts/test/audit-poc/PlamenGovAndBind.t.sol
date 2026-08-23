@@ -25,8 +25,10 @@ import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contr
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
-import {AttestationRequest, AttestationRequestData} from
-    "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 
 /*//////////////////////////////////////////////////////////////
                               MOCKS
@@ -142,11 +144,11 @@ contract PlamenGovAndBind is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-      P-1  A passed proposal never expires: it stays executable for
-           ever, across a complete turnover of the score root that
-           granted its mandate.
+      P-1  A passed proposal expires after its snapshotted execution
+           window, including across a complete turnover of the score
+           root that granted its mandate.
     //////////////////////////////////////////////////////////////*/
-    function test_P1_PassedProposalNeverExpires_ExecutesAfterFullRootTurnover() public {
+    function test_P1_PassedProposalExpiresAfterFullRootTurnover() public {
         PlamenTarget t = new PlamenTarget();
 
         address[] memory targets = new address[](1);
@@ -186,14 +188,13 @@ contract PlamenGovAndBind is Test {
         snap.pushUpdate(address(gov));
         assertEq(gov.currentMerkleRoot(), newRoot, "root rotated");
 
-        // Two years of blocks later the stale proposal is STILL Passed and STILL executable.
+        // Two years of blocks later the stale proposal is expired and inert.
         vm.roll(block.number + 5_000_000);
-        assertEq(
-            uint256(gov.state(id)), uint256(MerkleGovModule.ProposalState.Passed), "still Passed after 2 years"
-        );
+        assertEq(uint256(gov.state(id)), uint256(MerkleGovModule.ProposalState.Expired), "not Expired after 2 years");
 
+        vm.expectRevert(MerkleGovModule.ProposalNotPassed.selector);
         gov.execute(id);
-        assertEq(t.value(), 42, "stale proposal executed against the Safe long after its root died");
+        assertEq(t.value(), 0, "stale proposal executed against the Safe long after its root died");
     }
 
     function _endBlock(uint256 id) internal view returns (uint256) {
@@ -214,8 +215,7 @@ contract PlamenGovAndBind is Test {
         address[] memory owners = new address[](1);
         owners[0] = creator;
         GnosisSafe s2 = GnosisSafe(
-            payable(
-                address(
+            payable(address(
                     safeFactory.createProxyWithNonce(
                         address(safeSingleton),
                         abi.encodeWithSignature(
@@ -231,8 +231,7 @@ contract PlamenGovAndBind is Test {
                         ),
                         uint256(2)
                     )
-                )
-            )
+                ))
         );
 
         MerkleGovModule g2 = new MerkleGovModule(address(s2), address(s2), address(s2), address(fresh));
@@ -317,7 +316,8 @@ contract PlamenGovAndBind is Test {
         EASIndexerResolver resolver = new EASIndexerResolver(IEAS(address(eas)));
 
         // Operator registers the real schema (tx 2).
-        bytes32 realUid = registry.register("string comment,uint256 confidence", ISchemaResolver(address(resolver)), true);
+        bytes32 realUid =
+            registry.register("string comment,uint256 confidence", ISchemaResolver(address(resolver)), true);
 
         // Griefer front-runs tx 3 with a UID that has nothing to do with this resolver.
         bytes32 junk = keccak256("not-a-schema-of-this-resolver");
@@ -331,9 +331,7 @@ contract PlamenGovAndBind is Test {
 
         // And the instance is dead: every attestation on the real schema now reverts.
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(EASIndexerResolver.ForeignSchema.selector, realUid, junk)
-        );
+        vm.expectRevert(abi.encodeWithSelector(EASIndexerResolver.ForeignSchema.selector, realUid, junk));
         eas.attest(
             AttestationRequest({
                 schema: realUid,

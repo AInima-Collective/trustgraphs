@@ -129,23 +129,28 @@ contract PashovMath_ComposeOutputPoolTest is Test {
         assertEq(uint256(w[0]) + w[1] + w[2], uint256(TrustComposeValidator.WEIGHT_SCALE));
     }
 
-    /// The validator accepts an `outputPool` the guest provably cannot allocate.
-    function test_ValidatorAcceptsOutputPoolBelowSourceCount() public view {
+    /// The validator reserves pool headroom for every source a future policy may admit.
+    function test_ValidatorRejectsOutputPoolBelowMaximumSourceCount() public {
         TrustComposeParamsCodec.Params memory p = _params();
         assertEq(p.sourceCount, 3, "golden policy has 3 required sources");
 
-        // 1 unit of pool, 3 required sources: this passes every on-chain check.
+        // 1 unit of pool, 3 required sources: the guest cannot allocate this policy.
         p.outputPool = 1;
-        TrustComposeValidator.Commitment memory c = harness.validateFinal(p, manifest);
-        assertEq(c.sourceCount, 3);
+        vm.expectRevert(TrustComposeValidator.InvalidOutputPool.selector);
+        harness.validateFinal(p, manifest);
 
-        // ...and the creation-path validator accepts it too.
+        // Creation has not derived sourceCount yet. Checking maxSources here also prevents a
+        // later source-count rotation from bricking an initially valid instance.
         TrustComposeParamsCodec.Params memory creation = p;
         creation.sourcePolicyRoot = bytes32(0);
         creation.sourceCount = 0;
         creation.policyManifestSha256 = bytes32(0);
         creation.accumulator = address(0);
         creation.chainId = 0;
+        vm.expectRevert(TrustComposeValidator.InvalidOutputPool.selector);
+        harness.validateCreation(creation);
+
+        creation.outputPool = creation.maxSources;
         harness.validateCreation(creation);
     }
 

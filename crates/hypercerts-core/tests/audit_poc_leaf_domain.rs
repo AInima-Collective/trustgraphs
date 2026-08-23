@@ -3,6 +3,7 @@
 //! The hypercerts and nostr-workspace output trees mix TWO leaf families in ONE untagged tree:
 //!   * `compute::node_output_leaf(nodeId, value)`   — keccak(keccak(bytes32 ‖ uint256))
 //!   * `zk_core::merkle::output_leaf(account, v)`   — keccak(keccak(address-word ‖ uint256))
+//!
 //! They are the same function of a 32-byte key. Nothing in the encoding distinguishes them, so
 //! the only separation is that `nodeId = keccak(did)` is unlikely to have 12 leading zero bytes.
 //!

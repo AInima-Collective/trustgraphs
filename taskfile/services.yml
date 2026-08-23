@@ -16,13 +16,13 @@ tasks:
 
         PORT=8545
         FORK_RPC_URL=${FORK_RPC_URL:-"${RPC_URL}"}
-        DEPLOY_ENV=$(task get-deploy-status)
+        DEPLOY_TARGET=$(task get-deploy-target)
 
         ## == Base Anvil Testnet Fork ==
-        if [ "$DEPLOY_ENV" = "PROD" ]; then
-          echo "Running in production mode, nothing to do"
+        if [ "$DEPLOY_TARGET" != "local" ]; then
+          echo "Targeting $DEPLOY_TARGET, no local services to start"
           exit 0
-        elif [ "$DEPLOY_ENV" = "DEV" ]; then
+        elif [ "$DEPLOY_TARGET" = "local" ]; then
           # anvil --fork-url ${FORK_RPC_URL} --port ${PORT} &
           # removed the fork-url since this moved off of eigen and does not need (constantly hitting a Error: Failed to send transaction Context: - server returned an error response: error code -32003: Insufficient funds for gas * price + value)
           # anvil --port $PORT &
@@ -39,17 +39,15 @@ tasks:
 
           echo "Started..."
           wait
-        else
-          echo "Unknown DEPLOY_ENV: $DEPLOY_ENV (must be DEV or PROD)" >&2
-          exit 1
         fi
 
   stop-all:
     desc: 'Stop all local services'
     cmds:
       - |
-        if [ "$DEPLOY_ENV" = "PROD" ]; then
-          echo "Running in production mode, nothing to do"
+        DEPLOY_TARGET=$(task get-deploy-target)
+        if [ "$DEPLOY_TARGET" != "local" ]; then
+          echo "Targeting $DEPLOY_TARGET, no local services to stop"
           exit 0
         fi
 

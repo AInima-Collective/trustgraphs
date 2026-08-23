@@ -300,9 +300,9 @@ pub struct InstanceState {
     /// Current combined lane work used for the irreversible ingress-cap alert. `size` may instead
     /// describe the newest pending checkpoint, which is the proof we are actually pricing.
     pub live_input_work: u64,
-    /// The earliest authenticated input ceiling the operator must alert against. New bounded
-    /// anchor registries publish their immutable cap; legacy/no-lane-2 instances use the global
-    /// vault/operator ceiling.
+    /// The instance's authenticated protocol ingress ceiling. New bounded anchor registries
+    /// publish their lower immutable cap; legacy/no-lane-2 instances use the global protocol
+    /// ceiling. Operator-local capability and cycle ceilings are evaluated separately.
     pub input_capacity: u64,
 
     pub in_flight: Option<InFlight>,

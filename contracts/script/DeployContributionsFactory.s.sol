@@ -100,7 +100,7 @@ contract DeployContributionsFactory is Common {
             console.log("CONTRIBUTIONS_PROGRAM_VKEY unset: using the dev placeholder vkey");
         }
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         // One shared verifier per (chain, contributions vkey) — every round reuses it, exactly
         // like the trust-graph verifier. The factory constructor cross-checks its programVKey().
@@ -151,9 +151,7 @@ contract DeployContributionsFactory is Common {
         _json.serialize("zk_verifier", Strings.toChecksumHexString(address(verifier)));
         _json.serialize("snapshot_deployer", Strings.toChecksumHexString(snapshotDeployer));
         _json.serialize("distributor_deployer", Strings.toChecksumHexString(distributorDeployer));
-        _json.serialize(
-            "params_controller_deployer", Strings.toChecksumHexString(address(paramsControllerDeployer))
-        );
+        _json.serialize("params_controller_deployer", Strings.toChecksumHexString(address(paramsControllerDeployer)));
         _json.serialize("epoch_floor", uint256(epochFloor));
         string memory finalJson = _json.serialize("contributions_factory", Strings.toChecksumHexString(factory));
         vm.writeFile(string.concat(root, "/.docker/contributions_factory_deploy.json"), finalJson);

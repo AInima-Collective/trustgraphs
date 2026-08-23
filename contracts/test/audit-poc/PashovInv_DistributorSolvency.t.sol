@@ -123,13 +123,11 @@ contract PashovInv_DistributorSolvency is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-      INVARIANT BROKEN #1 — there is no per-distribution spend cap.
-      All distributions of one token share one balance, and `claim`
-      never checks that a distribution has anything left, so a tree
-      whose leaf values exceed its recorded `totalMerkleValue` pays
-      out of a *different* funder's round.
+      H-3 REGRESSION — the per-distribution spend cap contains even a
+      malicious tree whose leaf values exceed its recorded
+      `totalMerkleValue` to that round's own budget.
     //////////////////////////////////////////////////////////////*/
-    function test_OneDistributionDrainsAnotherFundersRound() public {
+    function test_H3_OneDistributionCannotDrainAnotherFundersRound() public {
         // Round 0: an honest third party funds 1000 tokens against the live proven root.
         token.mint(funderA, 1_000 ether);
         vm.startPrank(funderA);
@@ -154,18 +152,20 @@ contract PashovInv_DistributorSolvency is Test {
         uint256 evilRound = dist.distribute(address(token), 1, bytes32(0));
         vm.stopPrank();
 
-        // Claim: mulDiv(1 - 0, 1e21, 1) = 1e21 tokens, taken from round 0's money.
+        // Claim: mulDiv(1 - 0, 1e21, 1) proposes 1e21, but the round cap is one wei.
         bytes32[] memory emptyProof = new bytes32[](0);
-        uint256 got = dist.claim(evilRound, attacker, 1_000 ether, emptyProof);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1_000 ether, uint256(1))
+        );
+        dist.claim(evilRound, attacker, 1_000 ether, emptyProof);
 
-        assertEq(got, 1_000 ether, "attacker drained the pool");
-        assertEq(token.balanceOf(attacker), 1_000 ether);
-        assertEq(token.balanceOf(address(dist)), 1, "honest round emptied");
+        assertEq(token.balanceOf(attacker), 0);
+        assertEq(token.balanceOf(address(dist)), 1_000 ether + 1, "honest round remains backed");
 
-        // Round 0's books still claim it is fully funded: the accounting and the balance diverge.
+        // Round 0's books and the shared balance remain consistent.
         IMerkleFundDistributor.DistributionState memory d0 = dist.getDistribution(honest);
         assertEq(d0.amountFunded - d0.feeAmount - d0.amountDistributed, 1_000 ether);
-        assertLt(token.balanceOf(address(dist)), d0.amountFunded - d0.feeAmount - d0.amountDistributed);
+        assertGe(token.balanceOf(address(dist)), d0.amountFunded - d0.feeAmount - d0.amountDistributed);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -12,8 +12,11 @@ import {Test} from "forge-std/Test.sol";
 
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
-import {IEAS, AttestationRequest, AttestationRequestData} from
-    "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {
+    IEAS,
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {EMPTY_UID, NO_EXPIRATION_TIME} from "@ethereum-attestation-service/eas-contracts/contracts/Common.sol";
 
@@ -55,8 +58,7 @@ contract AuditBindSchemaFrontRunTest is Test {
 
     /// Baseline: the intended sequence works and the accumulator folds the edge.
     function test_happyPath_foldsEdge() public {
-        bytes32 schemaUid =
-            registry.register("string comment,uint256 confidence", resolver, true);
+        bytes32 schemaUid = registry.register("string comment,uint256 confidence", resolver, true);
         vm.prank(deployer);
         resolver.bindSchema(schemaUid);
 
@@ -74,8 +76,7 @@ contract AuditBindSchemaFrontRunTest is Test {
 
         // The deployer's real schema registration still succeeds (EAS does not consult the
         // resolver at registration time) ...
-        bytes32 schemaUid =
-            registry.register("string comment,uint256 confidence", resolver, true);
+        bytes32 schemaUid = registry.register("string comment,uint256 confidence", resolver, true);
 
         // ... but the deployer can never bind it: one-shot, no owner, no reset.
         vm.prank(deployer);
@@ -86,9 +87,7 @@ contract AuditBindSchemaFrontRunTest is Test {
         // folded into this instance's accumulator: the graph is permanently empty.
         vm.prank(alice);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                EASIndexerResolver.ForeignSchema.selector, schemaUid, bytes32(uint256(0xdead))
-            )
+            abi.encodeWithSelector(EASIndexerResolver.ForeignSchema.selector, schemaUid, bytes32(uint256(0xdead)))
         );
         eas.attest(
             AttestationRequest({

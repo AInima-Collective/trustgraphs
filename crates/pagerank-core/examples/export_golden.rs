@@ -48,7 +48,9 @@ fn params() -> Params {
         damping_fp: fp(85, 100),
         tolerance_fp: s / U256::from(1_000_000u64),
         max_iterations: 100,
-        min_weight_fp: U256::ZERO,
+        // Deliberately non-default with the lane-2 fields below: the canonical fixture pins the
+        // complete production paramsHash preimage rather than only its lane-1/default branch.
+        min_weight_fp: s / U256::from(4),
         max_weight_fp: U256::from(100u64) * s,
         trust_share_fp: s,
         trust_decay_fp: fp(80, 100),
@@ -57,8 +59,8 @@ fn params() -> Params {
         precision_scale: s,
         schema_uid: B256::from([0xAB; 32]),
         weight_field_index: 1,
-        envelope0_domain_separators: vec![],
-        lane2_max_head_age: 0,
+        envelope0_domain_separators: vec![B256::from([0xD1; 32]), B256::from([0xD2; 32])],
+        lane2_max_head_age: 86_400,
         // Params-schema v2 domain separation. Deliberately non-zero so the vectors would catch a
         // port that silently defaults these fields away.
         accumulator: addr(0xAC),
@@ -181,6 +183,7 @@ fn main() {
             "schemaUid": hx(p.schema_uid.as_slice()),
             "weightFieldIndex": p.weight_field_index,
             "envelope0DomainSeparators": p.envelope0_domain_separators.iter().map(|d| hx(d.as_slice())).collect::<Vec<_>>(),
+            "domainSetHash": hx(encode::domain_set_hash(&p.envelope0_domain_separators).as_slice()),
             "lane2MaxHeadAge": p.lane2_max_head_age,
             "accumulator": hx(p.accumulator.as_slice()),
             "chainId": p.chain_id,

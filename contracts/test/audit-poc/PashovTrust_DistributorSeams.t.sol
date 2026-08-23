@@ -138,7 +138,7 @@ contract PashovTrust_DistributorSeams is Test {
         // only funders who opt into the guarded form are covered.
         vm.prank(funder);
         vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FeeExceedsFunderCap.selector, amount, 0));
-        dist.distribute(address(token), amount, bytes32(0), 0, 0, feeRecipient);
+        dist.distribute(address(token), amount, bytes32(0), 100, 0, 0, feeRecipient);
     }
 
     /*//////////////////////////////////////////////////////////////

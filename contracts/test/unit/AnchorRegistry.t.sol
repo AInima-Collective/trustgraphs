@@ -4,7 +4,6 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
 
 contract AnchorRegistryAccumulatorMock {
@@ -28,9 +27,9 @@ contract AnchorRegistrySnapshotMock {
 /// @title AnchorRegistryTest
 /// @notice Lane-2 anchor log (OFFCHAIN_ATTESTATIONS_ZK §4.1): fold parity against the frozen golden
 ///         leaf, registration gates, role gating, unregistered reverts, fold-index monotonicity, the
-///         H-5 ingress checks (owner co-signature over `(head, count)` + strictly increasing counts
-///         for address-kind nodes), and a fuzzed fold-vs-events invariant. The leaf/fold encodings
-///         are FROZEN and golden-locked — the tests assert against
+///         H-5 ingress checks (EIP-712 owner co-signature over every anchor field + strictly
+///         increasing counts for address-kind nodes), and a fuzzed fold-vs-events invariant. The
+///         leaf/fold encodings are FROZEN and golden-locked — the tests assert against
 ///         `tests/golden/trust-graph.json .anchor`, never redefine them.
 contract AnchorRegistryTest is Test {
     using stdJson for string;
@@ -66,6 +65,7 @@ contract AnchorRegistryTest is Test {
         uint256 blockTimestamp
     );
     event NodeRegistered(bytes32 indexed nodeId, uint8 kind, address registrant);
+    event HeadCountReset(bytes32 indexed nodeId, uint64 previousCount, address indexed admin);
 
     function setUp() public {
         reg = new AnchorRegistry(admin, 200_000);
@@ -101,11 +101,12 @@ contract AnchorRegistryTest is Test {
         return keccak256(abi.encode(acc, leaf));
     }
 
-    /// EIP-191 co-signature by `key` over the frozen head payload
-    /// `keccak256(abi.encode(HEAD_DOMAIN_TAG, head, uint64 count))` (envelopes::eas_offchain).
-    function _headSig(uint256 key, bytes32 head, uint64 count) internal view returns (bytes memory) {
-        bytes32 payload = keccak256(abi.encode(reg.HEAD_DOMAIN_TAG(), head, count));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, MessageHashUtils.toEthSignedMessageHash(payload));
+    function _headSig(uint256 key, bytes32 nodeId, bytes32 head, uint64 count, bytes32 dataCommitment)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, reg.anchorDigest(nodeId, 0, head, count, dataCommitment));
         return abi.encodePacked(r, s, v);
     }
 
@@ -325,6 +326,37 @@ contract AnchorRegistryTest is Test {
         assertEq(reg.anchorCount(), 1);
     }
 
+    function test_HeadCountIsBoundedAndAdminCanResetTheAdmissionGate() public {
+        vm.prank(admin);
+        reg.registerNode(goldenNodeId, 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AnchorRegistry.InvalidHeadCount.selector, type(uint64).max, reg.maxTotalInputs())
+        );
+        reg.anchor(goldenNodeId, goldenKind, keccak256("too-high"), type(uint64).max, bytes32(0), "");
+        assertEq(reg.lastCount(goldenNodeId), 0);
+
+        uint64 maximum = reg.maxTotalInputs();
+        reg.anchor(goldenNodeId, goldenKind, keccak256("incident"), maximum, bytes32(0), "");
+        assertEq(reg.lastCount(goldenNodeId), maximum);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), reg.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        reg.resetHeadCount(goldenNodeId);
+
+        vm.expectEmit(true, true, false, true, address(reg));
+        emit HeadCountReset(goldenNodeId, maximum, admin);
+        vm.prank(admin);
+        reg.resetHeadCount(goldenNodeId);
+        assertEq(reg.lastCount(goldenNodeId), 0);
+
+        reg.anchor(goldenNodeId, goldenKind, keccak256("recovered"), 1, bytes32(0), "");
+        assertEq(reg.lastCount(goldenNodeId), 1);
+    }
+
     function test_ManyAttackerControlledAddressRegistrationsCannotChangeTheFeeInput() public {
         bytes32 anchorerRole = reg.ANCHORER_ROLE();
         for (uint256 i = 1; i <= 32; i++) {
@@ -399,7 +431,7 @@ contract AnchorRegistryTest is Test {
     function test_H5_AdmittedRelayWithOwnerSignatureWorks() public {
         bytes32 nodeId = _registerOwnerNode();
         bytes32 head = keccak256("head-3");
-        reg.anchor(nodeId, 0, head, 3, bytes32(0), _headSig(ownerKey, head, 3));
+        reg.anchor(nodeId, 0, head, 3, bytes32(0), _headSig(ownerKey, nodeId, head, 3, bytes32(0)));
         assertEq(reg.anchorCount(), 1);
         assertEq(reg.lastCount(nodeId), 3);
     }
@@ -410,16 +442,16 @@ contract AnchorRegistryTest is Test {
         bytes32 nodeId = _registerOwnerNode();
         bytes32 headOld = keccak256("head-pre-revocation");
         bytes32 headNew = keccak256("head-post-revocation");
-        bytes memory sigOld = _headSig(ownerKey, headOld, 3); // still a VALID owner signature
+        bytes memory sigOld = _headSig(ownerKey, nodeId, headOld, 3, bytes32(0)); // still a VALID owner signature
 
-        reg.anchor(nodeId, 0, headNew, 5, bytes32(0), _headSig(ownerKey, headNew, 5));
+        reg.anchor(nodeId, 0, headNew, 5, bytes32(0), _headSig(ownerKey, nodeId, headNew, 5, bytes32(0)));
 
         // Re-anchoring the old head (count 3 <= lastCount 5) reverts for an admitted relayer.
         vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(3), uint64(5)));
         reg.anchor(nodeId, 0, headOld, 3, bytes32(0), sigOld);
 
         // Equal count is also stale (strictly increasing).
-        bytes memory sigNew = _headSig(ownerKey, headNew, 5);
+        bytes memory sigNew = _headSig(ownerKey, nodeId, headNew, 5, bytes32(0));
         vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(5), uint64(5)));
         reg.anchor(nodeId, 0, headNew, 5, bytes32(0), sigNew);
     }
@@ -428,7 +460,7 @@ contract AnchorRegistryTest is Test {
     function test_H5_ForeignSignatureRejected() public {
         bytes32 nodeId = _registerOwnerNode();
         bytes32 head = keccak256("head-1");
-        bytes memory foreignSig = _headSig(0xBADD, head, 1);
+        bytes memory foreignSig = _headSig(0xBADD, nodeId, head, 1, bytes32(0));
         vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         reg.anchor(nodeId, 0, head, 1, bytes32(0), foreignSig);
     }
@@ -438,7 +470,7 @@ contract AnchorRegistryTest is Test {
     function test_H5_LiedCountRejected() public {
         bytes32 nodeId = _registerOwnerNode();
         bytes32 head = keccak256("head-3");
-        bytes memory sigFor3 = _headSig(ownerKey, head, 3);
+        bytes memory sigFor3 = _headSig(ownerKey, nodeId, head, 3, bytes32(0));
         vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         reg.anchor(nodeId, 0, head, 4, bytes32(0), sigFor3);
     }
@@ -448,7 +480,7 @@ contract AnchorRegistryTest is Test {
         vm.warp(goldenTimestamp);
         bytes32 nodeId = _registerOwnerNode();
         bytes32 head = keccak256("head-7");
-        reg.anchor(nodeId, 0, head, 7, bytes32(uint256(9)), _headSig(ownerKey, head, 7));
+        reg.anchor(nodeId, 0, head, 7, bytes32(uint256(9)), _headSig(ownerKey, nodeId, head, 7, bytes32(uint256(9))));
         assertEq(
             reg.anchorAcc(),
             _fold(bytes32(0), _leaf(nodeId, 0, head, 7, bytes32(uint256(9)), goldenTimestamp)),

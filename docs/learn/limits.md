@@ -47,11 +47,27 @@ which starts as that account's only signer. Until a network broadens that contro
 math is checked on-chain" sits downstream of a key that could swap out the checker. The
 [governance page](./governance.md) describes the designed answer; it isn't all built yet.
 
+## Composition proves a policy, not that the policy is wise
+
+`trust-compose` can prove that 2–8 required, same-chain score sources were captured at exact
+checkpoints and combined with the published positive weights. It cannot prove that the selected
+sources are independent, representative, or fair. Correlated communities, shared controllers, or
+bad source scores remain correlated or bad after mathematically correct composition, and whoever
+governs the composition still chooses its source policy and weights.
+
+Composition also fails closed instead of hiding missing evidence: if any required source is
+unavailable, empty, too old for its configured block-age limit, or missing its canonical score
+blob, no new composite checkpoint is produced. It never substitutes an older optional source or
+redistributes that source's quota. The hard limits—at most 8 sources, 4,096 entries per source,
+8,192 aggregate entries and union accounts, and 1 MiB of aggregate source blobs—bound proving
+work; they are not claims that every useful real-world composition fits.
+
 ## Not production-ready
 
-Nothing is deployed to a production chain today: the system runs end to end on a test
-chain, and Ethereum mainnet is the target. It has not been audited by an outside firm.
-Point a network at something you can afford to get wrong.
+Nothing is deployed to a public chain today: the system runs end to end on a local development
+chain. The first planned public release is core `trust-graph` on Ethereum Sepolia;
+`trust-compose` is not in that first testnet, and Ethereum mainnet comes later. It has not been
+audited by an outside firm. Point a network at something you can afford to get wrong.
 
 ---
 

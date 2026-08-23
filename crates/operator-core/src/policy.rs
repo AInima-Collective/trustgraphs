@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 use crate::types::Program;
+use crate::work::CapabilityProfile;
 
 /// Per-instance and global spend ceilings, in USD-cents to stay integral.
 ///
@@ -91,16 +92,21 @@ pub struct Policy {
     /// Operator-local cycle envelope. It is independent of the vault's fee bands: another prover
     /// may accept a checkpoint this host refuses.
     pub cycle_limit: u64,
+    /// Operator-local prepared-work envelope. Like `cycle_limit`, this is host policy rather than
+    /// a protocol or verification-key assertion.
+    pub capability_profile: CapabilityProfile,
     /// Programs this binary has a guest for.
     pub supported_programs: BTreeSet<Program>,
     pub loss_budget: LossBudget,
 }
 
-/// The largest instance the operator will prove, in proof inputs (edges or anchors).
+/// The protocol/payment ceiling, in proof inputs (edges or anchors).
 ///
-/// The SAME number as `ProvingVault.MAX_PRICED_INPUTS`. It lives in both places rather than being
-/// read across the seam because the vault is on-chain and the operator is not; what makes them
-/// agree is a test on each side, not a shared constant.
+/// This is the SAME number as `InputCapacity.MAX_TOTAL_INPUTS` and
+/// `ProvingVault.MAX_PRICED_INPUTS`. It is not this host's proving capacity: configurable
+/// `Policy::capability_profile` and `Policy::cycle_limit` may refuse much earlier. It lives in
+/// both languages because the on-chain constant cannot be imported into Rust; hand-written tests
+/// pin the value on each side.
 pub const MAX_PRICED_INPUTS: u64 = 200_000;
 
 impl Default for Policy {
@@ -112,6 +118,7 @@ impl Default for Policy {
             max_basefee_wei: 40_000_000_000, // 40 gwei
             confirmations: 12,
             cycle_limit: crate::work::OPERATOR_CYCLE_LIMIT,
+            capability_profile: CapabilityProfile::default(),
             supported_programs: BTreeSet::from([
                 Program::Trustgraphs,
                 Program::Contributions,
@@ -134,5 +141,23 @@ impl Policy {
     /// A funded policy: not ours to subsidize, so a vault must cover it first.
     pub fn funded() -> Self {
         Self { curated: false, requires_vault: true, ..Self::default() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protocol_input_ceiling_stays_cross_language_pinned() {
+        assert_eq!(MAX_PRICED_INPUTS, 200_000);
+    }
+
+    #[test]
+    fn shipped_cycle_limit_is_unchanged_and_independent_of_protocol_ceiling() {
+        let policy = Policy::default();
+        assert_eq!(policy.cycle_limit, 8_000_000_000);
+        assert_eq!(policy.capability_profile.max_raw_records, 1_800);
+        assert_ne!(policy.cycle_limit, MAX_PRICED_INPUTS);
     }
 }

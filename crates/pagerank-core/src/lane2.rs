@@ -77,8 +77,14 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Lane2Result {
         envs.entry(eas_offchain::address_node_id(w.owner)).or_insert(w);
     }
 
+    let (head_domain_separator, accepted_domain_separators) =
+        match params.envelope0_domain_separators.split_last() {
+            Some((head_domain, eas_domains)) => (*head_domain, eas_domains.to_vec()),
+            None => (B256::ZERO, Vec::new()),
+        };
     let config = Envelope0Config {
-        accepted_domain_separators: params.envelope0_domain_separators.clone(),
+        accepted_domain_separators,
+        head_domain_separator,
         schema_uid: params.schema_uid,
     };
 
@@ -113,7 +119,16 @@ pub fn process(params: &Params, witness: &Lane2Witness) -> Lane2Result {
                 continue; // unknown envelope: unusable head, try older
             }
             let Some(env) = envs.get(node_id) else { continue };
-            match eas_offchain::verify(*node_id, a.head, a.count, now, &config, env) {
+            match eas_offchain::verify(
+                *node_id,
+                a.envelope_kind,
+                a.head,
+                a.count,
+                a.data_commitment,
+                now,
+                &config,
+                env,
+            ) {
                 Ok(authed) => {
                     for e in authed {
                         edges.push(RawEdge {

@@ -84,26 +84,32 @@ pub fn journal_digest(j: &Journal) -> B256 {
     keccak256(journal_encoded(j))
 }
 
-/// The governance-pinned `paramsHash` (`research/ZK_ARCHITECTURE.md` §4.1). `seedSetRoot` is computed over the sorted
-/// trusted-seed set. The guest computes this from its private `Params` witness and commits it as a
-/// journal field; it is bound to the stored value because `MerkleSnapshot.submitProof` builds the
-/// journal digest from `storage.paramsHash` — a proof whose params differ yields a different digest
-/// and fails verification. (There is no in-guest assertion; the binding is the digest match.)
+/// The lane-2 domain-set word: zero for disabled/empty, otherwise keccak of the ordered separators.
+pub fn domain_set_hash(separators: &[B256]) -> B256 {
+    if separators.is_empty() {
+        return B256::ZERO;
+    }
+
+    let mut encoded = Vec::with_capacity(32 * separators.len());
+    for separator in separators {
+        encoded.extend_from_slice(separator.as_slice());
+    }
+    keccak256(encoded)
+}
+
+/// The governance-pinned `paramsHash` (`research/ZK_ARCHITECTURE.md` §4.1). `seedSetRoot` is
+/// computed over the sorted trusted-seed set. The guest computes this from its private `Params`
+/// witness and commits it as a journal field; it is bound to the stored value because
+/// `MerkleSnapshot.submitProof` builds the journal digest from `storage.paramsHash` — a proof whose
+/// params differ yields a different digest and fails verification. (There is no in-guest assertion;
+/// the binding is the digest match.)
 pub fn params_hash(p: &Params) -> B256 {
     let mut seeds = p.trusted_seeds.clone();
     seeds.sort();
     let seed_set_root = merkle::seed_set_root(&seeds);
 
     // Lane-2 domain set: keccak over the concatenated separators; 0 = lane 2 disabled.
-    let domain_set_hash = if p.envelope0_domain_separators.is_empty() {
-        B256::ZERO
-    } else {
-        let mut d = Vec::with_capacity(32 * p.envelope0_domain_separators.len());
-        for sep in &p.envelope0_domain_separators {
-            d.extend_from_slice(sep.as_slice());
-        }
-        keccak256(&d)
-    };
+    let domain_set_hash = domain_set_hash(&p.envelope0_domain_separators);
 
     let mut buf = Vec::with_capacity(32 * 17);
     buf.extend_from_slice(&word_u32(PARAMS_SCHEMA_VERSION));

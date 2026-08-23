@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trustgraphs.example/deployments/schema.json",
+  "title": "Trustgraphs public release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "version",
+    "status",
+    "stage",
+    "chain",
+    "chainId",
+    "deploymentCommit",
+    "firstDeploymentBlock",
+    "external",
+    "contracts",
+    "programs",
+    "instances"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "status": { "enum": ["planned", "deployed"] },
+    "stage": { "const": "production" },
+    "chain": { "enum": ["sepolia", "mainnet", "optimism"] },
+    "chainId": { "type": "integer", "minimum": 1 },
+    "deploymentCommit": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "firstDeploymentBlock": {
+      "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }]
+    },
+    "external": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eas", "schemaRegistry", "sp1Gateway", "ethUsdFeed", "usdc"],
+      "properties": {
+        "eas": { "$ref": "#/$defs/address" },
+        "schemaRegistry": { "$ref": "#/$defs/address" },
+        "sp1Gateway": { "$ref": "#/$defs/nullableAddress" },
+        "ethUsdFeed": { "$ref": "#/$defs/nullableAddress" },
+        "usdc": { "$ref": "#/$defs/nullableAddress" }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaRegistrar",
+        "rootVerifier",
+        "instanceRegistry",
+        "provingVault",
+        "trustgraphsFactory"
+      ],
+      "properties": {
+        "schemaRegistrar": { "$ref": "#/$defs/deployment" },
+        "rootVerifier": { "$ref": "#/$defs/deployment" },
+        "instanceRegistry": { "$ref": "#/$defs/deployment" },
+        "provingVault": { "$ref": "#/$defs/deployment" },
+        "trustgraphsFactory": { "$ref": "#/$defs/deployment" }
+      }
+    },
+    "programs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trustGraph"],
+      "properties": {
+        "trustGraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sp1Version", "elfSha256", "vkey"],
+          "properties": {
+            "sp1Version": { "const": "6.3.1" },
+            "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
+            "vkey": { "$ref": "#/$defs/nullableBytes32" }
+          }
+        }
+      }
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["instanceId", "name", "contracts", "schemaUid"],
+        "properties": {
+          "instanceId": { "$ref": "#/$defs/bytes32" },
+          "name": { "type": "string", "minLength": 1 },
+          "schemaUid": { "$ref": "#/$defs/bytes32" },
+          "contracts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["merkleSnapshot", "easIndexerResolver"],
+            "properties": {
+              "merkleSnapshot": { "$ref": "#/$defs/address" },
+              "easIndexerResolver": { "$ref": "#/$defs/address" },
+              "merkleFundDistributor": { "$ref": "#/$defs/address" },
+              "paramsController": { "$ref": "#/$defs/address" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "bytes32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{64}$"
+    },
+    "nullableAddress": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/address" }]
+    },
+    "nullableBytes32": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/bytes32" }]
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address", "block", "txHash"],
+      "properties": {
+        "address": { "$ref": "#/$defs/nullableAddress" },
+        "block": {
+          "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }]
+        },
+        "txHash": { "$ref": "#/$defs/nullableBytes32" }
+      }
+    }
+  }
+}

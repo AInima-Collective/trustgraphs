@@ -3,10 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
@@ -28,19 +25,8 @@ contract PassAVerifier is IZkVerifier {
     function verify(bytes calldata, bytes32) external pure {}
 }
 
-/// @notice PASS A PoC.
-///
-/// `ProvingVault.claim(instanceId, checkpointId)` builds the anti-double-pay `statement` from
-/// `snapshot.getLatestState().root` instead of the root actually proven for `checkpointId`:
-///
-///     Terms memory t = _terms(instanceId, a, checkpointId, snapshot.getLatestState().root);
-///
-/// For any program whose `(leafCount, anchorCount)` pair does not move between two checkpoints,
-/// two distinct checkpoints therefore hash to the SAME statement, and the second `claim()`
-/// reverts `StatementAlreadyPaid` forever. `trust-compose` is exactly that program:
-/// `CompositionSourceAccumulator.leafCount()` is the constant source count (2..8) while its `acc`
-/// changes every block (the TGCM manifest embeds `block.number`), so `trigger()` happily mints a
-/// second checkpoint with an identical leafCount.
+/// @notice H-6 regression using the production composition accumulator: claims use each named
+///         checkpoint's accepted state and accumulator even while compose leaf counts stay flat.
 contract OmegaPassA_VaultClaimStatement is Test {
     bytes32 internal constant SOURCE_PROGRAM = keccak256("trust-graph");
     bytes32 internal constant COMPOSE_PROGRAM = keccak256("trust-compose");
@@ -67,7 +53,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
 
     function setUp() public {
         registry = new InstanceRegistry(address(this));
-        adapterFactory = new CompositionSourceAdapterFactory();
+        adapterFactory = new CompositionSourceAdapterFactory(registry);
         sourceVerifier = new PassAVerifier(SOURCE_VKEY);
         composeVerifier = new PassAVerifier(keccak256("compose-vkey"));
         _createSource(0);
@@ -75,6 +61,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
 
         accumulator = new CompositionSourceAccumulator(adapterFactory, address(this));
         snapshot = new MerkleSnapshot(composeVerifier, COMPOSE_PARAMS, accumulator, address(this), address(this));
+        snapshot.enableStateProvenance();
         accumulator.bind(address(snapshot), address(this));
         accumulator.installPolicy(1, _policy(), adapters);
 
@@ -119,9 +106,7 @@ contract OmegaPassA_VaultClaimStatement is Test {
         assertEq(snapshot.checkpointWorkCount(c1), 0);
     }
 
-    /// The defect: claiming checkpoint 0 AFTER checkpoint 1 has landed permanently burns
-    /// checkpoint 1's bounty, because both claims hash to the same `statement`.
-    function test_PassA_ClaimUsesLatestRootAndBurnsTheOtherBounty() public {
+    function test_PassA_ClaimOlderFirstPreservesBothBounties() public {
         vm.roll(100);
         uint256 c0 = snapshot.trigger();
         snapshot.submitProof(c0, keccak256("root-0"), bytes32(uint256(1)), "cid0", 1_000, bytes32(0), proverA, "");
@@ -134,26 +119,17 @@ contract OmegaPassA_VaultClaimStatement is Test {
         assertEq(snapshot.checkpointRecipient(c0), proverA);
         assertEq(snapshot.checkpointRecipient(c1), proverB);
 
-        // Pay the OLD checkpoint first. Its statement is silently computed from root-1.
         uint256 feeA = vault.claim(COMPOSE_INSTANCE, c0);
         assertGt(feeA, 0, "prover A unpaid");
         assertGt(vault.creditOf(proverA, address(0)), 0);
 
-        // Prover B's bounty is now permanently unpayable.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IProvingVault.StatementAlreadyPaid.selector,
-                keccak256(abi.encode(address(snapshot), uint64(2), uint64(0), keccak256("root-1")))
-            )
-        );
         vault.claim(COMPOSE_INSTANCE, c1);
 
-        assertEq(vault.creditOf(proverB, address(0)), 0, "prover B was paid after all");
-        assertFalse(vault.isClaimed(COMPOSE_INSTANCE, c1), "c1 still unclaimed, and now unclaimable");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "prover B paid");
+        assertTrue(vault.isClaimed(COMPOSE_INSTANCE, c1));
     }
 
-    /// The mirror image: pay the NEW checkpoint first and the OLD one becomes unpayable.
-    function test_PassA_ClaimNewestFirstBurnsTheOlderBounty() public {
+    function test_PassA_ClaimNewestFirstPreservesBothBounties() public {
         vm.roll(100);
         uint256 c0 = snapshot.trigger();
         snapshot.submitProof(c0, keccak256("root-0"), bytes32(uint256(1)), "cid0", 1_000, bytes32(0), proverA, "");
@@ -164,14 +140,8 @@ contract OmegaPassA_VaultClaimStatement is Test {
         vault.claim(COMPOSE_INSTANCE, c1);
         assertGt(vault.creditOf(proverB, address(0)), 0);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IProvingVault.StatementAlreadyPaid.selector,
-                keccak256(abi.encode(address(snapshot), uint64(2), uint64(0), keccak256("root-1")))
-            )
-        );
         vault.claim(COMPOSE_INSTANCE, c0);
-        assertEq(vault.creditOf(proverA, address(0)), 0, "prover A was paid after all");
+        assertGt(vault.creditOf(proverA, address(0)), 0, "prover A paid");
     }
 
     /*//////////////////////////////////////////////////////////////

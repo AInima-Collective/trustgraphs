@@ -195,7 +195,11 @@ contract CompositionSourceAdapter is ICompositionSourceAdapter {
 /// @title CompositionSourceAdapterFactory
 /// @notice Permissionless provenance-checking deployer and append-only authenticity registry.
 contract CompositionSourceAdapterFactory is ICompositionSourceAdapterFactory {
+    IInstanceRegistry public immutable registry;
     mapping(address adapter => bool) public isAdapter;
+
+    error ZeroAddress();
+    error ForeignRegistry(address expected, address actual);
 
     event SourceAdapterCreated(
         address indexed adapter,
@@ -207,17 +211,24 @@ contract CompositionSourceAdapterFactory is ICompositionSourceAdapterFactory {
         bytes32 deploymentProvenance
     );
 
+    constructor(IInstanceRegistry registry_) {
+        if (address(registry_) == address(0)) revert ZeroAddress();
+        registry = registry_;
+    }
+
     function create(
-        IInstanceRegistry registry,
+        IInstanceRegistry registry_,
         bytes32 instanceId,
         bytes32 sourceId,
         bytes32 familyId,
         bytes32 outputKind,
         bytes32 deploymentProvenance
     ) external returns (CompositionSourceAdapter adapter) {
-        adapter = new CompositionSourceAdapter(
-            registry, instanceId, sourceId, familyId, outputKind, deploymentProvenance
-        );
+        if (address(registry_) != address(registry)) {
+            revert ForeignRegistry(address(registry), address(registry_));
+        }
+        adapter =
+            new CompositionSourceAdapter(registry, instanceId, sourceId, familyId, outputKind, deploymentProvenance);
         isAdapter[address(adapter)] = true;
         emit SourceAdapterCreated(
             address(adapter),

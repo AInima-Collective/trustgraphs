@@ -14,26 +14,8 @@ import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockEthUsdFeed} from "../mocks/MockEthUsdFeed.sol";
 
 /// @title PashovTrust_VaultStatementWedge
-/// @notice SEAM: `ProvingVault._settle` has TWO refusal shapes for the same class of condition and
-///         they are not economically symmetric.
-///
-///         Every "we cannot pay for this root" branch (`PolicyDisabled`, `CadenceNotElapsed`,
-///         `UnknownProgram`, `PriceFeedUnavailable`, `InsufficientBalance`) calls `_skip`, which
-///         lets the already-forwarded `submitProof` STAND - "a root that cannot be paid for is
-///         still a root". `_requireUnpaidStatement` is the one exception: it REVERTS, and because
-///         it runs AFTER `snapshot.submitProof(...)` inside the same transaction, the revert also
-///         rolls the accepted root back. The refusal that costs the prover the most is the only
-///         one that also costs the community its epoch.
-///
-///         The condition is reachable on any accumulator whose `leafCount` is not monotonic, which
-///         is exactly `CompositionSourceAccumulator` (`leafCount() = _policy.length`, a constant
-///         2-8) - and whose `acc()` is `sha256(manifest)` over a manifest containing
-///         `block.number`, so `MerkleSnapshot.trigger()`'s "no movement" guard can never fire
-///         there either. Two epochs whose sources produced the same allocation therefore mint two
-///         distinct checkpoints, and the second one's root can never be landed through the vault.
-///
-///         The mock below reproduces exactly that shape: `acc` moves every epoch, `leafCount` does
-///         not, lane 2 is empty, and the composed `outputRoot` repeats.
+/// @notice H-6 regression at the payment seam: checkpoint accumulator identity prevents compose
+///         epochs with equal counts/output from colliding, and unpayable roots still use `_skip`.
 contract PashovTrust_VaultStatementWedge is Test {
     ProvingVault internal vault;
     InstanceRegistry internal registry;
@@ -68,6 +50,8 @@ contract PashovTrust_VaultStatementWedge is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -105,7 +89,7 @@ contract PashovTrust_VaultStatementWedge is Test {
     /// `leafCount` does not (it is the policy's source count).
     function _mintEpoch(uint256 epoch) internal returns (uint256 id) {
         accer.setState(keccak256(abi.encode("capture", epoch)), SOURCE_COUNT);
-        vm.roll(block.number + 100);
+        vm.roll(epoch * 100 + 100);
         id = snapshot.trigger();
     }
 
@@ -123,7 +107,7 @@ contract PashovTrust_VaultStatementWedge is Test {
         });
     }
 
-    function test_RepeatedStatementRevertsAndTheRootNeverLands() public {
+    function test_RepeatedOutputWithDistinctAccumulatorsLandsAndUnpayableRootSkips() public {
         // --- Epoch 1: normal paid claim. -------------------------------------------------------
         uint256 cp1 = _mintEpoch(1);
         vm.prank(prover);
@@ -136,24 +120,15 @@ contract PashovTrust_VaultStatementWedge is Test {
         uint256 cp2 = _mintEpoch(2);
         assertEq(cp2, cp1 + 1, "a second checkpoint minted even though no source moved");
 
-        // --- Epoch 2: same composed allocation, so the vault's `statement` repeats. -------------
-        //     `keccak256(abi.encode(snapshot, leafCount, anchorCount, outputRoot))` is identical:
-        //     leafCount is the constant source count, anchorCount is 0, outputRoot repeats.
-        bytes32 statement = keccak256(abi.encode(address(snapshot), SOURCE_COUNT, uint64(0), ROOT));
-        statement; // documented for the report; the vault keeps it in a private mapping.
-
         vm.prank(prover);
-        vm.expectRevert(abi.encodeWithSignature("StatementAlreadyPaid(bytes32)", statement));
         vault.submitAndClaim(INSTANCE, _args(cp2, prover));
 
-        // The refusal rolled back the root as well: checkpoint 2 is still unproven on chain even
-        // though the prover supplied a valid proof and asked for NO minimum payout.
-        assertEq(snapshot.lastAppliedCheckpoint(), cp1, "epoch 2's root was rolled back with the payment");
+        assertEq(snapshot.lastAppliedCheckpoint(), cp2, "epoch 2's distinct proof landed");
 
-        // Contrast: an empty tank is refused through `_skip`, and the root LANDS anyway.
-        // Drain the account so `_pay` can move nothing, then prove a genuinely new statement.
+        // An empty tank is refused through `_skip`, and the root lands anyway.
+        uint256 left = vault.accountOf(INSTANCE).ethBalance;
         vm.prank(constitutional);
-        vault.requestWithdrawal(INSTANCE, 10 ether, 0);
+        vault.requestWithdrawal(INSTANCE, left, 0);
         uint64 notice = vault.WITHDRAWAL_NOTICE();
         vm.warp(block.timestamp + notice + 1);
         feed.set(3_000e8, block.timestamp);

@@ -8,6 +8,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 import {Common} from "script/Common.s.sol";
 import {GovernedWeightedTrustgraphsFactory} from "src/factory/GovernedWeightedTrustgraphsFactory.sol";
 import {WeightedTrustgraphsFactory} from "src/factory/WeightedTrustgraphsFactory.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {
     GovernedAuthorityDeployer,
     MerkleGovModuleDeployer,
@@ -32,16 +33,20 @@ contract DeployGovernedWeightedTrustgraphsFactory is Common {
         address safeFactory = governedJson.readAddress(".safe_factory");
         address authorityDeployer = governedJson.readAddress(".authority_deployer");
         address signerSyncDeployer = governedJson.readAddress(".signer_sync_deployer");
+        address signerSyncVerifier = governedJson.readAddress(".signer_sync_verifier");
+        bytes32 signerSyncProgramVKey = governedJson.readBytes32(".signer_sync_program_vkey");
         address govModuleDeployer = governedJson.readAddress(".gov_module_deployer");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         GovernedWeightedTrustgraphsFactory governed = new GovernedWeightedTrustgraphsFactory(
             WeightedTrustgraphsFactory(vm.parseAddress(weightedFactoryAddr)),
             GnosisSafeProxyFactory(safeFactory),
             safeSingleton,
             GovernedAuthorityDeployer(authorityDeployer),
             SignerSyncModuleDeployer(signerSyncDeployer),
-            MerkleGovModuleDeployer(govModuleDeployer)
+            MerkleGovModuleDeployer(govModuleDeployer),
+            IZkVerifier(signerSyncVerifier),
+            signerSyncProgramVKey
         );
         vm.stopBroadcast();
 
@@ -52,6 +57,8 @@ contract DeployGovernedWeightedTrustgraphsFactory is Common {
         json.serialize("safe_factory", Strings.toChecksumHexString(safeFactory));
         json.serialize("authority_deployer", Strings.toChecksumHexString(authorityDeployer));
         json.serialize("signer_sync_deployer", Strings.toChecksumHexString(signerSyncDeployer));
+        json.serialize("signer_sync_verifier", Strings.toChecksumHexString(signerSyncVerifier));
+        json.serialize("signer_sync_program_vkey", vm.toString(signerSyncProgramVKey));
         json.serialize("gov_module_deployer", Strings.toChecksumHexString(govModuleDeployer));
         json.serialize("recovery_delay_seconds", governed.RECOVERY_DELAY());
         json = json.serialize("governed_weighted_factory", Strings.toChecksumHexString(governedWeightedFactory));

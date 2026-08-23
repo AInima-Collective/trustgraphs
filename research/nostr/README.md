@@ -61,8 +61,10 @@ cycles**. The four-way vector freezes params hash
 `af83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd`, output root
 `c4de11709437734678cc026014c6162ffb7cda01b5aac93c8ba5a8091bd96678`, journal digest
 `968b9db02f485c1e77c5742540eb5521c8061d36ad9a47509d0385211cced979`, and CID
-`bafkreia7b4rsfrkctdvwvhtmp4chtj23lsekxccdlzwc7himq4hvu2rsx4`. The production vkey is
-`0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3`.
+`bafkreia7b4rsfrkctdvwvhtmp4chtj23lsekxccdlzwc7himq4hvu2rsx4`. That 2026-08-19 build's vkey was
+`0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3`; the coordinated
+2026-08-23 hardening rebuild is
+`0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed`.
 
 `task zk:parity PROGRAM=nostr-workspace` passes Rust, guest, Solidity, and TypeScript parity. A
 same-absolute-path clean-HEAD audit also produced byte-identical trustgraph, signer, atproto

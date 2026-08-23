@@ -293,7 +293,6 @@ mod lane2_compute {
         self, attest_struct_hash, eip712_digest, head_payload, offchain_uid_v2, Envelope0Witness,
         LogEntry, OffchainAttestation, ENTRY_ATTEST,
     };
-    use envelopes::ecdsa::eip191_digest32;
     use k256::ecdsa::SigningKey;
     use zk_core::anchor::{skip_leaf, skipped_digest, SkipEntry};
     use zk_core::fold::fold;
@@ -324,7 +323,7 @@ mod lane2_compute {
 
     fn lane2_params(ds: B256) -> Params {
         let mut p = default_params();
-        p.envelope0_domain_separators = vec![ds];
+        p.envelope0_domain_separators = vec![ds, keccak256(b"head-domain")];
         p.lane2_max_head_age = 10_000;
         p
     }
@@ -355,8 +354,14 @@ mod lane2_compute {
         let uid = offchain_uid_v2(&a);
         let entries = vec![LogEntry { kind: ENTRY_ATTEST, uid }];
         let head = eas_offchain::log_head(&entries);
-        let head_signature =
-            sign_prehash(sk, &eip191_digest32(&head_payload(head, entries.len() as u64)));
+        let node_id = eas_offchain::address_node_id(eth_addr(sk));
+        let head_signature = sign_prehash(
+            sk,
+            &eip712_digest(
+                keccak256(b"head-domain"),
+                head_payload(node_id, 0, head, entries.len() as u64, B256::ZERO),
+            ),
+        );
         (
             Envelope0Witness {
                 owner: eth_addr(sk),
@@ -488,7 +493,14 @@ mod lane2_compute {
         }
         let head = eas_offchain::log_head(&entries);
         let count = entries.len() as u64;
-        let head_signature = sign_prehash(sk, &eip191_digest32(&head_payload(head, count)));
+        let node_id = eas_offchain::address_node_id(eth_addr(sk));
+        let head_signature = sign_prehash(
+            sk,
+            &eip712_digest(
+                keccak256(b"head-domain"),
+                head_payload(node_id, 0, head, count, B256::ZERO),
+            ),
+        );
         (
             Envelope0Witness { owner: eth_addr(sk), entries, attestations, head_signature },
             head,

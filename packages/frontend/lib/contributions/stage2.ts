@@ -84,7 +84,10 @@ export const stage2 = (
 
   // Combine: contributors get 1−β of the pool pro-rata P(a); participating raters get β
   // pro-rata rep. Each side normalized over its own mass so the split is exact.
-  const betaFp = mulDiv(s, BigInt(p.evaluatorCarveoutBps), 10000n)
+  // Creation/rotation rejects >100%, but clamp historical or hand-supplied params exactly like
+  // the guest so bigint never goes negative while alloy U256 would wrap.
+  const rawBetaFp = mulDiv(s, BigInt(p.evaluatorCarveoutBps), 10000n)
+  const betaFp = rawBetaFp > s ? s : rawBetaFp
   const oneMinusBetaFp = s - betaFp
 
   let totalP = 0n

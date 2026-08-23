@@ -123,7 +123,11 @@ library TrustComposeValidator {
             revert InvalidAdmittedProgram(p.admittedProgramId);
         }
         if (p.weightScale != WEIGHT_SCALE) revert InvalidWeightScale(p.weightScale);
-        if (p.outputPool == 0) revert InvalidOutputPool();
+        // `sourceCount` can grow on policy rotation while `outputPool` is an immutable identity
+        // field. Reserve one unit for every source the instance can ever admit, so neither
+        // creation nor a later rotation can deterministically starve a required source merely
+        // because the pool is smaller than the source set.
+        if (p.outputPool < p.maxSources) revert InvalidOutputPool();
         if (requirePolicy) {
             if (p.sourceCount < MIN_SOURCES || p.sourceCount > MAX_SOURCES || p.sourceCount > p.maxSources) {
                 revert InvalidSourceCount(p.sourceCount);

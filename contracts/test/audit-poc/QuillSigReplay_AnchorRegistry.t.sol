@@ -20,9 +20,8 @@ contract QSR_SnapshotMock {
     }
 }
 
-/// @notice signature-replay-analysis PoCs against the legacy lane-2 ingress
-///         `src/registry/AnchorRegistry.sol` (deployed by
-///         `script/DeployNostrWorkspaceInstance.s.sol` and `script/DeployHypercertsInstance.s.sol`).
+/// @notice Signature-replay regression coverage for the generic lane-2 ingress deployed by the
+///         Nostr workspace and Hypercerts instance scripts.
 contract QuillSigReplay_AnchorRegistryTest is Test {
     uint256 internal constant OWNER_KEY = 0xB0B;
     address internal owner;
@@ -52,116 +51,122 @@ contract QuillSigReplay_AnchorRegistryTest is Test {
         regB.register();
     }
 
-    /// @dev The ENTIRE signed payload: no chainId, no registry address, no nodeId,
-    ///      no envelopeKind, no dataCommitment, no deadline.
-    function _sign(bytes32 head, uint64 count) internal view returns (bytes memory) {
-        bytes32 payload = keccak256(abi.encode(regA.HEAD_DOMAIN_TAG(), head, count));
+    function _sign(
+        AnchorRegistry target,
+        bytes32 nodeId,
+        uint8 envelopeKind,
+        bytes32 head,
+        uint64 count,
+        bytes32 dataCommitment
+    ) internal view returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(OWNER_KEY, MessageHashUtils.toEthSignedMessageHash(payload));
+            vm.sign(OWNER_KEY, target.anchorDigest(nodeId, envelopeKind, head, count, dataCommitment));
         return abi.encodePacked(r, s, v);
     }
 
     // ---------------------------------------------------------------------
-    // 1. Cross-instance replay: one signature, two independent registries.
+    // 1. Cross-instance replay is rejected by the verifying-contract domain.
     // ---------------------------------------------------------------------
-    function test_headSignature_replays_into_a_second_instance() public {
+    function test_headSignature_is_bound_to_one_instance() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
         bytes32 head = keccak256("owner-head-at-count-9");
-        bytes memory sig = _sign(head, 9);
+        bytes32 commitment = keccak256("cid-a");
+        bytes memory sig = _sign(regA, nodeId, 0, head, 9, commitment);
 
-        regA.anchor(nodeId, 0, head, 9, keccak256("cid-a"), sig);
+        regA.anchor(nodeId, 0, head, 9, commitment, sig);
         assertEq(regA.lastCount(nodeId), 9);
 
-        // The SAME bytes are accepted by a completely unrelated instance.
-        regB.anchor(nodeId, 0, head, 9, keccak256("cid-a"), sig);
-        assertEq(regB.lastCount(nodeId), 9);
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
+        regB.anchor(nodeId, 0, head, 9, commitment, sig);
+        assertEq(regB.lastCount(nodeId), 0, "replay did not consume the other registry's count");
 
-        // And the victim's own instance-B history is now unreachable below 9: the
-        // owner's genuine B-side heads at counts 1..9 are permanently rejected.
-        bytes memory sig3 = _sign(keccak256("b-head-3"), 3);
-        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(3), uint64(9)));
-        regB.anchor(nodeId, 0, keccak256("b-head-3"), 3, keccak256("cid-b"), sig3);
+        bytes32 head3 = keccak256("b-head-3");
+        bytes32 commitment3 = keccak256("cid-b");
+        bytes memory sig3 = _sign(regB, nodeId, 0, head3, 3, commitment3);
+        regB.anchor(nodeId, 0, head3, 3, commitment3, sig3);
+        assertEq(regB.lastCount(nodeId), 3, "the intended registry's history remains usable");
     }
 
     // ---------------------------------------------------------------------
-    // 2. Cross-chain replay: the payload has no chainId anywhere.
+    // 2. Cross-chain replay is rejected by the deployment-chain domain.
     // ---------------------------------------------------------------------
-    function test_headSignature_replays_after_a_chain_id_change() public {
+    function test_headSignature_is_bound_to_the_deployment_chain() public {
+        vm.chainId(1);
+        AnchorRegistry chainA = _deploy();
+        vm.prank(owner);
+        chainA.register();
+
+        vm.chainId(999);
+        AnchorRegistry chainB = _deploy();
+        vm.prank(owner);
+        chainB.register();
+
         bytes32 nodeId = keccak256(abi.encode(owner));
         bytes32 head = keccak256("head-1");
-        bytes memory sig = _sign(head, 1);
+        bytes32 commitment = keccak256("cid");
+        bytes memory sig = _sign(chainA, nodeId, 0, head, 1, commitment);
 
-        vm.chainId(1);
-        regA.anchor(nodeId, 0, head, 1, keccak256("cid"), sig);
+        chainA.anchor(nodeId, 0, head, 1, commitment, sig);
 
-        // Fork / second deployment on another chain: identical bytes still verify.
-        vm.chainId(999);
-        regB.anchor(nodeId, 0, head, 1, keccak256("cid"), sig);
-        assertEq(regB.lastCount(nodeId), 1);
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
+        chainB.anchor(nodeId, 0, head, 1, commitment, sig);
+        assertEq(chainB.lastCount(nodeId), 0);
     }
 
     // ---------------------------------------------------------------------
-    // 3. The signature does not cover envelopeKind or dataCommitment, and the
-    //    count is consumed anyway: a relayer replays the owner's own signature
-    //    with mutated unsigned fields and burns the count.
+    // 3. Mutated leaf fields are rejected without consuming the count.
     // ---------------------------------------------------------------------
-    function test_unsignedFields_are_mutable_and_burn_the_count() public {
+    function test_unsignedFields_are_bound_and_do_not_burn_the_count() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
         bytes32 head = keccak256("honest-head-at-7");
         bytes32 honestCommitment = keccak256("honest-availability-pointer");
-        bytes memory sig = _sign(head, 7);
+        bytes memory sig = _sign(regA, nodeId, 0, head, 7, honestCommitment);
 
-        // Relayer submits the owner's real (head, count) with a different envelopeKind
-        // and a garbage data commitment. The signature still verifies.
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         regA.anchor(nodeId, 1, head, 7, keccak256("garbage"), sig);
-        assertEq(regA.lastCount(nodeId), 7);
+        assertEq(regA.lastCount(nodeId), 0);
 
-        // The honest anchor of the SAME head at the SAME count can now never land.
-        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(7), uint64(7)));
         regA.anchor(nodeId, 0, head, 7, honestCommitment, sig);
+        assertEq(regA.lastCount(nodeId), 7);
     }
 
     // ---------------------------------------------------------------------
-    // 4. Non-address node kinds are anchored with NO signature check at all, so
-    //    any ANCHORER can set the count to uint64 max and brick the node forever.
+    // 4. Non-address node kinds still have no signature check, but the count is bounded and the
+    //    constitutional admin can recover the monotonic admission gate.
     // ---------------------------------------------------------------------
-    function test_nonAddressKind_needs_no_signature_and_can_be_bricked() public {
+    function test_nonAddressKind_needs_no_signature_but_count_gate_is_recoverable() public {
         bytes32 didNode = keccak256("did:plc:victim");
         vm.prank(admin);
         regA.registerNode(didNode, 1);
 
-        // Empty signature. Not an owner. Accepted.
-        regA.anchor(didNode, 1, keccak256("forged-head"), type(uint64).max, keccak256("x"), "");
-        assertEq(regA.lastCount(didNode), type(uint64).max);
-
-        // Every future anchor for this node reverts, permanently. No admin reset exists.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AnchorRegistry.StaleHeadCount.selector, didNode, type(uint64).max, type(uint64).max
-            )
+            abi.encodeWithSelector(AnchorRegistry.InvalidHeadCount.selector, type(uint64).max, regA.maxTotalInputs())
         );
-        regA.anchor(didNode, 1, keccak256("real-head"), type(uint64).max, keccak256("y"), "");
+        regA.anchor(didNode, 1, keccak256("forged-head"), type(uint64).max, keccak256("x"), "");
+
+        regA.anchor(didNode, 1, keccak256("forged-head"), regA.maxTotalInputs(), keccak256("x"), "");
+        vm.prank(admin);
+        regA.resetHeadCount(didNode);
+        regA.anchor(didNode, 1, keccak256("real-head"), 1, keccak256("y"), "");
+        assertEq(regA.lastCount(didNode), 1);
     }
 
     // ---------------------------------------------------------------------
-    // 5. EIP-191 blind-sign shape: any 32-byte "challenge" a victim signs on an
-    //    unrelated site is a valid head authorization. Demonstrated by signing the
-    //    raw payload with no protocol context whatsoever.
+    // 5. The legacy EIP-191 challenge is not a valid EIP-712 authorization.
     // ---------------------------------------------------------------------
-    function test_a_blind_32_byte_personal_sign_is_a_valid_head_authorization() public {
+    function test_a_blind_32_byte_personal_sign_is_rejected() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
-        // An attacker picks head/count, computes the 32-byte "login nonce", and gets the
-        // victim to personal_sign it on any unrelated dapp.
         bytes32 attackerHead = keccak256("attacker-chosen-head");
-        uint64 attackerCount = type(uint64).max;
-        bytes32 challenge = keccak256(abi.encode(regA.HEAD_DOMAIN_TAG(), attackerHead, attackerCount));
+        uint64 attackerCount = regA.maxTotalInputs();
+        bytes32 challenge =
+            keccak256(abi.encode(keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1"), attackerHead, attackerCount));
 
-        (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(OWNER_KEY, MessageHashUtils.toEthSignedMessageHash(challenge));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, MessageHashUtils.toEthSignedMessageHash(challenge));
         bytes memory sig = abi.encodePacked(r, s, v);
 
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         regA.anchor(nodeId, 0, attackerHead, attackerCount, keccak256("x"), sig);
-        assertEq(regA.lastCount(nodeId), type(uint64).max);
+        assertEq(regA.lastCount(nodeId), 0);
     }
 
     // ---------------------------------------------------------------------

@@ -72,6 +72,7 @@ contract ContributionsInstanceTest is Test {
 
         trustResolver = new EASIndexerResolver(IEAS(address(eas)));
         vouchUid = schemaRegistry.register(VOUCH_SCHEMA, trustResolver, true);
+        trustResolver.bindSchema(vouchUid);
 
         contribResolver = new ContributionResolver(IEAS(address(eas)), address(this));
         claimUid = schemaRegistry.register(CLAIM_SCHEMA, contribResolver, true);

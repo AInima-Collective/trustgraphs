@@ -26,12 +26,21 @@ contract AlwaysAcceptSignerVerifier is IZkVerifier {
     function verify(bytes calldata, bytes32) external view {}
 }
 
-/// AUDIT PoC — the signer-sync proof gate of a governed instance is chosen by whoever calls the
-/// permissionless `createGovernedInstance`, and nothing pins it to the canonical signer verifier.
+contract CanonicalRejectingSignerVerifier is IZkVerifier {
+    bytes32 public constant programVKey = keccak256("canonical-signer-guest");
+
+    function verify(bytes calldata, bytes32) external pure {
+        revert("canonical verifier rejected proof");
+    }
+}
+
+/// AUDIT regression — permissionless creation can select signer policy, but the proof gate is the
+/// wrapper's immutable canonical verifier/vkey pair.
 contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
+    CanonicalRejectingSignerVerifier internal canonicalVerifier;
 
     address internal creator = address(0xA11CE);
     address internal stranger = address(0xBADBAD);
@@ -40,26 +49,24 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
         super.setUp();
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
+        canonicalVerifier = new CanonicalRejectingSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
             safeFactory,
             address(safeSingleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            canonicalVerifier,
+            canonicalVerifier.programVKey()
         );
     }
 
-    function test_AnyoneCanSeizeTheSafeWhenTheSignerVerifierIsAttackerSupplied() public {
+    function test_CallerCannotInstallAnAttackerSuppliedSignerVerifier() public {
         AlwaysAcceptSignerVerifier fake = new AlwaysAcceptSignerVerifier();
 
         GovernedTrustgraphsFactory.SignerSyncConfig memory signerConfig = GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: true,
-            verifier: address(fake),
-            programVKey: fake.programVKey(),
-            topN: 5,
-            minThreshold: 2,
-            targetThresholdBps: 5000
+            enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
         });
 
         TrustgraphsFactory.CreateArgs memory args = _args("looks-governed");
@@ -71,8 +78,12 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
         address safe = authority.safe;
 
-        // The factory accepted an arbitrary contract as the proof gate for a Safe module.
-        assertEq(address(signer.zkVerifier()), address(fake), "arbitrary verifier installed");
+        assertEq(
+            address(signer.zkVerifier()), address(canonicalVerifier), "wrapper must install its immutable verifier"
+        );
+        assertTrue(
+            address(signer.zkVerifier()) != address(fake), "caller-controlled verifier must be ignored by design"
+        );
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "module is live on the Safe");
         // The Safe holds the snapshot's constitutional authority.
         assertTrue(
@@ -106,10 +117,10 @@ contract ZkJournalUnpinnedSignerVerifierTest is TrustgraphsFactoryBase {
         desired[0] = stranger;
 
         vm.prank(stranger);
+        vm.expectRevert(bytes("canonical verifier rejected proof"));
         signer.submitSignerProof(checkpointId, 0, desired, 1, hex"00");
 
-        assertTrue(GnosisSafe(payable(safe)).isOwner(stranger), "stranger now owns the Safe");
-        assertFalse(GnosisSafe(payable(safe)).isOwner(creator), "the real member was evicted");
-        assertEq(GnosisSafe(payable(safe)).getThreshold(), 1, "sole signer, threshold 1");
+        assertFalse(GnosisSafe(payable(safe)).isOwner(stranger), "attacker proof must not alter owners");
+        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "the real member remains owner");
     }
 }

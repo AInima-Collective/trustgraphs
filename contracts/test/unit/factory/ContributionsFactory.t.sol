@@ -44,6 +44,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 
 import {MockSP1Gateway} from "../../mocks/MockSP1Gateway.sol";
 import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
+import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 
 /// @title ContributionsFactoryTest
 /// @notice The M6 battery: one-transaction round creation against a LIVE parent (created through
@@ -76,6 +77,7 @@ contract ContributionsFactoryTest is Test {
     /// The parent network's admin — the only address allowed to hang rounds on it.
     address internal parentAdmin = address(0xA11CE);
     address internal stranger = address(0xBAD);
+    MockSafeOwner internal roundSafe;
 
     uint64 internal constant EPOCH_FLOOR = 5;
     bytes32 internal constant CONTRIBUTIONS_VKEY = bytes32(uint256(0xC0117B));
@@ -127,6 +129,7 @@ contract ContributionsFactoryTest is Test {
         registry = new InstanceRegistry(registryAdmin);
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
+        roundSafe = new MockSafeOwner(parentAdmin, 1);
 
         // --- Parent factory (trust-graph), no vault: prepay is not under test here. ---
         trustVerifier = new MockZkVerifier();
@@ -228,6 +231,7 @@ contract ContributionsFactoryTest is Test {
         args.name = name;
         args.metadataURI = "ipfs://bafkreiexampleroundmetadata";
         args.params = _contribParams();
+        args.admin = address(roundSafe);
         args.epochLength = EPOCH_FLOOR;
     }
 
@@ -315,7 +319,7 @@ contract ContributionsFactoryTest is Test {
         assertEq(c.evt.instanceId, c.instanceId);
         assertEq(c.evt.parentInstanceId, parentId, "event must carry the parent link");
         assertEq(c.evt.creator, parentAdmin);
-        assertEq(c.evt.admin, parentAdmin, "zero admin defaults to the creator");
+        assertEq(c.evt.admin, address(roundSafe), "the round fund is Safe-owned from genesis");
         assertEq(c.evt.trustAccumulator, parentResolver, "lane-1 source must be the parent's accumulator");
         assertEq(c.evt.mirror, c.mirror);
         assertEq(c.evt.resolver, c.resolver);
@@ -456,7 +460,7 @@ contract ContributionsFactoryTest is Test {
     }
 
     function test_ExplicitAdminReceivesEverything() public {
-        address roundAdmin = address(0xAD314);
+        address roundAdmin = address(new MockSafeOwner(address(0xAD314), 1));
         ContributionsFactory.CreateArgs memory args = _args("delegated-round");
         args.admin = roundAdmin;
         Created memory c = _create(args);
@@ -465,6 +469,14 @@ contract ContributionsFactoryTest is Test {
         assertEq(ContributionsParamsController(c.controller).owner(), roundAdmin);
         assertEq(MerkleFundDistributor(payable(c.distributor)).owner(), roundAdmin);
         assertEq(MerkleFundDistributor(payable(c.distributor)).feeRecipient(), roundAdmin);
+    }
+
+    function test_RevertWhen_DistributorAdminIsAnEoa() public {
+        ContributionsFactory.CreateArgs memory args = _args("eoa-owned-round");
+        args.admin = parentAdmin;
+        vm.expectRevert(abi.encodeWithSelector(ContributionsFactory.InvalidDistributorSafe.selector, parentAdmin));
+        vm.prank(parentAdmin);
+        factory.createInstance(args);
     }
 
     /*//////////////////////////////////////////////////////////////

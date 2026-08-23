@@ -80,6 +80,7 @@ jobs:
             signer,
             hypercerts,
             contributions,
+            nostr-workspace,
           ]
     steps:
       - name: Checkout sources

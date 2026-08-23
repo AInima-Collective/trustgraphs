@@ -16,7 +16,7 @@ contract Merkler is Common {
     /// @dev Update merkle tree by adding a trigger
     /// @param merkleSnapshotAddr Address of the MerkleSnapshot contract
     function updateMerkle(string calldata merkleSnapshotAddr) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         MerkleSnapshot merkleSnapshot = MerkleSnapshot(payable(vm.parseAddress(merkleSnapshotAddr)));
 
         uint256 checkpointId = merkleSnapshot.trigger();
@@ -27,7 +27,7 @@ contract Merkler is Common {
     /// @dev Claim rewards using merkle proof
     /// @param merkleFundDistributorAddr Address of the MerkleFundDistributor contract
     function claimRewards(string calldata merkleFundDistributorAddr, uint256 distributionIndex) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         MerkleFundDistributor merkleFundDistributor =
             MerkleFundDistributor(payable(vm.parseAddress(merkleFundDistributorAddr)));
 

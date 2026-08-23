@@ -26,6 +26,7 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
 import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
+import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 
 import {TrustgraphsFactoryBase} from "./TrustgraphsFactoryBase.sol";
 
@@ -210,7 +211,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         (bytes32 instanceId, address snapshot,,,) = sourceFactory.createInstance(_args("composable"));
 
-        CompositionSourceAdapter adapter = new CompositionSourceAdapterFactory()
+        CompositionSourceAdapter adapter = new CompositionSourceAdapterFactory(IInstanceRegistry(address(registry)))
             .create(
                 IInstanceRegistry(address(registry)),
                 instanceId,
@@ -235,6 +236,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     /// admin with no pending handshake — the reason the constructor sets `owner` directly.
     function test_FactoryIsInertAfterCreateWithDistributor() public {
         TrustgraphsFactory.CreateArgs memory args = _args("inert-fund");
+        args.admin = address(safeAdmin);
         args.withDistributor = true;
         args.distributorToken = address(0xDEC1);
 
@@ -256,12 +258,18 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         vm.assume(admin != address(paramsControllerDeployer));
 
         TrustgraphsFactory.CreateArgs memory args = _args("fuzzed");
-        args.admin = admin;
+        address expectedAdmin = admin == address(0) ? address(this) : admin;
+        if (withDistributor) {
+            args.admin = address(new MockSafeOwner(expectedAdmin, 1));
+            expectedAdmin = args.admin;
+        } else {
+            args.admin = admin;
+        }
         args.salt = salt;
         args.withDistributor = withDistributor;
 
         Created memory c = _create(args);
-        assertEq(c.admin, admin == address(0) ? address(this) : admin, "zero admin must mean msg.sender");
+        assertEq(c.admin, expectedAdmin, "factory must grant the selected valid admin");
         _assertFactoryInert(c);
     }
 
@@ -269,15 +277,24 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_ZeroAdminDefaultsToTheCreator() public {
         TrustgraphsFactory.CreateArgs memory args = _args("default-admin");
         args.admin = address(0);
-        args.withDistributor = true;
+        args.withDistributor = false;
 
         vm.prank(alice);
         Created memory c = _create(args);
 
         assertEq(c.admin, alice, "admin defaults to the caller");
         assertEq(c.evt.creator, alice, "creator is the caller");
-        assertEq(MerkleFundDistributor(payable(c.distributor)).owner(), alice);
+        assertEq(c.distributor, address(0));
         _assertFactoryInert(c);
+    }
+
+    function test_DistributorRejectsEoaAdmin() public {
+        TrustgraphsFactory.CreateArgs memory args = _args("unsafe-fund-owner");
+        args.admin = alice;
+        args.withDistributor = true;
+
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidDistributorSafe.selector, alice));
+        factory.createInstance(args);
     }
 
     /// The handover is functional, not nominal: the admin governs constitutional fields directly
@@ -472,15 +489,14 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     /// PARITY ANCHOR (ground rule 2): the hash the factory stores in the new snapshot is exactly
     /// `ParamsCodec.hash` of the params it emitted, and that encoder reproduces
     /// `tests/golden/trust-graph.json` — so the factory's own hash path cannot drift from the
-    /// Rust/guest/TS legs. Proven in both directions: derived fields substituted into the golden
-    /// struct must reproduce the STORED hash, and the golden derived fields substituted into the
-    /// EMITTED struct must reproduce the golden VECTOR.
+    /// Rust/guest/TS legs. The golden vector now exercises strict lane 2 while this entry point is
+    /// lane-1-only, so the two profile fields are translated alongside the three instance fields.
     function test_ParamsHashMatchesGoldenEncoder() public {
         Created memory c = _create(_args("golden"));
         bytes32 stored = MerkleSnapshot(c.snapshot).paramsHash();
 
-        // Forward: golden params + this instance's identity == what is on chain.
-        ParamsCodec.Params memory expected = _goldenParams();
+        // Forward: the lane-1 creation tuple + this instance's identity == what is on chain.
+        ParamsCodec.Params memory expected = _baseParams();
         expected.schemaUid = c.schemaUid;
         expected.accumulator = c.resolver;
         expected.chainId = uint64(block.chainid);
@@ -493,6 +509,8 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
         emitted.schemaUid = goldenJson.readBytes32(".params.schemaUid");
         emitted.accumulator = goldenJson.readAddress(".params.accumulator");
         emitted.chainId = uint64(goldenJson.readUint(".params.chainId"));
+        emitted.envelope0DomainSeparators = goldenJson.readBytes32Array(".params.envelope0DomainSeparators");
+        emitted.lane2MaxHeadAge = uint64(goldenJson.readUint(".params.lane2MaxHeadAge"));
         assertEq(
             ParamsCodec.hash(emitted),
             goldenJson.readBytes32(".params.paramsHash"),
@@ -547,6 +565,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     /// fail, a prover that trusts the event produces proofs that no snapshot will accept.
     function test_EventParamsHashToTheSnapshotsParamsHash() public {
         TrustgraphsFactory.CreateArgs memory args = _args("event-truth");
+        args.admin = address(safeAdmin);
         args.withDistributor = true;
         Created memory c = _create(args);
 
@@ -562,7 +581,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
     function test_EventCarriesTheRealAddressesAndPresentation() public {
         TrustgraphsFactory.CreateArgs memory args = _args("event-fields");
         args.metadataURI = "ipfs://bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        args.admin = bob;
+        args.admin = address(safeAdmin);
         args.epochLength = EPOCH_FLOOR + 11;
         args.withDistributor = true;
         args.distributorToken = address(0xFEED);
@@ -572,7 +591,7 @@ contract TrustgraphsFactoryTest is TrustgraphsFactoryBase {
 
         assertEq(c.evt.instanceId, c.instanceId, "instanceId");
         assertEq(c.evt.creator, alice, "creator is msg.sender, not the admin");
-        assertEq(c.evt.admin, bob, "admin");
+        assertEq(c.evt.admin, address(safeAdmin), "admin");
         assertEq(c.evt.name, "event-fields", "name");
         assertEq(c.evt.metadataURI, args.metadataURI, "metadataURI");
         assertEq(c.evt.resolver, c.resolver, "resolver");

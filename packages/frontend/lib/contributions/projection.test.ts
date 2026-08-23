@@ -138,4 +138,24 @@ assert.equal(
   10_000n
 )
 
+const overfullCarveout = computeContributions({
+  trustEdges: golden.compute.input.trustEdges.map(edge),
+  records: golden.compute.input.records.map(edge),
+  params: { ...params, evaluatorCarveoutBps: 10_001 },
+})
+assert.ok(
+  [...overfullCarveout.stage2.combinedWeights.values()].every(
+    (weight) => weight >= 0n && weight <= params.precisionScale
+  ),
+  'a historical >100% carve-out must clamp instead of producing negative display weights'
+)
+const overfullDistributed = overfullCarveout.scores.reduce(
+  (sum, [, value]) => sum + value,
+  0n
+)
+assert.ok(
+  overfullDistributed === 0n || overfullDistributed === params.totalPool,
+  'guest/host parity requires a clamped carve-out to conserve the pool'
+)
+
 console.log('contributions page projection parity guard PASS')

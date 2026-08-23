@@ -48,8 +48,8 @@ contract VerifyVaultSiblings is Test {
         assertEq(vm.getBlockNumber(), 11, "second roll was a no-op: block.number was hoisted");
     }
 
-    /// The same PoC with ABSOLUTE roll targets reproduces both of its claims.
-    function test_Sibling1_ReproducesWithAbsoluteRolls() public {
+    /// Absolute rolls demonstrate the fixed behavior without the historical cheatcode artifact.
+    function test_Sibling1_DistinctAccumulatorsWithSameRootBothLand() public {
         _setUpVault();
 
         accer.setState(keccak256("capture-1"), SOURCE_COUNT);
@@ -65,14 +65,8 @@ contract VerifyVaultSiblings is Test {
         assertEq(cp1, cp0 + 1, "second checkpoint minted");
 
         vm.prank(prover);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IProvingVault.StatementAlreadyPaid.selector,
-                keccak256(abi.encode(address(snapshot), SOURCE_COUNT, uint64(0), ROOT))
-            )
-        );
         vault.submitAndClaim(INSTANCE, _args(cp1, ROOT, prover));
-        assertEq(snapshot.lastAppliedCheckpoint(), cp0, "root rolled back");
+        assertEq(snapshot.lastAppliedCheckpoint(), cp1, "second distinct proof landed");
     }
 
     /// ROOT CAUSE OF `PashovTrust_VaultStatementWedge` (`InsufficientBalance`): the failure is in
@@ -87,19 +81,13 @@ contract VerifyVaultSiblings is Test {
         vm.prank(prover);
         vault.submitAndClaim(INSTANCE, _args(cp0, ROOT, prover));
 
-        // The main claim already reproduced here.
+        // The second distinct accumulator-bound proof lands and pays.
         accer.setState(keccak256("capture-2"), SOURCE_COUNT);
         vm.roll(1_100);
         uint256 cp1 = snapshot.trigger();
         vm.prank(prover);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IProvingVault.StatementAlreadyPaid.selector,
-                keccak256(abi.encode(address(snapshot), SOURCE_COUNT, uint64(0), ROOT))
-            )
-        );
         vault.submitAndClaim(INSTANCE, _args(cp1, ROOT, prover));
-        assertEq(snapshot.lastAppliedCheckpoint(), cp0);
+        assertEq(snapshot.lastAppliedCheckpoint(), cp1);
 
         // The epilogue's bug: the tank is no longer a round 10 ether.
         uint256 left = vault.accountOf(INSTANCE).ethBalance;
@@ -113,6 +101,8 @@ contract VerifyVaultSiblings is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();

@@ -1,10 +1,14 @@
+import fs from 'fs'
 import path from 'path'
 
 import dotenv from 'dotenv'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
-import deploymentSummaryJson from '../../.docker/deployment_summary.json'
+import {
+  loadReleaseManifest,
+  releaseManifestToDeploymentSummary,
+} from '../../contracts/deploy/release-manifest'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
   compositionAccumulatorAbi,
@@ -53,6 +57,8 @@ import {
  * typechecking doesn't depend on the box's current JSON shape.
  */
 interface DeployedNetwork {
+  id?: string
+  name?: string
   /** Program discriminator; absent = the address-keyed trust-graph vouching program. */
   program?: string
   contracts: {
@@ -65,8 +71,9 @@ interface DeployedNetwork {
     safe?: { proxy?: string }
   }
 }
-const deploymentSummary = deploymentSummaryJson as {
+type DeploymentSummary = {
   networks: DeployedNetwork[]
+  eas?: { eas?: string; schema_registry?: string; schema_registrar?: string }
   /** `.docker/factory_deploy.json`, present once `DeployFactory` has run on this box. */
   factory?: { factory?: string; instance_registry?: string }
   governedFactory?: {
@@ -93,13 +100,56 @@ dotenv.config({
   quiet: true,
 })
 
-const { DEPLOY_ENV } = process.env
-if (!DEPLOY_ENV) {
-  throw new Error(`Failed to load DEPLOY_ENV from ${dotenvFile}`)
+const legacyDeployment = process.env.DEPLOY_ENV?.trim().toUpperCase()
+if (
+  legacyDeployment &&
+  legacyDeployment !== 'DEV' &&
+  legacyDeployment !== 'PROD'
+) {
+  throw new Error(
+    'DEPLOY_ENV must be DEV or PROD when the legacy alias is used'
+  )
+}
+const deploymentStage =
+  process.env.DEPLOY_STAGE?.trim().toLowerCase() ??
+  (legacyDeployment === 'PROD' ? 'production' : 'development')
+const deploymentTarget =
+  process.env.DEPLOY_TARGET?.trim().toLowerCase() ??
+  (legacyDeployment === 'PROD' ? 'optimism' : 'local')
+if (!['development', 'production'].includes(deploymentStage)) {
+  throw new Error('DEPLOY_STAGE must be development or production')
+}
+if (!['local', 'optimism', 'sepolia'].includes(deploymentTarget)) {
+  throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+}
+if ((deploymentStage === 'development') !== (deploymentTarget === 'local')) {
+  throw new Error(
+    `Invalid deployment profile ${deploymentStage}/${deploymentTarget}`
+  )
 }
 
-export const IS_PRODUCTION = DEPLOY_ENV.toUpperCase().trim() === 'PROD'
-const CORE_CHAIN = IS_PRODUCTION ? 'optimism' : 'local'
+export const IS_PRODUCTION = deploymentStage === 'production'
+const IS_OPTIMISM = deploymentTarget === 'optimism'
+const IS_SEPOLIA = deploymentTarget === 'sepolia'
+const CORE_CHAIN = IS_SEPOLIA ? 'sepolia' : IS_OPTIMISM ? 'optimism' : 'local'
+const releaseManifest = IS_SEPOLIA
+  ? loadReleaseManifest(
+      path.join(__dirname, '../../deployments/sepolia.json'),
+      {
+        requireComplete: true,
+      }
+    )
+  : undefined
+const deploymentSummary = (
+  releaseManifest
+    ? releaseManifestToDeploymentSummary(releaseManifest)
+    : JSON.parse(
+        fs.readFileSync(
+          path.join(__dirname, '../../.docker/deployment_summary.json'),
+          'utf8'
+        )
+      )
+) as DeploymentSummary
 
 const requiredEnv = (name: string): string => {
   const value = process.env[name]?.trim()
@@ -141,23 +191,31 @@ const DEV_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK', 1)
 // precise known block starts here, never at genesis. Operators can move the common floor forward
 // when deploying a fresh catalog, but it must remain at or before every configured contract.
 const PROD_START_BLOCK = blockNumberEnv('PONDER_START_BLOCK_10', 142_786_328)
-const CORE_START_BLOCK = IS_PRODUCTION ? PROD_START_BLOCK : DEV_START_BLOCK
+const SEPOLIA_START_BLOCK = blockNumberEnv(
+  'PONDER_START_BLOCK_11155111',
+  releaseManifest?.firstDeploymentBlock ?? 0
+)
+const CORE_START_BLOCK = IS_SEPOLIA
+  ? SEPOLIA_START_BLOCK
+  : IS_OPTIMISM
+    ? PROD_START_BLOCK
+    : DEV_START_BLOCK
 
 /**
  * ERC-8004 is deliberately allowlisted: production always follows the official Optimism
  * singleton, while development accepts only an explicit local-fixture address. An arbitrary
  * production address cannot be smuggled in through configuration.
  */
-const ERC8004_IDENTITY_REGISTRY = IS_PRODUCTION
+const ERC8004_IDENTITY_REGISTRY = IS_OPTIMISM
   ? (OPTIMISM_ERC8004_IDENTITY_REGISTRY.proxy as Hex)
   : (process.env.ERC8004_IDENTITY_REGISTRY_ADDRESS_31337 as Hex | undefined)
-const ERC8004_START_BLOCK = IS_PRODUCTION
+const ERC8004_START_BLOCK = IS_OPTIMISM
   ? OPTIMISM_ERC8004_IDENTITY_REGISTRY.sourceBlock
   : DEV_START_BLOCK
-const ERC8004_REPUTATION_REGISTRY = IS_PRODUCTION
+const ERC8004_REPUTATION_REGISTRY = IS_OPTIMISM
   ? (OPTIMISM_ERC8004_REPUTATION_REGISTRY.proxy as Hex)
   : (process.env.ERC8004_REPUTATION_REGISTRY_ADDRESS_31337 as Hex | undefined)
-const ERC8004_REPUTATION_START_BLOCK = IS_PRODUCTION
+const ERC8004_REPUTATION_START_BLOCK = IS_OPTIMISM
   ? OPTIMISM_ERC8004_REPUTATION_REGISTRY.sourceBlock
   : DEV_START_BLOCK
 if (ERC8004_REPUTATION_REGISTRY && !ERC8004_IDENTITY_REGISTRY) {
@@ -208,32 +266,28 @@ const GOVERNED_WRAPPERS = [
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
 const WEIGHTED_FACTORY =
-  ((IS_PRODUCTION
-    ? process.env.WEIGHTED_FACTORY_ADDRESS_10
-    : process.env.WEIGHTED_FACTORY_ADDRESS_31337
-  )?.trim() as Hex | undefined) ??
+  (process.env[
+    `WEIGHTED_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
+  ]?.trim() as Hex | undefined) ??
   (deploymentSummary.weightedFactory?.weighted_factory as Hex | undefined)
 const COMPOSITION_FACTORY =
-  ((IS_PRODUCTION
-    ? process.env.TRUST_COMPOSE_FACTORY_ADDRESS_10
-    : process.env.TRUST_COMPOSE_FACTORY_ADDRESS_31337
-  )?.trim() as Hex | undefined) ??
+  (process.env[
+    `TRUST_COMPOSE_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
+  ]?.trim() as Hex | undefined) ??
   (deploymentSummary.trustComposeFactory?.trust_compose_factory as
     | Hex
     | undefined)
 const CONTRIBUTIONS_FACTORY =
-  ((IS_PRODUCTION
-    ? process.env.CONTRIBUTIONS_FACTORY_ADDRESS_10
-    : process.env.CONTRIBUTIONS_FACTORY_ADDRESS_31337
-  )?.trim() as Hex | undefined) ??
+  (process.env[
+    `CONTRIBUTIONS_FACTORY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
+  ]?.trim() as Hex | undefined) ??
   (deploymentSummary.contributionsFactory?.contributions_factory as
     | Hex
     | undefined)
 const GRAPH_LINEAGE_REGISTRY =
-  ((IS_PRODUCTION
-    ? process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_10
-    : process.env.GRAPH_LINEAGE_REGISTRY_ADDRESS_31337
-  )?.trim() as Hex | undefined) ??
+  (process.env[
+    `GRAPH_LINEAGE_REGISTRY_ADDRESS_${IS_SEPOLIA ? 11155111 : IS_OPTIMISM ? 10 : 31337}`
+  ]?.trim() as Hex | undefined) ??
   (deploymentSummary.graphLineage?.registry as Hex | undefined)
 
 /**
@@ -456,15 +510,25 @@ export default createConfig({
             ws: LOCAL_WS_URL,
           },
         }
-      : {
-          optimism: {
-            id: 10,
-            rpc: requiredEnv('PONDER_RPC_URL_10'),
-            ...(process.env.PONDER_WS_URL_10
-              ? { ws: process.env.PONDER_WS_URL_10 }
-              : {}),
-          },
-        }),
+      : IS_OPTIMISM
+        ? {
+            optimism: {
+              id: 10,
+              rpc: requiredEnv('PONDER_RPC_URL_10'),
+              ...(process.env.PONDER_WS_URL_10
+                ? { ws: process.env.PONDER_WS_URL_10 }
+                : {}),
+            },
+          }
+        : {
+            sepolia: {
+              id: 11155111,
+              rpc: requiredEnv('PONDER_RPC_URL_11155111'),
+              ...(process.env.PONDER_WS_URL_11155111
+                ? { ws: process.env.PONDER_WS_URL_11155111 }
+                : {}),
+            },
+          }),
   },
   contracts: {
     graphLineageRegistry: {
@@ -621,7 +685,7 @@ export default createConfig({
     },
     easIndexerResolver: {
       abi: easIndexerResolverAbi,
-      startBlock: IS_PRODUCTION ? 142786483 : DEV_START_BLOCK,
+      startBlock: IS_OPTIMISM ? 142786483 : CORE_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: FACTORY_DISCOVERY
@@ -632,7 +696,7 @@ export default createConfig({
     },
     merkleSnapshot: {
       abi: merkleSnapshotAbi,
-      startBlock: IS_PRODUCTION ? 142786328 : DEV_START_BLOCK,
+      startBlock: IS_OPTIMISM ? 142786328 : CORE_START_BLOCK,
       chain: {
         [CORE_CHAIN]: {
           address: FACTORY_DISCOVERY
@@ -799,7 +863,7 @@ export default createConfig({
     },
     merkleGovModule: {
       abi: merkleGovModuleAbi,
-      startBlock: IS_PRODUCTION ? PROD_START_BLOCK : 'latest',
+      startBlock: IS_OPTIMISM ? PROD_START_BLOCK : 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.merkleGovModule
       )
@@ -837,7 +901,7 @@ export default createConfig({
     },
     gnosisSafe: {
       abi: gnosisSafeAbi,
-      startBlock: IS_PRODUCTION ? 146706138 : 'latest',
+      startBlock: IS_OPTIMISM ? 146706138 : 'latest',
       chain: deploymentSummary.networks.some(
         (network) => network.contracts.safe?.proxy
       )

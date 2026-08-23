@@ -69,6 +69,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     uint256 internal constant SCALE = 1e18;
     uint64 internal constant EPOCH_FLOOR = 5;
     uint48 internal constant ACTIVATION_DELAY = 2 days;
+    bytes32 internal constant SIGNER_VKEY = keccak256("weighted factory signer guest");
     address internal constant REGISTRY_ADMIN = address(0xBE7);
 
     SchemaRegistry internal schemaRegistry;
@@ -90,6 +91,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     GovernedAuthorityDeployer internal authorityDeployer;
     SignerSyncModuleDeployer internal signerSyncDeployer;
     MerkleGovModuleDeployer internal govModuleDeployer;
+    WeightedFactorySignerVerifier internal signerVerifier;
 
     address internal creator = address(0xA11CE);
 
@@ -128,8 +130,16 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        signerVerifier = new WeightedFactorySignerVerifier(SIGNER_VKEY);
         governedFactory = new GovernedWeightedTrustgraphsFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            signerVerifier,
+            SIGNER_VKEY
         );
     }
 
@@ -198,6 +208,32 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 2, "only the two delayed authority routes may be enabled");
         assertEq(next, address(0x1), "module list must be exhausted");
+    }
+
+    function test_PredeployedBootstrapSafeIsAdopted() public {
+        WeightedTrustgraphsFactory.CreateArgs memory args = _args("front-run weighted", 3);
+        args.salt = bytes32(uint256(0xA10));
+        address[] memory owners = new address[](1);
+        owners[0] = address(governedFactory);
+        bytes memory initializer = abi.encodeWithSignature(
+            "setup(address[],uint256,address,bytes,address,address,uint256,address)",
+            owners,
+            1,
+            address(0),
+            bytes(""),
+            address(0),
+            address(0),
+            0,
+            address(0)
+        );
+        uint256 nonce = uint256(keccak256(abi.encode(block.chainid, creator, args.name, args.salt)));
+        address frontRun = address(safeFactory.createProxyWithNonce(address(safeSingleton), initializer, nonce));
+
+        vm.prank(creator);
+        (, address safe,,) = _createGoverned(args, _unpaidPolicy());
+
+        assertEq(safe, frontRun, "exact weighted bootstrap Safe must be adopted");
+        assertTrue(GnosisSafe(payable(safe)).isOwner(creator), "adopted Safe must graduate normally");
     }
 
     function test_FactoryWrapperAndDeployersAreInertAfterCreation() public {
@@ -270,16 +306,9 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
     }
 
     function test_CreateDiscoverAndApplyOptionalSignerSyncWithoutConfigEdit() public {
-        bytes32 signerVKey = keccak256("weighted factory signer guest");
-        WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(signerVKey);
         GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
             GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(signerVerifier),
-                programVKey: signerVKey,
-                topN: 5,
-                minThreshold: 2,
-                targetThresholdBps: 5000
+                enabled: true, topN: 5, minThreshold: 2, targetThresholdBps: 5000
             });
 
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("weighted signer sync", 2);
@@ -289,11 +318,14 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
         GovernedWeightedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         SignerSyncZkModule signer = SignerSyncZkModule(authority.signerSyncModule);
+        assertEq(address(governedFactory.SIGNER_SYNC_VERIFIER()), address(signerVerifier));
+        assertEq(governedFactory.SIGNER_SYNC_PROGRAM_VKEY(), SIGNER_VKEY);
         assertTrue(address(signer) != address(0), "signer module must be discoverable from authorityOf");
         assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(address(signer)), "signer module must be enabled");
         assertEq(signer.owner(), safe, "selection/verifier changes must be governed by the Safe");
         assertEq(address(signer.scoreSnapshot()), snapshot, "signer checkpoint source");
         assertEq(address(signer.accumulator()), address(MerkleSnapshot(snapshot).accumulator()), "signer accumulator");
+        assertEq(address(signer.zkVerifier()), address(signerVerifier), "immutable signer verifier");
 
         (address[] memory modules, address next) = GnosisSafe(payable(safe)).getModulesPaginated(address(0x1), 10);
         assertEq(modules.length, 3, "gov, recovery and signer are the only enabled modules");
@@ -358,41 +390,32 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
         assertEq(GnosisSafe(payable(safe)).getThreshold(), 2);
     }
 
-    function test_OptionalSignerRejectsVerifierProgramMismatchAtomically() public {
+    function test_ConstructorRejectsSignerVerifierProgramMismatch() public {
         bytes32 verifierVKey = keccak256("deployed weighted signer guest");
         bytes32 suppliedVKey = keccak256("different weighted signer guest");
-        WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(verifierVKey);
-        GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
-            GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(signerVerifier),
-                programVKey: suppliedVKey,
-                topN: 5,
-                minThreshold: 2,
-                targetThresholdBps: 5000
-            });
+        WeightedFactorySignerVerifier mismatchedVerifier = new WeightedFactorySignerVerifier(verifierVKey);
 
-        vm.prank(creator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SignerSyncModuleDeployer.SignerProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
+                GovernedWeightedTrustgraphsFactory.SignerSyncProgramVKeyMismatch.selector, suppliedVKey, verifierVKey
             )
         );
-        governedFactory.createGovernedInstance(_args("mismatched weighted signer", 2), _unpaidPolicy(), signerConfig);
-        assertEq(registry.instanceCount(), 0, "invalid signer identity must roll back base creation");
+        new GovernedWeightedTrustgraphsFactory(
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            mismatchedVerifier,
+            suppliedVKey
+        );
     }
 
     function test_OptionalSignerRejectsUnsafeSelectionAtomically() public {
-        bytes32 signerVKey = keccak256("weighted factory signer guest");
-        WeightedFactorySignerVerifier signerVerifier = new WeightedFactorySignerVerifier(signerVKey);
         GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory signerConfig =
             GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(signerVerifier),
-                programVKey: signerVKey,
-                topN: 65,
-                minThreshold: 2,
-                targetThresholdBps: 5000
+                enabled: true, topN: 65, minThreshold: 2, targetThresholdBps: 5000
             });
 
         vm.prank(creator);
@@ -652,12 +675,7 @@ contract GovernedWeightedTrustgraphsFactoryTest is Test {
 
     function _noSigner() internal pure returns (GovernedWeightedTrustgraphsFactory.SignerSyncConfig memory) {
         return GovernedWeightedTrustgraphsFactory.SignerSyncConfig({
-            enabled: false,
-            verifier: address(0),
-            programVKey: bytes32(0),
-            topN: 0,
-            minThreshold: 0,
-            targetThresholdBps: 0
+            enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
         });
     }
 

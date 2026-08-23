@@ -117,6 +117,7 @@ contract SignerSyncZkModule is Module {
     error InvalidSelectionParams();
     error ActivityCheckpointSuperseded();
     error ActivityCheckpointStale(uint64 checkpointBlock, uint256 currentBlock);
+    error AccumulatorRotationLocked(uint256 currentCheckpointCount, uint256 candidateCheckpointCount);
 
     event ZkVerifierUpdated(address indexed zkVerifier);
     event AccumulatorUpdated(address indexed accumulator);
@@ -276,9 +277,24 @@ contract SignerSyncZkModule is Module {
         emit ZkVerifierUpdated(address(_zkVerifier));
     }
 
+    /// @notice Update the accumulator only before either accumulator has checkpoint history.
+    /// @dev Mirrors MerkleSnapshot's fail-closed rotation protocol: checkpoint ids have meaning
+    ///      only within one accumulator history, so a live or pre-used lane cannot be swapped in.
+    ///      The high-water state is explicitly cleared on the sole safe (both-empty) rotation path.
     function setAccumulator(IAttestationAccumulator _accumulator) external onlyOwner {
         if (address(_accumulator) == address(0)) revert ZeroAddress();
+        if (_accumulator == accumulator) {
+            emit AccumulatorUpdated(address(_accumulator));
+            return;
+        }
+        uint256 currentCheckpointCount = accumulator.checkpointCount();
+        uint256 candidateCheckpointCount = _accumulator.checkpointCount();
+        if (currentCheckpointCount != 0 || candidateCheckpointCount != 0) {
+            revert AccumulatorRotationLocked(currentCheckpointCount, candidateCheckpointCount);
+        }
         accumulator = _accumulator;
+        lastAppliedCheckpoint = 0;
+        hasAppliedCheckpoint = false;
         emit AccumulatorUpdated(address(_accumulator));
     }
 

@@ -9,13 +9,19 @@ use anyhow::{Context, Result};
 use operator_core::manifest::{Manifest, ManifestEntry};
 use operator_core::policy::{LossBudget, Policy};
 use operator_core::types::Program;
+use operator_core::work::{CapabilityProfile, OPERATOR_CYCLE_LIMIT};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub rpc: String,
+    /// Optional sanitized public release manifest. RPC credentials remain in this TOML; chain
+    /// identity and deployed contract coordinates come from the tracked JSON release record.
+    #[serde(default)]
+    pub release_manifest: Option<PathBuf>,
+    #[serde(default)]
     pub registry: Address,
     /// Checked against `eth_chainId` at startup, never trusted over it.
     #[serde(default)]
@@ -182,6 +188,12 @@ pub struct Prover {
     pub groth16: bool,
     #[serde(default = "d_timeout")]
     pub timeout_s: u64,
+    /// Operator-local refusal envelope. This is policy, not a guest or vkey assertion.
+    #[serde(default = "d_cycle_limit")]
+    pub cycle_limit: u64,
+    /// Versioned, published host resource envelope. Every field may be overridden independently.
+    #[serde(default)]
+    pub capability_profile: CapabilityProfile,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,6 +289,9 @@ fn d_backend() -> String {
 fn d_timeout() -> u64 {
     3_600
 }
+fn d_cycle_limit() -> u64 {
+    OPERATOR_CYCLE_LIMIT
+}
 fn d_per_instance_usd() -> u64 {
     25
 }
@@ -359,7 +374,13 @@ impl Default for Finality {
 }
 impl Default for Prover {
     fn default() -> Self {
-        Self { backend: d_backend(), groth16: true, timeout_s: d_timeout() }
+        Self {
+            backend: d_backend(),
+            groth16: true,
+            timeout_s: d_timeout(),
+            cycle_limit: d_cycle_limit(),
+            capability_profile: CapabilityProfile::default(),
+        }
     }
 }
 impl Default for Budget {
@@ -425,10 +446,87 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("read operator config {}", path.display()))?;
-        let cfg: Config = toml::from_str(&text)
+        let mut cfg: Config = toml::from_str(&text)
             .with_context(|| format!("parse operator config {}", path.display()))?;
+        if let Some(manifest_path) = cfg.release_manifest.clone() {
+            let manifest_path = if manifest_path.is_absolute() {
+                manifest_path
+            } else {
+                path.parent().unwrap_or_else(|| Path::new(".")).join(manifest_path)
+            };
+            cfg.apply_release_manifest(&manifest_path)?;
+        }
         cfg.validate()?;
         Ok(cfg)
+    }
+
+    fn apply_release_manifest(&mut self, path: &Path) -> Result<()> {
+        let text = std::fs::read_to_string(path)
+            .with_context(|| format!("read release manifest {}", path.display()))?;
+        let manifest: OperatorReleaseManifest = serde_json::from_str(&text)
+            .with_context(|| format!("parse release manifest {}", path.display()))?;
+        anyhow::ensure!(manifest.version == 1, "release manifest version must be 1");
+        anyhow::ensure!(manifest.status == "deployed", "release manifest is not finalized");
+        anyhow::ensure!(manifest.stage == "production", "release manifest stage is not production");
+        anyhow::ensure!(
+            manifest.chain == "sepolia" && manifest.chain_id == 11_155_111,
+            "release manifest is not bound to Ethereum Sepolia (11155111)"
+        );
+        anyhow::ensure!(
+            manifest.deployment_commit.as_deref().is_some_and(|value| is_hex(value, 40, false)),
+            "release manifest deploymentCommit is missing or invalid"
+        );
+        anyhow::ensure!(
+            manifest.first_deployment_block.is_some(),
+            "release manifest firstDeploymentBlock is missing"
+        );
+        anyhow::ensure!(
+            is_hex(&manifest.programs.trust_graph.elf_sha256, 64, true),
+            "release manifest trust-graph ELF digest is missing or invalid"
+        );
+        anyhow::ensure!(
+            is_hex(&manifest.programs.trust_graph.vkey, 64, true),
+            "release manifest trust-graph vkey is missing or invalid"
+        );
+
+        match self.chain_id {
+            Some(configured) => anyhow::ensure!(
+                configured == manifest.chain_id,
+                "operator chain_id {configured} conflicts with release manifest chainId {}",
+                manifest.chain_id
+            ),
+            None => self.chain_id = Some(manifest.chain_id),
+        }
+
+        let registry = manifest.contracts.instance_registry.required("instanceRegistry")?;
+        if self.registry == Address::ZERO {
+            self.registry = registry.0;
+        } else {
+            anyhow::ensure!(
+                self.registry == registry.0,
+                "operator registry conflicts with release manifest instanceRegistry"
+            );
+        }
+        if self.registry_from_block == 0 {
+            self.registry_from_block = registry.1;
+        } else {
+            anyhow::ensure!(
+                self.registry_from_block == registry.1,
+                "operator registry_from_block conflicts with release manifest instanceRegistry block"
+            );
+        }
+
+        if self.paid.enabled {
+            let vault = manifest.contracts.proving_vault.required("provingVault")?.0;
+            match self.paid.vault {
+                Some(configured) => anyhow::ensure!(
+                    configured == vault,
+                    "operator paid vault conflicts with release manifest provingVault"
+                ),
+                None => self.paid.vault = Some(vault),
+            }
+        }
+        Ok(())
     }
 
     /// Reject what cannot work, at load time rather than at spend time.
@@ -477,6 +575,19 @@ impl Config {
             self.ops.submit_failure_threshold > 0,
             "ops.submit_failure_threshold must be at least 1"
         );
+        anyhow::ensure!(self.prover.cycle_limit > 0, "prover.cycle_limit must be at least 1");
+        for (name, limit) in [
+            ("max_raw_records", self.prover.capability_profile.max_raw_records),
+            ("max_live_edges", self.prover.capability_profile.max_live_edges),
+            ("max_unique_nodes", self.prover.capability_profile.max_unique_nodes),
+            ("max_out_degree", self.prover.capability_profile.max_out_degree),
+            ("max_witness_bytes", self.prover.capability_profile.max_witness_bytes),
+            ("max_lane2_anchors", self.prover.capability_profile.max_lane2_anchors),
+            ("max_signature_checks", self.prover.capability_profile.max_signature_checks),
+            ("max_iterations", self.prover.capability_profile.max_iterations),
+        ] {
+            anyhow::ensure!(limit > 0, "prover.capability_profile.{name} must be at least 1");
+        }
         anyhow::ensure!(
             self.signer_sync.budget_window_seconds > 0,
             "signer_sync.budget_window_seconds must be at least 1"
@@ -514,6 +625,8 @@ impl Config {
             } else {
                 self.finality.confirmations
             },
+            cycle_limit: self.prover.cycle_limit,
+            capability_profile: self.prover.capability_profile,
             supported_programs: supported,
             loss_budget: LossBudget {
                 per_instance_cents_per_day: if signer {
@@ -556,6 +669,73 @@ impl Config {
             Address::ZERO
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorReleaseManifest {
+    version: u64,
+    status: String,
+    stage: String,
+    chain: String,
+    #[serde(rename = "chainId")]
+    chain_id: u64,
+    #[serde(rename = "deploymentCommit")]
+    deployment_commit: Option<String>,
+    #[serde(rename = "firstDeploymentBlock")]
+    first_deployment_block: Option<u64>,
+    contracts: OperatorReleaseContracts,
+    programs: OperatorReleasePrograms,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorReleasePrograms {
+    #[serde(rename = "trustGraph")]
+    trust_graph: OperatorReleaseProgram,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorReleaseProgram {
+    #[serde(rename = "elfSha256")]
+    elf_sha256: String,
+    vkey: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorReleaseContracts {
+    #[serde(rename = "instanceRegistry")]
+    instance_registry: OperatorDeploymentRecord,
+    #[serde(rename = "provingVault")]
+    proving_vault: OperatorDeploymentRecord,
+}
+
+#[derive(Debug, Deserialize)]
+struct OperatorDeploymentRecord {
+    address: Option<Address>,
+    block: Option<u64>,
+}
+
+impl OperatorDeploymentRecord {
+    fn required(&self, name: &str) -> Result<(Address, u64)> {
+        let address =
+            self.address.context(format!("release manifest {name} address is missing"))?;
+        let block = self.block.context(format!("release manifest {name} block is missing"))?;
+        anyhow::ensure!(address != Address::ZERO, "release manifest {name} address is zero");
+        Ok((address, block))
+    }
+}
+
+fn is_hex(value: &str, digits: usize, prefixed: bool) -> bool {
+    let value = if prefixed {
+        match value.strip_prefix("0x") {
+            Some(value) => value,
+            None => return false,
+        }
+    } else {
+        value
+    };
+    value.len() == digits
+        && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && value.bytes().any(|byte| byte != b'0')
 }
 
 impl WeightedManifests {
@@ -682,10 +862,11 @@ impl Ipfs {
 
 #[cfg(test)]
 mod validate_tests {
-    use super::Config;
-    use alloy_primitives::B256;
+    use super::{CapabilityProfile, Config, OPERATOR_CYCLE_LIMIT};
+    use alloy_primitives::{Address, B256};
     use operator_core::types::Program;
     use std::collections::BTreeSet;
+    use std::path::PathBuf;
 
     fn parse(toml_src: &str) -> Result<Config, String> {
         let cfg: Config = toml::from_str(toml_src).map_err(|e| e.to_string())?;
@@ -700,7 +881,93 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
 
     #[test]
     fn a_minimal_config_is_accepted() {
-        assert!(parse(GOOD).is_ok());
+        let cfg = parse(GOOD).unwrap();
+        assert_eq!(cfg.prover.cycle_limit, OPERATOR_CYCLE_LIMIT);
+        assert_eq!(cfg.prover.capability_profile, CapabilityProfile::default());
+    }
+
+    #[test]
+    fn finalized_release_manifest_supplies_chain_and_registry_without_rpc_secrets() {
+        let directory = std::env::temp_dir()
+            .join(format!("trustgraphs-operator-release-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let manifest_path = directory.join("sepolia.json");
+        std::fs::write(
+            &manifest_path,
+            r#"{
+              "version": 1,
+              "status": "deployed",
+              "stage": "production",
+              "chain": "sepolia",
+              "chainId": 11155111,
+              "deploymentCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "firstDeploymentBlock": 120,
+              "contracts": {
+                "instanceRegistry": {
+                  "address": "0x1111111111111111111111111111111111111111",
+                  "block": 123,
+                  "txHash": "0x2222222222222222222222222222222222222222222222222222222222222222"
+                },
+                "provingVault": { "address": null, "block": null, "txHash": null }
+              },
+              "programs": {
+                "trustGraph": {
+                  "elfSha256": "0x3333333333333333333333333333333333333333333333333333333333333333",
+                  "vkey": "0x4444444444444444444444444444444444444444444444444444444444444444"
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let config_path: PathBuf = directory.join("operator.toml");
+        std::fs::write(
+            &config_path,
+            "rpc = \"https://rpc.invalid\"\nrelease_manifest = \"sepolia.json\"\n",
+        )
+        .unwrap();
+
+        let cfg = Config::load(&config_path).unwrap();
+        assert_eq!(cfg.chain_id, Some(11_155_111));
+        assert_eq!(
+            cfg.registry,
+            "0x1111111111111111111111111111111111111111".parse::<Address>().unwrap()
+        );
+        assert_eq!(cfg.registry_from_block, 123);
+        assert_eq!(cfg.rpc, "https://rpc.invalid");
+
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn cycle_and_partial_capability_profile_are_configurable_and_reach_policy() {
+        let cfg = parse(&format!(
+            "{GOOD}\n[prover]\ncycle_limit = 12000000000\n\
+             [prover.capability_profile]\nmax_raw_records = 2400\nmax_unique_nodes = 4800\n"
+        ))
+        .unwrap();
+        let policy = cfg.policy_for(
+            B256::from([0x11; 32]),
+            Program::Trustgraphs,
+            BTreeSet::from([Program::Trustgraphs]),
+        );
+        assert_eq!(policy.cycle_limit, 12_000_000_000);
+        assert_eq!(policy.capability_profile.max_raw_records, 2_400);
+        assert_eq!(policy.capability_profile.max_unique_nodes, 4_800);
+        assert_eq!(policy.capability_profile.max_live_edges, 1_800, "omitted key uses default");
+    }
+
+    #[test]
+    fn zero_capacity_policy_is_rejected_at_config_load() {
+        let cycle = parse(&format!("{GOOD}\n[prover]\ncycle_limit = 0\n")).unwrap_err();
+        assert!(cycle.contains("prover.cycle_limit must be at least 1"), "{cycle}");
+
+        let capability =
+            parse(&format!("{GOOD}\n[prover.capability_profile]\nmax_raw_records = 0\n"))
+                .unwrap_err();
+        assert!(
+            capability.contains("prover.capability_profile.max_raw_records must be at least 1"),
+            "{capability}"
+        );
     }
 
     #[test]

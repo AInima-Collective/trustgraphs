@@ -94,6 +94,12 @@ Governed instances get the DAO Safe, still un-timelocked. `DeployNetwork.s.sol:1
 the deployer EOA.
 *Fix:* pin `totalMerkleValue` in the funder-guarded overload alongside the root; add a
 per-round spend cap in `claim` (see M-8).
+*Resolution (2026-08-23):* both halves are closed. The payout guards and spend cap
+landed, and all four base factories now require an initialized Safe-compatible
+owner whenever they create or attach a distributor. Contributions requires the
+Safe unconditionally, governed wrappers supply their instance Safe, and
+`DeployNetwork` takes the Safe as an explicit input instead of retaining the
+deployer EOA.
 
 **H-4. Any mempool watcher can permanently block governed instance creation for about 1.6%
 of the victim's cost.**

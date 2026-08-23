@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
+
 /// @title ICompositionSourceAdapter
 /// @notice Authenticated, immutable view of one governance-admitted source lineage/program.
 interface ICompositionSourceAdapter {
@@ -32,5 +34,6 @@ interface ICompositionSourceAdapter {
 }
 
 interface ICompositionSourceAdapterFactory {
+    function registry() external view returns (IInstanceRegistry);
     function isAdapter(address adapter) external view returns (bool);
 }

@@ -4,12 +4,14 @@ pragma solidity ^0.8.22;
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IEthUsdFeed} from "interfaces/vault/IEthUsdFeed.sol";
 import {IAttestationAccumulator} from "interfaces/merkle/IAttestationAccumulator.sol";
+import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {InputCapacity} from "src/limits/InputCapacity.sol";
 
@@ -41,6 +43,15 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     /// @notice USD fixed-point scale (matches Chainlink's 8-decimal USD feeds).
     uint256 public constant USD = 1e8;
 
+    /// @notice Circle USDC's decimal precision, which every stablecoin conversion below assumes.
+    uint8 internal constant USDC_DECIMALS = 6;
+
+    /// @notice Circle USDC's decimal scale, derived from the asserted precision.
+    uint256 internal constant USDC_SCALE = 1e6;
+
+    /// @notice The stablecoin does not use the six-decimal scale required by the vault's math.
+    error StablecoinDecimalsUnsupported(uint8 decimals);
+
     /// @notice Notice period before a withdrawal can be executed. Instant withdrawal would let a
     ///         community rug a prover mid-proof, which is exactly the reliability the hosted
     ///         service sells. Top-ups stay instant.
@@ -64,12 +75,11 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     uint256 internal constant REFUND_SAFE_NUMERATOR = 4;
     uint256 internal constant REFUND_SAFE_DENOMINATOR = 5;
 
-    /// @notice The largest instance this vault will price, in proof inputs (edges or anchors).
-    /// @dev This is the SAME boundary the operator refuses above: `operator_core::Policy` derives
-    ///      its `cycle_limit` as `base_cycles + MAX_PRICED_INPUTS * cycles_per_input`, so nothing
-    ///      is priced here that cannot be proven there. The agreement is asserted on both sides
-    ///      (`contracts/test/unit/vault/ProvingVault.t.sol` and `crates/operator-core/tests/decide.rs`);
-    ///      changing one without the other is a test failure, not a silent mispricing.
+    /// @notice The protocol's largest priced proof-input count (edges plus authenticated anchors).
+    /// @dev This is a payment/ingress ceiling, not a promise that one operator host can prove every
+    ///      priced checkpoint. Operator capability and cycle envelopes are configurable local
+    ///      policy and may refuse much earlier; another prover can still accept the checkpoint.
+    ///      Solidity and Rust hand-written asserts pin only this 200,000 protocol value.
     uint64 public constant MAX_PRICED_INPUTS = InputCapacity.MAX_TOTAL_INPUTS;
 
     IInstanceRegistry public immutable REGISTRY;
@@ -88,8 +98,8 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     mapping(bytes32 instanceId => PendingWithdrawal) internal _pending;
     mapping(bytes32 instanceId => mapping(address snapshot => mapping(uint256 checkpointId => bool))) internal _claimed;
     /// @notice Proven statements already paid for, so two checkpoints carrying the SAME proof
-    ///         cannot each collect. `MerkleSnapshot.trigger()` refuses a no-movement checkpoint,
-    ///         which makes this unreachable; it is the belt to that braces.
+    ///         cannot each collect. `MerkleSnapshot.trigger()` rejects an adjacent no-movement
+    ///         checkpoint; this also catches a commitment that recurs after an intervening state.
     mapping(bytes32 instanceId => mapping(bytes32 statement => bool)) internal _paidStatement;
     mapping(address account => mapping(address token => uint256)) internal _credit;
 
@@ -114,9 +124,13 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
                 || feeSetter == address(0) || admin == address(0) || feedMaxStaleness == 0 || minEthUsd == 0
                 || maxEthUsd <= minEthUsd
         ) revert ZeroAmount();
-        // Every conversion in this file assumes an 8-decimal answer. Assert it once here rather
-        // than discovering an 18-decimal feed through a 1e10 underpayment.
-        if (feed.decimals() != 8) revert FeedDecimalsUnsupported(feed.decimals());
+        // Every conversion in this file assumes an 8-decimal feed and a 6-decimal stablecoin.
+        // Assert both once here rather than discovering a mismatched deployment through a silent
+        // underpayment, overpayment, or incorrect solvency quote.
+        uint8 feedDecimals = feed.decimals();
+        if (feedDecimals != 8) revert FeedDecimalsUnsupported(feedDecimals);
+        uint8 stablecoinDecimals = IERC20Metadata(address(usdc)).decimals();
+        if (stablecoinDecimals != USDC_DECIMALS) revert StablecoinDecimalsUnsupported(stablecoinDecimals);
         REGISTRY = registry;
         USDC = usdc;
         ETH_USD_FEED = feed;
@@ -263,18 +277,16 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         address recipient = snapshot.checkpointRecipient(checkpointId);
         if (recipient == address(0)) revert CheckpointNotApplied2(checkpointId);
 
-        // The root is on chain, so its output root is the state filed at that checkpoint's block.
-        Terms memory t = _terms(instanceId, a, checkpointId, snapshot.getLatestState().root);
+        // Read the state accepted for THIS checkpoint. The latest state may belong to a newer
+        // checkpoint, and combining its root with this checkpoint's input commitment would burn
+        // the newer checkpoint's bounty when an older root is claimed first.
+        (IMerkleSnapshot.MerkleState memory acceptedState,) = snapshot.getAcceptedCheckpoint(checkpointId);
+        Terms memory t = _terms(instanceId, a, checkpointId, acceptedState.root);
         (feeUsd,) = _settle(instanceId, a, t, checkpointId, recipient, 0, 0);
     }
 
     function _requireUnclaimed(bytes32 instanceId, address snapshot, uint256 checkpointId) internal view {
         if (_claimed[instanceId][snapshot][checkpointId]) revert AlreadyClaimed(instanceId, checkpointId);
-    }
-
-    /// The second half of pay-once, keyed on the statement rather than the id.
-    function _requireUnpaidStatement(bytes32 instanceId, bytes32 statement) internal view {
-        if (_paidStatement[instanceId][statement]) revert StatementAlreadyPaid(statement);
     }
 
     /// Freeze the terms of the claim.
@@ -289,12 +301,14 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         t.maxPerRootUsd = p.maxPerRootUsd;
         t.minPaidIntervalBlocks = p.minPaidIntervalBlocks;
         t.lastPaidBlock = p.lastPaidBlock;
-        (t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
-        // What was actually proven, independent of which checkpoint id carried it. Two
-        // checkpoints with identical commitments accept the SAME proof, so a checkpoint-keyed
-        // guard alone would pay twice for one piece of work. `outputRoot` is a function of the
-        // entire input set, so together with the two counts it identifies the statement.
-        t.statement = keccak256(abi.encode(t.snapshot, t.leafCount, t.anchorCount, outputRoot));
+        bytes32 checkpointAcc;
+        (checkpointAcc, t.leafCount, t.anchorCount, t.sizeKnown) = _sizeOf(a.snapshot, checkpointId);
+        // What was actually proven, independent of which checkpoint id carried it. The input
+        // accumulator is part of the journal and therefore part of proof identity. Counts plus
+        // output root alone collide on compose checkpoints whose source count and allocation are
+        // unchanged even though each checkpoint has a distinct accumulator and requires a
+        // distinct proof.
+        t.statement = keccak256(abi.encode(t.snapshot, checkpointAcc, t.leafCount, t.anchorCount, outputRoot));
     }
 
     /// The money.
@@ -321,11 +335,13 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
             return (0, 0);
         }
 
-        // `trigger()` refuses a checkpoint identical to the last one, so a second checkpoint
-        // carrying the same proven statement should be unreachable. This is the belt to that
-        // braces: it costs one warm SLOAD and it is the difference between "we believe the
-        // upstream guard holds" and "a second payout for one proof cannot happen here".
-        _requireUnpaidStatement(instanceId, t.statement);
+        // A payment refusal must not unwind a proof that `submitProof` already verified and
+        // accepted. Treat a previously paid statement like every other ineligible settlement:
+        // skip its payout (or honor the caller's explicit nonzero minimum-payout guard).
+        if (_paidStatement[instanceId][t.statement]) {
+            _skip(instanceId, checkpointId, IneligibleReason.AlreadyClaimed, minPayoutUsd);
+            return (0, 0);
+        }
 
         uint256 cap = t.maxPerRootUsd;
         (uint256 ethUsdPrice, bool feedOk) = _ethUsd();
@@ -403,19 +419,19 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         }
 
         if (usdAmount != 0 && a.usdcBalance != 0) {
-            uint256 wantUsdc = (usdAmount * 1e6) / USD;
+            uint256 wantUsdc = (usdAmount * USDC_SCALE) / USD;
             uint256 payUsdc = wantUsdc > a.usdcBalance ? a.usdcBalance : wantUsdc;
             if (payUsdc != 0) {
                 a.usdcBalance -= uint128(payUsdc);
                 _credit[to][address(USDC)] += payUsdc;
                 usdcSpent = payUsdc;
-                paidUsd += (payUsdc * USD) / 1e6;
+                paidUsd += (payUsdc * USD) / USDC_SCALE;
                 emit CreditAccrued(to, address(USDC), payUsdc);
             }
         }
     }
 
-    /// The size a checkpoint froze, and whether we actually know it.
+    /// The identity and size a checkpoint froze, and whether we actually know them.
     /// @dev The flag is the whole point. An earlier version swallowed a failed read and left
     ///      `leafCount = 0`, which `bandOf` maps to band 1 — the CHEAPEST PRICED band, the exact
     ///      opposite of the "unknown ⇒ unpriced" rule this file claims to follow. Now a failed
@@ -423,23 +439,24 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     function _sizeOf(address snapshotAddr, uint256 checkpointId)
         internal
         view
-        returns (uint64 leafCount, uint64 anchorCount, bool known)
+        returns (bytes32 checkpointAcc, uint64 leafCount, uint64 anchorCount, bool known)
     {
         MerkleSnapshot snapshot = MerkleSnapshot(snapshotAddr);
         try snapshot.accumulator() returns (IAttestationAccumulator acc) {
             try acc.getCheckpoint(checkpointId) returns (IAttestationAccumulator.Checkpoint memory c) {
+                checkpointAcc = c.acc;
                 leafCount = c.leafCount;
                 known = true;
             } catch {
-                return (0, 0, false);
+                return (0, 0, 0, false);
             }
         } catch {
-            return (0, 0, false);
+            return (0, 0, 0, false);
         }
         try snapshot.anchorCheckpoints(checkpointId) returns (bytes32, uint64 ac) {
             anchorCount = ac;
         } catch {
-            return (0, 0, false);
+            return (0, 0, 0, false);
         }
         // Work-aware snapshots checkpoint the authenticated lane-2 cost separately while keeping
         // the journal's raw anchorCount unchanged. Old deployed snapshots do not have this getter;
@@ -700,7 +717,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
         (uint256 ethUsdPrice, bool feedOk) = _ethUsd();
         q.payableUsd = _payableUsd(a, ethUsdPrice, feedOk);
 
-        (uint64 leafCount, uint64 anchorCount, bool sizeKnown) = _sizeOf(a.snapshot, checkpointId);
+        (, uint64 leafCount, uint64 anchorCount, bool sizeKnown) = _sizeOf(a.snapshot, checkpointId);
         uint8 band = bandOf(a.program, leafCount, anchorCount);
         if (!sizeKnown || band == 0) {
             q.reason = uint8(IneligibleReason.UnknownProgram);
@@ -732,7 +749,7 @@ contract ProvingVault is IProvingVault, AccessControl, ReentrancyGuard {
     }
 
     function _payableUsd(Account storage a, uint256 ethUsdPrice, bool feedOk) internal view returns (uint256) {
-        uint256 usd = (uint256(a.usdcBalance) * USD) / 1e6;
+        uint256 usd = (uint256(a.usdcBalance) * USD) / USDC_SCALE;
         if (feedOk && ethUsdPrice != 0) {
             usd += (uint256(a.ethBalance) * ethUsdPrice) / 1e18;
         }

@@ -28,11 +28,8 @@ contract PauseTrapSnapshot {
 
 /// @notice PASS A PoC.
 ///
-/// `pause()` is `onlyOwner` and gates `claim`, `distribute` AND `sweep`. There is no
-/// owner-independent rescue path and no unpause deadline, so a paused distributor is a state in
-/// which NO account — claimant, funder, or anyone else — can get an already-funded round's money
-/// out. The funder cannot even reclaim after the claim deadline, which is the one exit the
-/// expiry+sweep design was added to provide.
+/// `pause()` remains an incident-response gate for new rounds and claims, but it must not gate an
+/// expired round's permissionless funder exit.
 contract OmegaPassA_DistributorPauseTrap is Test {
     MerkleFundDistributor internal dist;
     PauseTrapSnapshot internal snap;
@@ -54,7 +51,7 @@ contract OmegaPassA_DistributorPauseTrap is Test {
         vm.warp(1_000_000);
     }
 
-    function test_PassA_PauseFreezesClaimAndSweepWithNoRescue() public {
+    function test_M8_PauseDoesNotFreezeExpiredSweep() public {
         vm.prank(funder);
         uint256 index = dist.distribute(address(token), 1_000, root, uint64(block.timestamp + 1 days));
         assertEq(token.balanceOf(address(dist)), 1_000);
@@ -67,11 +64,11 @@ contract OmegaPassA_DistributorPauseTrap is Test {
 
         // Wait past the claim deadline: the sweep path is the funder's documented exit.
         vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(); // EnforcedPause — the funder cannot reclaim either
         vm.prank(funder);
-        dist.sweep(index);
+        uint256 swept = dist.sweep(index);
 
-        // Nothing else moves value: no admin rescue, no per-token sweep.
-        assertEq(token.balanceOf(address(dist)), 1_000, "funds are trapped behind one owner flag");
+        assertEq(swept, 1_000);
+        assertEq(token.balanceOf(address(dist)), 0, "expired funds exited while paused");
+        assertEq(token.balanceOf(funder), 1_000, "sweep still pays the recorded funder");
     }
 }

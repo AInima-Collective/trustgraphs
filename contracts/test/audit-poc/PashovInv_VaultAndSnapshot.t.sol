@@ -56,7 +56,9 @@ contract PashovInvHandler is Test {
         usdc = u;
         INSTANCE = instanceId;
         CONSTITUTIONAL = constitutional;
-        for (uint256 i; i < 3; ++i) _track(actors[i]);
+        for (uint256 i; i < 3; ++i) {
+            _track(actors[i]);
+        }
         _track(address(this));
     }
 

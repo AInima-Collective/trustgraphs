@@ -6,12 +6,13 @@ import {Test} from "forge-std/Test.sol";
 import {ContributionsParamsController} from "src/factory/ContributionsParamsController.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {ContributionsParamsCodec} from "src/params/ContributionsParamsCodec.sol";
+import {ContributionsParamsValidator} from "src/params/ContributionsParamsValidator.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {MockAccumulator} from "test/mocks/MockAccumulator.sol";
 import {MockZkVerifier} from "test/mocks/MockZkVerifier.sol";
 
-/// Adjudication: is the C12 bad-rotation permanent, or can the owner roll back?
+/// Regression: C12 is closed at ingress, so recovery from an invalid live tuple is unnecessary.
 contract VerifyC12Recovery is Test {
     bytes32 constant INSTANCE_ID = keccak256("c");
     address constant OWNER = address(0xA11CE);
@@ -24,7 +25,11 @@ contract VerifyC12Recovery is Test {
         ContributionsParamsCodec.Params memory initial = _params();
         registry = new InstanceRegistry(address(this));
         snapshot = new MerkleSnapshot(
-            new MockZkVerifier(), ContributionsParamsCodec.hash(initial), new MockAccumulator(), address(this), address(this)
+            new MockZkVerifier(),
+            ContributionsParamsCodec.hash(initial),
+            new MockAccumulator(),
+            address(this),
+            address(this)
         );
         controller = new ContributionsParamsController(
             INSTANCE_ID, address(snapshot), address(0xEA5), registry, initial, OWNER, address(this)
@@ -45,23 +50,18 @@ contract VerifyC12Recovery is Test {
         controller.publishInitialVersion();
     }
 
-    function test_OwnerCanRollBackAnOutOfEnvelopeRotation() public {
+    function test_OwnerCannotInstallAnOutOfEnvelopeRotation() public {
         bytes32 good = controller.currentParamsHash();
         ContributionsParamsCodec.Params memory bad = controller.getContributionsParams();
-        bad.trustDecayFp = 10e18;                 // guest panics: "total standing exceeded precision scale"
-        bad.evaluatorCarveoutBps = 10_001;        // guest wraps 1-beta and inverts the split
+        bad.trustDecayFp = 10e18; // guest panics: "total standing exceeded precision scale"
+        bad.evaluatorCarveoutBps = 10_001; // guest wraps 1-beta and inverts the split
+        vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidTrustDecay.selector, uint256(10e18)));
         vm.prank(OWNER);
-        (, bytes32 badHash) = controller.updateParams(bad, "");
-        assertEq(snapshot.paramsHash(), badHash);
+        controller.updateParams(bad, "");
 
-        // Roll back to the exact original tuple.
-        ContributionsParamsCodec.Params memory back = _params();
-        vm.prank(OWNER);
-        (uint64 v, bytes32 restored) = controller.updateParams(back, "");
-        assertEq(restored, good, "owner rolled the pinned commitment back to the original tuple");
         assertEq(snapshot.paramsHash(), good);
         assertEq(registry.getInstance(INSTANCE_ID).paramsHash, good);
-        assertEq(v, 3, "version keeps advancing; only the hash returns");
+        assertEq(controller.version(), 1, "rejected rotations must not consume a version");
     }
 
     function _params() internal pure returns (ContributionsParamsCodec.Params memory p) {

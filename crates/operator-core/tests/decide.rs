@@ -12,6 +12,7 @@ use operator_core::types::{
     Action, CheckpointRef, Commitments, HoldReason, IdleReason, InFlight, InFlightState,
     InstanceSize, InstanceState, Program, SkipReason, VaultView,
 };
+use operator_core::{limiting_capacity, CapabilityProfile, CapacityCeiling};
 use operator_core::{plan, Policy, Spend};
 
 const SNAPSHOT: Address = address!("00000000000000000000000000000000000000A1");
@@ -506,6 +507,62 @@ fn the_vaults_top_band_does_not_override_operator_capability() {
         ),
         "a priced checkpoint may still exceed this host's published capability"
     );
+}
+
+#[test]
+fn capacity_alert_tracks_the_configured_profile_before_its_default_cliff() {
+    let policy = curated();
+    let mut state = healthy();
+    for (inputs, approaching) in [(1_439, false), (1_440, true)] {
+        state.live_commitments = commitments(inputs);
+        state.live_input_work = inputs;
+        state.size.leaf_count = inputs;
+        let usage = limiting_capacity(&state, &policy);
+        assert_eq!(
+            usage.ceiling,
+            CapacityCeiling::Capability(operator_core::work::CapabilityDimension::RawRecords)
+        );
+        assert_eq!((usage.observed, usage.limit), (inputs, 1_800));
+        assert_eq!(usage.approaching(), approaching);
+    }
+}
+
+#[test]
+fn capacity_alert_uses_cycle_limit_when_a_larger_profile_makes_it_bind() {
+    let mut policy = curated();
+    policy.capability_profile = CapabilityProfile {
+        max_raw_records: 1_000_000,
+        max_live_edges: 1_000_000,
+        max_unique_nodes: 2_000_000,
+        max_out_degree: 1_000_000,
+        max_lane2_anchors: 1_000_000,
+        max_signature_checks: 1_000_000,
+        ..CapabilityProfile::default()
+    };
+    let mut state = healthy();
+    state.live_commitments = commitments(3_467);
+    state.live_input_work = 3_467;
+    state.size.leaf_count = 3_467;
+
+    let usage = limiting_capacity(&state, &policy);
+    assert_eq!(usage.ceiling, CapacityCeiling::CycleLimit);
+    assert_eq!(usage.limit, 8_000_000_000);
+    assert!(usage.approaching());
+}
+
+#[test]
+fn capacity_alert_respects_a_lower_instance_ingress_cap() {
+    let policy = curated();
+    let mut state = healthy();
+    state.live_commitments = commitments(80);
+    state.live_input_work = 80;
+    state.size.leaf_count = 80;
+    state.input_capacity = 100;
+
+    let usage = limiting_capacity(&state, &policy);
+    assert_eq!(usage.ceiling, CapacityCeiling::InputCapacity);
+    assert_eq!((usage.observed, usage.limit), (80, 100));
+    assert!(usage.approaching());
 }
 
 #[test]

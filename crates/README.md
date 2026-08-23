@@ -33,5 +33,10 @@ golden-vector process in
 [`docs/concepts/networks-and-programs.md`](../docs/concepts/networks-and-programs.md) when changing
 consensus-sensitive code or encodings.
 
+> **Stale-ELF warning:** After editing anything under `crates/`, run `task zk:build` before any
+> guest-side check. `sp1_build` does not watch Cargo path dependencies, so an ordinary Cargo build
+> can silently reuse a guest ELF that predates your change. `task zk:build` rebuilds the guests and
+> makes the prover pick up the new ELFs.
+
 Non-shipping graph-reputation and weighted-prior experiments live under [`research/`](../research/)
 with standalone manifests. They are intentionally outside this production workspace.

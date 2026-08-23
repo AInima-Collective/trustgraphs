@@ -16,17 +16,11 @@ contract QuillOwnedController2 {
     }
 }
 
-/// @notice state-invariant-detection PoC.
+/// @notice Regression for the documented lifetime referral-subject invariant.
 ///
-/// Invariant under test (Type 1/4, aggregation + monotonic set):
-///   `MAX_REFERRAL_SUBJECTS` is documented as the bound that "keeps this memory-only scan
-///   bounded" for the CONCURRENTLY ACTIVE referral set - the same set `REFERRAL_BUDGET`
-///   normalises to 1e18.
-///
-/// The implemented bound is over the LIFETIME set. `_referralClaimKeys[issuerScope]` is
-/// append-only: a claim key is pushed the first time an issuer endorses a subject and is never
-/// removed on revoke, expiry, or subject-configuration rotation. An issuer that has cycled
-/// through 64 subjects can never endorse a 65th, even with zero active referral spend.
+/// `_referralClaimKeys[issuerScope]` is the append-only lifetime set used to keep all referral
+/// history scans bounded. `REFERRAL_BUDGET` is a separate bound over referral heads that can become
+/// active; revoke and expiry free spend but intentionally do not admit a 65th distinct subject.
 contract QuillStateInv_LineageReferralSubjectCap is Test {
     InstanceRegistry internal registry;
     GraphLineageRegistry internal lineage;
@@ -104,7 +98,7 @@ contract QuillStateInv_LineageReferralSubjectCap is Test {
         assertEq(spent, 1e18, "budget fully committed");
         assertEq(lineage.referralClaimKeys(issuer, SCOPE).length, cap);
 
-        // The issuer changes its mind about every one of them.
+        // The issuer changes its mind about every one of them, freeing the active budget.
         for (uint256 i; i < cap; ++i) {
             vm.prank(authority);
             lineage.revokeEndorsement(ids[i], keccak256(abi.encode("revocation", i)));
@@ -114,8 +108,8 @@ contract QuillStateInv_LineageReferralSubjectCap is Test {
         assertEq(spentAfter, 0, "no active referral spend remains");
         assertEq(unused, 1e18, "the whole referral budget is free");
 
-        // ...and yet the claim-key array was never pruned, so the 65th subject is refused.
-        assertEq(lineage.referralClaimKeys(issuer, SCOPE).length, cap, "claim keys are never removed");
+        // The append-only lifetime bound remains full, so a 65th distinct subject is refused.
+        assertEq(lineage.referralClaimKeys(issuer, SCOPE).length, cap, "lifetime history is retained");
 
         IGraphLineageRegistry.EndorsementInput memory next = IGraphLineageRegistry.EndorsementInput({
             issuerLineageId: issuer,

@@ -5,14 +5,31 @@ export type ContractDeployment = {
   name: string
   script: string
   sig: string
-  args: (ctx: ProgramContext) => string[]
+  args: (ctx: ProgramContext) => Array<string | number | boolean>
+  env?: (ctx: ProgramContext) => Record<string, string>
   skip?: (ctx: ProgramContext) => boolean | Promise<boolean>
   postRun?: (ctx: ProgramContext) => void | Promise<void>
 }
 
 export type EnvName = 'dev' | 'prod'
+export type DeploymentStage = 'development' | 'production'
+export type ChainTarget = 'local' | 'optimism' | 'sepolia' | 'mainnet'
+
+export type ChainProfile = {
+  target: ChainTarget
+  name: string
+  chainId: number
+  public: boolean
+  rpcEnv: string
+  wsEnv: string
+  startBlockEnv: string
+  explorer?: string
+  releaseManifestFile?: string
+}
 
 export type IEnv = {
+  stage: DeploymentStage
+  profile: ChainProfile
   rpcUrl: string
   registry: string
   serviceName: string
@@ -25,18 +42,24 @@ export type IEnv = {
   networksConfigFile: string
   deployContracts: ContractDeployment[]
   postDeployContracts?: () => void | Promise<void>
+  validateDeployment?: () => void | Promise<void>
   uploadToIpfs: (file: string, apiKey?: string) => Promise<string>
   generateDeploymentSummary: () => object
+  generateReleaseManifest?: () => object
 }
 
 export type EnvOverrides = {
   rpcUrl?: string
   ipfsGateway?: string
+  stage?: DeploymentStage
+  target?: ChainTarget
 }
 
 export type ProgramContext = {
-  /** The environment name */
+  /** Legacy environment alias retained for existing local tooling. */
   envName: EnvName
+  stage: DeploymentStage
+  target: ChainTarget
   /** The environment context */
   env: IEnv
   /** Passed in options */

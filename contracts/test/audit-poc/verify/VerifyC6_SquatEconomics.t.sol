@@ -11,7 +11,14 @@ import {
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
+
+contract VerifyC6EconomicsSignerVerifier is IZkVerifier {
+    bytes32 public constant programVKey = keccak256("verify-c6-economics-signer");
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
 
 contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
@@ -25,13 +32,16 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
         super.setUp();
         singleton = new GnosisSafe();
         proxyFactory = new GnosisSafeProxyFactory();
+        VerifyC6EconomicsSignerVerifier signerVerifier = new VerifyC6EconomicsSignerVerifier();
         gf = new GovernedTrustgraphsFactory(
             factory,
             proxyFactory,
             address(singleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            signerVerifier,
+            signerVerifier.programVKey()
         );
     }
 
@@ -52,10 +62,10 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig(false, address(0), bytes32(0), 0, 0, 0);
+        return GovernedTrustgraphsFactory.SignerSyncConfig(false, 0, 0, 0);
     }
 
-    function test_SquatVsVictimGas() public {
+    function test_SquatNoLongerWastesVictimGas() public {
         TrustgraphsFactory.CreateArgs memory args = _args("acme");
         args.salt = bytes32(uint256(7));
         uint256 nonce = uint256(keccak256(abi.encode(block.chainid, victim, args.name, args.salt)));
@@ -67,18 +77,19 @@ contract VerifyC6_SquatEconomics is TrustgraphsFactoryBase {
 
         uint256 g1 = gasleft();
         vm.prank(victim);
-        try gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner()) {
-            revert("victim should have failed");
-        } catch {}
+        (, address safe,,) =
+            gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
         uint256 victimGas = g1 - gasleft();
 
         emit log_named_uint("attacker squat gas", squatGas);
         emit log_named_uint("victim wasted gas ", victimGas);
+        assertTrue(GnosisSafe(payable(safe)).isOwner(victim), "front-run Safe must be adopted and graduated");
 
         // Same name, brand-new salt -> succeeds if the squatter does not front-run again.
         args.salt = bytes32(uint256(8));
         vm.prank(victim);
-        (, address safe,,) = gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
-        assertTrue(safe != address(0), "a fresh salt recovers when not front-run");
+        (, address freshSafe,,) =
+            gf.createGovernedInstance(args, GovernedTrustgraphsFactory.InitialPolicy(0, 0), _noSigner());
+        assertTrue(freshSafe != address(0), "a fresh salt succeeds when not front-run");
     }
 }

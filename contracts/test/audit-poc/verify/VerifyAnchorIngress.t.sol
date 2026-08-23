@@ -2,7 +2,6 @@
 pragma solidity ^0.8.22;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
 import {EasOffchainAnchorRegistry} from "src/registry/EasOffchainAnchorRegistry.sol";
 import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
@@ -12,13 +11,20 @@ import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contr
 
 contract VA_Lane1 {
     uint64 public leafCount;
-    function set(uint64 c) external { leafCount = c; }
+
+    function set(uint64 c) external {
+        leafCount = c;
+    }
 }
 
 contract VA_Snap {
     address public accumulator;
     address public anchorRegistry;
-    constructor(address a, address r) { accumulator = a; anchorRegistry = r; }
+
+    constructor(address a, address r) {
+        accumulator = a;
+        anchorRegistry = r;
+    }
 }
 
 contract VerifyAnchorIngress is Test {
@@ -42,39 +48,34 @@ contract VerifyAnchorIngress is Test {
         reg.register();
     }
 
-    function _sign(bytes32 head, uint64 count) internal view returns (bytes memory) {
-        bytes32 payload = keccak256(abi.encode(reg.HEAD_DOMAIN_TAG(), head, count));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(VICTIM_KEY, MessageHashUtils.toEthSignedMessageHash(payload));
+    function _sign(bytes32 head, uint64 count, bytes32 dataCommitment) internal view returns (bytes memory) {
+        bytes32 nodeId = keccak256(abi.encode(victim));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(VICTIM_KEY, reg.anchorDigest(nodeId, 0, head, count, dataCommitment));
         return abi.encodePacked(r, s, v);
     }
 
-    /// C8 severity hinge: is the count burn RECOVERABLE?
-    /// AnchorRegistry has (a) no upper bound on `count`, (b) no admin reset for `lastCount`,
-    /// (c) no per-node de-registration. u64 max is therefore terminal for that identity.
-    function test_C8_MaxCountIsTerminalForTheIdentity_NoAdminPathExists() public {
+    /// C8 regression: impossible counts are refused and governance can recover the admission gate.
+    function test_C8_MaxCountIsRejectedAndAdminCanResetTheIdentity() public {
         bytes32 nodeId = keccak256(abi.encode(victim));
-        bytes memory sig = _sign(keccak256("attacker-head"), type(uint64).max);
-        reg.anchor(nodeId, 0, keccak256("attacker-head"), type(uint64).max, keccak256("x"), sig);
-        assertEq(reg.lastCount(nodeId), type(uint64).max);
-
-        // Every future head, correctly signed by the real owner, is refused forever.
-        bytes memory good = _sign(keccak256("real-head"), 5);
+        bytes memory sig = _sign(keccak256("attacker-head"), type(uint64).max, keccak256("x"));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(5), type(uint64).max
-            )
+            abi.encodeWithSelector(AnchorRegistry.InvalidHeadCount.selector, type(uint64).max, reg.maxTotalInputs())
         );
+        reg.anchor(nodeId, 0, keccak256("attacker-head"), type(uint64).max, keccak256("x"), sig);
+        assertEq(reg.lastCount(nodeId), 0);
+
+        uint64 maximum = reg.maxTotalInputs();
+        bytes memory high = _sign(keccak256("high-head"), maximum, keccak256("x"));
+        reg.anchor(nodeId, 0, keccak256("high-head"), maximum, keccak256("x"), high);
+        bytes memory good = _sign(keccak256("real-head"), 5, keccak256("y"));
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(5), maximum));
         reg.anchor(nodeId, 0, keccak256("real-head"), 5, keccak256("y"), good);
 
-        // Even the max itself cannot be re-anchored (strictly increasing).
-        vm.expectRevert();
-        reg.anchor(nodeId, 0, keccak256("real-head"), type(uint64).max, keccak256("y"), sig);
-
-        // No admin escape: the DEFAULT_ADMIN cannot reset lastCount, deregister, or re-register.
-        vm.prank(victim);
-        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.AlreadyRegistered.selector, nodeId));
-        reg.register();
-        console2.log("lastCount is terminal at:", reg.lastCount(nodeId));
+        vm.prank(admin);
+        reg.resetHeadCount(nodeId);
+        reg.anchor(nodeId, 0, keccak256("real-head"), 5, keccak256("y"), good);
+        assertEq(reg.lastCount(nodeId), 5);
+        console2.log("admin recovered the head-count admission gate at:", reg.lastCount(nodeId));
     }
 
     /// The sibling refuses the same shape three separate ways.
@@ -92,20 +93,19 @@ contract VerifyAnchorIngress is Test {
         bytes32 nodeId = keccak256(abi.encode(victim));
         // 1. count is capped at MAX_ENTRIES_PER_NODE.
         (uint8 v, bytes32 r, bytes32 ss) = vm.sign(
-            VICTIM_KEY,
-            strict.anchorDigest(nodeId, 0, bytes32(0), keccak256("h"), type(uint64).max, keccak256("dc"))
+            VICTIM_KEY, strict.anchorDigest(nodeId, 0, bytes32(0), keccak256("h"), type(uint64).max, keccak256("dc"))
         );
         vm.expectRevert(
             abi.encodeWithSelector(
-                EasOffchainAnchorRegistry.InvalidEntryCount.selector,
-                type(uint64).max,
-                strict.MAX_ENTRIES_PER_NODE()
+                EasOffchainAnchorRegistry.InvalidEntryCount.selector, type(uint64).max, strict.MAX_ENTRIES_PER_NODE()
             )
         );
-        strict.anchor(nodeId, 0, bytes32(0), keccak256("h"), type(uint64).max, keccak256("dc"), abi.encodePacked(r, ss, v));
+        strict.anchor(
+            nodeId, 0, bytes32(0), keccak256("h"), type(uint64).max, keccak256("dc"), abi.encodePacked(r, ss, v)
+        );
 
-        // 2. the legacy registry's EIP-191 payload is not a valid signature here at all.
-        bytes memory legacySig = _sign(keccak256("h"), 7);
+        // 2. the sibling uses a distinct EIP-712 struct and verifying-contract domain.
+        bytes memory legacySig = _sign(keccak256("h"), 7, keccak256("dc"));
         vm.expectRevert(); // WrongNodeId: recovery yields a different address entirely
         strict.anchor(nodeId, 0, bytes32(0), keccak256("h"), 7, keccak256("dc"), legacySig);
         console2.log("strict registry rejects both shapes");

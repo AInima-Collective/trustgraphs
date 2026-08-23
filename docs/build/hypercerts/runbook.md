@@ -54,7 +54,7 @@ export PATH="$HOME/.sp1/bin:$PATH"
 
 > **The vkey is toolchain-reproducible, not machine-portable** ([`networks-and-programs.md`](../../concepts/networks-and-programs.md),
 > measured). The hypercerts guest vkey is
-> **`0x00b22def0bde6796acb3442691deb78056393de318e658aead32b38dbb425346`** (journal v3, SP1 6.3.1). But the value
+> **`0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe`** (journal v3, SP1 6.3.1). But the value
 > depends on the exact `succinct` toolchain build — a reinstall shifted sibling vkeys with zero source
 > change. **Derive the deployment vkey on the pinned toolchain recorded here, not an arbitrary box**,
 > and diff it against the table in [`networks-and-programs.md`](../../concepts/networks-and-programs.md) before trusting it:

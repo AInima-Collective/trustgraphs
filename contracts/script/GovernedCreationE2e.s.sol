@@ -26,9 +26,8 @@ contract CreateGovernedInstanceE2e is Common {
         // factory rejects anything else, and fills them itself (CreateDevInstances convention).
         ParamsCodec.Params memory params = ParamsJson.read(paramsPath, bytes32(0), address(0), 0);
 
-        vm.startBroadcast(_privateKey);
-        (bytes32 instanceId, address safe, address merkleGovModule, address snapshot) = governed
-            .createGovernedInstance(
+        _startBroadcast();
+        (bytes32 instanceId, address safe, address merkleGovModule, address snapshot) = governed.createGovernedInstance(
             TrustgraphsFactory.CreateArgs({
                 name: name,
                 metadataURI: "",
@@ -41,12 +40,7 @@ contract CreateGovernedInstanceE2e is Common {
             }),
             GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
             GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: false,
-                verifier: address(0),
-                programVKey: bytes32(0),
-                topN: 0,
-                minThreshold: 0,
-                targetThresholdBps: 0
+                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
             })
         );
         vm.stopBroadcast();
@@ -83,7 +77,7 @@ contract SubmitDevRootE2e is Common {
     ) public {
         MerkleSnapshot snap = MerkleSnapshot(payable(vm.parseAddress(snapshotAddr)));
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         uint256 checkpointId = snap.trigger();
 
         IAttestationAccumulator.Checkpoint memory c = snap.accumulator().getCheckpoint(checkpointId);

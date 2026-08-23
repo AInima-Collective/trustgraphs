@@ -232,12 +232,7 @@ contract DepthExternal_Poc is Test {
 
     function _attest(bytes32 schema, address to, uint64 expiry) internal returns (bytes32) {
         AttestationRequestData memory d = AttestationRequestData({
-            recipient: to,
-            expirationTime: expiry,
-            revocable: true,
-            refUID: EMPTY_UID,
-            data: hex"01",
-            value: 0
+            recipient: to, expirationTime: expiry, revocable: true, refUID: EMPTY_UID, data: hex"01", value: 0
         });
         return eas.attest(AttestationRequest({schema: schema, data: d}));
     }
@@ -277,24 +272,18 @@ contract DepthExternal_Poc is Test {
         assertEq(r.leafCount(), 10);
     }
 
-    /// EAS accepts `expirationTime`, the fold does not commit it, and nothing enforces it.
-    function test_H_expirationTime_isAcceptedButNeverEnforced() public {
+    /// The resolver rejects expiration because time passing cannot append a revocation leaf.
+    function test_H_nonzeroExpirationIsRejected() public {
         _bootEas();
         EASIndexerResolver r = new EASIndexerResolver(IEAS(address(eas)));
         bytes32 s = registry.register("uint256 a", r, true);
         r.bindSchema(s);
 
         uint64 exp = uint64(block.timestamp + 1 days);
-        bytes32 uid = _attest(s, address(0xAA), exp);
-        assertEq(r.leafCount(), 1);
-        bytes32 accAfterAttest = r.acc();
-
-        vm.warp(block.timestamp + 30 days);
-        // EAS still calls it valid, the accumulator is unchanged, and no revoke leaf ever lands.
-        assertTrue(eas.isAttestationValid(uid));
-        assertEq(r.acc(), accAfterAttest, "an expiry produced no accumulator movement");
-        assertEq(r.leafCount(), 1);
-        console.log("30 days past expirationTime: edge still committed, no revoke leaf");
+        vm.expectRevert(abi.encodeWithSelector(EASIndexerResolver.ExpirationNotSupported.selector, exp));
+        _attest(s, address(0xAA), exp);
+        assertEq(r.acc(), bytes32(0), "expiring edge reached the accumulator");
+        assertEq(r.leafCount(), 0);
     }
 
     /// Batch semantics of the payable resolver under EAS's real value-splitting.
@@ -334,8 +323,7 @@ contract DepthExternal_Poc is Test {
 
         // But value 0 on an attestation is only checked against _targetValue, so a
         // targetValue of 0 makes the resolver free while still being "payable".
-        PayableEASIndexerResolver free =
-            new PayableEASIndexerResolver(IEAS(address(eas)), 0, address(this));
+        PayableEASIndexerResolver free = new PayableEASIndexerResolver(IEAS(address(eas)), 0, address(this));
         bytes32 sf = registry.register("uint256 a", free, true);
         _attest(sf, address(0xAA), NO_EXPIRATION_TIME);
         console.log("payable resolver batch accounting is exact per-attestation");
@@ -349,12 +337,12 @@ contract DepthExternal_Poc is Test {
         r.bindSchema(s);
 
         // The SchemaResolver.attest entrypoint is onlyEAS.
-        (bool ok,) = address(r).call(
-            abi.encodeWithSignature(
-                "attest((bytes32,bytes32,uint64,uint64,uint64,bytes32,address,address,bool,bytes))",
-                bytes32(0)
-            )
-        );
+        (bool ok,) = address(r)
+            .call(
+                abi.encodeWithSignature(
+                    "attest((bytes32,bytes32,uint64,uint64,uint64,bytes32,address,address,bool,bytes))", bytes32(0)
+                )
+            );
         assertFalse(ok, "a stranger reached the resolver's attest entrypoint");
         assertEq(r.leafCount(), 0);
     }
@@ -367,8 +355,7 @@ contract DepthExternal_Poc is Test {
         StubSnapshot snap = new StubSnapshot();
         RejectingRecipient bad = new RejectingRecipient();
         // 1% fee, fee recipient refuses ETH.
-        MerkleFundDistributor d =
-            new MerkleFundDistributor(address(this), address(snap), address(bad), 1e16, false);
+        MerkleFundDistributor d = new MerkleFundDistributor(address(this), address(snap), address(bad), 1e16, false);
 
         vm.deal(address(this), 10 ether);
         vm.expectRevert();

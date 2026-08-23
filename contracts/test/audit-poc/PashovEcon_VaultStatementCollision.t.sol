@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
@@ -13,13 +13,8 @@ import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockEthUsdFeed} from "../mocks/MockEthUsdFeed.sol";
 
-/// @notice PoC: `ProvingVault.claim` prices an OLD checkpoint's statement with the CURRENT latest
-///         root. On any instance whose (leafCount, anchorCount) pair is constant across
-///         checkpoints -- which is exactly the shape of every `trust-compose` instance, whose
-///         accumulator reports `leafCount = policy source count` and which has no lane-2 registry
-///         at all -- the statement computed for checkpoint k is byte-identical to the statement
-///         of the latest checkpoint j. Claiming k therefore burns j's `_paidStatement` slot and
-///         j's prover can never be paid.
+/// @notice H-6 regression: an old claim is keyed by its own accepted root and checkpoint input
+///         accumulator, not by the latest state combined with the old checkpoint's counters.
 contract PashovEcon_VaultStatementCollision is Test {
     ProvingVault vault;
     InstanceRegistry registry;
@@ -44,6 +39,8 @@ contract PashovEcon_VaultStatementCollision is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -89,7 +86,7 @@ contract PashovEcon_VaultStatementCollision is Test {
         snapshot.submitProof(id, root, bytes32(uint256(0x1F5)), "cid", 1_000 ether, bytes32(0), recipient, hex"");
     }
 
-    function test_ClaimingAnOlderCheckpointPermanentlyBurnsTheLatestCheckpointsBounty() public {
+    function test_ClaimingAnOlderCheckpointPreservesTheLatestCheckpointsBounty() public {
         bytes32 R0 = keccak256("root-0");
         bytes32 R1 = keccak256("root-1");
 
@@ -110,27 +107,13 @@ contract PashovEcon_VaultStatementCollision is Test {
         assertEq(ac0, 0);
         assertEq(ac1, 0);
 
-        // Anyone settles the OLDER checkpoint. `_terms` uses `getLatestState().root` = R1, so the
-        // statement written is the one that belongs to checkpoint 1.
+        // Anyone settles the older checkpoint against its own accepted state.
         uint256 paidToOne = vault.claim(INSTANCE, c0);
         assertEq(paidToOne, 15 * vault.USD(), "checkpoint 0 paid");
 
-        bytes32 burned = keccak256(abi.encode(address(snapshot), uint64(3), uint64(0), R1));
-        console2.log("statement burned by claim(0):");
-        console2.logBytes32(burned);
-
-        // Checkpoint 1's own bounty is now permanently unclaimable.
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, burned));
-        vault.claim(INSTANCE, c1);
-
-        // ...and it stays unclaimable forever: nothing can clear `_paidStatement`.
-        vm.roll(block.number + 100_000);
-        vm.warp(block.timestamp + 30 days);
-        feed.set(3_000e8, block.timestamp);
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, burned));
-        vault.claim(INSTANCE, c1);
-
-        assertEq(vault.creditOf(proverTwo, address(0)), 0, "prover 2 never paid for a real proof");
-        assertFalse(vault.isClaimed(INSTANCE, c1), "and the checkpoint is not even marked claimed");
+        uint256 paidToTwo = vault.claim(INSTANCE, c1);
+        assertEq(paidToTwo, 15 * vault.USD(), "checkpoint 1 paid");
+        assertGt(vault.creditOf(proverTwo, address(0)), 0, "prover 2 paid for its proof");
+        assertTrue(vault.isClaimed(INSTANCE, c1));
     }
 }

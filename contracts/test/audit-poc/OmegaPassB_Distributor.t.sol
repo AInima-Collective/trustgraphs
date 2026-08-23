@@ -62,12 +62,9 @@ contract OmegaPassB_Distributor is Test {
         token.mint(attacker, 1e18);
     }
 
-    /// FINDING: `claim` computes `claimedAmount = totalDistributable * value / totalMerkleValue`
-    /// with NO cap against `amountFunded - feeAmount - amountDistributed`. All distributions of a
-    /// token share one balance, so a distribution whose `totalMerkleValue` is smaller than the sum
-    /// of its tree's leaf values drains every sibling distribution. The distributor OWNER can
-    /// manufacture exactly that state with `setMerkleSnapshot`, which takes an arbitrary address.
-    function test_OwnerDrainsOtherFundersViaSetMerkleSnapshot() public {
+    /// H-3 regression: even an owner-manufactured inconsistent snapshot cannot let one round spend
+    /// another round's funds because cumulative claims are capped at the round's own budget.
+    function test_H3_OwnerCannotDrainOtherFundersViaSetMerkleSnapshot() public {
         // Two honest, independent funders each open a real distribution against a real
         // one-leaf tree (funderA is the sole claimant, value == totalValue).
         honest.set(_oneLeafRoot(funderA, 1_000e18), 1_000e18);
@@ -98,30 +95,28 @@ contract OmegaPassB_Distributor is Test {
         uint256 idx = dist.distribute(address(token), 1, bytes32(0));
         vm.stopPrank();
 
-        // 3. claim: claimedAmount = (1 - 0) * 1_000_000e18 / 1 = 1_000_000e18, capped only by the
-        //    contract's real balance. Nothing checks it against this distribution's own funding.
+        // 3. The formula proposes a huge claim, but the round cap rejects it before transfer.
         bytes32[] memory proof = new bytes32[](0);
         uint256 before = token.balanceOf(attacker);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 900_000e18, uint256(1))
+        );
         dist.claim(idx, attacker, 900_000e18, proof);
         uint256 gained = token.balanceOf(attacker) - before;
 
         console2.log("attacker funded (wei):", uint256(1));
         console2.log("attacker received   :", gained);
-        assertEq(gained, 900_000e18, "drained BOTH funders' distributions");
-        assertEq(token.balanceOf(address(dist)), 1, "distributor emptied to dust");
+        assertEq(gained, 0, "over-budget claim transferred funds");
+        assertEq(token.balanceOf(address(dist)), 900_000e18 + 1, "sibling rounds remain backed");
 
-        // 4. the two honest distributions are now permanently unclaimable: the merkle proof is
-        //    valid, the entitlement is real, and the transfer reverts on an empty balance.
-        vm.expectRevert();
-        dist.claim(0, funderA, 1_000e18, proof);
-        vm.expectRevert();
-        dist.claim(1, funderA, 1_000e18, proof);
+        // 4. both honest distributions remain claimable.
+        assertEq(dist.claim(0, funderA, 1_000e18, proof), 500_000e18);
+        assertEq(dist.claim(1, funderA, 1_000e18, proof), 400_000e18);
     }
 
-    /// FINDING: `claim` and `sweep` are BOTH `whenNotPaused`, and there is no other exit. An owner
-    /// that pauses (or is compromised) freezes every claimant's funds and the funder's sweep with
-    /// no recovery path that does not require the owner to act.
-    function test_PauseTrapsEveryExitPath() public {
+    /// M-8 regression: pause gates claims, but an expired round remains sweepable without owner
+    /// cooperation.
+    function test_M8_PauseDoesNotTrapExpiredSweep() public {
         honest.set(_oneLeafRoot(funderA, 1_000e18), 1_000e18);
         vm.startPrank(funderA);
         token.approve(address(dist), type(uint256).max);
@@ -136,10 +131,11 @@ contract OmegaPassB_Distributor is Test {
         dist.claim(idx, funderA, 1_000e18, proof);
 
         vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(); // EnforcedPause — sweep is gated too
-        dist.sweep(idx);
+        uint256 swept = dist.sweep(idx);
 
-        assertEq(token.balanceOf(address(dist)), 1_000e18, "funds are stuck behind the pause");
+        assertEq(swept, 1_000e18);
+        assertEq(token.balanceOf(address(dist)), 0, "expired round remains trapped by pause");
+        assertEq(token.balanceOf(funderA), 1_000_000e18, "sweep paid the recorded funder");
     }
 
     /// LEAD-supporting: `distribute` with amount 0 is accepted and pushes an unbounded row that

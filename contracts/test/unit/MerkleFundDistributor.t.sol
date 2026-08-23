@@ -268,11 +268,11 @@ contract MerkleFundDistributorTest is Test {
 
         // Fee above the funder's cap.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.FeeExceedsFunderCap.selector, expectedFee, expectedFee - 1
-            )
+            abi.encodeWithSelector(IMerkleFundDistributor.FeeExceedsFunderCap.selector, expectedFee, expectedFee - 1)
         );
-        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee - 1, feeRecipient);
+        distributor.distribute(
+            address(mockToken), amount, bytes32(0), TEST_TOTAL_VALUE, 0, expectedFee - 1, feeRecipient
+        );
 
         // Wrong fee recipient.
         vm.expectRevert(
@@ -280,12 +280,53 @@ contract MerkleFundDistributorTest is Test {
                 IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0xD00D), feeRecipient
             )
         );
-        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, address(0xD00D));
+        distributor.distribute(
+            address(mockToken), amount, bytes32(0), TEST_TOTAL_VALUE, 0, expectedFee, address(0xD00D)
+        );
 
         // As agreed: passes and books the expected fee.
-        distributor.distribute(address(mockToken), amount, bytes32(0), 0, expectedFee, feeRecipient);
+        distributor.distribute(address(mockToken), amount, bytes32(0), TEST_TOTAL_VALUE, 0, expectedFee, feeRecipient);
         vm.stopPrank();
         assertEq(distributor.getDistribution(0).feeAmount, expectedFee);
+    }
+
+    /// H-3 regression: the guarded overload pins the payout denominator as well as the root.
+    /// A snapshot owner cannot mirror the expected root while shrinking only `totalValue`.
+    function test_H3_FunderGuardedDistributePinsTotalMerkleValue() public {
+        mockMerkleSnapshot.setMerkleState(
+            IMerkleSnapshot.MerkleState({
+                blockNumber: block.number,
+                timestamp: block.timestamp,
+                root: TEST_ROOT,
+                ipfsHash: TEST_IPFS_HASH,
+                ipfsHashCid: TEST_IPFS_CID,
+                totalValue: 600
+            })
+        );
+
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 100 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.UnexpectedMerkleTotalValue.selector, TEST_TOTAL_VALUE, uint256(600)
+            )
+        );
+        distributor.distribute(address(mockToken), 100 ether, TEST_ROOT, TEST_TOTAL_VALUE, 0, 1 ether, feeRecipient);
+        vm.stopPrank();
+
+        assertEq(distributor.getDistributionCount(), 0, "mismatched denominator must not create a round");
+    }
+
+    function test_H3_FunderGuardedDistributeCannotSkipTotalMerkleValuePin() public {
+        vm.startPrank(alice);
+        mockToken.approve(address(distributor), 100 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.UnexpectedMerkleTotalValue.selector, uint256(0), TEST_TOTAL_VALUE
+            )
+        );
+        distributor.distribute(address(mockToken), 100 ether, TEST_ROOT, 0, 0, 1 ether, feeRecipient);
+        vm.stopPrank();
     }
 
     function test_SetFeePercentage_RevertsIfNotOwner() public {
@@ -954,6 +995,77 @@ contract MerkleFundDistributorTest is Test {
         distributor.claim(0, alice, 0, aliceProof);
     }
 
+    /// H-3 regression: a malformed tree can make the formula exceed this round's funding, but it
+    /// cannot spend a sibling round's balance. The cap fires before bookkeeping or transfer.
+    function test_H3_ClaimCannotExceedPerRoundBudget() public {
+        _createERC20Distribution(alice, 100 ether);
+        uint256 siblingBalance = mockToken.balanceOf(address(distributor));
+
+        uint256 attackerValue = 1000;
+        bytes32 attackerRoot = _generateLeaf(charlie, attackerValue);
+        mockMerkleSnapshot.setMerkleState(
+            IMerkleSnapshot.MerkleState({
+                blockNumber: block.number,
+                timestamp: block.timestamp,
+                root: attackerRoot,
+                ipfsHash: TEST_IPFS_HASH,
+                ipfsHashCid: TEST_IPFS_CID,
+                totalValue: 1
+            })
+        );
+
+        _createERC20Distribution(bob, 1 ether);
+        IMerkleFundDistributor.DistributionState memory badRound = distributor.getDistribution(1);
+        uint256 budget = badRound.amountFunded - badRound.feeAmount;
+        uint256 formulaAmount = Math.mulDiv(budget, attackerValue, 1);
+        bytes32[] memory noProof = new bytes32[](0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, formulaAmount, budget)
+        );
+        distributor.claim(1, charlie, attackerValue, noProof);
+
+        assertEq(distributor.getDistribution(1).amountDistributed, 0, "rejected claim must not change books");
+        assertEq(mockToken.balanceOf(charlie), 0, "rejected claim must not transfer");
+        assertEq(mockToken.balanceOf(address(distributor)), siblingBalance + budget, "both rounds remain fully backed");
+    }
+
+    function test_H3_CumulativeClaimsCannotExceedPerRoundBudget() public {
+        bytes32 aliceLeaf = _generateLeaf(alice, 60);
+        bytes32 bobLeaf = _generateLeaf(bob, 60);
+        bytes32 root = _hashPair(aliceLeaf, bobLeaf);
+        mockMerkleSnapshot.setMerkleState(
+            IMerkleSnapshot.MerkleState({
+                blockNumber: block.number,
+                timestamp: block.timestamp,
+                root: root,
+                ipfsHash: TEST_IPFS_HASH,
+                ipfsHashCid: TEST_IPFS_CID,
+                totalValue: 100
+            })
+        );
+        _createERC20Distribution(alice, 100 ether);
+
+        uint256 budget = 99 ether;
+        uint256 eachFormulaAmount = Math.mulDiv(budget, 60, 100);
+        bytes32[] memory aliceProof = new bytes32[](1);
+        aliceProof[0] = bobLeaf;
+        assertEq(distributor.claim(0, alice, 60, aliceProof), eachFormulaAmount);
+
+        uint256 remainingBudget = budget - eachFormulaAmount;
+        bytes32[] memory bobProof = new bytes32[](1);
+        bobProof[0] = aliceLeaf;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, eachFormulaAmount, remainingBudget
+            )
+        );
+        distributor.claim(0, bob, 60, bobProof);
+
+        assertEq(distributor.getDistribution(0).amountDistributed, eachFormulaAmount);
+        assertEq(mockToken.balanceOf(address(distributor)), remainingBudget);
+    }
+
     function test_Claim_RevertsWhenPaused() public {
         _createERC20Distribution(alice, 100 ether);
 
@@ -1297,7 +1409,8 @@ contract MerkleFundDistributorTest is Test {
         distributor.sweep(0);
     }
 
-    function test_Sweep_RevertsWhenPaused() public {
+    /// M-8 regression: pausing incident response must not remove an expired funder's only exit.
+    function test_M8_SweepSucceedsWhenPaused() public {
         uint64 deadline = uint64(block.timestamp + 7 days);
         _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
 
@@ -1305,7 +1418,20 @@ contract MerkleFundDistributorTest is Test {
         vm.prank(owner);
         distributor.pause();
 
-        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        uint256 balanceBefore = mockToken.balanceOf(alice);
+        uint256 sweptAmount = distributor.sweep(0);
+        assertEq(mockToken.balanceOf(alice), balanceBefore + sweptAmount);
+        assertEq(mockToken.balanceOf(address(distributor)), 0);
+    }
+
+    function test_M8_PausedSweepStillRequiresClosedClaimWindow() public {
+        uint64 deadline = uint64(block.timestamp + 7 days);
+        _createERC20DistributionWithDeadline(alice, 100 ether, deadline);
+
+        vm.prank(owner);
+        distributor.pause();
+
+        vm.expectRevert(IMerkleFundDistributor.ClaimWindowNotClosed.selector);
         distributor.sweep(0);
     }
 

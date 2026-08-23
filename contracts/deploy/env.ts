@@ -4,7 +4,10 @@ import path from 'path'
 import { Command } from 'commander'
 
 import {
+  ChainProfile,
+  ChainTarget,
   ContractDeployment,
+  DeploymentStage,
   EnvName,
   EnvOverrides,
   IEnv,
@@ -13,6 +16,13 @@ import {
   ProgramContext,
   ZodiacSafesDeploy,
 } from './types'
+import { CHAIN_PROFILES, resolveDeploymentSelection } from './profiles'
+import {
+  deploymentRecord,
+  loadReleaseManifest,
+  readBroadcastDeployments,
+  validateReleaseManifest,
+} from './release-manifest'
 import {
   isNetworkComplete,
   isNetworkSafeZodiacSignerSyncDisabledOrComplete,
@@ -79,13 +89,32 @@ function requireProdUint64(name: string): string {
   return value
 }
 
-type NonFunctionPropertyNames<T> = {
-  [K in keyof T]: T[K] extends Function ? never : K
-}[keyof T]
+function requireReleaseCommit(): string {
+  const value = process.env.DEPLOYMENT_COMMIT
+  if (!value || !/^[0-9a-f]{40}$/i.test(value)) {
+    throw new Error('DEPLOYMENT_COMMIT must be the exact 40-hex release commit')
+  }
+  return value
+}
 
-type OmitFunctions<T> = Pick<T, NonFunctionPropertyNames<T>>
+function requireReleaseDigest(): string {
+  const value = process.env.SP1_PROGRAM_ELF_SHA256
+  if (!value || !/^0x[0-9a-f]{64}$/i.test(value) || /^0x0{64}$/i.test(value)) {
+    throw new Error(
+      'SP1_PROGRAM_ELF_SHA256 must be the nonzero SHA-256 digest of the archived trust-graph ELF'
+    )
+  }
+  return value
+}
+
+type EnvConstructorOptions = Omit<
+  IEnv,
+  'uploadToIpfs' | 'generateDeploymentSummary' | 'generateReleaseManifest'
+>
 
 abstract class EnvBase implements IEnv {
+  stage: DeploymentStage
+  profile: ChainProfile
   rpcUrl: string
   registry: string
   serviceName: string
@@ -98,8 +127,11 @@ abstract class EnvBase implements IEnv {
   networksConfigFile: string
   deployContracts: ContractDeployment[]
   postDeployContracts?: () => void | Promise<void>
+  validateDeployment?: () => void | Promise<void>
 
-  constructor(options: OmitFunctions<IEnv>) {
+  constructor(options: EnvConstructorOptions) {
+    this.stage = options.stage
+    this.profile = options.profile
     this.rpcUrl = options.rpcUrl
     this.registry = options.registry
     this.serviceName = options.serviceName
@@ -109,17 +141,31 @@ abstract class EnvBase implements IEnv {
     this.networksConfigFile = options.networksConfigFile
     this.deployContracts = options.deployContracts
     this.postDeployContracts = options.postDeployContracts
+    this.validateDeployment = options.validateDeployment
   }
 
-  static get(envName: EnvName | string, overrides: EnvOverrides = {}): IEnv {
-    switch (envName.toLowerCase()) {
-      case 'dev':
+  static get(
+    stage: DeploymentStage,
+    target: ChainTarget,
+    overrides: EnvOverrides = {}
+  ): IEnv {
+    switch (target) {
+      case 'local':
+        if (stage !== 'development') break
         return new DevEnv(overrides)
-      case 'prod':
+      case 'optimism':
+        if (stage !== 'production') break
         return new ProdEnv(overrides)
+      case 'sepolia':
+        if (stage !== 'production') break
+        return new SepoliaEnv(overrides)
+      case 'mainnet':
+        throw new Error(
+          'Ethereum mainnet has a typed profile but no authorized deploy plan yet; complete Sepolia first'
+        )
     }
 
-    throw new Error(`Invalid environment: ${envName}`)
+    throw new Error(`Invalid deployment selection: ${stage}/${target}`)
   }
 
   /**
@@ -377,6 +423,8 @@ export class DevEnv extends EnvBase {
         : process.env.SP1_VERIFIER_GATEWAY || ZERO_ADDRESS
 
     super({
+      stage: 'development',
+      profile: CHAIN_PROFILES.local,
       rpcUrl,
       registry: 'http://localhost:8090',
       serviceName: 'trust-graph',
@@ -467,6 +515,19 @@ export class DevEnv extends EnvBase {
               '.docker/proving_vault_deploy.json',
               'proving_vault'
             ) || '',
+          ],
+        },
+        // The governed wrappers pin the signer verifier/vkey immutably, so the dedicated signer
+        // adapter must exist before any wrapper is deployed. Never let the signer adapter fall
+        // back to the root guest's vkey.
+        {
+          name: 'Signer ZK Verifier',
+          script: 'contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [
+            gatewayAddress(),
+            requireProgramVkey('SP1_SIGNER_PROGRAM_VKEY', 'signer'),
+            'signer',
           ],
         },
         // The browser-facing creation seam. It has a shared Safe singleton/factory and wraps the
@@ -616,7 +677,9 @@ export class DevEnv extends EnvBase {
             'dev',
             0,
             numNetworks,
-            true,
+            // The Zodiac Safe does not exist yet. AttachDevDistributor adds the fund immediately
+            // after Safe deployment, using the factory's Safe-only attachment path.
+            false,
             process.env.DEV_SEED_PREPAY_WEI || '0',
             process.env.DEV_SEED_MAX_PER_ROOT_USD || '0',
           ],
@@ -649,19 +712,57 @@ export class DevEnv extends EnvBase {
             process.env.FACTORY_EPOCH_FLOOR || '1',
           ],
         },
-        // The dev demo round, created THROUGH the factory by the parent network's authority (the
-        // deployer, which CreateDevInstances named network 0's admin — so this must run before
-        // DeployTimelocks hands that role off). The indexer discovers the round from the
-        // factory's creation event; nothing is written into the networks config any more.
+        // Deploy one Zodiac-enabled Safe (MerkleGovModule + SignerSyncZkModule) per network, wired to
+        // that network's ZK-proven MerkleSnapshot root and the signer verifier above. Must run AFTER
+        // Network so the network deploy JSONs (with merkle_snapshot addresses) exist.
+        ...Array.from(
+          { length: numNetworks },
+          (_, index): ContractDeployment[] => [
+            {
+              name: `Safe: ${index}`,
+              script:
+                'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
+              sig: 'run(string,string,string)',
+              args: () => [
+                readJsonKey(
+                  `config/network_deploy_dev_${index}.json`,
+                  'contracts.merkle_snapshot'
+                ),
+                readJsonKey(
+                  '.docker/zk_verifier_signer_deploy.json',
+                  'zk_verifier'
+                ),
+                readJsonKey(
+                  `config/network_deploy_dev_${index}.json`,
+                  'contracts.params_controller'
+                ),
+              ],
+            },
+            {
+              name: `Safe-owned distributor: ${index}`,
+              script:
+                'contracts/script/AttachDevDistributor.s.sol:AttachDevDistributor',
+              sig: 'run(string,string,string,string)',
+              args: () => [
+                readJsonKey('.docker/factory_deploy.json', 'factory'),
+                readJsonKey(
+                  `config/network_deploy_dev_${index}.json`,
+                  'contracts.merkle_snapshot'
+                ),
+                readJsonKey('.docker/zodiac_safes_deploy.json', 'safe.address'),
+                `config/network_deploy_dev_${index}.json`,
+              ],
+            },
+          ]
+        ).flat(),
+        // The parent deployer still holds constitutional authority here, while the round itself
+        // and its mandatory distributor are owned by network 0's initialized Safe.
         {
           name: 'Contributions Round',
           script:
             'contracts/script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound',
-          sig: 'run(string,string,string,string,string,string)',
+          sig: 'run(string,string,string,string,string,string,string)',
           args: () => {
-            // Provision the round-params file from its committed template if absent (same
-            // convention as `cp tests/e2e/params.template.json params.json`). Only the tunable
-            // knobs are read; the factory derives the schema UIDs and never writes back.
             const paramsFile =
               process.env.CONTRIBUTIONS_PARAMS_JSON ||
               'params.contributions.json'
@@ -682,55 +783,18 @@ export class DevEnv extends EnvBase {
               ),
               paramsFile,
               'Demo Co-op Contributions',
-              // The intended payout token (presentation only): the local TestUSDC when the
-              // vault step deployed one, else unset.
               readJsonKeyIfFileExists<string>(
                 '.docker/proving_vault_deploy.json',
                 'usdc'
               ) || '',
+              readJsonKey(
+                'config/network_deploy_dev_0.json',
+                'contracts.governance_safe'
+              ),
               'dev',
             ]
           },
         },
-        // Deploy the SIGNER verifier adapter (bound to the signer guest's vkey — a different program
-        // than the root). Runs AFTER Network (which already consumed the root verifier), so it may
-        // reuse the zk_verifier_deploy.json output slot. The Safe step below reads it.
-        {
-          name: 'Signer ZK Verifier',
-          script: 'contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier',
-          sig: 'run(string,bytes32,string)',
-          args: () => [
-            gatewayAddress(),
-            process.env.SP1_SIGNER_PROGRAM_VKEY || ZERO_BYTES32,
-            'signer',
-          ],
-        },
-        // Deploy one Zodiac-enabled Safe (MerkleGovModule + SignerSyncZkModule) per network, wired to
-        // that network's ZK-proven MerkleSnapshot root and the signer verifier above. Must run AFTER
-        // Network so the network deploy JSONs (with merkle_snapshot addresses) exist.
-        ...Array.from(
-          { length: numNetworks },
-          (_, index): ContractDeployment => ({
-            name: `Safe: ${index}`,
-            script:
-              'contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes',
-            sig: 'run(string,string,string)',
-            args: () => [
-              readJsonKey(
-                `config/network_deploy_dev_${index}.json`,
-                'contracts.merkle_snapshot'
-              ),
-              readJsonKey(
-                '.docker/zk_verifier_signer_deploy.json',
-                'zk_verifier'
-              ),
-              readJsonKey(
-                `config/network_deploy_dev_${index}.json`,
-                'contracts.params_controller'
-              ),
-            ],
-          })
-        ),
         // Deploy the two governance timelocks and hand off MerkleSnapshot authority to them
         // (deployer renounces its bootstrap roles). Must run AFTER Network so the network deploy
         // JSONs (with merkle_snapshot addresses) exist.
@@ -843,6 +907,8 @@ export class ProdEnv extends EnvBase {
     const networks = readJson<Network[]>(networksConfigFile)
 
     super({
+      stage: 'production',
+      profile: CHAIN_PROFILES.optimism,
       rpcUrl,
       registry: 'https://wa.dev',
       serviceName: 'trust-graph',
@@ -895,7 +961,7 @@ export class ProdEnv extends EnvBase {
           {
             name: `Network: ${network.name}`,
             script: 'contracts/script/DeployNetwork.s.sol:DeployScript',
-            sig: 'run(string,string,string,string,bool,string,uint256,uint256,uint64)',
+            sig: 'run(string,string,string,string,bool,string,string,uint256,uint256,uint64)',
             args: () => [
               readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
               // Path to the governance params; the script computes paramsHash from it on-chain after
@@ -904,7 +970,8 @@ export class ProdEnv extends EnvBase {
               process.env.PARAMS_JSON || 'params.json',
               readJsonKey('.docker/eas_deploy.json', 'eas'),
               readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
-              false,
+              Boolean(process.env.DISTRIBUTOR_SAFE),
+              process.env.DISTRIBUTOR_SAFE || '',
               'prod',
               index,
               1,
@@ -1025,6 +1092,241 @@ export class ProdEnv extends EnvBase {
 }
 
 /**
+ * Ethereum Sepolia public-release plan.
+ *
+ * This deliberately reuses only the modern local architecture: canonical EAS,
+ * a real root verifier, the instance directory, optional vault, and the base
+ * trust-graph factory. Weighted, composition, contributions, Zodiac, and
+ * signer-sync are outside the first public testnet gate.
+ */
+export class SepoliaEnv extends EnvBase {
+  private readonly releaseManifestFile = 'deployments/sepolia.json'
+
+  constructor({
+    rpcUrl,
+    ipfsGateway = 'https://gateway.pinata.cloud/ipfs/',
+  }: EnvOverrides) {
+    if (!rpcUrl) {
+      throw new Error(
+        'Sepolia RPC URL is required (--rpc-url, RPC_URL, or PONDER_RPC_URL_11155111)'
+      )
+    }
+    let parsedRpc: URL
+    try {
+      parsedRpc = new URL(rpcUrl)
+    } catch {
+      throw new Error('Sepolia RPC URL must be an absolute http(s) URL')
+    }
+    if (!['http:', 'https:'].includes(parsedRpc.protocol)) {
+      throw new Error('Sepolia RPC URL must use http or https')
+    }
+    const manifest = loadReleaseManifest('deployments/sepolia.json')
+    const requiredAddress = (name: string, value?: string | null): string => {
+      if (
+        !value ||
+        !/^0x[0-9a-f]{40}$/i.test(value) ||
+        /^0x0{40}$/i.test(value)
+      ) {
+        throw new Error(`${name} must be set to a nonzero public-chain address`)
+      }
+      return value
+    }
+    const gateway = () =>
+      requiredAddress(
+        'SP1_VERIFIER_GATEWAY',
+        process.env.SP1_VERIFIER_GATEWAY || manifest.external.sp1Gateway
+      )
+    const vaultEnvironment = () => {
+      const feed = requiredAddress(
+        'ETH_USD_FEED',
+        process.env.ETH_USD_FEED || manifest.external.ethUsdFeed
+      )
+      const usdc = requiredAddress(
+        'USDC',
+        process.env.USDC || manifest.external.usdc
+      )
+      return { ETH_USD_FEED: feed, USDC: usdc }
+    }
+
+    super({
+      stage: 'production',
+      profile: CHAIN_PROFILES.sepolia,
+      rpcUrl,
+      registry: process.env.SERVICE_REGISTRY_URL || '',
+      serviceName: 'trust-graph',
+      triggerChain: 'evm:11155111',
+      submitChain: 'evm:11155111',
+      ipfs: {
+        pinApi: 'https://uploads.pinata.cloud/v3/files',
+        gateway: ipfsGateway,
+      },
+      networksConfigFile: 'config/networks.sepolia.json',
+      validateDeployment: () => {
+        requireReleaseCommit()
+        requireReleaseDigest()
+        gateway()
+        requireProdBytes32('SP1_PROGRAM_VKEY')
+        requiredAddress(
+          'INSTANCE_REGISTRY_ADMIN',
+          process.env.INSTANCE_REGISTRY_ADMIN
+        )
+        requireProdUint64('FACTORY_EPOCH_FLOOR')
+        if (process.env.SKIP_PROVING_VAULT !== 'true') vaultEnvironment()
+      },
+      deployContracts: [
+        {
+          name: 'Schema Registrar (canonical Sepolia EAS)',
+          script: 'contracts/script/DeployEAS.s.sol:DeployEAS',
+          sig: 'run(string,string)',
+          args: () => [manifest.external.eas, manifest.external.schemaRegistry],
+        },
+        {
+          name: 'Trust-graph ZK Verifier',
+          script: 'contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier',
+          sig: 'run(string,bytes32,string)',
+          args: () => [gateway(), requireProdBytes32('SP1_PROGRAM_VKEY'), ''],
+        },
+        {
+          name: 'Instance Registry',
+          script:
+            'contracts/script/DeployInstanceRegistry.s.sol:DeployInstanceRegistry',
+          sig: 'run(string,string)',
+          args: () => [
+            requiredAddress(
+              'INSTANCE_REGISTRY_ADMIN',
+              process.env.INSTANCE_REGISTRY_ADMIN
+            ),
+            '',
+          ],
+        },
+        {
+          name: 'Proving Vault',
+          script:
+            'contracts/script/DeployProvingVault.s.sol:DeployProvingVault',
+          sig: 'run(string)',
+          args: () => [
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+          ],
+          env: vaultEnvironment,
+          skip: () => process.env.SKIP_PROVING_VAULT === 'true',
+        },
+        {
+          name: 'Trustgraphs Factory',
+          script: 'contracts/script/DeployFactory.s.sol:DeployFactory',
+          sig: 'run(string,string,string,string,uint64,string)',
+          args: () => [
+            manifest.external.eas,
+            readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
+            readJsonKey('.docker/zk_verifier_deploy.json', 'zk_verifier'),
+            readJsonKey(
+              '.docker/instance_registry_deploy.json',
+              'instance_registry'
+            ),
+            requireProdUint64('FACTORY_EPOCH_FLOOR'),
+            process.env.SKIP_PROVING_VAULT === 'true'
+              ? ''
+              : readJsonKey(
+                  '.docker/proving_vault_deploy.json',
+                  'proving_vault'
+                ),
+          ],
+        },
+      ],
+    })
+  }
+
+  generateReleaseManifest(): object {
+    const base = loadReleaseManifest(this.releaseManifestFile)
+    const broadcasts = readBroadcastDeployments('.', this.profile.chainId)
+    const eas = readJsonIfFileExists<Record<string, string>>(
+      '.docker/eas_deploy.json'
+    )
+    const verifier = readJsonIfFileExists<Record<string, string>>(
+      '.docker/zk_verifier_deploy.json'
+    )
+    const registry = readJsonIfFileExists<Record<string, string>>(
+      '.docker/instance_registry_deploy.json'
+    )
+    const vault =
+      process.env.SKIP_PROVING_VAULT === 'true'
+        ? null
+        : readJsonIfFileExists<Record<string, string>>(
+            '.docker/proving_vault_deploy.json'
+          )
+    const factory = readJsonIfFileExists<Record<string, string>>(
+      '.docker/factory_deploy.json'
+    )
+    const contracts = {
+      schemaRegistrar: deploymentRecord(eas?.schema_registrar, broadcasts),
+      rootVerifier: deploymentRecord(verifier?.zk_verifier, broadcasts),
+      instanceRegistry: deploymentRecord(
+        registry?.instance_registry,
+        broadcasts
+      ),
+      provingVault: deploymentRecord(vault?.proving_vault, broadcasts),
+      trustgraphsFactory: deploymentRecord(factory?.factory, broadcasts),
+    }
+    const blocks = Object.values(contracts)
+      .map((record) => record.block)
+      .filter((block): block is number => block !== null)
+    const manifest = {
+      ...base,
+      status: 'deployed' as const,
+      deploymentCommit: requireReleaseCommit(),
+      firstDeploymentBlock: blocks.length > 0 ? Math.min(...blocks) : null,
+      external: {
+        ...base.external,
+        sp1Gateway:
+          verifier?.sp1_gateway || process.env.SP1_VERIFIER_GATEWAY || null,
+        ethUsdFeed: vault?.eth_usd_feed || null,
+        usdc: vault?.usdc || base.external.usdc,
+      },
+      contracts,
+      programs: {
+        trustGraph: {
+          ...base.programs.trustGraph,
+          elfSha256: requireReleaseDigest(),
+          vkey: verifier?.program_vkey || null,
+        },
+      },
+    }
+    return validateReleaseManifest(manifest, { requireComplete: true })
+  }
+
+  async uploadToIpfs(file: string, apiKey?: string): Promise<string> {
+    if (!apiKey) throw new Error('API key is required for IPFS uploads')
+    const filePath = path.resolve(file)
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File ${filePath} does not exist`)
+    }
+    const formData = new FormData()
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(fs.readFileSync(filePath))])
+    )
+    formData.append('network', 'public')
+    formData.append('name', `service-${Date.now()}.json`)
+    const response = await fetch(this.ipfs.pinApi, {
+      method: 'POST',
+      body: formData,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!response.ok) {
+      throw new Error(
+        `Failed to upload file to IPFS: ${response.status} ${response.statusText}`
+      )
+    }
+    const {
+      data: { cid },
+    } = await response.json()
+    return cid
+  }
+}
+
+/**
  * Default option values.
  */
 export const DEFAULT_OPTIONS: Record<string, () => string | undefined> = {
@@ -1042,17 +1344,25 @@ export const initProgram = (program: Command): ProgramContext => {
   program.parse(process.argv)
 
   const options = program.opts()
-  // Set default environment before applying default options, since some default
-  // options depend on the environment.
-  if (!options.env) {
-    options.env = process.env.DEPLOY_ENV?.toLowerCase() || 'dev'
-  }
-
+  const selection = resolveDeploymentSelection({
+    stage: options.stage || process.env.DEPLOY_STAGE,
+    target: options.chain || process.env.DEPLOY_TARGET,
+    legacyEnv: options.env || process.env.DEPLOY_ENV,
+  })
+  options.env = selection.envName
+  options.stage = selection.stage
+  options.chain = selection.target
   const appliedOptions = applyDefaultOptions(options)
-  const env = getEnv(options.env, options)
+  if (!appliedOptions.rpcUrl) {
+    appliedOptions.rpcUrl =
+      process.env.RPC_URL || process.env[selection.profile.rpcEnv]
+  }
+  const env = getEnv(selection.stage, selection.target, appliedOptions)
 
   return {
-    envName: options.env,
+    envName: selection.envName,
+    stage: selection.stage,
+    target: selection.target,
     env,
     options: appliedOptions,
     dotenv,
@@ -1067,12 +1377,13 @@ export const initProgram = (program: Command): ProgramContext => {
  * @returns The environment variables
  */
 export const getEnv = (
-  envName: EnvName,
+  stage: DeploymentStage,
+  target: ChainTarget,
   overrides: EnvOverrides = {}
 ): IEnv => {
-  const env = EnvBase.get(envName, overrides)
+  const env = EnvBase.get(stage, target, overrides)
   if (!env) {
-    throw new Error(`Invalid environment: ${envName}`)
+    throw new Error(`Invalid deployment selection: ${stage}/${target}`)
   }
 
   return env

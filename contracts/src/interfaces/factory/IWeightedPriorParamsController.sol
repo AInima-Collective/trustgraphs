@@ -64,6 +64,7 @@ interface IWeightedPriorParamsController {
     function instanceId() external view returns (bytes32);
     function snapshot() external view returns (address);
     function version() external view returns (uint64);
+    function latestVersion() external view returns (uint64);
     function currentParamsHash() external view returns (bytes32);
     function activationDelay() external view returns (uint48);
     function getCurrentParams() external view returns (WeightedPriorParamsCodec.Params memory);

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
 import {IAnchorRegistry} from "interfaces/registry/IAnchorRegistry.sol";
@@ -13,23 +12,8 @@ import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
 
 /// @notice PASS A PoC.
 ///
-/// `AnchorRegistry.anchor` authenticates an address-kind head with
-///
-///     payload = keccak256(abi.encode(HEAD_DOMAIN_TAG, head, count))
-///
-/// The signature therefore covers NEITHER `envelopeKind` NOR `dataCommitment` — both of which are
-/// folded into the leaf the guest consumes — and it is bound to no registry address and no chain
-/// id. Two consequences, both reachable by a single governance-admitted relayer:
-///
-///   1. The relayer chooses the `dataCommitment` (the availability commitment the guest resolves
-///      the head's contents through) and the `envelopeKind` for an owner-signed head.
-///   2. `lastCount[nodeId]` is bumped to the relayed `count`, and `count <= previousCount` is then
-///      rejected forever, so the owner's genuine anchor at that count can never be recorded. The
-///      relayer permanently burns that position in the node's log.
-///
-/// The sibling `EasOffchainAnchorRegistry` gets this right (full EIP-712 struct over
-/// `nodeId, envelopeKind, schemaUid, previousHead, head, count, dataCommitment` under a
-/// `verifyingContract`-bound domain). The two near-twins disagree.
+/// Regression coverage: the generic registry now follows the sibling ingress by binding the
+/// registry, chain, node, envelope kind, head, count and data commitment in an EIP-712 signature.
 contract OmegaPassA_AnchorHeadSignature is Test {
     AnchorRegistry internal registryA;
     AnchorRegistry internal registryB;
@@ -64,34 +48,39 @@ contract OmegaPassA_AnchorHeadSignature is Test {
         registryB.grantRole(registryB.ANCHORER_ROLE(), relayer);
     }
 
-    function _sign(bytes32 head, uint64 count) internal view returns (bytes memory) {
-        bytes32 payload = keccak256(abi.encode(registryA.HEAD_DOMAIN_TAG(), head, count));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerKey, MessageHashUtils.toEthSignedMessageHash(payload));
+    function _sign(
+        AnchorRegistry target,
+        bytes32 nodeId,
+        uint8 envelopeKind,
+        bytes32 head,
+        uint64 count,
+        bytes32 dataCommitment
+    ) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(ownerKey, target.anchorDigest(nodeId, envelopeKind, head, count, dataCommitment));
         return abi.encodePacked(r, s, v);
     }
 
-    function test_PassA_RelayerChoosesDataCommitmentAndBurnsTheCount() public {
+    function test_PassA_RelayerCannotMutateDataCommitmentOrBurnTheCount() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
         vm.prank(owner);
         registryA.register();
 
         bytes32 head = keccak256("owner-signed head #5");
-        bytes memory sig = _sign(head, 5);
+        bytes32 intendedCommitment = keccak256("the real data commitment");
+        bytes memory sig = _sign(registryA, nodeId, 0, head, 5, intendedCommitment);
 
-        // The owner signed (head, 5). The relayer supplies a dataCommitment and envelopeKind of
-        // its own choosing; nothing in the signature covers them.
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         vm.prank(relayer);
         registryA.anchor(nodeId, 99, head, 5, keccak256("relayer-chosen garbage"), sig);
-        assertEq(registryA.lastCount(nodeId), 5);
+        assertEq(registryA.lastCount(nodeId), 0, "invalid mutation did not consume the count");
 
-        // The owner's real anchor for the same head at the same count is now permanently refused,
-        // and so is anything below it.
         vm.prank(relayer);
-        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.StaleHeadCount.selector, nodeId, uint64(5), uint64(5)));
-        registryA.anchor(nodeId, 0, head, 5, keccak256("the real data commitment"), sig);
+        registryA.anchor(nodeId, 0, head, 5, intendedCommitment, sig);
+        assertEq(registryA.lastCount(nodeId), 5);
     }
 
-    function test_PassA_HeadSignatureReplaysIntoAnUnrelatedInstanceRegistry() public {
+    function test_PassA_HeadSignatureCannotReplayIntoAnUnrelatedInstanceRegistry() public {
         bytes32 nodeId = keccak256(abi.encode(owner));
         vm.prank(owner);
         registryA.register();
@@ -99,15 +88,15 @@ contract OmegaPassA_AnchorHeadSignature is Test {
         registryB.register();
 
         bytes32 head = keccak256("owner-signed head #7");
-        bytes memory sig = _sign(head, 7);
+        bytes32 commitment = keccak256("dc-a");
+        bytes memory sig = _sign(registryA, nodeId, 0, head, 7, commitment);
 
         vm.prank(relayer);
-        registryA.anchor(nodeId, 0, head, 7, keccak256("dc-a"), sig);
+        registryA.anchor(nodeId, 0, head, 7, commitment, sig);
 
-        // The SAME signature is accepted by a different instance's registry: the payload carries
-        // no verifyingContract and no chainId.
+        vm.expectRevert(abi.encodeWithSelector(AnchorRegistry.BadHeadSignature.selector, nodeId));
         vm.prank(relayer);
-        registryB.anchor(nodeId, 0, head, 7, keccak256("dc-b"), sig);
-        assertEq(registryB.anchorCount(), 1, "cross-instance replay accepted");
+        registryB.anchor(nodeId, 0, head, 7, commitment, sig);
+        assertEq(registryB.anchorCount(), 0, "cross-instance replay rejected");
     }
 }

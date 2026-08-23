@@ -5,8 +5,11 @@ import {Test} from "forge-std/Test.sol";
 
 import {EAS} from "@ethereum-attestation-service/eas-contracts/contracts/EAS.sol";
 import {SchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/SchemaRegistry.sol";
-import {IEAS, AttestationRequest, AttestationRequestData} from
-    "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
+import {
+    IEAS,
+    AttestationRequest,
+    AttestationRequestData
+} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.sol";
 import {ISchemaRegistry} from "@ethereum-attestation-service/eas-contracts/contracts/ISchemaRegistry.sol";
 import {ISchemaResolver} from "@ethereum-attestation-service/eas-contracts/contracts/resolver/ISchemaResolver.sol";
 
@@ -57,7 +60,8 @@ contract OmegaPassA_ResolverBindSchemaGrief is Test {
 
         // The deployer's own registration still succeeds...
         vm.prank(deployer);
-        bytes32 realUid = registrar.register("string comment,uint256 confidence", ISchemaResolver(address(resolver)), true);
+        bytes32 realUid =
+            registrar.register("string comment,uint256 confidence", ISchemaResolver(address(resolver)), true);
 
         // ...but the binding step now reverts, and there is no rebind path.
         vm.prank(deployer);

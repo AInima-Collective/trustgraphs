@@ -12,6 +12,8 @@ import {DeployScript} from "script/DeployNetwork.s.sol";
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
+import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
+import {MockSafeOwner} from "test/helpers/MockSafeOwner.sol";
 import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 
 contract DeployNetworkHarness is DeployScript {
@@ -20,12 +22,15 @@ contract DeployNetworkHarness is DeployScript {
         string memory paramsPath,
         address eas,
         address schemaRegistrar,
-        uint64 epochLength
-    ) external returns (address resolver, address snapshot, bytes32 schemaUid) {
+        uint64 epochLength,
+        bool withDistributor,
+        address distributorSafe
+    ) external returns (address resolver, address snapshot, address distributor, bytes32 schemaUid) {
         NetworkDeployment memory deployed = _deployNetwork(
-            zkVerifier, paramsPath, eas, schemaRegistrar, false, epochLength, address(this)
+            zkVerifier, paramsPath, eas, schemaRegistrar, withDistributor, distributorSafe, epochLength, address(this)
         );
-        return (address(deployed.resolver), address(deployed.snapshot), deployed.schemaUid);
+        return
+            (address(deployed.resolver), address(deployed.snapshot), address(deployed.distributor), deployed.schemaUid);
     }
 }
 
@@ -50,8 +55,9 @@ contract DeployNetworkTest is Test {
     }
 
     function test_DeploySetsAndEnforcesEpochSchedule() public {
-        (address resolverAddr, address snapshotAddr, bytes32 schemaUid) =
-            deployer.deployNetworkForTest(address(verifier), PARAMS, address(eas), address(registrar), EPOCH_LENGTH);
+        (address resolverAddr, address snapshotAddr,, bytes32 schemaUid) = deployer.deployNetworkForTest(
+            address(verifier), PARAMS, address(eas), address(registrar), EPOCH_LENGTH, false, address(0)
+        );
 
         MerkleSnapshot snapshot = MerkleSnapshot(snapshotAddr);
         EASIndexerResolver resolver = EASIndexerResolver(payable(resolverAddr));
@@ -69,6 +75,21 @@ contract DeployNetworkTest is Test {
 
     function test_DeployRejectsUnscheduledNetwork() public {
         vm.expectRevert(bytes("DeployNetwork: epoch length is zero"));
-        deployer.deployNetworkForTest(address(verifier), PARAMS, address(eas), address(registrar), 0);
+        deployer.deployNetworkForTest(address(verifier), PARAMS, address(eas), address(registrar), 0, false, address(0));
+    }
+
+    function test_DistributorRequiresAndIsOwnedBySafe() public {
+        address eoa = address(0xE0A);
+        vm.expectRevert(abi.encodeWithSelector(DeployScript.InvalidDistributorSafe.selector, eoa));
+        deployer.deployNetworkForTest(
+            address(verifier), PARAMS, address(eas), address(registrar), EPOCH_LENGTH, true, eoa
+        );
+
+        MockSafeOwner safe = new MockSafeOwner(address(this), 1);
+        (,, address distributor,) = deployer.deployNetworkForTest(
+            address(verifier), PARAMS, address(eas), address(registrar), EPOCH_LENGTH, true, address(safe)
+        );
+        assertEq(MerkleFundDistributor(payable(distributor)).owner(), address(safe));
+        assertEq(MerkleFundDistributor(payable(distributor)).feeRecipient(), address(safe));
     }
 }

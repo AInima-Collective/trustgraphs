@@ -291,6 +291,11 @@ tasks:
         forge script contracts/script/DeployZodiacSafes.s.sol:DeployZodiacSafes \
           --sig 'run(string,string,string)' "$SNAP" "$SIGNER_VERIFIER" "$CONTROLLER" \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
+        SAFE=$(jq -r .safe.address .docker/zodiac_safes_deploy.json)
+        FAC=$(jq -r .factory .docker/factory_deploy.json)
+        forge script contracts/script/AttachDevDistributor.s.sol:AttachDevDistributor \
+          --sig 'run(string,string,string,string)' "$FAC" "$SNAP" "$SAFE" '' \
+          --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
       - |
         # A module added after raw factory creation has no governed-factory discovery event. Add it
         # to the local seed as well, matched on the snapshot the demo just created. Networks made
@@ -363,7 +368,8 @@ tasks:
       - |
         # Rounds are factory-minted (one transaction by the parent network's authority; the
         # indexer discovers them from the creation event). The main deploy already mints one over
-        # Demo Co-op; this task is for an additional network created with `demo:create`. The
+        # Demo Co-op; this task is for an additional network created with `demo:create` and then
+        # given its Safe with `demo:govern`. The
         # parent is resolved on-chain — the script scans the registry for the snapshot address —
         # not from `.trustgraph/create-instance.json`: that file is last-write-wins scratch, so
         # any other `CreateInstance` run since clobbers it and this silently wires the round to a
@@ -374,9 +380,10 @@ tasks:
         PARAMS=${CONTRIBUTIONS_PARAMS_JSON:-params.contributions.demo.json}
         [ -f "$PARAMS" ] || cp tests/e2e/params.contributions.template.json "$PARAMS"
         USDC=$(jq -r '.usdc // empty' .docker/proving_vault_deploy.json 2>/dev/null)
+        SAFE=$(jq -r .safe.address .docker/zodiac_safes_deploy.json)
         forge script contracts/script/CreateDevContributionsRound.s.sol:CreateDevContributionsRound \
-          --sig 'run(string,string,string,string,string,string)' \
-          "$FAC" "$SNAP" "$PARAMS" '{{.NAME}} Contributions' "$USDC" 'demo' \
+          --sig 'run(string,string,string,string,string,string,string)' \
+          "$FAC" "$SNAP" "$PARAMS" '{{.NAME}} Contributions' "$USDC" "$SAFE" 'demo' \
           --rpc-url {{.RPC}} --private-key "$FUNDED_KEY" --broadcast --slow >/dev/null
         echo "  ✓ contributions round over {{.NAME}}'s graph"
         echo "    artifact: .docker/contributions_round_demo_deploy.json"

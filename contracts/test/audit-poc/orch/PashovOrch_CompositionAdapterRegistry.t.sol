@@ -3,19 +3,15 @@ pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
-import {TrustComposeValidator} from "src/params/TrustComposeValidator.sol";
 import {ICompositionSourceAdapterFactory} from "interfaces/composition/ICompositionSourceAdapter.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IMerkleSnapshotProvenance} from "interfaces/merkle/IMerkleSnapshotProvenance.sol";
 
-/// A registry the attacker deploys and fully controls. `CompositionSourceAdapterFactory.create`
-/// takes the registry as a plain argument and never checks it against a canonical address.
+/// A registry the attacker deploys and fully controls. The adapter factory must reject it because
+/// it is not the immutable canonical registry selected at factory deployment.
 contract AttackerRegistry {
     mapping(bytes32 => IInstanceRegistry.Instance) public rec;
     mapping(bytes32 => address) public auth;
@@ -85,6 +81,7 @@ contract AttackerVerifier {
 }
 
 contract PashovOrch_CompositionAdapterRegistry is Test {
+    AttackerRegistry internal canonicalRegistry;
     CompositionSourceAdapterFactory internal adapterFactory;
     CompositionSourceAccumulator internal accumulator;
 
@@ -92,21 +89,21 @@ contract PashovOrch_CompositionAdapterRegistry is Test {
     bytes32 internal constant ADMITTED = keccak256("trust-graph");
 
     function setUp() public {
-        adapterFactory = new CompositionSourceAdapterFactory();
-        accumulator = new CompositionSourceAccumulator(
-            ICompositionSourceAdapterFactory(address(adapterFactory)), address(this)
-        );
+        canonicalRegistry = new AttackerRegistry();
+        adapterFactory = new CompositionSourceAdapterFactory(IInstanceRegistry(address(canonicalRegistry)));
+        accumulator =
+            new CompositionSourceAccumulator(ICompositionSourceAdapterFactory(address(adapterFactory)), address(this));
     }
 
-    function _mintRogueAdapter(bytes32 sourceId, bytes32 familyId)
+    function _rogueSource(bytes32 sourceId)
         internal
-        returns (CompositionSourceAdapter adapter, address snap)
+        returns (AttackerRegistry rogueRegistry, bytes32 instanceId, address snapshot)
     {
         AttackerVerifier v = new AttackerVerifier();
         AttackerSnapshot s = new AttackerSnapshot(address(v), v.programVKey());
-        AttackerRegistry r = new AttackerRegistry();
-        bytes32 instanceId = keccak256(abi.encode(sourceId, "rogue"));
-        r.set(
+        rogueRegistry = new AttackerRegistry();
+        instanceId = keccak256(abi.encode(sourceId, "rogue"));
+        rogueRegistry.set(
             instanceId,
             IInstanceRegistry.Instance({
                 program: ADMITTED, // claim to be an admitted trust-graph source
@@ -117,32 +114,48 @@ contract PashovOrch_CompositionAdapterRegistry is Test {
             }),
             address(0xB0B) // any non-zero "params authority"
         );
-        adapter = adapterFactory.create(
-            IInstanceRegistry(address(r)), instanceId, sourceId, familyId, ALLOCATION, bytes32(uint256(7))
+        snapshot = address(s);
+    }
+
+    function test_rogueRegistryCannotYieldAuthenticatedAdapter() public {
+        (AttackerRegistry rogue, bytes32 instanceId,) = _rogueSource(bytes32(uint256(1)));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CompositionSourceAdapterFactory.ForeignRegistry.selector, address(canonicalRegistry), address(rogue)
+            )
         );
-        snap = address(s);
+        adapterFactory.create(
+            IInstanceRegistry(address(rogue)),
+            instanceId,
+            bytes32(uint256(1)),
+            keccak256("fam"),
+            ALLOCATION,
+            bytes32(uint256(7))
+        );
     }
 
-    /// The factory's `isAdapter` allowlist is meant to reject an "ABI-compatible lookalike".
-    /// It does not: the registry that anchors every trust claim is a caller-supplied argument.
-    function test_rogueRegistryYieldsAuthenticatedAdapter() public {
-        (CompositionSourceAdapter a, address snap) = _mintRogueAdapter(bytes32(uint256(1)), keccak256("fam"));
-
-        assertTrue(adapterFactory.isAdapter(address(a)), "rogue adapter is factory-authenticated");
-        assertEq(a.snapshot(), snap, "adapter points at an attacker-controlled snapshot");
-        assertEq(a.programId(), ADMITTED, "adapter claims the admitted program id");
-        assertEq(a.outputKind(), ALLOCATION);
-
-        // ...and it reports an entirely attacker-chosen output as an authenticated capture.
-        assertEq(a.readLatest().outputRoot, bytes32(uint256(0xBADBADBAD)));
-        assertEq(a.readLatest().totalValue, 1_000_000e18);
-    }
-
-    /// The composition accumulator's policy validation accepts a manifest built entirely from
-    /// rogue adapters: every check it performs is satisfied by attacker-chosen values.
-    function test_accumulatorValidatesAllRogueSourcePolicy() public {
-        (CompositionSourceAdapter a1, address s1) = _mintRogueAdapter(bytes32(uint256(1)), keccak256("famA"));
-        (CompositionSourceAdapter a2, address s2) = _mintRogueAdapter(bytes32(uint256(2)), keccak256("famB"));
+    /// A directly deployed lookalike can still read an attacker registry, but the accumulator's
+    /// factory-authenticity gate rejects it because the pinned factory never recorded it.
+    function test_accumulatorRejectsDirectAdapterOverRogueRegistry() public {
+        (AttackerRegistry rogue1, bytes32 instanceId1, address snapshot1) = _rogueSource(bytes32(uint256(1)));
+        (AttackerRegistry rogue2, bytes32 instanceId2, address snapshot2) = _rogueSource(bytes32(uint256(2)));
+        CompositionSourceAdapter lookalike1 = new CompositionSourceAdapter(
+            IInstanceRegistry(address(rogue1)),
+            instanceId1,
+            bytes32(uint256(1)),
+            keccak256("famA"),
+            ALLOCATION,
+            bytes32(uint256(7))
+        );
+        CompositionSourceAdapter lookalike2 = new CompositionSourceAdapter(
+            IInstanceRegistry(address(rogue2)),
+            instanceId2,
+            bytes32(uint256(2)),
+            keccak256("famB"),
+            ALLOCATION,
+            bytes32(uint256(8))
+        );
 
         bytes memory manifest = abi.encodePacked(
             bytes4(0x54474350), // "TGCP"
@@ -153,22 +166,22 @@ contract PashovOrch_CompositionAdapterRegistry is Test {
         manifest = bytes.concat(
             manifest,
             abi.encodePacked(
-                bytes32(uint256(1)), s1, keccak256("famA"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
+                bytes32(uint256(1)), snapshot1, keccak256("famA"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
             ),
             abi.encodePacked(
-                bytes32(uint256(2)), s2, keccak256("famB"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
+                bytes32(uint256(2)), snapshot2, keccak256("famB"), ADMITTED, uint64(5e17), uint64(1000), uint8(1)
             )
         );
 
         address[] memory adapters = new address[](2);
-        adapters[0] = address(a1);
-        adapters[1] = address(a2);
+        adapters[0] = address(lookalike1);
+        adapters[1] = address(lookalike2);
 
-        TrustComposeValidator.Commitment memory c = accumulator.validatePolicy(manifest, adapters);
-        assertEq(c.sourceCount, 2, "accumulator accepted an all-rogue source policy");
-        assertTrue(c.sourcePolicyRoot != bytes32(0));
-
-        // And the frozen capture manifest the prover consumes carries the attacker's roots.
-        emit log_named_bytes32("rogue source policy root", c.sourcePolicyRoot);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CompositionSourceAccumulator.UnauthenticatedAdapter.selector, uint8(0), address(lookalike1)
+            )
+        );
+        accumulator.validatePolicy(manifest, adapters);
     }
 }

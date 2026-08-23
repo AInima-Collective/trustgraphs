@@ -1,9 +1,9 @@
 /**
  * AUDIT PoC (pre-testnet review, agent 2 — cross-language encoding parity).
  *
- * The TypeScript leg of the check for the encodings NO golden vector exercises:
- *  - the non-empty branch of `domainSetHash` (every vector has `envelope0DomainSeparators: []`)
- *  - `paramsHash` with `minWeightFp`, the separator list and `lane2MaxHeadAge` all non-default
+ * An independent TypeScript check for the boundary encodings promoted into the canonical
+ * trust-graph golden fixture: the non-empty `domainSetHash` branch and a `paramsHash` with
+ * `minWeightFp`, the separator list and `lane2MaxHeadAge` all non-default.
  *
  * Expected values come from `cargo test -p pagerank-core --test audit_poc_encoding`, which
  * writes `contracts/test/audit-poc/audit-vectors.json`.
@@ -65,7 +65,7 @@ const check = (name: string, actual: unknown, expected: unknown) => {
   }
 }
 
-console.log('audit PoC: encodings no golden vector exercises')
+console.log('audit regression: canonical boundary encodings')
 check(
   'domainSetHash (non-empty branch)',
   domainSetHash(separators).toLowerCase(),

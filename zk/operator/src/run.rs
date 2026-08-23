@@ -558,34 +558,41 @@ fn tick(
                 }
             };
 
-            // Monotonic inputs cannot be trimmed. A bounded AnchorRegistry publishes the lower
-            // instance-selected ingress capacity; other lanes use MAX_PRICED_INPUTS. Approaching
-            // either cliff must be loud while a replacement-snapshot migration is still orderly.
-            let inputs = state.live_input_work;
-            let ceiling = state.input_capacity.max(1).min(operator_core::policy::MAX_PRICED_INPUTS);
-            if *program != Program::Composition && inputs >= ceiling.saturating_mul(8) / 10 {
+            let policy = cfg.policy_for(entry.instance_id, *program, supported());
+
+            // Monotonic inputs cannot be trimmed. Alert against the nearest ACTUAL refusal gate
+            // under this host's configured capability/cycle policy (or a lower instance-selected
+            // ingress cap), never against the unrelated 200k vault pricing boundary.
+            let capacity = operator_core::limiting_capacity(&state, &policy);
+            if *program != Program::Composition && capacity.approaching() {
                 let text = format!(
-                    "{} ({}): {inputs} of {ceiling} admitted inputs ({}%) — inputs cannot be \
-                     trimmed. Revoke unexpected ingress authority and plan the constitutional \
-                     replacement-snapshot migration before capacity is exhausted \
+                    "{} ({}): {} admitted input-work units; nearest refusal gate {:?} is {} of {} \
+                     ({}%). Inputs cannot be trimmed. Revoke unexpected ingress authority and plan \
+                     the constitutional replacement-snapshot migration before capacity is exhausted \
                      (docs/build/production.md, 'The accumulator ceiling').",
                     entry.name,
                     program.name(),
-                    inputs.saturating_mul(100) / ceiling
+                    capacity.input_work,
+                    capacity.ceiling,
+                    capacity.observed,
+                    capacity.limit,
+                    capacity.percent()
                 );
                 logger.event(
-                    "input_ceiling_approaching",
+                    "operator_capacity_approaching",
                     json!({
                         "instance": format!("{:#x}", entry.instance_id),
-                        "inputs": inputs,
-                        "ceiling": ceiling,
+                        "input_work": capacity.input_work,
+                        "gate": format!("{:?}", capacity.ceiling),
+                        "observed": capacity.observed,
+                        "limit": capacity.limit,
+                        "profile_version": capacity.profile_version,
                     }),
                 );
                 alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
                 alerts_raised.push(text);
             }
 
-            let policy = cfg.policy_for(entry.instance_id, *program, supported());
             // Rolling spend, from the journal. This is what makes `LossBudget` reachable at all:
             // it was `Spend::default()` here, so the budget could never fire and "unpreventable
             // spend is budgeted" was a property of the library rather than of the daemon.
@@ -752,6 +759,7 @@ fn tick(
                 newest_anchor_count: state.live_commitments.anchor_count,
                 input_work: state.live_input_work,
                 input_capacity: state.input_capacity,
+                limiting_capacity: capacity,
                 envelope0_fetch_latency_ms: envelope0_preflight
                     .as_ref()
                     .map(|report| report.fetch_latency_ms),
@@ -789,8 +797,10 @@ fn tick(
                 .unwrap_or(0),
             instances: statuses,
             settings: PublicSettings {
-                capability_profile: operator_core::CapabilityProfile::default(),
+                capability_profile: cfg.prover.capability_profile,
                 cost_model_version: operator_core::work::COST_MODEL_VERSION,
+                cycle_limit: cfg.prover.cycle_limit,
+                protocol_max_total_inputs: operator_core::policy::MAX_PRICED_INPUTS,
                 paid_enabled: cfg.paid.enabled,
                 paid_vault: cfg.paid.vault.map(|v| format!("{v:#x}")),
                 paid_recipient: cfg.paid.recipient.map(|r| format!("{r:#x}")),
@@ -1280,7 +1290,7 @@ fn act(
                 return Ok(());
             }
 
-            let capability = operator_core::CapabilityProfile::default();
+            let capability = policy.capability_profile;
             if let Err(violation) = capability.check(built.work) {
                 bail!(
                     "operator capability profile v{} refuses {:?}: observed {}, limit {}. The checkpoint is valid; another prover may accept it",

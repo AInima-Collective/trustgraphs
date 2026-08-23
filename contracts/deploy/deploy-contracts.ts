@@ -18,9 +18,14 @@ import { execFull } from './utils'
 
 const program = new Command('deploy-contracts')
   .description('Deploy contracts to the chain')
+  .option('-e, --env <env>', 'Legacy deploy environment alias (dev or prod)')
   .option(
-    '-e, --env <env>',
-    'The deploy environment (dev or prod) (default: $DEPLOY_ENV from .env)'
+    '--stage <stage>',
+    'Deployment stage: development or production (default: $DEPLOY_STAGE)'
+  )
+  .option(
+    '--chain <target>',
+    'Chain target: local, optimism, or sepolia (default: $DEPLOY_TARGET)'
   )
   .option(
     // Don't pass FUNDED_KEY as default here so it does not appear in the help
@@ -32,13 +37,58 @@ const program = new Command('deploy-contracts')
     '-r, --rpc-url <rpcUrl>',
     'The RPC URL for the chain (default: $RPC_URL from .env)'
   )
+  .option(
+    '--dry-run',
+    'Validate the selected profile and print the ordered plan without Forge or RPC calls'
+  )
+
+const ANVIL_DEFAULT_KEY =
+  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+
+const requireFundedKey = (value: unknown, publicChain: boolean): string => {
+  if (
+    typeof value !== 'string' ||
+    !/^0x[0-9a-f]{64}$/i.test(value) ||
+    /^0x0{64}$/i.test(value)
+  ) {
+    throw new Error(
+      'FUNDED_KEY must be an explicit nonzero 32-byte private key'
+    )
+  }
+  if (publicChain && value.toLowerCase() === ANVIL_DEFAULT_KEY) {
+    throw new Error('The known Anvil default key is forbidden on public chains')
+  }
+  return value
+}
 
 const main = async () => {
   const context = initProgram(program)
   const {
     env,
-    options: { fundedKey },
+    options: { fundedKey, dryRun },
   } = context
+
+  await env.validateDeployment?.()
+
+  if (dryRun) {
+    console.log(
+      chalk.greenBright(
+        `Dry run: ${env.stage}/${env.profile.target} (${env.profile.chainId})`
+      )
+    )
+    for (const [index, contract] of env.deployContracts.entries()) {
+      const skipped = await contract.skip?.(context)
+      console.log(
+        `${index + 1}. ${contract.name} — ${contract.script}${skipped ? ' [skipped by configuration]' : ''}`
+      )
+    }
+    console.log(
+      'No RPC calls, Forge scripts, files, or broadcasts were performed.'
+    )
+    return
+  }
+
+  const privateKey = requireFundedKey(fundedKey, env.profile.public)
 
   for (const contract of env.deployContracts) {
     const skip = await contract.skip?.(context)
@@ -71,7 +121,9 @@ const main = async () => {
       ],
       log: 'cmd',
       env: {
-        FUNDED_KEY: fundedKey,
+        FUNDED_KEY: privateKey,
+        EXPECTED_CHAIN_ID: String(env.profile.chainId),
+        ...contract.env?.(context),
       },
       shell: true,
     })
@@ -83,14 +135,22 @@ const main = async () => {
 
   await env.postDeployContracts?.()
 
-  fs.writeFileSync(
-    DEPLOYMENT_SUMMARY_FILE,
-    JSON.stringify(env.generateDeploymentSummary(), null, 2)
-  )
+  const releaseManifestFile = env.profile.releaseManifestFile
+  if (releaseManifestFile && env.generateReleaseManifest) {
+    fs.writeFileSync(
+      releaseManifestFile,
+      `${JSON.stringify(env.generateReleaseManifest(), null, 2)}\n`
+    )
+  } else {
+    fs.writeFileSync(
+      DEPLOYMENT_SUMMARY_FILE,
+      JSON.stringify(env.generateDeploymentSummary(), null, 2)
+    )
+  }
 
   console.log(
     chalk.greenBright(
-      '🎉 All contracts deployed successfully! Deployment summary saved to .docker/deployment_summary.json'
+      `🎉 All contracts deployed successfully! Deployment record saved to ${releaseManifestFile || DEPLOYMENT_SUMMARY_FILE}`
     )
   )
 }

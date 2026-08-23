@@ -48,7 +48,7 @@ contract MigrateTrustgraphsParamsController is Common {
         require(beforeRecord.paramsHash == expectedHash, "migration: tuple does not match registry");
         require(registry.paramsAuthority(instanceId) == address(0), "migration: authority already registered");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         TrustgraphsParamsController controller = TrustgraphsParamsControllerDeployer(controllerDeployerAddress)
             .deploy(instanceId, snapshotAddress, IInstanceRegistry(registryAddress), params, controllerOwner);

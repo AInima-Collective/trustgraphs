@@ -190,19 +190,24 @@ function GovernancePageContent() {
     },
     {
       key: 'timing',
-      header: 'VOTING',
-      tooltip: 'When voting opens or closes, estimated from block times.',
+      header: 'TIMING',
+      tooltip:
+        'When voting or the passed proposal execution window opens or closes.',
       sortable: true,
       accessor: (row) => Number(row.core.endBlock),
       render: (row) => {
-        const { state, startBlock, endBlock } = row.core
+        const { state, startBlock, endBlock, executionDeadlineBlock } = row.core
         if (!currentBlockNumber) return null
         const text =
           state === ProposalState.Pending
             ? `Opens ${formatBlockEta(startBlock, currentBlockNumber)}`
             : state === ProposalState.Active
               ? `Ends ${formatBlockEta(endBlock, currentBlockNumber)}`
-              : `Ended ${formatBlockEta(endBlock, currentBlockNumber)}`
+              : state === ProposalState.Passed
+                ? `Execute by ${formatBlockEta(executionDeadlineBlock, currentBlockNumber)}`
+                : state === ProposalState.Expired
+                  ? `Expired ${formatBlockEta(executionDeadlineBlock, currentBlockNumber)}`
+                  : `Ended ${formatBlockEta(endBlock, currentBlockNumber)}`
         return (
           <span className="text-xs text-muted-foreground whitespace-nowrap">
             {text}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {Test, console2, stdError} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -110,20 +110,17 @@ contract VerifyDistributor is Test {
         dist.claim(idx, bob, 400, pB);
     }
 
-    /// The M-7 guarded overload (maxFeeAmount + expectedFeeRecipient + expectedRoot) does not
-    /// help either: it guards the fee, not the denominator.
-    function test_GuardedOverloadDoesNotCoverTotalMerkleValue() public {
+    /// H-3 regression: the funder-guarded overload pins the denominator alongside the root.
+    function test_GuardedOverloadCoversTotalMerkleValue() public {
         VSnap rogue = new VSnap();
         rogue.set(honestRoot, 600);
         vm.prank(owner);
         dist.setMerkleSnapshot(address(rogue));
 
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), 100 ether, honestRoot, 0, 0, owner);
-
-        bytes32[] memory pA = new bytes32[](1);
-        pA[0] = lBob;
-        assertEq(dist.claim(idx, alice, 600, pA), 100 ether, "every M-7 guard satisfied, round still taken");
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.UnexpectedMerkleTotalValue.selector, 1000, 600));
+        dist.distribute(address(token), 100 ether, honestRoot, 1000, 0, 0, owner);
+        assertEq(dist.getDistributionCount(), 0, "mismatched denominator must not create a round");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -189,11 +186,11 @@ contract VerifyDistributor is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-      3. Blast radius: once a round over-distributes, `sweep` on that
-         round underflows FOREVER (checked arithmetic), so even the
-         funder's documented exit is gone.
+      3. Blast radius: the cap rejects an over-budget claim before it
+         changes accounting, so the round remains sweepable and the
+         sweep calculation cannot underflow.
     //////////////////////////////////////////////////////////////*/
-    function test_OverDistributedRoundCanNeverBeSwept() public {
+    function test_RejectedOverclaimLeavesRoundSweepable() public {
         VSnap rogue = new VSnap();
         bytes32 rl = _leaf(alice, 50 ether);
         rogue.set(rl, 1);
@@ -207,11 +204,13 @@ contract VerifyDistributor is Test {
         vm.prank(funder);
         uint256 bad = dist.distribute(address(token), 1, bytes32(0), uint64(block.timestamp + 1 days));
         bytes32[] memory none = new bytes32[](0);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 50 ether, uint256(1))
+        );
         dist.claim(bad, alice, 50 ether, none);
 
         vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(stdError.arithmeticError);
-        dist.sweep(bad);
+        assertEq(dist.sweep(bad), 1, "rejected claim left the round's budget sweepable");
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -6,6 +6,7 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {ContributionsParamsCodec} from "src/params/ContributionsParamsCodec.sol";
+import {ContributionsParamsValidator} from "src/params/ContributionsParamsValidator.sol";
 import {IContributionsParamsController} from "interfaces/factory/IContributionsParamsController.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
@@ -97,6 +98,7 @@ contract ContributionsParamsController is IContributionsParamsController, Ownabl
             nextMemory.claimSchemaUid != claimSchemaUid || nextMemory.responseSchemaUid != responseSchemaUid
                 || nextMemory.valuationSchemaUid != valuationSchemaUid
         ) revert IdentityFieldChanged();
+        ContributionsParamsValidator.validateFinal(nextMemory);
 
         bytes32 previousHash = currentParamsHash;
         newHash = ContributionsParamsCodec.hash(nextMemory);

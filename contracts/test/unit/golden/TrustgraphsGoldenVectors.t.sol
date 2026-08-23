@@ -164,6 +164,14 @@ contract TrustgraphsGoldenVectorsTest is Test {
         );
     }
 
+    /// Non-empty lane-2 domain sets hash the packed separators in order. Empty sets use the
+    /// explicit zero sentinel, so this canonical vector must exercise the other branch.
+    function test_DomainSetHash() public view {
+        bytes32[] memory separators = json.readBytes32Array(".params.envelope0DomainSeparators");
+        assertGt(separators.length, 0, "fixture must pin the non-empty domain-set branch");
+        assertEq(keccak256(abi.encodePacked(separators)), json.readBytes32(".params.domainSetHash"));
+    }
+
     /// paramsHash: `ParamsCodec.hash` (used by DeployNetwork and by TrustgraphsFactory) must
     /// reproduce the golden vector, locking the on-chain 17-field encoding to
     /// pagerank-core::encode::params_hash.

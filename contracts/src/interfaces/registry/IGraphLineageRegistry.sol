@@ -230,5 +230,7 @@ interface IGraphLineageRegistry {
         external
         view
         returns (uint256 spent, uint256 unused);
+    /// @notice Return the append-only lifetime referral claim keys for one issuer and scope.
+    /// @dev Revoked, expired, superseded, and rotated claims remain in this bounded history.
     function referralClaimKeys(bytes32 issuerLineageId, bytes32 scopeHash) external view returns (bytes32[] memory);
 }

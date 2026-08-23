@@ -13,11 +13,8 @@ import {MockZkVerifier} from "../mocks/MockZkVerifier.sol";
 import {MockAccumulator} from "../mocks/MockAccumulator.sol";
 import {MockEthUsdFeed} from "../mocks/MockEthUsdFeed.sol";
 
-/// @notice INVARIANT under attack: "one proven statement is paid at most once, and every applied
-///         checkpoint's own statement is what gets marked". `ProvingVault._terms` derives the
-///         statement from an `outputRoot` argument; `submitAndClaim` passes the root it is about
-///         to file, but `claim` passes `snapshot.getLatestState().root` — the newest state, not
-///         the state that belongs to `checkpointId`.
+/// @notice H-6 regression: every checkpoint is settled against its own accepted root and input
+///         accumulator, while a genuinely reused proof identity is skipped rather than reverted.
 contract PashovInv_PaidStatement is Test {
     ProvingVault vault;
     InstanceRegistry registry;
@@ -52,6 +49,8 @@ contract PashovInv_PaidStatement is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -98,16 +97,7 @@ contract PashovInv_PaidStatement is Test {
         snapshot.submitProof(cpId, root, IPFS, CID, TOTAL, bytes32(0), recipient, hex"");
     }
 
-    function _statement(uint64 leafCount, uint64 anchorCount, bytes32 root) internal view returns (bytes32) {
-        return keccak256(abi.encode(address(snapshot), leafCount, anchorCount, root));
-    }
-
-    /*//////////////////////////////////////////////////////////////
-      DIRECTION 1 — `claim` marks a statement that belongs to a
-      DIFFERENT checkpoint, permanently destroying that checkpoint's
-      bounty.
-    //////////////////////////////////////////////////////////////*/
-    function test_ClaimMarksAnotherCheckpointsStatementAndBurnsItsBounty() public {
+    function test_ClaimMarksOnlyItsOwnCheckpointStatement() public {
         bytes32 R0 = keccak256("root-0");
         bytes32 R1 = keccak256("root-1");
 
@@ -127,61 +117,29 @@ contract PashovInv_PaidStatement is Test {
         assertTrue(vault.isClaimed(INSTANCE, cp0), "cp0 paid");
         assertGt(vault.creditOf(proverA, address(0)), 0, "proverA credited");
 
-        // INVARIANT BROKEN: the statement the vault recorded is cp1's, not cp0's.
-        // cp1's prover can now never be paid.
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(LEAVES, 0, R1))
-        );
         vault.claim(INSTANCE, cp1);
 
-        assertEq(vault.creditOf(proverB, address(0)), 0, "proverB permanently unpaid");
+        assertTrue(vault.isClaimed(INSTANCE, cp1), "cp1 paid");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "proverB credited");
     }
 
-    /*//////////////////////////////////////////////////////////////
-      DIRECTION 2 — the checkpoint's REAL statement is never marked,
-      so the identical proven statement gets paid a second time.
-    //////////////////////////////////////////////////////////////*/
-    function test_TheSameProvenStatementIsPaidTwice() public {
+    function test_SameRootWithDistinctCheckpointAccumulatorsRepresentsDistinctProofs() public {
         bytes32 R0 = keccak256("root-0");
-        bytes32 R1 = keccak256("root-1");
-
         uint256 cp0 = _mint(keccak256("acc-0"), 100);
         _submit(cp0, R0, proverA);
 
         uint256 cp1 = _mint(keccak256("acc-1"), 200);
-        _submit(cp1, R1, proverB);
+        _submit(cp1, R0, proverB);
 
-        // Settle cp0 while cp1's state is the latest -> vault records cp1's statement.
         vault.claim(INSTANCE, cp0);
         assertTrue(vault.isClaimed(INSTANCE, cp0));
-
-        // A later checkpoint reproduces the EXACT statement cp0 already paid for:
-        // same snapshot, same (leafCount, anchorCount), same output root R0.
-        uint256 cp2 = _mint(keccak256("acc-2"), 300);
-        _submit(cp2, R0, proverA);
-
-        uint256 creditBefore = vault.creditOf(proverA, address(0));
-        vault.claim(INSTANCE, cp2);
-        uint256 creditAfter = vault.creditOf(proverA, address(0));
-
-        // `_paidStatement` was supposed to make this impossible.
-        assertGt(creditAfter, creditBefore, "same statement paid a second time");
-        assertEq(
-            _statement(LEAVES, 0, R0),
-            keccak256(abi.encode(address(snapshot), LEAVES, uint64(0), R0)),
-            "statements identical"
-        );
+        vault.claim(INSTANCE, cp1);
+        assertTrue(vault.isClaimed(INSTANCE, cp1));
+        assertGt(vault.creditOf(proverA, address(0)), 0);
+        assertGt(vault.creditOf(proverB, address(0)), 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-      INVARIANT BROKEN #3 — `submitAndClaim(minPayoutUsd = 0)` is
-      documented as "land it regardless of payment", and every other
-      ineligibility reason honours that by `_skip`-ing. The
-      `_requireUnpaidStatement` guard is the one hard REVERT inside
-      `_settle`, so it takes the already-verified `submitProof` down
-      with it and the proven root never lands.
-    //////////////////////////////////////////////////////////////*/
-    function test_DuplicateStatementRevertsTheRootInsteadOfSkippingPayment() public {
+    function test_ReusedProofIdentitySkipsPaymentWithoutRevertingTheRoot() public {
         bytes32 R0 = keccak256("root-0");
 
         uint256 cp0 = _mint(keccak256("acc-0"), 100);
@@ -199,31 +157,24 @@ contract PashovInv_PaidStatement is Test {
         vault.submitAndClaim(INSTANCE, a0);
         assertEq(snapshot.lastAppliedCheckpoint(), cp0);
 
-        // A later checkpoint over an unchanged source set: same (leafCount, anchorCount) and the
-        // same proven output root. This is the STEADY STATE of a `trust-compose` instance whose
-        // sources have not moved, because `CompositionSourceAccumulator.acc()` folds
-        // `block.number` into the capture and so never trips `trigger()`'s NoNewInputs guard.
+        // An intervening accumulator value allows the original commitment to recur without
+        // tripping `trigger()`'s adjacent no-movement guard.
         uint256 cp1 = _mint(keccak256("acc-1"), 200);
         IProvingVault.SubmitArgs memory a1 = a0;
         a1.checkpointId = cp1;
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(LEAVES, 0, R0))
-        );
+        a1.outputRoot = keccak256("root-1");
         vault.submitAndClaim(INSTANCE, a1);
 
-        // The proof was valid, the caller asked for no minimum payout, and the root still did not
-        // land: `lastAppliedCheckpoint` is unchanged.
-        assertEq(snapshot.lastAppliedCheckpoint(), cp0, "root rolled back with the payment");
-
-        // Contrast: an ineligible-but-not-duplicate claim DOES land the root.
-        uint256 cp2 = _mint(keccak256("acc-2"), 300);
-        vm.prank(constitutional);
-        vault.setPolicy(INSTANCE, 0, 0); // PolicyDisabled -> `_skip`
+        uint256 cp2 = _mint(keccak256("acc-0"), 300);
         IProvingVault.SubmitArgs memory a2 = a0;
         a2.checkpointId = cp2;
-        a2.outputRoot = keccak256("root-2");
+        a2.outputRoot = R0;
+
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit IProvingVault.ClaimSkipped(INSTANCE, cp2, uint8(IProvingVault.IneligibleReason.AlreadyClaimed));
         vault.submitAndClaim(INSTANCE, a2);
-        assertEq(snapshot.lastAppliedCheckpoint(), cp2, "skip path lands the root");
+
+        assertEq(snapshot.lastAppliedCheckpoint(), cp2, "verified duplicate root remains applied");
+        assertFalse(vault.isClaimed(INSTANCE, cp2), "skipped payout does not mark checkpoint paid");
     }
 }

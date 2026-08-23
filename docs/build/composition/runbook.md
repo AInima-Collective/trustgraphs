@@ -51,9 +51,12 @@ existed need the manual constitutional call, and it is only possible while the s
 zero accepted states: once a root lands, the window is closed permanently and the network can
 never serve as a composition source.
 
-For each source, call `CompositionSourceAdapterFactory.create` with the source registry and
+The shared `CompositionSourceAdapterFactory` immutably pins the chain's canonical instance
+registry at deployment. Before admitting a source, verify its `registry()` read matches the
+documented network registry. For each source, call `create` with that same registry and the source
 instance ID, a canonical nonzero source ID, nonzero family ID, `keccak256("allocation")`, and the
-digest of the reviewed deployment/provenance packet. Record the emitted adapter address. A later
+digest of the reviewed deployment/provenance packet. A foreign registry reverts before an adapter
+can enter the factory's authenticity ledger. Record the emitted adapter address. A later canonical
 registry controller or contract-set rewrite intentionally makes the adapter fail closed.
 
 ## Create an instance

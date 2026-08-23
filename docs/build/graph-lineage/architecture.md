@@ -49,10 +49,12 @@ most 90 days.
 
 Only `referral` enters adjacency. Integrity, methodology, agreement, and warning records remain
 evidence or eligibility signals. Warning is non-propagating; there is no negative-transitive
-recurrence. Each issuer/scope referral row can spend at most `1e18`, across at most 64 subject
-heads. Issuance checks the whole remaining validity interval, so overlapping future-dated heads
-cannot activate above the ceiling. Expired, revoked, superseded, or rotated heads spend zero;
-unused mass remains explicit.
+recurrence. Each issuer/scope referral row can spend at most `1e18`. It may name at most 64
+distinct referral subjects over the registry's lifetime, not 64 concurrently active subjects.
+That append-only identity cap permanently bounds the history scanned during issuance and reads;
+expiry, revocation, supersession, or configuration rotation frees referral budget but does not
+free a subject slot. Issuance checks the whole remaining validity interval, so overlapping
+future-dated heads cannot activate above the budget ceiling. Unused mass remains explicit.
 
 An evidence digest of zero is not silently trusted: it is rendered as mutable evidence. The API
 and `/graph-lineages` UI also expose shared family, method, controller, and authority, so correlated

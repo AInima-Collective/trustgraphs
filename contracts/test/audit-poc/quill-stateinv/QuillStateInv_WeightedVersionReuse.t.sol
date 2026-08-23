@@ -18,13 +18,13 @@ import {MockAccumulator} from "test/mocks/MockAccumulator.sol";
 /// @notice state-invariant-detection PoC.
 ///
 /// Invariant under test (Type 4, monotonic ordering / append-only history):
-///   A published parameter version number identifies exactly one commitment, forever.
+///   A parameter version number cannot later be reused for different commitment contents.
 ///
 /// `TrustComposeParamsController` states and enforces this ("Cancelled proposal versions remain
 /// queryable; gaps are never reused") using a separate `latestVersion` high-water mark.
-/// `WeightedPriorParamsController` has no such mark: `proposePrior` derives the pending version
-/// from the ACTIVATED `version`, and `cancelPrior` deletes the commitment outright. The same
-/// version number can therefore be minted repeatedly with different contents.
+/// `WeightedPriorParamsController` now follows that pattern: `proposePrior` derives the pending
+/// version from a monotonic `latestVersion` rather than the activated `version`. Cancellation may
+/// remove the pending commitment, but it cannot make that version number available again.
 contract QuillStateInv_WeightedVersionReuse is Test {
     uint256 internal constant SCALE = 1e18;
 
@@ -89,13 +89,14 @@ contract QuillStateInv_WeightedVersionReuse is Test {
         controller.publishInitialVersion();
     }
 
-    function test_CancelledVersionNumberIsReusedWithDifferentContents() public {
+    function test_CancelledVersionNumberCannotBeReusedWithDifferentContents() public {
         bytes memory manifestA = _manifest(3, uint64(block.chainid), 0x2000);
         bytes memory manifestB = _manifest(5, uint64(block.chainid), 0x3000);
 
         vm.prank(owner);
         (uint64 vA,,) = controller.proposePrior(manifestA, keccak256("metaA"));
         assertEq(vA, 2, "first proposal is version 2");
+        assertEq(controller.latestVersion(), 2);
         IWeightedPriorParamsController.VersionCommitment memory commitA = controller.versionCommitment(2);
         assertTrue(commitA.priorRoot != bytes32(0));
         bytes32 rootA = commitA.priorRoot;
@@ -115,17 +116,18 @@ contract QuillStateInv_WeightedVersionReuse is Test {
         vm.prank(owner);
         (uint64 vB,,) = controller.proposePrior(manifestB, keccak256("metaB"));
 
-        // BROKEN INVARIANT: the same version number is minted again with different contents.
-        assertEq(vB, 2, "version number was reused after cancellation");
-        IWeightedPriorParamsController.VersionCommitment memory commitB = controller.versionCommitment(2);
-        assertTrue(commitB.priorRoot != rootA, "version 2 now means a different prior set");
+        assertEq(vB, 3, "cancelled version number must not be reused");
+        assertEq(controller.latestVersion(), 3);
+        assertEq(controller.versionCommitment(2).paramsHash, bytes32(0), "version 2 remains an unallocated gap");
+        IWeightedPriorParamsController.VersionCommitment memory commitB = controller.versionCommitment(3);
+        assertTrue(commitB.priorRoot != rootA, "replacement proposal has a different prior set");
         assertEq(commitB.priorCount, 5);
 
-        // And it can be activated as "version 2" - the version an off-chain consumer already
-        // recorded as the (cancelled) 3-entry prior.
+        // The replacement activates under its fresh version, while the cancelled version cannot
+        // acquire different contents later.
         vm.warp(block.timestamp + 2 days);
-        controller.activatePrior(2);
-        assertEq(controller.version(), 2);
+        controller.activatePrior(3);
+        assertEq(controller.version(), 3);
         assertEq(controller.getCurrentParams().priorCount, 5);
     }
 

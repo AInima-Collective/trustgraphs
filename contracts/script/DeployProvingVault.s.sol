@@ -54,7 +54,7 @@ contract DeployProvingVault is Common {
         require(dev || feed != address(0), "DeployProvingVault: ETH_USD_FEED required off-devnet");
         require(dev || usdc != address(0), "DeployProvingVault: USDC required off-devnet");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         if (feed == address(0)) {
             MockEthUsdFeed mock = new MockEthUsdFeed();

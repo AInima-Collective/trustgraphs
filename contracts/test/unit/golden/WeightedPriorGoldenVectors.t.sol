@@ -4,17 +4,26 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {WeightedPriorParamsCodec} from "src/params/WeightedPriorParamsCodec.sol";
+
+contract WeightedPriorParamsCodecHarness {
+    function hash(WeightedPriorParamsCodec.Params calldata params) external pure returns (bytes32) {
+        WeightedPriorParamsCodec.Params memory copy = params;
+        return WeightedPriorParamsCodec.hash(copy);
+    }
+}
 
 /// @notice Independent Solidity lock for `trust-graph-weighted` V1. This test deliberately does
-/// not import a weighted contract: issue #52 freezes core/guest encodings before #53 implements
-/// the factory/controller surface.
+/// not depend on a factory/controller: it locks the codec directly against the core/guest bytes.
 contract WeightedPriorGoldenVectorsTest is Test {
     using stdJson for string;
 
     string internal json;
+    WeightedPriorParamsCodecHarness internal codec;
 
     function setUp() public {
         json = vm.readFile("tests/golden/weighted-prior.json");
+        codec = new WeightedPriorParamsCodecHarness();
     }
 
     function test_TgwpManifestHeaderAndSha256() public view {
@@ -95,6 +104,10 @@ contract WeightedPriorGoldenVectorsTest is Test {
         assertEq(keccak256(encoded), json.readBytes32(".params.paramsHash"), "params hash");
     }
 
+    function test_WeightedParamsCodecHash() public view {
+        assertEq(codec.hash(_params()), json.readBytes32(".params.paramsHash"), "codec hash");
+    }
+
     function test_AccumulatorEdgeLeaf() public view {
         bytes32 leaf = keccak256(
             abi.encode(
@@ -147,6 +160,22 @@ contract WeightedPriorGoldenVectorsTest is Test {
 
     function _hashPair(bytes32 a, bytes32 b) private pure returns (bytes32) {
         return a < b ? keccak256(bytes.concat(a, b)) : keccak256(bytes.concat(b, a));
+    }
+
+    function _params() private view returns (WeightedPriorParamsCodec.Params memory p) {
+        p.version = uint32(json.readUint(".params.version"));
+        p.dampingFp = uint64(json.readUint(".params.dampingFp"));
+        p.toleranceFp = uint64(json.readUint(".params.toleranceFp"));
+        p.maxIterations = uint32(json.readUint(".params.maxIterations"));
+        p.minWeight = uint64(json.readUint(".params.minWeight"));
+        p.maxWeight = uint64(json.readUint(".params.maxWeight"));
+        p.priorRoot = json.readBytes32(".params.priorRoot");
+        p.priorCount = uint32(json.readUint(".params.priorCount"));
+        p.manifestSha256 = json.readBytes32(".params.manifestSha256");
+        p.schemaUid = json.readBytes32(".params.schemaUid");
+        p.weightFieldIndex = uint32(json.readUint(".params.weightFieldIndex"));
+        p.accumulator = json.readAddress(".params.accumulator");
+        p.chainId = uint64(json.readUint(".params.chainId"));
     }
 
     function _readUint(bytes memory data, uint256 offset, uint256 length) private pure returns (uint256 value) {

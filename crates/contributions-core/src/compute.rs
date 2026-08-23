@@ -231,7 +231,11 @@ pub fn stage2(
     // pro-rata rep. Each side normalized over its own mass so the split is exact.
     let beta_bps = U256::from(p.evaluator_carveout_bps);
     let bps = U256::from(10_000u64);
-    let beta_fp = mul_div(s, beta_bps, bps);
+    // Treat an out-of-envelope historical tuple as a 100% evaluator carve-out. Production
+    // rotations reject >10_000 bps, but the guest must never wrap `S - beta` for an already-pinned
+    // params hash: alloy U256 subtraction would otherwise turn 10_001 bps into almost 2^256.
+    let raw_beta_fp = mul_div(s, beta_bps, bps);
+    let beta_fp = if raw_beta_fp > s { s } else { raw_beta_fp };
     let one_minus_beta_fp = s - beta_fp;
 
     let total_p: U256 = contributor_weights.values().copied().fold(U256::ZERO, |a, b| a + b);

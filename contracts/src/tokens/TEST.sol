@@ -21,7 +21,7 @@ contract TEST is ERC20, AccessControl, ERC20Burnable, ERC20Pausable, ERC1363, ER
 
     constructor(address defaultAdmin, address tokenBridge, address pauser, address minter)
         ERC20("TEST", "TEST")
-        ERC20Permit("MyToken")
+        ERC20Permit("TEST")
     {
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(TOKEN_BRIDGE_ROLE, tokenBridge);

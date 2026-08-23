@@ -1,6 +1,6 @@
 import type { Connector, CreateConnectorFn } from '@wagmi/core'
 import { Chain } from 'viem'
-import { optimism } from 'viem/chains'
+import { optimism, sepolia } from 'viem/chains'
 import { createConfig, fallback, http, mock, webSocket } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
@@ -36,21 +36,24 @@ export const localChain: Chain = {
 
 // Environment-based network configuration
 export const getCurrentChainConfig = (): Chain => {
-  if (CHAIN === 'optimism') {
-    const webSocketUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL_10
+  if (CHAIN === 'optimism' || CHAIN === 'sepolia') {
+    const publicChain = CHAIN === 'sepolia' ? sepolia : optimism
+    const chainId = publicChain.id
+    const webSocketUrl =
+      process.env[`NEXT_PUBLIC_WEBSOCKET_URL_${publicChain.id}`]
     return {
-      ...optimism,
+      ...publicChain,
       rpcUrls: {
         default: {
           http: [
             (typeof window !== 'undefined' ? window.location.origin : '') +
-              '/api/rpc/10?id=0',
+              `/api/rpc/${chainId}?id=0`,
             (typeof window !== 'undefined' ? window.location.origin : '') +
-              '/api/rpc/10?id=1',
+              `/api/rpc/${chainId}?id=1`,
           ],
           ...(webSocketUrl && { webSocket: [webSocketUrl] }),
         },
-        provided: optimism.rpcUrls.default,
+        provided: publicChain.rpcUrls.default,
       },
     }
   } else if (CHAIN === 'local') {

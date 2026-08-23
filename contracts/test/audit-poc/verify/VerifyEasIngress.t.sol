@@ -56,12 +56,11 @@ contract VerifyEasIngress is Test {
     }
 
     // -----------------------------------------------------------------------
-    // C5 — the STRONGER variant: no front-run of bindSchema is needed at all.
-    // While the resolver is unbound (`boundSchema == 0`) it folds EVERYTHING,
-    // so an attacker registers their OWN schema against the victim resolver and
-    // attests. The poison leaf survives the honest bindSchema.
+    // C5 regression — no foreign leaf can enter before bindSchema.
+    // While the resolver is unbound (`boundSchema == 0`) every attestation must
+    // revert, including one against an attacker-registered schema.
     // -----------------------------------------------------------------------
-    function test_C5_ForeignLeafPoisonsAccBeforeBindAndSurvivesTheHonestBind() public {
+    function test_C5_UnboundResolverRejectsForeignLeafAndHonestBindStaysClean() public {
         address deployer = address(0xD1);
         address attacker = address(0xBAD);
 
@@ -78,20 +77,19 @@ contract VerifyEasIngress is Test {
         vm.prank(attacker);
         bytes32 foreign = reg.register("uint256 poison", ISchemaResolver(address(resolver)), true);
         assertTrue(foreign != honest, "distinct schema uid");
+        vm.expectRevert(EASIndexerResolver.SchemaNotBound.selector);
         _attest(attacker, foreign, address(0xF00D), abi.encode(uint256(1)));
-        assertEq(resolver.leafCount(), 1, "foreign edge folded while unbound");
-        bytes32 poisoned = resolver.acc();
+        assertEq(resolver.leafCount(), 0, "unbound resolver folded a foreign edge");
+        assertEq(resolver.acc(), bytes32(0), "unbound resolver accumulator was poisoned");
 
-        // script tx #6: the honest bind SUCCEEDS. Nothing reverts. The deploy looks clean.
+        // script tx #6: the honest bind succeeds with a clean accumulator.
         vm.prank(deployer);
         resolver.bindSchema(honest);
         assertEq(resolver.boundSchema(), honest);
 
-        // The poison is in the chained hash forever; from here on the resolver behaves normally.
-        assertEq(resolver.acc(), poisoned, "poison leaf still in the chain after binding");
         _attest(address(0xA11CE), honest, address(0xBEEF), abi.encode("hi", uint256(50)));
-        assertEq(resolver.leafCount(), 2);
-        console2.log("acc contains a leaf whose schema is NOT the instance schema; leafCount:", resolver.leafCount());
+        assertEq(resolver.leafCount(), 1);
+        console2.log("unbound foreign leaf rejected; honest schema starts from a clean accumulator");
     }
 
     /// Sanity: after binding, the same foreign schema is rejected. The guard works; it just

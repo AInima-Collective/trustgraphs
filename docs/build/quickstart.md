@@ -220,7 +220,8 @@ Reload the network page: scored members. Proving by hand instead of by scheduler
 ([`trust-graph/runbook.md`](./trust-graph/runbook.md)); to see what the daemon would do without
 spending anything, `task demo:dry-run`.
 
-**Pay people.** The distributor is bundled at creation (`withDistributor: true`). Fund it, publish a
+**Pay people.** The dev deploy attaches the distributor as soon as the network's Safe exists, so
+the fund is Safe-owned from its first block. Fund it, publish a
 distribution against the proven root, and claim. A worked run: `10 ETH` distributed, and a member
 holding 21.5465430930861861723725% of the pool claimed exactly `2.154654309308618617 ETH`.
 

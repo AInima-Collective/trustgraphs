@@ -1612,6 +1612,7 @@ export const merkleGovModuleProposal = onchainTable(
     merkleRoot: t.hex().notNull(),
     totalVotingPower: t.bigint().notNull(),
     quorumFraction: t.bigint().notNull(),
+    executionDeadlineBlock: t.bigint().notNull(),
     // Actions stored as JSON array: [{target, value, data, operation}]
     actions: t.json().notNull(),
     blockNumber: t.bigint().notNull(),

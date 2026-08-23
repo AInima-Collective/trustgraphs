@@ -316,7 +316,8 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         emit DistributorAllowanceUpdated(distributor, canDistribute_);
     }
 
-    /// @notice Pauses the contract.
+    /// @notice Pauses new distributions and claims.
+    /// @dev Expired sweeps remain available so pausing cannot remove a funder's only exit.
     function pause() external onlyOwner {
         _pause();
     }
@@ -365,13 +366,13 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         return _distribute(token, amount, expectedRoot, claimDeadline);
     }
 
-    /// @notice Distributes funds with funder-supplied fee guards (M-7): the round reverts if the
-    ///         fee taken would exceed `maxFeeAmount`, or if the fee recipient is not the one the
-    ///         funder expected — so a fee/recipient change cannot be slipped in front of this
-    ///         transaction in the mempool.
+    /// @notice Distributes funds with funder-supplied state and fee guards (H-3/M-7): the round
+    ///         reverts if the root or payout denominator changed, if the fee would exceed
+    ///         `maxFeeAmount`, or if the fee recipient is not the one the funder expected.
     /// @param token The token to distribute.
     /// @param amount The amount of token to distribute.
     /// @param expectedRoot The expected root of the merkle tree (pass 0 to skip).
+    /// @param expectedTotalMerkleValue The expected sum of values committed by the merkle tree.
     /// @param claimDeadline The timestamp after which claims close (0 = no expiry).
     /// @param maxFeeAmount The most the funder will pay in fees, in token units.
     /// @param expectedFeeRecipient The fee recipient the funder is agreeing to pay (pass 0 to skip).
@@ -380,6 +381,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
         address token,
         uint256 amount,
         bytes32 expectedRoot,
+        uint256 expectedTotalMerkleValue,
         uint64 claimDeadline,
         uint256 maxFeeAmount,
         address expectedFeeRecipient
@@ -397,14 +399,29 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert FeeExceedsFunderCap(wouldPay, maxFeeAmount);
         }
 
-        return _distribute(token, amount, expectedRoot, claimDeadline);
+        return _distribute(token, amount, expectedRoot, expectedTotalMerkleValue, claimDeadline, true);
     }
 
-    /// @dev Creates a distribution and moves the funds. Shared by both `distribute` overloads.
+    /// @dev Creates a distribution and moves the funds. Shared by the two legacy overloads.
     function _distribute(address token, uint256 amount, bytes32 expectedRoot, uint64 claimDeadline)
         internal
         returns (uint256 distributionIndex)
     {
+        return _distribute(token, amount, expectedRoot, 0, claimDeadline, false);
+    }
+
+    /// @dev Creates a distribution and moves the funds, optionally pinning the payout denominator.
+    ///      A zero `expectedTotalMerkleValue` is used internally only by the legacy overloads,
+    ///      which did not expose a denominator guard. The funder-guarded overload requires an
+    ///      exact match, so passing zero cannot skip the guard.
+    function _distribute(
+        address token,
+        uint256 amount,
+        bytes32 expectedRoot,
+        uint256 expectedTotalMerkleValue,
+        uint64 claimDeadline,
+        bool pinTotalMerkleValue
+    ) internal returns (uint256 distributionIndex) {
         // Fetch the latest merkle state.
         IMerkleSnapshot.MerkleState memory merkleState = IMerkleSnapshot(merkleSnapshot).getLatestState();
 
@@ -414,6 +431,10 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
 
         if (expectedRoot != bytes32(0) && merkleState.root != expectedRoot) {
             revert UnexpectedMerkleRoot(expectedRoot, merkleState.root);
+        }
+
+        if (pinTotalMerkleValue && merkleState.totalValue != expectedTotalMerkleValue) {
+            revert UnexpectedMerkleTotalValue(expectedTotalMerkleValue, merkleState.totalValue);
         }
 
         bool isNativeToken = _isNativeToken(token);
@@ -534,6 +555,15 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert NoFundsToClaim();
         }
 
+        // A malformed or malicious (root, totalValue) pair must never let this round spend funds
+        // booked for a sibling round of the same token. This cap is authoritative even when the
+        // snapshot source is compromised or a caller uses a legacy distribute overload.
+        uint256 amountDistributed = distribution.amountDistributed;
+        uint256 remainingBudget = amountDistributed >= totalDistributable ? 0 : totalDistributable - amountDistributed;
+        if (claimedAmount > remainingBudget) {
+            revert ClaimExceedsRoundBudget(claimedAmount, remainingBudget);
+        }
+
         claimed[distributionIndex][account] = claimedAmount;
         distribution.amountDistributed += claimedAmount;
 
@@ -559,7 +589,7 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
     ///      `distribution.distributor` (the round funder). Only callable once the
     ///      claim window has closed (`claimDeadline != 0 && block.timestamp > claimDeadline`),
     ///      so a sweep can never race a valid claim.
-    function sweep(uint256 distributionIndex) external nonReentrant whenNotPaused returns (uint256 sweptAmount) {
+    function sweep(uint256 distributionIndex) external nonReentrant returns (uint256 sweptAmount) {
         if (distributionIndex >= distributions.length) {
             revert DistributionNotFound();
         }
@@ -586,11 +616,14 @@ contract MerkleFundDistributor is IMerkleFundDistributor, ReentrancyGuard, Pausa
             revert AlreadySwept();
         }
 
-        // Unclaimed remainder, including per-claim rounding dust.
-        sweptAmount = distribution.amountFunded - distribution.feeAmount - distribution.amountDistributed;
-        if (sweptAmount == 0) {
+        // Unclaimed remainder, including per-claim rounding dust. Claims enforce the same
+        // per-round budget, and the explicit comparison keeps this path free of checked-arithmetic
+        // underflow even if an impossible over-distributed state is encountered.
+        uint256 totalDistributable = distribution.amountFunded - distribution.feeAmount;
+        if (distribution.amountDistributed >= totalDistributable) {
             revert NothingToSweep();
         }
+        sweptAmount = totalDistributable - distribution.amountDistributed;
 
         distribution.sweptAmount = sweptAmount;
         address to = distribution.distributor;

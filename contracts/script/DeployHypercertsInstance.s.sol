@@ -51,7 +51,7 @@ contract DeployHypercertsInstance is Common {
         require(gateway != address(0) && vkey != bytes32(0), "gateway/vkey required");
         require(maxTotalInputsRaw <= type(uint64).max, "input capacity too large");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         EmptyLaneAccumulator emptyAcc = new EmptyLaneAccumulator();
         // The require above proves this deployment parameter fits without truncation.

@@ -1,18 +1,21 @@
 # Trustgraphs on Ethereum Sepolia
 
-Status: deployment research and implementation plan, 2026-08-07.
+Status: pre-testnet deploy path implemented, 2026-08-23. No trustgraphs contracts are deployed on
+Sepolia or any other public chain yet; the tracked manifest remains explicitly `planned`.
 
 ## Outcome
 
-Trustgraphs is not ready to deploy to Sepolia by changing environment variables alone.
-The repository currently has two coupled modes:
+Trustgraphs now has separate deployment stage and chain-target inputs:
 
-- development means local chain 31337 and the modern factory/registry stack;
-- production currently means Optimism chain 10 and a legacy direct-per-network deployment path.
-  Both are slated for retirement: Ethereum mainnet is the go-forward production chain.
+- `development` + `local` means chain 31337 and the modern factory/registry stack;
+- `production` + `sepolia` selects the modern first-release plan on chain 11155111; and
+- the legacy `DEPLOY_ENV=PROD` compatibility input still selects Optimism chain 10 and a
+  direct-per-network deployment path. That describes configuration still in the repository, not a
+  live deployment or a release target. It is slated for retirement; Ethereum mainnet is the later
+  production target after a Sepolia rehearsal.
 
-Ethereum Sepolia should be added as an explicit chain target and should use the modern
-factory/registry architecture. It must use canonical Sepolia EAS, a real SP1 verifier
+Ethereum Sepolia is an explicit chain target using the modern factory/registry architecture. A
+real deployment must use canonical Sepolia EAS, a real SP1 verifier
 gateway, a release-derived program vkey, and a production indexer/operator. The mock
 gateway, zero vkeys, default Anvil key, placeholder endpoints, and old Optimism deployment
 path are not acceptable on a public testnet.
@@ -33,6 +36,10 @@ The first public testnet release should include:
 7. One project-controlled seeded instance created through the factory.
 8. A production Ponder writer/API, a continuously running operator, IPFS persistence, and the web app.
 
+This is a core `trust-graph` release. Do not deploy or expose `TrustComposeFactory`, a composition
+verifier/vkey, or `/create/composition` in the first public testnet. `trust-compose` follows only
+after its separate release gate and coverage are complete.
+
 Keep Contributions, Hypercerts, Zodiac Safe, MerkleGov, and signer-sync outside the
 launch-critical path. They can follow once the core vouch → index → prove → root → score flow
 is stable. If ProvingVault is omitted, the frontend must remove or disable its prepay option.
@@ -50,7 +57,7 @@ indexed, and see a genuine SP1 proof update the on-chain root and indexed scores
 | EAS                           | 0xC2679fBD37d54388Ce493F1DB75320D236e1815e | Use the canonical deployment; do not deploy a private EAS.        |
 | EAS Schema Registry           | 0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0 | Use the canonical deployment.                                     |
 | Circle test USDC              | 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 | Optional vault asset; it has no real-world value.                 |
-| SP1 Groth16 gateway candidate | 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B | Verify code and exact SP1-version support before deployment.      |
+| SP1 Groth16 gateway           | 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B | Canonical gateway; its live V6.1.0 route is recorded below.       |
 
 Sources:
 
@@ -65,22 +72,40 @@ The ETH/USD feed address is deliberately not frozen in this plan. Select it from
 immediately before deployment, then verify on chain that it has code, reports 8 decimals,
 returns a positive answer, and has a sufficiently recent updatedAt value.
 
-### Blocking SP1 compatibility check
+### SP1 compatibility check
 
-The repository pins SP1 SDK/tooling version **6.3.1**. Succinct’s current verifier-contract
-page names V5.x.y and V6.1.0 as officially supported versions. That does not prove 6.3.1 is
-incompatible, but it makes compatibility an unresolved launch gate.
+The repository pins SP1 SDK/tooling version **6.3.1**, while Succinct's supported-version page
+names the underlying proof-system circuit version: V6.1.0 (Hypercube). These are compatible. The
+published `sp1-prover`, `sp1-build`, and `sp1-recursion-gnark-ffi` 6.3.1 crates all embed
+`SP1_CIRCUIT_VERSION = v6.1.0`. SHA-256 of 6.3.1's bundled Groth16 verifying key begins with
+`0x4388a21c`, the four-byte route selector prepended to its on-chain proofs.
+
+The route was checked against Sepolia on 2026-08-23:
+
+```console
+$ cast call 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B \
+    'routes(bytes4)(address,bool)' 0x4388a21c --rpc-url "$SEPOLIA_RPC_URL"
+0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2
+false
+$ cast call 0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2 \
+    'VERSION()(string)' --rpc-url "$SEPOLIA_RPC_URL"
+"v6.1.0"
+```
+
+The canonical gateway and routed verifier both had code, and the route was not frozen. No SP1
+toolchain bump or second M2 key rotation is required.
 
 Before deploying SP1JournalVerifier:
 
 1. Derive the vkey from the exact release checkout and pinned toolchain.
-2. Confirm with Succinct’s supported-version data that the chosen gateway has the verifier
-   route required by that proof.
+2. Recheck that route `0x4388a21c` still resolves and is not frozen immediately before broadcast.
 3. Generate a genuine Groth16 proof and successfully verify it through the gateway on Sepolia.
 
-If 6.3.1 has no supported route, upgrade or pin the repository to a supported SP1 release,
-rebuild every relevant ELF, regenerate vkeys and golden vectors, and rerun the complete
-parity/test suite. Never substitute MockSP1Gateway on Sepolia.
+If the route is later frozen or removed, upgrade or pin the repository to a supported SP1 release,
+rebuild every relevant ELF, regenerate vkeys and golden vectors, and rerun the complete parity/test
+suite. Never substitute MockSP1Gateway on Sepolia. A genuine Sepolia verification remains a
+pre-broadcast operator check because it needs a real Groth16 proof and funded transaction; the
+version-route decision itself is resolved.
 
 ## Configuration model
 
@@ -92,11 +117,11 @@ strictness from chain identity:
 - chain profile: chain ID, RPC variable, explorer, external addresses, start block, and
   generated artifact names.
 
-A minimally disruptive implementation can add a SepoliaEnv, but a reusable PublicEnv driven
-by a typed chain profile is preferable. Both Sepolia and the future Ethereum mainnet
-deployment should then share the same modern deployment path.
+`contracts/deploy/profiles.ts` owns typed chain profiles and `SepoliaEnv` owns the modern release
+plan. The mainnet profile is typed but deliberately refuses deployment until the Sepolia gate is
+complete.
 
-Use chain-scoped, sanitized manifests such as **deployments/sepolia.json** as the interface
+The tracked **deployments/sepolia.json**, validated by **deployments/schema.json**, is the interface
 between deployment, indexer, operator, and frontend. Do not use
 **.docker/deployment_summary.json** as a release artifact: it is machine-local, ignored by
 Git, and currently includes rpc_url, which may contain a provider credential.
@@ -125,8 +150,8 @@ A release manifest should contain at least:
     "trustgraphsFactory": { "address": "0x...", "block": 0, "txHash": "0x..." }
   },
   "programs": {
-    "trustgraphs": {
-      "sp1Version": "resolved version",
+    "trustGraph": {
+      "sp1Version": "6.3.1",
       "elfSha256": "0x...",
       "vkey": "0x..."
     }
@@ -140,24 +165,69 @@ secrets belong only in secret storage.
 
 ## Scripts and deployment orchestration
 
-### Required changes
+### Implemented deploy-path boundary
 
 | File or area                                    | Change                                                                                                                                                        |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **contracts/deploy/types.ts**                             | Add a typed Sepolia/chain target rather than treating every non-development run as Optimism.                                                                  |
-| **contracts/deploy/env.ts**                               | Add chain ID 11155111, Sepolia RPC/config paths, the modern factory plan, canonical external dependencies, and strict production validation.                  |
-| **contracts/deploy/deploy-contracts.ts**                  | Accept the new target and emit the sanitized chain-scoped manifest.                                                                                           |
-| **taskfile/env.yml**, **taskfile/services.yml** | Recognize the new target instead of accepting only DEV and PROD.                                                                                              |
-| **contracts/script/Common.s.sol**                         | Fail closed on a public chain if FUNDED_KEY is absent; never fall back to the known Anvil key. Assert the expected chain ID and print the deployer/balance.   |
-| **contracts/script/DeployEAS.s.sol**                      | Accept explicit EAS and Schema Registry addresses. Reuse canonical Sepolia contracts and deploy only SchemaRegistrar. Keep private EAS deployment local-only. |
-| **contracts/script/DeployProvingVault.s.sol**             | Validate feed code/decimals/freshness and USDC code/decimals before deploying. Make testnet economics explicit.                                               |
-| **contracts/script/CreateDevInstances.s.sol**             | Refactor to a release-capable create-instances script with deterministic salts, explicit admin, metadata URI, and distribution choice.                        |
-| new handoff/invariant scripts                   | Transfer registry/vault/instance roles, verify every immutable and role, and stop if post-deploy state differs from the manifest.                             |
+| **contracts/deploy/types.ts**                   | Add a typed Sepolia/chain target rather than treating every non-development run as Optimism.                                                                  |
+| **contracts/deploy/env.ts**                     | Add chain ID 11155111, Sepolia RPC/config paths, the modern factory plan, canonical external dependencies, and strict production validation.                  |
+| **contracts/deploy/deploy-contracts.ts**        | Accept the new target and emit the sanitized chain-scoped manifest.                                                                                           |
+| **taskfile/env.yml**, **taskfile/services.yml** | Resolve local services, chain ID, and RPC variables from the explicit chain target.                                                                           |
+| **contracts/script/Common.s.sol**               | Fail closed on a public chain if FUNDED_KEY is absent; never fall back to the known Anvil key. Assert the expected chain ID and print the deployer/balance.   |
+| **contracts/script/DeployEAS.s.sol**            | Accept explicit EAS and Schema Registry addresses. Reuse canonical Sepolia contracts and deploy only SchemaRegistrar. Keep private EAS deployment local-only. |
+
+The TypeScript deployer passes `EXPECTED_CHAIN_ID` to every shared Forge script. Direct Forge use
+must set `EXPECTED_CHAIN_ID` (or the existing explicit `CHAIN_ID`) too; `Common.s.sol` rejects a
+missing key, a missing expected chain, a chain mismatch, and the known Anvil key on public chains
+before starting a broadcast.
+
+### Release work still blocked on operator decisions or credentials
+
+| File or area                                  | Remaining action                                                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **contracts/script/DeployProvingVault.s.sol** | Validate feed code/decimals/freshness and USDC code/decimals before deploying. Make testnet economics explicit.                        |
+| **contracts/script/CreateDevInstances.s.sol** | Refactor to a release-capable create-instances script with deterministic salts, explicit admin, metadata URI, and distribution choice. |
+| new handoff/invariant scripts                 | Transfer registry/vault/instance roles, verify every immutable and role, and stop if post-deploy state differs from the manifest.      |
 
 The current skip/resume logic trusts the presence of local artifacts. For public deployment it
 must also verify chain ID, bytecode at every recorded address, immutable constructor values,
 and deployment commit. A file from chain 31337 or chain 10 must never cause a Sepolia step to
 be skipped.
+
+### Reproduce the no-broadcast deploy plan
+
+From a clean checkout, a second operator can validate the tracked schema and inspect the exact
+ordered Sepolia plan without an RPC request or a transaction:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm test:deploy
+
+DEPLOY_STAGE=production \
+DEPLOY_TARGET=sepolia \
+RPC_URL=https://rpc.invalid \
+SP1_VERIFIER_GATEWAY=0x1111111111111111111111111111111111111111 \
+SP1_PROGRAM_VKEY=0x3333333333333333333333333333333333333333333333333333333333333333 \
+INSTANCE_REGISTRY_ADMIN=0x1111111111111111111111111111111111111111 \
+FACTORY_EPOCH_FLOOR=7200 \
+DEPLOYMENT_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+SP1_PROGRAM_ELF_SHA256=0x4444444444444444444444444444444444444444444444444444444444444444 \
+SKIP_PROVING_VAULT=true \
+pnpm deploy:contracts --dry-run
+```
+
+The `.invalid` endpoint is intentional: `--dry-run` validates the profile and release inputs but
+does not contact it. For a real deployment, provide the operator-owned RPC and `FUNDED_KEY` only
+through secret storage, replace the placeholder gateway/admin/vkey with verified release values,
+set the exact 40-hex `DEPLOYMENT_COMMIT` and `SP1_PROGRAM_ELF_SHA256`, and resolve the vault feed or
+keep `SKIP_PROVING_VAULT=true`. The deployer then populates transaction hashes and receipt blocks
+from Foundry broadcast receipts and refuses to finalize an incomplete manifest.
+
+Consumers fail closed on a planned manifest. After publication, use
+`DEPLOY_STAGE=production DEPLOY_TARGET=sepolia`: the indexer reads addresses/start block from the
+manifest, the frontend generator emits `config.sepolia.json`, and an operator TOML can set
+`release_manifest = "../../deployments/sepolia.json"` while keeping `rpc` private. The operator
+checks any explicit `chain_id`, registry, start block, or paid vault against the manifest.
 
 ### Deployment behavior
 
@@ -174,9 +244,11 @@ developer defaults:
 7. Deploy TrustgraphsFactory and grant only its required registrar capability.
 8. Create the seeded instance through TrustgraphsFactory.
 9. Configure vault policies and top-ups, if enabled.
-10. Transfer operational and administrative roles, then remove deployer privileges that are
+10. Ensure every requested distributor is owned by the initialized instance Safe; direct EOA
+    ownership is rejected by the factories.
+11. Transfer operational and administrative roles, then remove deployer privileges that are
     not part of the documented custody model.
-11. Verify source and publish the finalized manifest.
+12. Verify source and publish the finalized manifest.
 
 Do not use **DeployNetwork.s.sol** as the primary path. It can deploy a direct instance, but it
 bypasses the registry/factory event stream that powers runtime discovery and the create wizard.
@@ -184,6 +256,8 @@ bypasses the registry/factory event stream that powers runtime discovery and the
 ### Parameters to decide before deployment
 
 - Project Safe or other admin addresses; do not leave long-lived control on the deployer EOA.
+- The initialized Safe that owns each distributor and receives any configured fee. Distributor
+  creation and attachment reject EOAs.
 - Seeded instance admin, name, metadata CID, algorithm parameters, quorum, min participants,
   max vouches, and distribution behavior.
 - Factory EPOCH_FLOOR. The public-chain script requires at least 7,200 blocks; at roughly
@@ -297,15 +371,15 @@ leave the indexed score view unavailable.
 
 ### Required changes
 
-| File or area                                 | Change                                                                                                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File or area                                          | Change                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **packages/frontend/scripts/generate-config.ts**      | Support sepolia, consume the release manifest, require real Ponder/IPFS URLs, and fail on missing or placeholder addresses.                                         |
 | **packages/frontend/lib/wagmi.ts**                    | Import the Viem Sepolia chain, configure chain ID 11155111, use the private RPC proxy, and support the Sepolia websocket variable. Keep mainnet only for ENS reads. |
 | **packages/frontend/lib/blocks.ts**                   | Add Sepolia’s approximately 12-second block time.                                                                                                                   |
 | **packages/frontend/package.json** and build pipeline | Generate or select the Sepolia config before build; today prebuild assumes an existing production config.                                                           |
 | **packages/frontend/config.sepolia.json**             | Generate from the finalized manifest rather than editing addresses by hand.                                                                                         |
-| **config/networks.sepolia.json**             | Include the curated seeded instance as an outage fallback, while keeping the runtime catalog authoritative.                                                         |
-| frontend environment example                 | Document public Ponder/IPFS endpoints, WalletConnect configuration, and server-only Sepolia RPC secrets.                                                            |
+| **config/networks.sepolia.json**                      | Include the curated seeded instance as an outage fallback, while keeping the runtime catalog authoritative.                                                         |
+| frontend environment example                          | Document public Ponder/IPFS endpoints, WalletConnect configuration, and server-only Sepolia RPC secrets.                                                            |
 
 The current **packages/frontend/config.production.json** is an Optimism file with a placeholder Ponder
 URL and must not be reused.

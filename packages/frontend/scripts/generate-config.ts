@@ -5,14 +5,39 @@
 import * as fs from 'fs'
 import * as path from 'path'
 
+import {
+  loadReleaseManifest,
+  releaseManifestToDeploymentSummary,
+} from '../../../contracts/deploy/release-manifest'
+
 const env = process.env.NODE_ENV || 'development'
-const configOutputFile = path.join(__dirname, `../config.${env}.json`)
+const target =
+  process.env.DEPLOY_TARGET || (env === 'development' ? 'local' : 'optimism')
+const stage =
+  process.env.DEPLOY_STAGE ||
+  (env === 'development' ? 'development' : 'production')
+if (!['development', 'production'].includes(stage)) {
+  throw new Error('DEPLOY_STAGE must be development or production')
+}
+if (!['local', 'optimism', 'sepolia'].includes(target)) {
+  throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+}
+if ((stage === 'development') !== (target === 'local')) {
+  throw new Error(`Invalid deployment profile ${stage}/${target}`)
+}
+const isSepolia = target === 'sepolia'
+const configName = isSepolia ? 'sepolia' : env
+const configOutputFile = path.join(__dirname, `../config.${configName}.json`)
 const configOutput: any = {}
 
 // Path to deployment summary and config files
 const deploymentSummaryFile = path.join(
   __dirname,
   '../../../.docker/deployment_summary.json'
+)
+const releaseManifestFile = path.join(
+  __dirname,
+  '../../../deployments/sepolia.json'
 )
 
 // The permissionless instance factory (docs/build/create-a-network.md). It is deployed once per chain
@@ -22,14 +47,14 @@ const factoryDeployFile = path.join(
   __dirname,
   '../../../.docker/factory_deploy.json'
 )
-const factoryAddress = fs.existsSync(factoryDeployFile)
+const localFactoryAddress = fs.existsSync(factoryDeployFile)
   ? (JSON.parse(fs.readFileSync(factoryDeployFile, 'utf8')).factory ?? '')
   : ''
 const governedFactoryDeployFile = path.join(
   __dirname,
   '../../../.docker/governed_factory_deploy.json'
 )
-const governedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
+const localGovernedFactoryAddress = fs.existsSync(governedFactoryDeployFile)
   ? (JSON.parse(fs.readFileSync(governedFactoryDeployFile, 'utf8'))
       .governed_factory ?? '')
   : ''
@@ -37,7 +62,7 @@ const signerVerifierDeployFile = path.join(
   __dirname,
   '../../../.docker/zk_verifier_signer_deploy.json'
 )
-const signerVerifierDeployment = fs.existsSync(signerVerifierDeployFile)
+const localSignerVerifierDeployment = fs.existsSync(signerVerifierDeployFile)
   ? JSON.parse(fs.readFileSync(signerVerifierDeployFile, 'utf8'))
   : {}
 
@@ -45,12 +70,27 @@ console.log('🔄 Updating config with latest deployment data...')
 
 try {
   // Read configs
-  const deployment = JSON.parse(fs.readFileSync(deploymentSummaryFile, 'utf8'))
+  const deployment: any = isSepolia
+    ? releaseManifestToDeploymentSummary(
+        loadReleaseManifest(releaseManifestFile, { requireComplete: true })
+      )
+    : JSON.parse(fs.readFileSync(deploymentSummaryFile, 'utf8'))
+  const factoryAddress = isSepolia
+    ? deployment.factory?.factory || ''
+    : localFactoryAddress
+  const governedFactoryAddress = isSepolia ? '' : localGovernedFactoryAddress
+  const signerVerifierDeployment: any = isSepolia
+    ? {}
+    : localSignerVerifierDeployment
 
   console.log('📋 Found deployment data')
 
   // Set chain based on environment
-  configOutput.chain = env === 'development' ? 'local' : 'optimism'
+  configOutput.chain = isSepolia
+    ? 'sepolia'
+    : env === 'development'
+      ? 'local'
+      : 'optimism'
   configOutput.apis = {
     ponder:
       env === 'development'

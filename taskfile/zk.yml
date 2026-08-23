@@ -12,7 +12,7 @@ silent: true
 
 tasks:
   build:
-    desc: 'Build the SP1 guest ELFs + the prover host (do this once before task demo / task e2e)'
+    desc: 'Build SP1 guest ELFs + prover host; rerun after every crates/ edit'
     cmds:
       # Nothing else in this repo builds the guests on purpose. `zk/prover/build.rs` calls the SP1
       # builder for every guest workspace, but every demo task and e2e
@@ -34,9 +34,10 @@ tasks:
         (cd zk/weighted-program && cargo prove build)
         (cd zk/composition-program && cargo prove build)
         (cd zk/nostr-program/program && cargo prove build --locked)
-      # sp1_build does NOT watch the path deps under crates/, so cargo will happily reuse a stale
-      # ELF after you edit a core crate. Touching build.rs forces the directive re-emit, which is
-      # what picks the freshly built ELFs up.
+      # STALE-ELF WARNING: after editing anything under crates/, rerun `task zk:build` before any
+      # guest-side check. sp1_build does NOT watch path dependencies, so cargo will silently reuse
+      # an ELF that predates the crate change. Touching build.rs makes the prover pick up the ELFs
+      # built immediately above.
       - touch zk/prover/build.rs
       # The guests were just built explicitly, so skip build.rs's copy of that work rather than
       # doing it twice. Four host artifacts, because `task demo` and witness operations need them

@@ -15,9 +15,10 @@ import {IAnchorRegistrySnapshotView} from "interfaces/registry/IAnchorRegistrySn
 ///         registry does not parse envelopes or resolve which head wins — the guest
 ///         deterministically reconciles the log (invalid anchors are provably skippable; the head
 ///         with the highest owner-signed count wins). For ADDRESS-kind nodes ingress verifies the
-///         owner's co-signature over `(head, count)` and enforces strictly increasing counts
-///         (H-5, 2026-08-13 audit): an admitted third party may relay the owner's newest head but
-///         cannot forge or replay a stale one. Only governance-admitted relayers may append:
+///         owner's EIP-712 co-signature over every anchor claim field and enforces strictly
+///         increasing counts (H-5, 2026-08-13 audit): an admitted third party may relay the
+///         owner's newest head but cannot mutate, forge or replay a stale one. Only
+///         governance-admitted relayers may append:
 ///         self-certifying heads preserve correctness, while the relayer gate prevents an
 ///         unaffiliated address from changing another instance's proving cost.
 /// @dev One registry per instance (each graph owns its anchor log; sharing would couple epoch
@@ -32,7 +33,7 @@ contract AnchorRegistry is AccessControl {
     ///      address identities cannot inflate the fee band or consume proving capacity.
     bytes32 public constant ANCHORER_ROLE = keccak256("ANCHORER_ROLE");
 
-    /// @notice Absolute input ceiling shared with ProvingVault and the operator policy.
+    /// @notice Absolute protocol input ceiling. Operator policy has its own lower configurable edge.
     uint64 public constant ABSOLUTE_MAX_TOTAL_INPUTS = InputCapacity.MAX_TOTAL_INPUTS;
 
     /// @notice Node kind 0: an Ethereum address. `nodeId = keccak256(abi.encode(address))`;
@@ -44,10 +45,13 @@ contract AnchorRegistry is AccessControl {
     /// @notice Node kind 3: one pinned Buzz workspace/community UUID.
     uint8 public constant NODE_KIND_BUZZ_COMMUNITY = 3;
 
-    /// @notice Frozen envelope-0 head-signature domain tag:
-    ///         `keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1")` (must match
-    ///         `envelopes::eas_offchain::head_domain_tag`).
-    bytes32 public constant HEAD_DOMAIN_TAG = keccak256("TRUSTGRAPH_ENVELOPE0_HEAD_V1");
+    /// @notice EIP-712 domain and struct pins for address-kind head authorization.
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 public constant ANCHOR_TYPEHASH =
+        keccak256("Anchor(bytes32 nodeId,uint8 envelopeKind,bytes32 head,uint64 count,bytes32 dataCommitment)");
+    bytes32 private constant HEAD_NAME_HASH = keccak256("Trustgraphs Offchain Head");
+    bytes32 private constant HEAD_VERSION_HASH = keccak256("2");
 
     /// @notice The running fold: `anchorAcc' = keccak256(abi.encode(anchorAcc, leaf))`, acc_0 = 0 —
     ///         the same primitive as lane 1's `AttestationAccumulator`.
@@ -63,9 +67,13 @@ contract AnchorRegistry is AccessControl {
     IAnchorRegistrySnapshotView public snapshot;
 
     /// @notice Immutable combined-count boundary checked before every anchor append.
-    /// @dev Must not exceed the vault/operator ceiling. This contract can reject only lane-2
-    ///      ingress; deployments with a mutable lane 1 must budget and control that path separately.
+    /// @dev Must not exceed the protocol ceiling. Operator admission/cycle policy may bind much
+    ///      earlier. This contract can reject only lane-2 ingress; deployments with a mutable lane
+    ///      1 must budget and control that path separately.
     uint64 public immutable maxTotalInputs;
+
+    /// @notice Instance- and chain-bound EIP-712 domain for address-kind head authorization.
+    bytes32 public immutable headDomainSeparator;
 
     /// @notice Registration gates junk-anchor griefing (proving cost scales with anchor count).
     mapping(bytes32 nodeId => bool) public registered;
@@ -95,6 +103,9 @@ contract AnchorRegistry is AccessControl {
     /// @notice A node joined the registry.
     event NodeRegistered(bytes32 indexed nodeId, uint8 kind, address registrant);
 
+    /// @notice Governance reset a node's monotonic head-count gate after an ingress incident.
+    event HeadCountReset(bytes32 indexed nodeId, uint64 previousCount, address indexed admin);
+
     /// @notice The one snapshot whose authenticated lane-1 count bounds this registry.
     event SnapshotBound(address indexed snapshot, address indexed accumulator, uint64 maxTotalInputs);
 
@@ -102,6 +113,7 @@ contract AnchorRegistry is AccessControl {
     error AlreadyRegistered(bytes32 nodeId);
     error WrongNodeId(bytes32 nodeId, address sender);
     error AddressKindIsSelfRegisterOnly();
+    error InvalidHeadCount(uint64 count, uint64 maximum);
     error StaleHeadCount(bytes32 nodeId, uint64 count, uint64 lastAnchored);
     error BadHeadSignature(bytes32 nodeId);
     error ZeroAddress();
@@ -113,7 +125,7 @@ contract AnchorRegistry is AccessControl {
     error InputCapacityExceeded(uint64 leafCount, uint64 anchorCount, uint64 maxTotalInputs);
 
     /// @param admin Authority over REGISTRAR_ROLE (the operational timelock).
-    /// @param _maxTotalInputs Immutable ceiling over both lanes; never above the proving boundary.
+    /// @param _maxTotalInputs Immutable protocol ceiling over both lanes; operators may admit less.
     constructor(address admin, uint64 _maxTotalInputs) {
         if (admin == address(0)) revert ZeroAddress();
         if (_maxTotalInputs == 0 || _maxTotalInputs > ABSOLUTE_MAX_TOTAL_INPUTS) {
@@ -121,6 +133,9 @@ contract AnchorRegistry is AccessControl {
         }
         binder = msg.sender;
         maxTotalInputs = _maxTotalInputs;
+        headDomainSeparator = keccak256(
+            abi.encode(EIP712_DOMAIN_TYPEHASH, HEAD_NAME_HASH, HEAD_VERSION_HASH, block.chainid, address(this))
+        );
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(REGISTRAR_ROLE, admin);
         _grantRole(ANCHORER_ROLE, admin);
@@ -169,12 +184,35 @@ contract AnchorRegistry is AccessControl {
         emit NodeRegistered(nodeId, kind, msg.sender);
     }
 
+    /// @notice Recover a registered identity whose monotonic ingress counter was advanced by a
+    ///         bad-but-authorized head. The immutable anchor log is not rewritten; this only
+    ///         reopens the on-chain admission gate for a corrected head.
+    /// @dev This is deliberately constitutional rather than an ANCHORER permission. Resetting the
+    ///      gate can make an older owner authorization admissible again and therefore requires the
+    ///      registry's highest authority.
+    function resetHeadCount(bytes32 nodeId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (!registered[nodeId]) revert NotRegistered(nodeId);
+        uint64 previousCount = lastCount[nodeId];
+        lastCount[nodeId] = 0;
+        emit HeadCountReset(nodeId, previousCount, msg.sender);
+    }
+
+    /// @notice Exact typed digest an address-kind node owner authorizes for this registry.
+    function anchorDigest(bytes32 nodeId, uint8 envelopeKind, bytes32 head, uint64 count, bytes32 dataCommitment)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 structHash = keccak256(abi.encode(ANCHOR_TYPEHASH, nodeId, envelopeKind, head, count, dataCommitment));
+        return MessageHashUtils.toTypedDataHash(headDomainSeparator, structHash);
+    }
+
     /// @notice Fold an anchor claim into the log through a governance-admitted relayer. For
-    ///         address-kind nodes ingress verifies the owner's co-signature over `(head, count)`
-    ///         and requires a strictly increasing count (H-5), so a relayer can only submit the
-    ///         owner's newest heads, never forge or replay a stale one. The guest still owns full
-    ///         envelope semantics and independently re-verifies the signature and re-ranks by
-    ///         signed count, so soundness does not rest on this ingress check.
+    ///         address-kind nodes ingress verifies the owner's typed co-signature over every claim
+    ///         field and requires a strictly increasing count (H-5), so a relayer can only submit
+    ///         the owner's newest exact claims, never mutate, forge or replay a stale one. The guest
+    ///         still owns full envelope semantics and independently re-verifies the signature and
+    ///         re-ranks by signed count, so soundness does not rest on this ingress check.
     /// @param nodeId keccak256 of the canonical node identity (address or DID string).
     /// @param envelopeKind 0 = EAS-offchain chained log, 1 = atproto repo commit, ...
     /// @param head The per-identity completeness commitment (log head / commit CID digest).
@@ -182,8 +220,8 @@ contract AnchorRegistry is AccessControl {
     ///        owner co-signed with the head).
     /// @param dataCommitment Where the data behind the head verifiably lives (blob versioned hash,
     ///        namespace commitment, or content root — availability-as-anchor-validity, §7).
-    /// @param headSignature 65-byte EIP-191 signature by the node owner over
-    ///        `keccak256(abi.encode(HEAD_DOMAIN_TAG, head, uint64 count))`. Checked for
+    /// @param headSignature 65-byte EIP-712 signature by the node owner over every anchor claim
+    ///        field, bound to this registry and chain through `headDomainSeparator`. Checked for
     ///        address-kind nodes; ignored for other kinds (their gate is the registrar and their
     ///        head authentication lives in the envelope semantics).
     function anchor(
@@ -201,11 +239,12 @@ contract AnchorRegistry is AccessControl {
             revert InputCapacityExceeded(lane1Count, currentAnchorCount, maxTotalInputs);
         }
         if (!registered[nodeId]) revert NotRegistered(nodeId);
+        if (count == 0 || count > maxTotalInputs) revert InvalidHeadCount(count, maxTotalInputs);
         uint64 previousCount = lastCount[nodeId];
         if (count <= previousCount) revert StaleHeadCount(nodeId, count, previousCount);
         if (nodeKind[nodeId] == NODE_KIND_ADDRESS) {
-            bytes32 payload = keccak256(abi.encode(HEAD_DOMAIN_TAG, head, count));
-            address signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(payload), headSignature);
+            address signer =
+                ECDSA.recover(anchorDigest(nodeId, envelopeKind, head, count, dataCommitment), headSignature);
             if (signer != ownerOf[nodeId]) revert BadHeadSignature(nodeId);
         }
         lastCount[nodeId] = count;

@@ -55,7 +55,7 @@ contract DeployZkVerifier is Common {
         bytes32 vkey = programVKey == bytes32(0) ? vm.envBytes32("SP1_PROGRAM_VKEY") : programVKey;
         require(vkey != bytes32(0), "DeployZkVerifier: programVKey is zero");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         SP1JournalVerifier sp1Verifier = new SP1JournalVerifier(ISP1Verifier(gateway), vkey);
         verifier = address(sp1Verifier);

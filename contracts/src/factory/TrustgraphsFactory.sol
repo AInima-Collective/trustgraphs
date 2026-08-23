@@ -11,6 +11,7 @@ import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
 import {TrustgraphsParamsValidator} from "src/params/TrustgraphsParamsValidator.sol";
 import {TrustgraphsParamsController} from "src/factory/TrustgraphsParamsController.sol";
+import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
 import {EasOffchainAnchorRegistry} from "src/registry/EasOffchainAnchorRegistry.sol";
 import {EasOffchainAnchorRegistryDeployer} from "src/factory/HybridInstanceDeployers.sol";
 import {
@@ -66,7 +67,8 @@ contract TrustgraphsFactory {
         string metadataURI;
         /// The full governance params (see the bounds in `_validateParams`).
         ParamsCodec.Params params;
-        /// Holder of both snapshot roles and the distributor's ownership. Zero ⇒ `msg.sender`.
+        /// Holder of both snapshot roles and the distributor's ownership. Zero ⇒ `msg.sender`;
+        /// when `withDistributor` is true the resolved address must be an initialized Safe.
         address admin;
         /// Requested epoch length in blocks; raised to `EPOCH_FLOOR` if lower.
         uint64 epochLength;
@@ -241,6 +243,8 @@ contract TrustgraphsFactory {
     error NotInstanceAuthority(bytes32 instanceId, address owner);
     /// @notice The instance already has a factory-known fund distributor.
     error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
+    /// @notice Community funds must be controlled by an initialized Safe, never an EOA.
+    error InvalidDistributorSafe(address owner);
     error InvalidRelayerCount(uint256 supplied, uint256 minimum, uint256 maximum);
     error InvalidRelayer(address relayer);
 
@@ -351,6 +355,7 @@ contract TrustgraphsFactory {
         // because step 5 grants CONSTITUTIONAL_ROLE to `admin` and then renounces it from the same
         // address, and that role administers itself, so nobody could ever hold it again.
         if (admin == address(this)) revert InvalidAdmin();
+        if (args.withDistributor && !SafeOwnerPolicy.isSafe(admin)) revert InvalidDistributorSafe(admin);
         instanceId = computeInstanceId(msg.sender, args.name, args.salt);
 
         // --- 1. The accumulator. Permissionless folds, no roles, no post-wiring. --------------
@@ -512,7 +517,7 @@ contract TrustgraphsFactory {
     ///         value only to the instance's own live authority (for a governed instance that is
     ///         its Safe). Same terms as the creation-time path: fee 0, `feeRecipient = owner`.
     /// @param instanceId The instance to attach a fund to (this factory's program only).
-    /// @param owner The fund's owner; verified against the snapshot's CONSTITUTIONAL_ROLE.
+    /// @param owner The initialized Safe fund owner; also verified against CONSTITUTIONAL_ROLE.
     /// @param distributorToken The token the community intends to distribute. Presentation only,
     ///        recorded in the event exactly like `CreateArgs.distributorToken`.
     function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
@@ -529,6 +534,7 @@ contract TrustgraphsFactory {
         if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
             revert NotInstanceAuthority(instanceId, owner);
         }
+        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
         distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
         distributorOf[instanceId] = distributor;
         emit DistributorAttached(instanceId, distributor, distributorToken);

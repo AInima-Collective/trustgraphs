@@ -75,9 +75,9 @@ pub fn sample_input() -> GuestInput {
         edge(0, 4, 5, 5, 104, 20),
         edge(1, 4, 5, 5, 105, 20),
     ];
-    // Journal-v3 bindings, matching `export_golden.rs` so the built-in sample stays byte-identical
-    // to tests/golden/trust-graph.json. Both non-zero: a sample that left them at the default would
-    // exercise neither new word.
+    // Journal-v3 bindings use the same fixed deployment domain as the golden fixture. The strict
+    // guest's built-in smoke keeps lane 2 disabled; the canonical legacy golden separately pins
+    // the complete non-default lane-2 params preimage.
     let binding = Binding {
         recipient: addr(0xBE),
         instance_domain: encode::instance_domain(addr(0x5A), 31337),

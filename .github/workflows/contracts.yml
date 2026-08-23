@@ -30,6 +30,12 @@ jobs:
       - name: Install deps
         run: task --yes setup
 
+      - name: Check Solidity formatting
+        run: forge fmt --check
+
+      - name: Run Solidity static analysis
+        run: forge lint contracts/src --severity high --deny warnings
+
       - name: Run forge build
         run: forge build -vvv
 

@@ -1,10 +1,11 @@
 # Deploy to production (advanced)
 
-> **No production deployment exists today** — the repo is set up for local testing, and the
-> config that ships is the development template. When a real production network launches,
-> create `config/networks.production.json` from
-> [`config/networks.development.template.json`](../../config/networks.development.template.json)
-> and follow this page.
+> **Pre-testnet status:** no trustgraphs contracts are deployed on any public chain. The first
+> planned public release is the core `trust-graph` path on Ethereum Sepolia (chain 11155111),
+> following the gates in [`sepolia.md`](./sepolia.md). Ethereum mainnet is a later production
+> target. The repository's existing chain-10 “production” profile is legacy configuration, not a
+> current deployment or the go-forward chain story. Treat this page as post-testnet production
+> preparation until the Sepolia release is complete.
 
 ### Deploy new network
 
@@ -22,6 +23,8 @@ Set the ZK deployment parameters in your environment (see `contracts/deploy/env.
 - `NETWORK_EPOCH_LENGTH` — a nonzero block count between score checkpoints for each network
   created through the legacy production deploy path (for example, `1296000` is about 30 days on
   Optimism). The deploy fails closed when this is missing or zero.
+- `DISTRIBUTOR_SAFE` — an initialized Safe when the legacy `DeployNetwork` distributor flag is
+  enabled. The script and all base factories reject an EOA distributor owner.
 
 There is **no `PARAMS_HASH` env var**: `DeployNetwork` computes the params hash on-chain from
 `params.json` (the same file the prover feeds the guest) right after it registers the schema —
@@ -30,24 +33,28 @@ see the note in `.env.example`.
 Then deploy the contracts, which will deploy and fill in the missing values:
 
 ```bash
-pnpm deploy:contracts
+DEPLOY_STAGE=production DEPLOY_TARGET=optimism pnpm deploy:contracts
 ```
 
 This deploys EAS + resolvers, the `SP1JournalVerifier`, `MerkleSnapshot` (with the accumulator and
 the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the reward distributor.
 
-### Deploy the weighted and compose factories
+### Prepare weighted and compose factories after the core testnet
 
 The `/create/weighted` and `/create/composition` workspaces transact against two isolated
 factories: `WeightedTrustgraphsFactory` (`trust-graph-weighted`) and `TrustComposeFactory`
 (`trust-compose`). The dev pipeline deploys both automatically as part of `pnpm deploy:contracts`.
-On a real chain, run their scripts by hand after the chain's `InstanceRegistry`, EAS, and
-(optionally) `ProvingVault` exist.
+These development deployments do not put either program in the first public release.
+`trust-compose` is explicitly outside the first Sepolia testnet and requires its own later release
+gate and coverage. The public-chain commands below are post-gate reference only; do not broadcast
+the compose scripts as part of the first Sepolia deployment.
 
 Each factory needs its own verifier, pinned to its own guest program. Compute the vkeys from the
 exact prover build you will operate:
 
 ```bash
+export EXPECTED_CHAIN_ID=<target-chain-id>
+
 export SP1_WEIGHTED_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-graph-weighted vkey)
 export SP1_COMPOSITION_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-compose vkey)
 
@@ -86,9 +93,10 @@ forge script contracts/script/DeployTrustComposeFactory.s.sol:DeployTrustCompose
 ```
 
 The compose script also deploys the `CompositionSourceAdapterFactory` (the registry of reviewed
-source adapters) and passes the composition vkey into the factory constructor, which cross-checks
-it against the verifier's own `programVKey()` and reverts on a mismatch. Both scripts grant the new
-factory `REGISTRAR_ROLE` on the instance registry, which needs the registry's admin key: at
+source adapters) with the canonical instance registry pinned immutably, and passes the composition
+vkey into the factory constructor, which cross-checks it against the verifier's own
+`programVKey()` and reverts on a mismatch. Both scripts grant the new factory `REGISTRAR_ROLE` on
+the instance registry, which needs the registry's admin key: at
 bootstrap that is the deployer, and once registry admin has moved to the operational timelock, set
 `GRANT_REGISTRAR=false` and make the grant a governance action instead.
 
@@ -148,16 +156,20 @@ anchor records, and strict envelope-0 append-only logs all add proof work; a cha
 be trimmed. A strict hybrid's lane-2 `workCount` is
 `anchorCount + aggregateLatestEnvelope0EntryCount * 4`, not raw anchor count. Its proving and price
 size is `leafCount + workCount`; legacy registries still use `leafCount + anchorCount`.
-`ProvingVault`, bounded registries, snapshots, and the operator share the absolute
-**`MAX_PRICED_INPUTS = 200,000`** boundary. A new anchor is rejected before the fold when it would
-exceed the registry's lower immutable `maxTotalInputs`; choose that cap below 200,000 on a two-lane
-instance to reserve the planned lane-1 budget. Separately gate or price lane-1 EAS ingress.
+`ProvingVault` and bounded registries share the absolute protocol/payment
+**`MAX_PRICED_INPUTS = 200,000`** boundary. That number is not an operator-capacity promise. The
+shipped host profile is calibrated to 1,800 raw inputs (and the cheap gate's corresponding 3,600
+conservative node bound), while its separately configurable 8B-cycle model would refuse at 3,468
+max-iteration trust inputs if the profile were raised. Thus the default profile binds first. A new
+anchor is rejected before the fold when it would exceed the registry's lower immutable
+`maxTotalInputs`; choose that cap below 200,000 on a two-lane instance to reserve the planned lane-1
+budget. Separately gate or price lane-1 EAS ingress.
 
-**Attacker cost (order of magnitude, mainnet).** Each lane-1 leaf is one EAS attestation or
-revocation through the resolver (~120–180k gas). Filling the ceiling from scratch is therefore
-~200k transactions ≈ 25–35B gas — roughly **25–350 ETH** across the 1–10 gwei range: expensive as
-vandalism, cheap as a targeted attack on a high-value instance, and rate-limitable only by ingress
-pricing. Lane-2 `anchor()` is not permissionless: only governance-admitted `ANCHORER_ROLE` relayers
+**Attacker cost (order of magnitude, mainnet).** The audit measured 78,191 gas per marginal folded
+lane-1 leaf. Reaching the default host's 1,800-input profile edge is therefore about 141M gas, or
+roughly **0.14–1.41 ETH** across 1–10 gwei; reaching the separate 200,000 protocol ceiling would be
+about 15.6B gas. Neither is an ingress defense. Lane-2 `anchor()` is not permissionless: only
+governance-admitted `ANCHORER_ROLE` relayers
 may append, all node kinds require increasing counts, and address heads also require the owner's
 signature. Forge traces put a first admitted append at ~88–93k transaction gas, with repeated
 updates to nonzero slots cheaper. An unaffiliated caller always reverts before changing the count; mass
@@ -171,11 +183,13 @@ least two independent operators and alert on role changes. An instance whose lan
 ingress is open to adversaries must still price or stake that ingress (the payable resolver exists
 for this) before real value depends on the scores.
 
-**Monitoring (in place).** The proof scheduler reads a bounded registry's `maxTotalInputs` and the
-snapshot's authenticated checkpoint work, then alerts (webhook + `input_ceiling_approaching` log
-event + status page) when `leafCount + lane2Work` crosses **80%** of that cap. Legacy/no-lane-2
-implementations use their existing anchor count or zero lane. Do not silence the alert: revoke
-unexpected ingress and start migration while an orderly final checkpoint still fits.
+**Monitoring (in place).** The proof scheduler reads authenticated live work and compares it with
+the configured capability profile, configured cycle limit, and any lower immutable registry
+`maxTotalInputs`. It alerts (webhook + `operator_capacity_approaching` log event + status page) at
+**80% of whichever gate is nearest exhaustion**. It does not wait for 80% of the unrelated 200,000
+vault band. Legacy/no-lane-2 implementations use their existing anchor count or zero lane. Do not
+silence the alert: revoke unexpected ingress and start migration while an orderly final checkpoint
+still fits.
 
 **Recovery path (prepare BEFORE launch).** Both input-lane setters are available only before
 checkpoint 0. Re-seed by deploying a fresh resolver/accumulator, bounded registry, verifier, and
@@ -192,10 +206,9 @@ The exact ceremony and rollback checks are in
 The indexer has two production processes: a versioned writer and a stable read server. Set:
 
 ```bash
-PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # note: the production profile in
-                                        # packages/indexer/ponder.config.ts is currently pinned to chain 10
-                                        # (reads PONDER_RPC_URL_10); the go-forward production
-                                        # chain is Ethereum mainnet (chain 1)
+PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # the legacy production profile is
+                                        # pinned to chain 10; do not reuse it for the planned
+                                        # Sepolia testnet (11155111) or future mainnet (1)
 PONDER_START_BLOCK_<chainId>=<earliest configured contract deployment block>
 PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
 PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
@@ -209,8 +222,9 @@ schema and only publishes the stable views after it is ready. `ponder-server` wa
 readiness signal and serves port 65421; a writer crash or restart does not take the last completed
 read schema away.
 
-Startup refuses three unsafe states before Ponder runs: the wrong chain id, deployment-summary
-addresses with no code, or an RPC that cannot answer historical state at the start block. It also
+Startup refuses three unsafe states before Ponder runs: the wrong chain id, deployment-record
+addresses with no code, or an RPC that cannot answer historical state at the start block. Sepolia
+uses the tracked finalized manifest; legacy/local profiles use the machine-local summary. It also
 records a finalized block hash in Postgres. A later production identity mismatch is never reset
 automatically—verify the RPC/database and deploy to a new versioned schema. Use
 `pnpm --dir packages/indexer preflight` for the same checks without starting Ponder.

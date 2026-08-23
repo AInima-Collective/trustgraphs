@@ -54,7 +54,7 @@ contract DeployNostrWorkspaceInstance is Common {
         );
         require(capacity <= type(uint64).max, "input capacity too large");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         EmptyLaneAccumulator emptyAcc = new EmptyLaneAccumulator();
         AnchorRegistry anchors = new AnchorRegistry(deployer, uint64(capacity));

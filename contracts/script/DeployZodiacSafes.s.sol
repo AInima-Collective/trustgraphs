@@ -76,7 +76,7 @@ contract DeployZodiacSafes is Common {
     {
         address deployer = vm.addr(_privateKey);
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         // Parse MerkleSnapshot address
         MerkleSnapshot merkleSnapshot = MerkleSnapshot(vm.parseAddress(merkleSnapshotAddr));

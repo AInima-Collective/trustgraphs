@@ -36,9 +36,9 @@ contract QuillCheckpointSource is ISignerSyncCheckpointSource, ISignerActivitySo
 ///   `lastAppliedCheckpoint` is a high-water mark over the id space of `accumulator`.
 ///   It is only meaningful while `accumulator` is the SAME contract whose ids it counted.
 ///
-/// `MerkleSnapshot.setAccumulator` enforces exactly that by refusing any rotation once a
-/// checkpoint exists. `SignerSyncZkModule.setAccumulator` has no such lock and never resets
-/// the high-water mark, so the id space can be swapped underneath a live mark.
+/// `SignerSyncZkModule.setAccumulator` now mirrors `MerkleSnapshot`: both current and candidate
+/// histories must be empty. Thus an applied high-water mark can never be interpreted in a new id
+/// space, and the only permitted rotation explicitly restores the empty high-water state.
 contract QuillStateInv_SignerSyncAccumulatorRotation is Test {
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
@@ -77,9 +77,9 @@ contract QuillStateInv_SignerSyncAccumulatorRotation is Test {
             address(0)
         );
         safe = GnosisSafe(
-            payable(
-                address(safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("q"))))
-            )
+            payable(address(
+                    safeFactory.createProxyWithNonce(address(safeSingleton), setupData, uint256(keccak256("q")))
+                ))
         );
 
         verifier = new MockZkVerifier();
@@ -123,7 +123,7 @@ contract QuillStateInv_SignerSyncAccumulatorRotation is Test {
         threshold = safe.getThreshold();
     }
 
-    function test_HighWaterMarkSurvivesAccumulatorRotation_WedgesModule() public {
+    function test_HighWaterMarkLocksAccumulatorRotation() public {
         (address[] memory signers, uint256 threshold) = _noopSet();
 
         // 1. Apply checkpoint 3 of accumulator A. High-water mark = 3.
@@ -131,49 +131,41 @@ contract QuillStateInv_SignerSyncAccumulatorRotation is Test {
         assertEq(module.lastAppliedCheckpoint(), 3, "high-water mark not set");
         assertTrue(module.hasAppliedCheckpoint());
 
-        // 2. Governance rotates the accumulator to a FRESH one (id space restarts at 0).
-        //    `MerkleSnapshot.setAccumulator` would revert `AccumulatorRotationLocked` here;
-        //    this module accepts it unconditionally.
+        // 2. Governance cannot rotate to a fresh id space after history exists.
         MockAccumulator accB = new MockAccumulator();
-        accB.pushCheckpoint(keccak256("b0"), 5, uint64(block.number));
         vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(SignerSyncZkModule.AccumulatorRotationLocked.selector, uint256(4), uint256(0))
+        );
         module.setAccumulator(IAttestationAccumulator(address(accB)));
 
-        // 3. The high-water mark was NOT reset, so it now indexes a different contract's ids.
-        assertEq(module.lastAppliedCheckpoint(), 3, "mark should have been reset by the rotation");
-
-        // Every id accB actually has is <= the stale mark and is refused as stale ...
-        vm.expectRevert(abi.encodeWithSelector(SignerSyncZkModule.StaleCheckpoint.selector, 0, 3));
-        module.submitSignerProof(0, 0, signers, threshold, PROOF);
-
-        // ... and every id above the stale mark is out of range on accB, so the call reverts on
-        // the raw array access. The module can rotate no owners at all until accB independently
-        // mints 4 checkpoints. Owner rotation is dead in the meantime.
-        vm.expectRevert();
-        module.submitSignerProof(4, 0, signers, threshold, PROOF);
+        // 3. The binding and its high-water mark remain one coherent history.
+        assertEq(address(module.accumulator()), address(accA));
+        assertEq(module.lastAppliedCheckpoint(), 3);
+        assertTrue(module.hasAppliedCheckpoint());
     }
 
-    function test_RotationSilentlySkipsIdsAndMixesTwoCheckpointHistories() public {
+    function test_UsedCandidateCannotMixCheckpointHistories() public {
         (address[] memory signers, uint256 threshold) = _noopSet();
         module.submitSignerProof(1, 0, signers, threshold, PROOF);
         assertEq(module.lastAppliedCheckpoint(), 1);
 
-        // A replacement accumulator with a LONGER history: nothing forces it to be the same
-        // accumulator `scoreSnapshot` pinned params for.
+        // A replacement accumulator with a longer, unrelated history is rejected too. Checking
+        // both sides closes the pre-seeded-candidate path, not merely rotations after apply.
         MockAccumulator accB = new MockAccumulator();
         for (uint256 i; i < 6; ++i) {
             accB.pushCheckpoint(keccak256(abi.encode("b", i)), uint64(100 + i), uint64(block.number));
         }
         vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(SignerSyncZkModule.AccumulatorRotationLocked.selector, uint256(4), uint256(6))
+        );
         module.setAccumulator(IAttestationAccumulator(address(accB)));
 
-        // Checkpoint id 2 now means accB's third entry, while `scoreSnapshot.checkpointParamsHash(2)`
-        // still describes the SCORE snapshot's checkpoint 2 - a different freeze of different
-        // inputs. The contract accepts the pair with no consistency check whatsoever.
+        // The next proof therefore remains tied to accumulator A and its score-snapshot id space.
         module.submitSignerProof(2, 0, signers, threshold, PROOF);
         assertEq(module.lastAppliedCheckpoint(), 2);
-        assertEq(accB.getCheckpoint(2).leafCount, 102, "proof was bound to the replacement history");
-        // Nothing on the module ties `accumulator` to the accumulator `scoreSnapshot` reads.
-        assertTrue(address(module.accumulator()) == address(accB));
+        assertEq(address(module.accumulator()), address(accA));
+        assertEq(accA.getCheckpoint(2).leafCount, 30, "proof left the original history");
     }
 }

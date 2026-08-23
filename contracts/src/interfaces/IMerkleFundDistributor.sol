@@ -134,4 +134,6 @@ interface IMerkleFundDistributor {
     error FeeIncreaseNotYetEffective(uint64 effectiveAt);
     error FeeExceedsFunderCap(uint256 feeAmount, uint256 maxFeeAmount);
     error UnexpectedFeeRecipient(address expected, address actual);
+    error UnexpectedMerkleTotalValue(uint256 expected, uint256 actual);
+    error ClaimExceedsRoundBudget(uint256 claimAmount, uint256 remainingBudget);
 }

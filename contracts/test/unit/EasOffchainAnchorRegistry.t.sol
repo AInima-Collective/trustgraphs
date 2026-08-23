@@ -84,9 +84,7 @@ contract EasOffchainAnchorRegistryTest is Test {
         bytes32 nodeId = _nodeId(owner);
         bytes32 head = keccak256("head-1");
         bytes32 commitment = sha256("payload-1");
-        bytes32 expectedDigest = _digest(
-            expectedHead, nodeId, SCHEMA_UID, bytes32(0), head, 1, commitment
-        );
+        bytes32 expectedDigest = _digest(expectedHead, nodeId, SCHEMA_UID, bytes32(0), head, 1, commitment);
         assertEq(registry.anchorDigest(nodeId, 0, bytes32(0), head, 1, commitment), expectedDigest);
     }
 
@@ -100,19 +98,7 @@ contract EasOffchainAnchorRegistryTest is Test {
         vm.expectEmit(true, true, false, true, address(registry));
         emit NodeRegistered(nodeId, owner);
         vm.expectEmit(true, true, true, true, address(registry));
-        emit HeadAnchored(
-            0,
-            nodeId,
-            owner,
-            0,
-            SCHEMA_UID,
-            bytes32(0),
-            head,
-            1,
-            commitment,
-            block.timestamp,
-            signature
-        );
+        emit HeadAnchored(0, nodeId, owner, 0, SCHEMA_UID, bytes32(0), head, 1, commitment, block.timestamp, signature);
         registry.anchor(nodeId, 0, bytes32(0), head, 1, commitment, signature);
 
         bytes32 leaf = keccak256(abi.encode(nodeId, uint8(0), head, uint64(1), commitment, block.timestamp));
@@ -132,7 +118,13 @@ contract EasOffchainAnchorRegistryTest is Test {
         bytes32 head1 = keccak256("head-1");
         bytes32 commitment1 = sha256("payload-1");
         registry.anchor(
-            nodeId, 0, bytes32(0), head1, 1, commitment1, _signature(OWNER_KEY, nodeId, bytes32(0), head1, 1, commitment1)
+            nodeId,
+            0,
+            bytes32(0),
+            head1,
+            1,
+            commitment1,
+            _signature(OWNER_KEY, nodeId, bytes32(0), head1, 1, commitment1)
         );
         bytes32 acc1 = registry.anchorAcc();
 
@@ -161,9 +153,8 @@ contract EasOffchainAnchorRegistryTest is Test {
         bytes32 otherRegistryDomain = _domain("Trustgraphs Offchain Head", "2", block.chainid, address(0xBEEF));
         _expectWrongDomainSignature(nodeId, head, commitment, otherRegistryDomain);
 
-        bytes32 wrongSchemaDigest = _digest(
-            registry.headDomainSeparator(), nodeId, keccak256("wrong-schema"), bytes32(0), head, 1, commitment
-        );
+        bytes32 wrongSchemaDigest =
+            _digest(registry.headDomainSeparator(), nodeId, keccak256("wrong-schema"), bytes32(0), head, 1, commitment);
         _expectWrongSignature(nodeId, head, commitment, _sign(OWNER_KEY, wrongSchemaDigest));
 
         bytes memory wrongCommitment = _signature(OWNER_KEY, nodeId, bytes32(0), head, 1, keccak256("other"));
@@ -175,14 +166,18 @@ contract EasOffchainAnchorRegistryTest is Test {
         bytes32 head1 = keccak256("head-1");
         bytes32 commitment1 = sha256("payload-1");
         registry.anchor(
-            nodeId, 0, bytes32(0), head1, 2, commitment1, _signature(OWNER_KEY, nodeId, bytes32(0), head1, 2, commitment1)
+            nodeId,
+            0,
+            bytes32(0),
+            head1,
+            2,
+            commitment1,
+            _signature(OWNER_KEY, nodeId, bytes32(0), head1, 2, commitment1)
         );
 
         bytes32 head2 = keccak256("head-2");
         bytes32 commitment2 = sha256("payload-2");
-        vm.expectRevert(
-            abi.encodeWithSelector(EasOffchainAnchorRegistry.SameCountConflict.selector, nodeId, uint64(2))
-        );
+        vm.expectRevert(abi.encodeWithSelector(EasOffchainAnchorRegistry.SameCountConflict.selector, nodeId, uint64(2)));
         registry.anchor(nodeId, 0, head1, head2, 2, commitment2, hex"");
 
         vm.expectRevert(
@@ -208,9 +203,7 @@ contract EasOffchainAnchorRegistryTest is Test {
         registry.anchor(nodeId, 0, bytes32(0), bytes32(0), 1, bytes32(uint256(2)), hex"");
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                EasOffchainAnchorRegistry.InvalidEntryCount.selector, uint64(2_049), uint64(2_048)
-            )
+            abi.encodeWithSelector(EasOffchainAnchorRegistry.InvalidEntryCount.selector, uint64(2_049), uint64(2_048))
         );
         registry.anchor(nodeId, 0, bytes32(0), bytes32(uint256(1)), 2_049, bytes32(uint256(2)), hex"");
     }
@@ -221,7 +214,13 @@ contract EasOffchainAnchorRegistryTest is Test {
         bytes32 head2 = keccak256("head-2");
         bytes32 commitment2 = sha256("payload-2");
         capped.anchor(
-            nodeId, 0, bytes32(0), head2, 2, commitment2, _signatureFor(capped, OWNER_KEY, nodeId, bytes32(0), head2, 2, commitment2)
+            nodeId,
+            0,
+            bytes32(0),
+            head2,
+            2,
+            commitment2,
+            _signatureFor(capped, OWNER_KEY, nodeId, bytes32(0), head2, 2, commitment2)
         );
         assertEq(capped.workCount(), 9);
 
@@ -233,30 +232,19 @@ contract EasOffchainAnchorRegistryTest is Test {
                 EasOffchainAnchorRegistry.InputCapacityExceeded.selector, uint64(0), uint64(14), uint64(10)
             )
         );
-        capped.anchor(
-            nodeId, 0, head2, head3, 3, commitment3, signature3
-        );
+        capped.anchor(nodeId, 0, head2, head3, 3, commitment3, signature3);
 
         EasOffchainAnchorRegistry lane1Capped = _boundRegistry(10, address(this));
         lane1.setLeafCount(6);
         bytes32 head1 = keccak256("one");
         bytes32 commitment1 = sha256("one");
-        bytes memory signature1 =
-            _signatureFor(lane1Capped, OWNER_KEY, nodeId, bytes32(0), head1, 1, commitment1);
+        bytes memory signature1 = _signatureFor(lane1Capped, OWNER_KEY, nodeId, bytes32(0), head1, 1, commitment1);
         vm.expectRevert(
             abi.encodeWithSelector(
                 EasOffchainAnchorRegistry.InputCapacityExceeded.selector, uint64(6), uint64(5), uint64(10)
             )
         );
-        lane1Capped.anchor(
-            nodeId,
-            0,
-            bytes32(0),
-            head1,
-            1,
-            commitment1,
-            signature1
-        );
+        lane1Capped.anchor(nodeId, 0, bytes32(0), head1, 1, commitment1, signature1);
     }
 
     function test_RelayerRoleAndInertDeployerReceiveNoAuthority() public {
@@ -273,9 +261,8 @@ contract EasOffchainAnchorRegistryTest is Test {
         EasOffchainAnchorRegistryDeployer deployer = new EasOffchainAnchorRegistryDeployer();
         address[] memory relayers = new address[](1);
         relayers[0] = address(this);
-        EasOffchainAnchorRegistry deployed = deployer.deploy(
-            IEAS(address(eas)), SCHEMA_UID, 200_000, admin, address(this), relayers
-        );
+        EasOffchainAnchorRegistry deployed =
+            deployer.deploy(IEAS(address(eas)), SCHEMA_UID, 200_000, admin, address(this), relayers);
         assertFalse(deployed.hasRole(deployed.DEFAULT_ADMIN_ROLE(), address(deployer)));
         assertFalse(deployed.hasRole(deployed.ANCHORER_ROLE(), address(deployer)));
     }
@@ -283,9 +270,8 @@ contract EasOffchainAnchorRegistryTest is Test {
     function test_SnapshotBindingIsBinderOnlyReciprocalAndOneShot() public {
         address[] memory relayers = new address[](1);
         relayers[0] = address(this);
-        EasOffchainAnchorRegistry unbound = new EasOffchainAnchorRegistry(
-            IEAS(address(eas)), SCHEMA_UID, 100, admin, binder, relayers
-        );
+        EasOffchainAnchorRegistry unbound =
+            new EasOffchainAnchorRegistry(IEAS(address(eas)), SCHEMA_UID, 100, admin, binder, relayers);
         EasOffchainSnapshotMock wrong = new EasOffchainSnapshotMock(address(lane1), address(registry));
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -302,9 +288,7 @@ contract EasOffchainAnchorRegistryTest is Test {
         vm.expectRevert(abi.encodeWithSelector(EasOffchainAnchorRegistry.NotBinder.selector, address(0xBAD)));
         unbound.bindSnapshot(address(right));
         unbound.bindSnapshot(address(right));
-        vm.expectRevert(
-            abi.encodeWithSelector(EasOffchainAnchorRegistry.SnapshotAlreadyBound.selector, address(right))
-        );
+        vm.expectRevert(abi.encodeWithSelector(EasOffchainAnchorRegistry.SnapshotAlreadyBound.selector, address(right)));
         unbound.bindSnapshot(address(right));
     }
 
@@ -343,28 +327,21 @@ contract EasOffchainAnchorRegistryTest is Test {
         out.bindSnapshot(address(bound));
     }
 
-    function _expectWrongDomainSignature(bytes32 nodeId, bytes32 head, bytes32 commitment, bytes32 domain)
-        internal
-    {
+    function _expectWrongDomainSignature(bytes32 nodeId, bytes32 head, bytes32 commitment, bytes32 domain) internal {
         bytes32 digest = _digest(domain, nodeId, SCHEMA_UID, bytes32(0), head, 1, commitment);
         _expectWrongSignature(nodeId, head, commitment, _sign(OWNER_KEY, digest));
     }
 
-    function _expectWrongSignature(bytes32 nodeId, bytes32 head, bytes32 commitment, bytes memory signature)
-        internal
-    {
+    function _expectWrongSignature(bytes32 nodeId, bytes32 head, bytes32 commitment, bytes memory signature) internal {
         vm.expectPartialRevert(EasOffchainAnchorRegistry.WrongNodeId.selector);
         registry.anchor(nodeId, 0, bytes32(0), head, 1, commitment, signature);
     }
 
-    function _signature(
-        uint256 key,
-        bytes32 nodeId,
-        bytes32 previous,
-        bytes32 head,
-        uint64 count,
-        bytes32 commitment
-    ) internal view returns (bytes memory) {
+    function _signature(uint256 key, bytes32 nodeId, bytes32 previous, bytes32 head, uint64 count, bytes32 commitment)
+        internal
+        view
+        returns (bytes memory)
+    {
         return _signatureFor(registry, key, nodeId, previous, head, count, commitment);
     }
 
@@ -394,8 +371,9 @@ contract EasOffchainAnchorRegistryTest is Test {
         uint64 count,
         bytes32 commitment
     ) internal pure returns (bytes32) {
-        bytes32 structHash =
-            keccak256(abi.encode(ANCHOR_TYPEHASH, nodeId, uint8(0), schema, previous, head, count, commitment));
+        bytes32 structHash = keccak256(
+            abi.encode(ANCHOR_TYPEHASH, nodeId, uint8(0), schema, previous, head, count, commitment)
+        );
         return keccak256(abi.encodePacked(hex"1901", domain, structHash));
     }
 

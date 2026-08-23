@@ -7,6 +7,7 @@ import {
     CompositionSourceAccumulatorDeployer,
     TrustComposeParamsControllerDeployer
 } from "src/factory/TrustComposeInstanceDeployers.sol";
+import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
@@ -27,6 +28,7 @@ contract TrustComposeFactory {
         bytes policyManifest;
         address[] sourceAdapters;
         bytes32 metadataDigest;
+        /// Instance authority. Must be an initialized Safe when `withDistributor` is true.
         address admin;
         uint64 epochLength;
         bool withDistributor;
@@ -84,9 +86,11 @@ contract TrustComposeFactory {
     error ChainIdTooLarge(uint256 chainId);
     error InvalidCompositionVerifier();
     error ProgramVKeyMismatch(bytes32 expected, bytes32 actual);
+    error SourceAdapterRegistryMismatch(address expected, address actual);
     error UnknownInstance(bytes32 instanceId);
     error NotInstanceAuthority(bytes32 instanceId, address owner);
     error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
+    error InvalidDistributorSafe(address owner);
 
     constructor(
         IZkVerifier verifier,
@@ -114,6 +118,10 @@ contract TrustComposeFactory {
         if (!ok || returned.length != 32) revert InvalidCompositionVerifier();
         bytes32 verifierVKey = abi.decode(returned, (bytes32));
         if (verifierVKey != programVKey) revert ProgramVKeyMismatch(programVKey, verifierVKey);
+        address adapterRegistry = address(sourceAdapterFactory.registry());
+        if (adapterRegistry != address(instanceRegistry)) {
+            revert SourceAdapterRegistryMismatch(address(instanceRegistry), adapterRegistry);
+        }
 
         VERIFIER = verifier;
         PROGRAM_VKEY = programVKey;
@@ -146,6 +154,7 @@ contract TrustComposeFactory {
         );
         address admin = args.admin == address(0) ? msg.sender : args.admin;
         if (admin == address(this)) revert InvalidAdmin();
+        if (args.withDistributor && !SafeOwnerPolicy.isSafe(admin)) revert InvalidDistributorSafe(admin);
         instanceId = computeInstanceId(msg.sender, args.name, args.salt);
 
         CompositionSourceAccumulator accumulator = ACCUMULATOR_DEPLOYER.deploy(SOURCE_ADAPTER_FACTORY);
@@ -227,7 +236,7 @@ contract TrustComposeFactory {
 
     /// @notice Attach a fund distributor to an instance created without one. Permissionless to
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
-    ///         must hold the instance's constitutional role right now. Same terms as the
+    ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
     function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
         external
@@ -243,6 +252,7 @@ contract TrustComposeFactory {
         if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
             revert NotInstanceAuthority(instanceId, owner);
         }
+        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
         distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
         distributorOf[instanceId] = distributor;
         emit DistributorAttached(instanceId, distributor, distributorToken);

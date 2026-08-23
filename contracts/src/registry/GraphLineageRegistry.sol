@@ -20,6 +20,10 @@ contract GraphLineageRegistry is IGraphLineageRegistry {
     bytes32 public constant ENDORSEMENT_DOMAIN = keccak256("trustgraphs.graph-endorsement.v1");
     uint256 public constant REFERRAL_BUDGET = 1e18;
     uint48 public constant MAX_VALIDITY = 90 days;
+    /// @notice Lifetime limit on distinct referral subjects for one issuer and scope.
+    /// @dev Revocation, expiry, supersession, or configuration rotation frees referral budget but
+    ///      does not remove the historical claim key or make room for a new subject. The lifetime
+    ///      cap keeps referral-budget validation and active-spend reads permanently bounded.
     uint256 public constant MAX_REFERRAL_SUBJECTS = 64;
     uint256 public constant MAX_DISPLAY_NAME_BYTES = 128;
     uint256 public constant MAX_URI_BYTES = 512;
@@ -32,6 +36,7 @@ contract GraphLineageRegistry is IGraphLineageRegistry {
     mapping(bytes32 endorsementId => Endorsement) private _endorsements;
     mapping(bytes32 issuerScope => uint64) public latestSequence;
     mapping(bytes32 claimKey => bytes32 endorsementId) public claimHead;
+    // Append-only lifetime set: each issuer/scope referral subject contributes at most one key.
     mapping(bytes32 issuerScope => bytes32[] claimKeys) private _referralClaimKeys;
 
     constructor(IInstanceRegistry instanceRegistry_) {

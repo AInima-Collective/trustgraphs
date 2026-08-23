@@ -38,6 +38,11 @@ import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 ///      zero-delay path exists after the creation transaction.
 contract GovernedTrustgraphsFactory {
     address internal constant SENTINEL_OWNERS = address(0x1);
+    address internal constant SENTINEL_MODULES = address(0x1);
+    bytes32 internal constant GUARD_STORAGE_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
+    bytes32 internal constant FALLBACK_HANDLER_STORAGE_SLOT =
+        0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5;
+    uint256 public constant MAX_BOOTSTRAP_SAFE_ATTEMPTS = 16;
     uint48 public constant RECOVERY_DELAY = 14 days;
     uint256 public constant MEMBER_VOTING_DELAY = 1;
     uint256 public constant MEMBER_VOTING_PERIOD = 50_400;
@@ -52,12 +57,10 @@ contract GovernedTrustgraphsFactory {
         uint96 maxPerRootUsd;
     }
 
-    /// @notice Optional score-selected Safe owner rotation. The signer guest is distinct from the
-    ///         score-root guest and therefore names its own verifier and immutable program vkey.
+    /// @notice Optional score-selected Safe owner rotation. Verifier identity is deliberately not
+    ///         part of this per-instance tuple: the wrapper pins one canonical pair at deployment.
     struct SignerSyncConfig {
         bool enabled;
-        address verifier;
-        bytes32 programVKey;
         uint32 topN;
         uint32 minThreshold;
         uint32 targetThresholdBps;
@@ -79,6 +82,10 @@ contract GovernedTrustgraphsFactory {
     GovernedAuthorityDeployer public immutable AUTHORITY_DEPLOYER;
     SignerSyncModuleDeployer public immutable SIGNER_SYNC_DEPLOYER;
     MerkleGovModuleDeployer public immutable GOV_MODULE_DEPLOYER;
+    IZkVerifier public immutable SIGNER_SYNC_VERIFIER;
+    bytes32 public immutable SIGNER_SYNC_PROGRAM_VKEY;
+    bytes32 public immutable SAFE_PROXY_DEPLOYMENT_CODE_HASH;
+    bytes32 public immutable SAFE_PROXY_RUNTIME_CODE_HASH;
 
     mapping(bytes32 instanceId => Authority authority) private _authorities;
 
@@ -95,6 +102,9 @@ contract GovernedTrustgraphsFactory {
     error InitialCapBelowFee(uint96 supplied, uint256 feeUsd);
     error GovernanceDefaultsMismatch();
     error HybridSignerSyncUnsupported();
+    error InvalidSignerSyncVerifier();
+    error SignerSyncProgramVKeyMismatch(bytes32 expected, bytes32 actual);
+    error BootstrapSafeUnavailable(uint256 baseNonce);
 
     event GovernedInstanceCreated(
         bytes32 indexed instanceId,
@@ -120,14 +130,24 @@ contract GovernedTrustgraphsFactory {
         address safeSingleton_,
         GovernedAuthorityDeployer authorityDeployer_,
         SignerSyncModuleDeployer signerSyncDeployer_,
-        MerkleGovModuleDeployer govModuleDeployer_
+        MerkleGovModuleDeployer govModuleDeployer_,
+        IZkVerifier signerSyncVerifier_,
+        bytes32 signerSyncProgramVKey_
     ) {
         if (
             address(factory_) == address(0) || address(safeFactory_) == address(0) || safeSingleton_ == address(0)
                 || address(authorityDeployer_) == address(0) || address(signerSyncDeployer_) == address(0)
-                || address(govModuleDeployer_) == address(0)
+                || address(govModuleDeployer_) == address(0) || address(signerSyncVerifier_) == address(0)
         ) {
             revert ZeroAddress();
+        }
+        if (signerSyncProgramVKey_ == bytes32(0)) revert InvalidSignerSyncVerifier();
+        (bool ok, bytes memory returned) =
+            address(signerSyncVerifier_).staticcall(abi.encodeWithSignature("programVKey()"));
+        if (!ok || returned.length != 32) revert InvalidSignerSyncVerifier();
+        bytes32 verifierVKey = abi.decode(returned, (bytes32));
+        if (verifierVKey != signerSyncProgramVKey_) {
+            revert SignerSyncProgramVKeyMismatch(signerSyncProgramVKey_, verifierVKey);
         }
         FACTORY = factory_;
         SAFE_FACTORY = safeFactory_;
@@ -135,6 +155,11 @@ contract GovernedTrustgraphsFactory {
         AUTHORITY_DEPLOYER = authorityDeployer_;
         SIGNER_SYNC_DEPLOYER = signerSyncDeployer_;
         GOV_MODULE_DEPLOYER = govModuleDeployer_;
+        SIGNER_SYNC_VERIFIER = signerSyncVerifier_;
+        SIGNER_SYNC_PROGRAM_VKEY = signerSyncProgramVKey_;
+        SAFE_PROXY_DEPLOYMENT_CODE_HASH =
+            keccak256(abi.encodePacked(safeFactory_.proxyCreationCode(), uint256(uint160(safeSingleton_))));
+        SAFE_PROXY_RUNTIME_CODE_HASH = keccak256(safeFactory_.proxyRuntimeCode());
     }
 
     function authorityOf(bytes32 instanceId) external view returns (Authority memory) {
@@ -258,12 +283,12 @@ contract GovernedTrustgraphsFactory {
             signerModule = SIGNER_SYNC_DEPLOYER.deploy(
                 instanceId,
                 safeAddress,
-                IZkVerifier(signerSync.verifier),
+                SIGNER_SYNC_VERIFIER,
                 IAttestationAccumulator(address(MerkleSnapshot(snapshot).accumulator())),
                 ISignerSyncCheckpointSource(snapshot),
                 ISignerActivitySource(merkleGovModule),
                 MerkleSnapshot(snapshot).paramsHash(),
-                signerSync.programVKey,
+                SIGNER_SYNC_PROGRAM_VKEY,
                 signerSync.topN,
                 signerSync.minThreshold,
                 signerSync.targetThresholdBps,
@@ -338,8 +363,71 @@ contract GovernedTrustgraphsFactory {
             0,
             address(0)
         );
-        uint256 nonce = uint256(keccak256(abi.encode(block.chainid, creator, name, salt)));
-        safe = GnosisSafe(payable(SAFE_FACTORY.createProxyWithNonce(SAFE_SINGLETON, initializer, nonce)));
+        uint256 baseNonce = uint256(keccak256(abi.encode(block.chainid, creator, name, salt)));
+        for (uint256 bump; bump < MAX_BOOTSTRAP_SAFE_ATTEMPTS; ++bump) {
+            uint256 nonce = bump == 0 ? baseNonce : uint256(keccak256(abi.encode(baseNonce, bump)));
+            address candidate = _bootstrapSafeAddress(initializer, nonce);
+            if (candidate.code.length != 0) {
+                if (_isAdoptableBootstrapSafe(candidate)) return GnosisSafe(payable(candidate));
+                continue;
+            }
+            return GnosisSafe(payable(SAFE_FACTORY.createProxyWithNonce(SAFE_SINGLETON, initializer, nonce)));
+        }
+        revert BootstrapSafeUnavailable(baseNonce);
+    }
+
+    function _bootstrapSafeAddress(bytes memory initializer, uint256 nonce) internal view returns (address) {
+        bytes32 create2Salt = keccak256(abi.encodePacked(keccak256(initializer), nonce));
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff), address(SAFE_FACTORY), create2Salt, SAFE_PROXY_DEPLOYMENT_CODE_HASH
+                        )
+                    )
+                )
+            )
+        );
+    }
+
+    function _isAdoptableBootstrapSafe(address candidate) internal view returns (bool) {
+        if (candidate.codehash != SAFE_PROXY_RUNTIME_CODE_HASH) return false;
+
+        (bool ok, bytes memory result) = candidate.staticcall(abi.encodeWithSignature("masterCopy()"));
+        if (!ok || result.length != 32 || _word(result, 0) != uint256(uint160(SAFE_SINGLETON))) return false;
+
+        (ok, result) = candidate.staticcall(abi.encodeWithSignature("getOwners()"));
+        if (
+            !ok || result.length != 96 || _word(result, 0) != 32 || _word(result, 32) != 1
+                || _word(result, 64) != uint256(uint160(address(this)))
+        ) return false;
+
+        (ok, result) = candidate.staticcall(abi.encodeWithSignature("getThreshold()"));
+        if (!ok || result.length != 32 || _word(result, 0) != 1) return false;
+
+        (ok, result) = candidate.staticcall(abi.encodeWithSignature("nonce()"));
+        if (!ok || result.length != 32 || _word(result, 0) != 0) return false;
+
+        if (!_storageWordIsZero(candidate, GUARD_STORAGE_SLOT)) return false;
+        if (!_storageWordIsZero(candidate, FALLBACK_HANDLER_STORAGE_SLOT)) return false;
+
+        (ok, result) =
+            candidate.staticcall(abi.encodeWithSignature("getModulesPaginated(address,uint256)", SENTINEL_MODULES, 1));
+        return ok && result.length == 96 && _word(result, 0) == 64
+            && _word(result, 32) == uint256(uint160(SENTINEL_MODULES)) && _word(result, 64) == 0;
+    }
+
+    function _storageWordIsZero(address candidate, bytes32 slot) internal view returns (bool) {
+        (bool ok, bytes memory result) =
+            candidate.staticcall(abi.encodeWithSignature("getStorageAt(uint256,uint256)", uint256(slot), 1));
+        return ok && result.length == 96 && _word(result, 0) == 32 && _word(result, 32) == 32 && _word(result, 64) == 0;
+    }
+
+    function _word(bytes memory data, uint256 offset) internal pure returns (uint256 value) {
+        assembly ("memory-safe") {
+            value := mload(add(add(data, 0x20), offset))
+        }
     }
 
     function _execSafe(GnosisSafe safe, address target, uint256 value, bytes memory data) internal {

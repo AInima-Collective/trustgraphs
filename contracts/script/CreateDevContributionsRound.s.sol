@@ -37,6 +37,7 @@ contract CreateDevContributionsRound is Common {
     ///        factory and the file is never written back.
     /// @param name The round's display name (part of its instance id).
     /// @param distributorTokenAddr The intended payout token (presentation only; "" = unset).
+    /// @param distributorSafeAddr Initialized Safe that owns the round and its payout distributor.
     /// @param outLabel Output-file discriminator: `.docker/contributions_round_<outLabel>_deploy.json`.
     function run(
         string calldata factoryAddr,
@@ -44,6 +45,7 @@ contract CreateDevContributionsRound is Common {
         string calldata paramsPath,
         string calldata name,
         string calldata distributorTokenAddr,
+        string calldata distributorSafeAddr,
         string calldata outLabel
     ) public {
         ContributionsFactory factory = ContributionsFactory(vm.parseAddress(factoryAddr));
@@ -51,6 +53,8 @@ contract CreateDevContributionsRound is Common {
         require(parentSnapshot != address(0), "CreateDevContributionsRound: parent snapshot is zero");
         address distributorToken =
             bytes(distributorTokenAddr).length == 0 ? address(0) : vm.parseAddress(distributorTokenAddr);
+        address distributorSafe = vm.parseAddress(distributorSafeAddr);
+        require(distributorSafe != address(0), "CreateDevContributionsRound: Safe is zero");
 
         // Resolve the parent's instance id from the registry: the factory's parent link is a
         // first-class registry key, and the dev artifacts only carry addresses.
@@ -61,17 +65,16 @@ contract CreateDevContributionsRound is Common {
         ContributionsParamsCodec.Params memory params =
             ContributionsParamsJson.read(paramsPath, bytes32(0), bytes32(0), bytes32(0));
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
-        (bytes32 instanceId, address snapshot, address resolver, address mirror, address distributor) = factory
-            .createInstance(
+        (bytes32 instanceId, address snapshot, address resolver, address mirror, address distributor) = factory.createInstance(
             ContributionsFactory.CreateArgs({
                 parentInstanceId: parentInstanceId,
                 name: name,
                 // The dev catalog's presentation comes from the indexer row, not IPFS.
                 metadataURI: "",
                 params: params,
-                admin: vm.addr(_privateKey),
+                admin: distributorSafe,
                 // Floor-clamped by the factory (one block locally).
                 epochLength: 1,
                 distributorToken: distributorToken,

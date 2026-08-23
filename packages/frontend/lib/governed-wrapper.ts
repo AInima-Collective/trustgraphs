@@ -8,7 +8,7 @@
 //! (`lib/weighted-prior/contracts.ts`, `lib/composition/contracts.ts`); everything
 //! program-agnostic lives here so the wizard and both workspaces read one source of truth.
 
-import { type Address, type Hex, parseAbi, zeroAddress } from 'viem'
+import { parseAbi } from 'viem'
 
 /** Program-agnostic reads and the shared creation event, identical across all three wrappers. */
 export const governedWrapperAbi = parseAbi([
@@ -25,7 +25,7 @@ export const INITIAL_POLICY_TUPLE =
 
 /** The optional signer-sync module config tuple (`SignerSyncConfig`), for ABI templates. */
 export const SIGNER_SYNC_TUPLE =
-  '(bool enabled,address verifier,bytes32 programVKey,uint32 topN,uint32 minThreshold,uint32 targetThresholdBps)'
+  '(bool enabled,uint32 topN,uint32 minThreshold,uint32 targetThresholdBps)'
 
 /**
  * The wrappers' shared error surface, for ABI templates: including these lets simulation failures
@@ -44,6 +44,7 @@ export const GOVERNED_WRAPPER_ERRORS = [
   'error InitialFeeUnpriced(bytes32 program, uint8 band)',
   'error InitialCapBelowFee(uint96 supplied, uint256 feeUsd)',
   'error GovernanceDefaultsMismatch()',
+  'error BootstrapSafeUnavailable(uint256 baseNonce)',
 ] as const
 
 /**
@@ -53,8 +54,6 @@ export const GOVERNED_WRAPPER_ERRORS = [
  */
 export const DISABLED_SIGNER_SYNC = {
   enabled: false,
-  verifier: zeroAddress as Address,
-  programVKey: `0x${'0'.repeat(64)}` as Hex,
   topN: 0,
   minThreshold: 0,
   targetThresholdBps: 0,

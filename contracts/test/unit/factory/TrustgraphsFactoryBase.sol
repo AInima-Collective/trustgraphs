@@ -29,6 +29,7 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 
 import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
 import {MockEthUsdFeed} from "../../mocks/MockEthUsdFeed.sol";
+import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
 
@@ -104,6 +105,7 @@ abstract contract TrustgraphsFactoryBase is Test {
     ProvingVault internal vault;
     TestUSDC internal usdc;
     MockEthUsdFeed internal feed;
+    MockSafeOwner internal safeAdmin;
 
     function setUp() public virtual {
         schemaRegistry = new SchemaRegistry();
@@ -118,6 +120,7 @@ abstract contract TrustgraphsFactoryBase is Test {
         // A real vault, so the prepay path in `createInstance` is exercised rather than stubbed.
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
+        safeAdmin = new MockSafeOwner(address(this), 1);
         vault = new ProvingVault(
             IInstanceRegistry(address(registry)), usdc, feed, 1 hours, 100e8, 100_000e8, address(this), address(this)
         );
@@ -178,6 +181,10 @@ abstract contract TrustgraphsFactoryBase is Test {
         p.schemaUid = bytes32(0);
         p.accumulator = address(0);
         p.chainId = 0;
+        // The golden vector exercises the strict additive lane-2 profile. The base factory entry
+        // point remains lane-1-only; `createHybridInstance` derives its two domains itself.
+        p.envelope0DomainSeparators = new bytes32[](0);
+        p.lane2MaxHeadAge = 0;
     }
 
     /// @dev A wizard's default submission. `admin`, `withDistributor`, `distributorToken` and `salt`

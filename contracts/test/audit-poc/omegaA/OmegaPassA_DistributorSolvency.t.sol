@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {MerkleFundDistributor} from "src/merkle/MerkleFundDistributor.sol";
 import {TestUSDC} from "src/tokens/TestUSDC.sol";
+import {IMerkleFundDistributor} from "interfaces/IMerkleFundDistributor.sol";
 import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -32,9 +33,9 @@ contract PassAFakeSnapshot {
 ///
 /// `MerkleFundDistributor.claim` computes
 ///   `claimedAmount = mulDiv(amountFunded - feeAmount, value, totalMerkleValue)`
-/// and never checks `amountDistributed + claimedAmount <= amountFunded - feeAmount`. All
-/// distributions of a token share one contract balance, so a single distribution whose leaf
-/// values sum above its own `totalMerkleValue` pays itself out of OTHER funders' rounds.
+/// and caps the cumulative spend at `amountFunded - feeAmount`. All distributions of a token share
+/// one contract balance, so this regression proves a malicious round cannot pay itself out of
+/// OTHER funders' rounds even when its leaf values exceed `totalMerkleValue`.
 ///
 /// The owner reaches that state with one instant, un-timelocked call: `setMerkleSnapshot`.
 /// (Fee INCREASES are delayed by `FEE_INCREASE_DELAY`; the snapshot pointer, which is strictly
@@ -80,7 +81,7 @@ contract OmegaPassA_DistributorSolvency is Test {
         return keccak256(bytes.concat(keccak256(abi.encode(account, value))));
     }
 
-    function test_PassA_OwnerRepointsSnapshotAndDrainsAnotherFundersRound() public {
+    function test_H3_OwnerRepointCannotDrainAnotherFundersRound() public {
         // 1. An unrelated funder funds a real round against the proven root.
         vm.prank(funder);
         uint256 honestIndex = dist.distribute(address(token), 1_000_000, honestRoot);
@@ -94,21 +95,19 @@ contract OmegaPassA_DistributorSolvency is Test {
         vm.prank(attacker);
         uint256 evilIndex = dist.distribute(address(token), 1, evilRoot);
 
-        // 4. One leaf whose `value` exceeds `totalMerkleValue` pays out 1_000_000x its funding.
+        // 4. One leaf whose `value` exceeds `totalMerkleValue` is rejected at the round boundary.
         bytes32[] memory noProof = new bytes32[](0);
-        uint256 got = dist.claim(evilIndex, attacker, 1_000_000, noProof);
-        assertEq(got, 1_000_000, "claim scaled past the round's own funding");
-        assertEq(token.balanceOf(attacker), 1_000_000);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1_000_000, 1));
+        dist.claim(evilIndex, attacker, 1_000_000, noProof);
+        assertEq(token.balanceOf(attacker), 0);
 
-        // 5. The honest round is now insolvent: the victim's legitimate claim reverts.
-        assertEq(token.balanceOf(address(dist)), 1, "distributor drained");
-        vm.expectRevert();
-        dist.claim(honestIndex, victim, 1_000_000, noProof);
+        // 5. The honest round remains fully solvent and claimable.
+        assertEq(token.balanceOf(address(dist)), 1_000_001, "both round budgets remain held");
+        assertEq(dist.claim(honestIndex, victim, 1_000_000, noProof), 1_000_000);
     }
 
-    /// The bookkeeping itself is what is broken: a distribution can report more distributed than
-    /// it was ever funded, and `sweep` then underflows.
-    function test_PassA_AmountDistributedExceedsAmountFunded() public {
+    /// The bookkeeping cap also keeps the expired-round sweep path live after a rejected overclaim.
+    function test_H3_RejectedOverclaimLeavesRoundSweepable() public {
         vm.prank(funder);
         dist.distribute(address(token), 1_000_000, honestRoot);
         dist.setMerkleSnapshot(address(evil));
@@ -116,14 +115,14 @@ contract OmegaPassA_DistributorSolvency is Test {
         uint256 evilIndex = dist.distribute(address(token), 1, evilRoot, uint64(block.timestamp + 1 days));
 
         bytes32[] memory noProof = new bytes32[](0);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1_000_000, 1));
         dist.claim(evilIndex, attacker, 1_000_000, noProof);
 
         MerkleFundDistributor.DistributionState memory d = dist.getDistribution(evilIndex);
         assertEq(d.amountFunded, 1);
-        assertEq(d.amountDistributed, 1_000_000, "distributed > funded, unchecked");
+        assertEq(d.amountDistributed, 0, "rejected claim changed round accounting");
 
         vm.warp(block.timestamp + 2 days);
-        vm.expectRevert(); // arithmetic underflow in `amountFunded - feeAmount - amountDistributed`
-        dist.sweep(evilIndex);
+        assertEq(dist.sweep(evilIndex), 1, "the round's own budget remains sweepable");
     }
 }

@@ -135,7 +135,9 @@ Order matters (the resolver _is_ the accumulator, and `MerkleSnapshot` needs its
    bring-up where governance, any paid policy, and authority handoff are coordinated separately;
    `DeployNetwork.s.sol` is the non-factory legacy path.
    That legacy script requires a nonzero `epochLength` argument and applies it before returning;
-   zero is rejected because it disables the schedule and hands checkpoint timing to callers.
+   zero is rejected because it disables the schedule and hands checkpoint timing to callers. If
+   its distributor flag is enabled, its additional distributor-owner argument must name an
+   initialized Safe; an EOA is rejected before broadcast.
 3. **Timelocks** — `contracts/script/DeployTimelocks.s.sol` deploys the constitutional (long-delay) and
    operational (short-delay) `TimelockController`s. On a controller-backed trust graph, call
    `proposeConstitutionalTransfer(timelock)` from the current holder, then have the timelock execute
@@ -461,12 +463,21 @@ SP1_SKIP_PROGRAM_BUILD=true cargo run --release --manifest-path zk/prover/Cargo.
   --example m1_guest_cost_matrix
 ```
 
-The host publishes capability profile v1 in its status heartbeat: 50,000 raw records, 50,000 live
-edges, 10,000 unique nodes, 10,000 maximum out-degree, 128 MiB of witness bytes, 10,000 lane-2
-anchors, 25,000 signature checks, and 100 iterations. Boundary and one-over tests lock every
-dimension. These are this operator's economic limits, not protocol rules and not guest assertions:
-the refusal names the profile version, dimension, observed value, and limit, and **another prover
-may accept the same valid checkpoint**.
+The shipped host profile v2 is anchored to the largest calibrated row above: 1,800 raw/live
+records. Its cheap pre-download bound must admit two endpoints per record, so it permits 3,600
+conservatively bounded unique nodes and 1,800 maximum out-degree, lane-2 anchors, and signature
+checks. It retains 100 iterations and an independent 128 MiB witness memory ceiling; the published
+matrix did not establish a maximum serialized witness size, so that field is not presented as a
+calibration result. Boundary and one-over tests lock every dimension.
+
+This makes the binding order explicit. The default profile's raw-record and conservative-node
+ceilings co-bind around 1,800 inputs. If an operator raises that profile, the unchanged 8B-cycle
+default accepts 3,467 and refuses 3,468 max-iteration trust inputs under the v1 model. The on-chain
+`InputCapacity.MAX_TOTAL_INPUTS` and vault price band remain 200,000: they are protocol/payment
+ceilings, not evidence that this host can prove that much work. Both the profile and cycle limit are
+configurable and published in the status heartbeat, so a better-resourced prover can raise them
+without changing a guest or vkey. Refusals name the configured limit, and **another prover may
+accept the same valid checkpoint**.
 
 ## Proving & on-chain gas — status and requirements
 

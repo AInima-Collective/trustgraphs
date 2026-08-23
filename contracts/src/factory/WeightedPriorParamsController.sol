@@ -13,6 +13,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 /// @title WeightedPriorParamsController
 /// @notice Validates full prior bytes at proposal time and activates only their O(1) commitment.
 /// @dev The proposal calldata is the recovery source. No manifest or entry array is stored.
+///      Cancelled proposal versions are never reused.
 contract WeightedPriorParamsController is IWeightedPriorParamsController, Ownable2Step {
     bytes32 public immutable instanceId;
     address public immutable snapshot;
@@ -21,6 +22,7 @@ contract WeightedPriorParamsController is IWeightedPriorParamsController, Ownabl
     uint48 public immutable activationDelay;
 
     uint64 public version;
+    uint64 public latestVersion;
     bytes32 public currentParamsHash;
     bool public versionOnePublished;
 
@@ -79,6 +81,7 @@ contract WeightedPriorParamsController is IWeightedPriorParamsController, Ownabl
         initialPublisher = initialPublisher_;
         activationDelay = activationDelay_;
         version = 1;
+        latestVersion = 1;
         currentParamsHash = encoded;
         _initialParams = initialParams;
         _currentParams = initialParams;
@@ -137,7 +140,8 @@ contract WeightedPriorParamsController is IWeightedPriorParamsController, Ownabl
         next.manifestSha256 = prior.manifestSha256;
         WeightedPriorValidator.validateRotation(next, _initialParams);
 
-        pendingVersion = version + 1;
+        pendingVersion = latestVersion + 1;
+        latestVersion = pendingVersion;
         readyAt = uint48(block.timestamp) + activationDelay;
         bytes32 nextHash = WeightedPriorParamsCodec.hash(next);
         proposalId = keccak256(

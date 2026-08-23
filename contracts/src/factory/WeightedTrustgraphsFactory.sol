@@ -8,6 +8,7 @@ import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {EASIndexerResolver} from "src/eas/resolvers/EASIndexerResolver.sol";
 import {WeightedPriorParamsController} from "src/factory/WeightedPriorParamsController.sol";
 import {WeightedPriorParamsControllerDeployer} from "src/factory/WeightedInstanceDeployers.sol";
+import {SafeOwnerPolicy} from "src/factory/SafeOwnerPolicy.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {WeightedPriorParamsCodec} from "src/params/WeightedPriorParamsCodec.sol";
@@ -29,6 +30,7 @@ contract WeightedTrustgraphsFactory {
         bytes manifest;
         /// Digest of the non-consensus provenance document for this prior.
         bytes32 metadataDigest;
+        /// Instance authority. Must be an initialized Safe when `withDistributor` is true.
         address admin;
         uint64 epochLength;
         bool withDistributor;
@@ -90,6 +92,7 @@ contract WeightedTrustgraphsFactory {
     error UnknownInstance(bytes32 instanceId);
     error NotInstanceAuthority(bytes32 instanceId, address owner);
     error DistributorAlreadyAttached(bytes32 instanceId, address distributor);
+    error InvalidDistributorSafe(address owner);
 
     constructor(
         IEAS eas,
@@ -143,6 +146,7 @@ contract WeightedTrustgraphsFactory {
 
         address admin = args.admin == address(0) ? msg.sender : args.admin;
         if (admin == address(this)) revert InvalidAdmin();
+        if (args.withDistributor && !SafeOwnerPolicy.isSafe(admin)) revert InvalidDistributorSafe(admin);
         instanceId = computeInstanceId(msg.sender, args.name, args.salt);
 
         EASIndexerResolver indexerResolver = new EASIndexerResolver(EAS);
@@ -235,7 +239,7 @@ contract WeightedTrustgraphsFactory {
 
     /// @notice Attach a fund distributor to an instance created without one. Permissionless to
     ///         CALL — anyone may pay the gas — but the deployed fund is owned by `owner`, which
-    ///         must hold the instance's constitutional role right now. Same terms as the
+    ///         must be an initialized Safe holding the instance's constitutional role right now. Same terms as the
     ///         creation-time path: fee 0, `feeRecipient = owner`.
     function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
         external
@@ -251,6 +255,7 @@ contract WeightedTrustgraphsFactory {
         if (!snapshot.hasRole(snapshot.CONSTITUTIONAL_ROLE(), owner)) {
             revert NotInstanceAuthority(instanceId, owner);
         }
+        if (!SafeOwnerPolicy.isSafe(owner)) revert InvalidDistributorSafe(owner);
         distributor = address(DISTRIBUTOR_DEPLOYER.deploy(owner, record.snapshot, owner, 0, false));
         distributorOf[instanceId] = distributor;
         emit DistributorAttached(instanceId, distributor, distributorToken);

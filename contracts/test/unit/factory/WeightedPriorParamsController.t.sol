@@ -82,6 +82,7 @@ contract WeightedPriorParamsControllerTest is Test {
         assertEq(v1.manifestSha256, sha256(initialManifest));
         assertEq(v1.metadataDigest, keccak256("initial provenance"));
         assertEq(v1.proposedAt, v1.activatedAt);
+        assertEq(controller.latestVersion(), 1);
         assertEq(WeightedPriorParamsCodec.hash(controller.getCurrentParams()), snapshot.paramsHash());
     }
 
@@ -194,8 +195,10 @@ contract WeightedPriorParamsControllerTest is Test {
     function test_CancelRequiresOwnerAndAllowsFreshValidatedProposal() public {
         controller.publishInitialVersion();
         vm.prank(OWNER);
-        (, bytes32 cancelledId,) =
+        (uint64 cancelledVersion, bytes32 cancelledId,) =
             controller.proposePrior(_manifest(2, uint64(block.chainid), 3), keccak256("cancel me"));
+        assertEq(cancelledVersion, 2);
+        assertEq(controller.latestVersion(), 2);
 
         vm.expectRevert();
         controller.cancelPrior();
@@ -206,10 +209,13 @@ contract WeightedPriorParamsControllerTest is Test {
 
         vm.recordLogs();
         vm.prank(OWNER);
-        (, bytes32 replacementId,) =
+        (uint64 replacementVersion, bytes32 replacementId,) =
             controller.proposePrior(_manifest(4, uint64(block.chainid), 9), keccak256("replacement"));
         assertNotEq(cancelledId, replacementId);
-        assertEq(controller.getPendingPrior().version, 2);
+        assertEq(replacementVersion, 3);
+        assertEq(controller.getPendingPrior().version, 3);
+        assertEq(controller.latestVersion(), 3);
+        assertEq(controller.version(), 1, "cancelled versions do not become active");
     }
 
     function test_ConstructorRejectsManifestAbsentOrCommitmentMismatch() public {

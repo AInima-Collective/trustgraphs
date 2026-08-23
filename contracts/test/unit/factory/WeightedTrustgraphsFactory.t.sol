@@ -25,6 +25,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {MockZkVerifier} from "../../mocks/MockZkVerifier.sol";
+import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 
 contract WeightedTrustgraphsFactoryTest is Test {
     uint256 internal constant SCALE = 1e18;
@@ -41,6 +42,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
     MerkleFundDistributorDeployer internal distributorDeployer;
     WeightedPriorParamsControllerDeployer internal controllerDeployer;
     WeightedTrustgraphsFactory internal factory;
+    MockSafeOwner internal safeAdmin;
 
     struct Created {
         bytes32 instanceId;
@@ -74,6 +76,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
         snapshotDeployer = new MerkleSnapshotDeployer();
         distributorDeployer = new MerkleFundDistributorDeployer();
         controllerDeployer = new WeightedPriorParamsControllerDeployer();
+        safeAdmin = new MockSafeOwner(address(this), 1);
         factory = new WeightedTrustgraphsFactory(
             IEAS(address(eas)),
             schemaRegistrar,
@@ -148,7 +151,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
     function test_FactoryAndDeployersAreInertAfterCreation() public {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("inert weighted", 2);
         args.withDistributor = true;
-        args.admin = address(0xA11CE);
+        args.admin = address(safeAdmin);
         Created memory created = _create(args);
         MerkleSnapshot snapshot = MerkleSnapshot(created.snapshot);
 
@@ -218,7 +221,7 @@ contract WeightedTrustgraphsFactoryTest is Test {
 
     function test_AttachDistributorDeploysAFundOwnedByTheVerifiedAuthority() public {
         WeightedTrustgraphsFactory.CreateArgs memory args = _args("fundless weighted", 2);
-        args.admin = address(0xA11CE);
+        args.admin = address(safeAdmin);
         Created memory created = _create(args);
         assertEq(created.distributor, address(0), "created without a fund");
 
@@ -244,6 +247,21 @@ contract WeightedTrustgraphsFactoryTest is Test {
             )
         );
         factory.attachDistributor(again.instanceId, address(0x57AA), address(0));
+    }
+
+    function test_DistributorCreationAndAttachmentRejectEoaOwners() public {
+        address eoa = address(0xE0A);
+        WeightedTrustgraphsFactory.CreateArgs memory funded = _args("unsafe weighted", 2);
+        funded.admin = eoa;
+        funded.withDistributor = true;
+        vm.expectRevert(abi.encodeWithSelector(WeightedTrustgraphsFactory.InvalidDistributorSafe.selector, eoa));
+        factory.createInstance(funded);
+
+        WeightedTrustgraphsFactory.CreateArgs memory fundless = _args("unsafe weighted attach", 2);
+        fundless.admin = eoa;
+        Created memory created = _create(fundless);
+        vm.expectRevert(abi.encodeWithSelector(WeightedTrustgraphsFactory.InvalidDistributorSafe.selector, eoa));
+        factory.attachDistributor(created.instanceId, eoa, address(0));
     }
 
     function test_WeightedContractsHaveExplicitEip170Headroom() public view {

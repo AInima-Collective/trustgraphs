@@ -28,15 +28,12 @@ contract SlotSnapshot {
     }
 }
 
-/// @notice PASS A PoC.
+/// @notice Regression for the documented lifetime referral-subject bound.
 ///
 /// `GraphLineageRegistry._referralClaimKeys[issuerScope]` is push-only. A claim key is appended
-/// the first time an (issuer, subject, scope, Referral) claim is made and is NEVER removed — not
-/// on `revokeEndorsement`, not on expiry. The array is capped at `MAX_REFERRAL_SUBJECTS = 64`, so
-/// once an issuer has referred 64 subjects in a scope it can never refer a 65th, even after every
-/// one of the 64 has been revoked and every unit of the 1e18 referral budget is free again.
-///
-/// The counter that gates capacity is incremented on the forward path and decremented on none.
+/// the first time an (issuer, subject, scope, Referral) claim is made and remains after revocation
+/// or expiry. The lifetime cap of 64 distinct subjects permanently bounds referral-history scans,
+/// while the separate 1e18 budget tracks only referral heads that can become active.
 contract OmegaPassA_LineageReferralSlots is Test {
     bytes32 internal constant PROGRAM = keccak256("trust-graph");
     bytes32 internal constant PARAMS = keccak256("params-v1");
@@ -69,19 +66,17 @@ contract OmegaPassA_LineageReferralSlots is Test {
         }
     }
 
-    function test_PassA_RevokedReferralsNeverFreeTheirSubjectSlot() public {
+    function test_RevokedReferralsDoNotFreeLifetimeSubjectCapacity() public {
         bytes32[] memory ids = new bytes32[](64);
 
         // 64 tiny referrals: total weight 64 * 1e16 = 6.4e17, well under the 1e18 budget.
         for (uint64 i = 0; i < 64; i++) {
             vm.prank(issuerAuthority);
-            ids[i] = registry.issueEndorsement(
-                _input(subjectLineages[i], subjectConfigs[i], 1e16, i + 1)
-            );
+            ids[i] = registry.issueEndorsement(_input(subjectLineages[i], subjectConfigs[i], 1e16, i + 1));
         }
         assertEq(registry.referralClaimKeys(issuerLineage, SCOPE).length, 64);
 
-        // Revoke every one of them. The budget is now entirely free...
+        // Revocation frees the active-spend budget, but not the append-only history bound.
         for (uint256 i = 0; i < 64; i++) {
             vm.prank(issuerAuthority);
             registry.revokeEndorsement(ids[i], keccak256(abi.encode("revocation", i)));
@@ -90,8 +85,7 @@ contract OmegaPassA_LineageReferralSlots is Test {
         assertEq(spent, 0, "budget freed");
         assertEq(unused, registry.REFERRAL_BUDGET());
 
-        // ...but the slot list is not, and it is the thing that gates a new subject.
-        assertEq(registry.referralClaimKeys(issuerLineage, SCOPE).length, 64, "slots never released");
+        assertEq(registry.referralClaimKeys(issuerLineage, SCOPE).length, 64, "lifetime history is retained");
         vm.prank(issuerAuthority);
         vm.expectRevert(abi.encodeWithSelector(IGraphLineageRegistry.TooManyReferralSubjects.selector, 64));
         registry.issueEndorsement(_input(subjectLineages[64], subjectConfigs[64], 1e16, 65));
@@ -115,14 +109,7 @@ contract OmegaPassA_LineageReferralSlots is Test {
         );
         vm.prank(authority);
         (lineageId,) = registry.registerLineage(
-            instanceId,
-            keccak256(abi.encode("family", index)),
-            METHOD,
-            SCOPE,
-            IDENTITY,
-            POLICY,
-            "graph",
-            "ipfs://meta"
+            instanceId, keccak256(abi.encode("family", index)), METHOD, SCOPE, IDENTITY, POLICY, "graph", "ipfs://meta"
         );
     }
 

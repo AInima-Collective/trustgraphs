@@ -65,6 +65,12 @@ struct CreateArgs {
 }
 ```
 
+If `withDistributor` is true, `admin` (including the zero-address fallback to `msg.sender`) must be
+an initialized Safe with a nonempty owner set and a coherent nonzero threshold. An EOA or an
+uninitialized/unrelated contract reverts `InvalidDistributorSafe`. The governed wrappers satisfy
+this automatically by making their freshly initialized instance Safe the admin before they call
+the base factory.
+
 `params.schemaUid`, `params.accumulator` and `params.chainId` are **derived** — submit them as zero.
 The factory fills them and rejects anything else (`DerivedFieldNotZero`), because an instance cannot
 be allowed to name its own identity: a params struct copy-pasted from another network would
@@ -497,7 +503,8 @@ config with a wrong vkey fails closed at the deployer.
 
 ### 6.2 Adding a fund after creation
 
-`withDistributor` at creation is a convenience, not a deadline. Each base factory exposes
+`withDistributor` at creation is a convenience, not a deadline. A creation-time fund is allowed
+only when the instance admin is an initialized Safe. Each base factory exposes
 
 ```solidity
 function attachDistributor(bytes32 instanceId, address owner, address distributorToken)
@@ -505,8 +512,8 @@ function attachDistributor(bytes32 instanceId, address owner, address distributo
 ```
 
 It deploys a `MerkleFundDistributor` for an existing instance through the same deployer creation
-uses (fee 0, owner as named — the factory requires the owner to be the snapshot's current
-constitutional holder, so on a governed network attaching a fund is a Safe action) and emits
+uses (fee 0, owner as named — the factory requires the owner to be both an initialized Safe and the
+snapshot's current constitutional holder) and emits
 `DistributorAttached(instanceId, distributor, distributorToken)`, which is how the indexer
 discovers it with no config edit. The app offers this from the network's Features tab.
 
@@ -517,7 +524,8 @@ its home is the parent's page. `ContributionsFactory.createInstance` creates the
 schemas, resolver, accumulator mirror, snapshot, distributor, params controller, registration — in
 one transaction, gated on the caller holding the parent snapshot's `CONSTITUTIONAL_ROLE` (a
 proposal, on a governed network). Anyone can create a trust network; only a network's authority can
-hang a contribution round on it. See
+hang a contribution round on it. Every round includes a distributor, so its `admin` must be an
+initialized Safe even when the parent-authority caller is a separate bootstrap address. See
 [`./contributions/runbook.md`](./contributions/runbook.md) for the flow and the honest mainnet gas
 number.
 
@@ -608,7 +616,8 @@ change only its own row's `paramsHash`; a factory bug can add rows but never rew
 
 Locally, `pnpm deploy:contracts` does all of it. `contracts/script/CreateDevInstances.s.sol` creates the
 dev-seed networks through the canonical factory; `DeployZodiacSafes` then transfers each typed
-params controller and both module authorities to that network's Safe before deployment completes.
+params controller and both module authorities to that network's Safe, and `AttachDevDistributor`
+adds the Safe-owned fund before deployment completes.
 The browser uses the governed wrapper so the equivalent ownership is atomic in one transaction.
 
 ## 9. Cold run

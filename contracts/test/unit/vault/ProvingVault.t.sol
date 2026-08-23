@@ -3,6 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {ProvingVault} from "src/vault/ProvingVault.sol";
 import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
@@ -25,6 +26,15 @@ contract WrongDecimalsFeed is IEthUsdFeed {
     }
 
     function decimals() external pure returns (uint8) {
+        return 18;
+    }
+}
+
+/// @notice A stablecoin that does not match the vault's six-decimal accounting scale.
+contract WrongDecimalsStablecoin is ERC20 {
+    constructor() ERC20("Wrong Decimals", "BAD") {}
+
+    function decimals() public pure override returns (uint8) {
         return 18;
     }
 }
@@ -183,6 +193,11 @@ contract ProvingVaultTest is Test {
         vault.setPolicy(INSTANCE, minInterval, uint96(maxUsd));
     }
 
+    function _enableProvenance() internal {
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
+    }
+
     /// Land a root through the vault, as `sender`, paying `recipient`.
     function _claim(uint256 checkpointId, address sender, address recipient)
         internal
@@ -301,6 +316,7 @@ contract ProvingVaultTest is Test {
     /// `MerkleSnapshot` now records the journal's recipient per applied checkpoint, so the bounty
     /// survives the submission and `claim` pays it afterwards.
     function test_LandingTheProofDirectlyDoesNotStripTheBounty() public {
+        _enableProvenance();
         _fund(10 ether, 0);
         _policy(0, 1_000 * vault.USD());
         uint256 id = _mint(bytes32(uint256(1)), 5, 100);
@@ -325,6 +341,7 @@ contract ProvingVaultTest is Test {
     }
 
     function test_ClaimIsPermissionlessButOnlyEverPaysTheJournalsRecipient() public {
+        _enableProvenance();
         _fund(10 ether, 0);
         _policy(0, 1_000 * vault.USD());
         uint256 id = _mint(bytes32(uint256(1)), 5, 100);
@@ -336,6 +353,67 @@ contract ProvingVaultTest is Test {
         vault.claim(INSTANCE, id);
         assertGt(vault.creditOf(alice, address(0)), 0);
         assertEq(vault.creditOf(mallory, address(0)), 0);
+    }
+
+    function test_ClaimUsesTheNamedCheckpointsAcceptedRootAndAccumulator() public {
+        _enableProvenance();
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+
+        uint256 first = _mint(keccak256("acc-0"), 5, 100);
+        snapshot.submitProof(first, keccak256("root-0"), IPFS, CID, TOTAL, bytes32(0), alice, hex"");
+        uint256 second = _mint(keccak256("acc-1"), 5, 200);
+        snapshot.submitProof(second, keccak256("root-1"), IPFS, CID, TOTAL, bytes32(0), mallory, hex"");
+
+        vault.claim(INSTANCE, first);
+        vault.claim(INSTANCE, second);
+
+        assertTrue(vault.isClaimed(INSTANCE, first));
+        assertTrue(vault.isClaimed(INSTANCE, second));
+        assertGt(vault.creditOf(alice, address(0)), 0, "older checkpoint retained its own bounty");
+        assertGt(vault.creditOf(mallory, address(0)), 0, "newer checkpoint was not poisoned");
+    }
+
+    function test_DistinctCheckpointAccumulatorsWithTheSameRootEachPay() public {
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+
+        uint256 first = _mint(keccak256("acc-0"), 5, 100);
+        _claim(first, alice, alice);
+        uint256 creditAfterFirst = vault.creditOf(alice, address(0));
+
+        uint256 second = _mint(keccak256("acc-1"), 5, 200);
+        _claim(second, alice, alice);
+
+        assertGt(vault.creditOf(alice, address(0)), creditAfterFirst, "two distinct proofs each pay");
+        assertEq(snapshot.lastAppliedCheckpoint(), second);
+    }
+
+    function test_AlreadyPaidProofIdentitySkipsWithoutDiscardingTheRoot() public {
+        _fund(10 ether, 0);
+        _policy(0, 1_000 * vault.USD());
+
+        bytes32 repeatedAcc = keccak256("acc-repeated");
+        uint256 first = _mint(repeatedAcc, 5, 100);
+        _claim(first, alice, alice);
+        uint256 creditAfterFirst = vault.creditOf(alice, address(0));
+
+        uint256 intervening = _mint(keccak256("acc-intervening"), 5, 200);
+        IProvingVault.SubmitArgs memory interveningArgs = _args(intervening, alice);
+        interveningArgs.outputRoot = keccak256("intervening-root");
+        vm.prank(alice);
+        vault.submitAndClaim(INSTANCE, interveningArgs);
+        uint256 creditBeforeRepeated = vault.creditOf(alice, address(0));
+
+        uint256 repeated = _mint(repeatedAcc, 5, 300);
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit IProvingVault.ClaimSkipped(INSTANCE, repeated, uint8(IProvingVault.IneligibleReason.AlreadyClaimed));
+        _claim(repeated, alice, alice);
+
+        assertEq(snapshot.lastAppliedCheckpoint(), repeated, "verified root was retained");
+        assertFalse(vault.isClaimed(INSTANCE, repeated), "a skipped payout does not consume the checkpoint slot");
+        assertGt(creditBeforeRepeated, creditAfterFirst, "intervening distinct proof paid");
+        assertEq(vault.creditOf(alice, address(0)), creditBeforeRepeated, "reused proof identity was not paid twice");
     }
 
     function test_ClaimingAnUnappliedCheckpointReverts() public {
@@ -395,6 +473,7 @@ contract ProvingVaultTest is Test {
     /// A zero payout must not consume the checkpoint's one-shot bounty slot. Marking it
     /// regardless meant a single missed oracle heartbeat destroyed that root's fee forever.
     function test_AZeroPayoutDoesNotBurnTheBountySlot() public {
+        _enableProvenance();
         _fund(10 ether, 0);
         _policy(0, 1_000 * vault.USD());
         feed.set(3_000e8, block.timestamp - 2 hours); // feed goes stale
@@ -445,6 +524,12 @@ contract ProvingVaultTest is Test {
         WrongDecimalsFeed bad = new WrongDecimalsFeed();
         vm.expectRevert(abi.encodeWithSelector(IProvingVault.FeedDecimalsUnsupported.selector, 18));
         new ProvingVault(registry, usdc, bad, 1 hours, 100e8, 100_000e8, feeSetter, admin);
+    }
+
+    function test_AStablecoinWithTheWrongDecimalsIsRejectedAtDeployment() public {
+        WrongDecimalsStablecoin bad = new WrongDecimalsStablecoin();
+        vm.expectRevert(abi.encodeWithSelector(ProvingVault.StablecoinDecimalsUnsupported.selector, 18));
+        new ProvingVault(registry, bad, feed, 1 hours, 100e8, 100_000e8, feeSetter, admin);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -641,9 +726,7 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(weighted, 20_000, 0), 2);
         assertEq(vault.bandOf(weighted, 20_001, 0), 3);
         assertEq(vault.bandOf(weighted, 10_000_000, 0), 0, "oversized is unpriced, never cheap");
-        assertEq(
-            vault.bandOf(weighted, 900, 400_000), 0, "both lanes count toward the band, exactly like trust-graph"
-        );
+        assertEq(vault.bandOf(weighted, 900, 400_000), 0, "both lanes count toward the band, exactly like trust-graph");
     }
 
     /// Size is the SUM of both lanes, for every program, because that is what the operator's
@@ -673,12 +756,8 @@ contract ProvingVaultTest is Test {
         _policy(0, 1_000 * vault.USD());
 
         uint64[4] memory work = [uint64(1_000), uint64(20_000), uint64(200_000), uint64(200_001)];
-        uint256[4] memory expectedFee = [
-            uint256(10) * vault.USD(),
-            uint256(20) * vault.USD(),
-            uint256(30) * vault.USD(),
-            uint256(0)
-        ];
+        uint256[4] memory expectedFee =
+            [uint256(10) * vault.USD(), uint256(20) * vault.USD(), uint256(30) * vault.USD(), uint256(0)];
         for (uint256 i; i < work.length; ++i) {
             anchors.setState(keccak256(abi.encode("anchor", i)), uint64(i + 1), work[i]);
             uint256 checkpointId = snapshot.trigger();
@@ -724,11 +803,9 @@ contract ProvingVaultTest is Test {
         assertEq(vault.bandOf(PROGRAM, 0, anchors.anchorCount()), 2, "admitted work is priced honestly");
     }
 
-    /// The operator's refusal boundary and this vault's top band must be the SAME number, or we
-    /// price proofs nobody will produce. `operator_core::policy::MAX_PRICED_INPUTS` carries the
-    /// Rust half (`the_refusal_boundary_is_exactly_the_vaults_top_priced_band`), and it derives
-    /// `cycle_limit` from it so the two cannot drift apart quietly.
-    function test_TheTopBandAndTheOperatorsCycleLimitAgree() public view {
+    /// Cross-language protocol pin: Rust publishes the same 200,000 payment/ingress ceiling, while
+    /// each operator remains free to configure a smaller or larger local proving envelope.
+    function test_TheProtocolInputCeilingStaysCrossLanguagePinned() public view {
         uint64 boundary = vault.MAX_PRICED_INPUTS();
         assertEq(boundary, 200_000, "if you change this, change operator_core::MAX_PRICED_INPUTS");
         assertEq(vault.bandOf(PROGRAM, boundary, 0), 3, "the top priced band");

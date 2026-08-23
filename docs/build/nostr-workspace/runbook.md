@@ -11,7 +11,7 @@ immutable TGNW archives, anchoring, and offline input assembly are specified ste
 | --- | --- |
 | program | `keccak256("nostr-workspace")` |
 | output domain | `keccak256("trustgraphs.output.nostr-member.v1")` |
-| production vkey | `0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3` |
+| current rebuilt vkey | `0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed` |
 | pilot params hash | `0xaf83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd` |
 | envelope/node kinds | envelope `2`; Nostr DID `2`; Buzz community `3` |
 | Buzz source profile | `a362fecc2389955f942c9581bdfeba379ab115b3` plus the pinned compatibility patch |
@@ -27,7 +27,7 @@ Build the detached guest and witness-enabled host with `task zk:build`. Deploy t
 
 ```sh
 export SP1_VERIFIER_GATEWAY=0x...
-export NOSTR_WORKSPACE_VKEY=0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3
+export NOSTR_WORKSPACE_VKEY=0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed
 export NOSTR_WORKSPACE_PARAMS_HASH=0xaf83d14a8b8fe347e8a3d1465ce148ccd03b2bc2e32a6f53e6f1f6b97826a2bd
 export NOSTR_COMMUNITY_NODE_ID=0x...
 export NOSTR_MEMBER_NODE_IDS=0xagentNode,...

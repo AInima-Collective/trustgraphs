@@ -3,13 +3,14 @@ pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ParamsCodec} from "src/params/ParamsCodec.sol";
+import {AnchorRegistry} from "src/registry/AnchorRegistry.sol";
 
 /// @title AuditEncodingParity — AUDIT PoC (pre-testnet review, agent 2)
-/// @notice Solidity side of the cross-language check for the encodings that NO golden vector
-///         currently exercises: the non-empty `domainSetHash` branch, a `paramsHash` with
-///         `minWeightFp` / `envelope0DomainSeparators` / `lane2MaxHeadAge` all non-default, an
-///         anchor leaf with `envelopeKind != 0`, and a MULTI-entry `skippedDigest`.
+/// @notice Independent Solidity regression for boundary encodings now covered by the canonical
+///         trust-graph and Nostr-workspace goldens: the non-empty `domainSetHash` branch, a complete
+///         non-default `paramsHash`, a non-zero envelope kind and a multi-entry skipped digest.
 ///         Expected values are produced by
 ///         `cargo test -p pagerank-core --test audit_poc_encoding`.
 contract AuditEncodingParityTest is Test {
@@ -49,7 +50,7 @@ contract AuditEncodingParityTest is Test {
         });
     }
 
-    /// The concat branch of `domainSetHash` (0 in every golden vector).
+    /// The non-empty concat branch of `domainSetHash`.
     function test_domainSetHash_nonEmpty_matchesRust() public view {
         bytes32[] memory seps = new bytes32[](2);
         seps[0] = bytes32(uint256(0xD1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1));
@@ -57,13 +58,13 @@ contract AuditEncodingParityTest is Test {
         assertEq(ParamsCodec.domainSetHash(seps), json.readBytes32(".domainSetHash"), "domainSetHash");
     }
 
-    /// paramsHash with the three unpinned fields non-default.
-    function test_paramsHash_unpinnedFields_matchRust() public view {
+    /// paramsHash with the three boundary fields non-default.
+    function test_paramsHash_boundaryFields_matchRust() public view {
         assertEq(ParamsCodec.seedSetRoot(_params().trustedSeeds), json.readBytes32(".seedSetRoot"), "seedSetRoot");
         assertEq(ParamsCodec.hash(_params()), json.readBytes32(".paramsHash"), "paramsHash");
     }
 
-    /// AnchorRegistry.anchor's leaf formula with envelopeKind = 1 (golden pins only kind 0).
+    /// AnchorRegistry.anchor's leaf formula with envelopeKind = 1.
     function test_anchorLeaf_envelopeKind1_matchesRust() public view {
         bytes32 leaf = keccak256(
             abi.encode(
@@ -78,7 +79,26 @@ contract AuditEncodingParityTest is Test {
         assertEq(leaf, json.readBytes32(".anchorLeafKind1"), "anchor leaf kind 1");
     }
 
-    /// A two-entry skippedDigest (golden pins one entry only).
+    /// Rust and Solidity hash the exact same typed claim before applying the registry/chain domain.
+    /// The leaf vector above remains unchanged and deliberately has a separate preimage.
+    function test_anchorStructHash_matchesRustAndRegistryDigest() public {
+        bytes32 typehash =
+            keccak256("Anchor(bytes32 nodeId,uint8 envelopeKind,bytes32 head,uint64 count,bytes32 dataCommitment)");
+        bytes32 nodeId = bytes32(uint256(0x1111111111111111111111111111111111111111111111111111111111111111));
+        bytes32 head = bytes32(uint256(0x2222222222222222222222222222222222222222222222222222222222222222));
+        bytes32 dataCommitment = bytes32(uint256(0x3333333333333333333333333333333333333333333333333333333333333333));
+        bytes32 structHash = keccak256(abi.encode(typehash, nodeId, uint8(1), head, uint64(5), dataCommitment));
+        assertEq(structHash, json.readBytes32(".anchorStructHashKind1"));
+
+        AnchorRegistry registry = new AnchorRegistry(address(this), 1);
+        assertEq(typehash, registry.ANCHOR_TYPEHASH());
+        assertEq(
+            registry.anchorDigest(nodeId, 1, head, 5, dataCommitment),
+            MessageHashUtils.toTypedDataHash(registry.headDomainSeparator(), structHash)
+        );
+    }
+
+    /// A two-entry skippedDigest.
     function test_skippedDigest_twoEntries_matchesRust() public view {
         bytes32 l0 = keccak256(
             abi.encode(

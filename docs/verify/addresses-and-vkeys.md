@@ -4,17 +4,25 @@ This page is the canonical registry of deployed contract addresses and program v
 keys (vkeys). Anything you verify against should trace back to a value published here, not to
 a value someone told you in a chat.
 
-**Today's truth: there is no production deployment.** No trustgraphs contract set exists on
-any public chain yet. Ethereum mainnet is the deployment target, with Sepolia as the
-rehearsal, per [`build/production.md`](../build/production.md). What is exercisable right now
-is a local anvil deployment or a mainnet fork ([`build/quickstart.md`](../build/quickstart.md)).
+**Pre-testnet truth: there is no public deployment.** The first planned public release is the core
+`trust-graph` path on Ethereum Sepolia (chain 11155111), following the
+[`Sepolia release plan`](../build/sepolia.md). Ethereum mainnet is a later production target.
+`trust-compose` is intentionally not part of the first Sepolia testnet. What is exercisable right
+now is a local Anvil deployment or a local mainnet-fork simulation
+([`build/quickstart.md`](../build/quickstart.md)).
+
+The tracked [`deployments/sepolia.json`](../../deployments/sepolia.json) is currently a sanitized
+`planned` manifest: it fixes chain identity and canonical external dependencies but intentionally
+contains null project addresses, receipt blocks, transaction hashes, ELF digest, and vkey. Release
+consumers reject it until the deploy ceremony finalizes all required fields. It never contains an
+RPC URL, private key, database URL, or service credential.
 
 ## Deployed addresses
 
-| Chain | Contract | Address |
-|---|---|---|
-| Ethereum mainnet | none yet | |
-| Sepolia (rehearsal) | none yet | |
+| Chain                                  | Contract | Address |
+| -------------------------------------- | -------- | ------- |
+| Ethereum Sepolia (first public target) | none yet |         |
+| Ethereum mainnet (later target)        | none yet |         |
 
 When an instance ships, this table gains one row per contract in its set (`MerkleSnapshot`,
 `SP1JournalVerifier`, `EASIndexerResolver` or `AnchorRegistry`, governance modules), plus the
@@ -26,14 +34,17 @@ elsewhere as false.
 A vkey identifies one exact SP1 guest binary. The on-chain verifier holds it as an immutable:
 a proof from any other binary does not verify.
 
-| Program | Deployment vkey |
-|---|---|
-| trust-graph | none yet |
-| trust-graph-weighted | none yet |
-| trust-compose | none yet |
-| signer-sync | none yet |
-| hypercerts | none yet |
-| contributions | none yet |
+| Program              | Deployment vkey |
+| -------------------- | --------------- |
+| trust-graph          | none yet        |
+| trust-graph-weighted | none yet        |
+| trust-compose        | none yet        |
+| signer-sync          | none yet        |
+| hypercerts           | none yet        |
+| contributions        | none yet        |
+
+The first Sepolia manifest will publish only programs that pass that release's gate; it will not
+gain a `trust-compose` address or vkey merely because compose is available in local development.
 
 Dev-derived values for each program appear in
 [`concepts/networks-and-programs.md`](../concepts/networks-and-programs.md), and they carry a

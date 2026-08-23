@@ -3,10 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 
 contract FakeVerifier {
@@ -48,33 +45,30 @@ contract FakeRegistry {
 
 /// @notice PASS A PoC.
 ///
-/// `CompositionSourceAdapterFactory.create` takes the `IInstanceRegistry` as a CALLER-SUPPLIED
-/// argument, performs no check that it is the canonical chain registry, and then records
-/// `isAdapter[adapter] = true`. `CompositionSourceAccumulator._validatePolicy`'s only
-/// authenticity test is `adapterFactory.isAdapter(adapterAddress)`, so the "append-only
-/// authenticity registry" the contract header claims — "an ABI-compatible lookalike is rejected"
-/// — admits an adapter built over a registry the attacker wrote.
+/// The factory now pins one canonical registry at deployment and refuses a caller-supplied
+/// lookalike before the append-only authenticity ledger can be polluted.
 contract OmegaPassA_AdapterFactoryAuthenticity is Test {
-    function test_PassA_AnyoneCanMintAnAuthenticatedAdapterOverAForgedRegistry() public {
-        CompositionSourceAdapterFactory factory = new CompositionSourceAdapterFactory();
-
+    function test_PassA_ForgedRegistryCannotMintAnAuthenticatedAdapter() public {
         FakeSnapshot snap = new FakeSnapshot();
         FakeVerifier ver = new FakeVerifier();
-        FakeRegistry reg = new FakeRegistry(address(snap), address(ver));
+        FakeRegistry canonical = new FakeRegistry(address(snap), address(ver));
+        FakeRegistry forged = new FakeRegistry(address(snap), address(ver));
+        CompositionSourceAdapterFactory factory =
+            new CompositionSourceAdapterFactory(IInstanceRegistry(address(canonical)));
 
-        CompositionSourceAdapter adapter = factory.create(
-            IInstanceRegistry(address(reg)),
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CompositionSourceAdapterFactory.ForeignRegistry.selector, address(canonical), address(forged)
+            )
+        );
+        factory.create(
+            IInstanceRegistry(address(forged)),
             keccak256("any-id"),
             keccak256("source"),
             keccak256("family"),
             keccak256("allocation"),
             keccak256("looks-reviewed")
         );
-
-        // The forged adapter is now indistinguishable from a real one at the only gate that
-        // exists.
-        assertTrue(factory.isAdapter(address(adapter)), "forged adapter is authenticated");
-        assertEq(adapter.snapshot(), address(snap));
-        assertEq(adapter.registry() == IInstanceRegistry(address(reg)) ? 1 : 0, 1);
+        assertEq(address(factory.registry()), address(canonical));
     }
 }

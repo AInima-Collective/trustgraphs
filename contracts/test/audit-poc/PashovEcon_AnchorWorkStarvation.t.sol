@@ -15,20 +15,36 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract PE_Lane1Mock {
     uint64 public leafCount;
-    function setLeafCount(uint64 c) external { leafCount = c; }
+
+    function setLeafCount(uint64 c) external {
+        leafCount = c;
+    }
 }
 
 contract PE_FeedMock {
-    function decimals() external pure returns (uint8) { return 8; }
+    function decimals() external pure returns (uint8) {
+        return 8;
+    }
+
     function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
         return (1, int256(3000e8), block.timestamp, block.timestamp, 1);
+    }
+}
+
+contract PE_UsdcMetadataMock {
+    function decimals() external pure returns (uint8) {
+        return 6;
     }
 }
 
 contract PE_SnapshotMock {
     address public accumulator;
     address public anchorRegistry;
-    constructor(address a, address r) { accumulator = a; anchorRegistry = r; }
+
+    constructor(address a, address r) {
+        accumulator = a;
+        anchorRegistry = r;
+    }
 }
 
 /// @notice PoC: envelope-0 lane-2 ingress buys 8,192 units of the shared 200,000 proof-input
@@ -52,15 +68,14 @@ contract PashovEcon_AnchorWorkStarvation is Test {
         lane1 = new PE_Lane1Mock();
         address[] memory relayers = new address[](1);
         relayers[0] = address(this); // the governance-admitted gasless relayer
-        registry = new EasOffchainAnchorRegistry(
-            IEAS(address(eas)), SCHEMA_UID, 200_000, admin, address(this), relayers
-        );
+        registry =
+            new EasOffchainAnchorRegistry(IEAS(address(eas)), SCHEMA_UID, 200_000, admin, address(this), relayers);
         PE_SnapshotMock snap = new PE_SnapshotMock(address(lane1), address(registry));
         registry.bindSnapshot(address(snap));
 
         vault = new ProvingVault(
             IInstanceRegistry(address(0xdead)),
-            IERC20(address(0xbeef)),
+            IERC20(address(new PE_UsdcMetadataMock())),
             IEthUsdFeed(address(new PE_FeedMock())),
             1 days,
             100e8,
@@ -71,7 +86,9 @@ contract PashovEcon_AnchorWorkStarvation is Test {
     }
 
     function _sig(uint256 key, bytes32 nodeId, bytes32 prev, bytes32 head, uint64 count, bytes32 dc)
-        internal view returns (bytes memory)
+        internal
+        view
+        returns (bytes memory)
     {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, registry.anchorDigest(nodeId, 0, prev, head, count, dc));
         return abi.encodePacked(r, s, v);

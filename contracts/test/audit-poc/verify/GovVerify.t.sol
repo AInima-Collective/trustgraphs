@@ -158,14 +158,17 @@ contract GovVerify is Test {
         assertEq(gov.owner(), address(safe), "production wiring: module owner == the Safe");
         assertFalse(gov.delegateCallAllowlist(address(w)), "not allowlisted at the start");
 
-        uint256 id =
-            _proposeOne(address(gov), abi.encodeCall(MerkleGovModule.setDelegateCallTarget, (address(w), true)), Operation.Call);
+        uint256 id = _proposeOne(
+            address(gov), abi.encodeCall(MerkleGovModule.setDelegateCallTarget, (address(w), true)), Operation.Call
+        );
         _passAndExecute(id);
 
         assertTrue(gov.delegateCallAllowlist(address(w)), "one passed proposal opened the delegatecall allowlist");
 
         // ...and the second proposal now delegatecalls arbitrary code in the Safe's storage.
-        uint256 id2 = _proposeOne(address(w), abi.encodeCall(StorageWriter.poke, (uint256(0x1234), 0xdead)), Operation.DelegateCall);
+        uint256 id2 = _proposeOne(
+            address(w), abi.encodeCall(StorageWriter.poke, (uint256(0x1234), 0xdead)), Operation.DelegateCall
+        );
         _passAndExecute(id2);
         assertEq(uint256(vm.load(address(safe), bytes32(uint256(0x1234)))), 0xdead, "delegatecall ran in Safe storage");
     }
@@ -177,12 +180,15 @@ contract GovVerify is Test {
     function test_V2_DelegatecallToSafeCannotReachEnableModuleEvenWhenAllowlisted() public {
         address victimModule = address(uint160(0xBAD0));
 
-        uint256 id =
-            _proposeOne(address(gov), abi.encodeCall(MerkleGovModule.setDelegateCallTarget, (address(safe), true)), Operation.Call);
+        uint256 id = _proposeOne(
+            address(gov), abi.encodeCall(MerkleGovModule.setDelegateCallTarget, (address(safe), true)), Operation.Call
+        );
         _passAndExecute(id);
         assertTrue(gov.delegateCallAllowlist(address(safe)), "safe allowlisted for delegatecall");
 
-        uint256 id2 = _proposeOne(address(safe), abi.encodeWithSignature("enableModule(address)", victimModule), Operation.DelegateCall);
+        uint256 id2 = _proposeOne(
+            address(safe), abi.encodeWithSignature("enableModule(address)", victimModule), Operation.DelegateCall
+        );
         vm.roll(block.number + gov.votingDelay() + 1);
         vm.prank(bob);
         gov.castVote(id2, MerkleGovModule.VoteType.Yes, 200e18, _proofFor(bob));
@@ -279,11 +285,12 @@ contract GovVerify is Test {
                                   C20
     //////////////////////////////////////////////////////////////*/
 
-    /// V5: a passed proposal has no upper execution bound in the real source, and combined with
-    /// C7's ordinary Call-to-Safe power it is a LATENT, indefinitely-armed Safe takeover.
-    function test_V5_SleeperProposalTakesTheSafeYearsLater() public {
+    /// V5: a passed proposal has a snapshotted upper execution bound, so C7's ordinary
+    /// Call-to-Safe power cannot remain armed indefinitely after its mandate goes stale.
+    function test_V5_SleeperProposalExpiresBeforeItCanTakeTheSafeYearsLater() public {
         address sleeperModule = address(uint160(0xBAD1));
-        uint256 id = _proposeOne(address(safe), abi.encodeWithSignature("enableModule(address)", sleeperModule), Operation.Call);
+        uint256 id =
+            _proposeOne(address(safe), abi.encodeWithSignature("enableModule(address)", sleeperModule), Operation.Call);
 
         vm.roll(block.number + gov.votingDelay() + 1);
         vm.prank(bob);
@@ -305,17 +312,20 @@ contract GovVerify is Test {
         );
         snap.pushUpdate(address(gov));
 
-        // ~2 years of blocks later it is still Passed and still executable.
+        // ~2 years of blocks later it is expired and cannot execute.
         vm.roll(block.number + 5_000_000);
-        assertEq(uint256(gov.state(id)), uint256(MerkleGovModule.ProposalState.Passed), "no expiry anywhere");
+        assertEq(uint256(gov.state(id)), uint256(MerkleGovModule.ProposalState.Expired), "proposal did not expire");
+        vm.expectRevert(MerkleGovModule.ProposalNotPassed.selector);
         gov.execute(id);
-        assertTrue(safe.isModuleEnabled(sleeperModule), "sleeper proposal seized the Safe after full turnover");
+        assertFalse(safe.isModuleEnabled(sleeperModule), "expired sleeper proposal seized the Safe");
     }
 
     /// V5b: the only brake is `cancel()`, and in production wiring only the Safe can pull it, so
     /// killing a sleeper needs ANOTHER passed proposal (or the 14-day recovery route).
     function test_V5b_CancelIsGatedOnTheSafeItself() public {
-        uint256 id = _proposeOne(address(safe), abi.encodeWithSignature("enableModule(address)", address(uint160(0xBAD2))), Operation.Call);
+        uint256 id = _proposeOne(
+            address(safe), abi.encodeWithSignature("enableModule(address)", address(uint160(0xBAD2))), Operation.Call
+        );
         assertEq(gov.owner(), address(safe));
         vm.prank(alice);
         vm.expectRevert(MerkleGovModule.NotAuthorized.selector);

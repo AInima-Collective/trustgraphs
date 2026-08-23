@@ -145,16 +145,7 @@ contract EasOffchainAnchorRegistry is AccessControl {
         bytes32 dataCommitment
     ) public view returns (bytes32) {
         bytes32 structHash = keccak256(
-            abi.encode(
-                ANCHOR_TYPEHASH,
-                nodeId,
-                envelopeKind,
-                schemaUid,
-                previousHead,
-                head,
-                count,
-                dataCommitment
-            )
+            abi.encode(ANCHOR_TYPEHASH, nodeId, envelopeKind, schemaUid, previousHead, head, count, dataCommitment)
         );
         return MessageHashUtils.toTypedDataHash(headDomainSeparator, structHash);
     }
@@ -192,9 +183,8 @@ contract EasOffchainAnchorRegistry is AccessControl {
             revert InputCapacityExceeded(lane1Count, uint64(projectedWork), maxTotalInputs);
         }
 
-        address owner = ECDSA.recover(
-            anchorDigest(nodeId, envelopeKind, previousHead, head, count, dataCommitment), headSignature
-        );
+        address owner =
+            ECDSA.recover(anchorDigest(nodeId, envelopeKind, previousHead, head, count, dataCommitment), headSignature);
         bytes32 expectedNodeId = keccak256(abi.encode(owner));
         if (nodeId != expectedNodeId) revert WrongNodeId(nodeId, expectedNodeId);
         if (registered[nodeId]) {

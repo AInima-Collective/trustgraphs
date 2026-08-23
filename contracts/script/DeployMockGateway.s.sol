@@ -51,7 +51,7 @@ contract DeployMockGateway is Common {
             "DeployMockGateway: a real gateway is deployed here (fork?) - set DEV_MOCK_SP1_GATEWAY=false"
         );
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         MockSP1Gateway mock = new MockSP1Gateway();
         if (expectedVKey != bytes32(0)) {
             mock.setExpectedVKey(expectedVKey);

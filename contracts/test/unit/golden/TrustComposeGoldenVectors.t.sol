@@ -4,15 +4,25 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {TrustComposeParamsCodec} from "src/params/TrustComposeParamsCodec.sol";
+
+contract TrustComposeParamsCodecHarness {
+    function hash(TrustComposeParamsCodec.Params calldata params) external pure returns (bytes32) {
+        TrustComposeParamsCodec.Params memory copy = params;
+        return TrustComposeParamsCodec.hash(copy);
+    }
+}
 
 /// @notice Independent Solidity byte lock for `trust-compose` V1 params, capture, output, and journal.
 contract TrustComposeGoldenVectorsTest is Test {
     using stdJson for string;
 
     string internal json;
+    TrustComposeParamsCodecHarness internal codec;
 
     function setUp() public {
         json = vm.readFile("tests/golden/trust-compose.json");
+        codec = new TrustComposeParamsCodecHarness();
     }
 
     function _uintString(string memory path) internal view returns (uint256) {
@@ -85,6 +95,10 @@ contract TrustComposeGoldenVectorsTest is Test {
         assertEq(keccak256(encoded), json.readBytes32(".params.paramsHash"));
     }
 
+    function test_ParamsCodecHash() public view {
+        assertEq(codec.hash(_params()), json.readBytes32(".params.paramsHash"));
+    }
+
     function test_OutputLeafProofBlobAndCid() public view {
         bytes32 leaf = keccak256(
             bytes.concat(
@@ -121,6 +135,29 @@ contract TrustComposeGoldenVectorsTest is Test {
 
     function _hashPair(bytes32 left, bytes32 right) private pure returns (bytes32) {
         return left < right ? keccak256(bytes.concat(left, right)) : keccak256(bytes.concat(right, left));
+    }
+
+    function _params() private view returns (TrustComposeParamsCodec.Params memory p) {
+        p.version = uint32(json.readUint(".params.version"));
+        p.programId = json.readBytes32(".params.programId");
+        p.scopeHash = json.readBytes32(".params.scopeHash");
+        p.identityDomain = json.readBytes32(".params.identityDomain");
+        p.outputKind = json.readBytes32(".params.outputKind");
+        p.outputDomain = json.readBytes32(".params.outputDomain");
+        p.admittedProgramId = json.readBytes32(".params.admittedProgramId");
+        p.weightScale = uint64(_uintString(".params.weightScale"));
+        p.outputPool = uint128(_uintString(".params.outputPool"));
+        p.sourcePolicyRoot = json.readBytes32(".params.sourcePolicyRoot");
+        p.sourceCount = uint8(json.readUint(".params.sourceCount"));
+        p.policyManifestSha256 = json.readBytes32(".params.policyManifestSha256");
+        p.maxSources = uint8(json.readUint(".params.maxSources"));
+        p.maxEntriesPerSource = uint32(json.readUint(".params.maxEntriesPerSource"));
+        p.maxAggregateEntries = uint32(json.readUint(".params.maxAggregateEntries"));
+        p.maxUnionAccounts = uint32(json.readUint(".params.maxUnionAccounts"));
+        p.maxAggregateBlobBytes = uint32(json.readUint(".params.maxAggregateBlobBytes"));
+        p.maxSourceAgeBlocks = uint64(_uintString(".params.maxSourceAgeBlocks"));
+        p.accumulator = json.readAddress(".params.accumulator");
+        p.chainId = uint64(_uintString(".params.chainId"));
     }
 
     function _readUint(bytes memory data, uint256 offset, uint256 length) private pure returns (uint256 value) {

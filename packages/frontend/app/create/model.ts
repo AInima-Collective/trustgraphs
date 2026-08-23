@@ -480,8 +480,6 @@ export type CreateArgs = {
 
 export type SignerSyncCreateConfig = {
   enabled: boolean
-  verifier: Hex
-  programVKey: Hex
   topN: number
   minThreshold: number
   targetThresholdBps: number
@@ -506,16 +504,12 @@ export const buildSignerSyncConfig = (
   data.withSignerSync
     ? {
         enabled: true,
-        verifier: SIGNER_SYNC_CONFIG!.verifier!.toLowerCase() as Hex,
-        programVKey: SIGNER_SYNC_CONFIG!.programVKey!.toLowerCase() as Hex,
         topN: data.signerTopN,
         minThreshold: data.signerMinThreshold,
         targetThresholdBps: Math.round(data.signerTargetThresholdPct * 100),
       }
     : {
         enabled: false,
-        verifier: zeroAddress,
-        programVKey: `0x${'0'.repeat(64)}` as Hex,
         topN: 0,
         minThreshold: 0,
         targetThresholdBps: 0,

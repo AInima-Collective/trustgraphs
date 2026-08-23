@@ -31,6 +31,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal gf;
     GnosisSafe internal singleton;
     GnosisSafeProxyFactory internal proxyFactory;
+    AlwaysAccept internal fake;
 
     address internal creator = address(0xA11CE);
     address internal stranger = address(0xBADBAD);
@@ -39,33 +40,29 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         super.setUp();
         singleton = new GnosisSafe();
         proxyFactory = new GnosisSafeProxyFactory();
+        fake = new AlwaysAccept();
         gf = new GovernedTrustgraphsFactory(
             factory,
             proxyFactory,
             address(singleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            fake,
+            fake.programVKey()
         );
     }
 
     function test_SeizedOwnerSetCannotExecuteAnything() public {
-        AlwaysAccept fake = new AlwaysAccept();
         TrustgraphsFactory.CreateArgs memory args = _args("victim");
         args.salt = bytes32(uint256(1));
 
-        bytes32 vkey = fake.programVKey();
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
             GovernedTrustgraphsFactory.InitialPolicy(0, 0),
             GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(fake),
-                programVKey: vkey,
-                topN: 3,
-                minThreshold: 2,
-                targetThresholdBps: 5_000
+                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
 
@@ -93,9 +90,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
         bytes memory sig = abi.encodePacked(uint256(uint160(stranger)), uint256(0), uint8(1));
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(SafeExecutionGuard.OwnerExecutionLocked.selector, stranger));
-        safe.execTransaction(
-            stranger, 10 ether, "", Enum.Operation.Call, 0, 0, 0, address(0), payable(address(0)), sig
-        );
+        safe.execTransaction(stranger, 10 ether, "", Enum.Operation.Call, 0, 0, 0, address(0), payable(address(0)), sig);
         assertEq(safeAddr.balance, 10 ether, "funds untouched");
 
         // ... and cannot remove the guard, enable a module, or delegatecall either.
@@ -128,22 +123,15 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
     /// The latent half: the sealed guard is not permanent. The creator's own recovery module can
     /// remove it after 14 days, and the attacker-chosen owner set then IS the Safe.
     function test_GuardRemovalMakesTheSeizedOwnerSetLive() public {
-        AlwaysAccept fake = new AlwaysAccept();
         TrustgraphsFactory.CreateArgs memory args = _args("victim2");
         args.salt = bytes32(uint256(2));
-        bytes32 vkey = fake.programVKey();
 
         vm.prank(creator);
         (bytes32 instanceId, address safeAddr,, address snapshot) = gf.createGovernedInstance(
             args,
             GovernedTrustgraphsFactory.InitialPolicy(0, 0),
             GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(fake),
-                programVKey: vkey,
-                topN: 3,
-                minThreshold: 2,
-                targetThresholdBps: 5_000
+                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
         GovernedTrustgraphsFactory.Authority memory auth = gf.authorityOf(instanceId);
@@ -188,9 +176,7 @@ contract VerifyC1_SafeSeizureReach is TrustgraphsFactoryBase {
             abi.encode(activityAcc)
         );
         vm.mockCall(
-            governanceModule,
-            abi.encodeWithSelector(bytes4(keccak256("activityCount()"))),
-            abi.encode(uint64(2))
+            governanceModule, abi.encodeWithSelector(bytes4(keccak256("activityCount()"))), abi.encode(uint64(2))
         );
         vm.mockCall(
             governanceModule,

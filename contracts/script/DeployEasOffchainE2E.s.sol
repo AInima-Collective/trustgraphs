@@ -31,6 +31,16 @@ import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {Common} from "script/Common.s.sol";
 import {MockZkVerifier} from "test/mocks/MockZkVerifier.sol";
 
+contract EasOffchainE2ESignerVerifier is IZkVerifier {
+    bytes32 public immutable programVKey;
+
+    constructor(bytes32 programVKey_) {
+        programVKey = programVKey_;
+    }
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
+
 /// @notice Self-contained Anvil deployment for the strict EAS off-chain e2e.
 /// @dev Production deployment remains split into reviewed scripts. This fixture intentionally
 ///      creates the same factory path in one broadcast so CI has one deterministic setup command.
@@ -46,7 +56,7 @@ contract DeployEasOffchainE2E is Common {
         require(relayerA != address(0) && relayerB != address(0) && relayerA != relayerB, "distinct relayers");
 
         address deployer = vm.addr(_privateKey);
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         SchemaRegistry schemaRegistry = new SchemaRegistry();
         EAS eas = new EAS(ISchemaRegistry(address(schemaRegistry)));
@@ -114,8 +124,17 @@ contract DeployEasOffchainE2E is Common {
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
         SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
         MerkleGovModuleDeployer govModuleDeployer = new MerkleGovModuleDeployer();
+        bytes32 signerProgramVKey = keccak256("eas-offchain-e2e-signer");
+        EasOffchainE2ESignerVerifier signerVerifier = new EasOffchainE2ESignerVerifier(signerProgramVKey);
         GovernedTrustgraphsFactory governedFactory = new GovernedTrustgraphsFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            signerVerifier,
+            signerProgramVKey
         );
         vm.stopBroadcast();
 

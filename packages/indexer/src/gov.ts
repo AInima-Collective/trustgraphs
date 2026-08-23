@@ -22,6 +22,30 @@ type ProposalAction = {
   operation: number
 }
 
+// Scalar compatibility seam for the field appended to Proposal. Keeping this fragment local lets
+// the indexer adopt execution expiry without rewriting generated full-contract ABI artifacts.
+const proposalExecutionDeadlineAbi = [
+  {
+    type: 'function',
+    name: 'proposalExecutionDeadline',
+    stateMutability: 'view',
+    inputs: [{ name: 'proposalId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
+
+const readProposalExecutionDeadline = (
+  client: any,
+  address: Address,
+  proposalId: bigint
+) =>
+  client.readContract({
+    address,
+    abi: proposalExecutionDeadlineAbi,
+    functionName: 'proposalExecutionDeadline',
+    args: [proposalId],
+  }) as Promise<bigint>
+
 const eventPosition = (event: any) => ({
   blockNumber: event.block.number,
   transactionIndex: event.transaction.transactionIndex,
@@ -78,6 +102,11 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
           functionName: 'getProposal',
           args: [i],
         })
+        const executionDeadlineBlock = await readProposalExecutionDeadline(
+          context.client,
+          address,
+          i
+        )
 
         // Format actions for JSON storage
         const formattedActions: ProposalAction[] = actions.map((action) => ({
@@ -105,6 +134,7 @@ ponder.on('merkleGovModule:setup', async ({ context }) => {
             merkleRoot: proposal.merkleRoot,
             totalVotingPower: proposal.totalVotingPower,
             quorumFraction: proposal.quorumFraction,
+            executionDeadlineBlock,
             actions: formattedActions,
             // Use current block for setup (we don't have the original block)
             blockNumber: 0n,
@@ -135,6 +165,11 @@ const proposalCreated = async ({ event, context }: any) => {
     functionName: 'getProposal',
     args: [proposalId],
   })
+  const executionDeadlineBlock = await readProposalExecutionDeadline(
+    context.client,
+    event.log.address,
+    proposalId
+  )
 
   // Format actions for JSON storage
   const formattedActions: ProposalAction[] = actions.map(
@@ -168,6 +203,7 @@ const proposalCreated = async ({ event, context }: any) => {
     merkleRoot: proposal.merkleRoot,
     totalVotingPower: proposal.totalVotingPower,
     quorumFraction: proposal.quorumFraction,
+    executionDeadlineBlock,
     actions: formattedActions,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,

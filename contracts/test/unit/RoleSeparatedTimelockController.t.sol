@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
-import {RoleSeparatedTimelockController} from "script/DeployTimelocks.s.sol";
+import {RoleSeparatedTimelockController} from "src/governance/RoleSeparatedTimelockController.sol";
 
 contract RoleSeparatedTimelockControllerTest is Test {
     address internal proposer = address(0xA11CE);

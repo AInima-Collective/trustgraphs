@@ -7,6 +7,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {ContributionsParamsController} from "src/factory/ContributionsParamsController.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {ContributionsParamsCodec} from "src/params/ContributionsParamsCodec.sol";
+import {ContributionsParamsValidator} from "src/params/ContributionsParamsValidator.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
 import {IContributionsParamsController} from "interfaces/factory/IContributionsParamsController.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -113,6 +114,23 @@ contract ContributionsParamsControllerTest is Test {
         vm.prank(OWNER);
         vm.expectRevert(ContributionsParamsController.IdentityFieldChanged.selector);
         controller.updateParams(next, "");
+    }
+
+    function test_RejectsOutOfEnvelopeRotationWithoutChangingCommitments() public {
+        controller.publishInitialVersion();
+        ContributionsParamsCodec.Params memory next = controller.getContributionsParams();
+        next.evaluatorCarveoutBps = 10_001;
+        bytes32 initialHash = ContributionsParamsCodec.hash(initial);
+
+        vm.prank(OWNER);
+        vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidCarveout.selector, uint32(10_001)));
+        controller.updateParams(next, "ipfs://invalid");
+
+        assertEq(controller.version(), 1);
+        assertEq(controller.currentParamsHash(), initialHash);
+        assertEq(snapshot.paramsHash(), initialHash);
+        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, initialHash);
+        assertEq(ContributionsParamsCodec.hash(controller.getContributionsParams()), initialHash);
     }
 
     function test_InitialTupleMustMatchSnapshot() public {

@@ -61,6 +61,8 @@ contract PashovTrace_ProvingVaultStatement is Test {
         verifier = new MockZkVerifier();
         accer = new MockAccumulator();
         snapshot = new MerkleSnapshot(verifier, PARAMS, accer, constitutional, operational);
+        vm.prank(constitutional);
+        snapshot.enableStateProvenance();
         registry = new InstanceRegistry(address(this));
         usdc = new TestUSDC();
         feed = new MockEthUsdFeed();
@@ -126,15 +128,7 @@ contract PashovTrace_ProvingVaultStatement is Test {
 
     receive() external payable {}
 
-    /*//////////////////////////////////////////////////////////////
-      FINDING A — `claim()` prices the statement with the WRONG root
-    //////////////////////////////////////////////////////////////*/
-
-    /// `ProvingVault.claim` builds `Terms.statement` from `snapshot.getLatestState().root`
-    /// instead of the root that the CLAIMED checkpoint produced. Once a newer checkpoint has
-    /// landed, claiming an older one records a statement that belongs to the newer root — and
-    /// that permanently poisons the newer checkpoint's own bounty.
-    function test_ClaimUsesLatestRootNotCheckpointRoot_BricksTheNextBounty() public {
+    function test_ClaimUsesCheckpointAcceptedRootAndPreservesTheNextBounty() public {
         // Two epochs, two DIFFERENT proven roots, one unchanged compose policy.
         uint256 ck0 = _mint(keccak256("cap-0"), 100);
         _submitDirect(ck0, ROOT0, alice);
@@ -144,32 +138,14 @@ contract PashovTrace_ProvingVaultStatement is Test {
 
         assertEq(snapshot.getLatestState().root, ROOT1, "latest is checkpoint 1's root");
 
-        // Alice's bounty for checkpoint 0 is claimed AFTER checkpoint 1 landed.
-        // `_terms` is handed ROOT1, so the recorded statement is
-        //   keccak256(snapshot, 3, 0, ROOT1)  -- checkpoint 1's statement, not checkpoint 0's.
         vault.claim(INSTANCE, ck0);
         assertGt(vault.creditOf(alice, address(0)), 0, "alice was paid for checkpoint 0");
 
-        // Bob's checkpoint 1 is a distinct proof of a distinct root, never paid for. Its real
-        // statement is keccak256(snapshot, 3, 0, ROOT1) -- which the claim above just consumed.
-        bytes32 collidedStatement = keccak256(abi.encode(address(snapshot), SOURCE_COUNT, uint64(0), ROOT1));
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, collidedStatement));
         vault.claim(INSTANCE, ck1);
-
-        assertEq(vault.creditOf(bob, address(0)), 0, "bob's bounty is permanently unpayable");
+        assertGt(vault.creditOf(bob, address(0)), 0, "bob was paid for checkpoint 1");
     }
 
-    /*//////////////////////////////////////////////////////////////
-      FINDING B — a duplicate statement REVERTS instead of skipping,
-      which rolls back the already-successful `submitProof`
-    //////////////////////////////////////////////////////////////*/
-
-    /// Every other ineligibility reason in `_settle` calls `_skip` (root lands, nobody is paid).
-    /// `_requireUnpaidStatement` reverts. Because `_settle` runs AFTER `snapshot.submitProof`
-    /// inside `submitAndClaim`, that revert unwinds the verified root as well. A compose instance
-    /// whose sources published nothing new legitimately re-proves the same output root, so this is
-    /// the normal case, not an edge case.
-    function test_DuplicateStatementRevertsAndDiscardsTheVerifiedRoot() public {
+    function test_SameOutputWithDistinctCheckpointAccumulatorsLandsAndPays() public {
         uint256 ck0 = _mint(keccak256("cap-0"), 100);
         vault.submitAndClaim(INSTANCE, _args(ck0, ROOT0, alice));
         assertEq(snapshot.lastAppliedCheckpoint(), ck0);
@@ -177,18 +153,9 @@ contract PashovTrace_ProvingVaultStatement is Test {
         // Next epoch. Sources published nothing, so the composed output root is identical.
         uint256 ck1 = _mint(keccak256("cap-1"), 200);
 
-        bytes32 statement = keccak256(abi.encode(address(snapshot), SOURCE_COUNT, uint64(0), ROOT0));
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, statement));
         vault.submitAndClaim(INSTANCE, _args(ck1, ROOT0, alice));
 
-        // The proof verified, `submitProof` succeeded, and the whole thing was thrown away.
-        assertEq(snapshot.lastAppliedCheckpoint(), ck0, "checkpoint 1's root never landed");
-        assertEq(snapshot.getStateCount(), 1, "only checkpoint 0 produced a state");
-
-        // Contrast: an ineligibility that goes through `_skip` DOES land the root.
-        vm.prank(constitutional);
-        vault.setPolicy(INSTANCE, 0, 0); // PolicyDisabled -> _skip
-        vault.submitAndClaim(INSTANCE, _args(ck1, ROOT0, alice));
-        assertEq(snapshot.lastAppliedCheckpoint(), ck1, "the skip path lands the root");
+        assertEq(snapshot.lastAppliedCheckpoint(), ck1, "checkpoint 1's root landed");
+        assertEq(snapshot.getStateCount(), 2, "both checkpoints produced a state");
     }
 }

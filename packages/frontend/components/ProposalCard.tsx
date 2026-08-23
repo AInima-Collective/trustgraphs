@@ -134,7 +134,11 @@ export function ProposalCard({
         ? `Voting opens ${formatBlockEta(proposal.startBlock, currentBlockNumber)}`
         : isActive
           ? `Voting ends ${formatBlockEta(proposal.endBlock, currentBlockNumber)}`
-          : `Voting ended ${formatBlockEta(proposal.endBlock, currentBlockNumber)}`
+          : isPassed
+            ? `Execution expires ${formatBlockEta(proposal.executionDeadlineBlock, currentBlockNumber)}`
+            : state === ProposalState.Expired
+              ? `Execution expired ${formatBlockEta(proposal.executionDeadlineBlock, currentBlockNumber)}`
+              : `Voting ended ${formatBlockEta(proposal.endBlock, currentBlockNumber)}`
 
   const handleVote = useCallback(
     async (support: VoteType) => {

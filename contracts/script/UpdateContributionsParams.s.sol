@@ -18,7 +18,7 @@ contract UpdateContributionsParams is Common {
             paramsPath, current.claimSchemaUid, current.responseSchemaUid, current.valuationSchemaUid
         );
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         (uint64 version, bytes32 paramsHash) = controller.updateParams(next, evidenceURI);
         vm.stopBroadcast();
 

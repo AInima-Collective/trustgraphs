@@ -20,6 +20,7 @@ export const weightedPriorParamsControllerAbi = parseAbi([
   'function instanceId() view returns (bytes32)',
   'function snapshot() view returns (address)',
   'function version() view returns (uint64)',
+  'function latestVersion() view returns (uint64)',
   'function currentParamsHash() view returns (bytes32)',
   `function getCurrentParams() view returns (${PARAMS})`,
 ])

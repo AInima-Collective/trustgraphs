@@ -18,6 +18,7 @@ contract WeightedPriorLifecycleHandler is Test {
 
     WeightedPriorParamsController public controller;
     uint64 public highestActivatedVersion = 1;
+    uint64 public highestProposedVersion = 1;
 
     function configure(WeightedPriorParamsController controller_) external {
         require(address(controller) == address(0));
@@ -33,7 +34,9 @@ contract WeightedPriorLifecycleHandler is Test {
         uint256 count = bound(rawCount, 1, 32);
         uint128 offset = rawOffset | 0x1_0000;
         bytes memory manifest = _manifest(count, uint64(block.chainid), offset);
-        try controller.proposePrior(manifest, metadataDigest) {} catch {}
+        try controller.proposePrior(manifest, metadataDigest) returns (uint64 pendingVersion, bytes32, uint48) {
+            highestProposedVersion = pendingVersion;
+        } catch {}
     }
 
     function cancel() external {
@@ -152,6 +155,8 @@ contract WeightedPriorLifecycleInvariantTest is Test {
         assertEq(registry.getInstance(INSTANCE_ID).paramsHash, currentHash);
         assertEq(WeightedPriorParamsCodec.hash(controller.getCurrentParams()), currentHash);
         assertEq(controller.version(), handler.highestActivatedVersion());
+        assertEq(controller.latestVersion(), handler.highestProposedVersion());
+        assertGe(controller.latestVersion(), controller.version());
 
         IWeightedPriorParamsController.VersionCommitment memory active =
             controller.versionCommitment(controller.version());
@@ -160,7 +165,8 @@ contract WeightedPriorLifecycleInvariantTest is Test {
 
         IWeightedPriorParamsController.PendingPrior memory pending = controller.getPendingPrior();
         if (pending.version != 0) {
-            assertEq(pending.version, controller.version() + 1);
+            assertEq(pending.version, controller.latestVersion());
+            assertGt(pending.version, controller.version());
             assertEq(controller.versionCommitment(pending.version).paramsHash, pending.paramsHash);
             assertEq(controller.versionCommitment(pending.version).activatedAt, 0);
         }

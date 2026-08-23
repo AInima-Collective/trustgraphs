@@ -6,7 +6,7 @@
 > are, right now, the cheap part. The testnet deploy is the door closing. This
 > program is the list of things that have to be true before it does.
 
-**Status:** opened 2026-08-23, the day the pre-testnet audit closed. Code surface
+**Status:** completed 2026-08-23. Opened the day the pre-testnet audit closed. Code surface
 verified at `55cb254`. Baseline: `forge test` 738 passed / 0 failed across 54
 suites at audit start (plus 172 audit PoC tests, of which 5 fail deliberately and
 are dispositioned in M0). `cargo test --workspace` 343 tests green.
@@ -18,14 +18,14 @@ one lane is internally serialized, and one pair has to merge. Everything else is
 independent, and the plan is built to keep it that way.
 
 **Evidence record:**
-[research/audits/2026-08-23-pre-testnet.md](research/audits/2026-08-23-pre-testnet.md) —
+[research/audits/2026-08-23-pre-testnet.md](../audits/2026-08-23-pre-testnet.md) —
 the audit: mechanism, consequence and smallest fix per finding, plus the nine
 claims raised and rejected. The proof-of-concept tests behind it are committed at
 `90765d6` under `contracts/test/audit-poc/`, one executable regression per
 finding.
 
-Convention: this file is deleted when the program closes and archived to
-`research/plans/`, as `research/plans/scoring-engine.md` was.
+Archived from `GOAL.md` on 2026-08-23 when the program closed, following the
+same convention as `research/plans/scoring-engine.md`.
 
 ---
 
@@ -102,6 +102,16 @@ this repo's own principle already asks for ("the protocol stays permissive;
 operator policy fails loudly"). Two ceilings differing is correct. Four ceilings
 where nobody can name which one binds is the defect. *Ruled here.*
 
+**D5 — every instance distributor is Safe-owned.** A creator EOA may remain the
+instance authority when no distributor exists, but it cannot become the owner or
+fee recipient of a distributor. The four base factories validate an initialized
+Safe-compatible contract at creation and attachment; the Contributions factory
+requires one unconditionally because every round has a distributor. Governed
+wrappers already instantiate their Safe before delegating. `DeployNetwork`
+accepts the Safe explicitly, and the development pipeline attaches its
+distributor only after Zodiac creates the Safe. *Ruled by the operator on
+2026-08-23.*
+
 **Open, and now the real question:** ingress admission. The ceiling was never the
 defense; pricing or staking who may add inputs is. That is the prior audit's D2,
 still open, and lane F does not close it (see Operator ledger).
@@ -123,14 +133,14 @@ gap hides a whole program's parity check.
       (`contracts/test/audit-poc/audit-vectors.json`) on every
       `cargo test -p pagerank-core`, which `task zk:parity` runs. Every lane would
       have dirtied the tree. The write is now opt-in behind `AUDIT_WRITE_VECTORS`.
-- [ ] Document the stale-ELF trap in `taskfile/zk.yml:36-38`: `sp1_build` does not
+- [x] Document the stale-ELF trap in `taskfile/zk.yml:36-38`: `sp1_build` does not
       watch `crates/` path dependencies, so editing a core crate silently reuses a
       stale ELF unless `task zk:build` is run. Every lane touching `crates/` needs
       to know this; M2 depends on it being true.
-- [ ] Add `nostr-workspace` to the `zk-parity` matrix
+- [x] Add `nostr-workspace` to the `zk-parity` matrix
       (`.github/workflows/zk-parity.yml:76-83`). It is the only program not gated,
       and it is where two of the four "missing" golden vectors actually live.
-- [ ] Disposition the 5 deliberately-failing PoCs so `forge test` is green on
+- [x] Disposition the 5 deliberately-failing PoCs so `forge test` is green on
       `main`: four are harness artifacts (one caused by solc hoisting
       `block.number` across `vm.roll`), one is a preserved refutation. Mark them
       `skip`, or move them under a non-default path, and record why in the file.
@@ -162,7 +172,7 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
 | **L** Anchor registry, Solidity half | M-1a | `registry/AnchorRegistry.sol` | no |
 | **N** Low & docs | L-2, L-5, docs drift | `GraphLineageRegistry`, `TEST.sol`, `docs/` | no |
 
-- [ ] **A — H-2.** `_requireBoundSchema` fails **open** while `boundSchema == 0`, so
+- [x] **A — H-2.** `_requireBoundSchema` fails **open** while `boundSchema == 0`, so
       an attacker attests a foreign edge before binding, the honest `bindSchema`
       then succeeds silently, and the poisoned leaf makes the instance permanently
       unprovable for 24,034 gas. Revert all attestations until bound, exactly as
@@ -170,7 +180,7 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       gate here. Also L-3: `expirationTime` is accepted and never enforced by
       either side, while the frontend renders an "Expired" banner for a status the
       proven score ignores — enforce it or stop displaying it.
-- [ ] **B — H-3 + M-8, merged.** These edit the same functions and cannot be split.
+- [x] **B — H-3 + M-8, merged.** These edit the same functions and cannot be split.
       `_distribute` pins `merkleState.root` against the funder's `expectedRoot` but
       copies `totalValue` into `totalMerkleValue` unchecked, and `claim` divides by
       it; a snapshot mirroring the honest root with a shrunken `totalValue` hands
@@ -180,7 +190,7 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       unsweepable through checked underflow. Then M-8: `sweep` is `whenNotPaused`
       too, so a pause across a deadline converts contributor entitlements into a
       funder refund with no exit.
-- [ ] **C — H-4 + M-2.** Same three files, different functions, so one lane.
+- [x] **C — H-4 + M-2.** Same three files, different functions, so one lane.
       H-4: `_createBootstrapSafe` derives the CREATE2 nonce from mempool-visible
       calldata with a constant initializer and has no adopt branch, so a squatter
       spends 215,129 gas to destroy 13,097,357 of the victim's. Precompute the
@@ -190,13 +200,15 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       M-2: make the signer verifier and vkey immutable on the wrappers, as
       `TrustComposeFactory` already does. Costs 12 call-site updates across 12
       files, 9 of them PoCs.
-- [ ] **D — H-3, owner half.** Disjoint from C: the governed wrappers delegate, so
+- [x] **D — H-3, owner half.** Disjoint from C: the governed wrappers delegate, so
       this is the four *base* factories. Every one deploys the distributor with
       `owner = admin`, documented as "0 means msg.sender", a creator EOA
       (`TrustgraphsFactory.sol:458` and siblings), and `DeployNetwork.s.sol:173`
       leaves the deployer EOA. The prior audit's "renounced to timelocks" is true
-      of `MerkleSnapshot` and false here. Decide the intended holder and wire it.
-- [ ] **E — H-6 + L-1.** `claim` passes `snapshot.getLatestState().root` into a
+      of `MerkleSnapshot` and false here. Resolved per D5: every distributor
+      creation and attachment seam requires an initialized Safe-compatible
+      owner, and `DeployNetwork` receives that Safe explicitly.
+- [x] **E — H-6 + L-1.** `claim` passes `snapshot.getLatestState().root` into a
       statement key whose counts come from `checkpointId`. Key the statement on the
       checkpoint's own `acc`, and have `claim` read the checkpoint's own root via
       `getAcceptedCheckpoint`. Make `_settle` `_skip` rather than revert, so a
@@ -204,7 +216,7 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       PoCs at assert time with no compiler error pointing at them; they land in the
       same commit. L-1: assert the stablecoin's decimals as the constructor already
       does for the feed.
-- [ ] **F — H-1.** Per D4 this lane makes the system stop lying about its own
+- [x] **F — H-1.** Per D4 this lane makes the system stop lying about its own
       edge; it does not raise the edge. Four ceilings exist and only the last one
       binds: `MAX_TOTAL_INPUTS = 200_000` (protocol), `CapabilityProfile::default()`
       capping `max_unique_nodes` at 10,000 which is ~5,000 leaves and is documented
@@ -225,36 +237,36 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       No vkey: `operator-core/src/work.rs:202` says these ceilings are asserted by
       no guest and pinned in no vkey, and the constant appears in neither the
       17-word `params_hash` nor the 12-word journal.
-- [ ] **G — H-5a.** `updateParams` validates only the three schema UIDs, and
+- [x] **G — H-5a.** `updateParams` validates only the three schema UIDs, and
       `ContributionsParamsValidator.validateFinal` exists with **zero production
       call sites**. Call it. One line. The guest half is M2.
-- [ ] **H — M-5.** Add the `latestVersion` high-water mark that
+- [x] **H — M-5.** Add the `latestVersion` high-water mark that
       `TrustComposeParamsController` already has. **Hazard:** the existing invariant
       suite asserts the bug — `WeightedPriorLifecycleInvariant.t.sol:163` requires
       `pending.version == controller.version() + 1` — so the fix and
       `WeightedPriorParamsController.t.sol:204-212` and
       `QuillStateInv_WeightedVersionReuse.t.sol:119` move in one commit.
-- [ ] **I — M-6.** Reject an output pool below the source count; the compose guest
+- [x] **I — M-6.** Reject an output pool below the source count; the compose guest
       already does (`composition-core/src/compute.rs:197-198`), so this is
       Solidity-only and needs no rotation. Also close the variant the audit missed:
       `sourceCount` is rotatable while `outputPool` is not, so a policy rotation can
       brick a live instance.
-- [ ] **J — M-7 + M-4.** M-7: `Passed` is terminal, permanent and permissionlessly
+- [x] **J — M-7 + M-4.** M-7: `Passed` is terminal, permanent and permissionlessly
       executable, so a sleeper proposal executes after a full root turnover; add a
       snapshotted execution window and an `Expired` state. **Hazard:** `Proposal` has
       14 fields and 10 tuple destructures in `unit/MerkleGovModule.t.sol`; adding a
       field breaks all 10. M-4: `SignerSyncZkModule.setAccumulator` has no rotation
       lock and never resets `lastAppliedCheckpoint`, unlike `MerkleSnapshot`.
-- [ ] **K — M-3.** Pin the registry immutably on the adapter factory, or reject a
+- [x] **K — M-3.** Pin the registry immutably on the adapter factory, or reject a
       foreign one in `_validatePolicy`. Today every provenance pin is read from a
       registry the caller supplies, and one shared adapter factory serves the
       platform, so `isAdapter` is a global signal over forgeable input.
-- [ ] **L — M-1a, Solidity-only.** Split deliberately from M-1b so it needs no
+- [x] **L — M-1a, Solidity-only.** Split deliberately from M-1b so it needs no
       rotation: add a range check on `count` and a de-registration or admin reset.
       Today `count = type(uint64).max` is terminal, with no reset, no
       de-registration and no re-`register()`, and the count-monotonicity added by
       the last audit is what made a bogus high head permanently outrank honest ones.
-- [ ] **N — L-2, L-5, docs.** L-2: `MAX_REFERRAL_SUBJECTS` is documented as bounding
+- [x] **N — L-2, L-5, docs.** L-2: `MAX_REFERRAL_SUBJECTS` is documented as bounding
       the active set and implemented over the lifetime set. L-5: `TEST.sol` builds
       `ERC20Permit("MyToken")` against `ERC20("TEST","TEST")`, so every
       wallet-produced permit signature is rejected. Docs: three files tell three
@@ -272,7 +284,7 @@ explicitly marked as not shipping to testnet per D1.
 The only internally serialized lane in the program, and the only one that rotates
 keys. It can start on day one and run alongside all of M1; it just cannot be split.
 
-- [ ] **M-1b — bind the head signature.** `AnchorRegistry`'s payload is
+- [x] **M-1b — bind the head signature.** `AnchorRegistry`'s payload is
       `keccak256(HEAD_DOMAIN_TAG, head, count)`: no `envelopeKind`, no
       `dataCommitment`, no chain id, no verifying contract. One signature replays
       into a second instance and across a chain-id change, and a victim's blind
@@ -284,18 +296,18 @@ keys. It can start on day one and run alongside all of M1; it just cannot be spl
       Rust and Solidity move together. **The anchor leaf itself needs no change** —
       `zk-core/src/anchor.rs:17-33` already binds `envelopeKind` and
       `dataCommitment`, matching `AnchorRegistry.sol:213`.
-- [ ] **H-5b — the wrapping subtraction.** `contributions-core/src/compute.rs:235`
+- [x] **H-5b — the wrapping subtraction.** `contributions-core/src/compute.rs:235`
       wraps `s - beta_fp` in `alloy` U256, flipping the evaluator carve-out from the
       whole pool to three wei with a valid proof and a real payout. The TypeScript
       port does the same subtraction in `bigint` and goes negative, so guest, host
       and display disagree on one `paramsHash`. Fix all three.
-- [ ] **Golden vectors.** Add the two genuinely-unpinned fields (non-empty
+- [x] **Golden vectors.** Add the two genuinely-unpinned fields (non-empty
       `domainSetHash`; a `paramsHash` with `minWeightFp`, `envelope0DomainSeparators`
       and `lane2MaxHeadAge` non-default). The other two the audit listed —
       `envelopeKind != 0` and a multi-entry `skippedDigest` — are **already pinned**
       in `tests/golden/nostr-workspace.json`; they were invisible only because that
       program is missing from the parity matrix, which M0 fixes.
-- [ ] Regenerate every affected vector and rotate: `task zk:vectors PROGRAM=<name>`,
+- [x] Regenerate every affected vector and rotate: `task zk:vectors PROGRAM=<name>`,
       then `task zk:parity` as the gate. Run `task zk:build` first, per M0's
       stale-ELF note.
 
@@ -311,17 +323,17 @@ check still passes on the four fields it verified.
 Independent of every code lane. Can start immediately. This is not an audit
 finding; it is the prerequisite the audit kept running into.
 
-- [ ] Add a real chain target. `contracts/deploy/env.ts` knows only `dev` (31337)
+- [x] Add a real chain target. `contracts/deploy/env.ts` knows only `dev` (31337)
       and `prod` (Optimism 10); `grep -rn 11155111 contracts/` returns nothing.
       Separate deployment *stage* from chain *target* and chain *profile*, per
       `docs/build/sepolia.md`.
-- [ ] Produce a sanitized `deployments/sepolia.json` release manifest as the
+- [x] Produce a sanitized `deployments/sepolia.json` release manifest as the
       interface between deploy, indexer, operator and frontend. Do not use
       `.docker/deployment_summary.json`: it is machine-local, git-ignored, and
       carries `rpc_url`, which may hold a provider credential.
-- [ ] Remove the Anvil default key from `Common.s.sol:8-9`, which backs all 29
+- [x] Remove the Anvil default key from `Common.s.sol:8-9`, which backs all 29
       deploy scripts, and add a chain-id assert before every broadcast.
-- [ ] Reconcile the three chain stories in `production.md`, `sepolia.md` and
+- [x] Reconcile the three chain stories in `production.md`, `sepolia.md` and
       `addresses-and-vkeys.md`.
 
 **Exit:** a Sepolia deploy is reproducible from the manifest by someone who did
@@ -331,18 +343,18 @@ not write it; no script can broadcast to the wrong chain or with a default key.
 
 ### M4 — Coverage where the findings actually were
 
-- [ ] Dedicated tests for the ten untested contracts that matter, in the order the
+- [x] Dedicated tests for the ten untested contracts that matter, in the order the
       audit found defects in them: `TrustComposeParamsController` (307 LOC),
       `CompositionSourceAccumulator` (288), `TrustComposeFactory` (263),
       `CompositionSourceAdapter` (232), `InstanceDeployers` (201), both params
       validators, `AttestationAccumulator`, `TrustgraphsParamsController`, and the
       five codecs. 25 of 54 contracts have none today.
-- [ ] Static analysis in CI: there is none. Add it, un-comment clippy in
+- [x] Static analysis in CI: there is none. Add it, un-comment clippy in
       `rust.yml`, and fix the 6 `forge fmt --check` failures, all in post-audit code.
-- [ ] Get a coverage number, or record why it is impossible. `--ir-minimum` hits
+- [x] Get a coverage number, or record why it is impossible. `--ir-minimum` hits
       Yul stack-too-deep at `TrustgraphsParamsController.sol:17`, plain at
       `MerkleSnapshot.sol:473`.
-- [ ] Move `RoleSeparatedTimelockController` out of
+- [x] Move `RoleSeparatedTimelockController` out of
       `contracts/script/DeployTimelocks.s.sol`. It is production governance living
       outside `src` and outside every `src`-scoped tool.
 
@@ -374,9 +386,11 @@ conflict.
 **M0 + M1 lanes A, B, C, D, F, G, H, J, L, N + M2 + M3.** Trust-graph only.
 
 Compose lanes (E, I, K) are explicitly *not* in the gate, per D1. The SP1 6.3.1
-verifier-route check is a hard blocker inside M3 and is an operator action: if
-that toolchain has no supported route, the bump rebuilds every ELF and
-regenerates every key and vector, and it must ride with M2 rather than after it.
+verifier-route check is resolved: the 6.3.1 crates embed circuit version V6.1.0
+and selector `0x4388a21c`, and the live canonical Sepolia Groth16 gateway routes
+that selector to the unfrozen V6.1.0 verifier. No toolchain bump or second M2
+rotation is required. A genuine proof transaction remains a pre-broadcast
+operator check.
 
 ### Compose gate
 
@@ -385,17 +399,20 @@ Compose ships when the code that only it exercises has tests, not before.
 
 ### Value gate (real money on the line)
 
-**Lane D resolved to a non-EOA holder, and lane B merged.** A distributor whose
+**Lane D resolved to a Safe holder, and lane B merged.** A distributor whose
 owner is a creator EOA and whose denominator is unpinned should not hold other
-people's funds.
+people's funds. Both conditions now fail closed.
 
 ---
 
 ## Operator actions ledger (Jake)
 
-1. **The SP1 6.3.1 verifier-route check** against Succinct's supported-version
-   data. Not answerable from the repo, and it decides whether a toolchain bump
-   rides with M2. Carried over from the last program, still open, now blocking.
+1. **Resolved — the SP1 6.3.1 verifier route.** The packages call themselves
+   6.3.1 but embed the supported V6.1.0 circuit and Groth16 route selector
+   `0x4388a21c`. On 2026-08-23 the canonical Sepolia gateway routed it to
+   `0xb69f...f4e2`, whose `VERSION()` is `v6.1.0`, and the route was not frozen.
+   The pre-broadcast real-proof transaction remains deployment evidence, not a
+   reason to rotate the just-built M2 guests again.
 2. **Ingress admission — the decision H-1 actually surfaces.** Per D4 the ceiling
    is ruled and lane F is scoped, but lane F only makes the edge honest. It does
    not stop an attacker reaching that edge for ~0.0027 ETH. Pricing or staking
@@ -409,9 +426,10 @@ people's funds.
    Treat it as an order of magnitude. If 200,000 is ever to be a real
    single-proof target, that measurement is the prerequisite, and it likely needs
    chunking or recursion rather than a bigger constant.
-3. **Who owns a minted instance's distributor (lane D).** Creator EOA, instance
-   Safe, or timelock. This is a product decision about what a network operator is
-   trusted with, not a code decision.
+3. **Resolved — the instance Safe owns every minted distributor (lane D).** The
+   four base factories reject EOAs and uninitialized contracts at both creation
+   and attachment, governed wrappers use their newly instantiated Safe, and
+   `DeployNetwork` requires the Safe as an explicit argument.
 4. **Whether the audit PoCs stay in the tree.** They are committed at `90765d6`
    and are per-finding regressions; M0 dispositions the 5 failing ones either way.
 5. **Nothing is pushed.** `main` is 3 commits ahead of `origin/main` and
@@ -435,6 +453,17 @@ people's funds.
 ---
 
 ## Program log
+
+**2026-08-23 — D5 ruled and program closed.** The operator selected Safe
+ownership for lane D. The four base factories now require an initialized
+Safe-compatible distributor owner at creation and attachment, Contributions
+requires one for every round, `DeployNetwork` takes it explicitly, and the dev
+pipeline creates the Safe before attaching the distributor. Regressions cover
+EOA rejection, Safe ownership, governed wrappers and the legacy production
+script. The affected ABIs were regenerated and exact-checked. The complete
+Solidity suite passed by exhaustive path sharding because the one-shot Foundry
+process exceeded the runner's memory; Rust, guest-parity, deployment, frontend
+and indexer gates are green.
 
 **2026-08-23 — D4 ruled.** "Let's make it 200,000" was raised and resolved
 against, on the DoS-economics argument recorded in D4: raising the operator's

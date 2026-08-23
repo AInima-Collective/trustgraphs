@@ -19,7 +19,7 @@ contract DeployGraphLineageRegistry is Common {
         address instanceRegistry = vm.parseAddress(instanceRegistryAddr);
         require(instanceRegistry != address(0), "DeployGraphLineageRegistry: instance registry is zero");
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
         registry = address(new GraphLineageRegistry(IInstanceRegistry(instanceRegistry)));
         vm.stopBroadcast();
 

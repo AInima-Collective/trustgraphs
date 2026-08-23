@@ -42,6 +42,7 @@ export interface ProposalCore {
   merkleRoot: string
   totalVotingPower: bigint
   quorumFraction: bigint
+  executionDeadlineBlock: bigint
   state: number // ProposalState enum
   blockNumber: bigint
   timestamp: bigint
@@ -62,6 +63,7 @@ export enum ProposalState {
   Passed = 3,
   Executed = 4,
   Cancelled = 5,
+  Expired = 6,
 }
 
 export enum VoteType {
@@ -100,6 +102,9 @@ function computeProposalState(
     (proposal.totalVotingPower * proposal.quorumFraction) / quorumRange
 
   if (totalVotes >= quorumThreshold && proposal.yesVotes > proposal.noVotes) {
+    if (currentBlockNumber > proposal.executionDeadlineBlock) {
+      return ProposalState.Expired
+    }
     return ProposalState.Passed
   }
 
@@ -271,6 +276,7 @@ export function useGovernance() {
         merkleRoot: proposal.merkleRoot,
         totalVotingPower: proposal.totalVotingPower,
         quorumFraction: proposal.quorumFraction,
+        executionDeadlineBlock: proposal.executionDeadlineBlock,
         state,
         blockNumber: proposal.blockNumber,
         timestamp: proposal.timestamp,
@@ -767,6 +773,8 @@ export function useGovernance() {
         return 'Executed'
       case ProposalState.Cancelled:
         return 'Cancelled'
+      case ProposalState.Expired:
+        return 'Expired'
       default:
         return 'Unknown'
     }

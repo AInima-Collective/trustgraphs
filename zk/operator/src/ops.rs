@@ -161,6 +161,8 @@ pub struct Status {
 pub struct PublicSettings {
     pub capability_profile: operator_core::CapabilityProfile,
     pub cost_model_version: u16,
+    pub cycle_limit: u64,
+    pub protocol_max_total_inputs: u64,
     pub paid_enabled: bool,
     pub paid_vault: Option<String>,
     pub paid_recipient: Option<String>,
@@ -211,6 +213,9 @@ pub struct InstanceStatus {
     pub newest_anchor_count: u64,
     pub input_work: u64,
     pub input_capacity: u64,
+    /// The configured gate nearest exhaustion for this instance. This publishes which of the
+    /// profile, cycle, or instance ingress ceilings actually binds instead of only paging at 80%.
+    pub limiting_capacity: operator_core::CapacityUsage,
     pub envelope0_fetch_latency_ms: Option<u64>,
     pub envelope0_exact_readers: Option<usize>,
     pub envelope0_validation_failed: bool,

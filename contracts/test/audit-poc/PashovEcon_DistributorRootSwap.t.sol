@@ -10,18 +10,29 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract PE_Snap {
     IMerkleSnapshot.MerkleState internal s;
+
     function set(bytes32 root, uint256 total) external {
         s = IMerkleSnapshot.MerkleState({
-            blockNumber: block.number, timestamp: block.timestamp,
-            root: root, ipfsHash: bytes32(uint256(1)), ipfsHashCid: "cid", totalValue: total
+            blockNumber: block.number,
+            timestamp: block.timestamp,
+            root: root,
+            ipfsHash: bytes32(uint256(1)),
+            ipfsHashCid: "cid",
+            totalValue: total
         });
     }
-    function getLatestState() external view returns (IMerkleSnapshot.MerkleState memory) { return s; }
+
+    function getLatestState() external view returns (IMerkleSnapshot.MerkleState memory) {
+        return s;
+    }
 }
 
 contract PE_Token is ERC20 {
     constructor() ERC20("T", "T") {}
-    function mint(address to, uint256 a) external { _mint(to, a); }
+
+    function mint(address to, uint256 a) external {
+        _mint(to, a);
+    }
 }
 
 contract PashovEcon_DistributorRootSwap is Test {

@@ -26,23 +26,13 @@ contract CreatorControlledVerifier is IZkVerifier {
     function verify(bytes calldata, bytes32) external pure {}
 }
 
-/// @notice PASS A PoC.
-///
-/// `GovernedTrustgraphsFactory.createGovernedInstance` takes BOTH the signer-sync `verifier`
-/// address and its `programVKey` from the caller, and `SignerSyncModuleDeployer.deploy`'s only
-/// authenticity test is that they agree with each other:
-///
-///     bytes32 verifierVKey = abi.decode(returned, (bytes32));
-///     if (verifierVKey != programVKey) revert SignerProgramVKeyMismatch(programVKey, verifierVKey);
-///
-/// A self-consistent pair proves nothing. The creator supplies a contract that returns its own
-/// vkey and accepts every proof, and the wrapper enables that module on the brand-new DAO Safe.
-/// The `SignerSyncModuleConfigured` event and the `GovernedAuthorityInstalled` event both report
-/// it as a configured signer-sync module, indistinguishable from a real one.
+/// @notice PASS A regression: a self-consistent creator verifier/vkey pair cannot enter the call;
+///         every signer module receives the wrapper's constructor-validated immutable pair.
 contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
     GovernedTrustgraphsFactory internal governedFactory;
     GnosisSafe internal safeSingleton;
     GnosisSafeProxyFactory internal safeFactory;
+    CreatorControlledVerifier internal canonicalVerifier;
 
     address internal creator = address(0xA11CE);
 
@@ -50,17 +40,20 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
         super.setUp();
         safeSingleton = new GnosisSafe();
         safeFactory = new GnosisSafeProxyFactory();
+        canonicalVerifier = new CreatorControlledVerifier(keccak256("canonical-signer-guest"));
         governedFactory = new GovernedTrustgraphsFactory(
             factory,
             safeFactory,
             address(safeSingleton),
             new GovernedAuthorityDeployer(),
             new SignerSyncModuleDeployer(),
-            new MerkleGovModuleDeployer()
+            new MerkleGovModuleDeployer(),
+            canonicalVerifier,
+            canonicalVerifier.programVKey()
         );
     }
 
-    function test_PassA_CreatorInstallsASignerSyncModuleWithItsOwnVerifier() public {
+    function test_PassA_CreatorCannotInstallItsOwnSignerVerifier() public {
         CreatorControlledVerifier fake = new CreatorControlledVerifier(keccak256("i-made-this-up"));
 
         TrustgraphsFactory.CreateArgs memory args = _args("backdoored");
@@ -71,20 +64,20 @@ contract OmegaPassA_GovernedSignerSyncBackdoor is TrustgraphsFactoryBase {
             args,
             GovernedTrustgraphsFactory.InitialPolicy({minPaidIntervalBlocks: 0, maxPerRootUsd: 0}),
             GovernedTrustgraphsFactory.SignerSyncConfig({
-                enabled: true,
-                verifier: address(fake),
-                programVKey: fake.programVKey(),
-                topN: 3,
-                minThreshold: 2,
-                targetThresholdBps: 5_000
+                enabled: true, topN: 3, minThreshold: 2, targetThresholdBps: 5_000
             })
         );
 
         GovernedTrustgraphsFactory.Authority memory authority = governedFactory.authorityOf(instanceId);
         address module = authority.signerSyncModule;
         assertTrue(module != address(0), "module not installed");
-        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "attacker verifier module is live on the Safe");
-        assertEq(address(SignerSyncZkModule(module).zkVerifier()), address(fake), "verifier is the creator's own");
+        assertTrue(GnosisSafe(payable(safe)).isModuleEnabled(module), "canonical signer module is live on the Safe");
+        assertEq(
+            address(SignerSyncZkModule(module).zkVerifier()),
+            address(canonicalVerifier),
+            "wrapper must install its immutable verifier"
+        );
+        assertTrue(address(SignerSyncZkModule(module).zkVerifier()) != address(fake), "creator verifier was installed");
 
         // And it is armed: nothing about the module distinguishes it from a real signer-sync
         // module to anybody reading the discovery events.

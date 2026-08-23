@@ -27,7 +27,7 @@ contract EasSchema is Common {
         string calldata resolverAddr,
         bool revocable
     ) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         SchemaRegistrar registrar = SchemaRegistrar(vm.parseAddress(registrarAddr));
 
@@ -73,7 +73,7 @@ contract EasSchema is Common {
         string calldata resolverAddr,
         bool revocable
     ) public {
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         ISchemaRegistry registry = ISchemaRegistry(vm.parseAddress(registryAddr));
 

@@ -65,13 +65,12 @@ contract QuillFeeToken is ERC20 {
 ///
 /// and the per-round bound that makes the sum meaningful:
 ///
-///   amountDistributed_d <= amountFunded_d - feeAmount_d          (never checked in code)
+///   amountDistributed_d <= amountFunded_d - feeAmount_d
 ///
 /// The first two tests confirm the H-1 measured-balance-delta accounting DOES conserve across
 /// multiple rounds of the same token, fee-on-transfer funding, partial claims, deadline expiry
-/// and sweep, and a mid-life fee change. The last test shows the per-round bound is absent, so
-/// a round whose (root, totalValue) pair is inconsistent is NOT contained to its own funding:
-/// it spends other funders' money out of the shared token balance.
+/// and sweep, and a mid-life fee change. The last test proves the per-round cap contains a round
+/// whose `(root, totalValue)` pair is inconsistent to its own funding.
 contract QuillStateInv_DistributorConservation is Test {
     MerkleFundDistributor internal dist;
     QuillSnapshotStub internal snap;
@@ -202,12 +201,11 @@ contract QuillStateInv_DistributorConservation is Test {
         assertGe(feeToken.balanceOf(address(dist)), _liability(address(feeToken)));
     }
 
-    /// The missing per-round bound. `claim` computes
+    /// H-3 regression. `claim` computes
     ///     claimedAmount = mulDiv(amountFunded - feeAmount, value, totalMerkleValue)
-    /// and never checks it against the round's own remaining funding. All rounds of a token share
-    /// one balance, so a round with an inconsistent (root, totalValue) pair spends OTHER funders'
-    /// money rather than reverting on its own books.
-    function test_MissingPerRoundCapLetsOneRoundSpendAnotherRoundsFunding() public {
+    /// but checks it against the round's own remaining funding before changing state or moving
+    /// tokens. An inconsistent `(root, totalValue)` pair cannot spend OTHER funders' money.
+    function test_H3_PerRoundCapPreventsSpendingAnotherRoundsFunding() public {
         address alice = address(0xA1);
         address attacker = address(0xBAD);
 
@@ -246,29 +244,22 @@ contract QuillStateInv_DistributorConservation is Test {
 
         bytes32[] memory noProof = new bytes32[](0);
         uint256 before = token.balanceOf(attacker);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1000, 1));
         dist.claim(rBad, attacker, 1_000, noProof);
         uint256 gained = token.balanceOf(attacker) - before;
 
-        // 1 wei in, 1000 wei out - the round paid out 1000x its own funding, from the balance that
-        // belonged to rounds 0 and 1.
-        assertEq(gained, 1_000, "round paid out far more than it was funded with");
-        assertGt(dist.getDistribution(rBad).amountDistributed, bad.amountFunded - bad.feeAmount);
+        assertEq(gained, 0, "rejected overclaim transferred funds");
+        assertEq(dist.getDistribution(rBad).amountDistributed, 0);
 
-        // BROKEN INVARIANT #1: the round spent 999 wei more than it was ever funded with.
-        assertEq(_overpaid(rBad), 999, "round paid out beyond its own funding");
+        // INVARIANT #1: the malicious round never spends beyond its own funding.
+        assertEq(_overpaid(rBad), 0, "round paid out beyond its own funding");
 
-        // BROKEN INVARIANT #2: the shortfall lands on the OTHER funders. The two honest rounds are
-        // still booked at their full remaining liability, but the shared token balance no longer
-        // covers it.
-        assertLt(
-            token.balanceOf(address(dist)),
-            _liability(address(token)),
-            "expected the shared balance to fall below the booked liability"
+        // INVARIANT #2: the shared balance continues to cover every round's booked liability.
+        assertGe(
+            token.balanceOf(address(dist)), _liability(address(token)), "shared balance fell below booked liability"
         );
-        assertEq(honestLiability - _liability(address(token)), 0, "honest rounds' books are untouched");
-        assertEq(
-            honestLiability - token.balanceOf(address(dist)) + 1, 1000, "shortfall equals the overpayment"
-        );
+        assertEq(_liability(address(token)), honestLiability + 1, "all three round liabilities remain booked");
+        assertEq(token.balanceOf(address(dist)), honestLiability + 1, "all three round budgets remain held");
         assertEq(r0, 0);
         assertEq(r1, 1);
     }

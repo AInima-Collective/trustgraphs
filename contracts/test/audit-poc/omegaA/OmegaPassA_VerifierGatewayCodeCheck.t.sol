@@ -25,7 +25,10 @@ contract OmegaPassA_VerifierGatewayCodeCheck is Test {
         bytes memory proof = abi.encode(publicValues, bytes(hex""));
 
         bool accepted = true;
-        try v.verify(proof, keccak256(publicValues)) {} catch { accepted = false; }
+        try v.verify(proof, keccak256(publicValues)) {}
+        catch {
+            accepted = false;
+        }
         emit log_named_string("gateway=address(0): forged proof accepted?", accepted ? "YES" : "no");
         assertEq(v.programVKey(), bytes32(0), "zero vkey accepted by the constructor");
     }
@@ -38,7 +41,10 @@ contract OmegaPassA_VerifierGatewayCodeCheck is Test {
         bytes memory proof = abi.encode(publicValues, bytes(hex""));
 
         bool accepted = true;
-        try v.verify(proof, keccak256(publicValues)) {} catch { accepted = false; }
+        try v.verify(proof, keccak256(publicValues)) {}
+        catch {
+            accepted = false;
+        }
         emit log_named_string("gateway=EOA: forged proof accepted?", accepted ? "YES" : "no");
     }
 }

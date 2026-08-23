@@ -37,19 +37,18 @@ contract PocToken is ERC20 {
     }
 }
 
-/// @notice `MerkleFundDistributor.claim` never bounds a distribution's payouts by that
-///         distribution's own `amountFunded - feeAmount`. All distributions of one token share a
-///         single contract balance, so one round whose (root, totalMerkleValue) pair over-states
-///         its share drains every sibling round.
+/// @notice H-3 regression: `MerkleFundDistributor.claim` bounds every distribution's cumulative
+///         payouts by that distribution's own `amountFunded - feeAmount`, even when its snapshot
+///         reports an inconsistent `(root, totalMerkleValue)` pair.
 contract QuillBehav_DistributorOverclaim is Test {
     MerkleFundDistributor internal dist;
     StubSnapshot internal honest;
     StubSnapshot internal rogue;
     PocToken internal token;
 
-    address internal admin = address(0xAD814);   // instance admin == distributor owner
-    address internal alice = address(0xA11CE);   // third-party funder of a real round
-    address internal bob = address(0xB0B);       // legitimate contributor in Alice's round
+    address internal admin = address(0xAD814); // instance admin == distributor owner
+    address internal alice = address(0xA11CE); // third-party funder of a real round
+    address internal bob = address(0xB0B); // legitimate contributor in Alice's round
 
     function _leaf(address account, uint256 value) internal pure returns (bytes32) {
         return keccak256(bytes.concat(keccak256(abi.encode(account, value))));
@@ -69,7 +68,7 @@ contract QuillBehav_DistributorOverclaim is Test {
         token.mint(admin, 1);
     }
 
-    function test_OwnerRepointsSnapshotAndDrainsAnotherFundersRound() public {
+    function test_H3_OwnerRepointCannotDrainAnotherFundersRound() public {
         // 1. Alice funds a real round of 1000 tokens against the honest root.
         vm.startPrank(alice);
         token.approve(address(dist), 1_000e18);
@@ -90,20 +89,20 @@ contract QuillBehav_DistributorOverclaim is Test {
         uint256 rogueRound = dist.distribute(address(token), 1, bytes32(0));
         vm.stopPrank();
 
-        // 4. claimedAmount = mulDiv(totalDistributable=1, value=1000e18, totalMerkleValue=1).
+        // 4. The formula proposes 1000e18, but the round has only one wei of budget.
         bytes32[] memory emptyProof = new bytes32[](0);
-        uint256 claimed = dist.claim(rogueRound, admin, 1_000e18, emptyProof);
-        assertEq(claimed, 1_000e18, "one leaf drew 1000e18 out of a round funded with 1 wei");
-        assertEq(token.balanceOf(admin), 1_000e18, "owner now holds Alice's whole round");
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerkleFundDistributor.ClaimExceedsRoundBudget.selector, 1_000e18, uint256(1))
+        );
+        dist.claim(rogueRound, admin, 1_000e18, emptyProof);
+        assertEq(token.balanceOf(admin), 0, "rejected claim transferred Alice's funds");
 
-        // The per-distribution books are now impossible: distributed >> funded - fee.
+        // The malicious round's books remain bounded by its own funding.
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(rogueRound);
         assertEq(d.amountFunded, 1);
-        assertEq(d.amountDistributed, 1_000e18);
-        assertGt(d.amountDistributed, d.amountFunded, "no cap ties payouts to the round's own funding");
+        assertEq(d.amountDistributed, 0);
 
-        // 5. Bob's legitimate claim against Alice's round now fails: the money is gone.
-        vm.expectRevert();
-        dist.claim(aliceRound, bob, 1000, emptyProof);
+        // 5. Bob's legitimate claim against Alice's round remains fully backed.
+        assertEq(dist.claim(aliceRound, bob, 1000, emptyProof), 1_000e18);
     }
 }

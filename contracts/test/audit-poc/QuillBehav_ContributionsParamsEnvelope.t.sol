@@ -12,11 +12,8 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {MockAccumulator} from "test/mocks/MockAccumulator.sol";
 import {MockZkVerifier} from "test/mocks/MockZkVerifier.sol";
 
-/// @notice Every other typed controller re-runs its program's computational-safety envelope on the
-///         rotation path (`TrustgraphsParamsValidator.validateUpdate`,
-///         `WeightedPriorValidator.validateRotation`, `TrustComposeValidator.validateRotation`).
-///         `ContributionsParamsController.updateParams` checks only the three schema UIDs, so the
-///         round owner can pin a paramsHash the guest is not proven over — and cannot prove.
+/// @notice Regression coverage that contributions rotations apply the same computational-safety
+///         envelope as creation before changing either live commitment.
 contract QuillBehav_ContributionsParamsEnvelope is Test {
     bytes32 constant INSTANCE_ID = keccak256("contributions-instance");
     bytes32 constant PROGRAM = keccak256("contributions");
@@ -57,42 +54,48 @@ contract QuillBehav_ContributionsParamsEnvelope is Test {
         controller.publishInitialVersion();
     }
 
-    /// Damping 0 is outside the guest's proven envelope. Creation rejects it; rotation does not.
-    function test_RotationAcceptsParamsCreationRejects_ZeroDamping() public {
+    /// Damping 0 is outside the guest's proven envelope. Creation and rotation both reject it.
+    function test_RotationRejectsParamsCreationRejects_ZeroDamping() public {
         ContributionsParamsCodec.Params memory next = controller.getContributionsParams();
         next.dampingFp = 0;
+        bytes32 previousHash = controller.currentParamsHash();
 
         // The creation-time gate the factory applies would refuse this tuple outright.
         vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidDamping.selector, uint256(0)));
         this.validateEnvelope(next);
 
-        // The rotation path accepts it and pins it as the live truth-defining commitment.
         vm.prank(OWNER);
-        (, bytes32 newHash) = controller.updateParams(next, "");
-        assertEq(snapshot.paramsHash(), newHash, "an out-of-envelope tuple is now the pinned params");
-        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, newHash);
+        vm.expectRevert(abi.encodeWithSelector(ContributionsParamsValidator.InvalidDamping.selector, uint256(0)));
+        controller.updateParams(next, "");
+
+        assertEq(snapshot.paramsHash(), previousHash);
+        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, previousHash);
     }
 
-    /// The same hole admits every other envelope field at once.
-    function test_RotationAcceptsUnprovableTuple() public {
+    /// The same gate covers the complete envelope rather than only a single field.
+    function test_RotationRejectsUnprovableTuple() public {
         ContributionsParamsCodec.Params memory next = controller.getContributionsParams();
-        next.precisionScale = 1;               // guest constant S is 1e18
-        next.maxIterations = 0;                // no iterations at all
-        next.totalPool = 0;                    // nothing to allocate
-        next.roundStart = next.roundEnd + 1;   // window inverted
-        next.trustedSeeds = new address[](0);  // no seeds: teleport set is empty
+        next.precisionScale = 1; // guest constant S is 1e18
+        next.maxIterations = 0; // no iterations at all
+        next.totalPool = 0; // nothing to allocate
+        next.roundStart = next.roundEnd + 1; // window inverted
+        next.trustedSeeds = new address[](0); // no seeds: teleport set is empty
 
         vm.expectRevert();
         this.validateEnvelope(next);
 
         vm.prank(OWNER);
-        (, bytes32 newHash) = controller.updateParams(next, "");
-        assertEq(snapshot.paramsHash(), newHash, "rotation pinned a tuple no honest prover can satisfy");
+        vm.expectRevert();
+        controller.updateParams(next, "");
+
+        bytes32 previousHash = ContributionsParamsCodec.hash(initial);
+        assertEq(snapshot.paramsHash(), previousHash);
+        assertEq(registry.getInstance(INSTANCE_ID).paramsHash, previousHash);
     }
 
     /// external so `vm.expectRevert` can catch the library revert through a call boundary
     function validateEnvelope(ContributionsParamsCodec.Params memory p) external pure {
-        ContributionsParamsValidator.validateComputationalEnvelope(p);
+        ContributionsParamsValidator.validateFinal(p);
     }
 
     function _params() internal pure returns (ContributionsParamsCodec.Params memory p) {

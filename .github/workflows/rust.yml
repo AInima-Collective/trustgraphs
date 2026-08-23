@@ -74,16 +74,20 @@ jobs:
       - name: fmt --check
         run: cargo fmt --all --check
 
-#   clippy:
-#     name: clippy
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: dtolnay/rust-toolchain@stable
-#         with:
-#           components: clippy
-#       - uses: Swatinem/rust-cache@v2
-#       - name: clippy
-#         run: cargo clippy --workspace --tests --all-features
-#         env:
-#           RUSTFLAGS: "-D warnings"
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy
+        # These three lints are intentionally allowed: two preserve compatibility with the pinned
+        # guest compiler, and the envelope verifier exposes each signed field explicitly.
+        run: >-
+          cargo clippy --workspace --tests --all-features -- -D warnings
+          -A clippy::manual-is-multiple-of
+          -A clippy::map-or-identity
+          -A clippy::too-many-arguments

@@ -14,8 +14,13 @@ import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.s
 ///         holder — so the permissionless caller can route value only to the instance's own live
 ///         authority, and one instance never accumulates two factory-known funds.
 contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
-    address internal admin = address(0xAD01);
+    address internal admin;
     address internal stranger = address(0x57AA);
+
+    function setUp() public override {
+        super.setUp();
+        admin = address(safeAdmin);
+    }
 
     function test_AttachDeploysAFundOwnedByTheVerifiedAuthority() public {
         TrustgraphsFactory.CreateArgs memory args = _args("fundless");
@@ -53,9 +58,8 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
 
         // The factory retains nothing on what it attached.
         assertFalse(
-            MerkleSnapshot(created.snapshot).hasRole(
-                MerkleSnapshot(created.snapshot).CONSTITUTIONAL_ROLE(), address(factory)
-            )
+            MerkleSnapshot(created.snapshot)
+                .hasRole(MerkleSnapshot(created.snapshot).CONSTITUTIONAL_ROLE(), address(factory))
         );
     }
 
@@ -79,9 +83,7 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
         Created memory again = _create(second);
         address attached = factory.attachDistributor(again.instanceId, admin, address(0));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TrustgraphsFactory.DistributorAlreadyAttached.selector, again.instanceId, attached
-            )
+            abi.encodeWithSelector(TrustgraphsFactory.DistributorAlreadyAttached.selector, again.instanceId, attached)
         );
         factory.attachDistributor(again.instanceId, admin, address(0));
     }
@@ -99,5 +101,15 @@ contract TrustgraphsFactoryAttachDistributorTest is TrustgraphsFactoryBase {
             abi.encodeWithSelector(TrustgraphsFactory.NotInstanceAuthority.selector, created.instanceId, stranger)
         );
         factory.attachDistributor(created.instanceId, stranger, address(0));
+    }
+
+    function test_AttachRejectsAConstitutionalEoaOwner() public {
+        address eoaAdmin = address(0xE0A);
+        TrustgraphsFactory.CreateArgs memory args = _args("eoa authority");
+        args.admin = eoaAdmin;
+        Created memory created = _create(args);
+
+        vm.expectRevert(abi.encodeWithSelector(TrustgraphsFactory.InvalidDistributorSafe.selector, eoaAdmin));
+        factory.attachDistributor(created.instanceId, eoaAdmin, address(0));
     }
 }

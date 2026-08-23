@@ -19,6 +19,10 @@ contract PV_Verifier is IZkVerifier {
 
 contract PV_Usdc is ERC20 {
     constructor() ERC20("u", "u") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
 }
 
 contract PV_Feed is IEthUsdFeed {
@@ -113,6 +117,7 @@ contract OmegaPassB_ProvingVaultStatement is Test {
             admin
         );
         acc.bind(address(snap));
+        snap.enableStateProvenance();
 
         registry.register(
             INSTANCE,
@@ -148,13 +153,9 @@ contract OmegaPassB_ProvingVaultStatement is Test {
         a.minPayoutUsd = 0;
     }
 
-    /// FINDING: for any instance whose accumulator reports a CONSTANT `leafCount`
-    /// (`CompositionSourceAccumulator.leafCount() == _policy.length`), two consecutive checkpoints
-    /// over unchanged sources produce the identical composed `outputRoot`. `_terms` then derives
-    /// the SAME `statement`, and `_requireUnpaidStatement` REVERTS inside `_settle` — which is
-    /// called AFTER `snapshot.submitProof(...)`, so the whole transaction (including the root
-    /// acceptance) is rolled back. The root cannot be landed through the vault at all.
-    function test_DuplicateStatementRevertsAndRollsBackTheRoot() public {
+    /// Regression: identical output roots with distinct checkpoint accumulators represent two
+    /// distinct proofs. Both roots land and both proofs earn their bounty.
+    function test_DistinctCheckpointAccumulatorsPreventFalseStatementCollision() public {
         acc.advance();
         uint256 cp0 = snap.trigger();
         bytes32 root = keccak256("composed-allocation");
@@ -169,23 +170,15 @@ contract OmegaPassB_ProvingVaultStatement is Test {
         assertEq(cp1, 1);
 
         vm.prank(proverB);
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(root)));
         vault.submitAndClaim(INSTANCE, _args(cp1, root, proverB));
 
-        // The revert took the ROOT with it: checkpoint 1 was never applied.
-        assertEq(snap.lastAppliedCheckpoint(), cp0, "checkpoint 1 could not land through the vault");
+        assertEq(snap.lastAppliedCheckpoint(), cp1, "checkpoint 1 landed through the vault");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "second distinct proof paid");
     }
 
-    function _statement(bytes32 root) internal view returns (bytes32) {
-        return keccak256(abi.encode(address(snap), uint64(3), uint64(0), root));
-    }
-
-    /// FINDING: `claim(instanceId, checkpointId)` builds the anti-double-pay `statement` from
-    /// `snapshot.getLatestState().root` — the root of the NEWEST accepted checkpoint, not the root
-    /// the named checkpoint produced. Claiming an older, still-unpaid checkpoint therefore burns
-    /// the statement slot belonging to the newest checkpoint, and the newest checkpoint's own
-    /// prover can never be paid.
-    function test_ClaimOfOldCheckpointBurnsTheNewestCheckpointsBounty() public {
+    /// Regression: claiming an older checkpoint uses that checkpoint's accepted root and input
+    /// accumulator, so it cannot consume the newer checkpoint's statement slot.
+    function test_ClaimOfOldCheckpointDoesNotBurnTheNewestCheckpointsBounty() public {
         acc.advance();
         uint256 cp0 = snap.trigger();
         bytes32 r0 = keccak256("root-0");
@@ -200,10 +193,7 @@ contract OmegaPassB_ProvingVaultStatement is Test {
         vault.claim(INSTANCE, cp0);
         assertGt(vault.creditOf(proverA, address(0)), 0, "old checkpoint paid");
 
-        // …and its statement was computed from r1, so the newer checkpoint is now unpayable.
-        assertEq(_statement(r1), _statement(r1));
-        vm.expectRevert(abi.encodeWithSelector(IProvingVault.StatementAlreadyPaid.selector, _statement(r1)));
         vault.claim(INSTANCE, cp1);
-        assertEq(vault.creditOf(proverB, address(0)), 0, "newest prover permanently unpaid");
+        assertGt(vault.creditOf(proverB, address(0)), 0, "newest prover paid");
     }
 }

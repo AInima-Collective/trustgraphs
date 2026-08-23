@@ -36,11 +36,74 @@ contract EASIndexerResolverTest is Test {
 
         // Register schema with the resolver
         schemaId = schemaRegistry.register(SCHEMA, resolver, true);
+        resolver.bindSchema(schemaId);
     }
 
     function testConstruction_ShouldInitializeCorrectly() public view {
         // Verify the resolver was created successfully
         assertTrue(address(resolver) != address(0));
+        assertEq(resolver.boundSchema(), schemaId);
+    }
+
+    function testOnAttest_ShouldRevertUntilSchemaIsBound() public {
+        EASIndexerResolver unboundResolver = new EASIndexerResolver(IEAS(address(eas)));
+        bytes32 unboundSchema = schemaRegistry.register("uint256 unbound", unboundResolver, true);
+
+        vm.expectRevert(EASIndexerResolver.SchemaNotBound.selector);
+        eas.attest(
+            AttestationRequest({
+                schema: unboundSchema,
+                data: AttestationRequestData({
+                    recipient: recipient,
+                    expirationTime: NO_EXPIRATION_TIME,
+                    revocable: true,
+                    refUID: EMPTY_UID,
+                    data: abi.encode(uint256(1)),
+                    value: 0
+                })
+            })
+        );
+
+        assertEq(unboundResolver.acc(), bytes32(0));
+        assertEq(unboundResolver.leafCount(), 0);
+
+        unboundResolver.bindSchema(unboundSchema);
+        eas.attest(
+            AttestationRequest({
+                schema: unboundSchema,
+                data: AttestationRequestData({
+                    recipient: recipient,
+                    expirationTime: NO_EXPIRATION_TIME,
+                    revocable: true,
+                    refUID: EMPTY_UID,
+                    data: abi.encode(uint256(1)),
+                    value: 0
+                })
+            })
+        );
+        assertEq(unboundResolver.leafCount(), 1);
+    }
+
+    function testOnAttest_ShouldRejectNonzeroExpiration() public {
+        uint64 expirationTime = uint64(block.timestamp + 1 days);
+
+        vm.expectRevert(abi.encodeWithSelector(EASIndexerResolver.ExpirationNotSupported.selector, expirationTime));
+        eas.attest(
+            AttestationRequest({
+                schema: schemaId,
+                data: AttestationRequestData({
+                    recipient: recipient,
+                    expirationTime: expirationTime,
+                    revocable: true,
+                    refUID: EMPTY_UID,
+                    data: abi.encode(uint256(1)),
+                    value: 0
+                })
+            })
+        );
+
+        assertEq(resolver.acc(), bytes32(0));
+        assertEq(resolver.leafCount(), 0);
     }
 
     function testOnAttest_ShouldEmitEventOnAttestation() public {

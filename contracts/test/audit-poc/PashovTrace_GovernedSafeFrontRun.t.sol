@@ -11,14 +11,17 @@ import {
     SignerSyncModuleDeployer
 } from "src/factory/InstanceDeployers.sol";
 import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
+import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {TrustgraphsFactoryBase} from "test/unit/factory/TrustgraphsFactoryBase.sol";
 
-/// @notice Audit PoC (execution-trace pass): `GovernedTrustgraphsFactory._createBootstrapSafe`
-///         derives the Safe proxy's CREATE2 salt from public, mempool-visible values only
-///         (`chainid`, `msg.sender`, `name`, `salt`) and the initializer is a fixed constant.
-///         Anyone can therefore deploy that exact proxy first, and the victim's
-///         `createGovernedInstance` reverts inside Safe's `Create2 call failed` forever for that
-///         (creator, name, salt) triple.
+contract PashovTraceBootstrapSignerVerifier is IZkVerifier {
+    bytes32 public constant programVKey = keccak256("pashov-trace-bootstrap-signer");
+
+    function verify(bytes calldata, bytes32) external pure {}
+}
+
+/// @notice Regression trace: an exact mempool-front-run bootstrap Safe is validated, adopted, and
+///         atomically graduated instead of entering Gnosis Safe's gas-burning CREATE2 collision.
 contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
     address internal constant SENTINEL_OWNERS = address(0x1);
 
@@ -39,8 +42,16 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         authorityDeployer = new GovernedAuthorityDeployer();
         signerSyncDeployer = new SignerSyncModuleDeployer();
         govModuleDeployer = new MerkleGovModuleDeployer();
+        PashovTraceBootstrapSignerVerifier signerVerifier = new PashovTraceBootstrapSignerVerifier();
         governedFactory = new GovernedTrustgraphsFactory(
-            factory, safeFactory, address(safeSingleton), authorityDeployer, signerSyncDeployer, govModuleDeployer
+            factory,
+            safeFactory,
+            address(safeSingleton),
+            authorityDeployer,
+            signerSyncDeployer,
+            govModuleDeployer,
+            signerVerifier,
+            signerVerifier.programVKey()
         );
     }
 
@@ -49,14 +60,10 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
     }
 
     function _noSigner() internal pure returns (GovernedTrustgraphsFactory.SignerSyncConfig memory) {
-        return GovernedTrustgraphsFactory.SignerSyncConfig({
-            enabled: false,
-            verifier: address(0),
-            programVKey: bytes32(0),
-            topN: 0,
-            minThreshold: 0,
-            targetThresholdBps: 0
-        });
+        return
+            GovernedTrustgraphsFactory.SignerSyncConfig({
+                enabled: false, topN: 0, minThreshold: 0, targetThresholdBps: 0
+            });
     }
 
     /// The wrapper's bootstrap initializer, byte-for-byte (`_createBootstrapSafe`).
@@ -76,7 +83,7 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         );
     }
 
-    function test_AnyoneCanPermanentlyBlockAGovernedCreation() public {
+    function test_ExactFrontRunSafeIsAdoptedWithoutRetry() public {
         TrustgraphsFactory.CreateArgs memory args = _args("acme-dao");
         args.salt = bytes32(uint256(1));
 
@@ -86,19 +93,18 @@ contract PashovTrace_GovernedSafeFrontRun is TrustgraphsFactoryBase {
         vm.prank(griefer);
         safeFactory.createProxyWithNonce(address(safeSingleton), _bootstrapInitializer(), nonce);
 
-        // The victim's transaction now reverts inside GnosisSafeProxyFactory: the CREATE2 address
-        // is occupied, `create2` returns 0, and `require(address(proxy) != address(0))` fires.
+        // The victim precomputes the occupied address, validates the pristine Safe, and adopts it.
         vm.prank(creator);
-        vm.expectRevert(bytes("Create2 call failed"));
-        governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
+        (, address safe,,) = governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
+        assertTrue(GnosisSafe(payable(safe)).isOwner(creator));
 
-        // Retrying is not a fix: every retry publishes the (name, salt) the griefer needs.
+        // A second independently front-run tuple is adopted in the same way.
         args.salt = bytes32(uint256(2));
         uint256 nonce2 = uint256(keccak256(abi.encode(block.chainid, creator, args.name, args.salt)));
         vm.prank(griefer);
         safeFactory.createProxyWithNonce(address(safeSingleton), _bootstrapInitializer(), nonce2);
         vm.prank(creator);
-        vm.expectRevert(bytes("Create2 call failed"));
-        governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
+        (, safe,,) = governedFactory.createGovernedInstance(args, _noPolicy(), _noSigner());
+        assertTrue(GnosisSafe(payable(safe)).isOwner(creator));
     }
 }

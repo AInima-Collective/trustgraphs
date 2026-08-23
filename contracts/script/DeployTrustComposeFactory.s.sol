@@ -96,12 +96,13 @@ contract DeployTrustComposeFactory is Common {
                 : vm.envOr("PROVING_VAULT", address(0))
         );
 
-        vm.startBroadcast(_privateKey);
+        _startBroadcast();
 
         // The append-only registry of reviewed source adapters. The composition accumulator only
         // accepts adapters minted by THIS factory, so its address is part of the instance's trust
         // base and is recorded in the artifact below.
-        CompositionSourceAdapterFactory sourceAdapterFactory = new CompositionSourceAdapterFactory();
+        CompositionSourceAdapterFactory sourceAdapterFactory =
+            new CompositionSourceAdapterFactory(IInstanceRegistry(instanceRegistry));
 
         // The children whose creation code will not fit inside the factory (EIP-170).
         MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();

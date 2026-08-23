@@ -22,6 +22,7 @@
 //! Design: [`research/PROOF_SCHEDULER.md`](../../../research/PROOF_SCHEDULER.md) §2 (operator),
 //! §5 (failure semantics). Operation: [`docs/build/run-a-prover.md`](../../../docs/build/run-a-prover.md).
 
+pub mod capacity;
 pub mod catalog;
 pub mod decide;
 pub mod finality;
@@ -33,6 +34,7 @@ pub mod types;
 pub mod weighted_manifest;
 pub mod work;
 
+pub use capacity::{limiting_capacity, CapacityCeiling, CapacityUsage};
 pub use decide::plan;
 pub use journal::SubmitFailureClass;
 pub use policy::{LossBudget, Policy, Spend};

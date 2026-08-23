@@ -170,6 +170,27 @@ contract SignerSyncZkModuleTest is Test {
         assertEq(safe.getThreshold(), threshold, "threshold mismatch");
     }
 
+    function _newModuleWithAccumulator(IAttestationAccumulator accumulator_)
+        internal
+        returns (SignerSyncZkModule module_)
+    {
+        module_ = new SignerSyncZkModule(
+            owner,
+            address(safe),
+            address(safe),
+            IZkVerifier(address(verifier)),
+            accumulator_,
+            scoreSnapshot,
+            activitySource,
+            PARAMS_HASH,
+            5,
+            2,
+            5_000,
+            151_200,
+            2
+        );
+    }
+
     /*//////////////////////// setup / governance ////////////////////////*/
 
     function test_Setup() public view {
@@ -224,6 +245,51 @@ contract SignerSyncZkModuleTest is Test {
             module.selectionParamsHash(),
             keccak256(abi.encode(uint32(4), uint32(2), uint32(6000), uint64(100_000), uint32(2)))
         );
+    }
+
+    function test_AccumulatorRotationRequiresBothCheckpointHistoriesEmpty() public {
+        MockAccumulator emptyCandidate = new MockAccumulator();
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(SignerSyncZkModule.AccumulatorRotationLocked.selector, uint256(2), uint256(0))
+        );
+        module.setAccumulator(emptyCandidate);
+        assertEq(address(module.accumulator()), address(accumulator), "live history was rotated");
+
+        MockAccumulator emptyCurrent = new MockAccumulator();
+        SignerSyncZkModule fresh = _newModuleWithAccumulator(emptyCurrent);
+        MockAccumulator usedCandidate = new MockAccumulator();
+        usedCandidate.pushCheckpoint(keccak256("used"), 1, uint64(block.number));
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(SignerSyncZkModule.AccumulatorRotationLocked.selector, uint256(0), uint256(1))
+        );
+        fresh.setAccumulator(usedCandidate);
+        assertEq(address(fresh.accumulator()), address(emptyCurrent), "pre-used history was adopted");
+    }
+
+    function test_AccumulatorRotationBeforeCheckpointClearsHighWaterState() public {
+        MockAccumulator emptyCurrent = new MockAccumulator();
+        MockAccumulator emptyCandidate = new MockAccumulator();
+        SignerSyncZkModule fresh = _newModuleWithAccumulator(emptyCurrent);
+
+        vm.prank(owner);
+        fresh.setAccumulator(emptyCandidate);
+
+        assertEq(address(fresh.accumulator()), address(emptyCandidate));
+        assertEq(fresh.lastAppliedCheckpoint(), 0, "high-water id not reset");
+        assertFalse(fresh.hasAppliedCheckpoint(), "high-water sentinel not reset");
+    }
+
+    function test_ReapplyingSameAccumulatorDoesNotEraseAppliedHighWaterMark() public {
+        module.submitSignerProof(0, 0, _arr(D, E, F), 2, PROOF);
+        assertTrue(module.hasAppliedCheckpoint());
+
+        vm.prank(owner);
+        module.setAccumulator(accumulator);
+
+        assertEq(module.lastAppliedCheckpoint(), 0);
+        assertTrue(module.hasAppliedCheckpoint(), "same-address no-op erased applied history");
     }
 
     function test_PauseIsGovernedAndStopsProofs() public {

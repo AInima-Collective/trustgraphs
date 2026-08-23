@@ -3,10 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
 import {MerkleSnapshot} from "src/merkle/MerkleSnapshot.sol";
 import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
@@ -31,8 +28,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
     bytes32 internal constant NOSTR_OUTPUT_DOMAIN = keccak256("trustgraphs.output.nostr-member.v1");
     bytes32 internal constant FAMILY = keccak256("nostr-workspace-member-v1");
     bytes32 internal constant ALLOCATION = keccak256("allocation");
-    bytes32 internal constant NOSTR_VKEY =
-        0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3;
+    bytes32 internal constant NOSTR_VKEY = 0x00475027871d7e096ae46d3059e73769642091af658febfef05271be59e343e3;
 
     InstanceRegistry internal registry;
     CompositionSourceAdapterFactory internal adapterFactory;
@@ -43,7 +39,7 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
 
     function setUp() public {
         registry = new InstanceRegistry(address(this));
-        adapterFactory = new CompositionSourceAdapterFactory();
+        adapterFactory = new CompositionSourceAdapterFactory(registry);
         sourceVerifier = new NostrCaptureVerifier(NOSTR_VKEY);
         _createNostrSource(0);
         _createNostrSource(1);
@@ -94,9 +90,8 @@ contract NostrWorkspaceCompositionCaptureTest is Test {
     function _createNostrSource(uint256 index) internal {
         MockAccumulator sourceAccumulator = new MockAccumulator();
         bytes32 paramsHash = keccak256(abi.encode(NOSTR_OUTPUT_DOMAIN, "nostr params", index));
-        MerkleSnapshot sourceSnapshot = new MerkleSnapshot(
-            sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this)
-        );
+        MerkleSnapshot sourceSnapshot =
+            new MerkleSnapshot(sourceVerifier, paramsHash, sourceAccumulator, address(this), address(this));
         sourceSnapshot.enableStateProvenance();
         bytes32 instanceId = bytes32(index + 1);
         registry.registerWithParamsAuthority(

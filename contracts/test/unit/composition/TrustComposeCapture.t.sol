@@ -3,10 +3,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {
-    CompositionSourceAdapter,
-    CompositionSourceAdapterFactory
-} from "src/composition/CompositionSourceAdapter.sol";
+import {CompositionSourceAdapter, CompositionSourceAdapterFactory} from "src/composition/CompositionSourceAdapter.sol";
 import {CompositionSourceAccumulator} from "src/composition/CompositionSourceAccumulator.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
 import {TrustComposeParamsController} from "src/factory/TrustComposeParamsController.sol";
@@ -28,6 +25,7 @@ import {IInstanceRegistry} from "interfaces/registry/IInstanceRegistry.sol";
 import {IProvingVault} from "interfaces/vault/IProvingVault.sol";
 import {InstanceRegistry} from "src/registry/InstanceRegistry.sol";
 import {MockAccumulator} from "../../mocks/MockAccumulator.sol";
+import {MockSafeOwner} from "../../helpers/MockSafeOwner.sol";
 
 contract CompositionProgramVerifier is IZkVerifier {
     bytes32 public immutable programVKey;
@@ -68,7 +66,7 @@ contract TrustComposeCaptureTest is Test {
 
     function setUp() public {
         registry = new InstanceRegistry(address(this));
-        adapterFactory = new CompositionSourceAdapterFactory();
+        adapterFactory = new CompositionSourceAdapterFactory(registry);
         sourceVerifier = new CompositionProgramVerifier(SOURCE_VKEY);
         composeVerifier = new CompositionProgramVerifier(COMPOSE_VKEY);
         factory = new TrustComposeFactory(
@@ -85,6 +83,34 @@ contract TrustComposeCaptureTest is Test {
             IProvingVault(address(0))
         );
         registry.grantRole(registry.REGISTRAR_ROLE(), address(factory));
+    }
+
+    function test_ComposeFactoryRejectsAnAdapterFactoryPinnedToAnotherRegistry() public {
+        InstanceRegistry foreignRegistry = new InstanceRegistry(address(this));
+        CompositionSourceAdapterFactory foreignAdapterFactory = new CompositionSourceAdapterFactory(foreignRegistry);
+        MerkleSnapshotDeployer snapshotDeployer = new MerkleSnapshotDeployer();
+        MerkleFundDistributorDeployer distributorDeployer = new MerkleFundDistributorDeployer();
+        CompositionSourceAccumulatorDeployer accumulatorDeployer = new CompositionSourceAccumulatorDeployer();
+        TrustComposeParamsControllerDeployer paramsControllerDeployer = new TrustComposeParamsControllerDeployer();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TrustComposeFactory.SourceAdapterRegistryMismatch.selector, address(registry), address(foreignRegistry)
+            )
+        );
+        new TrustComposeFactory(
+            composeVerifier,
+            COMPOSE_VKEY,
+            registry,
+            foreignAdapterFactory,
+            snapshotDeployer,
+            distributorDeployer,
+            accumulatorDeployer,
+            paramsControllerDeployer,
+            3,
+            DELAY,
+            IProvingVault(address(0))
+        );
     }
 
     function test_AtomicCaptureMatchesFrozenTgcmAndPreservesUnchangedSources() public {
@@ -370,23 +396,26 @@ contract TrustComposeCaptureTest is Test {
         (bytes32 instanceId, MerkleSnapshot snapshot,,) = _createComposition(2, MAX_AGE);
         assertEq(factory.distributorOf(instanceId), address(0), "created without a fund");
 
+        MockSafeOwner safe = new MockSafeOwner(address(this), 1);
+        snapshot.proposeConstitutionalTransfer(address(safe));
+        vm.prank(address(safe));
+        snapshot.acceptConstitutionalTransfer();
+
         vm.prank(address(0x57AA));
-        address distributor = factory.attachDistributor(instanceId, address(this), address(0));
-        assertEq(MerkleFundDistributor(payable(distributor)).owner(), address(this), "fund owner is the authority");
+        address distributor = factory.attachDistributor(instanceId, address(safe), address(0));
+        assertEq(MerkleFundDistributor(payable(distributor)).owner(), address(safe), "fund owner is the Safe authority");
         assertEq(MerkleFundDistributor(payable(distributor)).merkleSnapshot(), address(snapshot));
         assertEq(factory.distributorOf(instanceId), distributor);
 
         vm.expectRevert(
             abi.encodeWithSelector(TrustComposeFactory.DistributorAlreadyAttached.selector, instanceId, distributor)
         );
-        factory.attachDistributor(instanceId, address(this), address(0));
+        factory.attachDistributor(instanceId, address(safe), address(0));
 
         // The authority gate, on an instance that has no fund yet.
         (bytes32 gatedInstanceId,,,) = _createComposition(2, MAX_AGE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TrustComposeFactory.NotInstanceAuthority.selector, gatedInstanceId, address(0x57AA)
-            )
+            abi.encodeWithSelector(TrustComposeFactory.NotInstanceAuthority.selector, gatedInstanceId, address(0x57AA))
         );
         factory.attachDistributor(gatedInstanceId, address(0x57AA), address(0));
 
