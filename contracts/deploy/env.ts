@@ -1145,7 +1145,20 @@ export class SepoliaEnv extends EnvBase {
         'USDC',
         process.env.USDC || manifest.external.usdc
       )
-      return { ETH_USD_FEED: feed, USDC: usdc }
+      // Sepolia's Chainlink ETH/USD feed is slower and less regular than mainnet's, so the
+      // off-devnet default in DeployProvingVault (5400s = a mainnet hourly heartbeat plus 50%
+      // grace) is too tight here. Measured over 15.5h of round history on 2026-08-23: mean gap
+      // 2929s, worst gap 3696s, and the live answer was already 3348s old when sampled. 5400
+      // would leave under half an hour of headroom, so one skipped heartbeat silently drops the
+      // proving fee to zero. 7200 is roughly twice the observed worst gap. The failure is benign
+      // either way (a stale answer pays no fee and still lands the root), but on the tighter
+      // window a rehearsal would read zero fees often enough to look like a bug.
+      const feedMaxStaleness = process.env.FEED_MAX_STALENESS || '7200'
+      return {
+        ETH_USD_FEED: feed,
+        USDC: usdc,
+        FEED_MAX_STALENESS: feedMaxStaleness,
+      }
     }
 
     super({

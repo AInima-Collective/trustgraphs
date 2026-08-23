@@ -11,7 +11,7 @@
     "eas": "0xC2679fBD37d54388Ce493F1DB75320D236e1815e",
     "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
     "sp1Gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
-    "ethUsdFeed": null,
+    "ethUsdFeed": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
     "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
   },
   "contracts": {

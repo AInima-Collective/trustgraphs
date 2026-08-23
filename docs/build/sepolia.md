@@ -65,10 +65,22 @@ Sources:
 - [Safe supported networks](https://docs.safe.global/advanced/smart-account-supported-networks?expand=11155111&service=Transaction+Service)
 - [Ethereum Sepolia configuration](https://github.com/eth-clients/sepolia)
 
-The ETH/USD feed address is deliberately not frozen in this plan. Select it from
-[Chainlink’s current Ethereum data-feed directory](https://docs.chain.link/data-feeds/price-feeds/addresses?network=ethereum)
-immediately before deployment, then verify on chain that it has code, reports 8 decimals,
-returns a positive answer, and has a sufficiently recent updatedAt value.
+The ETH/USD feed is Chainlink's Sepolia aggregator proxy at
+`0x694AA1769357215DE4FAC081bf1f309aDC325306`, recorded in `deployments/sepolia.json`. Verified on
+chain 2026-08-23: it has code, is an `EACAggregatorProxy` (phase 1) reporting `"ETH / USD"` at
+AggregatorV3 `version` 4, returns 8 decimals, and answers with a live positive round. Recheck those
+same properties immediately before deployment against
+[Chainlink’s current Ethereum data-feed directory](https://docs.chain.link/data-feeds/price-feeds/addresses?network=ethereum);
+a testnet feed can be retired or repointed without notice.
+
+**`FEED_MAX_STALENESS` is 7200 on Sepolia, not the 5400 used off-devnet.** The 5400 default assumes
+a mainnet hourly heartbeat plus 50% grace. Sepolia's feed is slower and less regular: measured over
+15.5 hours of round history on 2026-08-23, the mean gap was 2929s, the worst was 3696s, and the live
+answer was already 3348s old when sampled. At 5400 a single skipped heartbeat pushes the feed past
+the window. That fails safe rather than dangerously (the vault treats a stale answer as no answer,
+so the root still lands and the proving fee is simply zero) but it would make a rehearsal read zero
+fees often enough to look like a defect. The Sepolia plan injects the value, so no operator action
+is required; override with `FEED_MAX_STALENESS` if the feed's behaviour changes.
 
 ### SP1 compatibility check
 
@@ -217,8 +229,8 @@ pnpm deploy:contracts --dry-run
 The `.invalid` endpoint is intentional: `--dry-run` validates the profile and release inputs but
 does not contact it. For a real deployment, provide the operator-owned RPC and `FUNDED_KEY` only
 through secret storage, replace the placeholder gateway/admin/vkey with verified release values,
-set the exact 40-hex `DEPLOYMENT_COMMIT` and `SP1_PROGRAM_ELF_SHA256`, and resolve the vault feed or
-keep `SKIP_PROVING_VAULT=true`. The deployer then populates transaction hashes and receipt blocks
+set the exact 40-hex `DEPLOYMENT_COMMIT` and `SP1_PROGRAM_ELF_SHA256`, and either take the vault
+feed already recorded in the manifest or keep `SKIP_PROVING_VAULT=true`. The deployer then populates transaction hashes and receipt blocks
 from Foundry broadcast receipts and refuses to finalize an incomplete manifest.
 
 Consumers fail closed on a planned manifest. After publication, use
