@@ -82,6 +82,7 @@ tasks:
         command -v anvil  >/dev/null || fail "anvil not found (foundryup)"
         command -v jq     >/dev/null || fail "jq not found"
         command -v cargo  >/dev/null || fail "cargo not found"
+        command -v curl   >/dev/null || fail "curl not found"
 
         # Every step below runs the prover host with SP1_SKIP_PROGRAM_BUILD=true, so the guest
         # ELFs must already exist — nothing in this taskfile builds them. Without this check the
@@ -99,6 +100,22 @@ tasks:
         cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
           || fail "no chain at {{.RPC}} — start one: anvil --silent &"
         [ -n "${FUNDED_KEY:-}" ] || fail "FUNDED_KEY unset (it comes from .env)"
+
+        # Proof submission is deliberately blocked until the score blob is both pinned and
+        # readable through the same gateway the indexer uses. `start-all-local` starts kubo in
+        # parallel with anvil, so merely seeing the chain is not evidence that IPFS is ready yet.
+        # Pin a stable tiny probe (same CID every run), then fetch it through the reader path.
+        IPFS_PROBE=trustgraphs-demo-preflight-v1
+        IPFS_RESULT=$(printf '%s' "$IPFS_PROBE" \
+          | curl -fsS -m 10 -X POST -F 'file=@-;filename=trustgraphs-demo-preflight.txt' \
+              '{{.IPFS_API}}/api/v0/add?cid-version=1&raw-leaves=true&pin=true') \
+          || fail "IPFS API is not ready at {{.IPFS_API}} — start: task start-all-local"
+        IPFS_CID=$(printf '%s' "$IPFS_RESULT" | jq -r '.Hash // empty')
+        [ -n "$IPFS_CID" ] || fail "IPFS API returned no CID at {{.IPFS_API}}"
+        IPFS_READBACK=$(curl -fsS -m 10 "{{.IPFS_GATEWAY}}$IPFS_CID") \
+          || fail "IPFS gateway cannot read the API's probe at {{.IPFS_GATEWAY}}$IPFS_CID"
+        [ "$IPFS_READBACK" = "$IPFS_PROBE" ] \
+          || fail "IPFS API/gateway probe bytes differ — they must address the same pinned content"
 
         # FUNDED_KEY is not an anvil default, so on a fresh chain it has nothing and the first
         # deploy step dies with `Insufficient funds`. Top it up rather than explaining it.
@@ -442,6 +459,9 @@ tasks:
         [ipfs]
         api     = "{{.IPFS_API}}"
         gateway = "{{.IPFS_GATEWAY}}"
+        # Production waits five minutes before retrying an unavailable publication target. A
+        # ten-tick local walkthrough should recover on its next tick from a transient kubo miss.
+        retry_seconds = 2
 
         [ops]
         journal_path = "{{.WORK}}/journal.jsonl"
@@ -489,9 +509,12 @@ tasks:
         # `"event":"action_failed"` — as this did — turns every distinct failure into the same
         # five characters and hides the one sentence that says how to fix it.
         last() {
-          jq -Rr 'fromjson? | select(.event | IN("triggered","proved","submitted","superseded",
-                                                  "action_failed","tick_failed","pin_failed"))
-                  | .event + (if .error then ": " + .error else "" end)' {{.WORK}}/run.log \
+          jq -Rr 'fromjson? | select(.event | IN("triggered","proved","published","publication_failed",
+                                                  "submitted","superseded","action_failed","tick_failed",
+                                                  "pin_failed"))
+                  | .event + (if .error then ": " + .error
+                              elif .failures then ": " + (.failures | join("; "))
+                              else "" end)' {{.WORK}}/run.log \
             | tail -1
         }
         landed() { cast call "$1" 'hasAppliedCheckpoint()(bool)' --rpc-url {{.RPC}} 2>/dev/null; }
@@ -523,6 +546,13 @@ tasks:
           echo "  ✗ still waiting after {{.TICKS}} ticks (trust landed: $T, round landed: $R)."
           echo "    The daemon's last word:"
           echo "      $(last)"
+          PUB_FAILURE=$(jq -Rr 'fromjson?
+            | select(.event == "publication_failed")
+            | .instance + ": " + (.failures | join("; "))' {{.WORK}}/run.log | tail -1)
+          if [ -n "$PUB_FAILURE" ]; then
+            echo "    last publication failure:"
+            echo "      $PUB_FAILURE"
+          fi
           echo "    full log: {{.WORK}}/run.log; per-instance decisions: {{.WORK}}/status.json"
           exit 1
         fi

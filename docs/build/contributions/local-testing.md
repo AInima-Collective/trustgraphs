@@ -207,8 +207,9 @@ exact `SchemaManager.encode` → `EAS.attest` seam the frontend screens drive):
 3. **Window open** — `task contributions:open-round-window`: sets
    `round_start = latest block timestamp + 1`, `round_end = +7 days` in
    `params.contributions.json`, then publishes the complete tuple through
-   `ContributionsParamsController.updateParams`. The controller atomically updates the snapshot
-   and registry hashes and emits the public preimage. C4 is now genuinely outside the window.
+   `ContributionsParamsController.updateParams`, executed by the dev network's 1-of-1 Safe. The
+   controller atomically updates the snapshot and registry hashes and emits the public preimage.
+   C4 is now genuinely outside the window.
 4. **The in-window fixture sequence** — C1 ALICE self-claim [ALICE:100];
    C2 BOB claim [BOB:60, CAROL:40]; C3 ALICE nomination [EVE:50, DAVE:50];
    C5 BOB self-claim [BOB:100]; CAROL accepts C2; EVE rejects C3; then the 12

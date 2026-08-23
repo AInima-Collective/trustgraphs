@@ -79,6 +79,11 @@ task contributions:open-round-window
 #   → emit ContributionsParamsUpdated(full tuple)
 ```
 
+The dev round is owned by the network's initialized 1-of-1 Safe. The task therefore sends the
+typed update through `Safe.execTransaction`, signed by the configured local deployer. It refuses
+an EOA it does not control or a threshold greater than one; production multisigs and governed
+Safes must use their normal proposal/signature flow.
+
 `params.contributions.json` is only a local governance draft. Once submitted,
 the controller event is the durable public preimage: scanners, the operator,
 and the indexer reconstruct it from registry history and hard-fail if its

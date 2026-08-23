@@ -40,7 +40,7 @@ tasks:
       - cd packages/frontend && npx tsx scripts/contribution-round.ts graph
       - echo "== 2/4 out-of-window claim (C4) =="
       - cd packages/frontend && npx tsx scripts/contribution-round.ts claim-out-of-window
-      - echo "== 3/4 open the round window (operational setParamsHash) =="
+      - echo "== 3/4 open the round window (Safe-owned typed params update) =="
       - task: open-round-window
       - echo "== 4/4 in-window fixture sequence (C1/C2/C3/C5 + responses + valuations) =="
       - cd packages/frontend && npx tsx scripts/contribution-round.ts round1
@@ -53,7 +53,8 @@ tasks:
       - cd packages/frontend && npx tsx scripts/contribution-round.ts round2
 
   # Rotate the round window to [now+1, now+1+7d]: update the params sidecar, recompute the
-  # 21-word paramsHash, and publish the complete tuple through the typed controller.
+  # 21-word paramsHash, and publish the complete tuple through the typed controller. The dev
+  # controller is Safe-owned, so the update script executes this call through its 1-of-1 Safe.
   # Claims attested BEFORE this task ran are outside the new window by construction.
   open-round-window:
     desc: 'Set round_start/round_end bracketing now and publish the full tuple on chain'
