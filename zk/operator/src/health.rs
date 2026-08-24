@@ -76,24 +76,107 @@ const SETTINGS_KEYS: &[&str] = &[
 const MAX_REQUEST_BYTES: u64 = 8 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// What the daemon is doing right now.
+///
+/// Readiness has to know this, because "wedged" and "working" are indistinguishable from a single
+/// timestamp. A proof can legitimately take an hour and a receipt watch ten minutes; a probe that
+/// only knew when the last tick finished would call both of those dead, and a platform that
+/// restarts on a failed probe would then restart the daemon in the middle of the one thing it is
+/// there to do. The journal makes that survivable — the restart re-attaches rather than
+/// re-requesting — but survivable is not free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    /// Startup: deriving guest vkeys and reading the chain for the first time.
+    Starting,
+    /// Between ticks, or inside one doing nothing but chain reads.
+    Ticking,
+    /// Running a reconstruction tool. On a source checkout this is a cold cargo build.
+    Reconstructing,
+    /// Inside the prover.
+    Proving,
+    /// Publishing a score blob to the configured targets.
+    Publishing,
+    /// Broadcast sent, watching for a receipt.
+    Sending,
+}
+
+impl Phase {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::Ticking => "ticking",
+            Self::Reconstructing => "reconstructing an input",
+            Self::Proving => "proving",
+            Self::Publishing => "publishing",
+            Self::Sending => "watching for a receipt",
+        }
+    }
+}
+
+/// How long each phase may legitimately take. Everything except `ticking` is derived from a limit
+/// the daemon already enforces on itself, so readiness cannot be stricter than the daemon's own
+/// patience — which would make the probe, rather than the failure, the thing that takes it down.
+#[derive(Clone, Copy, Debug)]
+pub struct Budgets {
+    /// From `[ops] ready_after_seconds`: how stale a completed tick may be.
+    pub ticking: u64,
+    /// A reconstruction subprocess. Generous because the source-checkout fallback compiles it.
+    pub reconstructing: u64,
+    /// `[prover] timeout_s`, plus room to fail cleanly.
+    pub proving: u64,
+    /// The receipt watch, plus room to fail cleanly.
+    pub sending: u64,
+    pub publishing: u64,
+    pub starting: u64,
+}
+
+impl Budgets {
+    fn of(&self, phase: Phase) -> u64 {
+        match phase {
+            Phase::Starting => self.starting,
+            Phase::Ticking => self.ticking,
+            Phase::Reconstructing => self.reconstructing,
+            Phase::Proving => self.proving,
+            Phase::Publishing => self.publishing,
+            Phase::Sending => self.sending,
+        }
+    }
+}
+
 /// What the listener serves, updated by the tick loop.
 pub struct Health {
     inner: Mutex<Inner>,
-    /// How stale the last completed tick may be before `/ready` reports failure.
-    ready_after_seconds: u64,
+    budgets: Budgets,
 }
 
-#[derive(Default)]
 struct Inner {
     /// Unix seconds of the last COMPLETED tick — the same number the heartbeat publishes, so
     /// `/ready` and the body can never disagree about when the daemon last did its job.
     tick_at: u64,
+    phase: Phase,
+    /// Unix seconds the daemon entered `phase`.
+    phase_since: u64,
     body: Option<String>,
 }
 
 impl Health {
-    pub fn new(ready_after_seconds: u64) -> Arc<Self> {
-        Arc::new(Self { inner: Mutex::new(Inner::default()), ready_after_seconds })
+    pub fn new(budgets: Budgets) -> Arc<Self> {
+        Arc::new(Self {
+            inner: Mutex::new(Inner {
+                tick_at: 0,
+                phase: Phase::Starting,
+                phase_since: unix_now(),
+                body: None,
+            }),
+            budgets,
+        })
+    }
+
+    /// Record what the daemon is about to spend time on.
+    pub fn enter(&self, phase: Phase) {
+        let mut inner = self.lock();
+        inner.phase = phase;
+        inner.phase_since = unix_now();
     }
 
     /// Publish a completed tick. `status` is projected here, once, rather than on every request.
@@ -101,6 +184,10 @@ impl Health {
         let body = heartbeat_body(status);
         let mut inner = self.lock();
         inner.tick_at = status.tick_at;
+        inner.phase = Phase::Ticking;
+        // The SAME instant the heartbeat publishes, not "now": `/ready` and the body must never
+        // be able to disagree about when the daemon last did its job.
+        inner.phase_since = status.tick_at;
         inner.body = Some(body);
     }
 
@@ -112,14 +199,16 @@ impl Health {
 
     fn ready(&self, now: u64) -> (bool, String) {
         let inner = self.lock();
+        // Ready means "has done its job at least once and is not stuck", so a daemon still on its
+        // first pass is not ready no matter what it is busy with. A container healthcheck should
+        // carry a start period long enough to cover a first tick that proves.
         if inner.tick_at == 0 {
-            return (false, "no tick has completed yet".to_string());
+            return (false, format!("no tick has completed yet ({})", inner.phase.name()));
         }
-        let age = now.saturating_sub(inner.tick_at);
-        (
-            age <= self.ready_after_seconds,
-            format!("last tick {age}s ago, threshold {}s", self.ready_after_seconds),
-        )
+        let phase = inner.phase;
+        let budget = self.budgets.of(phase);
+        let age = now.saturating_sub(inner.phase_since);
+        (age <= budget, format!("{} for {age}s, limit {budget}s", phase.name()))
     }
 }
 
@@ -390,22 +479,75 @@ mod tests {
         assert!(body.get("alerts").is_none());
     }
 
+    fn budgets() -> Budgets {
+        Budgets {
+            ticking: 30,
+            reconstructing: 900,
+            proving: 3_600,
+            sending: 720,
+            publishing: 300,
+            starting: 300,
+        }
+    }
+
     #[test]
     fn readiness_follows_the_last_completed_tick() {
-        let health = Health::new(30);
-        assert!(!health.ready(1_000_000).0, "nothing has ticked yet");
+        let health = Health::new(budgets());
         let mut status = sample();
         status.tick_at = 1_000_000;
         health.publish(&status);
-        assert!(health.ready(1_000_020).0, "20s old with a 30s threshold is ready");
+        assert!(health.ready(1_000_020).0, "20s into a 30s tick budget is ready");
         let (ready, detail) = health.ready(1_000_031);
-        assert!(!ready, "31s old with a 30s threshold is not");
-        assert!(detail.contains("31s ago"), "{detail}");
+        assert!(!ready, "31s into a 30s tick budget is not");
+        assert!(detail.contains("ticking for 31s"), "{detail}");
+    }
+
+    #[test]
+    fn a_daemon_that_is_proving_is_working_rather_than_wedged() {
+        // The failure this prevents: a probe with a tick-sized threshold calls an hour-long proof
+        // dead, and a platform that restarts on a failed probe kills the daemon mid-proof.
+        let health = Health::new(budgets());
+        let mut status = sample();
+        status.tick_at = 1_000_000;
+        health.publish(&status);
+        health.enter(Phase::Proving);
+        let now = unix_now();
+        assert!(health.ready(now + 600).0, "ten minutes into a proof is not a wedge");
+        assert!(health.ready(now + 3_500).0, "so is fifty-eight minutes, under a 3600s limit");
+        let (ready, detail) = health.ready(now + 3_601);
+        assert!(!ready, "past the prover's own timeout, it is not working either");
+        assert!(detail.contains("proving"), "{detail}");
+    }
+
+    #[test]
+    fn a_receipt_watch_outlives_the_tick_budget_and_says_so() {
+        // A trigger or submit watches for a receipt for up to ten minutes with no log line. That
+        // silence is legitimate, and a probe must be able to tell it from a hang.
+        let health = Health::new(budgets());
+        let mut status = sample();
+        status.tick_at = 1_000_000;
+        health.publish(&status);
+        health.enter(Phase::Sending);
+        let now = unix_now();
+        assert!(health.ready(now + 400).0, "still inside the receipt watch");
+        let (ready, detail) = health.ready(now + 721);
+        assert!(!ready);
+        assert!(detail.contains("receipt"), "{detail}");
+    }
+
+    #[test]
+    fn startup_is_not_ready_until_a_tick_has_completed() {
+        let health = Health::new(budgets());
+        let (ready, detail) = health.ready(unix_now());
+        assert!(!ready, "nothing has ticked yet");
+        assert!(detail.contains("starting"), "{detail}");
+        health.enter(Phase::Proving);
+        assert!(!health.ready(unix_now()).0, "busy on the first pass is still not ready");
     }
 
     #[test]
     fn the_routing_table_is_three_routes_and_nothing_else() {
-        let health = Health::new(30);
+        let health = Health::new(budgets());
         health.publish(&sample());
         assert_eq!(respond("GET /health HTTP/1.1", &health).0, "200 OK");
         assert_eq!(respond("GET /status?nocache=1 HTTP/1.1", &health).0, "200 OK");
@@ -416,7 +558,7 @@ mod tests {
 
     #[test]
     fn there_is_no_way_to_ask_the_daemon_to_do_anything() {
-        let health = Health::new(30);
+        let health = Health::new(budgets());
         for line in [
             "POST /status HTTP/1.1",
             "PUT /health HTTP/1.1",
@@ -429,7 +571,7 @@ mod tests {
 
     #[test]
     fn a_bound_listener_answers_over_a_real_socket() {
-        let health = Health::new(30);
+        let health = Health::new(budgets());
         let mut status = sample();
         status.tick_at = unix_now();
         health.publish(&status);
@@ -453,7 +595,7 @@ mod tests {
 
     #[test]
     fn an_address_that_cannot_be_bound_fails_at_startup() {
-        let error = spawn("256.256.256.256:9", Health::new(30)).unwrap_err();
+        let error = spawn("256.256.256.256:9", Health::new(budgets())).unwrap_err();
         assert!(format!("{error:#}").contains("could not be bound"), "{error:#}");
     }
 }

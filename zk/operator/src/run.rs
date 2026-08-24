@@ -25,7 +25,7 @@ use crate::chain::{
 };
 use crate::config::Config;
 use crate::handlers;
-use crate::health::{self, Health};
+use crate::health::{self, Health, Phase};
 use crate::ops::{
     action_json, action_key, alert, write_status, InstanceStatus, Logger, Narration,
     PublicSettings, Status as OpsStatus,
@@ -64,7 +64,7 @@ struct PendingSettle {
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     let logger = Logger::new(cfg.ops.log_format);
-    let rpc = Rpc::new(cfg.rpc.clone());
+    let rpc = Rpc::with_timeout(cfg.rpc.clone(), cfg.rpc_timeout());
 
     // ---- startup checks. Refuse to start rather than fail on the first submit. -------------
     let chain_id = rpc.eth_chain_id().context("eth_chainId")?;
@@ -105,6 +105,10 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // satisfy. Discovering otherwise on a failed submit costs a proof; discovering it here costs
     // one `eth_call`. A mismatch is a per-instance skip, not a refusal to start: one community
     // that rotated ahead of us must not stop the rest.
+    // ONCE. The ELFs are compiled into this binary, so their vkeys cannot change while it runs —
+    // and deriving them is not cheap: seven SP1 setups measured 68 seconds of CPU. Doing this per
+    // tick, as the loop used to, burns most of a core continuously on a 60-second cadence and
+    // makes every tick long enough to look like a wedge from outside.
     let guests = guest_vkeys()?;
     logger.event(
         "vkeys",
@@ -115,6 +119,8 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             })
             .collect::<BTreeMap<_, _>>()),
     );
+    let vkeys: BTreeMap<Program, B256> =
+        guests.iter().map(|(program, (vkey, _))| (*program, *vkey)).collect();
 
     // Which executable each input reconstruction will run, decided once and said out loud. A
     // deployment that expected prebuilt tools and silently fell back to `cargo run` finds out
@@ -163,7 +169,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // Off unless asked for (GOAL D3). Bound HERE, before the first tick, so a bad address or an
     // occupied port is a startup failure rather than something discovered when a probe first
     // fails hours later.
-    let health = Health::new(cfg.ready_after_seconds());
+    let health = Health::new(cfg.health_budgets());
     if let Some(addr) = cfg.ops.listen.as_deref() {
         if once {
             // A process that ticks once and exits has no liveness to report, and binding anyway
@@ -210,6 +216,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             &mut narration,
             &logger,
             &health,
+            &vkeys,
             dry_run,
         ) {
             Ok(()) => {}
@@ -238,7 +245,7 @@ pub fn republish(cfg: Config, instance_id: B256, checkpoint_id: u64) -> Result<(
         "republish needs at least one configured [ipfs] target"
     );
     let logger = Logger::new(cfg.ops.log_format);
-    let rpc = Rpc::new(cfg.rpc.clone());
+    let rpc = Rpc::with_timeout(cfg.rpc.clone(), cfg.rpc_timeout());
     let chain_id = rpc.eth_chain_id().context("eth_chainId")?;
     if let Some(expected) = cfg.chain_id {
         anyhow::ensure!(
@@ -338,8 +345,11 @@ fn tick(
     narration: &mut Narration,
     logger: &Logger,
     health: &Health,
+    // Derived once at startup, not per tick. See `run`.
+    vkeys: &BTreeMap<Program, B256>,
     dry_run: bool,
 ) -> Result<()> {
+    health.enter(Phase::Ticking);
     let head = rpc.block_number()?;
     let basefee = rpc.basefee()?;
     let manifest = cfg.manifest_struct();
@@ -393,8 +403,6 @@ fn tick(
     let mut statuses = Vec::new();
     let mut alerts_raised = Vec::new();
     let mut in_flight_now = 0usize;
-    let vkeys: BTreeMap<Program, B256> =
-        guest_vkeys()?.into_iter().map(|(program, (vkey, _))| (program, vkey)).collect();
     let programs = supported()
         .into_iter()
         .filter(|program| *program != Program::Signer || cfg.signer_sync.enabled)
@@ -746,6 +754,7 @@ fn tick(
                     journal,
                     pending_settles,
                     logger,
+                    health,
                     entry,
                     &state,
                     &policy,
@@ -766,6 +775,9 @@ fn tick(
                         &format!("{}: {e}", entry.name),
                     );
                 }
+                // Back to ordinary tick work either way. A long phase left set after the action
+                // that entered it would make the next hour's readiness meaningless.
+                health.enter(Phase::Ticking);
             }
 
             let blocks_since_root = state
@@ -1238,6 +1250,7 @@ fn act(
     journal: &mut Journal,
     pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
     logger: &Logger,
+    health: &Health,
     entry: &CatalogEntry,
     state: &InstanceState,
     policy: &operator_core::Policy,
@@ -1262,6 +1275,7 @@ fn act(
             } else {
                 400_000
             };
+            health.enter(Phase::Sending);
             let (tx, r) = sender.send_watched(
                 rpc,
                 entry.snapshot,
@@ -1314,6 +1328,7 @@ fn act(
             let built = if let Some(prepared) = prepared_input {
                 prepared
             } else {
+                health.enter(Phase::Reconstructing);
                 owned_built = handlers::build_input(
                     cfg,
                     rpc,
@@ -1381,6 +1396,7 @@ fn act(
                 iterations_run: built.work.iterations_run,
             })?;
 
+            health.enter(Phase::Proving);
             let proof = handlers::prove(cfg, &built)?;
             journal.append(Record::Requested { key, request_id: proof.request_id, at: now() })?;
 
@@ -1494,6 +1510,7 @@ fn act(
                 )
             };
 
+            health.enter(Phase::Sending);
             match sender.send_watched(
                 rpc,
                 target,

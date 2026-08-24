@@ -211,8 +211,8 @@ gateway = "https://gateway.backup.example/ipfs/"
 # ── weighted-prior input availability ──────────────────────────────────────
 # These are checkpoint INPUT bytes, separate from the score blobs above. Recovery order is local
 # cache, each raw-CID mirror, then the creation/proposal transaction input from the configured RPC.
+# `cache_dir` defaults inside `[ops] state_dir`; name it only to put it somewhere else.
 [weighted_manifests]
-cache_dir = "./.trustgraph/operator/weighted-manifests"
 mirrors = [
   "https://gateway.primary.example/ipfs/",
   "https://gateway.backup.example/ipfs/",
@@ -223,8 +223,29 @@ retry_seconds = 300              # degraded mirrors are retried and alerted on t
 
 # ── operations ──────────────────────────────────────────────────────────────
 [ops]
-journal_path = "./.trustgraph/operator/journal.jsonl"
-status_path  = "./.trustgraph/operator/status.json"
+# ONE directory holds everything the daemon owns: the request journal, the heartbeat, the
+# per-checkpoint working files, and both recovery caches. Mount a volume here. Every relative path
+# in this file — including this one — resolves against the CONFIG FILE, never against whatever
+# directory the daemon was started from.
+#
+# The daemon creates this directory but not the tree above it. An absolute path whose parent is
+# missing is what an unmounted volume looks like, and creating it anyway would put journal.jsonl
+# on a filesystem that disappears at the next deploy.
+state_dir    = "/data"
+
+# Prebuilt reconstruction binaries (input-exporter, envelope0-preflight, trustgraph-prover).
+# Unset means: look next to the operator executable, then fall back to `cargo run` from a source
+# checkout. The published image needs neither key — its tools sit beside the daemon.
+# tool_dir   = "/usr/local/bin"
+
+# Read-only health and heartbeat listener. Off unless set. Three GET routes and nothing else:
+# /health (the process is up), /ready (it is doing its job), /status (the sanitized heartbeat).
+listen              = "0.0.0.0:8080"
+ready_after_seconds = 180        # how stale a COMPLETED tick may be before /ready fails. Long
+                                 # work — proving, a receipt watch, a reconstruction — is judged
+                                 # against its own limit instead, so a proof in progress does not
+                                 # read as a wedge.
+
 alert_webhook = "https://…"
 log_format   = "text"            # timestamped, levelled, colorized on an interactive terminal
 submit_failure_threshold = 3    # estimate/simulation/mined execution reverts for one immutable
@@ -233,11 +254,16 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
                                 # not consume attempts.
 ```
 
+Only `journal_path` and `status_path` remain as separate keys, and only to keep deployed configs
+that set them working. A fresh config should not: they default to `journal.jsonl` and `status.json`
+inside `state_dir`, which is the arrangement a backup and a volume mount both want.
+
 ### Keys
 
 | key                                              | meaning                                                                                 | default                                        |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `rpc`                                            | JSON-RPC endpoint; must be an absolute `http(s)://` URL                                 | required                                       |
+| `rpc_timeout_seconds`                            | budget for one chain read; a provider that never answers must not stop the daemon       | 30                                             |
 | `release_manifest`                               | sanitized finalized public release JSON; supplies and checks chain/registry coordinates | unset                                          |
 | `registry`                                       | `InstanceRegistry` address                                                              | required unless supplied by `release_manifest` |
 | `chain_id`                                       | expected chain; startup aborts on mismatch                                              | read from chain                                |
@@ -266,10 +292,15 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `ipfs.min_success`                               | targets that must add and serve the exact bytes before submit                           | all configured targets                         |
 | `ipfs.retry_seconds`                             | durable failed-publication retry cadence                                                | 300                                            |
 | `ipfs.api` / `ipfs.gateway`                      | legacy single target; both required, cannot mix with `targets`                          | unset                                          |
-| `weighted_manifests.cache_dir`                   | durable exact-byte TGWP cache                                                           | `.trustgraph/operator/weighted-manifests`      |
+| `weighted_manifests.cache_dir`                   | durable exact-byte TGWP cache                                                           | `weighted-manifests` inside `state_dir`        |
 | `weighted_manifests.mirrors[]`                   | raw-CID readers tried before archival calldata                                          | empty                                          |
 | `weighted_manifests.max_versions` / `max_bytes`  | deterministic cache ceilings                                                            | 128 / 16 MiB                                   |
 | `weighted_manifests.retry_seconds`               | retry/alert cadence for degraded mirrors                                                | 300                                            |
+| `ops.state_dir`                                  | the one directory the daemon owns; relative paths resolve against the config file        | `.trustgraph/operator` beside the config       |
+| `ops.tool_dir`                                   | prebuilt reconstruction binaries; unset falls back to the executable's directory, then `cargo run` | unset                              |
+| `ops.listen`                                     | `host:port` for the read-only health listener                                            | unset (no socket)                              |
+| `ops.ready_after_seconds`                        | how stale a completed tick may be before `/ready` fails                                  | `max(3 × tick_seconds, 90)`                    |
+| `ops.journal_path` / `ops.status_path`           | override the defaults inside `state_dir`                                                 | inside `state_dir`                             |
 | `ops.log_format`                                  | human `text` output or collector-friendly JSON lines                                     | `text`                                         |
 | `ops.submit_failure_threshold`                   | deterministic submit reverts before advancing past a checkpoint                         | 3                                              |
 | `ops.*`                                          | journal, heartbeat, alerts, logging                                                     | see above                                      |
@@ -395,6 +426,19 @@ This operator sets a `cycle_limit` on every request. So the adapter must call th
 
 ## 4. Running it
 
+The published image is the short answer, and §5 is the whole of it:
+
+```bash
+docker run --rm \
+  -v operator-state:/data \
+  -v "$PWD/operator.toml:/etc/trustgraph/operator.toml:ro" \
+  -e SUBMITTER_PRIVATE_KEY -e NETWORK_PRIVATE_KEY \
+  -p 8080:8080 \
+  ghcr.io/jakehartnell/trustgraphs-operator:latest
+```
+
+From a source checkout, the same four invocations:
+
 ```bash
 # one pass over every instance, then exit. What CI and a human debugging use.
 cargo run --release --manifest-path zk/operator/Cargo.toml -- --config ./operator.toml --once
@@ -418,9 +462,21 @@ retain the params file version used by each checkpoint; the manifest is the desc
 precisely because those params are not available from chain history.
 
 Startup refuses a config that cannot work rather than dying on the first call: an empty or
-scheme-less `rpc`, a zero `registry`, or `[paid]` naming a zero vault or recipient. An empty `rpc` is
-the common one, because a config written by a shell heredoc whose variable was unset produces
-`rpc = ""`, which is perfectly valid TOML.
+scheme-less `rpc`, a zero `registry`, `[paid]` naming a zero vault or recipient, a `state_dir` that
+is not writable, and a named `state_dir` whose parent does not exist. An empty `rpc` is the common
+one, because a config written by a shell heredoc whose variable was unset produces `rpc = ""`,
+which is perfectly valid TOML. The `state_dir` refusal is the expensive one: an absolute path whose
+parent is missing is what an unmounted volume looks like, and a journal written to a container's
+own filesystem is gone at the next deploy — after which the daemon re-requests, and re-pays for,
+proofs it already has.
+
+Startup also says which executable each reconstruction lane resolved to, so "does this box need a
+compiler?" is answered before the first tick rather than by the first tick that needs one:
+
+```json
+{"event":"tools","input-exporter":"/usr/local/bin/input-exporter", …}
+{"event":"tools","input-exporter":"cargo run -q -p input-exporter -- (source checkout; needs a Rust toolchain)", …}
+```
 
 `--dry-run` is the first thing to run against any config you have just changed. It performs every
 chain read and every decision and skips only the sends, so the decision log it prints is exactly
@@ -474,6 +530,43 @@ validates and republishes only `head_block`, `tick_at`, per-instance health, and
 unresolved journal entries never cross that boundary. Do not serve the raw heartbeat directly to
 the browser; future heartbeat fields are private until they are explicitly added to the adapter.
 
+### The health listener
+
+`ops.listen` serves the URL mode of the above, plus the two things a platform and an uptime check
+need. Three GET routes, all read-only; there is no way to trigger, halt, resolve or configure
+anything over the network.
+
+| route     | 200 means                                             | 503 means                                                       |
+| --------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| `/health` | the process is up and answering                       | the process is gone (nothing answers at all)                    |
+| `/ready`  | it is doing its job, or legitimately busy doing it    | no tick has completed yet, or the current phase has overrun      |
+| `/status` | the sanitized heartbeat, same shape as `status.json`  | no tick has completed yet                                        |
+
+`/ready` is phase-aware on purpose. A proof can legitimately take an hour and a receipt watch ten
+minutes, and during both the daemon logs nothing and completes no tick. A probe that knew only
+when the last tick finished would call those dead — and a platform that restarts on a failed probe
+would then restart the daemon in the middle of the one thing it is there to do. So each phase is
+judged against a limit the daemon already enforces on itself:
+
+| phase                     | limit                          |
+| ------------------------- | ------------------------------ |
+| between/inside ticks      | `ops.ready_after_seconds`      |
+| reconstructing an input   | 900s (the source-checkout fallback compiles it) |
+| proving                   | `prover.timeout_s` + 120s      |
+| watching for a receipt    | 720s (the watch caps at 600s)  |
+| publishing                | 300s                           |
+| starting                  | 300s                           |
+
+The body of `/ready` says which phase and for how long, so a red probe is diagnosable without
+shell access. **A daemon that has never completed a tick is never ready**, whatever it is busy
+with, so a container healthcheck needs a start period that covers a first pass — the published
+image allows 15 minutes.
+
+What `/status` serves is a projection of the heartbeat, not the heartbeat: it is the frontend
+adapter's allowlist applied on the way OUT as well as on the way in. That is not belt-and-braces.
+An `alerts` entry can quote a transport error, a transport error can quote the RPC URL, and an RPC
+URL can carry a provider key — so `alerts` and `unresolved` are in the file and not on the wire.
+
 ### Alerts
 
 `ops.alert_webhook` receives a plain-text POST for anything a human has to act on. What raises one,
@@ -482,6 +575,7 @@ and what each actually means:
 | alert                                                          | what happened                                                                                         | what to do                                                                                                                                                                                                                                               |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tick failed: …`                                               | a whole pass errored (usually RPC)                                                                    | nothing, if it clears; the next tick re-reads everything from chain                                                                                                                                                                                      |
+| `/ready` returns 503 while `/health` returns 200               | the process is fine and the WORK has stalled; the body names the phase and its age                    | read the phase. `ticking` past its limit is a wedged chain read; `proving` past `prover.timeout_s` is a prover that never answered; `reconstructing` for minutes on a source checkout is usually a cold cargo build                                       |
 | `N proof request(s) with an unknown outcome`                   | a crash landed in the ambiguous window (§3)                                                           | resolve each by hand; **never** auto-retried                                                                                                                                                                                                             |
 | `registry_from_block is 0 on chain N`                          | the scan will start at genesis                                                                        | set it, restart                                                                                                                                                                                                                                          |
 | `submitter key has a zero balance`                             | every send will fail                                                                                  | fund it                                                                                                                                                                                                                                                  |
@@ -543,6 +637,15 @@ The hosted service sells convenience, not access. A community running the operat
 instance, with its own keys, produces the same root — byte-identical, verified by the same
 contract, with no relationship to us of any kind.
 
+One image, one config file, two secrets, one volume. No checkout, no Rust toolchain, no GitHub
+account:
+
+```bash
+docker pull ghcr.io/jakehartnell/trustgraphs-operator:latest
+```
+
+`operator.toml`:
+
 ```toml
 rpc                 = "https://…"
 registry            = "0x…"
@@ -554,14 +657,71 @@ instances = ["0x…your instance id…"]   # "prove this on my own money"
 [prover]
 backend = "network"                    # or "cpu" with 16-32 GiB
 
+[ipfs]
+min_success = 1
+
+[[ipfs.targets]]
+name    = "mine"
+api     = "https://…"
+gateway = "https://…/ipfs/"
+
 [ops]
-journal_path = "./.trustgraph/operator/journal.jsonl"
-status_path  = "./.trustgraph/operator/status.json"
+state_dir = "/data"                    # the mounted volume, and everything the daemon owns
+listen    = "0.0.0.0:8080"             # /health, /ready, and the sanitized heartbeat
 ```
 
 No `[paid]` section: with it off the operator is self-proving and pays for everything it proves.
 Listing your instance under `[curated]` is what tells it "this one is proven on us" — from your
 config's point of view, _you_ are the host.
+
+```bash
+docker volume create operator-state
+docker run -d --name operator \
+  -v operator-state:/data \
+  -v "$PWD/operator.toml:/etc/trustgraph/operator.toml:ro" \
+  -e SUBMITTER_PRIVATE_KEY \
+  -e NETWORK_PRIVATE_KEY \
+  -p 8080:8080 \
+  ghcr.io/jakehartnell/trustgraphs-operator:latest
+
+curl localhost:8080/ready
+```
+
+Two things about that volume, both of which cost money if they are wrong:
+
+- **`/data` must be a real volume.** `journal.jsonl` lives there, and it is the only file whose
+  loss duplicates paid work. The daemon refuses to start rather than create a named `state_dir`
+  whose parent is missing, because that is precisely what an unmounted volume looks like.
+- **Never run two operators against one journal or one submitter key.** Do not raise the replica
+  count, and do not raise `cadence.max_per_instance` above 1.
+
+### Checking what you pulled
+
+The image is built by a public workflow from a public commit, and every release publishes the
+guest table it was built from. Both are checkable without an account:
+
+```bash
+# what this container's guests are, without starting it
+docker run --rm ghcr.io/jakehartnell/trustgraphs-operator:latest \
+  --entrypoint cat /etc/trustgraph/elf-digests.txt
+
+# who built it, and from which commit
+gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:latest \
+  --repo JakeHartnell/trustgraphs
+
+# and, from source, that those are the bytes the source produces
+sh scripts/build-guests.sh && sh scripts/guest-elf-digests.sh
+```
+
+That last command is only a meaningful check because guest builds are reproducible: every guest is
+compiled inside the pinned SP1 builder image, and CI fails a release if two architectures disagree
+about the bytes. See [`addresses-and-vkeys.md`](./addresses-and-vkeys.md).
+
+### From a source checkout instead
+
+Nothing above is required. `[ops] tool_dir` is what the image sets implicitly by putting the
+reconstruction binaries beside the daemon; a checkout with nothing pre-built falls back to
+`cargo run` and works exactly as it always has.
 
 Nothing about the on-chain path differs from what we run. `submitProof` is permissionless and
 monotonic, the journal binds the same values, and N operators on one instance compose rather than

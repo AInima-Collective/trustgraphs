@@ -34,7 +34,23 @@ cleanup() {
   [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null
   return 0
 }
-trap cleanup EXIT
+# INT and TERM as well as EXIT: under `timeout`, bash takes the signal and skips an
+# EXIT-only trap, which leaves a daemon holding the listener port and the next run's chain.
+trap cleanup EXIT INT TERM
+
+# Refuse to start on top of another run. Two of these sharing a port is not a clean failure: the
+# second daemon cannot bind, exits, and the first one keeps writing to a log file the second one
+# already deleted — which reads as "the daemon went silent" and is nothing of the kind.
+port_free() { # port_free <port> <what>
+  if (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; then
+    exec 3<&- 3>&-
+    die "port $1 ($2) is already in use. Another run of this script is probably still going."
+  fi
+  return 0
+}
+port_free "${RPC_PORT}" "the chain"
+port_free "${PROXY_PORT}" "the proxy"
+port_free "${HEALTH_PORT}" "the health listener"
 
 say "== chain on :$RPC_PORT, wedgeable proxy on :$PROXY_PORT =="
 anvil --silent --port "$RPC_PORT" & ANVIL_PID=$!

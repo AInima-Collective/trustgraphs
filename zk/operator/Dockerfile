@@ -87,8 +87,12 @@ USER operator
 WORKDIR /data
 
 # `[ops] tool_dir` needs no configuration in this image: the daemon finds its tools beside itself.
+# The start period covers the FIRST pass, not just process startup: `/ready` reports failure
+# until one tick has completed end to end, and a first tick that proves can take as long as the
+# prover's own timeout. Failing readiness there and restarting would burn exactly the proof it is
+# waiting for.
 ENV OPERATOR_HEALTH_URL=http://127.0.0.1:8080/ready
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15m --retries=3 \
   CMD curl -fsS "$OPERATOR_HEALTH_URL" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/operator"]

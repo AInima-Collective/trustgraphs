@@ -278,13 +278,30 @@ impl fmt::Display for RpcResponseError {
 
 impl std::error::Error for RpcResponseError {}
 
+/// How long a single JSON-RPC round trip may take before the tick gives up on it.
+///
+/// There has to be a limit, and the default has to be finite. reqwest imposes none, and a
+/// provider that accepts the connection and never answers — which is what an overloaded one
+/// actually does, rather than refusing — then stops the daemon permanently: no tick, no
+/// `tick_failed`, no alert, no recovery, until a human notices and restarts it. A timeout turns
+/// that into an ordinary failed tick, which the loop already handles by re-reading everything
+/// from chain on the next pass.
+pub const DEFAULT_RPC_TIMEOUT_SECONDS: u64 = 30;
+
 impl Rpc {
     pub fn new(url: String) -> Self {
-        Self {
-            client: reqwest::blocking::Client::new(),
-            url,
-            eas_cache: RefCell::new(BTreeMap::new()),
-        }
+        Self::with_timeout(url, std::time::Duration::from_secs(DEFAULT_RPC_TIMEOUT_SECONDS))
+    }
+
+    pub fn with_timeout(url: String, timeout: std::time::Duration) -> Self {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            // Separate from the overall budget on purpose: a host that is simply unreachable
+            // should fail in seconds, not sit out the whole request timeout.
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
+        Self { client, url, eas_cache: RefCell::new(BTreeMap::new()) }
     }
 
     /// One JSON-RPC round trip. `pub(crate)` because `tx.rs` extends `Rpc` with the write-side

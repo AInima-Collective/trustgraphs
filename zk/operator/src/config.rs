@@ -27,6 +27,11 @@ pub struct Config {
     #[serde(default)]
     pub chain_id: Option<u64>,
 
+    /// How long one JSON-RPC round trip may take. See [`crate::chain::DEFAULT_RPC_TIMEOUT_SECONDS`]
+    /// for why a finite value is not optional.
+    #[serde(default)]
+    rpc_timeout_seconds: Option<u64>,
+
     /// The block `registry` was deployed at. The `InstanceRegistered` scan starts here.
     ///
     /// Zero is correct on a fresh devnet and wrong everywhere else. Left at zero against a
@@ -567,9 +572,37 @@ impl Config {
         }
     }
 
+    /// The per-request budget for chain reads.
+    pub fn rpc_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(
+            self.rpc_timeout_seconds.unwrap_or(crate::chain::DEFAULT_RPC_TIMEOUT_SECONDS),
+        )
+    }
+
     /// How stale `/ready` tolerates the last completed tick being.
     pub fn ready_after_seconds(&self) -> u64 {
         self.ops.ready_after_seconds.unwrap_or_else(|| (3 * self.cadence.tick_seconds).max(90))
+    }
+
+    /// What `/ready` allows each phase of a tick, derived from the limits the daemon already
+    /// enforces on itself. A readiness probe stricter than the daemon's own patience would make
+    /// the probe, rather than the failure, the thing that takes the daemon down.
+    pub fn health_budgets(&self) -> crate::health::Budgets {
+        crate::health::Budgets {
+            ticking: self.ready_after_seconds(),
+            // A reconstruction subprocess. Generous because the source-checkout fallback COMPILES
+            // it: a cold `cargo run -p input-exporter` is minutes, not seconds. A deployment with
+            // `[ops] tool_dir` set never comes close.
+            reconstructing: 900,
+            // The prover's own timeout, plus room to fail and report cleanly.
+            proving: self.prover.timeout_s.saturating_add(120),
+            // `send_watched` watches for a receipt for up to ten minutes and logs nothing while it
+            // does. That silence is legitimate and must not read as a hang.
+            sending: 720,
+            publishing: 300,
+            // Deriving seven guest vkeys, then the first chain reads.
+            starting: 300,
+        }
     }
 
     /// The one directory the daemon owns. Always absolute after [`Config::load`].
@@ -791,6 +824,12 @@ impl Config {
         anyhow::ensure!(
             self.ready_after_seconds() > 0,
             "[ops] ready_after_seconds must be at least 1"
+        );
+        anyhow::ensure!(
+            self.rpc_timeout_seconds.is_none_or(|seconds| seconds > 0),
+            "`rpc_timeout_seconds` must be at least 1. There is no way to say 'wait forever': a \
+             provider that accepts the connection and never answers would stop the daemon \
+             permanently, with no tick, no alert and no recovery."
         );
         anyhow::ensure!(self.prover.cycle_limit > 0, "prover.cycle_limit must be at least 1");
         for (name, limit) in [

@@ -733,6 +733,10 @@ fn pin_target(target: &PinTarget, cid: &str, blob: &[u8]) -> Result<()> {
         .post(&url)
         .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
         .body(body)
+        // Every other HTTP call in the daemon is bounded; this one was not, and a pinning service
+        // that accepts an upload and never answers would hold the tick open indefinitely. The
+        // publication policy already knows how to treat a target as failed and retry.
+        .timeout(std::time::Duration::from_secs(60))
         .send()?;
     anyhow::ensure!(resp.status().is_success(), "ipfs add returned {}", resp.status());
     let v: serde_json::Value = resp.json()?;
