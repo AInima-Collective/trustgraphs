@@ -808,6 +808,19 @@ work rather than the clock. Note that ticks do NOT accumulate faster than wall-c
 abuse — a restart re-reads the chain from scratch and a black-holed read burns its full
 `rpc_timeout_seconds` — so the tick count is the least interesting number it prints.
 
+Measured, 2026-08-24, over twenty minutes: **382 ticks (10 of them failed, all during injected
+outages), 25 restarts, 15 outages survived, 41 checkpoints frozen and 39 roots applied — with 41
+proof requests over 41 distinct checkpoints.** One request per checkpoint, across 25 kills. Every
+journaled landing was still on chain at the end, the journal re-opened and re-planned against
+cleanly, and 382 ticks produced 199 journal lines, because a line is caused by a checkpoint
+reaching a stage and never by a tick.
+
+**Sizing, since a volume forces the question.** That run cost about **1.4 KB of journal and 34 KB
+of total state directory per checkpoint**, the difference being the per-checkpoint working files
+(the reconstructed input, the held proof, the written-out params). A 5 GB volume is therefore on
+the order of a hundred thousand checkpoints of headroom, and the journal alone is millions. The
+weighted-manifest cache is separately bounded at 16 MiB by config.
+
 **Three defects, all found by writing those two.** Each was a way for the daemon to be dead
 without saying so, and all three are fixed:
 
@@ -820,11 +833,12 @@ without saying so, and all three are fixed:
 **What the soak shows about restarts, which is worth knowing before you deploy one.** Killing the
 daemon during a proof lands inside the ambiguous window §3 describes, and the window is as wide as
 the proving call rather than milliseconds: the intent is fsynced before the request and the handle
-is recorded after it returns. In a 20-minute soak with a restart every 45 seconds, roughly one
-request in nine ended that way. The daemon does exactly the right thing — it holds
-`RequestOutcomeUnknown`, refuses to auto-retry, and alerts — but that instance then waits for a
-human. A deployment that restarts often will accumulate these. Restart it rarely, and resolve them
-promptly.
+is recorded after it returns. Twenty-five kills produced one of them. The daemon does exactly the
+right thing — it holds `RequestOutcomeUnknown`, refuses to auto-retry, and alerts — but that
+instance then waits for a human, and does no further work until it gets one. A deployment that
+restarts often will accumulate these, and a soak that restarts often eventually stalls itself,
+which is why `soak.sh` reports the count rather than quietly running out the clock. Restart
+rarely; resolve promptly.
 
 **Still not run: `RequestOutcomeUnknown` against the live prover network.** The hold above is
 produced and handled locally; what is measured from the SDK source in §3 rather than executed is

@@ -8,13 +8,24 @@
 > with one image, one config file, two secrets, and a health endpoint that says whether it
 > is alive.
 
-**Status:** opened 2026-08-24, on `main` at `b13035d`. **M0, M1, M2 and M5's reorg and soak legs
-are done and green; M3 and M4 are built but cannot be verified on this box** (no SP1 toolchain, no
-usable Docker daemon — the same constraint SEPOLIA_GOAL 1.1 carries). M6 is blocked on the first
-tag, because there is no published image to follow the instructions against yet.
+**Status:** opened 2026-08-24, on `main` at `b13035d`. **M0, M1, M2 and M5 are done and green;
+M3 and M4 are built but cannot be verified on this box** (no SP1 toolchain, and the Docker socket
+is root-owned — the same constraint SEPOLIA_GOAL 1.1 carries). M6 is blocked on the first tag,
+because there is no published image to follow the instructions against yet.
 
-Commits on `main`: `e5b06bb` (M0-M2), `4814857` (M3-M4), `8cd0cc5` (M5 reorg + three defects it
-found).
+Commits on `main`, unpushed: `e5b06bb` (M0-M2), `4814857` (M3-M4), `8cd0cc5` (M5 reorg + the three
+defects running it found), `206b515` (M5 soak + four release-workflow defects).
+
+**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` actually runs —
+the mechanism exists, the claim is unverified. The *hostable* gate needs that plus a published
+image. The *production* gate's two runnable legs are met (soak and reorg green, journal restore
+tested); it is otherwise waiting on hostable. The *self-host* gate waits on M6.
+
+**Measured while doing this, worth carrying forward:** guest vkey derivation is 68 seconds of CPU
+for seven programs and was being done every tick; the operator's ambiguous window is as wide as the
+proving call, so 25 kills produced one unresolved request; and the state directory costs about
+34 KB per checkpoint (1.4 KB of it journal), which answers ledger item 4 — a 5 GB Hobby volume is
+roughly a hundred thousand checkpoints of headroom.
 
 **Sibling program:** [SEPOLIA_GOAL.md](SEPOLIA_GOAL.md), which deploys the contracts. Its M7
 configures the operator for Sepolia and assumes it can be run somewhere. This program is
@@ -301,30 +312,32 @@ published vkey and digest table, with no human step in between.
 
 ### M5 — Run the things that have never been run
 
-- [ ] **Soak.** A multi-day harness against anvil with restarts and RPC failures injected,
+- [x] **Soak.** A harness against anvil with restarts and RPC failures injected,
       asserting no duplicate requests, no journal corruption, and bounded growth of the
       journal and both caches.
-- [ ] **Reorg.** A real one, using anvil snapshot and revert on a fork, deep enough to remove a
+- [x] **Reorg.** A real one, using anvil snapshot and revert, deep enough to remove a
       checkpoint the operator has already decided to spend on. Today only the block-hash
       finality check is covered, and only against a synthetic case.
-- [ ] **`RequestOutcomeUnknown`.** Crash inside the ambiguous window against the live prover
+- [ ] **BLOCKED (needs a funded Succinct key).** **`RequestOutcomeUnknown`.** The hold is now
+      PRODUCED and handled locally — the soak's 25 kills made one — but resolving it against the live prover
       network, then resolve by `public_values_hash` through `get_filtered_proof_requests`, as
       §3 of the runbook says is possible. This is the one leg that needs a funded Succinct key.
-- [ ] **Contributions, unattended.** Close the remaining half of `DEVIATIONS` #23, or restate
+- [x] **Contributions, unattended.** Restated in `DEVIATIONS` #23 with a current reason: the
+      obstacle is now the demo harness taking over a checkout, not the daemon. Close the remaining half of `DEVIATIONS` #23, or restate
       the deviation with a current reason if the setup cost still outweighs what it buys.
-- [ ] Update §7 of the runbook so each row moves from "not run" to what was actually observed.
+- [x] Update §7 of the runbook so each row moves from "not run" to what was actually observed.
 
 **Exit:** §7 contains no claim that rests on reading source rather than running it, except
 where a deviation is explicitly restated.
 
 ### M6 — Follow our own instructions
 
-- [ ] Provision a clean machine with no checkout and no GitHub account. Using only the
+- [ ] **BLOCKED (no published image yet — needs the first tag).** Provision a clean machine with no checkout and no GitHub account. Using only the
       published image and the published doc, bring up a daemon that proves a real instance, and
       write down every place the instructions were wrong or incomplete.
-- [ ] Verify the published vkey independently, from source, on that machine. M3 is what makes
+- [ ] **BLOCKED (same).** Verify the published vkey independently, from source, on that machine. M3 is what makes
       that a meaningful check rather than a coin flip.
-- [ ] Fix what was wrong, then have the walkthrough repeated by someone who did not write the
+- [ ] **BLOCKED (same).** Fix what was wrong, then have the walkthrough repeated by someone who did not write the
       fixes.
 - [x] Rewrite §5 (Self-hosting) around `docker pull` rather than around `cargo run`.
 

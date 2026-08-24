@@ -57,8 +57,9 @@ RUN cargo build --release --locked --manifest-path zk/prover/Cargo.toml \
 # without owning a proving rig.
 RUN cargo build --release --locked --manifest-path zk/operator/Cargo.toml --features network
 
-# The guest identity, shipped with the image so "which guest is this container running?" is a
-# `docker run --rm IMAGE cat /etc/trustgraph/elf-digests.txt` rather than an archaeology project.
+# The guest identity, shipped with the image so "which guest is this container running?" is one
+# command rather than an archaeology project. The entrypoint is the daemon, so ask for another:
+#   docker run --rm --entrypoint cat IMAGE /etc/trustgraph/elf-digests.txt
 RUN set -eu; mkdir -p /out/bin /out/etc; \
     sh scripts/guest-elf-digests.sh > /out/etc/elf-digests.txt; \
     cp target/release/input-exporter target/release/envelope0-preflight /out/bin/; \
