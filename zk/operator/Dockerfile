@@ -31,6 +31,7 @@ RUN set -eu; \
     for elf in \
       "zk/trustgraph-program-v2/target/elf-compilation/docker/$T/trustgraph-program-v2" \
       "zk/program/target/elf-compilation/docker/$T/trustgraph-signer-program" \
+      "zk/nostr-program/target/elf-compilation/docker/$T/nostr-workspace" \
       ; do \
       [ -f "$elf" ] || { \
         echo "missing REPRODUCIBLE guest ELF: $elf" >&2; \

@@ -36,7 +36,7 @@ jobs:
             zk/trustgraph-program-v2 -> target
             zk/weighted-program -> target
             zk/composition-program -> target
-            zk/nostr-program/program -> target
+            zk/nostr-program -> target
 
       - name: Install SP1 toolchain (pinned 6.3.1)
         run: |
@@ -46,13 +46,14 @@ jobs:
 
       - name: Build all isolated guest families
         run: |
+          set -eu
           sh scripts/build-guests.sh
-          tar -czf sp1-guest-elfs.tar.gz \
-            zk/program/target/elf-compilation \
-            zk/trustgraph-program-v2/target/elf-compilation \
-            zk/weighted-program/target/elf-compilation \
-            zk/composition-program/target/elf-compilation \
-            zk/nostr-program/program/target/elf-compilation
+          # The directories cargo actually put them in. The obvious guess, `<guest>/target`, is
+          # wrong for the nostr guest — see scripts/guest-elf-dirs.sh.
+          sh scripts/guest-elf-dirs.sh \
+            | sed 's|/elf-compilation/.*|/elf-compilation|' | sort -u > guest-elf-dirs.txt
+          cat guest-elf-dirs.txt
+          tar -czf sp1-guest-elfs.tar.gz -T guest-elf-dirs.txt
 
       - name: Upload guest ELFs
         uses: actions/upload-artifact@v4

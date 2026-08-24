@@ -36,6 +36,26 @@ fn repo_root() -> PathBuf {
         .join("../..")
 }
 
+/// Where a guest's ELFs land, asked of cargo rather than guessed.
+///
+/// The guess would be `<guest>/target`, and it is wrong for `zk/nostr-program/program`: a target
+/// directory belongs to the WORKSPACE, and that guest is a member of the workspace rooted one
+/// level up at `zk/nostr-program`. Guessing sent the fallback below to a stale copy and had it
+/// override cargo's correct answer — a silent way to embed the wrong guest.
+fn guest_target_dir(guest: &str) -> Option<PathBuf> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let output = std::process::Command::new(cargo)
+        .args(["locate-project", "--workspace", "--message-format", "plain", "--manifest-path"])
+        .arg(Path::new(guest).join("Cargo.toml"))
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let manifest = PathBuf::from(String::from_utf8(output.stdout).ok()?.trim());
+    Some(manifest.parent()?.join("target"))
+}
+
 /// Every isolated guest workspace, and whether its lockfile is frozen.
 const GUESTS: &[(&str, bool)] = &[
     ("../program", false),
@@ -98,7 +118,9 @@ fn main() {
 fn fall_back_to_locally_built_guests() {
     let mut fell_back = Vec::new();
     for (path, _) in GUESTS {
-        let base = Path::new(path).join("target/elf-compilation");
+        let Some(base) = guest_target_dir(path).map(|dir| dir.join("elf-compilation")) else {
+            continue;
+        };
         let local = base.join(TARGET);
         let reproducible = base.join("docker").join(TARGET);
         for elf in elf_files(&local) {

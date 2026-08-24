@@ -84,12 +84,13 @@ jobs:
       - name: Keep the ELFs from the x86_64 build
         if: matrix.arch == 'x86_64'
         run: |
-          tar -czf sp1-guest-elfs.tar.gz \
-            zk/program/target/elf-compilation \
-            zk/trustgraph-program-v2/target/elf-compilation \
-            zk/weighted-program/target/elf-compilation \
-            zk/composition-program/target/elf-compilation \
-            zk/nostr-program/program/target/elf-compilation
+          set -eu
+          # The directories cargo actually put them in. The obvious guess, `<guest>/target`, is
+          # wrong for the nostr guest — see scripts/guest-elf-dirs.sh.
+          sh scripts/guest-elf-dirs.sh \
+            | sed 's|/elf-compilation/.*|/elf-compilation|' | sort -u > guest-elf-dirs.txt
+          cat guest-elf-dirs.txt
+          tar -czf sp1-guest-elfs.tar.gz -T guest-elf-dirs.txt
 
       - uses: actions/upload-artifact@v4
         if: matrix.arch == 'x86_64'

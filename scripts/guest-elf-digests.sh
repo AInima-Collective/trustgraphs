@@ -7,33 +7,43 @@
 # `trustgraph-prover manifest`; this one needs nothing but the files, so it also runs inside the
 # operator's Docker build where no prover exists.
 #
-#   sh scripts/guest-elf-digests.sh            # from the repo root
+#   sh scripts/guest-elf-digests.sh            # from anywhere
 #
-# Exits non-zero when no guest has been built, because an empty table that looks like a pass is
-# the one failure mode a digest comparison must not have.
+# Exits non-zero when a guest is missing, rather than printing a shorter table. An empty or
+# incomplete table that two machines agree on is the one failure mode a digest comparison must not
+# have: both sides would be agreeing about nothing.
 
 set -eu
 
-DIRS="zk/program zk/trustgraph-program-v2 zk/weighted-program zk/composition-program zk/nostr-program/program"
-TARGET="riscv64im-succinct-zkvm-elf/release"
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
+DIRS=$(sh scripts/guest-elf-dirs.sh)
+EXPECTED=$(printf '%s\n' "$DIRS" | wc -l | tr -d ' ')
 
 found=""
-for dir in $DIRS; do
-  # `cargo prove build --docker` and the plain path land in DIFFERENT directories. Prefer the
-  # reproducible one; fall back to the plain one so a developer still gets a table, and so the
-  # difference shows up in the paths rather than being silently averaged over.
-  release="$dir/target/elf-compilation/docker/$TARGET"
-  [ -d "$release" ] || release="$dir/target/elf-compilation/$TARGET"
-  [ -d "$release" ] || continue
+present=0
+for release in $DIRS; do
+  if [ ! -d "$release" ]; then
+    echo "no guest ELFs in $release" >&2
+    echo "Build them first: task zk:build" >&2
+    exit 1
+  fi
+  present=$((present + 1))
   # Only the ELFs themselves: `release/` also holds `deps/`, `.fingerprint/`, cargo lock files
   # and `.d` dependency lists, none of which are the artifact anyone is comparing.
   found="$found $(find "$release" -maxdepth 1 -type f ! -name '*.d' ! -name '.cargo-*' -print)"
 done
 
+if [ "$present" -ne "$EXPECTED" ]; then
+  echo "expected $EXPECTED guest workspaces, found $present" >&2
+  exit 1
+fi
+
 # shellcheck disable=SC2086
 set -- $found
 if [ "$#" -eq 0 ]; then
-  echo "no guest ELFs found. Build them first: task zk:build" >&2
+  echo "guest directories exist but hold no ELFs. Build them first: task zk:build" >&2
   exit 1
 fi
 
