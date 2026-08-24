@@ -70,9 +70,11 @@ const HERO_FIGURE =
  * elements because the stepper layout needs each item's index and the total
  * count, to know which connecting-line segments to draw.
  */
+type RoadmapStatus = 'Current' | 'Pilot' | 'Research'
+
 const ROADMAP: Array<{
   n: string
-  status: string
+  status: RoadmapStatus
   title: string
   description: string
 }> = [
@@ -171,7 +173,7 @@ export default async function LandingPage() {
       {/* ── Platform idea and composition ───────────────────────── */}
       <section
         id="what-is-a-trustgraph"
-        className="scroll-mt-8 border-y border-border"
+        className="scroll-mt-8 border-t border-border"
       >
         <div className="grid lg:grid-cols-[minmax(15rem,0.82fr)_minmax(0,1.18fr)]">
           <div className="py-8 lg:pr-16 lg:py-12">
@@ -644,13 +646,28 @@ function RoadmapItem({
   total,
 }: {
   n: string
-  status: string
+  status: RoadmapStatus
   title: string
   description: string
   index: number
   total: number
 }) {
-  const current = status === 'Current'
+  const statusStyles: Record<RoadmapStatus, { marker: string; badge: string }> =
+    {
+      Current: {
+        marker: 'border-ink bg-ink text-ink-fg',
+        badge: 'bg-ink text-ink-fg',
+      },
+      Pilot: {
+        marker: 'border-ink bg-ink-soft text-text',
+        badge: 'border border-ink bg-ink-soft text-text',
+      },
+      Research: {
+        marker: 'border-hairline-strong bg-background text-text-muted',
+        badge: 'border border-hairline-strong text-text-muted',
+      },
+    }
+  const tone = statusStyles[status]
 
   return (
     <li className="relative flex gap-5 border-b border-border py-7 last:border-b-0 sm:gap-7 sm:py-9 lg:flex-col lg:items-center lg:gap-4 lg:border-b-0 lg:px-4 lg:py-0 lg:text-center">
@@ -670,9 +687,7 @@ function RoadmapItem({
       <div
         className={cn(
           'relative z-10 flex h-10 w-10 shrink-0 items-center justify-center border text-[10px] tracking-wider sm:h-12 sm:w-12',
-          current
-            ? 'border-ink bg-ink text-ink-fg'
-            : 'border-hairline-strong bg-background text-text-muted'
+          tone.marker
         )}
       >
         {n}
@@ -681,11 +696,10 @@ function RoadmapItem({
         <div className="flex flex-wrap items-center justify-between gap-3 lg:flex-col lg:justify-center lg:gap-2">
           <h3 className="text-2xl lg:text-xl">{title}</h3>
           <span
-            className={
-              current
-                ? 'bg-ink px-2.5 py-1 text-[9px] uppercase tracking-widest text-ink-fg'
-                : 'border border-hairline-strong px-2.5 py-1 text-[9px] uppercase tracking-widest text-text-muted'
-            }
+            className={cn(
+              'px-2.5 py-1 text-[9px] uppercase tracking-widest',
+              tone.badge
+            )}
           >
             {status}
           </span>
