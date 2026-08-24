@@ -85,12 +85,13 @@ jobs:
         if: matrix.arch == 'x86_64'
         run: |
           set -eu
-          # The directories cargo actually put them in. The obvious guess, `<guest>/target`, is
-          # wrong for the nostr guest — see scripts/guest-elf-dirs.sh.
-          sh scripts/guest-elf-dirs.sh \
-            | sed 's|/elf-compilation/.*|/elf-compilation|' | sort -u > guest-elf-dirs.txt
-          cat guest-elf-dirs.txt
-          tar -czf sp1-guest-elfs.tar.gz -T guest-elf-dirs.txt
+          # The ELF FILES, at the paths cargo actually put them — not the directories holding
+          # them, which are ~800 MB of build state around 4.7 MB of artifact, downloaded again by
+          # every job that needs the guests. The paths are derived rather than guessed, because
+          # the obvious guess is wrong for the nostr guest (see scripts/guest-elf-dirs.sh).
+          sh scripts/guest-elf-dirs.sh --files | tee guest-elfs.txt
+          tar -czf sp1-guest-elfs.tar.gz -T guest-elfs.txt
+          ls -lh sp1-guest-elfs.tar.gz
 
       - uses: actions/upload-artifact@v4
         if: matrix.arch == 'x86_64'
