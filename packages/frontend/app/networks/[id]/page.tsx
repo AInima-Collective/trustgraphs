@@ -6,7 +6,7 @@ import { notFound, redirect } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getCatalog, getNetwork } from '@/lib/catalog.server'
-import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
+import { VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
@@ -16,7 +16,6 @@ import { makeQueryClient } from '@/lib/query'
 import { registerSchemas } from '@/lib/schema-registry'
 import { getScoreProgram } from '@/lib/score-program.server'
 import { realAddress } from '@/lib/utils'
-import { getWeightedNetwork } from '@/lib/weighted-prior/network.server'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { NetworkPage } from './component'
@@ -114,14 +113,9 @@ export default async function NetworkPageServer({
     )
   }
 
-  // Trust-graph variants: resolve the ordinary catalog first, then the isolated weighted catalog,
-  // so an instance created seconds ago renders with no rebuild or config edit.
-  let { network, catalogError } = await getNetwork(id)
-  if (!network) {
-    const weighted = await getWeightedNetwork(id, APIS.ponder)
-    network = weighted.network
-    catalogError = catalogError ?? weighted.error
-  }
+  // Trust-graph variants, including the isolated weighted catalog, share one resolver so every
+  // sub-route sees the same network capabilities.
+  const { network, catalogError } = await getNetwork(id)
   if (!network) {
     // "Not found" and "we could not read the directory" are different answers, and 404ing on the
     // second one tells the user their network does not exist because an HTTP call failed.

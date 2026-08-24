@@ -7,36 +7,50 @@ const source = readFileSync(
   'utf8'
 )
 
-// This structural contract keeps the critical accessible recovery controls attached to the real
-// client component without introducing a second, test-only rendering of the workflow.
-assert.match(source, /<main[^>]+aria-labelledby="weighted-title"/)
+// The create route and the Settings embed share exact import/preview primitives while rendering
+// as distinct journeys. The create route never offers an existing-network picker or update mode.
+assert.match(source, /rotationInstanceId\?: Hex/)
+assert.match(source, /const Root = administrative \? 'div' : 'main'/)
 assert.match(source, /Choose who gets a head start and how much/)
 assert.doesNotMatch(source, /Import human CSV or JSON/)
 
-// Both id inputs are pickers with a paste escape hatch, and every shown id is copyable
-// (GOAL M2, clarification 4). The binary picker reads the app-wide runtime catalog; the
-// weighted picker reads GET /weighted-priors.
+// Copying starting accounts is still a creation input. Existing weighted-network selection is
+// gone: Settings supplies one fixed instance id and loads its history directly.
 assert.match(source, /<select\s+id="binary-instance"/)
-assert.match(source, /<select\s+id="weighted-instance"/)
 assert.match(source, /useNetworks/)
-assert.match(source, /fetchWeightedInstances/)
+assert.doesNotMatch(source, /fetchWeightedInstances/)
+assert.doesNotMatch(source, /id="weighted-instance"/)
 assert.match(source, /paste an instance ID instead/)
 assert.match(source, /Settings →\s+Advanced →\s+Instance provenance/)
-assert.match(
-  source,
-  /weighted networks do\s+not\s+currently have a\s+Settings page/i
-)
 assert.match(source, /CopyableText/)
 
-// A created weighted network is not a one-shot toast: the id renders copyable, the primary
-// action opens its network page, update remains a separate action, and deep links reopen it.
+// A created network links to its detail and Settings surfaces. Legacy create?instance links are
+// redirected rather than reopening administration inside the create wizard.
 assert.match(source, /Your weighted network is created/)
 assert.match(source, /href=\{`\/networks\/\$\{created\.instanceId\}`\}/)
 assert.match(source, /View network/)
-assert.match(source, /Update prior/)
+assert.match(source, /Review starting shares/)
 assert.match(source, /openForUpdate/)
 assert.match(source, /params\.get\('instance'\)/)
+assert.match(source, /settings\?tab=scoring/)
 assert.match(source, /params\.get\('accounts'\)/)
+
+const settings = readFileSync(
+  join(process.cwd(), 'app/networks/[id]/settings/component.tsx'),
+  'utf8'
+)
+assert.match(
+  settings,
+  /<WeightedPriorWorkspace rotationInstanceId=\{instanceId as Hex\}/
+)
+const createPage = readFileSync(
+  join(process.cwd(), 'app/create/weighted/page.tsx'),
+  'utf8'
+)
+assert.match(
+  createPage,
+  /redirect\(`\/networks\/\$\{legacyInstance\}\/settings\?tab=scoring`\)/
+)
 
 // ENS handling is stated in plain words (clarification 3): resolved in the browser at a
 // finalized mainnet block, receipt-only, re-checked before simulate and before sign.
@@ -92,6 +106,12 @@ assert.match(source, /PRIOR_ACTIVATION_DELAY/)
 assert.match(source, /Score-selected Safe signers are not offered/)
 assert.match(source, /Add a shared fund/)
 assert.match(source, /withDistributor: withFund/)
+assert.match(source, /setWithGovernance\(true\)/)
+assert.match(source, /Governance is required while a shared fund is selected/)
+assert.match(source, /InvalidDistributorSafe/)
+assert.match(source, /saveGovernancePrefill/)
+assert.match(source, /Prepare governance proposal/)
+assert.match(source, /Vouches and ordinary score updates do not require/)
 assert.match(source, /Pay for score refreshes up front\?/)
 assert.match(source, /DISABLED_SIGNER_SYNC/)
 

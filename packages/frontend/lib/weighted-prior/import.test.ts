@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 
-import { type Address, type Hex, decodeFunctionData } from 'viem'
+import {
+  type Address,
+  type Hex,
+  decodeErrorResult,
+  decodeFunctionData,
+  encodeErrorResult,
+} from 'viem'
 
 import {
   weightedCreateArgs,
@@ -323,6 +329,19 @@ const main = async () => {
     ),
     true
   )
+
+  const unsafeFundOwner = encodeErrorResult({
+    abi: weightedTrustgraphsFactoryAbi,
+    errorName: 'InvalidDistributorSafe',
+    args: [A],
+  })
+  assert.equal(unsafeFundOwner.slice(0, 10), '0x39d5d230')
+  const decodedUnsafeFundOwner = decodeErrorResult({
+    abi: weightedTrustgraphsFactoryAbi,
+    data: unsafeFundOwner,
+  })
+  assert.equal(decodedUnsafeFundOwner.errorName, 'InvalidDistributorSafe')
+  assert.deepEqual(decodedUnsafeFundOwner.args, [A])
 
   console.log(
     'weighted-prior importer, provenance, ENS freeze, and payloads: ok'

@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from 'ponder:api'
 import {
+  merkleGovModule,
   weightedPriorEntry,
   weightedPriorInstance,
   weightedPriorVersion,
@@ -20,17 +21,56 @@ const app = new Hono()
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
 
+type GovernanceRow = Pick<
+  typeof merkleGovModule.$inferSelect,
+  'address' | 'merkleSnapshot' | 'target'
+>
+
 const idParam = (value: string) =>
   isHex(value) && value.length === 66 ? (value as Hex) : null
 
-const serializeInstance = (row: typeof weightedPriorInstance.$inferSelect) => ({
+const serializeInstance = (
+  row: typeof weightedPriorInstance.$inferSelect,
+  governance?: GovernanceRow
+) => ({
   ...row,
   program: 'trust-graph-weighted',
+  governance: governance
+    ? {
+        module: governance.address,
+        safe: governance.target,
+      }
+    : null,
   epochLength: row.epochLength.toString(),
   currentVersion: row.currentVersion.toString(),
   createdBlock: row.createdBlock.toString(),
   createdTimestamp: row.createdTimestamp.toString(),
 })
+
+const governanceFor = async (
+  rows: Array<typeof weightedPriorInstance.$inferSelect>
+) => {
+  if (rows.length === 0) return new Map<string, GovernanceRow>()
+  const governanceRows = await db
+    .select({
+      address: merkleGovModule.address,
+      merkleSnapshot: merkleGovModule.merkleSnapshot,
+      target: merkleGovModule.target,
+    })
+    .from(merkleGovModule)
+    .where(
+      inArray(
+        merkleGovModule.merkleSnapshot,
+        rows.map((row) => row.snapshot)
+      )
+    )
+  return new Map(
+    governanceRows.map((governance) => [
+      governance.merkleSnapshot.toLowerCase(),
+      governance,
+    ])
+  )
+}
 
 const serializeVersion = (row: typeof weightedPriorVersion.$inferSelect) => ({
   id: row.id,
@@ -93,12 +133,17 @@ app.get('/', async (c) => {
     )
     .limit(limit)
     .offset(offset)
-  const [total] = await db
-    .select({ value: count(weightedPriorInstance.id) })
-    .from(weightedPriorInstance)
+  const [totalRows, governance] = await Promise.all([
+    db
+      .select({ value: count(weightedPriorInstance.id) })
+      .from(weightedPriorInstance),
+    governanceFor(rows),
+  ])
   return c.json({
-    instances: rows.map(serializeInstance),
-    page: { limit, offset, total: total?.value ?? 0 },
+    instances: rows.map((row) =>
+      serializeInstance(row, governance.get(row.snapshot.toLowerCase()))
+    ),
+    page: { limit, offset, total: totalRows[0]?.value ?? 0 },
   })
 })
 
@@ -108,9 +153,14 @@ app.get('/:instanceId', async (c) => {
   const row = await db.query.weightedPriorInstance.findFirst({
     where: eq(weightedPriorInstance.id, instanceId),
   })
-  return row
-    ? c.json({ instance: serializeInstance(row) })
-    : c.json({ error: 'not found' }, 404)
+  if (!row) return c.json({ error: 'not found' }, 404)
+  const governance = await governanceFor([row])
+  return c.json({
+    instance: serializeInstance(
+      row,
+      governance.get(row.snapshot.toLowerCase())
+    ),
+  })
 })
 
 app.get('/:instanceId/versions', async (c) => {

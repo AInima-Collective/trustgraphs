@@ -24,6 +24,7 @@ import {
 } from './catalog'
 import { APIS } from './config'
 import { Network } from './types'
+import { getWeightedNetwork } from './weighted-prior/network.server'
 
 /**
  * How long a rendered directory may lag the chain.
@@ -66,6 +67,7 @@ export const getNetwork = async (
   // Not in the (up to CATALOG_REVALIDATE_SECONDS old) window. If it looks like an instanceId, ask
   // the indexer directly before concluding it does not exist.
   if (isInstanceId(id)) {
+    let directError: string | null = null
     try {
       const response = await fetch(`${APIS.ponder}/instances/${id}`, {
         cache: 'no-store',
@@ -84,15 +86,30 @@ export const getNetwork = async (
           }
         }
       } else if (response.status !== 404 && response.status !== 400) {
-        return {
-          catalogError: `GET /instances/:id responded ${response.status}`,
-        }
+        directError = `GET /instances/:id responded ${response.status}`
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       console.error('[catalog] direct instance lookup failed:', reason)
-      return { catalogError: catalog.error ?? reason }
+      directError = reason
     }
+
+    // Weighted instances deliberately live in an isolated indexer table and endpoint. They still
+    // resolve to the same address-keyed Network shape once discovered, so every network sub-route
+    // (governance, rewards, settings) must share this fallback rather than special-casing only the
+    // overview page.
+    const weighted = await getWeightedNetwork(id, APIS.ponder)
+    if (weighted.network) {
+      return {
+        network: weighted.network,
+        catalogError: catalog.error ?? directError ?? weighted.error,
+      }
+    }
+    if (weighted.error) {
+      directError = directError ?? weighted.error
+    }
+
+    if (directError) return { catalogError: catalog.error ?? directError }
   }
 
   return { catalogError: catalog.error }

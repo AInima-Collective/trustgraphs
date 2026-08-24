@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import type { Hex } from 'viem'
 
+import { trustgraphsTabs } from '../network-nav'
 import type { WeightedApiInstanceDetail } from './api'
 import { weightedInstanceToNetwork } from './network'
 
@@ -23,6 +25,10 @@ const instance: WeightedApiInstanceDetail = {
   snapshot: hex('8', 20),
   distributor: null,
   distributorToken: null,
+  governance: {
+    module: hex('f', 20),
+    safe: hex('0', 20),
+  },
   epochLength: '1',
   currentVersion: '1',
   currentParamsHash: hex('9', 32),
@@ -55,8 +61,27 @@ const network = weightedInstanceToNetwork(instance, [
 assert.equal(network.program, 'trust-graph-weighted')
 assert.equal(network.id, instance.id)
 assert.equal(network.contracts.merkleSnapshot, instance.snapshot)
+assert.equal(network.contracts.merkleGovModule, instance.governance?.module)
+assert.equal(network.contracts.safe?.proxy, instance.governance?.safe)
 assert.equal(network.schemas[0]?.uid, instance.schemaUid)
 assert.deepEqual(network.pagerank.trustedSeeds, [account])
 assert.equal(network.safeZodiacSignerSync.enabled, false)
+network.contracts.merkleFundDistributor = hex('2', 20)
+assert.deepEqual(
+  trustgraphsTabs(network).map((tab) => tab.label),
+  ['Overview', 'Governance', 'Rewards', 'Settings']
+)
+
+const catalogServer = readFileSync('lib/catalog.server.ts', 'utf8')
+assert.match(catalogServer, /getWeightedNetwork/)
+assert.match(catalogServer, /every network sub-route/)
+
+const settings = readFileSync(
+  'app/networks/[id]/settings/component.tsx',
+  'utf8'
+)
+assert.match(settings, /WEIGHTED_TRUSTGRAPH_PROGRAM/)
+assert.match(settings, /Review starting shares/)
+assert.match(settings, /Weighted networks cannot start/)
 
 console.log('weighted network overview adapter tests passed')

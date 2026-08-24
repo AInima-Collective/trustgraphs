@@ -26,6 +26,12 @@ export const weightedInstanceToNetwork = (
   contracts: {
     merkleSnapshot: instance.snapshot,
     easIndexerResolver: instance.resolver,
+    ...(instance.governance
+      ? {
+          merkleGovModule: instance.governance.module,
+          safe: { proxy: instance.governance.safe },
+        }
+      : {}),
     ...(instance.distributor
       ? { merkleFundDistributor: instance.distributor }
       : {}),

@@ -5,7 +5,11 @@ import { Link as LinkIcon } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { NetworkNav } from '@/components/NetworkNav'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
-import { contributionsRoundsFor, NetworkTab, trustgraphsTabs } from '@/lib/network-nav'
+import {
+  NetworkTab,
+  contributionsRoundsFor,
+  trustgraphsTabs,
+} from '@/lib/network-nav'
 import { ContributionsNetwork, Network } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -41,6 +45,9 @@ export function NetworkHeader({
   // that shares this header agrees. Skipped entirely when the caller passed explicit tabs.
   const trustNetwork = tabs ? undefined : (network as Network)
   const { rounds } = useContributionsRounds(trustNetwork?.instanceId)
+  const contributionRounds = trustNetwork
+    ? contributionsRoundsFor(trustNetwork, rounds)
+    : []
 
   return (
     <div className={cn('flex flex-col items-start gap-4', className)}>
@@ -68,13 +75,7 @@ export function NetworkHeader({
       )}
 
       <NetworkNav
-        tabs={
-          tabs ??
-          trustgraphsTabs(
-            network as Network,
-            contributionsRoundsFor(network as Network, rounds)
-          )
-        }
+        tabs={tabs ?? trustgraphsTabs(network as Network, contributionRounds)}
         className="w-full mt-2"
       />
     </div>

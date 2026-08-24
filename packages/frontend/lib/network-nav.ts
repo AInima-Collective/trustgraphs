@@ -120,20 +120,6 @@ export const trustgraphsTabs = (
   ]
 }
 
-/** Weighted networks share the score/vouch overview, while prior rotation stays explicit. */
-export const weightedTrustgraphsTabs = (network: Network): NetworkTab[] => [
-  {
-    href: `/networks/${network.id}`,
-    label: 'Overview',
-    icon: 'overview',
-    exact: true,
-  },
-  {
-    href: `/create/weighted?instance=${network.instanceId ?? network.id}`,
-    label: 'Update prior',
-  },
-]
-
 /**
  * The trust network a round's reputation is proven against — `contributionsRoundsFor` reversed,
  * resolved against a runtime networks list (`useNetworks()` / `getCatalog()`) by the same

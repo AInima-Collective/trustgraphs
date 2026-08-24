@@ -89,5 +89,7 @@ test('weighted routes are additive and leave the binary instance API mounted unc
     'utf8'
   )
   assert.match(handler, /app\.get\('\/:instanceId'/)
-  assert.match(handler, /instance: serializeInstance\(row\)/)
+  assert.match(handler, /governanceFor\(\[row\]\)/)
+  assert.match(handler, /module: governance\.address/)
+  assert.match(handler, /safe: governance\.target/)
 })

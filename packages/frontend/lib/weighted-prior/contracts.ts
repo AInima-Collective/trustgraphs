@@ -1,12 +1,12 @@
 import { type Address, type Hex, encodeFunctionData, parseAbi } from 'viem'
 
-import type { InitialProvingPolicy } from '../proving-prepay'
 import {
   DISABLED_SIGNER_SYNC,
   GOVERNED_WRAPPER_ERRORS,
   INITIAL_POLICY_TUPLE,
   SIGNER_SYNC_TUPLE,
 } from '../governed-wrapper'
+import type { InitialProvingPolicy } from '../proving-prepay'
 import type { WeightedImportArtifacts } from './import'
 
 const PARAMS =
@@ -16,12 +16,48 @@ const PARAMS =
 const CREATE_ARGS =
   `(string name,string metadataURI,${PARAMS} params,bytes manifest,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
 
+/** Base-factory and manifest-validation errors surfaced by direct creation simulation. */
+const WEIGHTED_FACTORY_ERRORS = [
+  'error ZeroAddress()',
+  'error ZeroEpochFloor()',
+  'error ZeroActivationDelay()',
+  'error InvalidAdmin()',
+  'error EmptyName()',
+  'error NameTooLong(uint256 length)',
+  'error NoVaultConfigured()',
+  'error ChainIdTooLarge(uint256 chainId)',
+  'error SchemaUidMismatch(bytes32 registered, bytes32 expected)',
+  'error UnknownInstance(bytes32 instanceId)',
+  'error NotInstanceAuthority(bytes32 instanceId, address owner)',
+  'error DistributorAlreadyAttached(bytes32 instanceId, address distributor)',
+  'error InvalidDistributorSafe(address owner)',
+  'error DerivedFieldNotZero()',
+  'error InvalidParamsVersion(uint32 version)',
+  'error InvalidDamping(uint64 dampingFp)',
+  'error InvalidTolerance(uint64 toleranceFp)',
+  'error InvalidIterations(uint32 maxIterations)',
+  'error InvalidWeightBounds(uint64 minWeight, uint64 maxWeight)',
+  'error InvalidWeightFieldIndex(uint32 weightFieldIndex)',
+  'error InvalidParamsChain(uint64 chainId)',
+  'error InvalidManifestLength(uint256 actual, uint256 expected)',
+  'error InvalidManifestMagic(bytes4 magic)',
+  'error InvalidManifestVersion(uint16 version)',
+  'error InvalidManifestChain(uint64 actual, uint64 expected)',
+  'error InvalidPriorCount(uint32 count)',
+  'error InvalidPriorAccount(uint32 index, address account)',
+  'error PriorAccountsNotAscending(uint32 index, address previous, address account)',
+  'error InvalidPriorWeight(uint32 index)',
+  'error InvalidPriorWeightSum(uint256 sum)',
+  'error PriorCommitmentMismatch()',
+] as const
+
 export const weightedTrustgraphsFactoryAbi = parseAbi([
   `event WeightedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address resolver,bytes32 schemaUid,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 metadataDigest,${PARAMS} params)`,
   'event WeightedParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
   `function createInstance(${CREATE_ARGS} args) payable returns (bytes32 instanceId,address snapshot,address resolver,address distributor,bytes32 schemaUid)`,
   'function EPOCH_FLOOR() view returns (uint64)',
   'function PRIOR_ACTIVATION_DELAY() view returns (uint48)',
+  ...WEIGHTED_FACTORY_ERRORS,
 ])
 
 /**
@@ -32,6 +68,7 @@ export const weightedTrustgraphsFactoryAbi = parseAbi([
  */
 export const governedWeightedTrustgraphsFactoryAbi = parseAbi([
   'event GovernedInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed safe,address merkleGovModule,address snapshot)',
+  'function authorityOf(bytes32 instanceId) view returns ((address safe,address governanceModule,address recoveryModule,address executionGuard,address initialRecoveryProposer,uint48 recoveryDelay,address signerSyncModule))',
   `function createGovernedInstance(${CREATE_ARGS} requested,${INITIAL_POLICY_TUPLE} policy,${SIGNER_SYNC_TUPLE} signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
   ...GOVERNED_WRAPPER_ERRORS,
 ])
@@ -43,6 +80,7 @@ export const weightedPriorParamsControllerAbi = parseAbi([
   'function activatePrior(uint64 expectedVersion) returns (bytes32 paramsHash)',
   'function version() view returns (uint64)',
   'function latestVersion() view returns (uint64)',
+  'function owner() view returns (address)',
   `function getCurrentParams() view returns (${PARAMS})`,
 ])
 

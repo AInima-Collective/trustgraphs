@@ -51,7 +51,12 @@ import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import type { InstanceRow } from '@/lib/catalog'
-import { CONTRACT_CONFIG, PROVING_VAULT } from '@/lib/config'
+import {
+  CONTRACT_CONFIG,
+  GOVERNED_WEIGHTED_FACTORY,
+  PROVING_VAULT,
+  WEIGHTED_FACTORY,
+} from '@/lib/config'
 import {
   anchorRegistryAbi,
   easIndexerResolverAbi,
@@ -88,8 +93,12 @@ import { ponderQueries } from '@/queries/ponder'
 
 import { ScoringAccessCard, ScoringSettings } from './scoring'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
+import { WeightedPriorWorkspace } from '../../../create/weighted/workspace'
 
 const TRUSTGRAPH_PROGRAM = keccak256(stringToBytes('trust-graph'))
+const WEIGHTED_TRUSTGRAPH_PROGRAM = keccak256(
+  stringToBytes('trust-graph-weighted')
+)
 const CONSTITUTIONAL_ROLE = keccak256(stringToBytes('CONSTITUTIONAL_ROLE'))
 const OPERATIONAL_ROLE = keccak256(stringToBytes('OPERATIONAL_ROLE'))
 const SAFE_GUARD_STORAGE_SLOT =
@@ -512,11 +521,24 @@ const settingsHref = (networkId: string, tab: SettingsTab) =>
 const SettingsNavigation = ({
   networkId,
   activeTab,
+  weighted,
 }: {
   networkId: string
   activeTab: SettingsTab
+  weighted: boolean
 }) => {
   const router = useRouter()
+  const tabs = weighted
+    ? SETTINGS_TABS.map((tab) =>
+        tab.id === 'scoring'
+          ? {
+              ...tab,
+              label: 'Starting shares',
+              description: 'Trust anchors and version history',
+            }
+          : tab
+      )
+    : SETTINGS_TABS
 
   return (
     <>
@@ -532,7 +554,7 @@ const SettingsNavigation = ({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SETTINGS_TABS.map((tab) => (
+            {tabs.map((tab) => (
               <SelectItem key={tab.id} value={tab.id}>
                 {tab.label}
               </SelectItem>
@@ -544,7 +566,7 @@ const SettingsNavigation = ({
       <aside className="hidden lg:block">
         <nav aria-label="Settings sections" className="sticky top-6 space-y-1">
           <p className="tg-label px-3 pb-2">Settings</p>
-          {SETTINGS_TABS.map((tab) => (
+          {tabs.map((tab) => (
             <Link
               key={tab.id}
               href={settingsHref(networkId, tab.id)}
@@ -839,6 +861,7 @@ export const SettingsPage = ({
   // Rounds live in the indexer's runtime round catalog, keyed to this network by the factory's
   // parentInstanceId link; the newest active one fronts the card and every round lists below.
   const { rounds: allRounds } = useContributionsRounds(network.instanceId)
+  const weighted = network.program === 'trust-graph-weighted'
   const contributionRounds = sortRoundsNewestActiveFirst(
     contributionsRoundsFor(network, allRounds)
   )
@@ -850,12 +873,16 @@ export const SettingsPage = ({
     network.contracts.merkleFundDistributor
   )
   const governanceAddress = realAddress(network.contracts.merkleGovModule)
-  const factoryAddress =
-    realAddress(instance?.factory) ||
-    realAddress(CONTRACT_CONFIG.TrustgraphsFactory as string)
-  const governedFactoryAddress = realAddress(
-    CONTRACT_CONFIG.GovernedTrustgraphsFactory as string
-  )
+  const factoryAddress = weighted
+    ? realAddress(WEIGHTED_FACTORY)
+    : realAddress(instance?.factory) ||
+      realAddress(CONTRACT_CONFIG.TrustgraphsFactory as string)
+  const governedFactoryAddress = weighted
+    ? realAddress(GOVERNED_WEIGHTED_FACTORY)
+    : realAddress(CONTRACT_CONFIG.GovernedTrustgraphsFactory as string)
+  const scoreProgram = weighted
+    ? WEIGHTED_TRUSTGRAPH_PROGRAM
+    : TRUSTGRAPH_PROGRAM
 
   const { data: recordedAuthority } = useReadContract({
     address: governedFactoryAddress as Hex,
@@ -1283,7 +1310,7 @@ export const SettingsPage = ({
               address: vaultAddress,
               abi: provingVaultReadAbi,
               functionName: 'bandOf',
-              args: [TRUSTGRAPH_PROGRAM, leafCount, anchorCount],
+              args: [scoreProgram, leafCount, anchorCount],
             },
             {
               address: vaultAddress,
@@ -1363,7 +1390,7 @@ export const SettingsPage = ({
     address: vaultAddress as Hex,
     abi: provingVaultReadAbi,
     functionName: 'feePerRootUsd',
-    args: [TRUSTGRAPH_PROGRAM, sizeBand ?? 0],
+    args: [scoreProgram, sizeBand ?? 0],
     query: { enabled: !!vaultAddress && sizeBand !== undefined },
   })
   const feePerRoot = feeRead as bigint | undefined
@@ -1732,7 +1759,11 @@ export const SettingsPage = ({
       </div>
 
       <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12">
-        <SettingsNavigation networkId={network.id} activeTab={activeTab} />
+        <SettingsNavigation
+          networkId={network.id}
+          activeTab={activeTab}
+          weighted={weighted}
+        />
 
         <div className="min-w-0 space-y-10">
           {activeTab === 'overview' && (
@@ -2291,14 +2322,17 @@ export const SettingsPage = ({
             </section>
           )}
 
-          {activeTab === 'scoring' && (
-            <ScoringSettings
-              instance={instance}
-              factoryAddress={factoryAddress as Hex | undefined}
-              liveParamsHash={liveParamsHash as Hex | undefined}
-              checkpointCount={checkpointCount}
-            />
-          )}
+          {activeTab === 'scoring' &&
+            (weighted ? (
+              <WeightedPriorWorkspace rotationInstanceId={instanceId as Hex} />
+            ) : (
+              <ScoringSettings
+                instance={instance}
+                factoryAddress={factoryAddress as Hex | undefined}
+                liveParamsHash={liveParamsHash as Hex | undefined}
+                checkpointCount={checkpointCount}
+              />
+            ))}
 
           {activeTab === 'advanced' && (
             <section className="space-y-5">
@@ -2716,11 +2750,30 @@ export const SettingsPage = ({
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
-                <ScoringAccessCard
-                  instance={instance}
-                  factoryAddress={factoryAddress as Hex | undefined}
-                  liveParamsHash={liveParamsHash as Hex | undefined}
-                />
+                {weighted ? (
+                  <SettingsCard
+                    title="Weighted starting shares"
+                    description="A stable trust-anchor distribution used by weighted scoring. New vouches affect scores directly; they do not need to add people to this list."
+                  >
+                    <SettingRow label="Current hash">
+                      <Hash value={liveParamsHash} />
+                    </SettingRow>
+                    <div className="pt-4">
+                      <ButtonLink
+                        href={`/networks/${network.id}/settings?tab=scoring`}
+                        size="sm"
+                      >
+                        Review starting shares
+                      </ButtonLink>
+                    </div>
+                  </SettingsCard>
+                ) : (
+                  <ScoringAccessCard
+                    instance={instance}
+                    factoryAddress={factoryAddress as Hex | undefined}
+                    liveParamsHash={liveParamsHash as Hex | undefined}
+                  />
+                )}
                 <SettingsCard
                   title="Contribution cycles"
                   description="Members submit work, respond to being named on it, and rate each other. Ratings are weighted by this network's trust scores, and each round's pool splits accordingly."
@@ -2746,7 +2799,13 @@ export const SettingsPage = ({
                       : 'Connect to check access'}
                   </SettingRow>
                   <div className="flex flex-wrap gap-3 pt-4">
-                    {network.offchainLane ? (
+                    {weighted ? (
+                      <p className="text-xs text-muted-foreground">
+                        The current ContributionsFactory accepts standard
+                        trust-graph parents only. Weighted networks cannot start
+                        contribution rounds on this deployment yet.
+                      </p>
+                    ) : network.offchainLane ? (
                       <p className="text-xs text-muted-foreground">
                         Contribution rounds are blocked for hybrid networks: the
                         contribution guest does not authenticate strict

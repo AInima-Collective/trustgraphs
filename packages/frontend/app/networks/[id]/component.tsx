@@ -25,7 +25,6 @@ import { usePushBreadcrumb } from '@/hooks/usePushBreadcrumb'
 import { useScoreDeltas } from '@/hooks/useScoreDeltas'
 import { erc8004AgentHref } from '@/lib/erc8004'
 import { isTrustedSeed, isValidatedInNetwork } from '@/lib/network'
-import { weightedTrustgraphsTabs } from '@/lib/network-nav'
 import { NetworkEntry } from '@/lib/types'
 import { cn, formatBigNumber } from '@/lib/utils'
 
@@ -199,7 +198,6 @@ export const NetworkPage = () => {
         <div className="flex w-full flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
           <NetworkHeader
             network={network}
-            tabs={weighted ? weightedTrustgraphsTabs(network) : undefined}
             description={about}
             className="min-w-0 flex-1"
           />

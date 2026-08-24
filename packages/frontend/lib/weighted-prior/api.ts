@@ -50,6 +50,10 @@ export interface WeightedApiInstanceDetail extends WeightedApiInstance {
   snapshot: Hex
   distributor: Hex | null
   distributorToken: Hex | null
+  governance: {
+    module: Hex
+    safe: Hex
+  } | null
   epochLength: string
   currentVersion: string
   currentParamsHash: Hex

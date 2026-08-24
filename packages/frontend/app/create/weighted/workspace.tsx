@@ -11,6 +11,7 @@ import {
   Square,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Address,
@@ -43,6 +44,7 @@ import { useNetworks } from '@/contexts/CatalogContext'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
 import { getEnsCoinType } from '@/lib/ens-query'
+import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -54,12 +56,12 @@ import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 import {
   type WeightedApiEntry,
-  type WeightedApiInstance,
+  type WeightedApiInstanceDetail,
   type WeightedApiVersion,
   availabilityDiagnosis,
   fetchBinarySeeds,
   fetchWeightedEntries,
-  fetchWeightedInstances,
+  fetchWeightedInstance,
   fetchWeightedVersions,
 } from '@/lib/weighted-prior/api'
 import {
@@ -71,6 +73,10 @@ import {
   weightedRotationPayload,
   weightedTrustgraphsFactoryAbi,
 } from '@/lib/weighted-prior/contracts'
+import {
+  SCALE,
+  paramsHash as weightedParamsHash,
+} from '@/lib/weighted-prior/core'
 import {
   MAX_WEIGHTED_IMPORT_BYTES,
   type ResolutionAnchor,
@@ -128,17 +134,61 @@ const randomSalt = (): Hex => {
 }
 
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
+const EMPTY_SOURCE = 'account,weight\n'
 
-export const WeightedPriorWorkspace = () => {
+const activeSharesCsv = (entries: readonly WeightedApiEntry[]): string => {
+  const decimal = (raw: string) => {
+    const value = BigInt(raw)
+    const whole = value / SCALE
+    const fraction = (value % SCALE)
+      .toString()
+      .padStart(18, '0')
+      .replace(/0+$/, '')
+    return fraction ? `${whole}.${fraction}` : whole.toString()
+  }
+  return `account,weight\n${entries
+    .map((entry) => `${entry.account},${decimal(entry.normalizedWeight)}`)
+    .join('\n')}\n`
+}
+
+const rotatedParamsHash = (
+  instance: WeightedApiInstanceDetail,
+  artifacts: WeightedImportArtifacts
+): Hex =>
+  weightedParamsHash({
+    version: instance.params.version,
+    dampingFp: BigInt(instance.params.dampingFp),
+    toleranceFp: BigInt(instance.params.toleranceFp),
+    maxIterations: instance.params.maxIterations,
+    minWeight: BigInt(instance.params.minWeight),
+    maxWeight: BigInt(instance.params.maxWeight),
+    priorRoot: artifacts.priorRoot,
+    priorCount: artifacts.priorCount,
+    manifestSha256: artifacts.manifestSha256,
+    schemaUid: instance.params.schemaUid,
+    weightFieldIndex: instance.params.weightFieldIndex,
+    accumulator: instance.params.accumulator,
+    chainId: BigInt(instance.params.chainId),
+  })
+
+export const WeightedPriorWorkspace = ({
+  rotationInstanceId,
+}: {
+  rotationInstanceId?: Hex
+} = {}) => {
+  const administrative = !!rotationInstanceId
+  const router = useRouter()
   const { address, isConnected } = useAccount()
   const config = useConfig()
   const targetChainId = getTargetChainId()
   const chainId = useChainId()
   const publicClient = usePublicClient({ chainId: targetChainId })
   const { switchChain, isPending: switchingChain } = useSwitchChain()
-  const [mode, setMode] = useState<Mode>('create')
+  const [mode, setMode] = useState<Mode>(
+    rotationInstanceId ? 'rotate' : 'create'
+  )
   const [format, setFormat] = useState<Format>('csv')
-  const [sourceText, setSourceText] = useState('account,weight\n')
+  const [sourceText, setSourceText] = useState(EMPTY_SOURCE)
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null)
   const [artifacts, setArtifacts] = useState<WeightedImportArtifacts | null>(
     null
@@ -174,15 +224,12 @@ export const WeightedPriorWorkspace = () => {
   const [prepayEth, setPrepayEth] = useState('')
   const [maxPerRootUsd, setMaxPerRootUsd] = useState(DEFAULT_MAX_PER_ROOT_USD)
 
-  const [instanceId, setInstanceId] = useState('')
-  const [weightedInstances, setWeightedInstances] = useState<
-    WeightedApiInstance[]
-  >([])
+  const [instanceId, setInstanceId] = useState(rotationInstanceId ?? '')
   const [versions, setVersions] = useState<WeightedApiVersion[]>([])
+  const [rotationInstance, setRotationInstance] =
+    useState<WeightedApiInstanceDetail | null>(null)
   const [currentEntries, setCurrentEntries] = useState<WeightedApiEntry[]>([])
   const [binaryInstanceId, setBinaryInstanceId] = useState('')
-  const [catalogLoading, setCatalogLoading] = useState(false)
-  const [catalogProblem, setCatalogProblem] = useState<string | null>(null)
   const [gasEstimate, setGasEstimate] = useState<bigint | null>(null)
   const [simulatedPayload, setSimulatedPayload] = useState<Hex | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -209,6 +256,17 @@ export const WeightedPriorWorkspace = () => {
 
   const active = versions.find((version) => version.status === 'active')
   const pending = versions.find((version) => version.status === 'pending')
+  const governedRotation = !!rotationInstance?.governance
+  const { data: rotationOwner } = useReadContract({
+    address: active?.controller as Address,
+    abi: weightedPriorParamsControllerAbi,
+    functionName: 'owner',
+    query: { enabled: !!active?.controller },
+  })
+  const connectedOwnsController =
+    !!address &&
+    !!rotationOwner &&
+    address.toLowerCase() === rotationOwner.toLowerCase()
   const rotationDiff: WeightedRotationDiff | null = useMemo(
     () =>
       artifacts && currentEntries.length
@@ -248,40 +306,16 @@ export const WeightedPriorWorkspace = () => {
     [sourceUri, author, license, transform]
   )
 
-  useEffect(() => {
-    if (mode !== 'rotate') {
-      setCatalogLoading(false)
-      setCatalogProblem(null)
-      return
-    }
-
-    const controller = new AbortController()
-    setCatalogLoading(true)
-    setCatalogProblem(null)
-    fetchWeightedInstances(APIS.ponder, controller.signal)
-      .then(setWeightedInstances)
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setCatalogProblem(
-            error instanceof Error ? error.message : String(error)
-          )
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setCatalogLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [mode])
-
   const fundIssue: string | null =
-    withFund && fundToken === 'other'
-      ? !fundTokenAddress.trim()
-        ? 'Paste the address of the token you plan to pay out.'
-        : !isAddress(fundTokenAddress.trim(), { strict: false })
-          ? "That doesn't look like a token address."
-          : null
-      : null
+    withFund && !withGovernance
+      ? 'A shared fund must be owned by an initialized Safe. Turn on Create with governance, or create without a fund.'
+      : withFund && fundToken === 'other'
+        ? !fundTokenAddress.trim()
+          ? 'Paste the address of the token you plan to pay out.'
+          : !isAddress(fundTokenAddress.trim(), { strict: false })
+            ? "That doesn't look like a token address."
+            : null
+        : null
 
   // The optional refresh prepayment (governed creations only: it rides as transaction value and
   // the wrapper installs the paid policy on the new network's proving tank atomically).
@@ -493,8 +527,12 @@ export const WeightedPriorWorkspace = () => {
     setProblem(null)
     setVersions([])
     setCurrentEntries([])
+    setRotationInstance(null)
     try {
-      const nextVersions = await fetchWeightedVersions(APIS.ponder, id as Hex)
+      const [nextVersions, nextInstance] = await Promise.all([
+        fetchWeightedVersions(APIS.ponder, id as Hex),
+        fetchWeightedInstance(APIS.ponder, id as Hex),
+      ])
       const nextActive = nextVersions.find(
         (version) => version.status === 'active'
       )
@@ -503,7 +541,8 @@ export const WeightedPriorWorkspace = () => {
           'The indexer has no active version for that network yet. A network created moments ago appears as soon as its creation is indexed.'
         )
       setVersions(nextVersions)
-      setCurrentEntries(
+      setRotationInstance(nextInstance)
+      const entries =
         nextActive.availability.status === 'unavailable'
           ? []
           : await fetchWeightedEntries(
@@ -511,7 +550,10 @@ export const WeightedPriorWorkspace = () => {
               id as Hex,
               nextActive.version
             )
-      )
+      setCurrentEntries(entries)
+      if (rotationInstanceId && sourceText === EMPTY_SOURCE && entries.length) {
+        setSourceText(activeSharesCsv(entries))
+      }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -519,16 +561,19 @@ export const WeightedPriorWorkspace = () => {
     }
   }
 
-  // Deep links: /create/weighted?instance=0x… opens an existing weighted network in update mode
-  // (the directory and the creation success card link here); ?accounts=0x…,0x… carries the
-  // starting accounts over from the create wizard as an equal-weight prefill to edit.
+  // Settings owns existing-network administration. This component receives that network's fixed
+  // id when embedded there; the creation URL keeps only its create-wizard account prefill.
   useEffect(() => {
+    if (rotationInstanceId) {
+      setMode('rotate')
+      setInstanceId(rotationInstanceId)
+      void loadRotation(rotationInstanceId)
+      return
+    }
     const params = new URLSearchParams(window.location.search)
     const instance = params.get('instance')
     if (instance && isHex(instance) && instance.length === 66) {
-      setMode('rotate')
-      setInstanceId(instance)
-      void loadRotation(instance)
+      router.replace(`/networks/${instance}/settings?tab=scoring`)
       return
     }
     const accounts = (params.get('accounts') ?? '')
@@ -544,12 +589,9 @@ export const WeightedPriorWorkspace = () => {
     // Run once, against the URL the page opened with.
   }, [])
 
-  /** The rotate view for a network that was just created (or picked from a listing). */
+  /** Administration begins from the created network's Settings, never inside the create wizard. */
   const openForUpdate = (id: Hex) => {
-    setMode('rotate')
-    setInstanceId(id)
-    clearDerived()
-    void loadRotation(id)
+    router.push(`/networks/${id}/settings?tab=scoring`)
   }
 
   const prefillBinary = async () => {
@@ -605,13 +647,21 @@ export const WeightedPriorWorkspace = () => {
       if (!publicClient || !address) throw new Error('Connect a wallet first.')
       if (mode === 'rotate') {
         if (!active) throw new Error('Load an active weighted instance first.')
+        if (!rotationInstance)
+          throw new Error('Load the weighted network details first.')
         if (pending) {
           throw new Error(
             'Activate or cancel the existing pending version before proposing another.'
           )
         }
+        if (!rotationInstance.governance && !connectedOwnsController) {
+          throw new Error(
+            `Only the weighted-parameters controller owner (${rotationOwner ?? 'not available'}) can propose this change.`
+          )
+        }
+        const caller = rotationInstance.governance?.safe ?? address
         await publicClient.simulateContract({
-          account: address,
+          account: caller,
           address: active.controller as Address,
           abi: weightedPriorParamsControllerAbi,
           functionName: 'proposePrior',
@@ -619,7 +669,7 @@ export const WeightedPriorWorkspace = () => {
         })
         setGasEstimate(
           await publicClient.estimateContractGas({
-            account: address,
+            account: caller,
             address: active.controller as Address,
             abi: weightedPriorParamsControllerAbi,
             functionName: 'proposePrior',
@@ -707,9 +757,45 @@ export const WeightedPriorWorkspace = () => {
       }
       if (mode === 'rotate') {
         if (!active) throw new Error('Load an active weighted instance first.')
+        if (!rotationInstance)
+          throw new Error('Load the weighted network details first.')
         if (pending) {
           throw new Error(
             'Activate or cancel the existing pending version before proposing another.'
+          )
+        }
+        if (rotationInstance.governance) {
+          const data = weightedRotationPayload(exact)
+          const fingerprint = keccak256(data)
+          const nextParamsHash = rotatedParamsHash(rotationInstance, exact)
+          saveGovernancePrefill({
+            networkId: rotationInstance.id,
+            fingerprint,
+            parentHash: active.commitments.paramsHash,
+            proposedHash: nextParamsHash,
+            title: 'Change weighted starting shares',
+            description: `Replace the network's persistent starting-share distribution with the reviewed ${exact.priorCount}-account manifest. Vouches and ordinary score updates do not require this action.\n\nCurrent params hash: ${active.commitments.paramsHash}\nProposed params hash: ${nextParamsHash}\nPrior root: ${exact.priorRoot}\nManifest SHA-256: ${exact.manifestSha256}\n\nIf this proposal passes and the Safe executes it, the controller's separate activation delay must still elapse before anyone can activate the new version.`,
+            actions: [
+              {
+                target: active.controller,
+                value: '0',
+                data,
+                operation: 0,
+                description: 'Propose the reviewed weighted starting shares',
+                contractName: 'WeightedPriorParamsController',
+                functionSignature: 'proposePrior(bytes,bytes32)',
+              },
+            ],
+            createdAt: Date.now(),
+          })
+          router.push(
+            `/networks/${rotationInstance.id}/governance?new=1&actionDraft=${fingerprint}`
+          )
+          return
+        }
+        if (!connectedOwnsController) {
+          throw new Error(
+            `Only the weighted-parameters controller owner (${rotationOwner ?? 'not available'}) can propose this change.`
           )
         }
         await txToast({
@@ -720,10 +806,10 @@ export const WeightedPriorWorkspace = () => {
             args: [exact.manifest, exact.metadataDigest],
           },
           successMessage:
-            'Update proposed; the activation delay is now running.',
+            'Starting-share change proposed; the activation delay is now running.',
         })
         setSuccess(
-          'Update proposed. It can be activated once the delay has passed; the timing shows above.'
+          'Starting-share change proposed. It can be activated once the delay has passed; the timing shows above.'
         )
         await loadRotation()
       } else {
@@ -842,30 +928,32 @@ export const WeightedPriorWorkspace = () => {
   const wrongChain = isConnected && chainId !== targetChainId
   const payloadMatches =
     transactionPayload && simulatedPayload === keccak256(transactionPayload)
+  const Root = administrative ? 'div' : 'main'
 
   return (
-    <main className="max-w-5xl space-y-8" aria-labelledby="weighted-title">
+    <Root
+      className={administrative ? 'space-y-8' : 'max-w-5xl space-y-8'}
+      aria-labelledby="weighted-title"
+    >
       <header className="space-y-3">
         <h1 id="weighted-title" className="text-2xl">
-          Weighted starting shares
+          {administrative ? 'Starting shares' : 'Create a weighted network'}
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
-          Choose who gets a head start and how much. Your starting accounts
-          begin with shares of exactly the sizes you set (an account with weight
-          10 starts with four times the share of one with weight 2.5), and
-          vouches still decide the final scores. Paste a list or upload a
-          spreadsheet, check the shares, then create a weighted network. You can
-          also schedule a delayed update to an existing weighted network.
+          {administrative
+            ? 'Review the persistent trust-anchor distribution and its version history. These shares are not a membership list: vouches bring new people into the graph and change scores without editing them. Replace the distribution only when this network deliberately changes its anchor policy.'
+            : 'Choose who gets a head start and how much. Your starting accounts begin with shares of exactly the sizes you set (an account with weight 10 starts with four times the share of one with weight 2.5), and vouches still decide the final scores. Paste a list or upload a spreadsheet, check the shares, then create the network.'}
         </p>
-        <div
-          className="flex flex-wrap gap-2"
-          role="group"
-          aria-label="Weighted workflow"
-        >
-          {modeButton('create', 'Create a weighted network')}
-          {modeButton('rotate', 'Update a weighted network')}
-          {modeButton('redeploy', 'Start from an existing network')}
-        </div>
+        {!administrative && (
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label="Weighted creation source"
+          >
+            {modeButton('create', 'Enter starting shares')}
+            {modeButton('redeploy', 'Copy starting accounts')}
+          </div>
+        )}
       </header>
 
       {wrongChain && (
@@ -963,74 +1051,17 @@ export const WeightedPriorWorkspace = () => {
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-4">
-          <label htmlFor="weighted-instance" className="text-sm font-medium">
-            Weighted network to update
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <select
-              id="weighted-instance"
-              aria-describedby="weighted-instance-help"
-              value={
-                weightedInstances.some((instance) => instance.id === instanceId)
-                  ? instanceId
-                  : ''
-              }
-              onChange={(event) => {
-                setInstanceId(event.target.value)
-                setVersions([])
-                setCurrentEntries([])
-                clearDerived()
-              }}
-              disabled={catalogLoading}
-              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
-            >
-              <option value="">
-                {catalogLoading
-                  ? 'Loading weighted networks…'
-                  : weightedInstances.length
-                    ? 'Choose a weighted network…'
-                    : 'No weighted networks available'}
-              </option>
-              {weightedInstances.map((instance) => (
-                <option key={instance.id} value={instance.id}>
-                  {instance.name} · {short(instance.id)}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium">Current version</p>
             <Button
               type="button"
               variant="outline"
               onClick={() => void loadRotation()}
               disabled={busy || !instanceId}
             >
-              Load history
+              Reload history
             </Button>
           </div>
-          <Input
-            aria-label="Or paste a weighted instance ID"
-            aria-describedby="weighted-instance-help"
-            className="font-mono text-xs"
-            placeholder="0x… or paste an instance ID instead"
-            value={instanceId}
-            onChange={(event) => {
-              setInstanceId(event.target.value.trim())
-              setVersions([])
-              setCurrentEntries([])
-              clearDerived()
-            }}
-          />
-          <p
-            id="weighted-instance-help"
-            className="text-xs text-muted-foreground"
-          >
-            This list comes from the weighted-network index; the same networks
-            appear in the{' '}
-            <Link href="/networks" className="underline underline-offset-4">
-              network directory
-            </Link>
-            . The full ID is also shown after creation; weighted networks do not
-            currently have a Settings page.
-          </p>
           {instanceId && (
             <div className="flex items-baseline gap-2 text-xs">
               <span className="text-muted-foreground">Instance ID:</span>
@@ -1046,6 +1077,15 @@ export const WeightedPriorWorkspace = () => {
               </p>
               <p className="font-mono text-xs">
                 {active.commitments.paramsHash}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {governedRotation
+                  ? 'Changes must pass this network’s trust-weighted governance. This workspace prepares the exact Safe action; it cannot bypass the vote.'
+                  : rotationOwner
+                    ? `Only the controller owner ${short(rotationOwner)} can propose a change.`
+                    : 'Reading the current controller owner…'}{' '}
+                Once proposed, anyone may activate the reviewed version after
+                its separate delay.
               </p>
             </div>
           )}
@@ -1103,15 +1143,11 @@ export const WeightedPriorWorkspace = () => {
         </Card>
       )}
 
-      {catalogProblem && mode === 'rotate' && (
-        <p className="text-sm text-destructive" role="alert">
-          Could not load the weighted networks: {catalogProblem}
-        </p>
-      )}
-
       <section className="space-y-4" aria-labelledby="source-heading">
         <h2 id="source-heading" className="text-lg">
-          1. Add starting accounts and weights
+          {administrative
+            ? '1. Enter replacement shares'
+            : '1. Add starting accounts and weights'}
         </h2>
         <Card type="outline" size="md" className="space-y-4">
           {prefilled !== null && (
@@ -1573,12 +1609,31 @@ export const WeightedPriorWorkspace = () => {
                   <Switch
                     size="md"
                     enabled={withFund}
+                    readOnly={!GOVERNED_AVAILABLE}
                     onClick={() => {
-                      setWithFund(!withFund)
+                      if (!GOVERNED_AVAILABLE) return
+                      const next = !withFund
+                      setWithFund(next)
+                      if (next) {
+                        // Community funds may only be owned by an initialized Safe. The governed
+                        // wrapper creates that Safe atomically; a direct EOA-owned creation would
+                        // revert InvalidDistributorSafe.
+                        setWithGovernance(true)
+                        setPrepayEth('')
+                        setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+                      }
                       setSimulatedPayload(null)
+                      setGasEstimate(null)
                     }}
                   />
                 </div>
+                {!GOVERNED_AVAILABLE && (
+                  <p className="text-xs text-muted-foreground">
+                    A shared fund requires the governed factory to create its
+                    Safe owner, and governance is not available on this
+                    deployment.
+                  </p>
+                )}
                 {withFund && (
                   <div className="space-y-3 border-t border-border pt-3">
                     <p className="text-sm">What do you expect to pay out?</p>
@@ -1625,10 +1680,9 @@ export const WeightedPriorWorkspace = () => {
                     )}
                     <p className="text-xs text-muted-foreground">
                       This only decides what the payout screen shows first. The
-                      fund holds anything and can pay out something else later.{' '}
-                      {withGovernance
-                        ? 'The new DAO Safe owns the fund, so payouts happen through member governance.'
-                        : 'Your wallet owns the fund: money only moves when you send a payout, and each member claims their share themselves.'}
+                      fund holds anything and can pay out something else later.
+                      The new DAO Safe owns the fund, so payouts happen through
+                      member governance.
                     </p>
                   </div>
                 )}
@@ -1664,9 +1718,9 @@ export const WeightedPriorWorkspace = () => {
                   <Switch
                     size="md"
                     enabled={withGovernance}
-                    readOnly={!GOVERNED_AVAILABLE}
+                    readOnly={!GOVERNED_AVAILABLE || withFund}
                     onClick={() => {
-                      if (!GOVERNED_AVAILABLE) return
+                      if (!GOVERNED_AVAILABLE || withFund) return
                       setWithGovernance(!withGovernance)
                       setPrepayEth('')
                       setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
@@ -1675,6 +1729,12 @@ export const WeightedPriorWorkspace = () => {
                     }}
                   />
                 </div>
+                {withFund && (
+                  <p className="text-xs text-muted-foreground">
+                    Governance is required while a shared fund is selected: the
+                    fund&apos;s owner must be an initialized Safe.
+                  </p>
+                )}
                 {!GOVERNED_AVAILABLE && (
                   <p className="text-xs text-muted-foreground">
                     Create with governance is not available on this deployment,
@@ -1825,7 +1885,9 @@ export const WeightedPriorWorkspace = () => {
             )}
             <Card type="outline" size="md" className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Exact transaction calldata
+                {mode === 'rotate' && governedRotation
+                  ? 'Exact governance action calldata'
+                  : 'Exact transaction calldata'}
               </p>
               <p className="font-mono text-xs break-all">
                 {transactionPayload}
@@ -1870,7 +1932,9 @@ export const WeightedPriorWorkspace = () => {
                 >
                   <CheckCircle2 className="h-4 w-4" />{' '}
                   {mode === 'rotate'
-                    ? 'Sign the delayed update'
+                    ? governedRotation
+                      ? 'Prepare governance proposal'
+                      : 'Propose starting-share change'
                     : withGovernance
                       ? 'Create the weighted network with its Safe'
                       : 'Create the weighted network'}
@@ -1896,8 +1960,8 @@ export const WeightedPriorWorkspace = () => {
                   >
                     network directory
                   </Link>{' '}
-                  and in this workspace&apos;s update mode, so you do not have
-                  to save it, but a copy never hurts:
+                  and under the network&apos;s Settings, so you do not have to
+                  save it, but a copy never hurts:
                 </p>
                 <CopyableText text={created.instanceId} alwaysShowCopyIcon />
                 {created.safe && (
@@ -1922,7 +1986,7 @@ export const WeightedPriorWorkspace = () => {
                     size="sm"
                     onClick={() => openForUpdate(created.instanceId!)}
                   >
-                    Update prior
+                    Review starting shares
                   </Button>
                 </div>
               </>
@@ -1954,6 +2018,6 @@ export const WeightedPriorWorkspace = () => {
           </Card>
         </div>
       )}
-    </main>
+    </Root>
   )
 }
