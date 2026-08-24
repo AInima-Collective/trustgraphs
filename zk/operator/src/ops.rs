@@ -1,32 +1,71 @@
 //! Logs, heartbeat, alerts. The parts an on-call human reads at 3am.
 
+use crate::config::LogFormat;
 use anyhow::Result;
+use chrono::{SecondsFormat, Utc};
 use operator_core::policy::BudgetBreach;
 use operator_core::types::{Action, HoldReason, IdleReason, SkipReason};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::io::IsTerminal;
 use std::path::Path;
 
-/// Structured JSON to stdout, one object per line. `log_format = "text"` gets a human line
-/// instead; nothing else is supported, because a third format is a third thing to keep correct.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LogLevel {
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "INFO",
+            Self::Warn => "WARN",
+            Self::Error => "ERROR",
+        }
+    }
+}
+
+/// Human-readable, timestamped and colorized terminal logs by default. `log_format = "json"`
+/// retains one structured object per line for collectors and scripts.
 pub struct Logger {
-    pub json: bool,
+    format: LogFormat,
+    text_dispatch: Option<tracing::Dispatch>,
 }
 
 impl Logger {
+    pub fn new(format: LogFormat) -> Self {
+        let text_dispatch = (format == LogFormat::Text).then(|| {
+            // Avoid escape sequences in redirected logs and honor the standard opt-out. A direct
+            // terminal gets tracing-subscriber's conventional red/yellow/green level colors.
+            let ansi = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            let subscriber = tracing_subscriber::fmt()
+                .compact()
+                .with_ansi(ansi)
+                .with_target(false)
+                .with_writer(std::io::stdout)
+                .finish();
+            tracing::Dispatch::new(subscriber)
+        });
+        Self { format, text_dispatch }
+    }
+
     pub fn event(&self, event: &str, fields: serde_json::Value) {
-        if self.json {
-            let mut obj = json!({ "event": event });
-            if let (Some(o), Some(f)) = (obj.as_object_mut(), fields.as_object()) {
-                for (k, v) in f {
-                    o.insert(k.clone(), v.clone());
-                }
-            }
-            println!("{obj}");
-        } else {
-            println!("{event}  {fields}");
+        let level = log_level(event, &fields);
+        if self.format == LogFormat::Json {
+            println!("{}", json_record(event, fields, level, timestamp()));
+            return;
         }
+
+        let line = human_line(event, &fields);
+        let dispatch = self.text_dispatch.as_ref().expect("text logger has a tracing dispatch");
+        tracing::dispatcher::with_default(dispatch, || match level {
+            LogLevel::Info => tracing::info!("{line}"),
+            LogLevel::Warn => tracing::warn!("{line}"),
+            LogLevel::Error => tracing::error!("{line}"),
+        });
     }
 
     pub fn action(&self, instance: &str, name: &str, program: &str, action: &Action) {
@@ -40,6 +79,105 @@ impl Logger {
             }),
         );
     }
+}
+
+fn timestamp() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn json_record(
+    event: &str,
+    fields: serde_json::Value,
+    level: LogLevel,
+    timestamp: String,
+) -> serde_json::Value {
+    let mut obj = match fields {
+        serde_json::Value::Object(fields) => serde_json::Value::Object(fields),
+        value => json!({ "fields": value }),
+    };
+    let fields = obj.as_object_mut().expect("json_record always constructs an object");
+    // Metadata wins if a future call site accidentally uses one of these reserved names.
+    fields.insert("event".into(), json!(event));
+    fields.insert("level".into(), json!(level.as_str()));
+    fields.insert("timestamp".into(), json!(timestamp));
+    obj
+}
+
+fn log_level(event: &str, fields: &serde_json::Value) -> LogLevel {
+    if event.ends_with("_failed") || event == "checkpoint_abandoned" {
+        return LogLevel::Error;
+    }
+
+    let warning_event = matches!(
+        event,
+        "alert"
+            | "envelope0_unavailable"
+            | "instance_skipped"
+            | "instance_unreadable"
+            | "operator_capacity_approaching"
+            | "signer_liveness_no_change"
+            | "submit_reorged"
+    );
+    let warning_action = event == "decision"
+        && (matches!(
+            fields.pointer("/action/action").and_then(|v| v.as_str()),
+            Some("hold" | "skip")
+        ) || matches!(
+            fields.pointer("/action/idle").and_then(|v| v.as_str()),
+            Some("publication_backoff" | "awaiting_new_inputs")
+        ));
+
+    if warning_event || warning_action {
+        LogLevel::Warn
+    } else {
+        LogLevel::Info
+    }
+}
+
+fn human_line(event: &str, fields: &serde_json::Value) -> String {
+    if event == "alert" {
+        if let Some(text) = fields.get("text").and_then(|value| value.as_str()) {
+            return format!("{event}  {text}");
+        }
+    }
+
+    let mut rendered = Vec::new();
+    match fields {
+        serde_json::Value::Object(fields) => {
+            for (key, value) in fields {
+                // Action is internally tagged JSON. Flattening just this well-known envelope
+                // turns action={"action":"hold","hold":"unfunded"} into the much more useful
+                // action=hold hold=unfunded while leaving arbitrary nested payloads intact.
+                if key == "action" {
+                    if let Some(action) = value.as_object().filter(|a| a.contains_key("action")) {
+                        rendered.extend(action.iter().map(|(key, value)| human_field(key, value)));
+                        continue;
+                    }
+                }
+                rendered.push(human_field(key, value));
+            }
+        }
+        value => rendered.push(human_value(value)),
+    }
+    std::iter::once(event.to_string()).chain(rendered).collect::<Vec<_>>().join("  ")
+}
+
+fn human_field(key: &str, value: &serde_json::Value) -> String {
+    format!("{key}={}", human_value(value))
+}
+
+fn human_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(value) if is_bare_value(value) => value.clone(),
+        _ => value.to_string(),
+    }
+}
+
+fn is_bare_value(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '@' | '#')
+        })
 }
 
 /// What the log has already said, so it is not said again every tick.
@@ -251,6 +389,53 @@ pub fn alert(logger: &Logger, webhook: Option<&str>, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn human_logs_flatten_actions_and_keep_alerts_readable() {
+        let decision = json!({
+            "instance": "0xabc",
+            "name": "Gitcoin Stewards",
+            "program": "trust-graph-weighted",
+            "action": { "action": "hold", "hold": "unfunded", "reason": 1 },
+        });
+        assert_eq!(
+            human_line("decision", &decision),
+            "decision  action=hold  hold=unfunded  reason=1  instance=0xabc  \
+             name=\"Gitcoin Stewards\"  program=trust-graph-weighted"
+        );
+        assert_eq!(
+            human_line("alert", &json!({ "text": "submitter balance is zero" })),
+            "alert  submitter balance is zero"
+        );
+    }
+
+    #[test]
+    fn levels_distinguish_health_warnings_and_failures() {
+        assert_eq!(log_level("tick", &json!({})), LogLevel::Info);
+        assert_eq!(log_level("instance_recovered", &json!({})), LogLevel::Info);
+        assert_eq!(
+            log_level("decision", &json!({ "action": { "action": "hold", "hold": "unfunded" } })),
+            LogLevel::Warn
+        );
+        assert_eq!(log_level("alert", &json!({})), LogLevel::Warn);
+        assert_eq!(log_level("tick_failed", &json!({})), LogLevel::Error);
+        assert_eq!(log_level("checkpoint_abandoned", &json!({})), LogLevel::Error);
+    }
+
+    #[test]
+    fn json_logs_carry_timestamp_and_level_without_losing_fields() {
+        let record = json_record(
+            "tick",
+            json!({ "head": 36_055, "instances": 5 }),
+            LogLevel::Info,
+            "2026-08-24T12:34:56.789Z".into(),
+        );
+        assert_eq!(record["timestamp"], "2026-08-24T12:34:56.789Z");
+        assert_eq!(record["level"], "INFO");
+        assert_eq!(record["event"], "tick");
+        assert_eq!(record["head"], 36_055);
+        assert_eq!(record["instances"], 5);
+    }
 
     #[test]
     fn narration_says_each_thing_once_until_it_changes() {

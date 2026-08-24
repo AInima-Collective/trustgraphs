@@ -42,6 +42,9 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["ansi", "fmt"] }
 alloy-consensus = "1"
 alloy-signer = "1"
 alloy-signer-local = "1"

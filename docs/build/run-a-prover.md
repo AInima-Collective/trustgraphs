@@ -224,7 +224,7 @@ retry_seconds = 300              # degraded mirrors are retried and alerted on t
 journal_path = "./.trustgraph/operator/journal.jsonl"
 status_path  = "./.trustgraph/operator/status.json"
 alert_webhook = "https://…"
-log_format   = "json"
+log_format   = "text"            # timestamped, levelled, colorized on an interactive terminal
 submit_failure_threshold = 3    # estimate/simulation/mined execution reverts for one immutable
                                 # checkpoint before it is abandoned and the planner advances.
                                 # Provider, fee, timeout, availability, and reorg failures do
@@ -268,8 +268,15 @@ submit_failure_threshold = 3    # estimate/simulation/mined execution reverts fo
 | `weighted_manifests.mirrors[]`                   | raw-CID readers tried before archival calldata                                          | empty                                          |
 | `weighted_manifests.max_versions` / `max_bytes`  | deterministic cache ceilings                                                            | 128 / 16 MiB                                   |
 | `weighted_manifests.retry_seconds`               | retry/alert cadence for degraded mirrors                                                | 300                                            |
+| `ops.log_format`                                  | human `text` output or collector-friendly JSON lines                                     | `text`                                         |
 | `ops.submit_failure_threshold`                   | deterministic submit reverts before advancing past a checkpoint                         | 3                                              |
 | `ops.*`                                          | journal, heartbeat, alerts, logging                                                     | see above                                      |
+
+`text` logs carry an RFC 3339 timestamp and a conventional level: healthy progress is green
+`INFO`, alertable holds/skips are yellow `WARN`, and failures are red `ERROR`. ANSI colors are
+enabled only when stdout is an interactive terminal and can always be disabled with `NO_COLOR`.
+Set `log_format = "json"` for ingestion or the log-oriented `jq` commands below; JSON records keep
+the event fields and add `timestamp` and `level`.
 
 ### Host capability and cost admission
 

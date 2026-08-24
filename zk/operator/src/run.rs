@@ -62,7 +62,7 @@ struct PendingSettle {
 }
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
-    let logger = Logger { json: cfg.ops.log_format == "json" };
+    let logger = Logger::new(cfg.ops.log_format);
     let rpc = Rpc::new(cfg.rpc.clone());
 
     // ---- startup checks. Refuse to start rather than fail on the first submit. -------------
@@ -197,7 +197,7 @@ pub fn republish(cfg: Config, instance_id: B256, checkpoint_id: u64) -> Result<(
         cfg.ipfs.required_successes() > 0,
         "republish needs at least one configured [ipfs] target"
     );
-    let logger = Logger { json: cfg.ops.log_format == "json" };
+    let logger = Logger::new(cfg.ops.log_format);
     let rpc = Rpc::new(cfg.rpc.clone());
     let chain_id = rpc.eth_chain_id().context("eth_chainId")?;
     if let Some(expected) = cfg.chain_id {

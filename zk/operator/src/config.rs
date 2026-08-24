@@ -238,12 +238,22 @@ pub struct Ops {
     pub status_path: String,
     #[serde(default)]
     pub alert_webhook: Option<String>,
-    #[serde(default = "d_log_format")]
-    pub log_format: String,
+    #[serde(default)]
+    pub log_format: LogFormat,
     /// Consecutive deterministic submit reverts before one immutable checkpoint is terminally
     /// abandoned. Transient/provider/fee/reorg failures do not consume attempts.
     #[serde(default = "d_submit_failure_threshold")]
     pub submit_failure_threshold: u32,
+}
+
+/// Console output is for a human by default. JSON remains available for log collectors and
+/// scripts that need a stable, one-record-per-line shape.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    #[default]
+    Text,
+    Json,
 }
 
 fn d_tick() -> u64 {
@@ -332,9 +342,6 @@ fn d_journal_path() -> String {
 }
 fn d_status_path() -> String {
     "./.trustgraph/operator/status.json".into()
-}
-fn d_log_format() -> String {
-    "json".into()
 }
 fn d_submit_failure_threshold() -> u32 {
     3
@@ -427,7 +434,7 @@ impl Default for Ops {
             journal_path: d_journal_path(),
             status_path: d_status_path(),
             alert_webhook: None,
-            log_format: d_log_format(),
+            log_format: LogFormat::default(),
             submit_failure_threshold: d_submit_failure_threshold(),
         }
     }
@@ -835,7 +842,7 @@ impl Ipfs {
 
 #[cfg(test)]
 mod validate_tests {
-    use super::{CapabilityProfile, Config, OPERATOR_CYCLE_LIMIT};
+    use super::{CapabilityProfile, Config, LogFormat, OPERATOR_CYCLE_LIMIT};
     use alloy_primitives::{Address, B256};
     use operator_core::types::Program;
     use std::collections::BTreeSet;
@@ -857,6 +864,16 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         let cfg = parse(GOOD).unwrap();
         assert_eq!(cfg.prover.cycle_limit, OPERATOR_CYCLE_LIMIT);
         assert_eq!(cfg.prover.capability_profile, CapabilityProfile::default());
+        assert_eq!(cfg.ops.log_format, LogFormat::Text);
+    }
+
+    #[test]
+    fn log_format_is_explicit_and_rejects_typos() {
+        let cfg = parse(&format!("{GOOD}\n[ops]\nlog_format = \"json\"\n")).unwrap();
+        assert_eq!(cfg.ops.log_format, LogFormat::Json);
+
+        let error = parse(&format!("{GOOD}\n[ops]\nlog_format = \"pretty\"\n")).unwrap_err();
+        assert!(error.contains("unknown variant `pretty`"), "{error}");
     }
 
     #[test]
