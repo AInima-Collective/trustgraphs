@@ -17,6 +17,11 @@
 
 set -eu
 
+# Run from the repository root whatever directory this was invoked from — the guest paths below
+# are relative to it, and so is the bind mount.
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
 # Pinned deliberately and separately from the sp1-build crate version, so a dependency bump cannot
 # silently change every vkey in the system. Moving it is a decision, and it is one that changes
 # every deployed verifier.
@@ -32,10 +37,10 @@ command -v cargo-prove >/dev/null 2>&1 || {
   exit 1
 }
 
+DOCKER=no
 if [ "${TRUSTGRAPH_GUEST_BUILD:-docker}" = "local" ]; then
   echo "⚠ building guests WITHOUT --docker. The resulting vkeys are a property of this machine" >&2
   echo "  as much as of the source, and must not be pinned into a verifier." >&2
-  MODE=""
 else
   docker info >/dev/null 2>&1 || {
     echo "✗ Docker is not available, and reproducible guest builds run inside" >&2
@@ -44,19 +49,36 @@ else
     echo "  usable for tests and unusable for a deployment." >&2
     exit 1
   }
-  MODE="--docker --tag $SP1_DOCKER_TAG"
+  # `--workspace-directory` is not optional here, whatever the flag's name suggests. sp1-build
+  # bind-mounts a program's OWN cargo workspace and warns that "if the program dir has local
+  # dependencies outside of the workspace, building with Docker will fail" — and every guest is
+  # its own detached workspace whose path dependencies reach up into `crates/`. Without this, the
+  # container sees only `zk/program` and `../../crates/contributions-core` resolves to
+  # `/crates/contributions-core`, which is not there. That is exactly how the v0.0.1 release
+  # failed.
+  DOCKER=yes
   echo "→ building guests in ghcr.io/succinctlabs/sp1:$SP1_DOCKER_TAG (slower, and the same on every machine)"
+  echo "  mounting $ROOT, because the guests depend on crates outside their own workspaces"
 fi
 
-for dir in $GUESTS; do
+# Every argument quoted, because $ROOT is a path someone else chose.
+build_one() { # build_one <guest dir> [extra cargo prove args…]
+  dir=$1
+  shift
   echo "  $dir"
-  # shellcheck disable=SC2086
-  ( cd "$dir" && cargo prove build $MODE )
+  if [ "$DOCKER" = yes ]; then
+    ( cd "$dir" && cargo prove build "$@" \
+        --docker --tag "$SP1_DOCKER_TAG" --workspace-directory "$ROOT" )
+  else
+    ( cd "$dir" && cargo prove build "$@" )
+  fi
+}
+
+for dir in $GUESTS; do
+  build_one "$dir"
 done
 for dir in $LOCKED_GUESTS; do
-  echo "  $dir"
-  # shellcheck disable=SC2086
-  ( cd "$dir" && cargo prove build --locked $MODE )
+  build_one "$dir" --locked
 done
 
 # STALE-ELF DEFENCE: `sp1_build` does not watch path dependencies, so after an edit under crates/

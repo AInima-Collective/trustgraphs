@@ -16,8 +16,18 @@ because there is no published image to follow the instructions against yet.
 Commits on `main`, unpushed: `e5b06bb` (M0-M2), `4814857` (M3-M4), `8cd0cc5` (M5 reorg + the three
 defects running it found), `206b515` (M5 soak + four release-workflow defects).
 
-**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` actually runs —
-the mechanism exists, the claim is unverified. The *hostable* gate needs that plus a published
+**First tag, `v0.0.1`, failed at the gate — as designed, and on a real bug of mine.** `--docker`
+bind-mounts a guest's OWN cargo workspace, and every guest here is a detached workspace whose path
+dependencies reach up into `crates/`, so the container resolved `../../crates/contributions-core`
+to `/crates/contributions-core` and found nothing. `sp1_build`'s `workspace_directory` is what
+widens the mount; I read the field and did not use it. Fixed on both build paths. One good piece of
+news came out of the same run: the aarch64 leg ran the amd64 SP1 image under QEMU without
+complaint and reached the identical error at the identical point, so the "the pinned image may be
+amd64-only" risk in the ledger is answered.
+
+**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` actually runs
+green — the mechanism exists and has now demonstrated it fails loudly, which is half of what a gate
+is for. The *hostable* gate needs that plus a published
 image. The *production* gate's two runnable legs are met (soak and reorg green, journal restore
 tested); it is otherwise waiting on hostable. The *self-host* gate waits on M6.
 

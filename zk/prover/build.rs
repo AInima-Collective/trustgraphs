@@ -13,6 +13,14 @@
 //! in DIFFERENT directories: `target/elf-compilation/docker/…` for the reproducible one and
 //! `target/elf-compilation/…` for the plain one. That is what makes the fallback below both
 //! necessary and honest — a checkout whose guests predate this change still builds, and says so.
+//!
+//! One thing the docker path needs and the plain path does not: **the mount has to be the
+//! repository, not the guest.** `sp1_build` mounts a program's own cargo workspace, and warns that
+//! "if the program dir has local dependencies outside of the workspace, building with Docker will
+//! fail". Every guest here is its own detached workspace whose path dependencies reach up into
+//! `crates/`, so mounting `zk/program` alone resolves `../../crates/contributions-core` to
+//! `/crates/contributions-core`, which does not exist in the container. `workspace_directory` is
+//! what widens the mount, and leaving it out is what failed the first tagged release.
 
 use sp1_build::{build_program_with_args, BuildArgs};
 use std::path::{Path, PathBuf};
@@ -20,6 +28,13 @@ use std::path::{Path, PathBuf};
 /// Pinned deliberately and separately from the `sp1-build` version, so a dependency bump cannot
 /// silently change every vkey in the system. Kept in step with `scripts/build-guests.sh`.
 const SP1_DOCKER_TAG: &str = "v6.3.1";
+
+/// The repository root, derived from this crate's own manifest directory rather than from whatever
+/// working directory a build happened to start in.
+fn repo_root() -> PathBuf {
+    PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"))
+        .join("../..")
+}
 
 /// Every isolated guest workspace, and whether its lockfile is frozen.
 const GUESTS: &[(&str, bool)] = &[
@@ -48,6 +63,10 @@ fn main() {
         _ => true,
     };
 
+    // What to bind-mount into the builder container. It must be the REPOSITORY: every guest
+    // depends on crates outside its own workspace, and `sp1_build` would otherwise mount the guest
+    // alone, leaving its `../../crates/…` paths pointing outside the mount.
+    let workspace = repo_root().display().to_string();
     for (path, locked) in GUESTS {
         build_program_with_args(
             path,
@@ -55,6 +74,7 @@ fn main() {
                 docker,
                 tag: SP1_DOCKER_TAG.to_string(),
                 locked: *locked,
+                workspace_directory: Some(workspace.clone()),
                 ..Default::default()
             },
         );
