@@ -56,7 +56,7 @@ export const CompositionPolicyView = ({
       <header className="space-y-2">
         <Link
           className="text-sm underline"
-          href={`/compositions/${instanceId}`}
+          href={`/networks/${instanceId}/governance`}
         >
           ← Instance history
         </Link>

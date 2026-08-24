@@ -6,6 +6,7 @@ import { notFound, redirect } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getCatalog, getNetwork } from '@/lib/catalog.server'
+import { getCompositionInstance } from '@/lib/composition.server'
 import { VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
@@ -21,6 +22,7 @@ import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 import { NetworkPage } from './component'
 import { ContributionsNetworkPage } from './contributions'
 import { HypercertsNetworkPage } from './hypercerts'
+import { CompositionInstanceView } from '../../compositions/[instanceId]/instance'
 
 // A permissionless factory can mint an id after this production bundle was built. Next 15 treats
 // an ISR route with generated params as static, then rejects `getNetwork()`'s required no-store
@@ -117,6 +119,13 @@ export default async function NetworkPageServer({
   // sub-route sees the same network capabilities.
   const { network, catalogError } = await getNetwork(id)
   if (!network) {
+    const composition = await getCompositionInstance(id)
+    if (composition.instance) {
+      return <CompositionInstanceView initialInstance={composition.instance} />
+    }
+    if (composition.error) {
+      return <CatalogUnavailable reason={composition.error} networkId={id} />
+    }
     // "Not found" and "we could not read the directory" are different answers, and 404ing on the
     // second one tells the user their network does not exist because an HTTP call failed.
     if (catalogError) {

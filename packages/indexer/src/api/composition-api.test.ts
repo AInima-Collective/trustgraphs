@@ -9,6 +9,7 @@ test('composition APIs are additive, paginated, and name both provenance classes
     'utf8'
   )
   assert.match(routes, /app\.route\('\/compositions', compositions\)/)
+  assert.match(source, /app\.get\('\/:instanceId'/)
   assert.match(source, /\/:instanceId\/policies/)
   assert.match(source, /\/:instanceId\/epochs/)
   assert.match(source, /\/sources'/)

@@ -103,10 +103,7 @@ export const CompositionEpochView = ({
       aria-labelledby="composition-epoch-title"
     >
       <header className="space-y-2">
-        <Link
-          className="text-sm underline"
-          href={`/compositions/${instanceId}`}
-        >
+        <Link className="text-sm underline" href={`/networks/${instanceId}`}>
           ← Instance history
         </Link>
         <h1 id="composition-epoch-title" className="text-2xl">

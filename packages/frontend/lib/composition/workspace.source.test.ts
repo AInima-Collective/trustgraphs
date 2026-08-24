@@ -4,9 +4,11 @@ import { join } from 'node:path'
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 const workspace = read('app/create/composition/workspace.tsx')
-const catalog = read('app/compositions/catalog.tsx')
+const catalogRoute = read('app/compositions/page.tsx')
 const networkDirectory = read('app/networks/page.tsx')
+const directoryServer = read('lib/directory.server.ts')
 const instance = read('app/compositions/[instanceId]/instance.tsx')
+const governance = read('app/compositions/[instanceId]/governance.tsx')
 const epoch = read(
   'app/compositions/[instanceId]/epochs/[checkpointId]/epoch.tsx'
 )
@@ -17,11 +19,19 @@ const create = read('app/create/component.tsx')
 const truthCopy = read('lib/composition/preflight.ts')
 const errorCopy = read('lib/error.ts')
 const contracts = read('lib/composition/contracts.ts')
-const combined = [workspace, catalog, instance, epoch, policy, truthCopy].join(
-  '\n'
-)
+const combined = [
+  workspace,
+  instance,
+  governance,
+  epoch,
+  policy,
+  truthCopy,
+].join('\n')
 
-assert.match(workspace, /<main[^>]+aria-labelledby="composition-title"/)
+assert.match(
+  workspace,
+  /aria-labelledby=\{embedded \? undefined : 'composition-title'\}/
+)
 assert.match(workspace, /fetchCompositionCandidates/)
 assert.match(workspace, /requireCompatibleCandidate/)
 assert.match(workspace, /provenanceEnabled/)
@@ -112,12 +122,16 @@ assert.doesNotMatch(
 )
 
 assert.match(create, /href="\/create\/composition"/)
-assert.match(catalog, /href="\/create\/composition"/)
-assert.match(catalog, /Composed networks/)
-assert.match(networkDirectory, /href="\/compositions"/)
-assert.match(instance, /Governed policy history/)
-assert.match(instance, /settings/)
-assert.match(instance, /Proved epoch history/)
+assert.match(catalogRoute, /redirect\('\/networks'\)/)
+assert.doesNotMatch(networkDirectory, /href="\/compositions"/)
+assert.match(directoryServer, /program: 'trust-compose'/)
+assert.match(directoryServer, /`\/networks\/\$\{source\.id\}`/)
+assert.match(instance, /CompositionNetworkHeader/)
+assert.match(instance, /Network members/)
+assert.match(instance, /Score history/)
+assert.match(governance, /Policy history/)
+assert.match(governance, /Changes are managed from Settings/)
+assert.match(workspace, /embedded/)
 assert.match(epoch, /Complete evidence bundle/)
 assert.match(epoch, /Address allocation proof/)
 assert.match(epoch, /Cryptographic provenance/)

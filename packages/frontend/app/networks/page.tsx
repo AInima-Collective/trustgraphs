@@ -1,10 +1,7 @@
 //! The directory of the networks on this chain.
 //!
-//! The programs listed here do not count the same thing, so each gets a heading and one line
-//! saying what it scores. Contribution rounds are intentionally absent: they are a capability of
-//! their trust network and live in that network's tab bar rather than masquerading as another
-//! network in the directory.
-//! Sections with nothing in them are dropped upstream, in `toSections`.
+//! Every score network appears in one table. Program-specific implementation details belong on
+//! the network itself, not in parallel directories or separate list sections.
 //!
 //! WHAT IS SERVER-RENDERED AND WHY: every row, in all four states, plus every string in it. The
 //! only client code is the filter island, which appears once the list is long enough to need it.
@@ -40,19 +37,7 @@ export const revalidate = 10
 // "Every" is still more than this page can promise: the repo section is a filtered slice of the
 // shipped config file rather than a chain read, so a stranger's instance appears only once someone
 // edits that JSON. The factory-backed vouching section does read every catalog page.
-const STANDFIRST = 'Networks on this chain, and what each one counts.'
-
-/**
- * The canonical score blob contains only value > 0 entries, so its `numAccounts` is the same set
- * the network roster and the live vouch query use. A vouch involving anyone who joined since that
- * root is not in the number.
- *
- * The indexer derives the live pair set from the same accumulator fold order as the guest. A pair
- * counts once however many historical attestations it has; revoking its current vouch removes the
- * pair rather than resurrecting an older record.
- */
-const COLUMN_NOTE =
-  'Scored accounts and the date come from the last proven scoreboard. The vouch count is up to date, between those same accounts.'
+const DIRECTORY_DESCRIPTION = 'Browse Trustgraph networks on this chain.'
 
 // The share card is set explicitly rather than inherited. Without it, the
 // root layout's openGraph block wins and every route shares one card titled
@@ -62,15 +47,13 @@ export const metadata: Metadata = {
   title: 'Networks',
   ...socialCard({
     title: 'Networks | trustgraphs',
-    description: STANDFIRST,
+    description: DIRECTORY_DESCRIPTION,
     path: '/networks',
   }),
 }
 
 /** A filter is furniture until the list outgrows one screen. Twelve rows is where it earns its place. */
 const SEARCH_THRESHOLD = 12
-
-const VOUCHES = 'Vouches'
 
 /**
  * Track sizes for the lg-and-up table.
@@ -82,7 +65,6 @@ const VOUCHES = 'Vouches'
  * The first track is `1fr` with `min-w-0` on its cell, so a network name longer than the column
  * wraps instead of pushing the figures off the page.
  */
-const GRID_WITH_VOUCHES = 'lg:grid-cols-[1fr_8rem_7rem_9rem]'
 const GRID_PLAIN = 'lg:grid-cols-[1fr_9rem_9rem]'
 
 // An explicit locale, not the runtime's: the grouping separator has to be the same character in the
@@ -111,20 +93,17 @@ const figure = (
 })
 
 /**
- * The row's figures as one line, for the narrow reflow: "48 accounts · 214 vouches · proven 3 days
+ * The row's figures as one line, for the narrow reflow: "48 accounts · proven 3 days
  * ago". Every number keeps its label, because below `md` there are no column headers to inherit
  * one from. A row with nothing proven yet says only that, since the counts do not exist until a
  * scoreboard does.
  */
 const compactLine = (row: DirectoryRow, section: DirectorySection): string => {
-  const { scored, attestations, provenAt, unavailable } = row.summary
+  const { scored, provenAt, unavailable } = row.summary
   const parts: string[] = []
 
   if (scored !== null)
     parts.push(`${NUMBER.format(scored)} ${section.scoredLabel.toLowerCase()}`)
-  if (section.program === 'trust-graph' && attestations !== null)
-    parts.push(`${NUMBER.format(attestations)} vouches`)
-
   if (provenAt !== null) {
     parts.push(`proven ${freshnessLabel(row.summary)}`)
   } else {
@@ -135,35 +114,24 @@ const compactLine = (row: DirectoryRow, section: DirectorySection): string => {
   return parts.join(' · ')
 }
 
-const toView = (section: DirectorySection): DirectorySectionView => {
-  // Only the vouching program has vouches to count; the others would be quoting a column that
-  // means nothing to them.
-  const withVouches = section.program === 'trust-graph'
-
+const toView = (sections: DirectorySection[]): DirectorySectionView => {
   return {
-    key: section.program,
-    title: section.title,
-    standfirst: section.standfirst,
-    nameLabel: section.nameLabel,
-    columns: withVouches
-      ? [section.scoredLabel, VOUCHES]
-      : [section.scoredLabel],
-    gridClass: withVouches ? GRID_WITH_VOUCHES : GRID_PLAIN,
-    rows: section.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      blurb: row.blurb,
-      href: row.href,
-      figures: [
-        figure(section.scoredLabel, row.summary.scored, row.summary),
-        ...(withVouches
-          ? [figure(VOUCHES, row.summary.attestations, row.summary)]
-          : []),
-      ],
-      freshness: freshnessLabel(row.summary),
-      compact: compactLine(row, section),
-      haystack: `${row.name} ${row.blurb}`.toLowerCase(),
-    })),
+    key: 'networks',
+    nameLabel: 'Network',
+    columns: ['Scored accounts'],
+    gridClass: GRID_PLAIN,
+    rows: sections.flatMap((section) =>
+      section.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        blurb: row.blurb,
+        href: row.href,
+        figures: [figure('Scored accounts', row.summary.scored, row.summary)],
+        freshness: freshnessLabel(row.summary),
+        compact: compactLine(row, section),
+        haystack: `${row.name} ${row.blurb}`.toLowerCase(),
+      }))
+    ),
   }
 }
 
@@ -211,22 +179,13 @@ export default async function NetworksPage() {
   // Never throws: a failed catalog read comes back as `catalogError` with whatever survived, and a
   // scoreboard the indexer could not answer for comes back as nulls rather than zeroes.
   const directory = await loadDirectory()
-  const sections = directory.sections.map(toView)
+  const table = toView(directory.sections)
   const isEmpty = directory.total === 0
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      <header className="space-y-2">
+      <header>
         <PageTitle>Networks</PageTitle>
-        <p className="max-w-prose text-lg text-balance text-text-muted">
-          {STANDFIRST}
-        </p>
-        <ButtonLink href="/compositions" prefetch={false} variant="outline">
-          View composed networks
-        </ButtonLink>
-        {!isEmpty && (
-          <p className="max-w-prose text-sm text-text-subtle">{COLUMN_NOTE}</p>
-        )}
       </header>
 
       {directory.catalogError && (
@@ -238,13 +197,9 @@ export default async function NetworksPage() {
       ) : (
         <>
           {directory.total >= SEARCH_THRESHOLD ? (
-            <DirectorySearch sections={sections} />
+            <DirectorySearch sections={[table]} />
           ) : (
-            <div className="space-y-16 sm:space-y-20">
-              {sections.map((section) => (
-                <DirectorySectionBlock key={section.key} section={section} />
-              ))}
-            </div>
+            <DirectorySectionBlock section={table} />
           )}
           <CreateCta />
         </>

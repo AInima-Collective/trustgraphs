@@ -1,6 +1,5 @@
+import { redirect } from 'next/navigation'
 import type { Hex } from 'viem'
-
-import { CompositionWorkspace } from '../../../create/composition/workspace'
 
 export default async function CompositionSettingsPage({
   params,
@@ -8,5 +7,5 @@ export default async function CompositionSettingsPage({
   params: Promise<{ instanceId: Hex }>
 }) {
   const { instanceId } = await params
-  return <CompositionWorkspace settingsInstanceId={instanceId} />
+  redirect(`/networks/${instanceId}/settings`)
 }

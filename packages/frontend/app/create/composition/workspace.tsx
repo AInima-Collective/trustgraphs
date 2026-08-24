@@ -134,8 +134,10 @@ const rebalance = (sources: CompositionSource[]) => {
 
 export const CompositionWorkspace = ({
   settingsInstanceId,
+  embedded = false,
 }: {
   settingsInstanceId?: Hex
+  embedded?: boolean
 } = {}) => {
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
@@ -1166,22 +1168,30 @@ export const CompositionWorkspace = ({
     preview && previewConfig ? compositionSimplex(previewConfig, 20) : []
 
   return (
-    <main className="max-w-6xl space-y-8" aria-labelledby="composition-title">
-      <header className="space-y-3">
-        <h1 id="composition-title" className="text-2xl">
-          {mode === 'create' ? 'Create composed graph' : 'Composition settings'}
-        </h1>
-        <p className="max-w-4xl text-sm text-muted-foreground">
-          {mode === 'create'
-            ? 'Blend two or more proved Trustgraph score distributions. Choose the influence of each source, review the result, then create it.'
-            : 'Review the current source policy, manage a pending change, or propose a new source mix.'}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={loadCatalog}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Refresh sources
-          </Button>
-        </div>
-      </header>
+    <main
+      className="max-w-6xl space-y-8"
+      aria-label={embedded ? 'Composition settings' : undefined}
+      aria-labelledby={embedded ? undefined : 'composition-title'}
+    >
+      {!embedded && (
+        <header className="space-y-3">
+          <h1 id="composition-title" className="text-2xl">
+            {mode === 'create'
+              ? 'Create composed graph'
+              : 'Composition settings'}
+          </h1>
+          <p className="max-w-4xl text-sm text-muted-foreground">
+            {mode === 'create'
+              ? 'Blend two or more proved Trustgraph score distributions. Choose the influence of each source, review the result, then create it.'
+              : 'Review the current source policy, manage a pending change, or propose a new source mix.'}
+          </p>
+        </header>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onClick={loadCatalog}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Refresh sources
+        </Button>
+      </div>
 
       {apiUnavailable && (
         <Card type="outline" size="md">
@@ -1216,7 +1226,7 @@ export const CompositionWorkspace = ({
           {success.instanceId && (
             <Link
               className="text-sm underline"
-              href={`/compositions/${success.instanceId}`}
+              href={`/networks/${success.instanceId}`}
             >
               Open composed network
             </Link>

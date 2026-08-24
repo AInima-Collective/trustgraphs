@@ -16,6 +16,7 @@
 export const PROGRAM_ORDER = [
   'trust-graph',
   'trust-graph-weighted',
+  'trust-compose',
   'contributions',
   'hypercerts',
   'nostr-workspace',
@@ -89,6 +90,12 @@ export const SECTION_META: Record<
     title: 'Weighted networks',
     standfirst:
       'Starting accounts hold shares of fixed sizes chosen at creation; vouches still decide the final scores.',
+    nameLabel: 'Network',
+    scoredLabel: 'Scored accounts',
+  },
+  'trust-compose': {
+    title: 'Composed networks',
+    standfirst: 'Scores blended from two or more proved source networks.',
     nameLabel: 'Network',
     scoredLabel: 'Scored accounts',
   },

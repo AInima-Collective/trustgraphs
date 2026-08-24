@@ -1,6 +1,5 @@
+import { redirect } from 'next/navigation'
 import type { Hex } from 'viem'
-
-import { CompositionEpochView } from './epoch'
 
 export default async function CompositionEpochPage({
   params,
@@ -8,7 +7,5 @@ export default async function CompositionEpochPage({
   params: Promise<{ instanceId: Hex; checkpointId: string }>
 }) {
   const { instanceId, checkpointId } = await params
-  return (
-    <CompositionEpochView instanceId={instanceId} checkpointId={checkpointId} />
-  )
+  redirect(`/networks/${instanceId}/proofs/${checkpointId}`)
 }

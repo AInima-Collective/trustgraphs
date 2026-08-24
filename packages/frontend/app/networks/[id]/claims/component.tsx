@@ -16,6 +16,7 @@ import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { contributionsQueries } from '@/lib/contributions-api'
 import { parseErrorMessage } from '@/lib/error'
+import type { NetworkTab } from '@/lib/network-nav'
 import { txToast } from '@/lib/tx'
 import { ContributionsNetwork, Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
@@ -261,10 +262,12 @@ export const RewardsPage = ({
   network,
   contributionRound,
   defaultFundOpen = false,
+  tabs,
 }: {
   network: Network
   contributionRound?: ContributionsNetwork
   defaultFundOpen?: boolean
+  tabs?: NetworkTab[]
 }) => {
   const { address, isConnected } = useAccount()
   const publicClient = usePublicClient()
@@ -387,7 +390,7 @@ export const RewardsPage = ({
     <div className="space-y-10 sm:space-y-12">
       <header className="space-y-6">
         <BreadcrumbRenderer />
-        <NetworkHeader network={network} className="w-full" />
+        <NetworkHeader network={network} tabs={tabs} className="w-full" />
       </header>
 
       <section
@@ -490,7 +493,11 @@ export const RewardsPage = ({
       )}
 
       {network.contracts.merkleFundDistributor && (
-        <DistributePage embedded defaultOpen={defaultFundOpen} />
+        <DistributePage
+          embedded
+          defaultOpen={defaultFundOpen}
+          network={network}
+        />
       )}
     </div>
   )

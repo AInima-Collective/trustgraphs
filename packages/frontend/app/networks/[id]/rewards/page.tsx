@@ -4,10 +4,13 @@ import { notFound } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
+import { compositionAsNetwork } from '@/lib/composition/network'
+import { getCompositionInstance } from '@/lib/composition.server'
 import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
 import { getContributionsCatalog } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import {
+  compositionTabs,
   contributionsRoundsFor,
   sortRoundsNewestActiveFirst,
 } from '@/lib/network-nav'
@@ -52,6 +55,20 @@ export default async function RewardsPageServer({
   const { network, catalogError } = await getNetwork(id)
 
   if (!network) {
+    const composition = await getCompositionInstance(id)
+    if (composition.instance) {
+      if (!composition.instance.distributor) notFound()
+      return (
+        <RewardsPage
+          network={compositionAsNetwork(composition.instance)}
+          tabs={compositionTabs(composition.instance)}
+          defaultFundOpen={fund === 'true' || fund === '1'}
+        />
+      )
+    }
+    if (composition.error) {
+      return <CatalogUnavailable reason={composition.error} networkId={id} />
+    }
     if (catalogError) {
       return <CatalogUnavailable reason={catalogError} networkId={id} />
     }

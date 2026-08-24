@@ -3,26 +3,64 @@
 import { LoaderCircle, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import type { Hex } from 'viem'
 
+import { TableAddress } from '@/components/Address'
+import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
+import { CompositionNetworkHeader } from '@/components/CompositionNetworkHeader'
+import { ScoreUpdateChip } from '@/components/ScoreUpdateChip'
+import { SectionHeading } from '@/components/SectionHeading'
+import { type Column, Table } from '@/components/Table'
 import {
+  type CompositionBundle,
   type CompositionEpoch,
   type CompositionInstance,
-  type CompositionPolicy,
+  fetchCompositionBundle,
   fetchCompositionOverview,
 } from '@/lib/composition/api'
 import { APIS } from '@/lib/config'
+import { formatBigNumber } from '@/lib/utils'
+
+type ScoreRow = CompositionBundle['outputEntries'][number] & { rank: number }
+
+const columns: Column<ScoreRow>[] = [
+  {
+    key: 'rank',
+    header: 'Rank',
+    sortable: true,
+    accessor: (row) => row.rank,
+    render: (row) => `#${row.rank}`,
+  },
+  {
+    key: 'account',
+    header: 'Account',
+    render: (row) => <TableAddress address={row.account} showNavIcon />,
+  },
+  {
+    key: 'score',
+    header: 'Score',
+    sortable: true,
+    accessor: (row) => BigInt(row.value),
+    render: (row) => formatBigNumber(row.value, 18),
+    cellClassName: 'text-right tabular-nums',
+    headerClassName: 'text-right',
+  },
+]
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
 
 export const CompositionInstanceView = ({
-  instanceId,
+  initialInstance,
 }: {
-  instanceId: Hex
+  initialInstance: CompositionInstance
 }) => {
-  const [instance, setInstance] = useState<CompositionInstance | null>(null)
-  const [policies, setPolicies] = useState<CompositionPolicy[]>([])
+  const [instance, setInstance] = useState(initialInstance)
   const [epochs, setEpochs] = useState<CompositionEpoch[]>([])
+  const [bundle, setBundle] = useState<CompositionBundle | null>(null)
   const [loading, setLoading] = useState(true)
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -30,10 +68,21 @@ export const CompositionInstanceView = ({
     setLoading(true)
     setProblem(null)
     try {
-      const overview = await fetchCompositionOverview(APIS.ponder, instanceId)
+      const overview = await fetchCompositionOverview(
+        APIS.ponder,
+        initialInstance.id
+      )
       setInstance(overview.instance)
-      setPolicies(overview.policies)
       setEpochs(overview.epochs)
+      setBundle(
+        overview.epochs[0]
+          ? await fetchCompositionBundle(
+              APIS.ponder,
+              initialInstance.id,
+              overview.epochs[0].checkpointId
+            )
+          : null
+      )
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -43,204 +92,179 @@ export const CompositionInstanceView = ({
 
   useEffect(() => {
     void load()
-  }, [instanceId])
+  }, [initialInstance.id])
+
+  const scores: ScoreRow[] = [...(bundle?.outputEntries ?? [])]
+    .sort((left, right) =>
+      BigInt(left.value) === BigInt(right.value)
+        ? left.account.localeCompare(right.account)
+        : BigInt(left.value) > BigInt(right.value)
+          ? -1
+          : 1
+    )
+    .map((entry, index) => ({ ...entry, rank: index + 1 }))
 
   return (
-    <main
-      className="max-w-6xl space-y-6"
-      aria-labelledby="composition-instance-title"
-    >
-      <header className="space-y-2">
-        <Link className="text-sm underline" href="/compositions">
-          ← All compositions
-        </Link>
-        <h1 id="composition-instance-title" className="text-2xl">
-          {instance?.metadata?.name?.trim() ||
-            instance?.name ||
-            'Composition instance'}
-        </h1>
-        <p className="break-all font-mono text-xs">{instanceId}</p>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/compositions/${instanceId}/settings`}>
-            <Button type="button">Settings</Button>
-          </Link>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={load}
-            disabled={loading}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh after confirmations/reorgs
-          </Button>
+    <div className="space-y-10 sm:space-y-12">
+      <header className="space-y-6">
+        <BreadcrumbRenderer />
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
+          <CompositionNetworkHeader instance={instance} description />
+          <div className="shrink-0 lg:pt-1">
+            <ScoreUpdateChip snapshot={instance.snapshot} />
+          </div>
         </div>
       </header>
-      {loading && (
-        <p className="text-sm">
-          <LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />
-          Loading canonical receipts…
-        </p>
-      )}
+
       {problem && (
-        <Card type="outline" size="md">
-          <p role="alert" className="text-sm text-destructive">
+        <Card type="outline" size="md" className="border-error text-error">
+          <p
+            role="alert"
+            className="break-words text-sm [overflow-wrap:anywhere]"
+          >
             {problem}
           </p>
         </Card>
       )}
-      {instance && (
-        <div className="space-y-3">
-          {(instance.metadata?.description?.trim() ||
-            instance.metadata?.criteria?.trim() ||
-            instance.metadata?.image?.trim() ||
-            instance.metadata?.applicationUrl?.trim()) && (
-            <Card type="outline" size="md" className="space-y-3">
-              {instance.metadata.description?.trim() && (
-                <p className="text-sm">
-                  {instance.metadata.description.trim()}
-                </p>
-              )}
-              {instance.metadata.criteria?.trim() && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    What a vouch means here
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm">
-                    {instance.metadata.criteria.trim()}
-                  </p>
-                </div>
-              )}
-              <div className="flex flex-wrap gap-3 text-sm">
-                {instance.metadata.applicationUrl?.trim() && (
-                  <a
-                    className="underline underline-offset-4"
-                    href={instance.metadata.applicationUrl.trim()}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Ask to join
-                  </a>
-                )}
-                {instance.metadata.image?.trim() && (
-                  <a
-                    className="underline underline-offset-4"
-                    href={instance.metadata.image.trim()}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Logo or banner
-                  </a>
-                )}
-              </div>
-            </Card>
+
+      {(instance.metadata?.criteria?.trim() ||
+        instance.metadata?.image?.trim()) && (
+        <section className="grid gap-6 border-y border-border py-6 md:grid-cols-2">
+          {instance.metadata.criteria?.trim() && (
+            <div className="space-y-2">
+              <p className="tg-label">What it means to vouch here</p>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-text-muted">
+                {instance.metadata.criteria.trim()}
+              </p>
+            </div>
           )}
-          <div className="grid gap-3 md:grid-cols-3">
-            <Card type="outline" size="sm">
-              <p className="text-xs text-muted-foreground">
-                Controller / admin
-              </p>
-              <p className="break-all font-mono text-xs">
-                {instance.controller}
-                <br />
-                {instance.admin}
-              </p>
-            </Card>
-            <Card type="outline" size="sm">
-              <p className="text-xs text-muted-foreground">Current params</p>
-              <p className="break-all font-mono text-xs">
-                v{instance.currentVersion}
-                <br />
-                {instance.currentParamsHash}
-              </p>
-            </Card>
-            <Card type="outline" size="sm">
-              <p className="text-xs text-muted-foreground">Schedule</p>
-              <p className="text-sm">
-                {instance.epochLength} blocks · snapshot{' '}
-                <span className="font-mono">
-                  {instance.snapshot.slice(0, 10)}…
-                </span>
-              </p>
-            </Card>
-          </div>
-        </div>
+          {instance.metadata.image?.trim() && (
+            <div className="space-y-2">
+              <p className="tg-label">Network image</p>
+              <a
+                href={instance.metadata.image.trim()}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-sm underline underline-offset-4"
+              >
+                View logo or banner
+              </a>
+            </div>
+          )}
+        </section>
       )}
 
-      <section className="space-y-3" aria-labelledby="policy-history-heading">
-        <h2 id="policy-history-heading" className="text-lg font-medium">
-          Governed policy history
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Pending, cancelled, activated, and superseded versions remain visible;
-          version gaps are not reused.
-        </p>
-        <div className="space-y-2">
-          {policies.map((policy) => (
-            <Link
-              key={policy.id}
-              href={`/compositions/${instanceId}/policies/${policy.version}`}
-            >
-              <Card
-                type="outline"
-                size="sm"
-                className="grid gap-2 md:grid-cols-4"
-              >
-                <p>
-                  v{policy.version} · <strong>{policy.status}</strong>
-                </p>
-                <p className="font-mono text-xs">
-                  manifest {policy.manifestSha256.slice(0, 14)}…
-                </p>
-                <p className="font-mono text-xs">
-                  adapter set {policy.adapterSetHash.slice(0, 14)}…
-                </p>
-                <p className="text-xs">
-                  {policy.readyAt
-                    ? `ready ${new Date(Number(policy.readyAt) * 1000).toLocaleString()}`
-                    : 'landed'}
-                </p>
-              </Card>
-            </Link>
-          ))}
+      <section className="space-y-5" aria-labelledby="composition-sources">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <SectionHeading>
+              <span id="composition-sources">Source mix</span>
+            </SectionHeading>
+            <p className="mt-2 text-sm text-text-muted">
+              The source allocations behind the latest proved scores.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+          >
+            {loading ? (
+              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh
+          </Button>
         </div>
-      </section>
-
-      <section className="space-y-3" aria-labelledby="epoch-history-heading">
-        <h2 id="epoch-history-heading" className="text-lg font-medium">
-          Proved epoch history
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Each route recovers exact TGCM capture bytes, source and controller
-          provenance, complete attribution, canonical output entries, and
-          address proofs.
-        </p>
-        <div className="space-y-2">
-          {epochs.map((epoch) => (
-            <Link
-              key={epoch.checkpointId}
-              href={`/compositions/${instanceId}/epochs/${epoch.checkpointId}`}
-            >
-              <Card
-                type="outline"
-                size="sm"
-                className="grid gap-2 md:grid-cols-4"
+        {bundle ? (
+          <div className="grid gap-px border border-border bg-border md:grid-cols-2">
+            {bundle.sources.map((source) => (
+              <div
+                key={source.sourceId}
+                className="space-y-2 bg-background p-4"
               >
-                <p>checkpoint {epoch.checkpointId}</p>
-                <p>policy v{epoch.policyVersion}</p>
                 <p className="font-mono text-xs">
-                  root {epoch.root.slice(0, 14)}…
+                  {source.sourceId.slice(0, 14)}…{source.sourceId.slice(-8)}
                 </p>
-                <p className="text-xs">block {epoch.blockNumber}</p>
-              </Card>
-            </Link>
-          ))}
-        </div>
-        {!loading && epochs.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No composition proof has landed yet.
-          </p>
+                <p className="text-sm tabular-nums text-text-muted">
+                  weight {formatBigNumber(source.weight, 18, true)} · quota{' '}
+                  {BigInt(source.quota).toLocaleString('en-US')} ·{' '}
+                  {source.entryCount.toLocaleString('en-US')} accounts
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          !loading && (
+            <p className="text-sm text-text-muted">
+              Source details will appear after the first score proof lands.
+            </p>
+          )
         )}
       </section>
-    </main>
+
+      <section className="space-y-5" aria-labelledby="network-members">
+        <div>
+          <SectionHeading>
+            <span id="network-members">Network members</span>
+          </SectionHeading>
+          <p className="mt-2 text-sm text-text-muted">
+            {bundle
+              ? `Scores proved at checkpoint ${bundle.epoch.checkpointId}.`
+              : 'Scores have not been proved yet.'}
+          </p>
+        </div>
+        {scores.length > 0 ? (
+          <Table
+            columns={columns}
+            data={scores}
+            getRowKey={(row) => row.account}
+            defaultSortColumn="rank"
+            defaultSortDirection="asc"
+            rowClassName="text-sm"
+          />
+        ) : (
+          !loading && (
+            <p className="border-y border-border py-8 text-sm text-text-muted">
+              No scored accounts yet.
+            </p>
+          )
+        )}
+      </section>
+
+      {epochs.length > 0 && (
+        <section className="space-y-4" aria-labelledby="proof-history">
+          <SectionHeading>
+            <span id="proof-history">Score history</span>
+          </SectionHeading>
+          <ul className="divide-y divide-border border-y border-border">
+            {epochs.slice(0, 8).map((epoch) => {
+              const work = asRecord(epoch.work)
+              return (
+                <li key={epoch.checkpointId}>
+                  <Link
+                    href={`/networks/${instance.id}/proofs/${epoch.checkpointId}`}
+                    className="grid gap-1 py-3 text-sm hover:bg-surface-2 sm:grid-cols-[1fr_auto_auto] sm:gap-6"
+                  >
+                    <span>Checkpoint {epoch.checkpointId}</span>
+                    <span className="text-text-muted">
+                      {typeof work.outputAccounts === 'number'
+                        ? `${work.outputAccounts.toLocaleString('en-US')} accounts`
+                        : `policy v${epoch.policyVersion}`}
+                    </span>
+                    <span className="tabular-nums text-text-muted">
+                      block {epoch.blockNumber}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
   )
 }

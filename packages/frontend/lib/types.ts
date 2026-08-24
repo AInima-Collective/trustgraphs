@@ -5,8 +5,8 @@ import { type Erc8004AgentCompact } from './erc8004'
 import type { ScoreProgramProvenance } from './score-program'
 
 export type Network = {
-  /** Program discriminator; both variants are address-keyed EAS vouching networks. */
-  program?: 'trust-graph' | 'trust-graph-weighted'
+  /** Program discriminator; all variants publish address-keyed score tables. */
+  program?: 'trust-graph' | 'trust-graph-weighted' | 'trust-compose'
   /**
    * The `/networks/[id]` path segment. For a network created through `TrustgraphsFactory` this is
    * its `instanceId`; networks that predate the factory keep the human slug from

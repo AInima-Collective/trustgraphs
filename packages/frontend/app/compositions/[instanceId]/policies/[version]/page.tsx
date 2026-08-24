@@ -1,6 +1,5 @@
+import { redirect } from 'next/navigation'
 import type { Hex } from 'viem'
-
-import { CompositionPolicyView } from './policy'
 
 export default async function CompositionPolicyPage({
   params,
@@ -8,5 +7,5 @@ export default async function CompositionPolicyPage({
   params: Promise<{ instanceId: Hex; version: string }>
 }) {
   const { instanceId, version } = await params
-  return <CompositionPolicyView instanceId={instanceId} version={version} />
+  redirect(`/networks/${instanceId}/policies/${version}`)
 }

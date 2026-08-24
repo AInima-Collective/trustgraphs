@@ -7,6 +7,7 @@
 //! gov module and no fund distributor until someone deploys them, so offering those tabs would
 //! route people to a page that can only tell them the feature does not exist here.
 
+import type { CompositionInstance } from './composition/api'
 import { ContributionsNetwork, Network } from './types'
 import { isHexEqual } from './utils'
 
@@ -117,6 +118,39 @@ export const trustgraphsTabs = (
       label: 'Settings',
       icon: 'settings' as const,
     },
+  ]
+}
+
+/**
+ * Composed graphs use the same network shell. Their policy controller is their governance
+ * surface, and their optional distributor is the same rewards capability used elsewhere.
+ */
+export const compositionTabs = (
+  instance: Pick<CompositionInstance, 'id' | 'controller' | 'distributor'>
+): NetworkTab[] => {
+  const base = `/networks/${instance.id}`
+
+  return [
+    { href: base, label: 'Overview', icon: 'overview', exact: true },
+    ...(instance.controller
+      ? [
+          {
+            href: `${base}/governance`,
+            label: 'Governance',
+            icon: 'governance' as const,
+          },
+        ]
+      : []),
+    ...(instance.distributor
+      ? [
+          {
+            href: `${base}/rewards`,
+            label: 'Rewards',
+            icon: 'rewards' as const,
+          },
+        ]
+      : []),
+    { href: `${base}/settings`, label: 'Settings', icon: 'settings' },
   ]
 }
 

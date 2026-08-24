@@ -1,13 +1,5 @@
-import type { Metadata } from 'next'
-
-import { CompositionCatalog } from './catalog'
-
-export const metadata: Metadata = {
-  title: 'Composed networks',
-  description:
-    'Browse composed Trustgraphs and inspect their source policies and proof history.',
-}
+import { redirect } from 'next/navigation'
 
 export default function CompositionsPage() {
-  return <CompositionCatalog />
+  redirect('/networks')
 }

@@ -61,10 +61,7 @@ export const GraphLineageCatalog = () => {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh authenticated history
           </Button>
-          <Link
-            className="rounded border px-3 py-2 text-sm"
-            href="/compositions"
-          >
+          <Link className="rounded border px-3 py-2 text-sm" href="/networks">
             Composition provenance
           </Link>
           <Link

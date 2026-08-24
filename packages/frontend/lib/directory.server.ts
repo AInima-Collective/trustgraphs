@@ -196,6 +196,16 @@ type WeightedPriorListPage = {
   page: { limit: unknown; offset: unknown; total: unknown }
 }
 
+type CompositionListPage = {
+  instances: Array<{
+    id: unknown
+    name: unknown
+    snapshot: unknown
+    metadata?: unknown
+  }>
+  page: { limit: unknown; offset: unknown; total: unknown }
+}
+
 /**
  * Weighted networks, from the indexer's own list (`GET /weighted-priors`).
  *
@@ -291,6 +301,97 @@ const readWeightedInstances = async (): Promise<{
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     console.error('[directory] weighted network catalog unavailable:', reason)
+    return { rows: [], error: reason }
+  }
+}
+
+/** Composed graphs are first-class network rows, not a parallel catalog. */
+const readCompositionInstances = async (): Promise<{
+  rows: Array<{
+    id: string
+    name: string
+    about: string
+    snapshot: string
+  }>
+  error: string | null
+}> => {
+  const rows: Array<{
+    id: string
+    name: string
+    about: string
+    snapshot: string
+  }> = []
+  const seen = new Set<string>()
+  let offset = 0
+
+  try {
+    for (;;) {
+      const page = await readJson<CompositionListPage>(
+        `/compositions?limit=${PROGRAM_CATALOG_PAGE_SIZE}&offset=${offset}`
+      )
+      if (page === null) return { rows: [], error: null }
+      if (!Array.isArray(page.instances) || !page.page) {
+        throw new Error('composed network list response is malformed')
+      }
+      const returnedOffset = boundedCatalogInteger(page.page.offset, 'offset')
+      const limit = boundedCatalogInteger(page.page.limit, 'limit')
+      const total = boundedCatalogInteger(page.page.total, 'total')
+      if (
+        returnedOffset !== offset ||
+        limit < 1 ||
+        limit > PROGRAM_CATALOG_PAGE_SIZE ||
+        total > PROGRAM_CATALOG_MAX_ROWS
+      ) {
+        throw new Error('composed network list pagination is inconsistent')
+      }
+
+      for (const row of page.instances) {
+        if (
+          !row ||
+          typeof row !== 'object' ||
+          typeof row.id !== 'string' ||
+          !/^0x[0-9a-fA-F]{64}$/.test(row.id) ||
+          typeof row.name !== 'string' ||
+          typeof row.snapshot !== 'string' ||
+          !/^0x[0-9a-fA-F]{40}$/.test(row.snapshot)
+        ) {
+          throw new Error('composed network list row is malformed')
+        }
+        const metadata =
+          row.metadata &&
+          typeof row.metadata === 'object' &&
+          !Array.isArray(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : null
+        const id = row.id.toLowerCase()
+        if (seen.has(id)) {
+          throw new Error('composed network list repeats a row')
+        }
+        seen.add(id)
+        rows.push({
+          id: row.id,
+          name:
+            typeof metadata?.name === 'string' && metadata.name.trim()
+              ? metadata.name.trim()
+              : row.name,
+          about:
+            typeof metadata?.description === 'string'
+              ? metadata.description.trim()
+              : '',
+          snapshot: row.snapshot,
+        })
+      }
+
+      if (offset + page.instances.length >= total) break
+      if (page.instances.length === 0) {
+        throw new Error('composed network list ended before its declared total')
+      }
+      offset += page.instances.length
+    }
+    return { rows, error: null }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    console.error('[directory] composed network catalog unavailable:', reason)
     return { rows: [], error: reason }
   }
 }
@@ -395,11 +496,13 @@ export const loadDirectory = async (): Promise<Directory> => {
   const fixture = activeFixture()
   if (fixture) return fixtureDirectory(fixture)
 
-  const [catalog, nostrCatalog, weightedCatalog] = await Promise.all([
-    getCatalog(),
-    readNostrWorkspaceBindings(),
-    readWeightedInstances(),
-  ])
+  const [catalog, nostrCatalog, weightedCatalog, compositionCatalog] =
+    await Promise.all([
+      getCatalog(),
+      readNostrWorkspaceBindings(),
+      readWeightedInstances(),
+      readCompositionInstances(),
+    ])
 
   const sources: Array<{
     program: DirectoryProgram
@@ -422,6 +525,15 @@ export const loadDirectory = async (): Promise<Directory> => {
       about:
         row.about ||
         `Weighted instance ${row.id.slice(0, 10)}…${row.id.slice(-8)}`,
+      snapshot: row.snapshot,
+    })),
+    ...compositionCatalog.rows.map((row) => ({
+      program: 'trust-compose' as const,
+      id: row.id,
+      name: row.name,
+      about:
+        row.about ||
+        `Composed network ${row.id.slice(0, 10)}…${row.id.slice(-8)}`,
       snapshot: row.snapshot,
     })),
     ...VISIBLE_HYPERCERTS_NETWORKS.map((network) => ({
@@ -452,6 +564,7 @@ export const loadDirectory = async (): Promise<Directory> => {
   const grouped: Record<DirectoryProgram, DirectoryRow[]> = {
     'trust-graph': [],
     'trust-graph-weighted': [],
+    'trust-compose': [],
     contributions: [],
     hypercerts: [],
     'nostr-workspace': [],
@@ -475,7 +588,12 @@ export const loadDirectory = async (): Promise<Directory> => {
   return {
     sections,
     catalogError:
-      [catalog.error, nostrCatalog.error, weightedCatalog.error]
+      [
+        catalog.error,
+        nostrCatalog.error,
+        weightedCatalog.error,
+        compositionCatalog.error,
+      ]
         .filter(Boolean)
         .join('; ') || null,
     total: sections.reduce((n, section) => n + section.rows.length, 0),

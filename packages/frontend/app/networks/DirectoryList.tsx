@@ -46,8 +46,8 @@ export type DirectoryRowView = {
 
 export type DirectorySectionView = {
   key: string
-  title: string
-  standfirst: string
+  title?: string
+  standfirst?: string
   /** First column header. Network, Round or Instance: the row is not the same noun in each program. */
   nameLabel: string
   /** The figure columns, in order, excluding the freshness column that every section ends with. */
@@ -153,10 +153,12 @@ export const DirectorySectionBlock = ({
   section: DirectorySectionView
 }) => (
   <section className="space-y-3">
-    <SectionHeading>{section.title}</SectionHeading>
-    <p className="max-w-prose text-balance text-text-muted">
-      {section.standfirst}
-    </p>
+    {section.title && <SectionHeading>{section.title}</SectionHeading>}
+    {section.standfirst && (
+      <p className="max-w-prose text-balance text-text-muted">
+        {section.standfirst}
+      </p>
+    )}
 
     <div>
       {/* Column labels. Hidden below md, where the figures reflow into a sentence that carries its

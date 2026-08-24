@@ -1,12 +1,16 @@
 import { notFound } from 'next/navigation'
 
+import { BreadcrumbRenderer } from '@/components/BreadcrumbRenderer'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
+import { CompositionNetworkHeader } from '@/components/CompositionNetworkHeader'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getInstanceDetails, getNetwork } from '@/lib/catalog.server'
+import { getCompositionInstance } from '@/lib/composition.server'
 import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
 
 import { SettingsPage } from './component'
 import { SETTINGS_TABS, type SettingsTab } from './tabs'
+import { CompositionWorkspace } from '../../../create/composition/workspace'
 
 // Must stay aligned with `CATALOG_REVALIDATE_SECONDS` in lib/catalog.server.ts.
 export const revalidate = 10
@@ -31,6 +35,26 @@ export default async function NetworkSettingsPage({
   const { network, catalogError } = await getNetwork(id)
 
   if (!network) {
+    const composition = await getCompositionInstance(id)
+    if (composition.instance) {
+      return (
+        <div className="space-y-8">
+          <BreadcrumbRenderer />
+          <CompositionNetworkHeader instance={composition.instance} />
+          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+            Manage source policy changes and score-refresh payments for this
+            network.
+          </p>
+          <CompositionWorkspace
+            settingsInstanceId={composition.instance.id}
+            embedded
+          />
+        </div>
+      )
+    }
+    if (composition.error) {
+      return <CatalogUnavailable reason={composition.error} networkId={id} />
+    }
     if (catalogError) {
       return <CatalogUnavailable reason={catalogError} networkId={id} />
     }

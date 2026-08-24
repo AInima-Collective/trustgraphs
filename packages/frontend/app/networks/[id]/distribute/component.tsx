@@ -36,7 +36,7 @@ import {
 } from '@/components/Select'
 import { StatisticCard } from '@/components/StatisticCard'
 import { Column, Table } from '@/components/Table'
-import { useNetwork } from '@/contexts/NetworkContext'
+import { useNetworkIfAvailable } from '@/contexts/NetworkContext'
 import { merkleFundDistributorAbi } from '@/lib/contract-abis'
 import { parseErrorMessage } from '@/lib/error'
 import {
@@ -45,6 +45,7 @@ import {
   quotedFee,
 } from '@/lib/funding-terms'
 import { txToast } from '@/lib/tx'
+import type { Network } from '@/lib/types'
 import { usePonderQuery } from '@/lib/use-ponder-query'
 import { formatBigNumber } from '@/lib/utils'
 import { merkleFundDistribution } from '@/ponder.schema'
@@ -55,11 +56,17 @@ type DistributionRow = typeof merkleFundDistribution.$inferSelect
 export const DistributePage = ({
   embedded = false,
   defaultOpen = false,
+  network: networkOverride,
 }: {
   embedded?: boolean
   defaultOpen?: boolean
+  network?: Network
 }) => {
-  const { network } = useNetwork()
+  const networkContext = useNetworkIfAvailable()
+  const network = networkOverride ?? networkContext?.network
+  if (!network) {
+    throw new Error('DistributePage requires a network')
+  }
 
   const { address: connectedAddress, isConnected } = useAccount()
   const publicClient = usePublicClient()

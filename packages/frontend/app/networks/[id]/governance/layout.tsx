@@ -5,6 +5,9 @@ import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
+import { getCompositionInstance } from '@/lib/composition.server'
+
+import { CompositionGovernanceView } from '../../../compositions/[instanceId]/governance'
 
 // Must be a literal — Next statically analyses this export. Keep it equal to
 // `CATALOG_REVALIDATE_SECONDS` in lib/catalog.server.ts.
@@ -29,6 +32,13 @@ export default async function GovernanceLayout({
 
   const { network, catalogError } = await getNetwork(id)
   if (!network) {
+    const composition = await getCompositionInstance(id)
+    if (composition.instance) {
+      return <CompositionGovernanceView instance={composition.instance} />
+    }
+    if (composition.error) {
+      return <CatalogUnavailable reason={composition.error} networkId={id} />
+    }
     // "Not found" and "we could not read the directory" are different answers; 404ing on the
     // second one blames the user's URL for our failed HTTP call.
     if (catalogError) {

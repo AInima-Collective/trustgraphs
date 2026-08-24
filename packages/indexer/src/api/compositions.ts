@@ -100,6 +100,17 @@ app.get('/', async (c) => {
   })
 })
 
+app.get('/:instanceId', async (c) => {
+  const instanceId = idParam(c.req.param('instanceId'))
+  if (!instanceId) return c.json({ error: 'invalid instanceId' }, 400)
+  const row = await db.query.compositionInstance.findFirst({
+    where: eq(compositionInstance.id, instanceId),
+  })
+  return row
+    ? c.json({ instance: serializeInstance(row) })
+    : c.json({ error: 'not found' }, 404)
+})
+
 app.get('/:instanceId/policies', async (c) => {
   const instanceId = idParam(c.req.param('instanceId'))
   const pagination = page(c.req.query('limit'), c.req.query('offset'))
