@@ -75,9 +75,37 @@ impl Logger {
                 "instance": instance,
                 "name": name,
                 "program": program,
-                "action": serde_json::to_value(action).unwrap_or(json!(null)),
+                "action": action_json(action),
             }),
         );
+    }
+}
+
+/// Serialize an action for operators, enriching opaque ProvingVault reason numbers without
+/// changing the stable `operator-core` wire type used by the heartbeat and policy tests.
+pub fn action_json(action: &Action) -> serde_json::Value {
+    let mut value = serde_json::to_value(action).unwrap_or(json!(null));
+    if let Action::Hold(HoldReason::Unfunded { reason }) = action {
+        if let Some(fields) = value.as_object_mut() {
+            fields.insert("reason_name".into(), json!(vault_reason_name(*reason)));
+        }
+    }
+    value
+}
+
+fn vault_reason_name(reason: u8) -> &'static str {
+    match reason {
+        0 => "none",
+        1 => "no_account",
+        2 => "policy_disabled",
+        3 => "cadence_not_elapsed",
+        4 => "insufficient_balance",
+        5 => "unknown_program",
+        6 => "withdrawal_pending",
+        7 => "already_claimed",
+        8 => "price_feed_unavailable",
+        u8::MAX => "quote_below_authenticated_proving_cost",
+        _ => "unknown",
     }
 }
 
@@ -407,6 +435,20 @@ mod tests {
             human_line("alert", &json!({ "text": "submitter balance is zero" })),
             "alert  submitter balance is zero"
         );
+    }
+
+    #[test]
+    fn unfunded_actions_name_the_vault_reason() {
+        assert_eq!(
+            action_json(&Action::Hold(HoldReason::Unfunded { reason: 2 })),
+            json!({
+                "action": "hold",
+                "hold": "unfunded",
+                "reason": 2,
+                "reason_name": "policy_disabled",
+            })
+        );
+        assert_eq!(vault_reason_name(u8::MAX), "quote_below_authenticated_proving_cost");
     }
 
     #[test]

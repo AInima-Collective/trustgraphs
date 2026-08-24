@@ -221,6 +221,9 @@ export default async function NetworksPage() {
         <p className="max-w-prose text-lg text-balance text-text-muted">
           {STANDFIRST}
         </p>
+        <ButtonLink href="/compositions" prefetch={false} variant="outline">
+          View composed networks
+        </ButtonLink>
         {!isEmpty && (
           <p className="max-w-prose text-sm text-text-subtle">{COLUMN_NOTE}</p>
         )}

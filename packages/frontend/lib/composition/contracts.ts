@@ -35,6 +35,68 @@ const PARAMS =
 const CREATE_ARGS =
   `(string name,string metadataURI,${PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)` as const
 
+/** Base-factory and policy-validation errors surfaced by direct creation simulation. */
+const TRUST_COMPOSE_FACTORY_ERRORS = [
+  'error ZeroAddress()',
+  'error ZeroEpochFloor()',
+  'error ZeroActivationDelay()',
+  'error InvalidAdmin()',
+  'error EmptyName()',
+  'error NameTooLong(uint256 length)',
+  'error NoVaultConfigured()',
+  'error ChainIdTooLarge(uint256 chainId)',
+  'error InvalidCompositionVerifier()',
+  'error ProgramVKeyMismatch(bytes32 expected, bytes32 actual)',
+  'error SourceAdapterRegistryMismatch(address expected, address actual)',
+  'error UnknownInstance(bytes32 instanceId)',
+  'error NotInstanceAuthority(bytes32 instanceId, address owner)',
+  'error DistributorAlreadyAttached(bytes32 instanceId, address distributor)',
+  'error InvalidDistributorSafe(address owner)',
+  'error InvalidParamsVersion(uint32 version)',
+  'error InvalidProgramId(bytes32 programId)',
+  'error InvalidScope()',
+  'error InvalidIdentityDomain(bytes32 identityDomain)',
+  'error InvalidOutputKind(bytes32 outputKind)',
+  'error InvalidOutputDomain(bytes32 outputDomain)',
+  'error InvalidAdmittedProgram(bytes32 programId)',
+  'error InvalidWeightScale(uint64 weightScale)',
+  'error InvalidOutputPool()',
+  'error InvalidSourceCount(uint8 count)',
+  'error InvalidPolicyCommitment()',
+  'error InvalidBounds()',
+  'error InvalidMaxSourceAge(uint64 maxAgeBlocks)',
+  'error InvalidAccumulator()',
+  'error InvalidChain(uint64 chainId)',
+  'error InvalidManifestLength(uint256 actual, uint256 expected)',
+  'error InvalidManifestMagic(bytes4 magic)',
+  'error InvalidManifestVersion(uint16 version)',
+  'error InvalidManifestChain(uint64 actual, uint64 expected)',
+  'error InvalidSourceId(uint8 index, bytes32 sourceId)',
+  'error SourceIdsNotAscending(uint8 index, bytes32 previous, bytes32 sourceId)',
+  'error InvalidSnapshot(uint8 index, address snapshot)',
+  'error DuplicateSnapshot(uint8 index, address snapshot)',
+  'error InvalidFamilyId(uint8 index)',
+  'error UnadmittedSourceProgram(uint8 index, bytes32 programId)',
+  'error InvalidSourceWeight(uint8 index)',
+  'error InvalidWeightSum(uint256 sum)',
+  'error InvalidSourceAge(uint8 index, uint64 maxAgeBlocks)',
+  'error OptionalSourceUnsupported(uint8 index)',
+  'error PolicyCommitmentMismatch()',
+  'error DerivedFieldNotZero()',
+  'error NotBinder()',
+  'error AlreadyBound()',
+  'error SnapshotReadsAnotherAccumulator(address reads)',
+  'error NotSnapshot()',
+  'error NotController()',
+  'error InvalidPolicyVersion(uint64 current, uint64 proposed)',
+  'error AdapterCountMismatch(uint256 expected, uint256 actual)',
+  'error UnauthenticatedAdapter(uint8 index, address adapter)',
+  'error DuplicateAdapter(uint8 index, address adapter)',
+  'error AdapterPolicyMismatch(uint8 index)',
+  'error WrongOutputKind(uint8 index, bytes32 outputKind)',
+  'error WrongAdapterChain(uint8 index, uint64 chainId)',
+] as const
+
 export const trustComposeFactoryAbi = parseAbi([
   `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${PARAMS} params)`,
   'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
@@ -45,7 +107,7 @@ export const trustComposeFactoryAbi = parseAbi([
   'function POLICY_ACTIVATION_DELAY() view returns (uint48)',
   'function SOURCE_ADAPTER_FACTORY() view returns (address)',
   'function VAULT() view returns (address)',
-  'error SourceAdapterRegistryMismatch(address expected,address actual)',
+  ...TRUST_COMPOSE_FACTORY_ERRORS,
 ])
 
 /**
@@ -113,6 +175,7 @@ export const compositionVaultAbi = parseAbi([
   'function quote(bytes32 instanceId,uint256 checkpointId) view returns (uint256 feeUsd,uint256 gasUsd,uint256 payableUsd,bool eligible,uint8 reason)',
   'function accountOf(bytes32 instanceId) view returns (address snapshot,bytes32 program,uint128 ethBalance,uint128 usdcBalance)',
   'function policyOf(bytes32 instanceId) view returns (uint64 minPaidIntervalBlocks,uint96 maxPerRootUsd,uint64 lastPaidBlock)',
+  'function setPolicy(bytes32 instanceId,uint64 minPaidIntervalBlocks,uint96 maxPerRootUsd)',
 ])
 
 export type CompositionCreationFields = {
@@ -125,13 +188,19 @@ export type CompositionCreationFields = {
   salt: Hex
 }
 
-const sourceAdapters = (sources: CompositionSource[]): Address[] =>
-  sources.map((source) => {
-    if (!source.adapter) {
-      throw new Error(`${source.name} has no authenticated source adapter.`)
-    }
-    return source.adapter
-  })
+export const compositionSourceAdapters = (
+  sources: CompositionSource[]
+): Address[] =>
+  [...sources]
+    .sort((left, right) =>
+      left.sourceId.toLowerCase().localeCompare(right.sourceId.toLowerCase())
+    )
+    .map((source) => {
+      if (!source.adapter) {
+        throw new Error(`${source.name} has no authenticated source adapter.`)
+      }
+      return source.adapter
+    })
 
 export const compositionMetadataDigest = (
   preview: CompositionPreview,
@@ -164,7 +233,7 @@ export const compositionCreateArgs = (
   config: CompositionConfig,
   preview: CompositionPreview
 ) => {
-  const adapters = sourceAdapters(config.sources)
+  const adapters = compositionSourceAdapters(config.sources)
   return {
     name: fields.name.trim(),
     metadataURI: fields.metadataURI.trim(),
@@ -252,7 +321,7 @@ export const compositionProposalPayload = (
   config: CompositionConfig,
   preview: CompositionPreview
 ): Hex => {
-  const adapters = sourceAdapters(config.sources)
+  const adapters = compositionSourceAdapters(config.sources)
   return encodeFunctionData({
     abi: trustComposeParamsControllerAbi,
     functionName: 'proposePolicy',

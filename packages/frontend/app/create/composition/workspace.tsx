@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   type Address,
   type Hex,
+  formatEther,
   getAddress,
   isAddress,
   isHex,
@@ -54,6 +55,7 @@ import {
   compositionMetadataDigest,
   compositionProposalPayload,
   compositionSourceAdapterFactoryAbi,
+  compositionSourceAdapters,
   compositionSourceSnapshotAbi,
   compositionVaultAbi,
   governedTrustComposeFactoryAbi,
@@ -61,6 +63,7 @@ import {
   trustComposeParamsControllerAbi,
 } from '@/lib/composition/contracts'
 import {
+  COMPOSITION_OUTPUT_KIND,
   type CompositionConfig,
   type CompositionPreview,
   type CompositionSource,
@@ -79,12 +82,14 @@ import {
 } from '@/lib/composition/preflight'
 import { anchorCompositionPreview } from '@/lib/composition/workflow'
 import { APIS, TRUST_COMPOSE_CONFIG } from '@/lib/config'
+import { parseErrorMessage } from '@/lib/error'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
   type InitialProvingPolicy,
   initialPolicyForCreation,
   initialPolicyProblem,
+  parseVaultUsd,
 } from '@/lib/proving-prepay'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
@@ -179,6 +184,10 @@ export const CompositionWorkspace = ({
   )
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [transactionProblem, setTransactionProblem] = useState<string | null>(
+    null
+  )
+  const [billingProblem, setBillingProblem] = useState<string | null>(null)
   const [success, setSuccess] = useState<{
     message: string
     instanceId?: Hex
@@ -219,6 +228,28 @@ export const CompositionWorkspace = ({
   )
   const vaultAddress = vault as Address | undefined
   const vaultAvailable = !!vaultAddress && vaultAddress !== zeroAddress
+  const {
+    data: instanceVaultAccount,
+    isLoading: instanceVaultAccountLoading,
+    refetch: refetchInstanceVaultAccount,
+  } = useReadContract({
+    address: vaultAvailable ? vaultAddress : zeroAddress,
+    abi: compositionVaultAbi,
+    functionName: 'accountOf',
+    args: [settingsInstanceId ?? (`0x${'00'.repeat(32)}` as Hex)],
+    query: { enabled: vaultAvailable && !!settingsInstanceId },
+  })
+  const {
+    data: instanceVaultPolicy,
+    isLoading: instanceVaultPolicyLoading,
+    refetch: refetchInstanceVaultPolicy,
+  } = useReadContract({
+    address: vaultAvailable ? vaultAddress : zeroAddress,
+    abi: compositionVaultAbi,
+    functionName: 'policyOf',
+    args: [settingsInstanceId ?? (`0x${'00'.repeat(32)}` as Hex)],
+    query: { enabled: vaultAvailable && !!settingsInstanceId },
+  })
   const { data: conservativeFee } = useReadContract({
     address: vaultAvailable ? vaultAddress : zeroAddress,
     abi: compositionVaultAbi,
@@ -233,6 +264,15 @@ export const CompositionWorkspace = ({
   const active = policies.find((policy) => policy.status === 'active')
   const pending = policies.find((policy) => policy.status === 'pending')
   const wrongChain = isConnected && chainId !== targetChainId
+  const instanceVaultEth = instanceVaultAccount?.[2] ?? 0n
+  const instanceMaxPerRootUsd = instanceVaultPolicy?.[1] ?? 0n
+  const paidRefreshesEnabled = instanceMaxPerRootUsd > 0n
+  const instanceBillingLoading =
+    instanceVaultAccountLoading || instanceVaultPolicyLoading
+  const canManageBilling =
+    !!address &&
+    !!instance?.admin &&
+    address.toLowerCase() === instance.admin.toLowerCase()
 
   const quote: CompositionQuote = useMemo(
     () => ({
@@ -444,9 +484,16 @@ export const CompositionWorkspace = ({
   }
 
   const updateSource = (sourceId: Hex, update: Partial<CompositionSource>) => {
+    const adapterChanged = update.familyId !== undefined
     setSelected(
       sources.map((source) =>
-        source.sourceId === sourceId ? { ...source, ...update } : source
+        source.sourceId === sourceId
+          ? {
+              ...source,
+              ...update,
+              ...(adapterChanged ? { adapter: null } : {}),
+            }
+          : source
       ),
       'A governed source field changed; rebuild the exact preview.'
     )
@@ -482,57 +529,70 @@ export const CompositionWorkspace = ({
     }
   }
 
-  const deployAdapter = async (source: CompositionSource) => {
+  const deployAdapters = async (requestedSources: CompositionSource[]) => {
     if (!sourceAdapterFactory || !isAddress(sourceAdapterFactory)) {
       return setProblem(
         'The configured factory did not expose a source-adapter factory.'
       )
     }
+    const missing = requestedSources.filter((source) => !source.adapter)
+    if (missing.length === 0) return
     setBusy(true)
     setProblem(null)
     try {
-      const [receipt] = await txToast({
-        tx: {
-          address: sourceAdapterFactory,
+      // Keep each successful adapter if the wallet rejects a later source. These are necessarily
+      // separate factory transactions today, so a partial run should resume at the first missing
+      // source instead of making the user deploy duplicates.
+      for (const [index, source] of missing.entries()) {
+        const [receipt] = await txToast({
+          tx: {
+            address: sourceAdapterFactory,
+            abi: compositionSourceAdapterFactoryAbi,
+            functionName: 'create',
+            args: [
+              source.registry,
+              source.instanceId,
+              source.sourceId,
+              source.familyId,
+              COMPOSITION_OUTPUT_KIND,
+              source.deploymentProvenance,
+            ],
+          },
+          successMessage: `Source ${index + 1} of ${missing.length} prepared: ${source.name}.`,
+          confirmations: index < missing.length - 1 ? 1 : undefined,
+        })
+        // Topic-keyed like every other receipt scan here (the adapter factory is called directly
+        // today, but event-shape matching survives any future wrapping).
+        const [adapterEvent] = parseEventLogs({
           abi: compositionSourceAdapterFactoryAbi,
-          functionName: 'create',
-          args: [
-            source.registry,
-            source.instanceId,
-            source.sourceId,
-            source.familyId,
-            '0xf96f9891e6ddd310141c323b55c40e1ccf0fcb5560f755b3387240dee7f177a1',
-            source.deploymentProvenance,
-          ],
-        },
-        successMessage: `Authenticated adapter deployed for ${source.name}.`,
-      })
-      // Topic-keyed like every other receipt scan here (the adapter factory is called directly
-      // today, but event-shape matching survives any future wrapping).
-      const [adapterEvent] = parseEventLogs({
-        abi: compositionSourceAdapterFactoryAbi,
-        eventName: 'SourceAdapterCreated',
-        logs: receipt.logs,
-      })
-      const adapter: Address | null = adapterEvent?.args.adapter ?? null
-      if (!adapter)
-        throw new Error('Adapter receipt did not contain SourceAdapterCreated.')
-      setSources((current) =>
-        current.map((item) =>
-          item.sourceId === source.sourceId ? { ...item, adapter } : item
+          eventName: 'SourceAdapterCreated',
+          logs: receipt.logs,
+        })
+        const adapter: Address | null = adapterEvent?.args.adapter ?? null
+        if (!adapter) {
+          throw new Error(
+            `Adapter receipt for ${source.name} did not contain SourceAdapterCreated.`
+          )
+        }
+        setSources((current) =>
+          current.map((item) =>
+            item.sourceId === source.sourceId ? { ...item, adapter } : item
+          )
         )
-      )
-      setPreviewConfig((current) =>
-        current
-          ? {
-              ...current,
-              sources: current.sources.map((item) =>
-                item.sourceId === source.sourceId ? { ...item, adapter } : item
-              ),
-            }
-          : null
-      )
-      setSimulatedPayloadHash(null)
+        setPreviewConfig((current) =>
+          current
+            ? {
+                ...current,
+                sources: current.sources.map((item) =>
+                  item.sourceId === source.sourceId
+                    ? { ...item, adapter }
+                    : item
+                ),
+              }
+            : null
+        )
+        setSimulatedPayloadHash(null)
+      }
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -563,17 +623,19 @@ export const CompositionWorkspace = ({
   }
 
   const fundIssue: string | null =
-    withFund && fundToken === 'other'
-      ? !fundTokenAddress.trim()
-        ? 'Paste the address of the token you plan to pay out.'
-        : !isAddress(fundTokenAddress.trim(), { strict: false })
-          ? "That doesn't look like a token address."
-          : null
-      : null
+    withFund && !withGovernance
+      ? 'A shared fund must be owned by an initialized Safe. Turn on Create with governance, or create without a fund.'
+      : withFund && fundToken === 'other'
+        ? !fundTokenAddress.trim()
+          ? 'Paste the address of the token you plan to pay out.'
+          : !isAddress(fundTokenAddress.trim(), { strict: false })
+            ? "That doesn't look like a token address."
+            : null
+        : null
 
   // The optional refresh prepayment rides as transaction value in both creation paths. The
-  // governed wrapper can also install the paid-spend policy atomically; a wallet-owned instance
-  // receives the same proving-tank deposit and its constitutional admin can configure policy later.
+  // governed wrapper installs the policy atomically. A wallet-owned creation follows the factory
+  // transaction with a second, explicit setPolicy transaction from its constitutional admin.
   const prepayIssue: string | null = (() => {
     const trimmed = prepayEth.trim()
     if (!trimmed) return null
@@ -586,9 +648,7 @@ export const CompositionWorkspace = ({
     if (Number(trimmed) === 0) {
       return 'Leave it blank rather than entering zero.'
     }
-    return withGovernance
-      ? initialPolicyProblem(prepayEth, maxPerRootUsd)
-      : null
+    return initialPolicyProblem(prepayEth, maxPerRootUsd)
   })()
   const prepayWei =
     prepayEth.trim() && !prepayIssue ? parseEther(prepayEth.trim()) : 0n
@@ -705,11 +765,35 @@ export const CompositionWorkspace = ({
       config: previewConfig,
       preview,
       previewError,
-      // A proving quote is a creation blocker only when governance is installing a paid policy.
-      quote: withGovernance && prepayWei > 0n ? quote : null,
+      quote: prepayWei > 0n ? quote : null,
       stage: 'sign',
     })
-  }, [prepayWei, preview, previewConfig, previewError, quote, withGovernance])
+  }, [prepayWei, preview, previewConfig, previewError, quote])
+
+  const missingAdapters =
+    previewConfig?.sources.filter((source) => !source.adapter) ?? []
+  const transactionBlockers = [
+    mode === 'create' ? metadataIssue : null,
+    fundIssue,
+    prepayIssue,
+    governanceIssue,
+    mode === 'create' && withGovernance && authority.loading
+      ? 'The governance safety profile is still loading.'
+      : null,
+  ].filter((value): value is string => !!value)
+  if (
+    preview &&
+    previewConfig &&
+    missingAdapters.length === 0 &&
+    transactionBlockers.length === 0 &&
+    !payload
+  ) {
+    transactionBlockers.push(
+      'The exact transaction payload could not be built. Rebuild the preview and try again.'
+    )
+  }
+  const readyToSimulate =
+    !!payload && !preflight?.blocked && transactionBlockers.length === 0
 
   const assertPreviewSourcesCurrent = async () => {
     if (!publicClient || !previewConfig) return
@@ -757,8 +841,43 @@ export const CompositionWorkspace = ({
     }
   }
 
+  const configurePaidRefreshes = async (
+    targetInstanceId: Hex,
+    policy: InitialProvingPolicy
+  ) => {
+    if (!publicClient || !address) throw new Error('Connect a wallet first.')
+    if (!vaultAvailable || !vaultAddress) {
+      throw new Error('This deployment has no proving vault.')
+    }
+    await publicClient.simulateContract({
+      account: address,
+      address: vaultAddress,
+      abi: compositionVaultAbi,
+      functionName: 'setPolicy',
+      args: [
+        targetInstanceId,
+        policy.minPaidIntervalBlocks,
+        policy.maxPerRootUsd,
+      ],
+    })
+    await txToast({
+      tx: {
+        address: vaultAddress,
+        abi: compositionVaultAbi,
+        functionName: 'setPolicy',
+        args: [
+          targetInstanceId,
+          policy.minPaidIntervalBlocks,
+          policy.maxPerRootUsd,
+        ],
+      },
+      successMessage: 'Paid score refreshes enabled.',
+    })
+  }
+
   const simulate = async () => {
     setProblem(null)
+    setTransactionProblem(null)
     setBusy(true)
     try {
       if (!publicClient || !address) throw new Error('Connect a wallet first.')
@@ -821,6 +940,7 @@ export const CompositionWorkspace = ({
         if (!active) throw new Error('Load an active composition policy first.')
         if (pending)
           throw new Error('Cancel or activate the pending policy first.')
+        const adapters = compositionSourceAdapters(previewConfig.sources)
         await publicClient.simulateContract({
           account: address,
           address: active.controller,
@@ -828,17 +948,14 @@ export const CompositionWorkspace = ({
           functionName: 'proposePolicy',
           args: [
             preview.policyManifest,
-            previewConfig.sources.map((source) => source.adapter!),
-            compositionMetadataDigest(
-              preview,
-              previewConfig.sources.map((source) => source.adapter!)
-            ),
+            adapters,
+            compositionMetadataDigest(preview, adapters),
           ],
         })
         setSimulatedPayloadHash(keccak256(payload))
       }
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error))
+      setTransactionProblem(parseErrorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -846,6 +963,7 @@ export const CompositionWorkspace = ({
 
   const sign = async () => {
     setProblem(null)
+    setTransactionProblem(null)
     setBusy(true)
     try {
       if (!preview || !previewConfig || !payload)
@@ -899,7 +1017,9 @@ export const CompositionWorkspace = ({
         const created = createdEvent?.args.instanceId
         setSuccess({
           message: created
-            ? 'Creation confirmed. The durable provenance route will populate after indexing.'
+            ? prepayWei > 0n && !withGovernance
+              ? 'Composition created and funded. Approve the second transaction to let the proving operator spend that balance on score refreshes.'
+              : 'Creation confirmed. The composed network will appear after indexing.'
             : `Creation confirmed in ${receipt.transactionHash}.`,
           instanceId: created,
           safe: governedEvent?.args.safe,
@@ -910,8 +1030,28 @@ export const CompositionWorkspace = ({
             JSON.stringify(anchorCompositionPreview(preview))
           )
         }
+        if (prepayWei > 0n && !withGovernance) {
+          if (!created || !initialPolicy) {
+            throw new Error(
+              'The composition was created and funded, but its paid-refresh policy could not be prepared. Open its settings to enable paid refreshes.'
+            )
+          }
+          try {
+            await configurePaidRefreshes(created, initialPolicy)
+            setSuccess({
+              message:
+                'Composition created, funded, and enabled for paid score refreshes. It may take a moment to appear while the indexer catches up.',
+              instanceId: created,
+            })
+          } catch (policyError) {
+            setTransactionProblem(
+              `The composition was created and the ETH is safe in its proving tank, but paid refreshes are still disabled because the second transaction did not complete: ${parseErrorMessage(policyError)} Open the composition settings to finish enabling them.`
+            )
+          }
+        }
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
+        const adapters = compositionSourceAdapters(previewConfig.sources)
         await txToast({
           tx: {
             address: active.controller,
@@ -919,11 +1059,8 @@ export const CompositionWorkspace = ({
             functionName: 'proposePolicy',
             args: [
               preview.policyManifest,
-              previewConfig.sources.map((source) => source.adapter!),
-              compositionMetadataDigest(
-                preview,
-                previewConfig.sources.map((source) => source.adapter!)
-              ),
+              adapters,
+              compositionMetadataDigest(preview, adapters),
             ],
           },
           successMessage:
@@ -943,7 +1080,7 @@ export const CompositionWorkspace = ({
       }
     } catch (error) {
       // A wallet refusal is intentionally non-destructive: the exact simulation remains reusable.
-      setProblem(error instanceof Error ? error.message : String(error))
+      setTransactionProblem(parseErrorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -996,6 +1133,35 @@ export const CompositionWorkspace = ({
     }
   }
 
+  const updatePaidRefreshPolicy = async () => {
+    if (!settingsInstanceId || !instance) return
+    setBillingProblem(null)
+    setBusy(true)
+    try {
+      const issue = initialPolicyProblem('1', maxPerRootUsd)
+      if (issue) throw new Error(issue)
+      const cap = parseVaultUsd(maxPerRootUsd)
+      if (!cap) throw new Error('Set a nonzero maximum per refresh.')
+      const interval = BigInt(instance.epochLength)
+      await configurePaidRefreshes(settingsInstanceId, {
+        minPaidIntervalBlocks: interval,
+        maxPerRootUsd: cap,
+      })
+      await Promise.all([
+        refetchInstanceVaultAccount(),
+        refetchInstanceVaultPolicy(),
+      ])
+      setSuccess({
+        message: 'Paid score refreshes are enabled for this composition.',
+        instanceId: settingsInstanceId,
+      })
+    } catch (error) {
+      setBillingProblem(parseErrorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const simplex =
     preview && previewConfig ? compositionSimplex(previewConfig, 20) : []
 
@@ -1033,7 +1199,10 @@ export const CompositionWorkspace = ({
       ))}
       {problem && (
         <Card type="outline" size="sm" className="border-destructive">
-          <p role="alert" className="text-sm text-destructive">
+          <p
+            role="alert"
+            className="break-words text-sm text-destructive [overflow-wrap:anywhere]"
+          >
             {problem}
           </p>
         </Card>
@@ -1049,7 +1218,7 @@ export const CompositionWorkspace = ({
               className="text-sm underline"
               href={`/compositions/${success.instanceId}`}
             >
-              Open composition provenance
+              Open composed network
             </Link>
           )}
           {success.safe && (
@@ -1118,6 +1287,97 @@ export const CompositionWorkspace = ({
                 </Button>
               </div>
             </div>
+          )}
+        </Card>
+      )}
+
+      {mode === 'rotate' && instance && (
+        <Card type="outline" size="md" className="space-y-4">
+          <div>
+            <h2 className="font-medium">Score refresh payments</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The proving tank has {formatEther(instanceVaultEth)} ETH. A
+              spending policy must also be enabled before an operator can use
+              it.
+            </p>
+          </div>
+          <div className="rounded border p-3 text-sm">
+            {instanceBillingLoading ? (
+              <p className="text-muted-foreground">
+                Reading the proving balance and policy…
+              </p>
+            ) : paidRefreshesEnabled ? (
+              <p className="text-emerald-700">
+                Paid refreshes are enabled. The current maximum is $
+                {(Number(instanceMaxPerRootUsd) / 100_000_000).toLocaleString()}{' '}
+                per refresh.
+              </p>
+            ) : instanceVaultEth > 0n ? (
+              <p className="text-amber-700">
+                This composition is funded, but paid refreshes are disabled. The
+                operator cannot spend the deposited ETH until you enable a
+                per-refresh limit below.
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                Paid refreshes are disabled and the proving tank is empty.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label
+              className="text-xs text-muted-foreground"
+              htmlFor="composition-settings-max-refresh"
+            >
+              Maximum per score refresh
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm opacity-60">$</span>
+              <Input
+                id="composition-settings-max-refresh"
+                className="w-32"
+                inputMode="decimal"
+                value={maxPerRootUsd}
+                onChange={(event) => setMaxPerRootUsd(event.target.value)}
+              />
+              <span className="text-sm opacity-60">
+                USD · no more often than every {instance.epochLength} blocks
+              </span>
+            </div>
+          </div>
+          {billingProblem && (
+            <p
+              role="alert"
+              className="break-words text-xs text-destructive [overflow-wrap:anywhere]"
+            >
+              {billingProblem}
+            </p>
+          )}
+          {!isConnected ? (
+            <WalletConnectionButton />
+          ) : wrongChain ? (
+            <Button
+              type="button"
+              disabled={switchingChain}
+              onClick={() => switchChain({ chainId: targetChainId })}
+            >
+              Switch to {getTargetChainConfig().name}
+            </Button>
+          ) : canManageBilling ? (
+            <Button
+              type="button"
+              onClick={updatePaidRefreshPolicy}
+              disabled={busy || !!initialPolicyProblem('1', maxPerRootUsd)}
+            >
+              {paidRefreshesEnabled
+                ? 'Update refresh spending limit'
+                : 'Enable paid score refreshes'}
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              This action must be sent by the composition admin{' '}
+              <span className="font-mono">{instance.admin}</span>.
+            </p>
           )}
         </Card>
       )}
@@ -1296,9 +1556,9 @@ export const CompositionWorkspace = ({
                     size="sm"
                     variant="outline"
                     disabled={busy || !sourceAdapterFactory}
-                    onClick={() => deployAdapter(source)}
+                    onClick={() => deployAdapters([source])}
                   >
-                    Deploy reviewed adapter
+                    Prepare this source
                   </Button>
                 )}
               </Card>
@@ -1382,12 +1642,23 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withFund}
+                  readOnly={!governedAvailable}
                   onClick={() => {
-                    setWithFund(!withFund)
+                    if (!governedAvailable) return
+                    const next = !withFund
+                    setWithFund(next)
+                    if (next) setWithGovernance(true)
                     setSimulatedPayloadHash(null)
+                    setTransactionProblem(null)
                   }}
                 />
               </div>
+              {!governedAvailable && (
+                <p className="text-xs text-muted-foreground">
+                  A shared fund requires the governed factory to create its Safe
+                  owner, and governance is not available on this deployment.
+                </p>
+              )}
               {withFund && (
                 <div className="space-y-3 border-t border-border pt-3">
                   <p className="text-sm">What do you expect to pay out?</p>
@@ -1434,19 +1705,17 @@ export const CompositionWorkspace = ({
                   )}
                   <p className="text-xs text-muted-foreground">
                     This only decides what the payout screen shows first. The
-                    fund holds anything and can pay out something else later.{' '}
-                    {withGovernance
-                      ? 'The new DAO Safe owns the fund, so payouts happen through member governance.'
-                      : 'Your wallet owns the fund: money only moves when you send a payout, and each member claims their share themselves.'}
+                    fund holds anything and can pay out something else later.
+                    The new DAO Safe owns the fund, so payouts happen through
+                    member governance.
                   </p>
                 </div>
               )}
               {!withFund && (
                 <p className="text-xs text-muted-foreground">
-                  Skipping this closes no doors: the composition&apos;s
-                  authority can attach a fund later with the factory&apos;s
-                  attachDistributor call, though this workspace does not offer
-                  that button yet.
+                  {withGovernance
+                    ? 'The composition Safe can attach a shared fund later, though this workspace does not offer that button yet.'
+                    : 'A wallet-owned composition cannot attach this shared fund later. Turn on governance now if the composition needs one.'}
                 </p>
               )}
             </Card>
@@ -1471,14 +1740,22 @@ export const CompositionWorkspace = ({
                 <Switch
                   size="md"
                   enabled={withGovernance}
-                  readOnly={!governedAvailable}
+                  readOnly={!governedAvailable || (withFund && withGovernance)}
                   onClick={() => {
-                    if (!governedAvailable) return
+                    if (!governedAvailable || (withFund && withGovernance))
+                      return
                     setWithGovernance(!withGovernance)
                     setSimulatedPayloadHash(null)
+                    setTransactionProblem(null)
                   }}
                 />
               </div>
+              {withFund && (
+                <p className="text-xs text-muted-foreground">
+                  Governance is required while a shared fund is selected: the
+                  fund&apos;s owner must be an initialized Safe.
+                </p>
+              )}
               {!governedAvailable && (
                 <p className="text-xs text-muted-foreground">
                   Create with governance is not available on this deployment, so
@@ -1560,7 +1837,7 @@ export const CompositionWorkspace = ({
                 />
                 <span className="text-sm opacity-60">ETH (optional)</span>
               </div>
-              {prepayEth.trim() && withGovernance && (
+              {prepayEth.trim() && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label
@@ -1603,7 +1880,7 @@ export const CompositionWorkspace = ({
                 <p className="text-xs text-muted-foreground">
                   {withGovernance
                     ? 'The simulation checks the proving price and installs this spending policy atomically with creation.'
-                    : 'The deposit is made with creation. Because this composition is wallet-owned, its constitutional admin can set the spending policy later through ProvingVault.'}
+                    : 'Creation deposits the ETH first, then your wallet asks for a second transaction to enable this spending policy. If you stop after creation, the ETH remains safe and you can finish in composition settings.'}
                 </p>
               )}
             </Card>
@@ -1784,7 +2061,10 @@ export const CompositionWorkspace = ({
           </h2>
           <div className="space-y-2">
             {preflight.issues
-              .filter((issue) => issue.level !== 'info')
+              .filter(
+                (issue) =>
+                  issue.level !== 'info' && issue.code !== 'adapter-required'
+              )
               .map((issue, index) => (
                 <Card
                   key={`${issue.code}:${index}`}
@@ -1807,18 +2087,53 @@ export const CompositionWorkspace = ({
                   </div>
                 </Card>
               ))}
-            {preflight.issues.every((issue) => issue.level === 'info') && (
-              <Card type="outline" size="sm">
-                <p className="text-sm text-emerald-700">
-                  The preview passed all source and policy checks.
-                </p>
+            {missingAdapters.length === 0 && transactionBlockers.length > 0 && (
+              <Card type="outline" size="sm" className="border-destructive">
+                <div className="flex gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                  <div>
+                    <p className="text-sm font-medium">
+                      Finish the required creation details
+                    </p>
+                    <ul className="list-disc pl-4 text-xs text-muted-foreground">
+                      {transactionBlockers.map((blocker) => (
+                        <li key={blocker}>{blocker}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </Card>
             )}
+            {!preflight.blocked &&
+              missingAdapters.length === 0 &&
+              transactionBlockers.length === 0 && (
+                <Card type="outline" size="sm">
+                  <p className="text-sm text-emerald-700">
+                    Ready to simulate the exact transaction.
+                  </p>
+                </Card>
+              )}
           </div>
           {payload && (
             <p className="break-all font-mono text-xs text-muted-foreground">
               Exact transaction payload {keccak256(payload)}
             </p>
+          )}
+          {transactionProblem && (
+            <Card type="outline" size="sm" className="border-destructive">
+              <div className="flex min-w-0 gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Couldn&apos;t continue</p>
+                  <p
+                    role="alert"
+                    className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]"
+                  >
+                    {transactionProblem}
+                  </p>
+                </div>
+              </div>
+            </Card>
           )}
           {wrongChain ? (
             <Button
@@ -1830,22 +2145,43 @@ export const CompositionWorkspace = ({
             </Button>
           ) : !isConnected ? (
             <WalletConnectionButton />
+          ) : missingAdapters.length > 0 ? (
+            <Card type="outline" size="sm" className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">Prepare selected sources</p>
+                <p className="text-xs text-muted-foreground">
+                  Each graph needs a one-time authentication contract before a
+                  composition can use it. You&apos;ll approve{' '}
+                  {missingAdapters.length} setup transaction
+                  {missingAdapters.length === 1 ? '' : 's'}; successful sources
+                  stay prepared if you stop partway through.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => deployAdapters(missingAdapters)}
+                disabled={busy || !sourceAdapterFactory}
+              >
+                {busy ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : null}
+                Prepare {missingAdapters.length} source
+                {missingAdapters.length === 1 ? '' : 's'}
+              </Button>
+              {!sourceAdapterFactory && (
+                <p className="text-xs text-destructive">
+                  This deployment has no source-adapter factory configured, so
+                  composition creation is unavailable on this chain.
+                </p>
+              )}
+            </Card>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={simulate}
-                disabled={
-                  busy ||
-                  !payload ||
-                  preflight.blocked ||
-                  !!fundIssue ||
-                  (mode === 'create' && !!metadataIssue) ||
-                  !!prepayIssue ||
-                  !!governanceIssue ||
-                  (mode === 'create' && withGovernance && authority.loading)
-                }
+                disabled={busy || !readyToSimulate}
               >
                 Simulate exact payload
               </Button>
@@ -1860,16 +2196,14 @@ export const CompositionWorkspace = ({
                     : 'Create composed graph'
                   : 'Propose timelocked rotation'}
               </Button>
+              {readyToSimulate && !simulatedPayloadHash && (
+                <p className="basis-full text-xs text-muted-foreground">
+                  Simulation is the required final check before creation is
+                  enabled.
+                </p>
+              )}
             </div>
           )}
-          {!payload &&
-            previewConfig.sources.some((source) => !source.adapter) && (
-              <p className="text-sm text-muted-foreground">
-                To continue, use “Deploy reviewed adapter” on each source above.
-                The adapter authenticates that source for the composition
-                factory; it is a one-time onchain setup per source policy.
-              </p>
-            )}
           {simulatedPayloadHash && (
             <p className="text-sm text-emerald-700">
               Simulation passed for payload {short(simulatedPayloadHash)}.

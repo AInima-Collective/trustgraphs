@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 
-import { type Address, type Hex, decodeFunctionData, keccak256 } from 'viem'
+import {
+  type Address,
+  type Hex,
+  decodeErrorResult,
+  decodeFunctionData,
+  encodeErrorResult,
+  keccak256,
+} from 'viem'
 
 import {
   compositionActivationPayload,
@@ -10,6 +17,7 @@ import {
   compositionCreatePayload,
   compositionProposalPayload,
   compositionSourceAdapterFactoryAbi,
+  compositionSourceAdapters,
   trustComposeFactoryAbi,
   trustComposeParamsControllerAbi,
 } from './contracts'
@@ -43,15 +51,19 @@ const fields = {
 }
 
 const createArgs = compositionCreateArgs(fields, config, preview)
+const canonicalAdapters = compositionSourceAdapters(config.sources)
 assert.equal(createArgs.params.sourcePolicyRoot, ZERO_HASH)
 assert.equal(createArgs.params.sourceCount, 0)
 assert.equal(createArgs.params.policyManifestSha256, ZERO_HASH)
 assert.equal(createArgs.params.accumulator, ZERO_ADDRESS)
 assert.equal(createArgs.params.chainId, 0n)
 assert.equal(createArgs.params.maxSourceAgeBlocks, 500_000n)
+assert.deepEqual(createArgs.sourceAdapters, canonicalAdapters)
+const reversedConfig = structuredClone(config)
+reversedConfig.sources.reverse()
 assert.deepEqual(
-  createArgs.sourceAdapters,
-  config.sources.map((row) => row.adapter)
+  compositionCreateArgs(fields, reversedConfig, preview).sourceAdapters,
+  canonicalAdapters
 )
 
 const createPayload = compositionCreatePayload(fields, config, preview)
@@ -72,10 +84,12 @@ const decodedProposal = decodeFunctionData({
 })
 assert.equal(decodedProposal.functionName, 'proposePolicy')
 assert.equal(decodedProposal.args![0], preview.policyManifest)
-assert.deepEqual(
-  decodedProposal.args![1],
-  config.sources.map((row) => row.adapter)
-)
+assert.deepEqual(decodedProposal.args![1], canonicalAdapters)
+const reversedProposal = decodeFunctionData({
+  abi: trustComposeParamsControllerAbi,
+  data: compositionProposalPayload(reversedConfig, preview),
+})
+assert.deepEqual(reversedProposal.args![1], canonicalAdapters)
 
 const adapterPayload = compositionAdapterPayload(config.sources[0]!)
 const decodedAdapter = decodeFunctionData({
@@ -108,6 +122,35 @@ assert.equal(
     ),
   }).functionName,
   'activatePolicy'
+)
+
+const unsafeFundOwner = encodeErrorResult({
+  abi: trustComposeFactoryAbi,
+  errorName: 'InvalidDistributorSafe',
+  args: [fields.admin],
+})
+assert.equal(unsafeFundOwner.slice(0, 10), '0x39d5d230')
+const decodedUnsafeFundOwner = decodeErrorResult({
+  abi: trustComposeFactoryAbi,
+  data: unsafeFundOwner,
+})
+assert.equal(decodedUnsafeFundOwner.errorName, 'InvalidDistributorSafe')
+assert.equal(
+  (decodedUnsafeFundOwner.args?.[0] as Address).toLowerCase(),
+  fields.admin.toLowerCase()
+)
+const mismatchedAdapterOrder = encodeErrorResult({
+  abi: trustComposeFactoryAbi,
+  errorName: 'AdapterPolicyMismatch',
+  args: [0],
+})
+assert.equal(mismatchedAdapterOrder.slice(0, 10), '0x6eb8d307')
+assert.equal(
+  decodeErrorResult({
+    abi: trustComposeFactoryAbi,
+    data: mismatchedAdapterOrder,
+  }).errorName,
+  'AdapterPolicyMismatch'
 )
 
 let workflow = initialCompositionWorkflow()

@@ -44,12 +44,12 @@ export const CompositionCatalog = () => {
     <main className="max-w-5xl space-y-6" aria-labelledby="compositions-title">
       <header className="space-y-2">
         <h1 id="compositions-title" className="text-2xl">
-          Composition provenance
+          Composed networks
         </h1>
         <p className="text-sm text-muted-foreground">
-          Durable policy, capture, output, proof, and governance receipts for
-          trust-compose instances. These are proved final-distribution
-          blends—not raw-edge unions or inherited priors.
+          Networks made by blending the proved scores of two or more source
+          Trustgraphs. Open one to see its current scores, source policy, and
+          proof history.
         </p>
         <div className="flex gap-2">
           <Button

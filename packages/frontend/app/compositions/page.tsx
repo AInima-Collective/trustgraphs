@@ -3,9 +3,9 @@ import type { Metadata } from 'next'
 import { CompositionCatalog } from './catalog'
 
 export const metadata: Metadata = {
-  title: 'Composition provenance',
+  title: 'Composed networks',
   description:
-    'Inspect trust-compose policy, capture, output, proof, and governance receipts.',
+    'Browse composed Trustgraphs and inspect their source policies and proof history.',
 }
 
 export default function CompositionsPage() {

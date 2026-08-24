@@ -27,8 +27,8 @@ use crate::chain::{
 use crate::config::Config;
 use crate::handlers;
 use crate::ops::{
-    action_key, alert, write_status, InstanceStatus, Logger, Narration, PublicSettings,
-    Status as OpsStatus,
+    action_json, action_key, alert, write_status, InstanceStatus, Logger, Narration,
+    PublicSettings, Status as OpsStatus,
 };
 use crate::tx::Sender;
 
@@ -690,12 +690,7 @@ fn tick(
                 in_flight_now += 1;
             }
             if alerts(&action) {
-                let text = format!(
-                    "{} ({}): {}",
-                    entry.name,
-                    program.name(),
-                    serde_json::to_string(&action).unwrap_or_default()
-                );
+                let text = format!("{} ({}): {}", entry.name, program.name(), action_json(&action));
                 alert(logger, cfg.ops.alert_webhook.as_deref(), &text);
                 alerts_raised.push(text);
             }
@@ -1062,16 +1057,7 @@ fn build_state(
     };
     if program == Program::Composition {
         if let (Some(cycles), Some(quote)) = (authenticated_cycles, vault.as_mut()) {
-            if !composition_quote_covers_proving(
-                *quote,
-                cycles,
-                cfg.budget.cents_per_billion_cycles,
-            ) {
-                quote.eligible = false;
-                // Operator-local reason outside the on-chain enum: authenticated composition work
-                // exceeds the available quote. It is surfaced as an ordinary funded hold.
-                quote.reason = u8::MAX;
-            }
+            apply_composition_cost_floor(quote, cycles, cfg.budget.cents_per_billion_cycles);
         }
     }
 
@@ -1180,6 +1166,23 @@ fn composition_quote_covers_proving(
     cents_per_billion_cycles: u64,
 ) -> bool {
     quote.fee_usd >= composition_required_usd_1e8(cycles, cents_per_billion_cycles)
+}
+
+fn apply_composition_cost_floor(
+    quote: &mut operator_core::types::VaultView,
+    cycles: u64,
+    cents_per_billion_cycles: u64,
+) {
+    // Preserve the vault's more specific explanation when it is already ineligible. In
+    // particular, a disabled policy is reason 2; overwriting it with our operator-local 255 made
+    // a funded-but-disabled composition look mysteriously underfunded in operator logs.
+    if quote.eligible && !composition_quote_covers_proving(*quote, cycles, cents_per_billion_cycles)
+    {
+        quote.eligible = false;
+        // Operator-local reason outside the on-chain enum: authenticated composition work exceeds
+        // the available fee quote.
+        quote.reason = u8::MAX;
+    }
 }
 
 /// Do the one thing the plan said. Nothing here reinterprets it.
@@ -1751,6 +1754,21 @@ mod tests {
             100
         ));
         assert_eq!(large_tank_tiny_fee.offered_usd(), 3_000_000);
+
+        let mut policy_disabled = operator_core::types::VaultView {
+            eligible: false,
+            fee_usd: 0,
+            gas_usd: 0,
+            payable_usd: 50_000_000,
+            reason: 2,
+        };
+        apply_composition_cost_floor(&mut policy_disabled, crate::composition::BAND_4_CYCLES, 100);
+        assert_eq!(policy_disabled.reason, 2, "preserve the vault's PolicyDisabled reason");
+
+        let mut underpriced = large_tank_tiny_fee;
+        apply_composition_cost_floor(&mut underpriced, crate::composition::BAND_4_CYCLES, 100);
+        assert!(!underpriced.eligible);
+        assert_eq!(underpriced.reason, u8::MAX);
     }
 }
 

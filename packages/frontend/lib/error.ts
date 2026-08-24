@@ -20,6 +20,14 @@ const recognizedErrorMessages: Record<
     'An unexpected RPC error occurred. Please refresh the page to reconnect or try again later.',
   'internal json-rpc error':
     'An unexpected RPC error occurred. Please refresh the page to reconnect or try again later.',
+  invaliddistributorsafe:
+    'A shared fund must be owned by an initialized Safe. Turn on Create with governance, or create without a fund.',
+  '0x39d5d230':
+    'A shared fund must be owned by an initialized Safe. Turn on Create with governance, or create without a fund.',
+  adapterpolicymismatch:
+    'The prepared source adapters were not in the same canonical order as the composition policy. Rebuild the exact preview and try again.',
+  '0x6eb8d307':
+    'The prepared source adapters were not in the same canonical order as the composition policy. Rebuild the exact preview and try again.',
 }
 
 /**

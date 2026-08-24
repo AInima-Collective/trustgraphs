@@ -273,7 +273,7 @@ export const compositionPreflight = ({
           detail:
             'Preview can run without an adapter, but creation and rotation require an adapter from the configured append-only factory.',
           action:
-            'Review the provenance packet and deploy or enter the matching adapter.',
+            'Use Prepare selected sources below; the app will deploy and attach the reviewed adapter.',
         })
       )
     }

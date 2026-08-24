@@ -45,6 +45,11 @@ assert.ok(
     .filter((issue) => issue.blocks)
     .every((issue) => issue.code === 'adapter-required')
 )
+assert.ok(
+  signCheck.issues
+    .filter((issue) => issue.code === 'adapter-required')
+    .every((issue) => issue.action.includes('Prepare selected sources'))
+)
 
 const unavailable = structuredClone(baseline)
 unavailable.sources[0]!.available = false
