@@ -1,24 +1,52 @@
-# Reproduce an epoch
+# Reproduce a public EAS epoch
 
-Every accepted score root can be recomputed from its committed inputs. Reproduction checks the
-operator's output independently; the proof ensures the contract performed the same check before
-accepting it.
+This walkthrough covers the standard `trust-graph` program with onchain lane-1 EAS inputs. Those
+records are recoverable from public chain history, so an independent reader can reconstruct the
+checkpoint and recompute its output.
 
-## What the chain commits
+It does not cover strict offchain EAS, weighted prior, Contributions, Hypercerts, Nostr,
+composition, or signer sync. Those programs require additional manifests, anchors, envelopes, or
+program-specific witnesses. In general, an accepted output can be reproduced only while the exact
+committed witness and build inputs remain available.
 
-An epoch identifies:
+## Identify the accepted statement
 
-- the complete input accumulator and record count;
-- the checkpoint block;
-- the scoring parameter hash;
-- the proving program through its verification key; and
-- the output root, score-file digest, and CID.
+For one standard checkpoint, collect:
 
-Changing an input, omitting a record, or using different parameters changes those commitments.
+- the primary accumulator commitment, record count, and freeze block;
+- the parameter hash pinned by `checkpointParamsHash(checkpointId)`;
+- the snapshot's instance domain;
+- the accepted output root, blob digest, CID, and total value; and
+- the verifier address, code hash, and program verification key used at submission.
 
-## Recompute a trust-graph epoch
+The checkpoint pins inputs and parameters, not the verifier. On a provenance-enabled factory
+deployment, `getAcceptedCheckpoint(checkpointId)` returns both the exact accepted state and the
+submission-time verifier record. Do not substitute the snapshot's current verifier when auditing
+an older root.
 
-Build the pinned guest and host tools:
+Useful reads include:
+
+```bash
+cast call "$MERKLE_SNAPSHOT" \
+  "checkpointParamsHash(uint256)(bytes32)" "$CHECKPOINT_ID" --rpc-url "$RPC_URL"
+
+cast call "$MERKLE_SNAPSHOT" \
+  "instanceDomain()(bytes32)" --rpc-url "$RPC_URL"
+
+cast call "$MERKLE_SNAPSHOT" \
+  "provenanceEnabled()(bool)" --rpc-url "$RPC_URL"
+
+cast call "$MERKLE_SNAPSHOT" \
+  "getAcceptedCheckpoint(uint256)((uint256,uint256,bytes32,bytes32,string,uint256),(uint256,uint256,uint64,bytes32,address,bytes32,bytes32))" \
+  "$CHECKPOINT_ID" --rpc-url "$RPC_URL"
+```
+
+Legacy deployments without checkpoint provenance require the corresponding proof-submission and
+verifier-update events to reconstruct which verifier accepted a historical root.
+
+## Export the lane-1 witness
+
+Build the guest and host tools from the source revision associated with the accepted program:
 
 ```bash
 task zk:build
@@ -36,10 +64,13 @@ cargo run -p input-exporter -- \
   --snapshot "$MERKLE_SNAPSHOT"
 ```
 
-The exporter re-folds the event history and refuses an input set that does not match the onchain
-accumulator.
+The exporter re-folds the ordered event history and refuses an input set that does not match the
+onchain accumulator and record count. The supplied parameter file must hash to the checkpoint's
+pinned parameter hash.
 
-Execute the proving program locally without requesting a cryptographic proof:
+## Execute the guest and compare
+
+Run the native computation and the real guest ELF through the SP1 executor:
 
 ```bash
 SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
@@ -47,22 +78,26 @@ SP1_PROVER=mock SP1_SKIP_PROGRAM_BUILD=true \
   trust-graph execute ./.trustgraph/trust-graph/input.json
 ```
 
-Compare the reported output root, score-file digest, CID, total, parameter hash, and instance
-domain with the accepted state:
+This command checks guest-versus-native output equality. It does not request or verify a
+cryptographic proof.
+
+Compare the reported root, output-file digest, CID, total value, parameter hash, and instance
+domain with `getAcceptedCheckpoint`. Then build the accepted guest's verification key and compare
+it with the recorded `programVKey`:
 
 ```bash
-cast call "$MERKLE_SNAPSHOT" \
-  "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))"
+task zk:vkey PROGRAM=trust-graph
 ```
 
-To reproduce an older epoch, query that checkpoint's accepted state rather than the latest one.
+A byte-for-byte match shows that the public witness and recorded program reproduce the accepted
+output independently of the original operator.
 
 ## Interpret a mismatch
 
-A mismatch means either the reconstructed input does not match the checkpoint, the wrong program
-or parameters were used, or the published output does not follow from those inputs. Check the
-instance ID, checkpoint ID, deployment block, parameter version, and verification key before
-comparing output bytes.
+A mismatch can come from the wrong instance or checkpoint, incomplete event history, the wrong
+parameter version, a different guest build or toolchain, or unavailable output bytes. Check the
+deployment block, accumulator count, pinned parameter hash, accepted verifier provenance, source
+revision, and guest digest before comparing outputs.
 
-See [Golden vectors](./golden-vectors.md) for cross-language fixtures and
-[Addresses and vkeys](./addresses-and-vkeys.md) for checking a deployed verifier.
+See [Golden vectors](./golden-vectors.md) for implementation parity and [Addresses and verification
+keys](./addresses-and-vkeys.md) for checking a deployed verifier.

@@ -10,8 +10,10 @@ The supported path uses public EAS off-chain attestations signed by Ethereum acc
 not private or erasable: the signed payload must remain available for future proofs, and a
 revocation is another authenticated record.
 
-The operator must use the newest committed history. If required payloads are missing or invalid,
-the checkpoint stops instead of producing a partial graph.
+The guest evaluates each account's anchored history under deterministic freshness and signature
+rules. It uses the newest usable state, can carry forward an older still-valid state, or drops that
+account's offchain outgoing edges when no usable state remains. These decisions are committed in
+the proof's `skippedDigest`; one unavailable account does not abort the entire checkpoint.
 
 ## Operational requirements
 

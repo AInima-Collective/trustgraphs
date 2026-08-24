@@ -10,9 +10,10 @@ Repository heads are anchored onchain. The proof verifies the anchored history, 
 program's deterministic record-to-edge rules, resolves supported identity links, and computes a
 score root with the same integer ranking system used by other trustgraphs programs.
 
-The accepted result can include scores keyed by AT Protocol identity and, where a valid binding is
-present, by Ethereum address. Applications can request a Merkle proof for an individual score and
-verify it against the onchain root.
+Canonical scores are keyed by program node ID. A supported AT Protocol identity maps to that node
+domain; when a valid EVM binding exists, the program adds an address-domain leaf to the same Merkle
+root. Applications request the proof appropriate to the identity domain and verify it against the
+accepted root.
 
 ## Trust boundary
 

@@ -1,52 +1,77 @@
 # Create a network
 
-The create flow deploys an independent trustgraphs network for your community. Each network has its
-own inputs, scoring parameters, governance, proof history, and current score root.
+The creation flows deploy independent Trustgraphs instances. Each network selects its initial
+program verifier, input commitments, parameters, authority, and proof-history contracts.
 
-## Choose a network type
+## Choose the computation
 
 Open [the create page](/create) and choose:
 
-- **Standard trust graph** for equal starting influence and Ethereum vouches.
-- **Weighted prior** when selected accounts need different starting influence.
-- **Score composition** when the input is several existing, proven score sets.
+- **Standard trust graph** when members will create EAS vouches and the starting accounts should
+  divide their initial share equally.
+- **Weighted prior** when the scoring program should use a reviewed account-and-weight allocation
+  as its persistent personalized prior.
+- **Score composition** when the input is the accepted output of several existing networks.
 
-These are separate programs. Creating one does not convert or overwrite an existing network.
+These are separate programs and deployments. A weighted prior is not an update to a standard
+network, and a composition does not merge or rewrite its source networks.
 
-## Prepare the network
+## Prepare the committed choices
 
-Before signing, decide:
+The exact fields depend on the program. Before signing, expect to review:
 
 - the network name and public metadata;
-- the account or Safe that will control protected settings;
-- the founding accounts, or the complete weighted-prior manifest;
-- scoring parameters and checkpoint cadence; and
-- whether to attach governance or a fund distributor.
+- the starting accounts or complete weighted-prior manifest;
+- scoring parameters and checkpoint cadence;
+- program-specific source or composition policy commitments; and
+- optional features offered by that creation flow, such as a shared fund, strict offchain EAS
+  lane, proving prepayment, or signer sync.
 
-The app previews the addresses, weights, parameters, and ownership model that will be committed.
-Review the authority carefully: it determines who can change protected settings after creation.
+Authority differs by creation flow:
 
-## Create it
+- The standard vouching wizard always uses the governed factory. It deploys a DAO Safe, records
+  that Safe as the network admin, and offers no governance-off toggle.
+- The weighted-prior and composition workspaces offer **Create with governance** when the governed
+  factory is available. That option is off by default. Without it, the connected wallet owns the
+  program's controller directly; with it, a newly deployed DAO Safe does.
 
-Connect the admin wallet, complete the form, and simulate the transaction. The app will not ask for
-a signature until the configuration passes its contract checks.
+For a governed creation, the connected wallet becomes the Safe's initial recorded owner and a
+delayed recovery proposer, but a sealed guard prevents ordinary owner-signed execution. Members
+control protected actions through delayed trust-weighted governance. A wallet-owned weighted or
+composition instance has a different authority model and does not gain DAO governance later.
 
-One successful creation transaction registers the network and deploys its required contract set.
-The network then appears in the public catalog without a configuration pull request or app
-deployment.
+Review the creation summary carefully. Program parameters, source commitments, optional modules,
+and authority determine what later proofs and governance actions can do.
 
-## After creation
+## Create the instance
 
-A new trust graph still needs input and a proven checkpoint:
+Connect the creator wallet, complete the relevant workspace, and simulate the transaction. The app
+does not request a signature until its preflight checks pass.
 
-1. Members add vouches or the operator imports the intended starting data.
-2. The network reaches its next checkpoint.
-3. A prover computes the scores, publishes the score file, and submits the proof.
-4. The accepted Merkle root makes the scores available to apps and contracts.
+A successful factory transaction deploys and registers the required contract set. The indexer can
+then discover the instance from registry events; publishing a new network does not require editing
+a static catalog or deploying the frontend again.
 
-Creation and later administration are separate. Use the network's Settings page for governed
-parameter or prior changes; use its member actions for ordinary vouches and revocations.
+## Produce the first result
 
-See [How scoring works](../learn/how-scoring-works.md) for the score model,
-[Run locally](./quickstart.md) for a complete development deployment, and
-[Integrate scores](./integrate-scores.md) for consuming the result.
+Creation fixes the computation but does not guarantee that a result has already been proven.
+What happens next depends on the program:
+
+- Members of a standard or weighted network create and revoke vouches. A weighted network also
+  needs its exact active prior manifest to remain available to the prover.
+- A composition captures eligible source checkpoints under its committed policy.
+- An operator freezes an eligible checkpoint, reconstructs the program-specific witness, computes
+  the output, publishes its canonical file, and submits the proof.
+- Once accepted, the output root and Merkle proofs are available to applications.
+
+Creation and later administration are separate workflows. Ordinary vouches never require a DAO
+proposal. On a governed instance, protected parameter, verifier, composition-policy, or
+weighted-prior changes pass through Governance and then their program-specific controller delay.
+On a wallet-owned weighted or composition instance, the controller admin proposes those changes
+directly. Input and parameter changes affect later checkpoints. A verifier rotation affects later
+submissions, including already-triggered unproved checkpoints, but does not rewrite accepted
+history.
+
+See [Governance](../learn/governance.md) for the default authority model, [Run a
+prover](./run-a-prover.md) for operating checkpoints, and [Integrate proven
+outputs](./integrate-scores.md) for consuming address-based results.

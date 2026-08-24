@@ -1,96 +1,99 @@
 # Epochs and proofs
 
-Scores in trustgraphs are not updated continuously. They advance in rounds called epochs: the
-vouch set is frozen at a checkpoint, anyone proves the scores over exactly that frozen set, and
-the proven result is recorded for good. This page explains the round structure, what the proof's
-public outputs (the journal) contain, and what the contract checks before accepting a proof.
+Trustgraphs outputs advance in rounds called **epochs**. A checkpoint freezes the input
+commitments and parameters for one round, a prover runs the program accepted by the verifier active
+at submission, and the result is recorded without rewriting earlier rounds.
 
-## What an epoch is
+The lifecycle is shared across several programs. The exact witness and meaning of each commitment
+remain program-specific; this page uses the standard trust-graph journal where field-level detail
+is needed.
 
-An epoch is one scoring round. Anyone calls `MerkleSnapshot.trigger()`, which freezes the
-current state of the vouch history as a numbered **checkpoint**: the accumulator's chained hash
-(`acc`), its edge count (`leafCount`), and the block number. The trigger also pins the scoring
-parameters in force at that moment, so a later parameter change never affects a round already
-in flight.
+## What a checkpoint freezes
+
+Anyone can call `MerkleSnapshot.trigger()` when the network is eligible for another checkpoint.
+The checkpoint records the primary input accumulator and count, any configured second-lane
+commitment, the block number, and the active parameter hash.
 
 Three properties follow:
 
-- **The input set is frozen.** Scores for checkpoint N are computed over exactly the vouches
-  that existed when N was frozen. Vouches created afterwards belong to the next round.
-- **Boundaries are not prover-chosen.** Setting a nonzero epoch length anchors a fixed phase at
-  that configuration block. `trigger()` only fires once a boundary is due; a late caller consumes
-  the boundary for the current epoch instead of moving every future boundary. The checkpoint still
-  records the exact, possibly later, freeze block. An unchanged input set is refused.
-- **Past rounds are never recalculated.** Each proven result is filed at its checkpoint's
-  freeze block, and checkpoints apply monotonically: an older checkpoint's proof can never
-  overwrite a newer one. "Score as of block N" stays honest forever, even though proving is
-  permissionless, delayed, and possibly racy.
+- **The proof statement is fixed.** Records accepted after checkpoint N belong to a later round.
+  A parameter change after the trigger cannot alter N.
+- **The prover does not choose the scheduled boundary.** With a nonzero epoch length, the cadence
+  is anchored when that setting takes effect. A late trigger consumes the boundary that became due
+  rather than shifting every future boundary. The checkpoint still records the actual freeze
+  block.
+- **Accepted history is monotonic.** A proof for an older checkpoint cannot overwrite a newer
+  accepted output. On provenance-enabled deployments, the accepted result records the verifier,
+  verifier code hash, program key, and pinned parameters used when it landed.
 
-## Input completeness: why nothing can be left out
+The verifier is deliberately not frozen by `trigger()`. Governance can rotate it before a proof
+is submitted, including for a checkpoint already in flight.
 
-Every vouch and revocation is folded, as it happens, into an on-chain chained hash (the
-`AttestationAccumulator`). The checkpoint pins that hash. Inside the zkVM, the guest program
-re-folds the entire edge list it was given and asserts the result equals the checkpointed
-`acc` and `leafCount`. A prover who omits an edge, invents one, or reorders history produces a
-different hash, and the proof simply does not verify. Completeness is proven, not audited.
+The snapshot rejects a new checkpoint when the committed input state has not changed.
 
-## The journal: the proof's public outputs
+## How input completeness is proven
 
-A zero-knowledge proof shows that a program ran correctly, and the **journal** is what that
-program publicly committed while running. It is the entire interface between the guest and the
-chain. The trust-graph journal (version 3, defined in `crates/pagerank-core` with field order
-frozen) contains twelve fields:
+“Use every input” only has meaning after a program defines the input history it authenticates.
+
+In the standard onchain EAS program, every accepted attestation and revocation is folded into an
+`AttestationAccumulator`. The checkpoint pins its chained hash (`acc`) and record count
+(`leafCount`). Inside the zkVM, the guest re-folds the complete ordered record list. Omitting,
+inventing, changing, or reordering a record produces a different commitment and an invalid proof.
+
+A strict offchain EAS lane uses a separate anchor accumulator and deterministic rules for signed
+retained histories. Programs over AT Protocol, Nostr, contribution records, or captured source
+roots define different witnesses and completeness rules. The common verifier checks the journal;
+the guest program defines what the committed inputs mean.
+
+## The journal
+
+A zero-knowledge proof establishes that a program ran correctly. The **journal** contains the
+program's public outputs and bindings; it is the interface the onchain contract verifies.
+
+The standard trust-graph journal v3 contains twelve fields:
 
 | Field | What it commits |
-|---|---|
-| `acc`, `leafCount` | the vouch accumulator at the checkpoint (input completeness, lane 1) |
-| `anchorAcc`, `anchorCount` | the second input lane's accumulator at the checkpoint; zeros for a vouch-only network |
-| `paramsHash` | hash of the exact scoring parameters used |
-| `outputRoot` | the `{account → score}` merkle root: the result |
-| `ipfsHash`, `cidDigest` | digest of the canonical scored data blob, and the hash of the IPFS CID string that points at it, so a valid proof cannot ship a CID that resolves to different data |
-| `totalValue` | the sum of all scores |
-| `skippedDigest` | commitment to any deterministically skipped second-lane records; zero when nothing was skipped |
-| `recipient` | the bounty payee the prover named; zero means no bounty |
-| `instanceDomain` | which deployment this proof is for, derived from the contract address and chain id |
+| --- | --- |
+| `acc`, `leafCount` | Primary input accumulator and count at the checkpoint |
+| `anchorAcc`, `anchorCount` | Optional second-lane accumulator and count; zero for a lane-1-only network |
+| `paramsHash` | Exact parameters pinned for this checkpoint |
+| `outputRoot` | Merkle root of the program output; address scores for the standard trust graph |
+| `ipfsHash`, `cidDigest` | Digest of the canonical output blob and hash of the CID string naming it |
+| `totalValue` | Sum of the output values |
+| `skippedDigest` | Commitment to deterministic second-lane skip decisions; zero when none apply |
+| `recipient` | Proving-bounty recipient named by the proof; zero means no recipient |
+| `instanceDomain` | Snapshot contract and chain for which the proof was produced |
 
-The checkpoint's block number is deliberately not in the journal: the contract reads it from
-its own checkpoint storage, so the guest never needs to be told about chain state it cannot
-verify.
+The checkpoint block number is not supplied by the guest. The snapshot contract already stores it
+and uses its own state when filing the accepted result.
 
-## What submitProof checks
+Other programs may give `outputRoot`, the two input lanes, and `skippedDigest` different
+program-defined semantics. A shared field shape is not evidence that the source records mean the
+same thing.
 
-`MerkleSnapshot.submitProof(checkpointId, outputRoot, ipfsHash, ipfsHashCid, totalValue,
-skippedDigest, recipient, proof)` is permissionless. Before writing anything it:
+## What proof submission checks
 
-1. **Enforces monotonicity.** The checkpoint must be newer than the last applied one.
-2. **Loads the frozen inputs.** The checkpoint's `(acc, leafCount)` and second-lane values
-   come from chain-pinned storage, never from the caller.
-3. **Loads the pinned parameters.** The params hash pinned at this checkpoint's trigger, not
-   whatever is current; an unpinned checkpoint is rejected.
-4. **Rebuilds the journal digest** from all twelve fields: the chain-pinned inputs and params,
-   the caller's claimed outputs, the `recipient` argument, and an `instanceDomain` the contract
-   derives from its own address and chain id. The last two are what a submitter cannot forge: a
-   proof naming payee A cannot be replayed naming payee B, and a proof for one deployment
-   cannot land on another.
-5. **Verifies the proof.** `SP1JournalVerifier` checks that the proof's public values hash to
-   exactly this digest, then that the SP1 proof is valid for the program's verification key
-   (the vkey, which identifies one exact guest binary).
-6. **Records the result.** The root is filed at the checkpoint's input-freeze block, the
-   checkpoint's bounty recipient is recorded, and registered consumer hooks are notified.
+`MerkleSnapshot.submitProof(...)` is permissionless. Before accepting a result, the contract:
 
-State-history pagination is total: exact-end, past-end, zero-limit, and overflowing-sized requests
-return an empty or clamped page rather than reverting. Freeze blocks are enforced as monotonic
-before insertion, which preserves the binary-search invariant used by historical proof queries.
+1. requires a checkpoint newer than the last applied checkpoint;
+2. loads the frozen accumulator values and counts from contract storage;
+3. loads the parameter hash pinned when that checkpoint was triggered;
+4. rebuilds the expected journal digest using those values, the claimed output metadata, the
+   bounty recipient, and an instance domain derived from its own address and chain;
+5. snapshots the current verifier, asks it to check the proof against its program verification key,
+   and
+6. records the result, its verifier provenance when enabled, and notifies registered consumer
+   hooks.
 
-If any step fails, the transaction reverts and nothing changes. If all succeed, the root is as
-trustworthy as the guest program and parameters that governance pinned; no honesty assumption
-about the prover remains.
+The recipient binding prevents a copied submission from redirecting the proving payment. The
+instance binding prevents a valid proof for one snapshot or chain from being replayed against
+another.
 
-## See also
+If any check fails, the transaction reverts. If all checks pass, consumers can rely on the output
+being produced by the guest accepted by the submission-time verifier over the pinned commitments
+and parameters. They do not need to trust the prover's honesty, but they still need to evaluate
+verifier governance, the program, and its data-availability assumptions.
 
-- [Architecture](./architecture.md): where epochs sit in the full pipeline.
-- [The algorithm](./algorithm.md): what is actually computed each round.
-- [Networks and programs](./networks-and-programs.md): vkeys and how one proof system serves
-  many deployments.
-- [Run a prover](../build/run-a-prover.md): produce these proofs yourself.
-- [Reproduce an epoch](../verify/reproduce-an-epoch.md): check a round from public data.
+See [Architecture](./architecture.md) for the full pipeline, [Vouch scoring
+algorithm](./algorithm.md) for the standard computation, and [Reproduce an
+epoch](../verify/reproduce-an-epoch.md) for an independent check of a public EAS result.

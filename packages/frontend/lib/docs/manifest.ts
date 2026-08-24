@@ -30,14 +30,15 @@ export const DOCS_SECTIONS: DocSection[] = [
   {
     dir: 'learn',
     label: 'Learn',
-    blurb: 'An introduction to trustgraphs, scoring, proofs, and governance.',
+    blurb:
+      'The Trustgraphs model, the standard vouching use case, proofs, and governance.',
     groups: [
       {
         items: [
           { slug: 'learn/what-is-trustgraphs', label: 'What is trustgraphs?' },
-          { slug: 'learn/how-scoring-works', label: 'How scoring works' },
-          { slug: 'learn/proofs', label: 'Why trust the scores' },
-          { slug: 'learn/governance', label: 'How the rules change' },
+          { slug: 'learn/how-scoring-works', label: 'How vouch scoring works' },
+          { slug: 'learn/proofs', label: 'Why trust the result' },
+          { slug: 'learn/governance', label: 'Governance' },
           { slug: 'learn/faq', label: 'Questions' },
         ],
       },
@@ -46,7 +47,8 @@ export const DOCS_SECTIONS: DocSection[] = [
   {
     dir: 'concepts',
     label: 'Concepts',
-    blurb: 'The components and mechanics behind a trustgraphs network.',
+    blurb:
+      'The shared proof architecture, network model, and standard vouching mechanics.',
     groups: [
       {
         items: [
@@ -56,7 +58,7 @@ export const DOCS_SECTIONS: DocSection[] = [
             label: 'Networks and programs',
           },
           { slug: 'concepts/epochs-and-proofs', label: 'Epochs and proofs' },
-          { slug: 'concepts/algorithm', label: 'The algorithm' },
+          { slug: 'concepts/algorithm', label: 'Vouch scoring algorithm' },
         ],
       },
     ],
@@ -71,7 +73,7 @@ export const DOCS_SECTIONS: DocSection[] = [
         label: 'Get started',
         items: [
           { slug: 'build/create-a-network', label: 'Create a network' },
-          { slug: 'build/integrate-scores', label: 'Integrate scores' },
+          { slug: 'build/integrate-scores', label: 'Integrate outputs' },
           { slug: 'build/setup', label: 'Set up the repository' },
           { slug: 'build/quickstart', label: 'Run locally' },
         ],
@@ -81,7 +83,7 @@ export const DOCS_SECTIONS: DocSection[] = [
         items: [
           { slug: 'build/run-a-prover', label: 'Run a prover' },
           { slug: 'build/run-an-agent', label: 'Run an agent' },
-          { slug: 'build/production', label: 'Deploy to production' },
+          { slug: 'build/production', label: 'Deploy to a public chain' },
           { slug: 'build/add-a-program', label: 'Add a program' },
         ],
       },
@@ -107,13 +109,13 @@ export const DOCS_SECTIONS: DocSection[] = [
     dir: 'verify',
     label: 'Verify',
     blurb:
-      'Recompute an epoch from public data and compare the result with the chain.',
+      'Reproduce public EAS results and check program builds, encodings, and deployments.',
     groups: [
       {
         items: [
           {
             slug: 'verify/reproduce-an-epoch',
-            label: 'Reproduce an epoch',
+            label: 'Reproduce a public EAS epoch',
           },
           { slug: 'verify/golden-vectors', label: 'Golden vectors' },
           { slug: 'verify/addresses-and-vkeys', label: 'Addresses and vkeys' },
@@ -141,11 +143,11 @@ export const DOCS_TASKS: { want: string; slug: string }[] = [
     slug: 'learn/what-is-trustgraphs',
   },
   {
-    want: 'learn how scores are computed and proven',
+    want: 'learn how EAS vouches become proven scores',
     slug: 'learn/how-scoring-works',
   },
   {
-    want: 'create a trust network for my community',
+    want: 'create a Trustgraphs network',
     slug: 'build/create-a-network',
   },
   {
@@ -157,7 +159,7 @@ export const DOCS_TASKS: { want: string; slug: string }[] = [
     slug: 'build/composition',
   },
   {
-    want: 'read scores from my app or contract',
+    want: 'use a proven output in my app or contract',
     slug: 'build/integrate-scores',
   },
   { want: 'run the stack locally', slug: 'build/quickstart' },

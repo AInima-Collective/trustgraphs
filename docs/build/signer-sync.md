@@ -1,26 +1,47 @@
 # Signer sync
 
-Signer sync is an optional extension that keeps a Safe's owner set aligned with a network's proven
-scores and recent activity. It does not compute the network's reputation scores and does not alter
-the score root.
+Signer sync is an optional program and Safe module for a standard, onchain-only vouch network. It
+recomputes canonical trust scores from the checkpointed vouch history, combines them with recent
+direct-governance activity and the Safe's current state, and proves a proposed owner set and
+threshold.
 
-## What it does
+It does not consume the network's published score root and does not alter that root.
 
-The extension selects eligible accounts from an accepted score checkpoint, applies the configured
-owner-count and threshold rules, and proves the proposed Safe owner set. A Zodiac module verifies
-that proof before changing the Safe.
+## What the proof checks
 
-The proof is bound to the Safe's current owners and threshold. A proposal prepared for an older
-owner set cannot be applied after the Safe has changed.
+The signer guest receives:
 
-## Safety model
+- the complete folded vouch history and pinned scoring parameters;
+- the complete direct-vote activity history through its activity checkpoint;
+- the configured owner-count, threshold, inactivity, and witness rules; and
+- the Safe's current owners, threshold, and prior-rotation state.
 
-Score alone is not enough to remove owners. The configuration also requires recent activity and
-witness approval for rotations. Minimum thresholds and owner limits are enforced when the module
-is configured and again when a proof is applied.
+It runs the same deterministic trust scoring pipeline as the standard root producer, filters for
+accounts with fresh direct-vote activity, ranks eligible accounts by score, and derives the target
+owner set and threshold. The journal binds both the current and proposed Safe state, so a proof
+prepared before another owner change cannot be applied afterwards.
 
-Signer sync should be treated as governance automation: the Safe decides whether to install the
-module and which rules it may enforce. Communities that do not want automated owner rotation can
-use trustgraphs without it.
+The onchain module verifies the proof before changing the Safe.
 
-For the underlying score lifecycle, see [Epochs and proofs](../concepts/epochs-and-proofs.md).
+## Activity safety gate
+
+Score alone cannot trigger owner removal. The activity checkpoint must include enough distinct,
+recent direct voters. Before the first rotation, those witnesses must be positively scored
+accounts; after initialization, enough of them must be current Safe owners.
+
+A direct governance vote is evidence that an account was recently active. It is not an approval of
+the proposed signer rotation, and a delegated vote does not count as the principal's direct
+activity. If the activity gate is not satisfied, the program preserves the current owner set and
+threshold.
+
+## Support boundary
+
+Signer sync is offered only at creation for compatible standard networks. The current signer
+journal does not authenticate strict offchain EAS inputs, and weighted-prior and composition
+creation do not support the module.
+
+Treat signer sync as governance automation. The governed Safe decides whether to install it and
+which immutable or governed selection rules it may enforce; a network can use Trustgraphs without
+automated owner rotation.
+
+For the standard score computation, see [Vouch scoring algorithm](../concepts/algorithm.md).

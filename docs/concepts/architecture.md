@@ -1,131 +1,185 @@
 # Architecture
 
-Trustgraphs turns a community's vouches into provable reputation scores. Members vouch for each
-other on-chain, anyone can compute the scores, and a zero-knowledge proof guarantees the scores
-were computed correctly over the complete vouch history. This page walks the pipeline end to end
-for a technical reader.
+Trustgraphs is proof infrastructure for computations over verifiable graph data. It does not
+require every network to use Ethereum vouches or PageRank. Each program defines its own source
+records, authentication rules, deterministic computation, and output type.
 
-## The pipeline
+This page starts with that shared architecture, then follows the standard onchain EAS vouch
+program end to end.
 
+## The shared pipeline
+
+```text
+  source records
+  signed statements, onchain events, anchored histories, or proven roots
+        │
+        ▼
+  authentication and input commitment
+  verifies origin and commits to the input history the program must cover
+        │
+        ▼
+  checkpoint
+  freezes input commitments and parameters for one epoch
+        │
+        ▼
+  deterministic program in the SP1 zkVM
+  authenticates the witness, applies the rules, and commits the output
+        │
+        ▼
+  proof + public journal
+        │
+        ▼
+  onchain verifier
+  checks the proof with the verifier active at submission and stores the output root
+        │
+        ▼
+  applications
+  verify scores, allocations, or another program-specific result
 ```
-  users
-    │  create / revoke vouches (EAS attestations)
-    ▼
-  EAS (Ethereum Attestation Service)
-    │  routes each attestation to the schema's resolver
-    ▼
-  EASIndexerResolver  ── emits index events for off-chain indexers
-    │  folds every edge into the
-    ▼
-  AttestationAccumulator  (chained hash: acc, leafCount)
-    │
-    │  MerkleSnapshot.trigger() freezes a checkpoint  ←  epoch boundary
-    ▼
-  SP1 zkVM: anyone proves fixed-point Trust-Aware PageRank
-  over the complete checkpointed input set
-    │  proof + journal (the proof's public outputs)
-    ▼
-  MerkleSnapshot.submitProof
-    ├─ SP1JournalVerifier: proof valid for this program's vkey?
-    └─ stores the {account → score} merkle root
-    │
-    ├──────────────────┬─────────────────────┐
-    ▼                  ▼                     ▼
-  MerkleGovModule   MerkleFundDistributor   Ponder indexer API
-  (score-weighted   (score-weighted         (apps and the
-  voting on a Safe)  reward claims)          frontend)
+
+The program is responsible for the meaning of every arrow. A signature can authenticate who made
+a record, but not whether the record is true. An anchored head can prevent a prover from choosing
+an older convenient history, but only if the source adapter defines and verifies that history.
+The proof establishes those published rules; it does not create meaning that the program did not
+specify.
+
+## Current flagship: onchain EAS vouches
+
+The standard network creation path uses public, revocable Ethereum Attestation Service (EAS)
+vouches and a seeded PageRank-style scoring program.
+
+```text
+  members create or revoke EAS vouches
+        │
+        ▼
+  EASIndexerResolver
+  emits index events and folds every accepted record
+        │
+        ▼
+  AttestationAccumulator
+  running commitment: acc + leafCount
+        │
+        ▼
+  MerkleSnapshot.trigger()
+  freezes a checkpoint and its scoring parameters
+        │
+        ▼
+  trust-graph program in SP1
+  reconciles vouches, computes scores, and builds the output Merkle root
+        │
+        ▼
+  MerkleSnapshot.submitProof()
+  verifies the journal against the checkpoint and program verification key
+        │
+        ▼
+  accepted score root
+  governance, distributions, the indexer, and applications
 ```
 
-## Step by step
+### EAS records the member action
 
-### 1. Vouches live on EAS
+A vouch is a signed EAS attestation from one Ethereum account to another. Members submit and revoke
+these records against EAS; the Trustgraphs prover is not an intermediary in that action. The
+network's schema determines which attestations belong to the graph and where the vouch weight is
+encoded.
 
-A vouch is an attestation: a signed on-chain statement "account A vouches for account B". Users
-create and revoke vouches directly against [EAS](https://attest.org) (Ethereum Attestation
-Service), a public attestation contract. Trustgraphs does not sit between you and your vouch;
-there is no operator who can censor or reorder them.
+### The resolver commits every accepted record
 
-### 2. Every edge is committed as it happens
+Each standard network binds its schema to an `EASIndexerResolver`. When EAS processes an
+attestation or revocation, the resolver emits index events and folds the record into an
+`AttestationAccumulator`: an ordered chained hash (`acc`) and record count (`leafCount`).
 
-Each network registers its vouch schema with a resolver, `EASIndexerResolver` (an EAS
-`SchemaResolver`). EAS calls the resolver on every attestation and revocation for that schema.
-The resolver does two things:
+Changing, removing, inserting, or reordering a folded record changes that commitment. This is the
+lane-1 completeness boundary for the standard program. Networks configured for strict offchain
+EAS inputs also have a second, separately checkpointed anchor lane with its own authentication and
+staleness rules.
 
-- **emits index events** so off-chain indexers can follow the graph, and
-- **folds the edge into the `AttestationAccumulator`**: a running chained hash (`acc`) plus a
-  count (`leafCount`) that commits to every edge, in order, that has ever passed through.
+### A checkpoint fixes one proof statement
 
-The chained hash is what makes the input set tamper-evident. You cannot remove an edge, insert
-one retroactively, or reorder history without changing `acc`. The resolver is bound to exactly
-one schema, so no foreign attestation can be smuggled into the fold.
+`MerkleSnapshot.trigger()` records the current input commitments and pins the active parameter
+hash for a numbered checkpoint. Later records belong to a later checkpoint. A later governance
+change cannot alter the parameters attached to a checkpoint already in flight.
 
-### 3. An epoch checkpoint freezes the inputs
+### Anyone can compute and prove
 
-At an epoch boundary, anyone calls `MerkleSnapshot.trigger()`. This freezes the current
-`(acc, leafCount)` as a numbered checkpoint and pins the scoring parameters in force at that
-moment. Scores for that epoch are computed over exactly this frozen set, and never recomputed.
-See [epochs and proofs](./epochs-and-proofs.md).
+A prover reconstructs the checkpoint witness and runs the `trust-graph` program in the
+[SP1 zkVM](https://docs.succinct.xyz/). The guest:
 
-### 4. Anyone proves the scores
+- reproduces the input commitments and counts;
+- authenticates and reconciles the records under the program's rules;
+- checks the pinned parameter hash;
+- runs deterministic fixed-point scoring; and
+- commits the score Merkle root, canonical output-file digest, and other public bindings in its
+  journal.
 
-A prover (a hosted daemon, a community member, anyone) reconstructs the checkpoint's edge set
-from public chain data and runs Trust-Aware PageRank inside the
-[SP1 zkVM](https://docs.succinct.xyz/), a virtual machine that produces a zero-knowledge proof
-of correct execution. The guest program:
+The prover can choose when to do the work, but cannot produce a valid proof for different inputs or
+different scoring rules.
 
-- re-folds every edge and asserts it reproduces the checkpointed `acc` and `leafCount`, which
-  proves the **complete** vouch history was used, nothing omitted;
-- asserts its parameters hash to the checkpoint's pinned params hash;
-- runs the fixed-point algorithm (integer arithmetic only, so every machine gets identical
-  bytes) and commits the resulting `{account → score}` merkle root in its journal.
+### The contract uses the current verifier
 
-The algorithm itself is described in the [algorithm spec](./algorithm.md).
+`MerkleSnapshot.submitProof()` rebuilds the expected journal digest from checkpointed state and
+the claimed outputs. It then snapshots the network's current verifier for that transaction. The
+verifier checks the proof against its program verification key.
 
-### 5. On-chain verification stores the root
+Inputs and parameters are pinned at trigger; the verifier deliberately is not. A verifier rotation
+therefore changes which guest can prove an already-triggered but still-unproved checkpoint. This
+supports emergency replacement of a compromised verifier, but it makes verifier authority part of
+the network's trust model. The statement is also bound to the snapshot contract and chain, so a
+proof for another network cannot be replayed merely because its inputs happen to look similar.
 
-`MerkleSnapshot.submitProof` rebuilds the expected journal digest from chain-pinned data (the
-checkpoint's accumulator values, the pinned params hash, its own address and chain id) and hands
-the proof to `SP1JournalVerifier`, which checks it against the program's verification key (the
-vkey, a fingerprint of the exact guest binary). Only a valid proof over the exact frozen inputs
-can write the root. Submission is permissionless: it does not matter who submits, because the
-proof cannot lie. Details of every check are in
-[epochs and proofs](./epochs-and-proofs.md).
+A valid submission stores the score root and output metadata. The full score set is published
+outside contract storage; Merkle proofs connect individual entries back to the accepted root.
 
-### 6. Consumers read the proven root
+### Consumers choose how to use the root
 
-Everything downstream reads the stored `{account → score}` merkle root:
+The standard governed deployment can use accepted scores for trust-weighted Safe proposals and an
+optional shared-fund distribution. The indexer serves score files, Merkle proofs, graph history,
+and network metadata to the frontend and other applications. A separate application can verify an
+entry directly against the snapshot root without trusting the indexer.
 
-- **`MerkleGovModule`**, a Zodiac module on a [Safe](https://safe.global): members vote with
-  their score as voting power, proven by a merkle inclusion proof against the root.
-- **`MerkleFundDistributor`**: score-weighted reward distributions; each account claims its
-  share with a merkle proof.
-- **The Ponder indexer API**: an off-chain indexer that reads the contracts' events directly
-  and serves the graph, scores, and history to the frontend and to any app.
+## Programs with different data semantics
 
-## One algorithm, four implementations, zero drift
+Other programs reuse parts of the pipeline without pretending their records are vouches:
 
-The canonical algorithm and all byte encodings live in one Rust crate,
-`crates/pagerank-core`. It is compiled into the SP1 guest (`zk/program`) and the host CLI
-(`zk/prover`), and ported to TypeScript for the browser (`packages/frontend/lib/pagerank`), so the
-frontend can preview scores with the same math the proof enforces. Golden vectors in
-`tests/golden/` pin all implementations (native Rust, SP1 guest, Solidity tests, TypeScript) to
-byte-identical outputs; a change that breaks parity fails CI. See
-[golden vectors](../verify/golden-vectors.md).
+- **Contributions** authenticates a standard parent network's checkpointed vouch history plus
+  contribution claims, responses, and peer valuations. Its proof recomputes reputation before
+  weighting valuations and producing allocations.
+- **Hypercerts** verifies anchored AT Protocol repository records and applies explicit
+  record-to-edge rules before scoring.
+- **Nostr workspace** verifies signed events, membership, identity, replacement, and deletion rules
+  against an anchored witness package.
+- **Score composition** captures complete accepted outputs from source networks and combines them
+  under a committed allocation policy.
+- **Signer sync** recomputes canonical trust scores from checkpointed onchain vouches, then combines
+  them with direct-vote activity and current Safe state to derive an owner set. It does not consume
+  or change the source network's published score root.
 
-## What you trust, and what you do not
+These programs have different completeness and availability assumptions. Sharing SP1 and a Merkle
+output format does not make their trust models interchangeable.
 
-You do not trust any operator to compute honestly: the proof enforces the math, and the
-accumulator enforces the inputs. What remains is governance: the authority that can rotate the
-verifier (which vkey defines "correct") and the scoring parameters, held behind timelocked
-roles. Consumers must also rely on the availability of the published score file when they need to
-discover scores rather than verify a score they already have.
+## Consensus code and reproducibility
 
-## Going deeper
+Each proof-producing program has canonical deterministic code compiled into its SP1 guest. The
+verification key identifies that exact guest binary. Native host code reconstructs witnesses and
+recomputes outputs; browser implementations exist where the application needs previews or local
+verification. Golden vectors pin consensus encodings and expected outputs across implementations.
 
-- [Networks and programs](./networks-and-programs.md): how one codebase serves many
-  communities and several proven computations.
-- [Epochs and proofs](./epochs-and-proofs.md): checkpoints, the journal, and what
-  `submitProof` verifies.
-- [The algorithm](./algorithm.md): Trust-Aware PageRank and why it resists Sybil attacks.
-- [Build docs](../build/): stand up a network, integrate scores, run a prover.
-- [Golden vectors](../verify/golden-vectors.md): check cross-language parity yourself.
+Changing consensus behavior creates a new program version and verification key. Governance can
+adopt a new verifier, and that verifier applies to later submissions, including any checkpoint
+already triggered but not yet proved. Factory deployments with provenance enabled record the
+accepted verifier address, code hash, program key, and parameter hash with each accepted
+checkpoint. Previously accepted roots and their recorded provenance are not rewritten.
+
+## What remains in the trust model
+
+The proof removes the need to trust the scoring operator, not every dependency in the system.
+Users still need to evaluate:
+
+- whether the source authentication and completeness rules match the data source;
+- whether source records and published output files remain available;
+- whether the program's semantics and parameters fit the decision being made;
+- who can change protected settings or the accepted verification key; and
+- the security of the chain, contracts, zkVM, and cryptography.
+
+Continue with [Networks and programs](./networks-and-programs.md), [Epochs and
+proofs](./epochs-and-proofs.md), or the standard [vouch scoring algorithm](./algorithm.md).

@@ -1,82 +1,111 @@
 # Questions
 
-What people ask before they trust a scoreboard. New here? Start with
-[What is trustgraphs?](./what-is-trustgraphs.md)
+Start with [What is trustgraphs?](./what-is-trustgraphs.md) for the distinction between the
+platform and its standard EAS vouching program.
 
 ## Basics
 
+**Is every trustgraph a vouching network?**
+No. Vouching is the main supported implementation today: EAS vouches become graph edges and a
+seeded PageRank-style program produces reputation scores. Other programs can authenticate
+different records and produce allocations, composed scores, or other verifiable results.
+
+**What makes source data verifiable?**
+That depends on the program. An Ethereum transaction and EAS attestation have chain history and a
+signer. An offchain event may have a signature and an anchored history commitment. A proven source
+root has its own program and checkpoint. The program must define exactly what it authenticates; a
+zero-knowledge proof does not make an unsupported claim trustworthy.
+
 **What is an attestation?**
-A signed public statement about someone, recorded on-chain through the Ethereum
-Attestation Service. A vouch is one kind. You can revoke it later.
+An attestation is a signed statement encoded under a schema. The standard vouch program uses
+Ethereum Attestation Service attestations, but a vouch is only one possible attestation type.
+Contribution claims, responses, and valuations also use attestations without meaning “I trust this
+account.”
+
+**How often do outputs update?**
+Networks advance in epochs. Each checkpoint freezes the input commitments and parameters for one
+round, and an accepted proof records the next output. The cadence is network-specific, and a
+settled historical round is not recalculated.
+
+## Vouch scoring and gaming
 
 **Who picks the starting accounts?**
-Your community does, when the network is created. They anchor the whole graph, so choosing
-them well is the real work. Changing them later is a settings change made through the
-network's own governance. Who controls those settings is part of the network's trust
-model.
+For a standard vouch network, the creator supplies the initial set and the creation flow gives
+them equal starting shares. A weighted-prior network accepts an explicit allocation instead. The
+standard network's DAO governs future changes; a weighted network uses either its DAO or its
+wallet admin, depending on the authority chosen at creation. The starting set or prior is a visible
+part of the network's trust model.
 
-**How often do scores update?**
-In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new
-scores, and the result goes on-chain. Every network sets its own pace, and a settled
-round is never recalculated.
+**Why do disconnected bot armies receive zero?**
+The standard algorithm only scores accounts reachable from the starting set through active
+vouches. A disconnected ring can add internal edges without gaining influence or changing the
+reachable scores. Lowering the reserved starting share divides the remainder among reachable
+non-starting accounts; it does not remove the reachability gate.
 
-## Trust and gaming
+**Can the algorithm tell whether every account is a real person?**
+No. It limits what a disconnected cluster can do, but it does not prove personhood or good
+judgment. A trusted member can vouch carelessly, collude, or accept an incentive. The proof shows
+that the published algorithm was followed; it does not make the social inputs wise.
 
-**Can someone buy a high score?**
-Not with money. Buying score means getting genuinely trusted people to vouch for you. What
-no algorithm stops is a trusted person vouching badly, which is a problem every community
-already has.
+## Proofs and privacy
 
-**Why don't bot armies work?**
-Score comes from trust flowing out of the starting accounts. A thousand bots vouching for
-each other form an island with lots of arrows and nothing flowing in, so none of those
-vouches earns any trust. The create form reserves the full starting share by default, which
-leaves a disconnected island at zero. A community can lower that advanced setting, but
-then every other account gets an equal slice of the remainder and a big enough island can
-hold a real share.
+**What does the zero-knowledge proof establish?**
+It shows that the program accepted by the network's verifier at submission produced the committed
+output from a witness matching the checkpointed inputs and parameters. Checkpoints do not pin the
+verifier, so verifier governance remains part of the trust model. The exact statement also depends
+on the program and its source adapter.
 
-**Is my data private?**
-No. Vouches, rules, code, and scores are all public. That is what makes the scoreboard
-checkable by anyone.
+**Does zero knowledge make the graph private?**
+Not automatically. Standard onchain EAS vouches and their published scores are public. A program
+can keep restricted witness data out of its public journal, but collection, storage, publication,
+and future availability still need a separate privacy design.
 
-**Then what does the zero-knowledge proof hide?**
-Nothing. It isn't there for privacy. It's there so a whole scoreboard can be verified in
-one cheap on-chain check instead of everyone recomputing millions of scores.
-
-**How do you know a prover didn't leave someone out?**
-The chain keeps a running commitment to every attestation as it lands. A proof only
-verifies if it consumed exactly that set, so a prover can't quietly drop the vouches they
-dislike or add ones that never happened.
+**How do you know a prover did not leave a record out?**
+For standard onchain EAS networks, the resolver commits every accepted attestation and revocation
+to an ordered accumulator. The guest must reproduce the checkpointed commitment and count. Other
+programs use their own anchored-history or source-capture rules and must document what completeness
+means for them.
 
 ## Running a network
 
-**Who can create one?**
-Anyone. It takes one transaction and nobody approves it.
+**Who can create a network?**
+Anyone can use an available factory. The standard wizard creates the network and its governed DAO
+Safe in one transaction; no project-maintained allowlist approves new instances.
+
+**Who controls it after creation?**
+The standard vouching wizard makes a DAO Safe the network admin. Members govern protected changes
+through delayed, score-weighted proposals. The creator is not a direct admin, although the
+governed factory gives the creator a slow and visible recovery role. Weighted and composition
+workspaces can instead create wallet-owned instances. See [Governance](./governance.md).
 
 **What does it cost?**
-Creating and using a network costs transaction fees. Producing a score root also costs
-compute, publication, and submission gas. A network can fund a proving vault so an
-operator is paid for accepted work, or its community can run a prover directly.
+Creation and onchain inputs cost transaction fees. Proving also costs compute, output publication,
+and submission gas. A network can fund a proving vault, or a community can operate a prover without
+a bounty.
 
 **Do I have to run a server?**
-Not necessarily. Proving is permissionless, so any compatible operator can freeze a round
-and submit its result. Run your own prover if you need independent availability or if no
-operator has agreed to cover your network.
+Not necessarily. Proof submission is permissionless, so a compatible operator can serve the
+network. Run independent infrastructure when availability matters or no operator has agreed to
+cover the work. Offchain or restricted sources can add witness-retention responsibilities that a
+public onchain EAS network does not have.
 
-**Can I use the scores somewhere else?**
-Yes. A vouching network's scoreboard downloads as CSV or JSON, and any contract can check
-one account's score against the on-chain root, given the score and its proof.
+**Can another application use the output?**
+Yes. Address-based score and allocation programs publish output files, while contracts and apps
+can verify an individual value and Merkle proof against the accepted onchain root. Programs with a
+different output domain document their own leaf encoding and integration path.
 
 ## Status
 
 **Is this ready for production?**
-Trustgraphs is still pre-production. Review the contracts, deployment configuration, and
-operational assumptions before using a network for decisions with material consequences.
+Trustgraphs is still pre-production. Review the contracts, program semantics, deployment
+configuration, source availability, and governance assumptions before using an output for a
+decision with material consequences.
 
 **Has it been audited?**
-Not by an outside firm. Point a network at something you can afford to get wrong.
+Not by an outside firm. Use a network only for decisions whose failure you can tolerate.
 
-**Where do I read the details?**
-The code and specifications are open. Start with the introduction,
-[What is trustgraphs?](./what-is-trustgraphs.md), then the
-[algorithm spec](../concepts/algorithm.md).
+**Where are the technical details?**
+Read [Architecture](../concepts/architecture.md), [Networks and
+programs](../concepts/networks-and-programs.md), and [Epochs and
+proofs](../concepts/epochs-and-proofs.md). The [vouch scoring algorithm](../concepts/algorithm.md)
+covers the standard EAS computation specifically.

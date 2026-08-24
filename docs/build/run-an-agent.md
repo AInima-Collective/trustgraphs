@@ -5,7 +5,7 @@ principal's key, a Safe owner key, or a general session key. The useful upkeep c
 permissionless; voting uses one explicit `MerkleGovModule` delegate assignment; EAS actions remain
 human-signed.
 
-This runbook covers the shipped v1 policy:
+This runbook covers the reference agent policy:
 
 | Lane | Agent may do | Principal protection |
 |---|---|---|
@@ -83,9 +83,9 @@ retry without a bound.
 Open the network's Governance page and follow "Let an agent vote for you" in the strip above the
 proposals, then enter the dedicated agent address. Once a delegate is set, that spot names it
 instead and "Manage" reopens the same form to change or revoke it. The UI does not enable
-delegation until the user confirms receiving a test notification containing the agent's analysis
-and intended vote. That confirmation is a browser-side safety rail; direct contract calls can
-bypass it, so runner configuration is still the source of truth.
+delegation until the user confirms receiving a delivery test. The test names the chain, governance
+module, principal, and delegate; it does not contain a proposal analysis or intended vote. That
+confirmation is a browser-side safety rail, and direct contract calls can bypass it.
 
 Copy the examples and replace every placeholder:
 
@@ -95,9 +95,9 @@ cp docs/examples/governance-decisions.json ./governance-decisions.json
 chmod 600 ./governance-agent.json ./governance-decisions.json
 ```
 
-`notificationWebhook` must be HTTPS outside localhost. It receives no private key; it receives the
-analysis, intended vote, public addresses, and a digest over that receipt. Verify delivery before
-delegating:
+`notificationWebhook` must be HTTPS outside localhost. It never receives the private key. The test
+contains only public configuration metadata and a digest; live proposal notifications also carry
+the analysis and intended vote. Verify delivery before delegating:
 
 ```sh
 pnpm tsx scripts/governance-agent.ts \

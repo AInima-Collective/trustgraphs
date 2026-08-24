@@ -10,8 +10,10 @@ site during the documentation cleanup is under
 
 ## Sections
 
-- [Learn](./learn/) introduces trustgraphs, scoring, proofs, and governance.
-- [Concepts](./concepts/) explains the architecture and scoring mechanics.
+- [Learn](./learn/) introduces the Trustgraphs model, the standard vouching use case, proofs, and
+  governance.
+- [Concepts](./concepts/) explains the shared architecture, program boundaries, epochs, and the
+  standard vouch scoring algorithm.
 - [Build](./build/) covers network creation, score integration, local setup, operations, and one
   overview for each specialized program.
 - [Verify](./verify/) explains how to reproduce and check published results.

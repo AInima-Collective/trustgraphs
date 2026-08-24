@@ -13,7 +13,7 @@ Open `/create/composition` to select between two and eight source networks. A so
 - publish address-based allocations; and
 - expose the provenance needed to authenticate its history.
 
-Standard and weighted trust graphs can both be composed, but the current version keeps those score
+Standard and weighted trust graphs can both be composed, but Composition v1 keeps those score
 types in separate compositions. An unavailable, stale, or ineligible source is shown explicitly
 and cannot be substituted with another network.
 
@@ -43,4 +43,5 @@ Every epoch records the source checkpoints, policy, output file, CID, and Merkle
 composition detail page preserves that history and provides address proofs. If a required source
 cannot be authenticated or fetched, capture fails instead of redistributing its quota.
 
-See [Integrate scores](./integrate-scores.md) to verify a composed allocation in an application.
+See [Integrate proven outputs](./integrate-scores.md) to verify a composed allocation in an
+application.

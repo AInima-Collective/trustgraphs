@@ -1,278 +1,193 @@
-# Integrate scores
+# Integrate proven outputs
 
-You have an app or a contract, and you want to consume a network's proven trust scores: gate a
-feature, weight a vote, split a payout, rank a list. This page is the integrator's map.
+A Trustgraphs network publishes a Merkle root for a program-specific output. Depending on the
+program, an entry may be an Ethereum-address score, a funding allocation, an AT Protocol node
+score, or another typed result.
 
-The ground truth is small and on-chain. Each network (an *instance* of a scoring *program*; see
-[`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md)) has one
-`MerkleSnapshot` contract. The only way a score root gets written there is `submitProof`, which
-verifies an SP1 zero-knowledge proof that the root is the correct fixed-point PageRank over the
-network's chain-pinned vouch inputs. So a consumer never trusts a server, an operator, or this
-project's own indexer: everything below either *is* the chain or is checkable against it.
+Do not infer the meaning of an entry from its byte length or UI label. Resolve the network's
+registered program and output domain first, then use the leaf encoding defined for that domain.
 
-The examples below run against
-the [local stack](./quickstart.md), where the indexer serves
+## What the proof gives a consumer
+
+For each accepted result, the snapshot stores a root and metadata for the canonical output file.
+The proof shows that the guest accepted by the submission-time verifier produced that root from
+the checkpointed input commitments and parameters.
+
+This removes the need to trust the prover or indexer for computation. It does not remove reliance
+on chain consensus, governance-selected parameters and verifier, SP1 verification soundness, or
+source and output availability.
+
+Factory deployments with provenance enabled also record the verifier address, verifier code hash,
+program verification key, and parameter hash used for each accepted checkpoint. Use that record
+when an integration needs to identify the exact computation behind a historical root.
+
+## Choose an integration path
+
+1. **Verify an address entry onchain.** Use this for contracts consuming an address-keyed output.
+2. **Fetch an entry and proof over HTTP.** Use the indexer for discovery and convenience, then
+   verify the returned proof against the chain.
+3. **Recompute a supported program locally.** Use this when you also want to audit the full
+   computation and input reconstruction.
+
+The examples use the [local stack](./quickstart.md), whose indexer API listens at
 `http://localhost:65421`.
 
-Three consumption paths, strongest first:
+## 1. Verify an address-keyed entry onchain
 
-1. **On-chain, via merkle proof**: for contracts. Trustless.
-2. **HTTP, via the indexer**: for apps. Convenience, not truth: every bundle carries the proof and
-   root so you can verify it against the chain.
-3. **In-browser recompute**: for apps that want to check the math itself, not just the membership
-   proof.
+### Read the accepted state
 
-## 1. On-chain: verify a `{account, score}` leaf against the proven root
-
-### What the snapshot exposes
-
-`MerkleSnapshot` (`contracts/src/merkle/MerkleSnapshot.sol`) keeps the full history of proven
-states:
+`MerkleSnapshot` exposes the latest and historical state views:
 
 ```solidity
 struct MerkleState {
-    uint256 blockNumber;   // the block the checkpoint's INPUTS froze at (not the submission block)
+    uint256 blockNumber;   // input-freeze block, not proof-submission block
     uint256 timestamp;
-    bytes32 root;          // the proven {account => score} merkle root
-    bytes32 ipfsHash;      // sha256 digest of the canonical score blob
-    string  ipfsHashCid;   // the CID the full score set is fetchable by
-    uint256 totalValue;    // the summed score points across all accounts
+    bytes32 root;
+    bytes32 ipfsHash;      // sha256 digest of the canonical output blob
+    string  ipfsHashCid;   // content-addressed identifier for that blob
+    uint256 totalValue;
 }
 
-function getLatestState() external view returns (MerkleState memory);   // reverts NoMerkleStates before the first root
+function getLatestState() external view returns (MerkleState memory);
 function getStateAtBlock(uint256 blockNumber) external view returns (MerkleState memory);
 function getStateAtIndex(uint256 index) external view returns (MerkleState memory);
 function getStateCount() external view returns (uint256);
 function getStates(uint256 offset, uint256 limit) external view returns (MerkleState[] memory);
 ```
 
-States are filed at the checkpoint's input-freeze block, deliberately: "score as of block N" stays
-honest even though proving is permissionless, delayed, and racy.
+The CID commits to the named bytes; it does not guarantee that a gateway will continue to serve
+them. Treat publication and pinning as availability requirements.
 
-### The leaf encoding
+These state views are convenient history by freeze block. If more than one accepted update is
+filed at the same freeze block, the block-indexed state is replaced. On a provenance-enabled
+factory instance, `getAcceptedCheckpoint(checkpointId)` is the checkpoint-exact state and
+acceptance record.
 
-Every consumer in this repo uses the same leaf, the OpenZeppelin `StandardMerkleTree` convention
-(double keccak over the ABI-encoded tuple, commutative sorted-pair hashing up the tree):
+### Use the address leaf only for address output domains
 
-```solidity
-bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(account, score))));
-```
-
-`account` is an `address`, `score` is a `uint256` count of points out of `totalValue`. This exact
-line appears in `MerkleSnapshot._verifyProof`, `MerkleFundDistributor.claim`, and
-`MerkleGovModule._castVote`; the zk guest and the TS port build the tree the same way, which is why
-one proof works everywhere.
-
-The snapshot also exposes ready-made verifier views, so the cheapest integration is a single
-external call:
+Standard trust graph, weighted prior, composition, and contributions payout outputs use the
+OpenZeppelin `StandardMerkleTree` address leaf:
 
 ```solidity
-snapshot.verifyProof(account, score, proof);                    // against the latest root
-snapshot.verifyProofAtBlock(account, score, proof, blockNum);   // against a historical root
-snapshot.verifyProofAtStateIndex(account, score, proof, idx);
-// plus verifyMyProof / verifyMyProofAtBlock / verifyMyProofAtStateIndex for msg.sender
+bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(account, value))));
 ```
 
-### A consuming contract, sketched
-
-This is the same pattern `MerkleFundDistributor` uses (verify the leaf, then treat
-`score / totalValue` as the account's share):
+`account` is an address and `value` is a `uint256` share of `totalValue`. The snapshot provides
+helpers for this domain:
 
 ```solidity
-import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IMerkleSnapshot} from "interfaces/merkle/IMerkleSnapshot.sol";
-
-contract ScoreGate {
-    IMerkleSnapshot public immutable SNAPSHOT;
-    uint256 public immutable MIN_SCORE;
-
-    error NotProven();
-    error ScoreTooLow();
-
-    constructor(IMerkleSnapshot snapshot, uint256 minScore) {
-        SNAPSHOT = snapshot;
-        MIN_SCORE = minScore;
-    }
-
-    /// Gate on a proven score. The caller supplies the score and its merkle proof
-    /// (fetched from the indexer, or rebuilt from the IPFS blob).
-    function requireScore(address account, uint256 score, bytes32[] calldata proof) public view {
-        IMerkleSnapshot.MerkleState memory state = SNAPSHOT.getLatestState();
-        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(account, score))));
-        if (!MerkleProof.verifyCalldata(proof, state.root, leaf)) revert NotProven();
-        if (score < MIN_SCORE) revert ScoreTooLow();
-    }
-
-    /// Or weight by share of the pool, exactly as the fund distributor does:
-    ///   share = amount * score / state.totalValue
-    function shareOf(uint256 amount, uint256 score, IMerkleSnapshot.MerkleState memory state)
-        internal
-        pure
-        returns (uint256)
-    {
-        return Math.mulDiv(amount, score, state.totalValue);
-    }
-}
+snapshot.verifyProof(account, value, proof);
+snapshot.verifyProofAtBlock(account, value, proof, blockNumber);
+snapshot.verifyProofAtStateIndex(account, value, proof, stateIndex);
 ```
 
-Things the shipped consumers got right that yours should too:
+Node-ID programs such as Hypercerts and Nostr use a different output domain and leaf encoding.
+Their primary entries must not be passed to the address helpers. A verified EVM binding may add a
+separate address-domain entry where the program explicitly supports one.
 
-- **Pin the root you priced against.** A distribution created at root R must not pay out against a
-  later root. `MerkleFundDistributor` copies `root` and `totalMerkleValue` into the distribution at
-  creation time (and its `distribute(token, amount, expectedRoot)` takes an `expectedRoot` so the
-  transaction reverts if a new root landed in flight). `MerkleGovModule` snapshots the root and
-  total voting power per proposal at creation.
-- **Absence is not provable with this scheme.** A merkle proof shows an `{account, score}` pair is
-  in the tree; it cannot show an account is absent or that a submitted score is the account's only
-  leaf. The tree contains one leaf per scored account, so this is fine for "prove you have at least
-  X": an attacker cannot forge a higher leaf, and proving a lower one only hurts them.
-- **A score is a claim about one root.** If you accept proofs against `getLatestState()`, a user's
-  cached proof goes stale when a new epoch lands. Either accept `verifyProofAtBlock` for a window,
-  or have the app re-fetch proofs after each root (the indexer makes that cheap; see below).
+### Pin the root used by a decision
 
-Existing on-chain consumers to crib from:
+A proof belongs to one root. If a contract always reads `getLatestState()`, a cached proof becomes
+stale as soon as another epoch lands.
 
-- `MerkleFundDistributor.claim(distributionIndex, account, value, proof)` — proportional payouts;
-  open claim (anyone can relay, funds always go to `account`).
-- `MerkleGovModule.castVote(proposalId, voteType, votingPower, proof)` — score-weighted Safe
-  governance; same leaf, root snapshotted per proposal.
+Decisions that remain open should pin the root and `totalValue` they started with. The shipped fund
+distributor does this for each distribution, and the governance module records the root and total
+voting power when a proposal is created.
 
-## 2. HTTP: the indexer's score and proof routes
+A Merkle inclusion proof establishes that one leaf is present. It does not prove that an absent
+account has no leaf. Programs in this repository produce at most one canonical entry per key, but
+an integration should rely on the admitted program and output-domain rules for that uniqueness.
 
-The Ponder indexer (`packages/indexer/`) watches the chain, fetches each root's canonical score blob from
-IPFS by the CID committed in the proof, and serves scores *with their proofs*. It is a convenience,
-never a second source of truth: **every bundle carries the proof and the root, so a consumer can
-verify against the chain and ignore the endpoint's honesty entirely.** The indexer holds itself to
-the same rule: it rebuilds each tree with the guest-identical merkle code and refuses to serve
-entries whose recomputed root does not match the on-chain root (`packages/indexer/src/merkle.ts`).
+## 2. Fetch entries and proofs from the indexer
 
-All routes are GET. `:snapshot` is the network's `MerkleSnapshot` address, the stable handle a
-consumer should key on (find it via `/instances` or the `InstanceCreated` event).
+The indexer follows contract events, fetches canonical output blobs, rebuilds their trees, and
+refuses proof requests when the recomputed root differs from the accepted root. It can still be
+unavailable or withhold a response; it cannot make a forged entry pass an independent Merkle
+verification.
 
-Every score response also carries `scoreProgram`: the bytes32 program id and output-domain id,
-their stable names/key encoding, the instance/verifier/params tuple, and the exact configured
-`InstanceRegistry` event (registry, block, log index, transaction) that authenticated the binding.
-Clients must validate the id/domain pair before interpreting a key. `GET
-/score-programs/:snapshot` exposes the current binding even before the first root. A missing,
-unknown, conflicted, or wrong-namespace binding is `409`; there is no fallback based on whether a
-key is 20 or 32 bytes.
+Resolve a network and its output semantics before decoding entries:
 
-Routes keyed by a secondary subject also carry `scoreKeyDomain`; Contributions claim-score and
-audit responses use `contributions-claim-v1`, distinct from the program's address-keyed payout
-domain.
-
-### Discovery
-
-| Route | Serves |
+| Route | Purpose |
 | --- | --- |
-| `/instances` | the factory catalog, paginated (`?limit=&offset=`), filterable by `creator`, `admin`, `snapshot`, `resolver`, `distributor`, `schemaUid`; each row includes the instance's contract addresses and governance (Safe + module) when present |
-| `/instances/:id` | one instance by 32-byte `instanceId` |
-| `/instances/:id/params` | the instance's full scoring params (from the on-chain event, not a config file) |
-| `/score-programs/:snapshot` | authenticated program/output-domain and registry-event provenance for a snapshot |
+| `/instances` | Paginated registered instance catalog |
+| `/instances/:id` | One registered instance and its contract set |
+| `/instances/:id/params` | Parameters derived from onchain publication events |
+| `/score-programs/:snapshot` | Authenticated program ID, output domain, key encoding, and registry provenance |
 
-### Trust-graph scores and proofs
+Clients should reject missing, unknown, conflicted, or unexpected program/domain bindings. Do not
+fall back to guessing from a 20-byte or 32-byte key.
 
-| Route | Serves |
-| --- | --- |
-| `/merkle/:snapshot/all` | every proven root for this network, newest first |
-| `/merkle/:snapshot/:root` | one full tree: metadata plus every entry `{account, value, proof}` (`:root` may be the literal `current`) |
-| `/merkle/:snapshot/:root/:account` | **the per-account bundle**: `{entry: {account, value, proof}}`, everything a contract call like `claim` or `castVote` needs |
-| `/network/:snapshot` | the scored member list plus the counted vouch graph (what the network page renders) |
-| `/network/:snapshot/status` | freshness: last landed root, whether a recount is running, how many attestations await the next epoch |
-| `/network/:snapshot/checkpoints/:checkpointId/inputs` | the exact fold-ordered input set a checkpoint froze, the raw material for path 3 |
-| `/account/:account/networks` | one account's profile (rank, score, proof-carrying tree CID, vouches in/out) across configured networks |
-| `/account/:account/network/:snapshot` | the same profile for one network |
-| `/account/:account/attestations` | every vouch sent or received by an account |
+### Address-based roots
 
-So the integration loop for an app is: `GET /merkle/<snapshot>/current/<account>` → hold
-`{value, proof}` → pass both to your contract, which verifies against the on-chain root. If the
-endpoint lied, the on-chain verification fails; the endpoint can deny you service but cannot forge
-a score.
+| Route | Includes a Merkle proof? | Purpose |
+| --- | --- | --- |
+| `/merkle/:snapshot/all` | No | Accepted root list |
+| `/merkle/:snapshot/:root` | Yes, for every entry | Full address-keyed tree and metadata; `:root` may be `current` |
+| `/merkle/:snapshot/:root/:account` | Yes | One `{account, value, proof}` bundle |
+| `/network/:snapshot` | No per-entry proof | Member and counted-vouch display data |
+| `/network/:snapshot/status` | No | Root freshness and pending-input status |
+| `/network/:snapshot/checkpoints/:checkpointId/inputs` | No output proof | Fold-ordered lane-1 vouch inputs for standard or weighted programs |
 
-### Hypercerts scores (lane-2 program)
+The common application loop is:
 
-The hypercerts program scores AT protocol nodes rather than addresses; its bundles are keyed by
-`nodeId`:
+1. request `/merkle/<snapshot>/current/<account>`;
+2. read the current onchain state or a root your application already pinned;
+3. confirm the bundle names that root; and
+4. verify `{account, value, proof}` locally or pass it to the consuming contract.
 
-| Route | Serves |
-| --- | --- |
-| `/hypercerts/roots?snapshot=0x…` | known hypercerts roots, newest first |
-| `/hypercerts/scores` · `/hypercerts/:snapshot/scores` | the full score set at the current root (`?root=` to pin one) |
-| `/hypercerts/score/:nodeId` | `{nodeId, score, proof, root, ipfsHash, ipfsHashCid, totalValue, skippedDigest, anchorAcc, anchorCount, snapshot}` at the single instance's current root (`?snapshot=` / `?root=` override) |
-| `/hypercerts/:snapshot/score/:nodeId` | the bundle at that snapshot's current root |
-| `/hypercerts/:snapshot/:root/score/:nodeId` | the bundle at an explicit root (`current` allowed) |
+The `/network` route is for display; its rows are not individual proof bundles. The checkpoint
+input route is explicitly lane-1-only and is not sufficient to reconstruct a strict offchain EAS,
+Contributions, Hypercerts, Nostr, or composition proof.
 
-These routes rebuild the proof with the guest's exact tree construction and cross-check the
-recomputed root against the stored on-chain root before serving; a mismatch is a `409` with both
-roots in the body, never a quietly wrong proof.
+### Program-specific routes
 
-### Contributions rounds (payout program)
+Hypercerts list routes return score rows without proofs. Single-node routes such as
+`/hypercerts/:snapshot/:root/score/:nodeId` return the node value, root, and Merkle proof. Validate
+the node output domain before reconstructing its leaf.
 
-`/contributions/rounds`, `/contributions/:snapshot/round`, `/contributions/:snapshot/claims`,
-`/contributions/:snapshot[/root]/score/:claimUid`,
-`/contributions/:snapshot[/root]/payout/:account`, and
-`/contributions/:snapshot[/root]/audit/:claimUid` serve the round state, per-claim scores, and the
-per-account payout bundles the payout page claims through. Details in
-[Contributions](./contributions.md).
+Contributions routes under `/contributions/:snapshot` serve round records, claim-level audit data,
+and address payout bundles. Claim scores use a claim-ID domain distinct from the payout root's
+address domain. See [Contributions](./contributions.md) before mixing those values.
 
-### Everything else
+When the canonical blob cannot be retrieved or validated, proof routes return an availability
+error instead of inventing entries from indexed display data.
 
-`/vault/:instanceId` reports a network's proving tank (balance, burn rate, unpaid roots). The root
-path and `/graphql` serve Ponder's GraphQL API over the full indexed schema, and `/sql` exposes the
-Ponder client protocol, for queries these routes don't cover.
+## 3. Recompute a standard onchain EAS result
 
-## 3. In-browser: recompute the scores yourself
-
-`packages/frontend/lib/pagerank` is a TypeScript port of the canonical Rust core
-(`crates/pagerank-core`): fixed-point Trust-Aware PageRank, the byte encodings, the OZ merkle
-tree, and the CID construction. It is held byte-identical to the Rust guest by shared golden
-vectors (`../../tests/golden/trust-graph.json`, exercised by `packages/frontend/lib/pagerank/golden.test.ts`
-and the Solidity golden suites), so what it computes is what the zk proof proves.
-
-That gives an app a third option: don't just check membership, recompute the scores and compare
-the root.
+The browser library at `packages/frontend/lib/pagerank` mirrors the canonical standard
+`trust-graph` core for onchain lane-1 inputs. It uses fixed-point integer arithmetic, canonical
+encoding, Merkle construction, and CID construction checked by shared golden vectors.
 
 ```ts
-import { compute } from '@/lib/pagerank'   // packages/frontend/lib/pagerank
+import { compute } from '@/lib/pagerank'
 
 const result = compute({ edges, params })
-// result.journal.outputRoot — compare with snapshot.getLatestState().root on chain
-// result.scores, result.blob, result.cid — the full recomputed score set
+// Compare result.journal.outputRoot with the accepted onchain root.
 ```
 
-- `edges` are the network's folded vouch records. The indexer serves the exact fold-ordered input
-  set a checkpoint froze at `/network/:snapshot/checkpoints/:checkpointId/inputs`, and the browser
-  can cross-check the accumulator commitment against `resolver.getCheckpoint(id)` over RPC before
-  trusting it (this is what the app's own settings preview does).
-- `params` come from `/instances/:id/params`, which is itself decoded from the on-chain
-  `InstanceCreated` event.
-- `proofFor` / `buildTree` from the same package derive any account's merkle proof locally, so an
-  app can serve proofs to its users without depending on this project's indexer at all.
+For this specific program:
 
-If the recomputed root equals the on-chain root, you have independently re-derived the entire
-score set from public inputs; the zk proof exists so that contracts don't have to do this, not so
-that you can't. The from-nothing version of this exercise (public data only, no repo trust) is
-[`../verify/reproduce-an-epoch.md`](../verify/reproduce-an-epoch.md).
+- fetch fold-ordered lane-1 records from
+  `/network/:snapshot/checkpoints/:checkpointId/inputs`;
+- reconstruct and compare the accumulator and count with the checkpoint contract;
+- obtain the exact checkpoint parameter version and confirm its hash; and
+- compare the output root, blob digest, CID, and total value with the accepted result.
 
-One honest caveat: the port lives in this repo as an app library; it is not published as an npm
-package today. Vendoring the `packages/frontend/lib/pagerank` directory (it depends only on `viem`) is the
-current way to use it outside this frontend.
+This path does not reproduce every Trustgraphs program. A strict offchain EAS checkpoint also
+needs the anchor history and envelope witnesses. Weighted prior uses its committed manifest and a
+separate personalized recurrence. Contributions, Hypercerts, Nostr, composition, and signer sync
+have dedicated cores and witness rules.
 
-## Choosing a path
+For a repository-independent lane-1 walkthrough, see [Reproduce a public EAS
+epoch](../verify/reproduce-an-epoch.md).
 
-| You are… | Use | Trust required |
+## Trust assumptions by path
+
+| Path | What you independently check | What still matters |
 | --- | --- | --- |
-| a contract gating or paying by score | path 1 | none: the chain verifies |
-| an app showing scores, ranks, members | path 2, verifying bundles via path 1 semantics | none if you verify; availability only |
-| an auditor, or an app that must not trust our indexer | path 3 (plus path 1 for the root) | none |
+| Onchain Merkle verification | Entry belongs to an accepted root | Chain consensus, accepted verifier/program and parameters, Merkle leaf domain |
+| HTTP plus independent proof verification | Same membership check, with easier discovery | Endpoint availability and correct program/domain selection |
+| Full local reproduction | Membership, input commitment, and program output | Exact source witness and build availability, plus the chain and governance assumptions above |
 
-## Related
-
-- [`./create-a-network.md`](./create-a-network.md) — standing up the network these scores come from
-- [`../concepts/algorithm.md`](../concepts/algorithm.md) — what the scores mean and how they are
-  computed
-- [`./run-a-prover.md`](./run-a-prover.md) — how roots keep landing (and what happens when they
-  don't)
-- [`../verify/reproduce-an-epoch.md`](../verify/reproduce-an-epoch.md) — reproduce a proven epoch
-  from public data alone
+See [Networks and programs](../concepts/networks-and-programs.md) for output semantics and [Epochs
+and proofs](../concepts/epochs-and-proofs.md) for the acceptance statement.

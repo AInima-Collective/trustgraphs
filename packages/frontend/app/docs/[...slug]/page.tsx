@@ -137,10 +137,9 @@ export default async function DocPage({ params }: Props) {
   const next = index < DOCS_ORDER.length - 1 ? DOCS_ORDER[index + 1] : undefined
 
   // The table of contents renders inline under the title (h2 entries only, and
-  // only when there are enough to be worth a map) instead of as a side rail: a
-  // rail exists only at xl and only on pages with headings, so it either
-  // reserves dead space or makes the reading column jump between pages —
-  // inline, every viewport gets the same jump links, phones included.
+  // only when there are enough to be worth a map). A single numbered rail
+  // preserves document order at every viewport and keeps the reading column
+  // stable between pages.
   const contents = doc.toc.filter((entry) => entry.depth === 2)
 
   return (
@@ -181,20 +180,28 @@ export default async function DocPage({ params }: Props) {
         </header>
 
         {contents.length >= 3 && (
-          <nav aria-label="Contents" className="mt-8">
-            <div className="tg-label border-b border-border pb-2">Contents</div>
-            <ul className="mt-2 list-none columns-1 gap-x-8 p-0 text-sm sm:columns-2">
-              {contents.map((entry) => (
-                <li key={entry.id} className="break-inside-avoid">
+          <nav
+            aria-label="Contents"
+            className="mt-9 border-l border-border-strong pl-4 sm:pl-5"
+          >
+            <div className="tg-label-strong mb-2">Contents</div>
+            <ol className="list-none p-0 text-sm">
+              {contents.map((entry, index) => (
+                <li key={entry.id}>
                   <a
                     href={`#${entry.id}`}
-                    className="block py-1 text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    className="group grid min-h-9 grid-cols-[2.25rem_minmax(0,1fr)] items-baseline gap-2 py-1 text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
                   >
-                    {entry.text}
+                    <span aria-hidden="true" className="tg-marker">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="underline-offset-4 group-hover:underline">
+                      {entry.text}
+                    </span>
                   </a>
                 </li>
               ))}
-            </ul>
+            </ol>
           </nav>
         )}
 

@@ -6,10 +6,11 @@ restricted workspace but want to publish a public, auditable score result.
 
 ## How data reaches a proof
 
-An authorized collector exports the workspace history and creates an immutable witness package.
-Only the package commitment is anchored onchain. The prover then verifies the signed events,
-membership and identity rules, replacements and deletions, and the program's supported workspace
-signals before computing scores.
+The program supports two authenticated witness paths: relay-authorized Buzz audit histories and
+member self-committed Nostr logs. The relevant history commitment is anchored onchain, and the
+prover supplies the corresponding witness package. The guest verifies signed events, membership
+and identity rules, replacements and deletions, and the supported workspace signals before
+computing scores.
 
 The current roster defines who is eligible. Conflicting or invalid identity bindings are rejected,
 and deleted or superseded events do not reappear through older history.

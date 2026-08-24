@@ -1,49 +1,75 @@
-# How the rules change
+# Governance and network authority
 
-A score is only as trustworthy as the process that controls its rules. Every trustgraphs network
-therefore makes its authority and active parameters visible onchain.
+The standard vouching wizard always creates a DAO Safe and records it as the network's **admin**:
+the onchain authority allowed to change protected rules. The creator's wallet is not the direct
+admin of that network.
 
-## Network authority
+The weighted-prior and composition workspaces currently make governance an explicit creation-time
+choice, and the option is off by default. A governed creation uses the same DAO Safe model; an
+ungoverned creation records the connected wallet as the program controller's admin. The authority
+shown by the application is therefore part of the network's trust model, not a universal property
+of every Trustgraphs instance.
 
-The network creator chooses an admin when the network is created. That authority may be an
-individual account, but a community can use a Safe so that protected actions require several
-signers. Applications should inspect the configured authority instead of assuming that every
-network has the same governance model.
+## What "admin" means
 
-The authority controls protected settings such as scoring parameters, proving policy, and optional
-modules. Members do not need governance approval to perform ordinary actions such as vouching or
-revoking a vouch.
+Admin is a contract role, not a dashboard superuser. In a governed network, the DAO Safe holds the
+network's highest-level permissions, owns the program controller, and owns any shared fund.
+Changes are executed from the Safe only after they pass through the network's governance module.
 
-## Parameter updates
+The creator's wallet is recorded as the Safe's initial owner and delayed recovery proposer, but a
+sealed execution guard prevents it from sending ordinary owner-approved transactions. Recovery is
+a slow, visible fallback: a recovery action must wait through a public delay, and the DAO can
+cancel it or replace the recovery proposer before execution.
 
-Governed networks route parameter changes through a controller. A proposal records the complete
-replacement settings and the earliest time they can become active. Until activation, the current
-parameters continue to define proofs and scores.
+## How a change is approved
 
-This separation gives members and integrators time to inspect a change before it affects a new
-checkpoint. The network detail page shows active and pending settings where the selected program
-supports them.
+A member with a score in a governed network can create a proposal containing the exact actions the
+DAO would execute.
+Voting power comes from the accepted score snapshot recorded when the proposal is created, so a
+later score update cannot change that proposal's electorate or weights.
 
-Some inputs have their own update workflow. For example, replacing a
-[weighted prior](../build/weighted-prior.md) is a governed settings change; adding a vouch is not.
+Each proposal has a voting delay, a voting period, and a quorum requirement. If it receives enough
+participation and more voting power supports it than opposes it, it passes. A further execution
+delay leaves time to inspect the result before the governance module can execute the approved
+actions from the DAO Safe.
 
-## Program versions
+The Governance tab shows proposals, votes, their current state, and the actions they will execute.
 
-The proving program and its verification key define the scoring rules. Replacing that program is
-not ordinary parameter tuning. A new implementation has a new verification key and should be
-treated as a version change or migration.
+## What the DAO can change
 
-Earlier score roots remain tied to the program and parameters that produced them. A later update
-does not rewrite an accepted epoch.
+The DAO can approve changes to:
 
-## What consumers should check
+- scoring parameters, including trusted seeds, damping, weight bounds, and convergence settings;
+- the network's scoring cadence and other protected settings;
+- optional modules and shared-fund policy; and
+- the scoring implementation itself by adopting a verifier for a new program version.
 
-Before relying on a network, check:
+Parameter changes are published as new versions and take effect from a future checkpoint. Changing
+the scoring program is a larger upgrade: a new implementation has a new verification key and
+should be reviewed as a change to the algorithm, not as routine tuning. The verifier is not pinned
+when a checkpoint is triggered, so a rotation also changes what can prove an already-triggered,
+still-unproved checkpoint.
 
-- who holds its current authority;
-- whether changes have a review delay;
-- which parameters and program version are active; and
-- whether optional governance or distribution modules are installed.
+Vouching and revoking a vouch do not require a governance proposal. They are ordinary member
+actions in standard and weighted vouch networks. Their effect appears in the next score update and
+can change members' voting power in later proposals.
+
+## Past scores do not change
+
+Every accepted epoch remains tied to the inputs and parameters used to prove it. Factory
+deployments with provenance enabled also record the accepted verifier, its code hash, and program
+key. Governance updates do not rewrite that accepted history.
+
+## Wallet-owned weighted and composition instances
+
+Without **Create with governance**, a weighted-prior or composition instance is controlled by the
+wallet recorded as its controller admin. Program-specific proposal and activation delays still
+apply, but there is no member vote in front of the admin action and the network does not show DAO
+governance as its authority.
+
+Governance is structural at creation: the current interface does not convert a wallet-owned
+instance into a governed one later. Applications should display the active authority so users can
+distinguish these deployments from DAO-governed networks.
 
 For the relationship between checkpoints, proofs, and parameter versions, see
 [Epochs and proofs](../concepts/epochs-and-proofs.md).
