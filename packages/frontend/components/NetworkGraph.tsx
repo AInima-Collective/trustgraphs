@@ -41,6 +41,7 @@ import {
   nodeColorForValue,
   readGraphTokens,
 } from '@/lib/graphTheme'
+import { includeNetworkGraphNode } from '@/lib/network-graph'
 import {
   NetworkGraphHoverState,
   NetworkGraphManager,
@@ -251,15 +252,22 @@ export function NetworkGraph({
       ensName,
       agents,
     } of accountData) {
-      // The ordinary graph retains its existing edge-connected node policy. An induced agent
-      // lens, however, must retain verified-wallet vertices even when filtering removes all of
-      // their edges; isolates are part of the induced vertex set too.
-      const connected = attestations.some(
+      // The accepted score tree defines membership. An edge-less member is still a vertex (seeds
+      // and weighted-prior members commonly begin this way). Explicit agent and focused-account
+      // lenses may narrow that set, while retaining isolated agent vertices in the former.
+      const connectedToVisibleEdge = attestations.some(
         (attestation) =>
           isHexEqual(attestation.attester, account) ||
           isHexEqual(attestation.recipient, account)
       )
-      if (agentsOnly ? agents.length === 0 : !connected) {
+      if (
+        !includeNetworkGraphNode({
+          agentsOnly,
+          agentCount: agents.length,
+          focused: !!onlyAddress,
+          connectedToVisibleEdge,
+        })
+      ) {
         continue
       }
 

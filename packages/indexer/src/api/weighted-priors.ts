@@ -102,6 +102,17 @@ app.get('/', async (c) => {
   })
 })
 
+app.get('/:instanceId', async (c) => {
+  const instanceId = idParam(c.req.param('instanceId'))
+  if (!instanceId) return c.json({ error: 'instanceId must be bytes32' }, 400)
+  const row = await db.query.weightedPriorInstance.findFirst({
+    where: eq(weightedPriorInstance.id, instanceId),
+  })
+  return row
+    ? c.json({ instance: serializeInstance(row) })
+    : c.json({ error: 'not found' }, 404)
+})
+
 app.get('/:instanceId/versions', async (c) => {
   const instanceId = idParam(c.req.param('instanceId'))
   if (!instanceId) return c.json({ error: 'instanceId must be bytes32' }, 400)

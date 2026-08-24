@@ -301,13 +301,13 @@ Everything below cost someone real time.
   the attestations, the checkpoint and the root among them — sit one block short of visible, and the
   indexer looks perfectly healthy while the page stays empty. `task demo` ends with `demo:settle`,
   which mines 64. By hand: `cast rpc anvil_mine 0x40`. Better: `anvil --block-time 1`.
-- **IPFS is not optional, and "pinned" is not the same as "readable".** `packages/indexer/src/merkle.ts`
-  fetches the score blob by CID and _throws_ if it cannot, which wedges Ponder on that one event and
-  leaves every network page 404ing over a perfectly valid proof. Worse, a successful `add` only
+- **IPFS is not optional, and "pinned" is not the same as "readable".** A successful `add` only
   proves the API node took the bytes: if `[ipfs] api` and `IPFS_GATEWAY` are different nodes, the
-  daemon reports `pinned` and readers get 504. The operator reads the blob back through
-  `[ipfs] gateway` before calling it published, and `task demo:report` prints whether the scores are
-  actually retrievable.
+  daemon reports `pinned` and readers get 504. The indexer records that root as pending, continues
+  indexing unrelated events, and retries it from a durable queue every five blocks with bounded
+  backoff; current-score APIs return 503 rather than presenting an older tree as current. The
+  operator still reads the blob back through `[ipfs] gateway` before calling it published, and
+  `task demo:report` prints whether the scores are actually retrievable.
 - **Restarting anvil changes the chain even though its chain id stays 31337.** The indexer startup
   guard records a block hash independently of Ponder. An ordinary indexer restart reuses its
   checkpoint; a different local chain automatically gets a fresh index schema and clears the

@@ -172,9 +172,12 @@ cp "$CONFIG" "$REPAIR_CONFIG"
 cat >> "$REPAIR_CONFIG" <<EOF
 
 [ipfs]
+min_success = 1
+retry_seconds = 1
+[[ipfs.targets]]
+name = "repair-stub"
 api = "http://127.0.0.1:$REPAIR_PORT"
 gateway = "$REPAIR_GATEWAY"
-retry_seconds = 1
 EOF
 cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
   --config "$REPAIR_CONFIG" republish --instance "$INSTANCE_ID" --checkpoint 0 \

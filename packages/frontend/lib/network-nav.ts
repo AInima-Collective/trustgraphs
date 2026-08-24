@@ -7,8 +7,8 @@
 //! gov module and no fund distributor until someone deploys them, so offering those tabs would
 //! route people to a page that can only tell them the feature does not exist here.
 
-import { isHexEqual } from './utils'
 import { ContributionsNetwork, Network } from './types'
+import { isHexEqual } from './utils'
 
 export type NetworkTab = {
   href: string
@@ -119,6 +119,20 @@ export const trustgraphsTabs = (
     },
   ]
 }
+
+/** Weighted networks share the score/vouch overview, while prior rotation stays explicit. */
+export const weightedTrustgraphsTabs = (network: Network): NetworkTab[] => [
+  {
+    href: `/networks/${network.id}`,
+    label: 'Overview',
+    icon: 'overview',
+    exact: true,
+  },
+  {
+    href: `/create/weighted?instance=${network.instanceId ?? network.id}`,
+    label: 'Update prior',
+  },
+]
 
 /**
  * The trust network a round's reputation is proven against — `contributionsRoundsFor` reversed,

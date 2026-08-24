@@ -32,7 +32,7 @@ import {
   useSwitchChain,
 } from 'wagmi'
 
-import { Button } from '@/components/Button'
+import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
@@ -52,8 +52,6 @@ import {
 } from '@/lib/proving-prepay'
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
-
-import { describeBlocks } from '../model'
 import {
   type WeightedApiEntry,
   type WeightedApiInstance,
@@ -97,6 +95,8 @@ import type {
   WeightedPreviewWorkerResponse,
 } from '@/lib/weighted-prior/preview.worker'
 import { BINARY_REDEPLOYMENT_NOTICE } from '@/lib/weighted-prior/workflow'
+
+import { describeBlocks } from '../model'
 
 type Mode = 'create' | 'rotate' | 'redeploy'
 type Format = 'csv' | 'json'
@@ -506,7 +506,11 @@ export const WeightedPriorWorkspace = () => {
       setCurrentEntries(
         nextActive.availability.status === 'unavailable'
           ? []
-          : await fetchWeightedEntries(APIS.ponder, id as Hex, nextActive.version)
+          : await fetchWeightedEntries(
+              APIS.ponder,
+              id as Hex,
+              nextActive.version
+            )
       )
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
@@ -538,7 +542,6 @@ export const WeightedPriorWorkspace = () => {
       setPrefilled(accounts.length)
     }
     // Run once, against the URL the page opened with.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /** The rotate view for a network that was just created (or picked from a listing). */
@@ -848,11 +851,11 @@ export const WeightedPriorWorkspace = () => {
         </h1>
         <p className="text-sm text-muted-foreground max-w-3xl">
           Choose who gets a head start and how much. Your starting accounts
-          begin with shares of exactly the sizes you set (an account with
-          weight 10 starts with four times the share of one with weight 2.5),
-          and vouches still decide the final scores. Paste a list or upload a
-          spreadsheet, check the shares, then create a weighted network. You
-          can also schedule a delayed update to an existing weighted network.
+          begin with shares of exactly the sizes you set (an account with weight
+          10 starts with four times the share of one with weight 2.5), and
+          vouches still decide the final scores. Paste a list or upload a
+          spreadsheet, check the shares, then create a weighted network. You can
+          also schedule a delayed update to an existing weighted network.
         </p>
         <div
           className="flex flex-wrap gap-2"
@@ -968,9 +971,7 @@ export const WeightedPriorWorkspace = () => {
               id="weighted-instance"
               aria-describedby="weighted-instance-help"
               value={
-                weightedInstances.some(
-                  (instance) => instance.id === instanceId
-                )
+                weightedInstances.some((instance) => instance.id === instanceId)
                   ? instanceId
                   : ''
               }
@@ -1027,8 +1028,8 @@ export const WeightedPriorWorkspace = () => {
             <Link href="/networks" className="underline underline-offset-4">
               network directory
             </Link>
-            . The full ID is also shown after creation; weighted networks do
-            not currently have a Settings page.
+            . The full ID is also shown after creation; weighted networks do not
+            currently have a Settings page.
           </p>
           {instanceId && (
             <div className="flex items-baseline gap-2 text-xs">
@@ -1070,9 +1071,8 @@ export const WeightedPriorWorkspace = () => {
                 .
               </p>
               <p>
-                Exact bytes of the pending update:{' '}
-                {pending.availability.status} via{' '}
-                {pending.availability.provenance}.
+                Exact bytes of the pending update: {pending.availability.status}{' '}
+                via {pending.availability.provenance}.
               </p>
               {pendingDiagnosis && (
                 <p
@@ -1415,9 +1415,9 @@ export const WeightedPriorWorkspace = () => {
             </h2>
             <Card type="outline" size="md" className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                These are the exact commitments your transaction will carry.
-                The downloads reproduce the bytes exactly, so anyone can verify
-                the network against them later.
+                These are the exact commitments your transaction will carry. The
+                downloads reproduce the bytes exactly, so anyone can verify the
+                network against them later.
               </p>
               <dl className="grid gap-2 text-sm">
                 <div>
@@ -1451,8 +1451,8 @@ export const WeightedPriorWorkspace = () => {
               {artifacts.ensResolutions.length > 0 && (
                 <div className="space-y-1 text-xs">
                   <p className="font-medium">
-                    ENS resolution receipts (import only; the addresses are
-                    what goes onchain)
+                    ENS resolution receipts (import only; the addresses are what
+                    goes onchain)
                   </p>
                   {artifacts.ensResolutions.map((record) => (
                     <p key={record.name} className="font-mono break-all">
@@ -1636,8 +1636,8 @@ export const WeightedPriorWorkspace = () => {
                   <p className="text-xs text-muted-foreground">
                     Skipping this closes no doors: the network&apos;s authority
                     can attach a fund later with the factory&apos;s
-                    attachDistributor call, though this workspace does not
-                    offer that button yet.
+                    attachDistributor call, though this workspace does not offer
+                    that button yet.
                   </p>
                 )}
               </Card>
@@ -1647,16 +1647,18 @@ export const WeightedPriorWorkspace = () => {
               <Card type="outline" size="md" className="space-y-4">
                 <div className="flex flex-row items-start justify-between gap-4">
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">Create with governance</p>
+                    <p className="text-sm font-medium">
+                      Create with governance
+                    </p>
                     <p className="text-xs text-muted-foreground max-w-xl">
-                      Hand the new network to a DAO Safe instead of your
-                      wallet. A Safe is a shared onchain account; one is
-                      created for you in the same transaction and owns the
-                      network from the first block. Your wallet becomes the
-                      Safe&apos;s only recorded owner, but a permanently sealed
-                      guard disables owner-signed transactions: members direct
-                      the Safe through delayed trust-weighted voting, and your
-                      wallet keeps only a slow, visible recovery role.
+                      Hand the new network to a DAO Safe instead of your wallet.
+                      A Safe is a shared onchain account; one is created for you
+                      in the same transaction and owns the network from the
+                      first block. Your wallet becomes the Safe&apos;s only
+                      recorded owner, but a permanently sealed guard disables
+                      owner-signed transactions: members direct the Safe through
+                      delayed trust-weighted voting, and your wallet keeps only
+                      a slow, visible recovery role.
                     </p>
                   </div>
                   <Switch
@@ -1694,17 +1696,16 @@ export const WeightedPriorWorkspace = () => {
                         </p>
                         <p>
                           Recovery: your wallet may publish one exact Safe
-                          action but cannot execute it early. Anyone may
-                          execute it after{' '}
-                          {describeSeconds(authority.recoveryDelay)}, and the
-                          member-governed Safe can cancel it or replace the
-                          proposer.
+                          action but cannot execute it early. Anyone may execute
+                          it after {describeSeconds(authority.recoveryDelay)},
+                          and the member-governed Safe can cancel it or replace
+                          the proposer.
                         </p>
                         <p>
                           Updates to the starting shares take longer under
-                          governance: a proposed update must first pass a
-                          member vote (the delays above), and the network&apos;s
-                          own activation delay of{' '}
+                          governance: a proposed update must first pass a member
+                          vote (the delays above), and the network&apos;s own
+                          activation delay of{' '}
                           {describeSeconds(
                             priorActivationDelay as number | undefined
                           )}{' '}
@@ -1805,9 +1806,9 @@ export const WeightedPriorWorkspace = () => {
                         <p className="text-xs text-muted-foreground">
                           Before anything is sent, the simulation checks that
                           this chain has priced the weighted proving band and
-                          that your cap covers that fee. Creation is atomic:
-                          the ETH and the paid policy either both land or
-                          neither does.
+                          that your cap covers that fee. Creation is atomic: the
+                          ETH and the paid policy either both land or neither
+                          does.
                         </p>
                       )}
                     </div>
@@ -1902,20 +1903,26 @@ export const WeightedPriorWorkspace = () => {
                 {created.safe && (
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">
-                      Its DAO Safe, the shared account that owns the network
-                      and its fund from the first block:
+                      Its DAO Safe, the shared account that owns the network and
+                      its fund from the first block:
                     </p>
                     <CopyableText text={created.safe} alwaysShowCopyIcon />
                   </div>
                 )}
-                <div>
+                <div className="flex flex-wrap gap-2">
+                  <ButtonLink
+                    href={`/networks/${created.instanceId}`}
+                    size="sm"
+                  >
+                    View network
+                  </ButtonLink>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => openForUpdate(created.instanceId!)}
                   >
-                    Review it or schedule an update
+                    Update prior
                   </Button>
                 </div>
               </>

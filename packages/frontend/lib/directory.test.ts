@@ -7,8 +7,8 @@ assert.equal(SECTION_META['trust-graph'].scoredLabel, 'Scored accounts')
 assert.ok(PROGRAM_ORDER.includes('nostr-workspace'))
 assert.equal(SECTION_META['nostr-workspace'].scoredLabel, 'Members and agents')
 
-// Weighted instances' persistent surface (GOAL M2): a section fed by GET /weighted-priors whose
-// rows link into the workspace's update view, where the full id is copyable.
+// Weighted instances' persistent surface: discovery opens a network overview; rotation is a
+// separate action from that page.
 assert.ok(PROGRAM_ORDER.includes('trust-graph-weighted'))
 assert.equal(SECTION_META['trust-graph-weighted'].title, 'Weighted networks')
 
@@ -25,6 +25,7 @@ assert.match(
   /weighted-priors\?limit=/,
   'Weighted networks must be discovered from the indexer weighted-prior list'
 )
-assert.match(server, /create\/weighted\?instance=\$\{source\.id\}/)
+assert.doesNotMatch(server, /create\/weighted\?instance=\$\{source\.id\}/)
+assert.match(server, /`\/networks\/\$\{source\.id\}`/)
 
 console.log('directory denominator tests passed')

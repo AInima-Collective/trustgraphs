@@ -83,4 +83,11 @@ test('weighted routes are additive and leave the binary instance API mounted unc
   assert.match(routes, /app\.route\('\/instances', instances\)/)
   assert.match(routes, /app\.route\('\/weighted-priors', weightedPriors\)/)
   assert.doesNotMatch(routes, /app\.route\('\/instances', weightedPriors\)/)
+
+  const handler = readFileSync(
+    new URL('./weighted-priors.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(handler, /app\.get\('\/:instanceId'/)
+  assert.match(handler, /instance: serializeInstance\(row\)/)
 })

@@ -12,10 +12,16 @@ import {
   merkleSnapshot,
   proofSubmission,
   snapshotTrigger,
+  weightedPriorInstance,
 } from 'ponder:schema'
 import { Hex, isAddress } from 'viem'
 
 import { offchainDb } from './db'
+import {
+  CurrentScoreBlobUnavailableError,
+  currentScoreBlobUnavailableBody,
+  requireCurrentScoreBlobAvailable,
+} from './score-blob-availability'
 import {
   ScoreProgramApiError,
   requireEntryScoreProgram,
@@ -47,12 +53,12 @@ const requireTrustNetworkProgram = async (snapshot: string) => {
 /**
  * The vouch schema UIDs to attribute attestations to, for one snapshot.
  *
- * Two sources, in order: the build-time config (hand-deployed networks, and the program-tagged
- * entries this route deliberately ignores), then the `instance` table — the catalog of everything
- * `TrustgraphsFactory` created. Without the second lookup a factory network 404s here, which is not
- * a cosmetic failure: it is exactly the endpoint the network page reads its member list and
- * attestation feed from, so a freshly created community would render its name and a vouch button
- * over a permanently empty roster.
+ * Three sources, in order: the build-time config (hand-deployed networks, and the program-tagged
+ * entries this route deliberately ignores), then the ordinary and isolated weighted instance
+ * catalogs. Without both catalog lookups a factory network 404s here, which is not a cosmetic
+ * failure: it is exactly the endpoint the network page reads its member list and attestation feed
+ * from, so a freshly created community would render its name and a vouch button over a permanently
+ * empty roster.
  */
 const schemaUidsForSnapshot = async (
   merkleSnapshotContract: string
@@ -69,12 +75,24 @@ const schemaUidsForSnapshot = async (
     return configured.schemas.map((schema) => schema.uid as Hex)
   }
 
-  const row = await db
+  const [row] = await db
     .select({ schemaUid: instance.schemaUid })
     .from(instance)
     .where(eq(instance.snapshot, merkleSnapshotContract.toLowerCase() as Hex))
     .limit(1)
-  return row.length > 0 ? [row[0]!.schemaUid as Hex] : null
+  if (row) return [row.schemaUid as Hex]
+
+  const [weighted] = await db
+    .select({ schemaUid: weightedPriorInstance.schemaUid })
+    .from(weightedPriorInstance)
+    .where(
+      eq(
+        weightedPriorInstance.snapshot,
+        merkleSnapshotContract.toLowerCase() as Hex
+      )
+    )
+    .limit(1)
+  return weighted ? [weighted.schemaUid as Hex] : null
 }
 
 /** Resolve the lane-1 fold log for config-backed and factory-created networks alike. */
@@ -92,7 +110,14 @@ const resolverForSnapshot = async (snapshot: string): Promise<Hex | null> => {
     .from(instance)
     .where(eq(instance.snapshot, snapshot.toLowerCase() as Hex))
     .limit(1)
-  return (row?.resolver as Hex | undefined) ?? null
+  if (row) return row.resolver as Hex
+
+  const [weighted] = await db
+    .select({ resolver: weightedPriorInstance.resolver })
+    .from(weightedPriorInstance)
+    .where(eq(weightedPriorInstance.snapshot, snapshot.toLowerCase() as Hex))
+    .limit(1)
+  return (weighted?.resolver as Hex | undefined) ?? null
 }
 
 app.get('/:snapshot', async (c) => {
@@ -109,6 +134,14 @@ app.get('/:snapshot', async (c) => {
     const currentScoreProgram = await requireTrustNetworkProgram(
       merkleSnapshotContract
     )
+    try {
+      await requireCurrentScoreBlobAvailable(merkleSnapshotContract)
+    } catch (error) {
+      if (error instanceof CurrentScoreBlobUnavailableError) {
+        return c.json(currentScoreBlobUnavailableBody(error), 503)
+      }
+      throw error
+    }
     const latestMerkleTree = await offchainDb.query.merkleMetadata.findFirst({
       where: (t, { eq }) =>
         eq(

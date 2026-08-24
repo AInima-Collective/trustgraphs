@@ -74,6 +74,7 @@ pub struct Config {
 /// page over an unpublished root renders empty. Unset means "we are not publishing", which is
 /// legitimate only if something else does.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Ipfs {
     /// Independent kubo/pinning targets. Every target is verified through its reader gateway.
     #[serde(default)]
@@ -1021,6 +1022,24 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         let cfg = parse(&src).unwrap();
         assert_eq!(cfg.ipfs.resolved_targets().len(), 2);
         assert_eq!(cfg.ipfs.required_successes(), 2);
+    }
+
+    #[test]
+    fn retired_flat_ipfs_fields_are_rejected_instead_of_disabling_publication() {
+        let src = format!(
+            "{GOOD}\n[ipfs]\napi = \"http://127.0.0.1:5001\"\n\
+             gateway = \"http://127.0.0.1:8080/ipfs/\"\n"
+        );
+        let err = parse(&src).unwrap_err();
+        assert!(err.contains("unknown field `api`"), "{err}");
+    }
+
+    #[test]
+    fn demo_config_generator_uses_a_required_publication_target() {
+        let demo_task = include_str!("../../../taskfile/demo.yml");
+        assert!(demo_task.contains("[[ipfs.targets]]"));
+        assert!(demo_task.contains("min_success = 1"));
+        assert!(!demo_task.contains("[ipfs]\n        api"));
     }
 
     #[test]

@@ -39,6 +39,10 @@ contract DeployProvingVault is Common {
 
     string public root = vm.projectRoot();
 
+    bytes32 internal constant TRUST_GRAPH_PROGRAM = keccak256("trust-graph");
+    bytes32 internal constant WEIGHTED_TRUST_GRAPH_PROGRAM = keccak256("trust-graph-weighted");
+    bytes32 internal constant TRUST_COMPOSE_PROGRAM = keccak256("trust-compose");
+
     /// @notice Deploy the vault.
     /// @param instanceRegistryAddr The chain's `InstanceRegistry`. Accounts bind to a snapshot by
     ///        resolving it exactly once, at first deposit.
@@ -87,12 +91,7 @@ contract DeployProvingVault is Common {
         );
         provingVault = address(vault);
 
-        // Price a root by size band, so a claim pays something the moment an instance is funded.
-        // $5 / $10 / $15 for <=1k, <=20k, <=200k inputs.
-        bytes32 program = keccak256("trust-graph");
-        vault.setFeePerRootUsd(program, 1, 5e8);
-        vault.setFeePerRootUsd(program, 2, 10e8);
-        vault.setFeePerRootUsd(program, 3, 15e8);
+        _configureCreationFeeSchedule(vault);
 
         vm.stopBroadcast();
 
@@ -105,5 +104,24 @@ contract DeployProvingVault is Common {
         vm.serializeAddress(out, "usdc", usdc);
         string memory json = vm.serializeAddress(out, "proving_vault", provingVault);
         vm.writeJson(json, string.concat(root, "/.docker/proving_vault_deploy.json"));
+    }
+
+    /// @dev Price every program whose creation factory this deployment wires to the vault. The
+    ///      governed wrappers reject a prepay unless the newborn program's band has a nonzero
+    ///      price, so omitting a sibling here makes that creation path fail before a wallet can
+    ///      sign. Trust-graph and weighted trust-graph are sized alike; composition is
+    ///      conservatively flat-banded at band 3 because its small source count hides the actual
+    ///      authenticated work.
+    function _configureCreationFeeSchedule(ProvingVault vault) internal {
+        _configureSizedFeeSchedule(vault, TRUST_GRAPH_PROGRAM);
+        _configureSizedFeeSchedule(vault, WEIGHTED_TRUST_GRAPH_PROGRAM);
+        vault.setFeePerRootUsd(TRUST_COMPOSE_PROGRAM, 3, 15e8);
+    }
+
+    /// @dev $5 / $10 / $15 for <=1k, <=20k, <=200k authenticated inputs.
+    function _configureSizedFeeSchedule(ProvingVault vault, bytes32 program) private {
+        vault.setFeePerRootUsd(program, 1, 5e8);
+        vault.setFeePerRootUsd(program, 2, 10e8);
+        vault.setFeePerRootUsd(program, 3, 15e8);
     }
 }

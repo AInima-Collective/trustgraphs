@@ -2,6 +2,11 @@ import { Hono } from 'hono'
 
 import { offchainDb } from './db'
 import {
+  CurrentScoreBlobUnavailableError,
+  currentScoreBlobUnavailableBody,
+  requireCurrentScoreBlobAvailable,
+} from './score-blob-availability'
+import {
   ScoreProgramApiError,
   requireEntryScoreProgram,
   requireRowScoreProgram,
@@ -34,6 +39,7 @@ const resolveRoot = async (
   root: string
 ): Promise<string> => {
   if (root === 'current') {
+    await requireCurrentScoreBlobAvailable(merkleSnapshotContract)
     const tree = await offchainDb.query.merkleMetadata.findFirst({
       where: (t, { eq }) =>
         eq(
@@ -108,6 +114,9 @@ merkleApp.get('/:snapshot/:root', async (c) => {
   try {
     root = await resolveRoot(merkleSnapshotContract, root)
   } catch (error: any) {
+    if (error instanceof CurrentScoreBlobUnavailableError) {
+      return c.json(currentScoreBlobUnavailableBody(error), 503)
+    }
     return c.json({ error: error.message }, 404)
   }
 
@@ -154,6 +163,9 @@ merkleApp.get('/:snapshot/:root/:account', async (c) => {
   try {
     root = await resolveRoot(merkleSnapshotContract, root)
   } catch (error: any) {
+    if (error instanceof CurrentScoreBlobUnavailableError) {
+      return c.json(currentScoreBlobUnavailableBody(error), 503)
+    }
     return c.json({ error: error.message }, 404)
   }
 

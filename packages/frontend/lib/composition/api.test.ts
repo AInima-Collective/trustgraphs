@@ -18,6 +18,7 @@ import { compositionGoldenFixture } from './fixture'
 
 const originalFetch = globalThis.fetch
 const sourceFixture = compositionGoldenFixture().sources[0]!
+const acceptedAtBlock = sourceFixture.freezeBlock + 17n
 const program: ScoreProgramProvenance = {
   programId: SCORE_PROGRAM_IDS['trust-graph'],
   programName: 'trust-graph',
@@ -114,7 +115,7 @@ const main = async () => {
             ipfsHashCid: sourceFixture.cid,
             numAccounts: sourceFixture.entries.length,
             totalValue: sourceFixture.totalValue.toString(),
-            blockNumber: sourceFixture.freezeBlock.toString(),
+            blockNumber: acceptedAtBlock.toString(),
             timestamp: '999999',
           },
           entries: sourceFixture.entries.map((entry) => ({
@@ -148,7 +149,7 @@ const main = async () => {
         provenanceEnabled: true,
         stateIndex: sourceFixture.stateIndex,
         checkpointId: sourceFixture.checkpointId,
-        acceptedAtBlock: sourceFixture.acceptedAtBlock,
+        acceptedAtBlock,
         freezeBlock: sourceFixture.freezeBlock,
         outputRoot: sourceFixture.outputRoot,
         blobSha256: sourceFixture.blobSha256,

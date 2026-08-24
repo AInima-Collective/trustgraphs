@@ -78,6 +78,19 @@ test('normal network API reconciles both lanes and publishes verified provenance
   assert.match(api, /incomplete derived mutation log/)
 })
 
+test('normal network API resolves isolated weighted instances by snapshot', async () => {
+  const api = await source('./network.ts')
+  assert.match(api, /weightedPriorInstance/)
+  assert.match(
+    api,
+    /select\(\{ schemaUid: weightedPriorInstance\.schemaUid \}\)[\s\S]*?from\(weightedPriorInstance\)[\s\S]*?weightedPriorInstance\.snapshot/
+  )
+  assert.match(
+    api,
+    /select\(\{ resolver: weightedPriorInstance\.resolver \}\)[\s\S]*?from\(weightedPriorInstance\)[\s\S]*?weightedPriorInstance\.snapshot/
+  )
+})
+
 test('snapshot work checkpoints update the same reorg-reverted checkpoint row', async () => {
   const handler = await source('../anchor.ts')
   assert.match(handler, /merkleSnapshot:AnchorWorkCheckpointed/)

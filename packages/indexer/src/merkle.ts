@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { ponder } from 'ponder:registry'
 import {
@@ -16,7 +16,7 @@ import {
 import { type Hex } from 'viem'
 
 import { type ScoreBlob, deriveAddressMerkleRows } from './merkle-ingest'
-import { validateScoreBlob } from './score-program'
+import { boundedIngestionError, nextScoreBlobRetryBlock } from './merkle-retry'
 import * as offchainSchema from '../offchain.schema'
 import { ingestHypercertsScores } from './anchor'
 import {
@@ -26,7 +26,15 @@ import {
 import { compositionCheckpointForEvent } from './composition-receipt'
 import { ingestContributionsScores } from './contributions'
 import { ingestNostrWorkspaceScores } from './nostr-workspace'
-import type { ScoreProgramProvenance } from './score-program'
+import type {
+  ScoreProgramDefinition,
+  ScoreProgramProvenance,
+} from './score-program'
+import {
+  parseScoreProgramProvenance,
+  requireScoreProgram,
+  validateScoreBlob,
+} from './score-program'
 import {
   canRepairScoreRowsOnRestart,
   scoreRowDiscriminators,
@@ -54,25 +62,30 @@ const positiveIntegerEnv = (name: string, fallback: number) => {
   return value
 }
 
-const IPFS_FETCH_ATTEMPTS = positiveIntegerEnv('IPFS_FETCH_ATTEMPTS', 5)
+const IPFS_FETCH_ATTEMPTS = positiveIntegerEnv('IPFS_FETCH_ATTEMPTS', 1)
 const IPFS_FETCH_TIMEOUT_MS = positiveIntegerEnv(
   'IPFS_FETCH_TIMEOUT_MS',
   10_000
 )
+const IPFS_RETRY_FETCH_TIMEOUT_MS = positiveIntegerEnv(
+  'IPFS_RETRY_FETCH_TIMEOUT_MS',
+  2_000
+)
 
 /**
- * Gateways commonly return 404/504 briefly after a pin. Retry inside the indexing function so a
- * transient propagation race does not kill the writer and rely on the process supervisor for the
- * exact same retry. A permanently unavailable blob still throws: serving a root with a silently
- * empty member list would be worse than marking the writer unhealthy while the stable production
- * read server continues to serve the last completed schema.
+ * Gateways commonly return 404/504 briefly after a pin. The durable queue owns retries by default;
+ * optional in-handler attempts are retained for operators that explicitly prefer the latency.
  */
-const fetchIpfs = async (url: string): Promise<Response> => {
+const fetchIpfs = async (
+  url: string,
+  attempts = IPFS_FETCH_ATTEMPTS,
+  timeoutMs = IPFS_FETCH_TIMEOUT_MS
+): Promise<Response> => {
   let lastFailure = 'unknown error'
-  for (let attempt = 1; attempt <= IPFS_FETCH_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(IPFS_FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       })
       if (response.ok) return response
       lastFailure = `${response.status} ${response.statusText}`
@@ -80,16 +93,16 @@ const fetchIpfs = async (url: string): Promise<Response> => {
       lastFailure = error instanceof Error ? error.message : String(error)
     }
 
-    if (attempt < IPFS_FETCH_ATTEMPTS) {
+    if (attempt < attempts) {
       const delayMs = Math.min(1_000 * 2 ** (attempt - 1), 8_000)
       console.warn(
-        `merkle: IPFS fetch attempt ${attempt}/${IPFS_FETCH_ATTEMPTS} failed (${lastFailure}); retrying in ${delayMs}ms`
+        `merkle: IPFS fetch attempt ${attempt}/${attempts} failed (${lastFailure}); retrying in ${delayMs}ms`
       )
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   }
   throw new Error(
-    `IPFS gateway failed after ${IPFS_FETCH_ATTEMPTS} attempts: ${lastFailure}`
+    `IPFS gateway failed after ${attempts} attempts: ${lastFailure}`
   )
 }
 
@@ -186,279 +199,285 @@ ponder.on('contributionsMerkleSnapshot:setup', async ({ context }) => {
   )
 })
 
-const onMerkleRootUpdated = async ({
-  event,
-  context,
-}: SharedArgs<'merkleSnapshot:MerkleRootUpdated'>) => {
+type RootRecovery = {
+  program: ScoreProgramDefinition
+  provenance: ScoreProgramProvenance
+  attemptBlock: bigint
+}
+
+const ensureScoreBlobIngestion = async (
+  event: any,
+  provenance: ScoreProgramProvenance
+) => {
+  await offchainDb
+    .insert(offchainSchema.scoreBlobIngestion)
+    .values({
+      id: event.id,
+      merkleSnapshotContract: event.log.address.toLowerCase(),
+      root: event.args.root,
+      ipfsHash: event.args.ipfsHash,
+      ipfsHashCid: event.args.ipfsHashCid,
+      totalValue: event.args.totalValue,
+      blockNumber: event.block.number,
+      logIndex: event.log.logIndex,
+      timestamp: event.block.timestamp,
+      transactionHash: event.transaction.hash,
+      transactionInput: event.transaction.input,
+      programProvenance: provenance as unknown as Record<string, unknown>,
+      status: 'pending',
+      attempts: 0,
+      nextAttemptBlock: event.block.number,
+      lastAttemptBlock: null,
+      lastError: null,
+    })
+    .onConflictDoNothing()
+}
+
+const markScoreBlobAvailable = async (id: string, attemptBlock: bigint) => {
+  await offchainDb
+    .update(offchainSchema.scoreBlobIngestion)
+    .set({
+      status: 'available',
+      nextAttemptBlock: null,
+      lastAttemptBlock: attemptBlock,
+      lastError: null,
+    })
+    .where(eq(offchainSchema.scoreBlobIngestion.id, id))
+}
+
+const markScoreBlobPending = async (
+  id: string,
+  attemptBlock: bigint,
+  error: unknown
+) => {
+  const [current] = await offchainDb
+    .select({ attempts: offchainSchema.scoreBlobIngestion.attempts })
+    .from(offchainSchema.scoreBlobIngestion)
+    .where(eq(offchainSchema.scoreBlobIngestion.id, id))
+    .limit(1)
+  const attempts = (current?.attempts ?? 0) + 1
+  const nextAttemptBlock = nextScoreBlobRetryBlock(attemptBlock, attempts)
+  const message = boundedIngestionError(error)
+  await offchainDb
+    .update(offchainSchema.scoreBlobIngestion)
+    .set({
+      status: 'pending',
+      attempts,
+      nextAttemptBlock,
+      lastAttemptBlock: attemptBlock,
+      lastError: message,
+    })
+    .where(eq(offchainSchema.scoreBlobIngestion.id, id))
+  return { attempts, nextAttemptBlock, message }
+}
+
+const onMerkleRootUpdated = async (
+  { event, context }: SharedArgs<'merkleSnapshot:MerkleRootUpdated'>,
+  recovery?: RootRecovery
+) => {
   const { root, ipfsHash, ipfsHashCid, totalValue } = event.args
-  const { program, provenance } = await requireAuthenticatedScoreBinding(
-    context,
-    event.log.address
-  )
+  const { program, provenance } =
+    recovery ??
+    (await requireAuthenticatedScoreBinding(context, event.log.address))
   if (program.ingestion === 'not-enabled') {
     throw new Error(
       `score ingestion refused: ${program.name} is registered but its decoder/table is not enabled`
     )
   }
-  console.log(
-    `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid} program ${program.name}`
-  )
-
-  await context.db.insert(merkleSnapshot).values({
-    id: event.id,
-    address: event.log.address,
-    chainId: `${context.chain.id}`,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-    root,
-    ipfsHash,
-    ipfsHashCid,
-    totalValue,
-  })
-
-  const metadataTable =
-    program.ingestion === 'hypercerts'
-      ? offchainSchema.hypercertsMetadata
-      : program.ingestion === 'nostr-workspace'
-        ? offchainSchema.nostrWorkspaceMetadata
-        : offchainSchema.merkleMetadata
-  const entryTable =
-    program.ingestion === 'hypercerts'
-      ? offchainSchema.hypercertsScore
-      : program.ingestion === 'nostr-workspace'
-        ? offchainSchema.nostrWorkspaceScore
-        : offchainSchema.merkleEntry
-
-  // If matching program-specific metadata and at least one score already exist, repair provenance
-  // columns left by a pre-discriminator indexer and skip the untrusted blob fetch.
-  const existingMetadata = await offchainDb
-    .select()
-    .from(metadataTable)
-    .where(
-      and(
-        eq(metadataTable.merkleSnapshotContract, event.log.address),
-        eq(metadataTable.root, root),
-        eq(metadataTable.ipfsHashCid, ipfsHashCid)
-      )
+  const attemptBlock = recovery?.attemptBlock ?? event.block.number
+  if (!recovery) {
+    console.log(
+      `merkle: MerkleRootUpdated from ${event.log.address} @ block ${event.block.number} root ${root} cid ${ipfsHashCid} program ${program.name}`
     )
-    .limit(1)
-  const existingEntries = await offchainDb
-    .select()
-    .from(entryTable)
-    .where(
-      and(
-        eq(entryTable.merkleSnapshotContract, event.log.address),
-        eq(entryTable.root, root)
-      )
-    )
-    .limit(1)
-  // A contributions snapshot additionally needs its derived round/score rows — a crash (or an
-  // older indexer build) can leave the generic rows present but the round missing, so the skip
-  // must consider both surfaces or the ingestion is never retried.
-  const isContributions = program.ingestion === 'contributions'
-  const isComposition = program.ingestion === 'composition'
-  const existingRound = isContributions
-    ? await offchainDb
-        .select()
-        .from(offchainSchema.contributionRound)
-        .where(
-          and(
-            eq(
-              offchainSchema.contributionRound.merkleSnapshotContract,
-              event.log.address.toLowerCase()
-            ),
-            eq(offchainSchema.contributionRound.root, root)
-          )
-        )
-        .limit(1)
-    : []
-  const compositionCheckpoint = isComposition
-    ? await compositionCheckpointForEvent(event, context)
-    : null
-  const existingCompositionEpoch =
-    compositionCheckpoint === null
-      ? false
-      : await compositionEpochExists(
-          offchainDb,
-          event.log.address,
-          compositionCheckpoint
-        )
-  if (
-    canRepairScoreRowsOnRestart(program, {
-      metadata: existingMetadata.length > 0,
-      entries: existingEntries.length > 0,
-      contributionRound: existingRound.length > 0,
-      compositionEpoch: existingCompositionEpoch,
+
+    await context.db.insert(merkleSnapshot).values({
+      id: event.id,
+      address: event.log.address,
+      chainId: `${context.chain.id}`,
+      blockNumber: event.block.number,
+      timestamp: event.block.timestamp,
+      root,
+      ipfsHash,
+      ipfsHashCid,
+      totalValue,
     })
-  ) {
-    const discriminators = scoreRowDiscriminators(program)
-    const rootWhere = and(
-      eq(metadataTable.merkleSnapshotContract, event.log.address),
-      eq(metadataTable.root, root)
-    )
-    await offchainDb
-      .update(metadataTable)
-      .set({
-        ...discriminators.primary,
-        programProvenance: provenance,
-      })
-      .where(rootWhere)
-    await offchainDb
-      .update(entryTable)
-      .set(discriminators.primary)
+  }
+  await ensureScoreBlobIngestion(event, provenance)
+
+  try {
+    const metadataTable =
+      program.ingestion === 'hypercerts'
+        ? offchainSchema.hypercertsMetadata
+        : program.ingestion === 'nostr-workspace'
+          ? offchainSchema.nostrWorkspaceMetadata
+          : offchainSchema.merkleMetadata
+    const entryTable =
+      program.ingestion === 'hypercerts'
+        ? offchainSchema.hypercertsScore
+        : program.ingestion === 'nostr-workspace'
+          ? offchainSchema.nostrWorkspaceScore
+          : offchainSchema.merkleEntry
+
+    // If matching program-specific metadata and at least one score already exist, repair provenance
+    // columns left by a pre-discriminator indexer and skip the untrusted blob fetch.
+    const existingMetadata = await offchainDb
+      .select()
+      .from(metadataTable)
+      .where(
+        and(
+          eq(metadataTable.merkleSnapshotContract, event.log.address),
+          eq(metadataTable.root, root),
+          eq(metadataTable.ipfsHashCid, ipfsHashCid)
+        )
+      )
+      .limit(1)
+    const existingEntries = await offchainDb
+      .select()
+      .from(entryTable)
       .where(
         and(
           eq(entryTable.merkleSnapshotContract, event.log.address),
           eq(entryTable.root, root)
         )
       )
-    if (isContributions) {
-      const contributionsWhere = and(
-        eq(
-          offchainSchema.contributionRound.merkleSnapshotContract,
-          event.log.address.toLowerCase()
-        ),
-        eq(offchainSchema.contributionRound.root, root)
-      )
-      await Promise.all([
-        offchainDb
-          .update(offchainSchema.contributionRound)
-          .set({
-            ...discriminators.primary,
-            programProvenance: provenance,
-          })
-          .where(contributionsWhere),
-        offchainDb
-          .update(offchainSchema.contributionScore)
-          .set(discriminators.claim!)
+      .limit(1)
+    // A contributions snapshot additionally needs its derived round/score rows — a crash (or an
+    // older indexer build) can leave the generic rows present but the round missing, so the skip
+    // must consider both surfaces or the ingestion is never retried.
+    const isContributions = program.ingestion === 'contributions'
+    const isComposition = program.ingestion === 'composition'
+    const existingRound = isContributions
+      ? await offchainDb
+          .select()
+          .from(offchainSchema.contributionRound)
           .where(
             and(
               eq(
-                offchainSchema.contributionScore.merkleSnapshotContract,
+                offchainSchema.contributionRound.merkleSnapshotContract,
                 event.log.address.toLowerCase()
               ),
-              eq(offchainSchema.contributionScore.root, root)
+              eq(offchainSchema.contributionRound.root, root)
             )
-          ),
-        offchainDb
-          .update(offchainSchema.contributionValuationAudit)
-          .set(discriminators.claim!)
-          .where(
-            and(
-              eq(
-                offchainSchema.contributionValuationAudit
-                  .merkleSnapshotContract,
-                event.log.address.toLowerCase()
-              ),
-              eq(offchainSchema.contributionValuationAudit.root, root)
-            )
-          ),
-      ])
-    }
-    return
-  }
-
-  // Load IPFS data.
-  const ipfsGateway = process.env.IPFS_GATEWAY
-  if (!ipfsGateway) {
-    throw new Error('IPFS_GATEWAY is not set')
-  }
-  // Use 127.0.0.1 instead of localhost to avoid subdomain redirects
-  const ipfsUrl = (ipfsGateway + ipfsHashCid).replace('localhost', '127.0.0.1')
-  let merkleRequest: Response
-  try {
-    merkleRequest = await fetchIpfs(ipfsUrl)
-  } catch (error) {
-    // Throwing stalls Ponder on this event, which is deliberate: the alternative is a network
-    // whose member list is silently and permanently empty. But it means one unfetchable blob stops
-    // indexing for everything, so the message has to be enough to fix it without reading this file.
-    throw new Error(
-      `Failed to fetch merkle tree from IPFS CID ${ipfsHashCid}: ` +
-        `${error instanceof Error ? error.message : String(error)} (${ipfsUrl}).\n` +
-        `The root is on chain but its scores are not fetchable, so no member list can be built ` +
-        `and /network/${event.log.address} will 404. Indexing is paused here and will resume by ` +
-        `itself once the blob is retrievable.\n` +
-        `Check, in order: (1) is an IPFS node actually serving IPFS_GATEWAY; (2) did whoever ` +
-        `produced this root satisfy its [ipfs] publication target minimum; (3) does each target's ` +
-        `gateway serve the exact bytes accepted by its add API? Repair the target or run operator ` +
-        `republish --instance <id> --checkpoint <id>. The CID identifies the bytes but does not ` +
-        `guarantee that any provider still stores them.`
-    )
-  }
-  const outputBytes = new Uint8Array(await merkleRequest.arrayBuffer())
-  let rawScores: Record<string, unknown>
-  try {
-    rawScores = JSON.parse(
-      new TextDecoder('utf-8', { fatal: true }).decode(outputBytes)
-    )
-  } catch {
-    throw new Error(`score blob ${ipfsHashCid} is not valid UTF-8 JSON`)
-  }
-  const scores = validateScoreBlob(rawScores, program) as ScoreBlob
-  console.log(
-    `merkle: blob fetched (${Object.keys(scores).length} entries) — authenticated ${program.name}/${program.outputDomainName} routing to ${program.ingestion}`
-  )
-  if (program.ingestion === 'hypercerts') {
-    await ingestHypercertsScores(
-      scores,
-      event,
-      context,
-      root,
-      ipfsHash,
-      ipfsHashCid,
-      totalValue,
-      provenance
-    )
-  } else if (program.ingestion === 'nostr-workspace') {
-    await ingestNostrWorkspaceScores(
-      scores,
-      event,
-      context,
-      root,
-      ipfsHash,
-      ipfsHashCid,
-      totalValue,
-      outputBytes,
-      provenance
-    )
-  } else {
-    // Composition is all-or-nothing: authenticate every captured source and reproduce its policy,
-    // attribution, output bytes, proof provenance, and accepted state before generic Merkle rows
-    // become visible to consumers.
-    if (isComposition) {
-      await ingestCompositionScores(
-        event,
-        context,
-        outputBytes,
-        provenance,
-        async (cid) => {
-          const sourceUrl = (ipfsGateway + cid).replace(
-            'localhost',
-            '127.0.0.1'
           )
-          const response = await fetchIpfs(sourceUrl)
-          return new Uint8Array(await response.arrayBuffer())
-        },
-        offchainDb
+          .limit(1)
+      : []
+    const compositionCheckpoint = isComposition
+      ? await compositionCheckpointForEvent(event, context)
+      : null
+    const existingCompositionEpoch =
+      compositionCheckpoint === null
+        ? false
+        : await compositionEpochExists(
+            offchainDb,
+            event.log.address,
+            compositionCheckpoint
+          )
+    if (
+      canRepairScoreRowsOnRestart(program, {
+        metadata: existingMetadata.length > 0,
+        entries: existingEntries.length > 0,
+        contributionRound: existingRound.length > 0,
+        compositionEpoch: existingCompositionEpoch,
+      })
+    ) {
+      const discriminators = scoreRowDiscriminators(program)
+      const rootWhere = and(
+        eq(metadataTable.merkleSnapshotContract, event.log.address),
+        eq(metadataTable.root, root)
       )
+      await offchainDb
+        .update(metadataTable)
+        .set({
+          ...discriminators.primary,
+          programProvenance: provenance,
+        })
+        .where(rootWhere)
+      await offchainDb
+        .update(entryTable)
+        .set(discriminators.primary)
+        .where(
+          and(
+            eq(entryTable.merkleSnapshotContract, event.log.address),
+            eq(entryTable.root, root)
+          )
+        )
+      if (isContributions) {
+        const contributionsWhere = and(
+          eq(
+            offchainSchema.contributionRound.merkleSnapshotContract,
+            event.log.address.toLowerCase()
+          ),
+          eq(offchainSchema.contributionRound.root, root)
+        )
+        await Promise.all([
+          offchainDb
+            .update(offchainSchema.contributionRound)
+            .set({
+              ...discriminators.primary,
+              programProvenance: provenance,
+            })
+            .where(contributionsWhere),
+          offchainDb
+            .update(offchainSchema.contributionScore)
+            .set(discriminators.claim!)
+            .where(
+              and(
+                eq(
+                  offchainSchema.contributionScore.merkleSnapshotContract,
+                  event.log.address.toLowerCase()
+                ),
+                eq(offchainSchema.contributionScore.root, root)
+              )
+            ),
+          offchainDb
+            .update(offchainSchema.contributionValuationAudit)
+            .set(discriminators.claim!)
+            .where(
+              and(
+                eq(
+                  offchainSchema.contributionValuationAudit
+                    .merkleSnapshotContract,
+                  event.log.address.toLowerCase()
+                ),
+                eq(offchainSchema.contributionValuationAudit.root, root)
+              )
+            ),
+        ])
+      }
+      await markScoreBlobAvailable(event.id, attemptBlock)
+      return
     }
 
-    await insertMerkleData(
-      scores,
-      event,
-      root,
-      ipfsHash,
-      ipfsHashCid,
-      totalValue,
-      provenance
+    // Load IPFS data.
+    const ipfsGateway = process.env.IPFS_GATEWAY
+    if (!ipfsGateway) {
+      throw new Error('IPFS_GATEWAY is not set')
+    }
+    // Use 127.0.0.1 instead of localhost to avoid subdomain redirects
+    const ipfsUrl = (ipfsGateway + ipfsHashCid).replace(
+      'localhost',
+      '127.0.0.1'
     )
-
-    // A contributions instance's blob is address-keyed like the trust graph's (v1 leaves are
-    // address-domain), so the generic ingestion above already produced the payout entries +
-    // proofs. Additionally re-derive the per-claim scores / audit rows, root-validated
-    // (src/contributions.ts) — no-op for non-contributions snapshots.
-    if (isContributions) {
-      await ingestContributionsScores(
+    const merkleRequest = await fetchIpfs(
+      ipfsUrl,
+      recovery ? 1 : IPFS_FETCH_ATTEMPTS,
+      recovery ? IPFS_RETRY_FETCH_TIMEOUT_MS : IPFS_FETCH_TIMEOUT_MS
+    )
+    const outputBytes = new Uint8Array(await merkleRequest.arrayBuffer())
+    let rawScores: Record<string, unknown>
+    try {
+      rawScores = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(outputBytes)
+      )
+    } catch {
+      throw new Error(`score blob ${ipfsHashCid} is not valid UTF-8 JSON`)
+    }
+    const scores = validateScoreBlob(rawScores, program) as ScoreBlob
+    console.log(
+      `merkle: blob fetched (${Object.keys(scores).length} entries) — authenticated ${program.name}/${program.outputDomainName} routing to ${program.ingestion}`
+    )
+    if (program.ingestion === 'hypercerts') {
+      await ingestHypercertsScores(
         scores,
         event,
         context,
@@ -468,11 +487,146 @@ const onMerkleRootUpdated = async ({
         totalValue,
         provenance
       )
+    } else if (program.ingestion === 'nostr-workspace') {
+      await ingestNostrWorkspaceScores(
+        scores,
+        event,
+        context,
+        root,
+        ipfsHash,
+        ipfsHashCid,
+        totalValue,
+        outputBytes,
+        provenance
+      )
+    } else {
+      // Composition is all-or-nothing: authenticate every captured source and reproduce its policy,
+      // attribution, output bytes, proof provenance, and accepted state before generic Merkle rows
+      // become visible to consumers.
+      if (isComposition) {
+        await ingestCompositionScores(
+          event,
+          context,
+          outputBytes,
+          provenance,
+          async (cid) => {
+            const sourceUrl = (ipfsGateway + cid).replace(
+              'localhost',
+              '127.0.0.1'
+            )
+            const response = await fetchIpfs(
+              sourceUrl,
+              recovery ? 1 : IPFS_FETCH_ATTEMPTS,
+              recovery ? IPFS_RETRY_FETCH_TIMEOUT_MS : IPFS_FETCH_TIMEOUT_MS
+            )
+            return new Uint8Array(await response.arrayBuffer())
+          },
+          offchainDb
+        )
+      }
+
+      await insertMerkleData(
+        scores,
+        event,
+        root,
+        ipfsHash,
+        ipfsHashCid,
+        totalValue,
+        provenance
+      )
+
+      // A contributions instance's blob is address-keyed like the trust graph's (v1 leaves are
+      // address-domain), so the generic ingestion above already produced the payout entries +
+      // proofs. Additionally re-derive the per-claim scores / audit rows, root-validated
+      // (src/contributions.ts) — no-op for non-contributions snapshots.
+      if (isContributions) {
+        await ingestContributionsScores(
+          scores,
+          event,
+          context,
+          root,
+          ipfsHash,
+          ipfsHashCid,
+          totalValue,
+          provenance
+        )
+      }
     }
+
+    await markScoreBlobAvailable(event.id, attemptBlock)
+    await revalidateNetwork()
+  } catch (error) {
+    const pending = await markScoreBlobPending(event.id, attemptBlock, error)
+    console.error(
+      `merkle: score blob ${ipfsHashCid} for ${event.log.address} is unavailable (${pending.message}). ` +
+        `Indexing will continue; durable retry ${pending.attempts} is scheduled at or after block ` +
+        `${pending.nextAttemptBlock}. Repair the configured IPFS gateway or run operator republish ` +
+        `--instance <id> --checkpoint <id>.`
+    )
+  }
+}
+
+/**
+ * Retry one due root at a time. A single gateway timeout can delay this five-block heartbeat, but
+ * it cannot terminate the writer or prevent the subsequent chain events from being committed.
+ */
+ponder.on('scoreBlobRetry:block', async ({ event, context }) => {
+  const [job] = await offchainDb
+    .select()
+    .from(offchainSchema.scoreBlobIngestion)
+    .where(
+      and(
+        eq(offchainSchema.scoreBlobIngestion.status, 'pending'),
+        lte(
+          offchainSchema.scoreBlobIngestion.nextAttemptBlock,
+          event.block.number
+        )
+      )
+    )
+    .orderBy(
+      asc(offchainSchema.scoreBlobIngestion.nextAttemptBlock),
+      asc(offchainSchema.scoreBlobIngestion.blockNumber)
+    )
+    .limit(1)
+  if (!job) return
+
+  // The queue lives in the derived off-chain schema, outside Ponder's reorg transaction. Require
+  // its originating event to remain in canonical Ponder state before fetching or publishing it.
+  const canonicalEvent = await context.db.find(merkleSnapshot, { id: job.id })
+  if (!canonicalEvent) {
+    await offchainDb
+      .delete(offchainSchema.scoreBlobIngestion)
+      .where(eq(offchainSchema.scoreBlobIngestion.id, job.id))
+    console.warn(`merkle: discarded reorged score-blob job ${job.id}`)
+    return
   }
 
-  await revalidateNetwork()
-}
+  const provenance = parseScoreProgramProvenance(job.programProvenance)
+  const program = requireScoreProgram(
+    provenance.programId,
+    provenance.outputDomain
+  )
+  const rootEvent = {
+    id: job.id,
+    args: {
+      root: job.root,
+      ipfsHash: job.ipfsHash,
+      ipfsHashCid: job.ipfsHashCid,
+      totalValue: job.totalValue,
+    },
+    log: { address: job.merkleSnapshotContract, logIndex: job.logIndex },
+    block: { number: job.blockNumber, timestamp: job.timestamp },
+    transaction: {
+      hash: job.transactionHash,
+      input: job.transactionInput,
+    },
+  }
+  await onMerkleRootUpdated({ event: rootEvent, context } as any, {
+    program,
+    provenance,
+    attemptBlock: event.block.number,
+  })
+})
 
 /**
  * `MerkleProofSubmitted` — who produced a root, and who is owed for it.
@@ -639,17 +793,10 @@ async function insertMerkleData(
 ) {
   // The blob is just { account: value }. Rebuild the OZ output tree exactly as the guest did (same
   // leaf/hash-pair encoding, ported in packages/frontend/lib/pagerank/merkle) to recover each account's proof.
-  let derived
-  try {
-    derived = deriveAddressMerkleRows(scores, root)
-  } catch (error) {
-    // Pinned blob doesn't reproduce the on-chain root — proofs would be useless. Surface it rather
-    // than store bad data, but don't crash the whole indexer on one bad snapshot.
-    console.warn(
-      `merkle: ${error instanceof Error ? error.message : String(error)} for cid ${ipfsHashCid}; skipping entries`
-    )
-    derived = { computedRoot: null, rows: [] }
-  }
+  // A readable blob is not necessarily the committed blob. Keep the ingestion pending unless its
+  // rows reproduce the accepted root; the outer availability boundary records and retries this
+  // failure without terminating Ponder.
+  const derived = deriveAddressMerkleRows(scores, root)
 
   await offchainDb
     .insert(offchainSchema.merkleMetadata)

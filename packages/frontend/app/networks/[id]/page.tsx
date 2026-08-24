@@ -6,15 +6,17 @@ import { notFound, redirect } from 'next/navigation'
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getCatalog, getNetwork } from '@/lib/catalog.server'
-import { VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
+import { APIS, VISIBLE_HYPERCERTS_NETWORKS } from '@/lib/config'
 import { fetchContributionsNetwork } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
 import { trustNetworkFor } from '@/lib/network-nav'
 import { ponderClient } from '@/lib/ponder'
 import { nullable } from '@/lib/ponder-query'
 import { makeQueryClient } from '@/lib/query'
+import { registerSchemas } from '@/lib/schema-registry'
 import { getScoreProgram } from '@/lib/score-program.server'
 import { realAddress } from '@/lib/utils'
+import { getWeightedNetwork } from '@/lib/weighted-prior/network.server'
 import { ponderQueries, ponderQueryFns } from '@/queries/ponder'
 
 import { NetworkPage } from './component'
@@ -112,9 +114,14 @@ export default async function NetworkPageServer({
     )
   }
 
-  // Trust-graph: resolved against the RUNTIME catalog, so an instance created seconds ago renders
-  // with no rebuild, no config edit and no restart.
-  const { network, catalogError } = await getNetwork(id)
+  // Trust-graph variants: resolve the ordinary catalog first, then the isolated weighted catalog,
+  // so an instance created seconds ago renders with no rebuild or config edit.
+  let { network, catalogError } = await getNetwork(id)
+  if (!network) {
+    const weighted = await getWeightedNetwork(id, APIS.ponder)
+    network = weighted.network
+    catalogError = catalogError ?? weighted.error
+  }
   if (!network) {
     // "Not found" and "we could not read the directory" are different answers, and 404ing on the
     // second one tells the user their network does not exist because an HTTP call failed.
@@ -127,7 +134,10 @@ export default async function NetworkPageServer({
   try {
     network.scoreProgram =
       network.scoreProgram ??
-      (await getScoreProgram(network.contracts.merkleSnapshot, 'trust-graph'))
+      (await getScoreProgram(
+        network.contracts.merkleSnapshot,
+        network.program ?? 'trust-graph'
+      ))
   } catch (error) {
     return (
       <CatalogUnavailable
@@ -136,6 +146,12 @@ export default async function NetworkPageServer({
       />
     )
   }
+
+  // Server-component children are resolved before the root CatalogProvider renders. That means
+  // this prefetch cannot rely on CatalogProvider/NetworkProvider to have registered a freshly
+  // factory-created schema yet. Register the resolved network first so intoAttestationsData can
+  // decode the prefetched rows instead of logging "Unknown schema for UID" and returning {}.
+  registerSchemas(network.schemas)
 
   const queryClient = makeQueryClient()
 

@@ -5,10 +5,6 @@ import dotenv from 'dotenv'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
-import {
-  loadReleaseManifest,
-  releaseManifestToDeploymentSummary,
-} from '../../contracts/deploy/release-manifest'
 import { anchorRegistryAbi } from './abis/anchorRegistry'
 import {
   compositionAccumulatorAbi,
@@ -38,6 +34,10 @@ import {
   weightedPriorParamsControllerAbi,
   weightedTrustgraphsFactoryAbi,
 } from './abis/weightedPrior'
+import {
+  loadReleaseManifest,
+  releaseManifestToDeploymentSummary,
+} from '../../contracts/deploy/release-manifest'
 import {
   contributionResolverAbi,
   easIndexerResolverAbi,
@@ -517,6 +517,15 @@ export default createConfig({
                 : {}),
             },
           }),
+  },
+  // Missing score bytes are an availability problem, not a chain-indexing failure. This bounded
+  // heartbeat drains the durable off-chain queue without coupling retries to another root event.
+  blocks: {
+    scoreBlobRetry: {
+      chain: CORE_CHAIN,
+      startBlock: CORE_START_BLOCK,
+      interval: 5,
+    },
   },
   contracts: {
     graphLineageRegistry: {

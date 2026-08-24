@@ -457,11 +457,15 @@ tasks:
         # it back the way a reader would, because "the API took it" and "a reader can get it" are
         # only the same claim while both are the same node.
         [ipfs]
-        api     = "{{.IPFS_API}}"
-        gateway = "{{.IPFS_GATEWAY}}"
+        min_success = 1
         # Production waits five minutes before retrying an unavailable publication target. A
         # ten-tick local walkthrough should recover on its next tick from a transient kubo miss.
         retry_seconds = 2
+
+        [[ipfs.targets]]
+        name    = "local-kubo"
+        api     = "{{.IPFS_API}}"
+        gateway = "{{.IPFS_GATEWAY}}"
 
         [ops]
         journal_path = "{{.WORK}}/journal.jsonl"
@@ -666,8 +670,8 @@ tasks:
             echo "  scores        readable at {{.IPFS_GATEWAY}}$CID"
           else
             echo "  scores        ✗ HTTP $CODE at {{.IPFS_GATEWAY}}$CID"
-            echo "                the root is valid but its scores are unreadable, so the indexer"
-            echo "                will stall on this event and every network page renders empty."
+            echo "                the root is valid but its scores are unreadable. The indexer"
+            echo "                will queue retries and current-score pages return HTTP 503."
             echo "                the add and this read are hitting different nodes: compare"
             echo "                {{.IPFS_API}}/api/v0/id with whatever serves {{.IPFS_GATEWAY}}"
           fi

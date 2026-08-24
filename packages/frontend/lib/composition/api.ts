@@ -210,7 +210,8 @@ export const classifySourceEligibility = (
   provenanceEnabled: boolean,
   stateCount: bigint
 ): SourceEligibility => {
-  if (provenanceEnabled && stateCount > 0n) return { status: 'ready', detail: null }
+  if (provenanceEnabled && stateCount > 0n)
+    return { status: 'ready', detail: null }
   if (provenanceEnabled) {
     return {
       status: 'awaiting-root',
@@ -310,7 +311,10 @@ export const fetchCompositionSource = async ({
   if (
     body.tree.ipfsHashCid !== chain.cid ||
     BigInt(body.tree.totalValue) !== chain.totalValue ||
-    BigInt(body.tree.blockNumber) !== chain.freezeBlock
+    // merkle_metadata.blockNumber is the MerkleRootUpdated/proof-acceptance block. The snapshot's
+    // MerkleState.blockNumber is intentionally the earlier input-freeze block; comparing those two
+    // made every composition source fail whenever proof generation took more than zero blocks.
+    BigInt(body.tree.blockNumber) !== chain.acceptedAtBlock
   ) {
     throw new Error(
       `${candidate.name} current tree metadata differs from its accepted on-chain state.`

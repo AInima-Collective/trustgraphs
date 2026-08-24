@@ -37,6 +37,43 @@ export interface WeightedApiInstance {
   name: string
 }
 
+export interface WeightedApiInstanceDetail extends WeightedApiInstance {
+  program: 'trust-graph-weighted'
+  chainId: string
+  factory: Hex
+  controller: Hex | null
+  creator: Hex
+  admin: Hex
+  metadataURI: string
+  resolver: Hex
+  schemaUid: Hex
+  snapshot: Hex
+  distributor: Hex | null
+  distributorToken: Hex | null
+  epochLength: string
+  currentVersion: string
+  currentParamsHash: Hex
+  params: {
+    version: number
+    dampingFp: string
+    toleranceFp: string
+    maxIterations: number
+    minWeight: string
+    maxWeight: string
+    priorRoot: Hex
+    priorCount: number
+    manifestSha256: Hex
+    schemaUid: Hex
+    weightFieldIndex: number
+    accumulator: Hex
+    chainId: string
+  }
+  metadataDigest: Hex
+  createdBlock: string
+  createdTimestamp: string
+  createdTxHash: Hex
+}
+
 const responseJson = async <T>(response: Response): Promise<T> => {
   const body = await response.json().catch(() => null)
   if (!response.ok) {
@@ -80,6 +117,18 @@ export const fetchWeightedInstances = async (
       return instances
     offset += page.instances.length
   }
+}
+
+export const fetchWeightedInstance = async (
+  api: string,
+  instanceId: Hex,
+  signal?: AbortSignal
+): Promise<WeightedApiInstanceDetail> => {
+  const response = await fetch(`${api}/weighted-priors/${instanceId}`, {
+    signal,
+  })
+  return (await responseJson<{ instance: WeightedApiInstanceDetail }>(response))
+    .instance
 }
 
 export const fetchWeightedEntries = async (

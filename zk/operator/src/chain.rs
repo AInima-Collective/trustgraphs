@@ -144,8 +144,19 @@ sol! {
         bytes32 metadataDigest; address admin; uint64 epochLength; bool withDistributor;
         address distributorToken; bytes32 salt;
     }
+    struct WeightedInitialPolicy {
+        uint64 minPaidIntervalBlocks; uint96 maxPerRootUsd;
+    }
+    struct WeightedSignerSyncConfig {
+        bool enabled; uint32 topN; uint32 minThreshold; uint32 targetThresholdBps;
+    }
     function createInstance(WeightedCreateArgs args)
         external payable returns (bytes32, address, address, address, bytes32);
+    function createGovernedInstance(
+        WeightedCreateArgs requested,
+        WeightedInitialPolicy policy,
+        WeightedSignerSyncConfig signerSync
+    ) external payable returns (bytes32, address, address, address);
     function proposePrior(bytes manifest, bytes32 metadataDigest)
         external returns (uint64, bytes32, uint48);
 
@@ -1618,16 +1629,22 @@ pub fn weighted_pending_entry(rpc: &Rpc, entry: &CatalogEntry) -> Result<Option<
     Ok(Some(pending_entry))
 }
 
-/// Decode only the two authorized transaction-input shapes that can carry canonical TGWP bytes.
+/// Decode only the authorized transaction-input shapes that can carry canonical TGWP bytes.
+/// Governed creation is a top-level wrapper call: its transaction emits the base factory's
+/// `InitialPriorPublished` event through an internal Safe execution, but its outer selector and
+/// tuple shape are not `createInstance`.
 pub fn weighted_manifest_from_calldata(input: &[u8]) -> Result<Vec<u8>> {
     if input.starts_with(&createInstanceCall::SELECTOR) {
         return Ok(createInstanceCall::abi_decode(input)?.args.manifest.to_vec());
+    }
+    if input.starts_with(&createGovernedInstanceCall::SELECTOR) {
+        return Ok(createGovernedInstanceCall::abi_decode(input)?.requested.manifest.to_vec());
     }
     if input.starts_with(&proposePriorCall::SELECTOR) {
         return Ok(proposePriorCall::abi_decode(input)?.manifest.to_vec());
     }
     bail!(
-        "manifest source transaction selector 0x{} is neither weighted createInstance nor proposePrior",
+        "manifest source transaction selector 0x{} is not weighted createInstance, createGovernedInstance, or proposePrior",
         hex::encode(input.get(..4).unwrap_or(input))
     )
 }
@@ -1655,7 +1672,7 @@ mod weighted_calldata_tests {
     }
 
     #[test]
-    fn extracts_exact_bytes_from_creation_and_proposal_calldata() {
+    fn extracts_exact_bytes_from_direct_creation_and_proposal_calldata() {
         let manifest = b"TGWP exact bytes".to_vec();
         let creation = createInstanceCall {
             args: WeightedCreateArgs {
@@ -1683,10 +1700,45 @@ mod weighted_calldata_tests {
     }
 
     #[test]
+    fn extracts_exact_bytes_from_governed_creation_calldata() {
+        let manifest = b"TGWP governed exact bytes".to_vec();
+        let creation = createGovernedInstanceCall {
+            requested: WeightedCreateArgs {
+                name: "governed weighted".into(),
+                metadataURI: String::new(),
+                params: params(),
+                manifest: manifest.clone().into(),
+                metadataDigest: B256::ZERO,
+                admin: Address::ZERO,
+                epochLength: 10,
+                withDistributor: false,
+                distributorToken: Address::ZERO,
+                salt: B256::ZERO,
+            },
+            policy: WeightedInitialPolicy {
+                minPaidIntervalBlocks: 10,
+                maxPerRootUsd: Default::default(),
+            },
+            signerSync: WeightedSignerSyncConfig {
+                enabled: false,
+                topN: 0,
+                minThreshold: 0,
+                targetThresholdBps: 0,
+            },
+        }
+        .abi_encode();
+
+        assert_eq!(&creation[..4], &[0x19, 0x00, 0x0a, 0xfc]);
+        assert_eq!(weighted_manifest_from_calldata(&creation).unwrap(), manifest);
+    }
+
+    #[test]
     fn refuses_unrelated_transaction_input() {
         let error =
             weighted_manifest_from_calldata(&[0xde, 0xad, 0xbe, 0xef]).unwrap_err().to_string();
-        assert!(error.contains("neither weighted createInstance nor proposePrior"));
+        assert!(
+            error.contains("not weighted createInstance, createGovernedInstance, or proposePrior")
+        );
     }
 }
 

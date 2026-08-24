@@ -5,8 +5,9 @@ import {
   weightedPriorInstance,
   weightedPriorVersion,
 } from 'ponder:schema'
-import { type Address, type Hex, decodeFunctionData, zeroAddress } from 'viem'
+import { type Address, type Hex, zeroAddress } from 'viem'
 
+import { weightedManifestFromCalldata } from './weighted-prior-calldata'
 import {
   type WeightedParams,
   type WeightedParamsJson,
@@ -14,10 +15,6 @@ import {
   rawCid,
   verifyWeightedManifest,
 } from './weighted-prior-shared'
-import {
-  weightedPriorParamsControllerAbi,
-  weightedTrustgraphsFactoryAbi,
-} from '../abis/weightedPrior'
 
 const sameHex = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase()
@@ -60,22 +57,7 @@ const manifestFromTransaction = async (
   kind: 'create' | 'propose'
 ): Promise<Hex> => {
   const transaction = await context.client.getTransaction({ hash })
-  const decoded = decodeFunctionData({
-    abi:
-      kind === 'create'
-        ? weightedTrustgraphsFactoryAbi
-        : weightedPriorParamsControllerAbi,
-    data: transaction.input,
-  }) as any
-  if (kind === 'create' && decoded.functionName === 'createInstance') {
-    return decoded.args[0].manifest as Hex
-  }
-  if (kind === 'propose' && decoded.functionName === 'proposePrior') {
-    return decoded.args[0] as Hex
-  }
-  throw new Error(
-    `source transaction decoded as ${decoded.functionName}, expected weighted ${kind}`
-  )
+  return weightedManifestFromCalldata(transaction.input, kind)
 }
 
 const recover = async (

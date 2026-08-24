@@ -150,6 +150,41 @@ export const merkleEntry = offchainSchema.table(
   ]
 )
 
+/**
+ * Durable availability queue for accepted roots whose committed bytes are not readable yet.
+ * Ponder must be allowed to advance past those roots; a block filter retries this row until the
+ * exact bytes validate and every program-specific derived surface has been materialized.
+ */
+export const scoreBlobIngestion = offchainSchema.table(
+  'score_blob_ingestion',
+  (t) => ({
+    id: t.text().primaryKey(),
+    merkleSnapshotContract: t.text().notNull(),
+    root: t.text().notNull(),
+    ipfsHash: t.text().notNull(),
+    ipfsHashCid: t.text().notNull(),
+    totalValue: t
+      .numeric({ precision: 78, scale: 0, mode: 'bigint' })
+      .notNull(),
+    blockNumber: t.bigint({ mode: 'bigint' }).notNull(),
+    logIndex: t.integer().notNull(),
+    timestamp: t.bigint({ mode: 'bigint' }).notNull(),
+    transactionHash: t.text().notNull(),
+    transactionInput: t.text().notNull(),
+    programProvenance: t.jsonb().notNull().$type<Record<string, unknown>>(),
+    status: t.text().notNull(), // pending | available
+    attempts: t.integer().notNull(),
+    nextAttemptBlock: t.bigint({ mode: 'bigint' }),
+    lastAttemptBlock: t.bigint({ mode: 'bigint' }),
+    lastError: t.text(),
+  }),
+  (t) => [
+    index().on(t.status, t.nextAttemptBlock),
+    index().on(t.merkleSnapshotContract, t.blockNumber, t.logIndex),
+    index().on(t.ipfsHashCid),
+  ]
+)
+
 /*///////////////////////////////////////////////////////////////
        TRUST-COMPOSE — only rows that fully reproduce the proof
 //////////////////////////////////////////////////////////////*/

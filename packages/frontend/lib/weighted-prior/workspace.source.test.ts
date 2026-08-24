@@ -24,14 +24,16 @@ assert.match(source, /paste an instance ID instead/)
 assert.match(source, /Settings →\s+Advanced →\s+Instance provenance/)
 assert.match(
   source,
-  /weighted networks do\s+not currently have a\s+Settings page/
+  /weighted networks do\s+not\s+currently have a\s+Settings page/i
 )
 assert.match(source, /CopyableText/)
 
-// A created weighted network is not a one-shot toast: the id renders copyable and links into
-// update mode, and deep links reopen it after a reload.
+// A created weighted network is not a one-shot toast: the id renders copyable, the primary
+// action opens its network page, update remains a separate action, and deep links reopen it.
 assert.match(source, /Your weighted network is created/)
-assert.match(source, /Review it or schedule an update/)
+assert.match(source, /href=\{`\/networks\/\$\{created\.instanceId\}`\}/)
+assert.match(source, /View network/)
+assert.match(source, /Update prior/)
 assert.match(source, /openForUpdate/)
 assert.match(source, /params\.get\('instance'\)/)
 assert.match(source, /params\.get\('accounts'\)/)
@@ -96,7 +98,10 @@ assert.match(source, /DISABLED_SIGNER_SYNC/)
 // Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
 // the governed wrapper the base factory emits the creation event and the Safe is the creator.
 assert.match(source, /parseEventLogs/)
-assert.doesNotMatch(source, /log\.address\.toLowerCase\(\)\s*[!=]==\s*WEIGHTED_FACTORY_ADDRESS/)
+assert.doesNotMatch(
+  source,
+  /log\.address\.toLowerCase\(\)\s*[!=]==\s*WEIGHTED_FACTORY_ADDRESS/
+)
 
 console.log(
   'weighted workspace accessibility, pickers, copyable ids, recovery, and provenance controls: ok'

@@ -383,9 +383,6 @@ export const loadDirectory = async (): Promise<Directory> => {
       about: network.about,
       snapshot: network.contracts.merkleSnapshot,
     })),
-    // Weighted instances have no page of their own yet; the row's blurb carries a recognizable
-    // fragment of the instance id, and the row links into the workspace's update view, where the
-    // full id is shown copyable.
     ...weightedCatalog.rows.map((row) => ({
       program: 'trust-graph-weighted' as const,
       id: row.id,
@@ -434,9 +431,7 @@ export const loadDirectory = async (): Promise<Directory> => {
       href:
         source.program === 'nostr-workspace'
           ? `/nostr-workspaces/${source.snapshot}`
-          : source.program === 'trust-graph-weighted'
-            ? `/create/weighted?instance=${source.id}`
-            : `/networks/${source.id}`,
+          : `/networks/${source.id}`,
       summary: summaries[index] ?? UNREADABLE,
     })
   })
