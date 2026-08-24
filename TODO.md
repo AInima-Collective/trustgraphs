@@ -2,13 +2,16 @@
 - Design Actions UI system, build a similar system to DAO DAO (both for proposing / encoding actions and viewing proposals).
 - Action UI components: ERC20 (transfers, sends, etc.), NFT (transfer, etc.), trustgraph DAO settings.
 
+# UX
+- If generating scores for the first time, graph status should not read "recounting scores"
+
 -----
 # New work
 ## Multichain UX
 - Add chain selector
 - Default to testnet for now
 
-## Communicate this is Alpha software
+## Communicate this is Alpha software (somehow)
 
 ## Skills
 We need a SKILL.md for trustgraphs.
@@ -19,9 +22,6 @@ Also, we should design a SKILL.md for trustgraph governance, so people can autom
 - A trustgraph for trustgraphs
 - Ethereum Extitutional
 - GitCoin
-
-## Paper (attestation based governance systems)
-Re-write a leaner version of the verifiable offchain governance paper more focused on trustgraphs and their applications.
 
 # Needs testing
 ## ERC-8003 (needs testing)
