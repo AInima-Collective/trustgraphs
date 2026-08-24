@@ -72,9 +72,9 @@ tasks:
           echo "💡 then add it to PATH: export PATH=\"\$HOME/.sp1/bin:\$PATH\""
           exit 1
         fi
-        if ! ls zk/program/target/elf-compilation/*/release/trustgraph-signer-program \
-                 zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
-                 >/dev/null 2>&1; then
+        # Derived, not globbed: reproducible builds land one directory deeper than the plain
+        # ones, and one guest's target directory belongs to the workspace above it.
+        if ! sh scripts/guest-elf-dirs.sh --files 2>/dev/null | grep -q "/trustgraph-program-v2$"; then
           echo "⚠️  SP1 guest ELFs not built yet. Run: task zk:build"
         fi
         # Check docker

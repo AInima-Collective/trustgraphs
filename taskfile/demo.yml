@@ -91,14 +91,16 @@ tasks:
         # ELFs must already exist — nothing in this taskfile builds them. Without this check the
         # first failure is a missing-file error from `include_elf!` in the middle of a Rust build,
         # several minutes in, which reads like a broken checkout instead of a missing step.
-        # Globbed on the target triple on purpose: SP1 moved it from riscv32im to riscv64im.
-        ls zk/program/target/elf-compilation/*/release/trustgraph-signer-program \
-           zk/trustgraph-program-v2/target/elf-compilation/*/release/trustgraph-program-v2 \
-           zk/weighted-program/target/elf-compilation/*/release/trustgraph-weighted-program \
-           zk/composition-program/target/elf-compilation/*/release/trustgraph-compose-program \
-           zk/nostr-program/program/target/elf-compilation/*/release/nostr-workspace \
-           >/dev/null 2>&1 \
-          || fail "the SP1 guest ELFs are not built — run: task zk:build"
+        #
+        # Asked of the derivation rather than globbed. A glob was wrong twice over: reproducible
+        # builds put the ELFs one directory deeper (`elf-compilation/docker/…`), and the nostr
+        # guest's target directory belongs to the workspace one level above it.
+        ELFS=$(sh scripts/guest-elf-dirs.sh --files 2>/dev/null || true)
+        for guest in trustgraph-signer-program trustgraph-program-v2 \
+                     trustgraph-weighted-program trustgraph-compose-program nostr-workspace; do
+          printf '%s\n' "$ELFS" | grep -q "/$guest$" \
+            || fail "the SP1 guest ELF $guest is not built — run: task zk:build"
+        done
 
         cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
           || fail "no chain at {{.RPC}} — start one: anvil --silent &"

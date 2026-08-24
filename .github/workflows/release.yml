@@ -114,14 +114,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Read the digest out of the table the previous job already published, rather than
+      # recomputing it here. Two reasons: one number with one source cannot disagree with itself,
+      # and this job installs no Rust toolchain — deriving it needs `cargo locate-project`, which
+      # is present on ubuntu-latest and not something to assume on the arm64 runner.
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-manifest
+
       - name: The guest this image carries
         id: elf
         run: |
           set -eu
-          sh scripts/guest-elf-digests.sh | tee elf-digests.txt
-          TRUST_GRAPH=$(awk '/trustgraph-program-v2$/ {print $1}' elf-digests.txt)
-          test -n "$TRUST_GRAPH" || { echo "no trust-graph ELF digest"; exit 1; }
+          TRUST_GRAPH=$(jq -r '.programs[] | select(.program=="trust-graph") | .elf_sha256' \
+                          guest-manifest.json)
+          case "$TRUST_GRAPH" in
+            ????????????????????????????????????????????????????????????????) ;;
+            *) echo "no trust-graph ELF digest in guest-manifest.json"; exit 1 ;;
+          esac
           echo "trust-graph=$TRUST_GRAPH" >> "$GITHUB_OUTPUT"
+          echo "trust-graph guest: $TRUST_GRAPH"
 
       - name: Build and push by digest
         id: build
@@ -134,8 +146,10 @@ jobs:
           build-args: |
             SOURCE_COMMIT=${{ github.sha }}
             TRUST_GRAPH_ELF_SHA256=${{ steps.elf.outputs.trust-graph }}
+          # `ignore-error` because a cache export failure is a slow next build, not a bad
+          # release, and the GHA cache backend is the least predictable thing in this job.
           cache-from: type=gha,scope=${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }},ignore-error=true
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
       # A matrix job cannot carry per-leg outputs — every leg writes the same `outputs` key and
