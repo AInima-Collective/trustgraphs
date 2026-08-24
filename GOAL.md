@@ -35,9 +35,23 @@ and — worst — `build.rs`'s local fallback found a STALE copy at the old path
 correct answer, so the prover was embedding a nostr guest that no longer matched its source. All
 four now ask cargo instead of guessing, and the digest table refuses to print a short table.
 
-**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` actually runs
-green — the mechanism exists and has now demonstrated it fails loudly, which is half of what a gate
-is for. The *hostable* gate needs that plus a published
+**Where it stands after two tags.** Six further commits fixed the five release-path bugs those
+tags exposed (all mine; see the commit log from `4144e0c`). The gate now runs in ~6 minutes and can
+be exercised without spending a tag:
+
+```
+git push origin main
+gh workflow run guest-reproducibility.yml --ref main
+```
+
+Verified locally so it need not be learned from another failed tag: the prover built with the
+image's feature set produces a byte-identical vkey table to the default build (the comparison
+`verify` gates on); the default build needs no protoc; the binaries need no shared library absent
+from `debian:bookworm-slim`; and artifact → pristine checkout → digest script yields all ten
+entries, which is the Dockerfile's builder stage simulated.
+
+**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` runs green —
+the mechanism exists and has demonstrated it fails loudly, which is half of what a gate is for. The *hostable* gate needs that plus a published
 image. The *production* gate's two runnable legs are met (soak and reorg green, journal restore
 tested); it is otherwise waiting on hostable. The *self-host* gate waits on M6.
 
