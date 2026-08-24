@@ -6,15 +6,14 @@ import {
   compositionPolicyVersion,
 } from 'ponder:schema'
 import {
-  type Address,
   type Hex,
-  decodeFunctionData,
   encodeAbiParameters,
   keccak256,
   sha256,
   zeroAddress,
 } from 'viem'
 
+import { compositionPolicyFromCalldata } from './composition-calldata'
 import {
   COMPOSITION_OUTPUT_KIND,
   type CompositionParams,
@@ -29,8 +28,6 @@ import { fetchMetadata } from './factory'
 import {
   compositionAccumulatorAbi,
   compositionSourceAdapterAbi,
-  trustComposeFactoryAbi,
-  trustComposeParamsControllerAbi,
 } from '../abis/composition'
 
 const sameHex = (left: string, right: string) =>
@@ -67,28 +64,7 @@ const policyFromTransaction = async (
   const transaction = await context.client.getTransaction({
     hash: transactionHash,
   })
-  const decoded = decodeFunctionData({
-    abi:
-      kind === 'create'
-        ? trustComposeFactoryAbi
-        : trustComposeParamsControllerAbi,
-    data: transaction.input,
-  }) as any
-  if (kind === 'create' && decoded.functionName === 'createInstance') {
-    return {
-      manifest: decoded.args[0].policyManifest as Hex,
-      adapters: decoded.args[0].sourceAdapters as Address[],
-    }
-  }
-  if (kind === 'propose' && decoded.functionName === 'proposePolicy') {
-    return {
-      manifest: decoded.args[0] as Hex,
-      adapters: decoded.args[1] as Address[],
-    }
-  }
-  throw new Error(
-    `source transaction decoded as ${decoded.functionName}, expected composition ${kind}`
-  )
+  return compositionPolicyFromCalldata(transaction.input, kind)
 }
 
 const recoverPolicy = async (
@@ -530,15 +506,59 @@ ponder.on(
       ])
     if (sourceCheckpointIds.length !== parsed.sources.length)
       throw new Error('composition source checkpoint provenance is incomplete')
-    const policy = await context.db.find(compositionPolicyVersion, {
+    let policy = await context.db.find(compositionPolicyVersion, {
       id: `${instance.id}-${policyVersion}`,
     })
-    if (
-      !policy ||
-      policy.availability !== 'available' ||
-      !sameHex(policy.adapterSetHash, adapterSetHash)
-    )
-      throw new Error('composition capture policy is unavailable or mismatched')
+    if (!policy) {
+      throw new Error(
+        `composition capture references missing policy ${instance.id} v${policyVersion}`
+      )
+    }
+    if (!sameHex(policy.adapterSetHash, adapterSetHash)) {
+      throw new Error(
+        `composition capture adapter set ${adapterSetHash} does not match policy ${policy.adapterSetHash}`
+      )
+    }
+    if (policy.availability !== 'available') {
+      // A policy can have been committed perfectly on chain while its first off-chain recovery
+      // failed (for example, an older indexer could not decode governed createGovernedInstance
+      // calldata). Retry at the first capture so an already-valid composition does not wedge the
+      // whole realtime indexer until its database is rebuilt.
+      const recovered = await recoverPolicy(
+        context,
+        policy.proposedTxHash,
+        policy.proposalId === null ? 'create' : 'propose',
+        compositionParamsFromJson(policy.params as CompositionParamsJson),
+        adapterSetHash
+      )
+      if (recovered.availability !== 'available') {
+        throw new Error(
+          `composition capture policy ${instance.id} v${policyVersion} could not be recovered: ${recovered.error ?? policy.availabilityError ?? 'unknown error'}`
+        )
+      }
+      await context.db.update(compositionPolicyVersion, { id: policy.id }).set({
+        policyManifest: recovered.manifest,
+        sources: recovered.sources,
+        adapters: recovered.adapters,
+        availability: 'available',
+        availabilityError: null,
+        verifiedAt: event.block.timestamp,
+      })
+      policy = {
+        ...policy,
+        policyManifest: recovered.manifest,
+        sources: recovered.sources,
+        adapters: recovered.adapters,
+        availability: 'available',
+        availabilityError: null,
+        verifiedAt: event.block.timestamp,
+      }
+    }
+    if (policy.status === 'inconsistent') {
+      throw new Error(
+        `composition capture references inconsistent policy ${instance.id} v${policyVersion}`
+      )
+    }
     const params = compositionParamsFromJson(
       policy.params as CompositionParamsJson
     )

@@ -3,12 +3,19 @@ import { parseAbi } from 'viem'
 export const COMPOSITION_PARAMS =
   '(uint32 version,bytes32 programId,bytes32 scopeHash,bytes32 identityDomain,bytes32 outputKind,bytes32 outputDomain,bytes32 admittedProgramId,uint64 weightScale,uint128 outputPool,bytes32 sourcePolicyRoot,uint8 sourceCount,bytes32 policyManifestSha256,uint8 maxSources,uint32 maxEntriesPerSource,uint32 maxAggregateEntries,uint32 maxUnionAccounts,uint32 maxAggregateBlobBytes,uint64 maxSourceAgeBlocks,address accumulator,uint64 chainId)'
 
+export const COMPOSITION_CREATE_ARGS = `(string name,string metadataURI,${COMPOSITION_PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt)`
+
 export const trustComposeFactoryAbi = parseAbi([
   `event TrustComposeInstanceCreated(bytes32 indexed instanceId,address indexed creator,address indexed admin,string name,string metadataURI,address accumulator,address snapshot,address distributor,address distributorToken,uint64 epochLength,bytes32 programVKey,bytes32 metadataDigest,${COMPOSITION_PARAMS} params)`,
   'event TrustComposeParamsControllerCreated(bytes32 indexed instanceId,address indexed controller)',
   'event DistributorAttached(bytes32 indexed instanceId,address distributor,address distributorToken)',
-  `function createInstance((string name,string metadataURI,${COMPOSITION_PARAMS} params,bytes policyManifest,address[] sourceAdapters,bytes32 metadataDigest,address admin,uint64 epochLength,bool withDistributor,address distributorToken,bytes32 salt) args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
+  `function createInstance(${COMPOSITION_CREATE_ARGS} args) payable returns (bytes32 instanceId,address snapshot,address accumulatorAddress,address distributor)`,
   'function attachDistributor(bytes32 instanceId,address owner,address distributorToken) returns (address distributor)',
+])
+
+/** The governed wrapper carries the same policy-bearing CreateArgs as the base factory. */
+export const governedTrustComposeFactoryAbi = parseAbi([
+  `function createGovernedInstance(${COMPOSITION_CREATE_ARGS} requested,(uint64 minPaidIntervalBlocks,uint96 maxPerRootUsd) policy,(bool enabled,uint32 topN,uint32 minThreshold,uint32 targetThresholdBps) signerSync) payable returns (bytes32 instanceId,address safeAddress,address merkleGovModule,address snapshot)`,
 ])
 
 export const trustComposeParamsControllerAbi = parseAbi([
