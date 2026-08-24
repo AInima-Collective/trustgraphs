@@ -61,6 +61,16 @@ pub fn abi_encode_two_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The sha256 of a guest ELF, as it appears in `scripts/guest-elf-digests.sh` and in the release
+/// manifest. This is the value two machines building one commit have to agree on before any vkey
+/// derived from it is safe to pin into a verifier.
+pub fn elf_sha256(elf: &Elf) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(&**elf);
+    format!("{:x}", hasher.finalize())
+}
+
 /// The guest program verification key (bytes32) for the given ELF.
 pub fn vkey(elf: Elf) -> Result<String> {
     let client = ProverClient::from_env();

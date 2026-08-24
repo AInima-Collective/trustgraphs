@@ -88,8 +88,11 @@ pub struct Ipfs {
     pub retry_seconds: u64,
     /// Digest-verified strict Envelope0 recovery cache. These are prover inputs, not publication
     /// outputs, but they reuse the configured target gateways as independent readers.
-    #[serde(default = "d_envelope0_cache_dir")]
-    pub envelope0_cache_dir: String,
+    ///
+    /// Unset means `envelope0` inside `[ops] state_dir`. Read it through
+    /// [`Config::envelope0_cache_dir`], never directly: only that path applies the resolution.
+    #[serde(default)]
+    envelope0_cache_dir: Option<String>,
     /// Bounded parallelism across newest node bundles.
     #[serde(default = "d_envelope0_fetch_concurrency")]
     pub envelope0_fetch_concurrency: usize,
@@ -98,8 +101,11 @@ pub struct Ipfs {
 #[derive(Debug, Deserialize)]
 pub struct WeightedManifests {
     /// Durable local cache. Active and pending versions are protected from eviction by callers.
-    #[serde(default = "d_weighted_cache_dir")]
-    pub cache_dir: String,
+    ///
+    /// Unset means `weighted-manifests` inside `[ops] state_dir`. Read it through
+    /// [`Config::weighted_cache_dir`].
+    #[serde(default)]
+    cache_dir: Option<String>,
     /// Raw-CID gateways. The canonical CID is appended to each string verbatim.
     #[serde(default)]
     pub mirrors: Vec<String>,
@@ -232,10 +238,47 @@ pub struct SignerSync {
 
 #[derive(Debug, Deserialize)]
 pub struct Ops {
-    #[serde(default = "d_journal_path")]
-    pub journal_path: String,
-    #[serde(default = "d_status_path")]
-    pub status_path: String,
+    /// The one directory everything the daemon owns lives under: the request journal, the
+    /// heartbeat, both recovery caches, and the per-checkpoint working files.
+    ///
+    /// Unset means `.trustgraph/operator` beside the config file. Set it and you are naming a
+    /// location — see [`Config::ensure_state_dir`] for what the daemon then refuses to do.
+    #[serde(default)]
+    state_dir: Option<String>,
+    /// True when the config file named a `state_dir`. Resolution fills the field in either way,
+    /// so this is the only surviving record of whether a human chose the location — which is
+    /// what decides whether a missing parent directory is created or refused.
+    #[serde(skip)]
+    state_dir_named: bool,
+    /// Overrides `journal.jsonl` inside `state_dir`. Read through [`Config::journal_path`].
+    #[serde(default)]
+    journal_path: Option<String>,
+    /// Overrides `status.json` inside `state_dir`. Read through [`Config::status_path`].
+    #[serde(default)]
+    status_path: Option<String>,
+    /// `host:port` for the read-only health and heartbeat listener. Unset means no socket.
+    ///
+    /// What it serves is in [`crate::health`]: `/health`, `/ready`, and an allowlisted projection
+    /// of the heartbeat. There is no route that changes anything, so exposing it costs nothing
+    /// beyond publishing operating policy that is already meant to be public.
+    #[serde(default)]
+    pub listen: Option<String>,
+    /// How stale the last completed tick may be before `/ready` reports failure.
+    ///
+    /// Defaults to three ticks, with a 90 second floor so a fast local cadence does not make the
+    /// probe a hair trigger. Raise it above your longest proof if the daemon proves in-process
+    /// (`prover.backend = "cpu"`): a platform that restarts on a failed readiness probe would
+    /// otherwise restart the daemon mid-proof. The journal makes that safe — the restart
+    /// re-attaches rather than re-requesting — but it is not free.
+    #[serde(default)]
+    ready_after_seconds: Option<u64>,
+    /// Directory holding the prebuilt helper binaries the daemon shells out to
+    /// (`input-exporter`, `envelope0-preflight`, `trustgraph-prover`). Unset means look next to
+    /// the operator executable, then fall back to `cargo run` from a source checkout — which is
+    /// the developer loop and the only mode that needs a Rust toolchain at runtime. See
+    /// [`crate::tools`].
+    #[serde(default)]
+    pub tool_dir: Option<String>,
     #[serde(default)]
     pub alert_webhook: Option<String>,
     #[serde(default)]
@@ -319,14 +362,8 @@ fn d_eth_usd() -> u64 {
 fn d_publication_retry() -> u64 {
     300
 }
-fn d_envelope0_cache_dir() -> String {
-    "./.trustgraph/operator/envelope0".into()
-}
 fn d_envelope0_fetch_concurrency() -> usize {
     8
-}
-fn d_weighted_cache_dir() -> String {
-    "./.trustgraph/operator/weighted-manifests".into()
 }
 fn d_weighted_cache_versions() -> usize {
     128
@@ -337,12 +374,12 @@ fn d_weighted_cache_bytes() -> u64 {
 fn d_weighted_retry() -> u64 {
     300
 }
-fn d_journal_path() -> String {
-    "./.trustgraph/operator/journal.jsonl".into()
-}
-fn d_status_path() -> String {
-    "./.trustgraph/operator/status.json".into()
-}
+/// The state directory a config that does not name one gets, relative to the config file.
+const DEFAULT_STATE_DIR: &str = ".trustgraph/operator";
+const JOURNAL_FILE: &str = "journal.jsonl";
+const STATUS_FILE: &str = "status.json";
+const ENVELOPE0_CACHE: &str = "envelope0";
+const WEIGHTED_CACHE: &str = "weighted-manifests";
 fn d_submit_failure_threshold() -> u32 {
     3
 }
@@ -412,7 +449,7 @@ impl Default for Ipfs {
             targets: Vec::new(),
             min_success: None,
             retry_seconds: d_publication_retry(),
-            envelope0_cache_dir: d_envelope0_cache_dir(),
+            envelope0_cache_dir: None,
             envelope0_fetch_concurrency: d_envelope0_fetch_concurrency(),
         }
     }
@@ -420,7 +457,7 @@ impl Default for Ipfs {
 impl Default for WeightedManifests {
     fn default() -> Self {
         Self {
-            cache_dir: d_weighted_cache_dir(),
+            cache_dir: None,
             mirrors: Vec::new(),
             max_versions: d_weighted_cache_versions(),
             max_bytes: d_weighted_cache_bytes(),
@@ -431,13 +468,42 @@ impl Default for WeightedManifests {
 impl Default for Ops {
     fn default() -> Self {
         Self {
-            journal_path: d_journal_path(),
-            status_path: d_status_path(),
+            listen: None,
+            ready_after_seconds: None,
+            state_dir: None,
+            state_dir_named: false,
+            journal_path: None,
+            status_path: None,
+            tool_dir: None,
             alert_webhook: None,
             log_format: LogFormat::default(),
             submit_failure_threshold: d_submit_failure_threshold(),
         }
     }
+}
+
+/// `path` if it is already absolute, otherwise anchored at `base`.
+fn absolutize(base: &Path, path: &Path) -> PathBuf {
+    let joined = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
+    // `./x`, `x` and `a/./x` all name the same file; only one of them reads well in a log line,
+    // an error, or an alert a human is trying to act on at 3am. `..` is left alone on purpose:
+    // resolving it lexically is wrong the moment a symlink is involved.
+    let mut clean = PathBuf::new();
+    for component in joined.components() {
+        if component != std::path::Component::CurDir {
+            clean.push(component);
+        }
+    }
+    clean
+}
+
+/// Prove a directory is writable by writing to it. `access(2)`-style permission checks lie on
+/// read-only mounts and on filesystems that are simply full.
+fn writable(dir: &Path) -> Result<()> {
+    let probe = dir.join(".operator-write-probe");
+    std::fs::write(&probe, b"")?;
+    let _ = std::fs::remove_file(&probe);
+    Ok(())
 }
 
 impl Config {
@@ -446,16 +512,154 @@ impl Config {
             .with_context(|| format!("read operator config {}", path.display()))?;
         let mut cfg: Config = toml::from_str(&text)
             .with_context(|| format!("parse operator config {}", path.display()))?;
+        // Every relative path in this file is relative to the FILE, never to whatever directory
+        // the daemon happened to be started from. `release_manifest` has always worked this way;
+        // now the journal, the heartbeat, both caches, the tool directory and every manifest
+        // pointer do too, so `cd` stops being part of the deployment.
+        let base = path.parent().unwrap_or_else(|| Path::new("."));
+        let base = std::fs::canonicalize(base).unwrap_or_else(|_| base.to_path_buf());
         if let Some(manifest_path) = cfg.release_manifest.clone() {
-            let manifest_path = if manifest_path.is_absolute() {
-                manifest_path
-            } else {
-                path.parent().unwrap_or_else(|| Path::new(".")).join(manifest_path)
-            };
-            cfg.apply_release_manifest(&manifest_path)?;
+            cfg.apply_release_manifest(&absolutize(&base, &manifest_path))?;
         }
+        cfg.resolve_paths(&base);
         cfg.validate()?;
+        cfg.ensure_state_dir()?;
         Ok(cfg)
+    }
+
+    /// Rewrite every relative path in the parsed config as an absolute one under `base`.
+    fn resolve_paths(&mut self, base: &Path) {
+        let named = self.ops.state_dir.as_deref().map(str::trim).filter(|d| !d.is_empty());
+        self.ops.state_dir_named = named.is_some();
+        let state = match named {
+            Some(dir) => absolutize(base, Path::new(dir)),
+            None => base.join(DEFAULT_STATE_DIR),
+        };
+        self.ops.state_dir = Some(state.display().to_string());
+
+        for slot in [
+            &mut self.ops.journal_path,
+            &mut self.ops.status_path,
+            &mut self.ops.tool_dir,
+            &mut self.ipfs.envelope0_cache_dir,
+            &mut self.weighted_manifests.cache_dir,
+        ] {
+            *slot = slot
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| absolutize(base, Path::new(value)).display().to_string());
+        }
+
+        // A manifest entry is a set of pointers to files beside the config, and it was the last
+        // thing that still made the daemon's working directory matter.
+        for entry in &mut self.manifest {
+            for slot in [Some(&mut entry.params)]
+                .into_iter()
+                .flatten()
+                .chain(entry.selection.as_mut())
+                .chain(entry.witness_manifests.iter_mut())
+            {
+                if !slot.trim().is_empty() {
+                    *slot = absolutize(base, Path::new(slot.as_str())).display().to_string();
+                }
+            }
+        }
+    }
+
+    /// How stale `/ready` tolerates the last completed tick being.
+    pub fn ready_after_seconds(&self) -> u64 {
+        self.ops.ready_after_seconds.unwrap_or_else(|| (3 * self.cadence.tick_seconds).max(90))
+    }
+
+    /// The one directory the daemon owns. Always absolute after [`Config::load`].
+    pub fn state_dir(&self) -> PathBuf {
+        match self.ops.state_dir.as_deref() {
+            Some(dir) => PathBuf::from(dir),
+            // Only a Config built directly from TOML (tests) reaches this. Keep it identical to
+            // what `load` would have produced from the working directory.
+            None => PathBuf::from(DEFAULT_STATE_DIR),
+        }
+    }
+
+    /// The append-only money record. The one file whose loss costs real money: a lost journal
+    /// means re-requesting proofs that were already paid for.
+    pub fn journal_path(&self) -> PathBuf {
+        self.under_state(self.ops.journal_path.as_deref(), JOURNAL_FILE)
+    }
+
+    /// The scrapable heartbeat.
+    pub fn status_path(&self) -> PathBuf {
+        self.under_state(self.ops.status_path.as_deref(), STATUS_FILE)
+    }
+
+    /// Digest-verified strict Envelope0 recovery cache.
+    pub fn envelope0_cache_dir(&self) -> PathBuf {
+        self.under_state(self.ipfs.envelope0_cache_dir.as_deref(), ENVELOPE0_CACHE)
+    }
+
+    /// Durable TGWP prior-manifest cache.
+    pub fn weighted_cache_dir(&self) -> PathBuf {
+        self.under_state(self.weighted_manifests.cache_dir.as_deref(), WEIGHTED_CACHE)
+    }
+
+    /// Per-instance, per-checkpoint working files: the reconstructed input, the held proof, and
+    /// the params/selection files written out for the reconstruction tools.
+    pub fn work_dir(&self, instance_id: B256) -> PathBuf {
+        self.state_dir().join(format!("{instance_id:#x}"))
+    }
+
+    fn under_state(&self, configured: Option<&str>, leaf: &str) -> PathBuf {
+        match configured {
+            Some(path) => PathBuf::from(path),
+            None => self.state_dir().join(leaf),
+        }
+    }
+
+    /// Refuse to start rather than write the journal somewhere it will not survive.
+    ///
+    /// The daemon creates its state directory, but when a config NAMES one it does not create the
+    /// tree above it. An absolute path whose parent is missing is exactly what an unmounted
+    /// volume looks like, and happily creating `/data/trustgraph` on the container's own
+    /// filesystem would put `journal.jsonl` on a disk that disappears at the next deploy — after
+    /// which the daemon re-requests, and re-pays for, proofs it already has.
+    fn ensure_state_dir(&self) -> Result<()> {
+        let dir = self.state_dir();
+        if self.ops.state_dir_named && !dir.is_dir() {
+            if let Some(parent) = dir.parent() {
+                anyhow::ensure!(
+                    parent.is_dir(),
+                    "[ops] state_dir is {} but {} does not exist. This is what an unmounted \
+                     volume looks like: creating the directory anyway would put the request \
+                     journal on a filesystem that disappears at the next deploy, and a lost \
+                     journal means re-requesting proofs already paid for. Mount the volume, or \
+                     point state_dir somewhere that exists.",
+                    dir.display(),
+                    parent.display()
+                );
+            }
+        }
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("[ops] state_dir {} could not be created", dir.display()))?;
+        anyhow::ensure!(
+            dir.is_dir(),
+            "[ops] state_dir {} exists but is not a directory",
+            dir.display()
+        );
+        writable(&dir)
+            .with_context(|| format!("[ops] state_dir {} is not writable", dir.display()))?;
+
+        // The journal may be configured out of the state directory. Whatever holds it is the
+        // directory that actually has to be durable, so it gets the same treatment.
+        if let Some(parent) = self.journal_path().parent().filter(|p| *p != dir.as_path()) {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("[ops] journal_path directory {} could not be created", parent.display())
+            })?;
+            writable(parent).with_context(|| {
+                format!("[ops] journal_path directory {} is not writable", parent.display())
+            })?;
+        }
+        Ok(())
     }
 
     fn apply_release_manifest(&mut self, path: &Path) -> Result<()> {
@@ -572,6 +776,21 @@ impl Config {
         anyhow::ensure!(
             self.ops.submit_failure_threshold > 0,
             "ops.submit_failure_threshold must be at least 1"
+        );
+        if let Some(listen) = self.ops.listen.as_deref().map(str::trim) {
+            anyhow::ensure!(
+                !listen.is_empty(),
+                "[ops] listen is empty. Remove the key to run without a health listener; an \
+                 empty string is not a way to say 'no socket'."
+            );
+            anyhow::ensure!(
+                listen.rsplit_once(':').is_some_and(|(_, port)| port.parse::<u16>().is_ok()),
+                "[ops] listen must be host:port (for example \"0.0.0.0:8080\"), got {listen:?}"
+            );
+        }
+        anyhow::ensure!(
+            self.ready_after_seconds() > 0,
+            "[ops] ready_after_seconds must be at least 1"
         );
         anyhow::ensure!(self.prover.cycle_limit > 0, "prover.cycle_limit must be at least 1");
         for (name, limit) in [
@@ -738,7 +957,6 @@ fn is_hex(value: &str, digits: usize, prefixed: bool) -> bool {
 
 impl WeightedManifests {
     fn validate(&self) -> Result<()> {
-        anyhow::ensure!(!self.cache_dir.trim().is_empty(), "weighted_manifests.cache_dir is empty");
         anyhow::ensure!(
             self.max_versions >= 2,
             "weighted_manifests.max_versions must hold active and pending versions (at least 2)"
@@ -787,10 +1005,6 @@ impl Ipfs {
         anyhow::ensure!(
             (1..=64).contains(&self.envelope0_fetch_concurrency),
             "[ipfs] envelope0_fetch_concurrency must be in 1..=64"
-        );
-        anyhow::ensure!(
-            !self.envelope0_cache_dir.trim().is_empty(),
-            "[ipfs] envelope0_cache_dir cannot be empty"
         );
         let targets = self.resolved_targets();
         let required = self.required_successes();
@@ -1078,5 +1292,172 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
         );
         let err = parse(&src).unwrap_err();
         assert!(err.contains("not independent durability"), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod state_dir_tests {
+    use super::Config;
+    use std::path::{Path, PathBuf};
+
+    const GOOD: &str = "rpc = \"http://127.0.0.1:8545\"\n\
+                        registry = \"0x8D08973774F1Da59728e5a0f66453113A3E35A0F\"\n";
+
+    /// Write a config into `dir` and load it the way `main` does.
+    fn load_in(dir: &Path, body: &str) -> Result<Config, String> {
+        let path = dir.join("operator.toml");
+        std::fs::write(&path, body).unwrap();
+        Config::load(&path).map_err(|e| format!("{e:#}"))
+    }
+
+    #[test]
+    fn everything_the_daemon_owns_defaults_into_one_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let cfg = load_in(home.path(), GOOD).unwrap();
+        let state = home.path().join(".trustgraph/operator");
+        assert_eq!(cfg.state_dir(), state);
+        assert_eq!(cfg.journal_path(), state.join("journal.jsonl"));
+        assert_eq!(cfg.status_path(), state.join("status.json"));
+        assert_eq!(cfg.envelope0_cache_dir(), state.join("envelope0"));
+        assert_eq!(cfg.weighted_cache_dir(), state.join("weighted-manifests"));
+        assert_eq!(
+            cfg.work_dir(alloy_primitives::B256::repeat_byte(0xab)),
+            state.join(format!("{:#x}", alloy_primitives::B256::repeat_byte(0xab)))
+        );
+        assert!(state.is_dir(), "the state directory is created, not merely computed");
+    }
+
+    #[test]
+    fn a_relative_path_follows_the_config_file_and_not_the_working_directory() {
+        // The bug this closes: `--manifest-path zk/prover/Cargo.toml` and `./.trustgraph/...`
+        // together meant the daemon silently required being started from the repo root, which is
+        // a footgun anywhere and a data-loss bug on an ephemeral filesystem.
+        let home = tempfile::tempdir().unwrap();
+        let cfg = load_in(
+            home.path(),
+            &format!(
+                "{GOOD}[ops]\nstate_dir = \"state\"\njournal_path = \"ledger/journal.jsonl\"\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(cfg.state_dir(), home.path().join("state"));
+        assert_eq!(cfg.journal_path(), home.path().join("ledger/journal.jsonl"));
+        assert_ne!(cfg.journal_path(), PathBuf::from("ledger/journal.jsonl"));
+        assert!(
+            home.path().join("ledger").is_dir(),
+            "a journal outside the state directory still gets a directory that exists"
+        );
+    }
+
+    #[test]
+    fn the_config_directory_itself_is_a_usable_state_directory() {
+        // `state_dir = "."` is the natural way to say "everything beside this file", and it is
+        // what the local demo uses. It must not come out as `<dir>/.`.
+        let home = tempfile::tempdir().unwrap();
+        let cfg = load_in(home.path(), &format!("{GOOD}[ops]\nstate_dir = \".\"\n")).unwrap();
+        assert_eq!(cfg.state_dir(), home.path());
+        assert_eq!(cfg.journal_path(), home.path().join("journal.jsonl"));
+    }
+
+    #[test]
+    fn an_absolute_path_is_left_exactly_as_written() {
+        let home = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        let cfg = load_in(
+            home.path(),
+            &format!("{GOOD}[ops]\nstate_dir = \"{}\"\n", elsewhere.path().display()),
+        )
+        .unwrap();
+        assert_eq!(cfg.state_dir(), elsewhere.path());
+    }
+
+    #[test]
+    fn a_named_state_directory_whose_volume_is_not_mounted_refuses_to_start() {
+        // The failure this exists for: `/data` is a volume that did not mount, the daemon
+        // cheerfully creates it on the container's own filesystem, and the request journal is
+        // gone at the next deploy — after which it re-requests proofs it already paid for.
+        let home = tempfile::tempdir().unwrap();
+        let unmounted = home.path().join("not-mounted/trustgraph");
+        let error = load_in(
+            home.path(),
+            &format!("{GOOD}[ops]\nstate_dir = \"{}\"\n", unmounted.display()),
+        )
+        .unwrap_err();
+        assert!(error.contains("unmounted volume"), "{error}");
+        assert!(!unmounted.exists(), "refusing must not create the directory it refused");
+    }
+
+    #[test]
+    fn a_state_directory_that_is_a_file_is_rejected() {
+        let home = tempfile::tempdir().unwrap();
+        let occupied = home.path().join("occupied");
+        std::fs::write(&occupied, b"not a directory").unwrap();
+        let error =
+            load_in(home.path(), &format!("{GOOD}[ops]\nstate_dir = \"{}\"\n", occupied.display()))
+                .unwrap_err();
+        assert!(error.contains("state_dir"), "{error}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_read_only_state_directory_is_refused_before_the_first_tick() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let locked = home.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let error =
+            load_in(home.path(), &format!("{GOOD}[ops]\nstate_dir = \"{}\"\n", locked.display()))
+                .unwrap_err();
+        // Restore before the assert so a failure still cleans up.
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(error.contains("not writable"), "{error}");
+    }
+
+    #[test]
+    fn manifest_pointers_and_the_tool_directory_follow_the_config_file_too() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join("params.json"), "{}").unwrap();
+        let cfg = load_in(
+            home.path(),
+            &format!(
+                "{GOOD}[ops]\ntool_dir = \"bin\"\n\
+                 [[manifest]]\nprogram = \"trust-graph\"\n\
+                 snapshot = \"0x8D08973774F1Da59728e5a0f66453113A3E35A0F\"\n\
+                 eas = \"0x8D08973774F1Da59728e5a0f66453113A3E35A0F\"\n\
+                 params = \"params.json\"\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(cfg.manifest[0].params, home.path().join("params.json").display().to_string());
+        assert_eq!(
+            cfg.ops.tool_dir.as_deref(),
+            Some(home.path().join("bin").display().to_string().as_str())
+        );
+    }
+
+    #[test]
+    fn the_local_demo_keeps_its_whole_state_beside_its_config_and_serves_a_heartbeat() {
+        // The demo is the only place the URL mode the frontend already supports actually gets
+        // run, and `state_dir = "."` is what stops the demo writing a request journal into the
+        // repository root where two runs — or a demo and an e2e — would share it.
+        let demo = include_str!("../../../taskfile/demo.yml");
+        assert!(demo.contains("state_dir  = \".\""), "the demo no longer names a state directory");
+        assert!(demo.contains("listen     = \"127.0.0.1:{{.OPERATOR_PORT}}\""), "{demo}");
+        assert!(
+            !demo.contains("journal_path = \"{{.WORK}}"),
+            "journal_path is now implied by state_dir; two ways to say it is one too many"
+        );
+    }
+
+    #[test]
+    fn a_config_that_names_nothing_still_creates_its_own_state_directory() {
+        // The developer loop: a fresh checkout has no `.trustgraph` at all, and refusing to start
+        // over a directory nobody asked about would be hostile.
+        let home = tempfile::tempdir().unwrap();
+        let nested = home.path().join("deep/nested/dir");
+        std::fs::create_dir_all(&nested).unwrap();
+        let cfg = load_in(&nested, GOOD).unwrap();
+        assert!(cfg.state_dir().is_dir());
     }
 }

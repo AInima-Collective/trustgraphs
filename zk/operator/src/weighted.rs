@@ -27,7 +27,8 @@ fn cache_path(cfg: &Config, entry: &CatalogEntry) -> Result<PathBuf> {
     let version = entry
         .params_version
         .ok_or_else(|| anyhow!("{} has no weighted params version", entry.name))?;
-    Ok(PathBuf::from(&cfg.weighted_manifests.cache_dir)
+    Ok(cfg
+        .weighted_cache_dir()
         .join(format!("{}", params.chain_id))
         .join(format!("{:#x}", entry.instance_id))
         .join(format!("{version}-{}.tgwp", hex::encode(params.manifest_sha256))))
@@ -278,7 +279,8 @@ fn retained_versions(files: &[(PathBuf, u64, std::time::SystemTime)]) -> BTreeSe
 /// history otherwise). If the configured global ceilings cannot contain that pinned set, recovery
 /// fails loudly instead of silently deleting checkpoint-critical bytes.
 fn prune_cache(cfg: &Config, protected: &Path) -> Result<()> {
-    let root = Path::new(&cfg.weighted_manifests.cache_dir);
+    let root = cfg.weighted_cache_dir();
+    let root = root.as_path();
     let mut files = Vec::new();
     collect_manifests(root, &mut files)?;
     let mut retained = retained_versions(&files);

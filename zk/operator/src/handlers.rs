@@ -11,6 +11,11 @@
 //! fetch` does the same for both of its lanes. Reimplementing that reconstruction inside the
 //! daemon would mean a second implementation of the one thing that must never be wrong, tested
 //! half as well. Reuse is the conservative choice here, not the lazy one.
+//!
+//! WHICH executable runs is [`crate::tools`]'s decision, not this module's. A deployment points
+//! `[ops] tool_dir` at prebuilt binaries and needs no compiler; a source checkout with nothing
+//! pre-built falls back to `cargo run` with exactly the arguments these call sites have always
+//! passed.
 
 use alloy_primitives::{keccak256, Address, B256, U256};
 use alloy_sol_types::{sol, SolCall};
@@ -20,10 +25,10 @@ use operator_core::types::{Program, VaultView};
 use operator_core::work::{WorkProfile, COST_MODEL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
 
 use crate::chain::Rpc;
 use crate::config::{Config, PinTarget};
+use crate::tools::{self, Tool};
 
 sol! {
     struct Quote {
@@ -124,10 +129,8 @@ mod hex_bytes {
     }
 }
 
-fn out_dir(entry: &CatalogEntry, checkpoint_id: u64) -> PathBuf {
-    PathBuf::from(".trustgraph/operator")
-        .join(format!("{:#x}", entry.instance_id))
-        .join(checkpoint_id.to_string())
+fn out_dir(cfg: &Config, entry: &CatalogEntry, checkpoint_id: u64) -> PathBuf {
+    cfg.work_dir(entry.instance_id).join(checkpoint_id.to_string())
 }
 
 /// Reconstruct this checkpoint's exact input set, then compute the journal natively.
@@ -157,18 +160,18 @@ pub fn build_input(
             anchor_args.push(target.gateway);
         }
         anchor_args.push("--envelope0-cache".into());
-        anchor_args.push(cfg.ipfs.envelope0_cache_dir.clone());
+        anchor_args.push(cfg.envelope0_cache_dir().display().to_string());
         anchor_args.push("--envelope0-fetch-concurrency".into());
         anchor_args.push(cfg.ipfs.envelope0_fetch_concurrency.to_string());
     }
-    let dir = out_dir(entry, checkpoint_id);
+    let dir = out_dir(cfg, entry, checkpoint_id);
     std::fs::create_dir_all(&dir)?;
     let input_path = dir.join("input.json");
     // A silently-failing build must not leave a STALE input for the next step to prove and submit
     // as if it were this checkpoint's.
     let _ = std::fs::remove_file(&input_path);
 
-    let params_path = params_path(entry)?;
+    let params_path = params_path(cfg, entry)?;
 
     match entry.program {
         Program::Trustgraphs => {
@@ -176,13 +179,9 @@ pub fn build_input(
                 anyhow!("no EAS address for {}; add one to its manifest entry", entry.name)
             })?;
             run_tool(
-                "cargo",
+                cfg,
+                Tool::InputExporter,
                 vec![
-                    "run",
-                    "-q",
-                    "-p",
-                    "input-exporter",
-                    "--",
                     "--rpc",
                     &cfg.rpc,
                     "--accumulator",
@@ -211,15 +210,11 @@ pub fn build_input(
             let eas = entry.eas.ok_or_else(|| {
                 anyhow!("no EAS address for {}; its parent factory must expose EAS()", entry.name)
             })?;
-            let selection_path = selection_path(entry)?;
+            let selection_path = selection_path(cfg, entry)?;
             run_tool(
-                "cargo",
+                cfg,
+                Tool::InputExporter,
                 vec![
-                    "run",
-                    "-q",
-                    "-p",
-                    "input-exporter",
-                    "--",
                     "--rpc",
                     &cfg.rpc,
                     "--accumulator",
@@ -248,16 +243,9 @@ pub fn build_input(
             // at this round's registration block can silently omit earlier trust edges.
             let contributions_from_block = cfg.registry_from_block.to_string();
             run_tool(
-                "cargo",
+                cfg,
+                Tool::ProverFetch,
                 vec![
-                    "run",
-                    "-q",
-                    "--release",
-                    "--features",
-                    "fetch",
-                    "--manifest-path",
-                    "zk/prover/Cargo.toml",
-                    "--",
                     "contributions",
                     "fetch",
                     "--rpc",
@@ -286,13 +274,9 @@ pub fn build_input(
             let manifest_path = dir.join("prior.tgwp");
             std::fs::write(&manifest_path, manifest.bytes)?;
             run_tool(
-                "cargo",
+                cfg,
+                Tool::InputExporter,
                 vec![
-                    "run",
-                    "-q",
-                    "-p",
-                    "input-exporter",
-                    "--",
                     "--rpc",
                     &cfg.rpc,
                     "--accumulator",
@@ -335,14 +319,6 @@ pub fn build_input(
             let from_block = entry.created_block.to_string();
             let output = input_path.display().to_string();
             let mut args = vec![
-                "run",
-                "-q",
-                "--release",
-                "--features",
-                "witness-nostr",
-                "--manifest-path",
-                "zk/prover/Cargo.toml",
-                "--",
                 "nostr-witness",
                 "assemble",
                 "--rpc",
@@ -364,7 +340,7 @@ pub fn build_input(
                 args.push("--manifest");
                 args.push(path);
             }
-            run_tool("cargo", args)?;
+            run_tool(cfg, Tool::ProverNostr, args)?;
         }
         Program::Hypercerts => {
             bail!("hypercerts is out of scope for this operator (GOAL scope fence)")
@@ -385,19 +361,12 @@ pub fn preflight_live_envelope0(
     entry: &CatalogEntry,
 ) -> Result<Option<Envelope0PreflightReport>> {
     let view = crate::chain::read_snapshot(rpc, entry.snapshot)?;
-    if !uses_strict_envelope0(rpc, entry)? {
+    if !uses_strict_envelope0(cfg, rpc, entry)? {
         return Ok(None);
     }
-    let params_path = params_path(entry)?;
+    let params_path = params_path(cfg, entry)?;
 
     let mut args = vec![
-        "run".to_string(),
-        "-q".to_string(),
-        "-p".to_string(),
-        "input-exporter".to_string(),
-        "--bin".to_string(),
-        "envelope0-preflight".to_string(),
-        "--".to_string(),
         "--rpc".to_string(),
         cfg.rpc.clone(),
         "--registry".to_string(),
@@ -407,7 +376,7 @@ pub fn preflight_live_envelope0(
         "--from-block".to_string(),
         entry.created_block.to_string(),
         "--envelope0-cache".to_string(),
-        cfg.ipfs.envelope0_cache_dir.clone(),
+        cfg.envelope0_cache_dir().display().to_string(),
         "--envelope0-fetch-concurrency".to_string(),
         cfg.ipfs.envelope0_fetch_concurrency.to_string(),
     ];
@@ -415,13 +384,14 @@ pub fn preflight_live_envelope0(
         args.push("--envelope0-gateway".to_string());
         args.push(target.gateway);
     }
-    let output = run_tool_output("cargo", &args, "strict Envelope0 live preflight")?;
+    let output =
+        run_tool_output(cfg, Tool::Envelope0Preflight, &args, "strict Envelope0 live preflight")?;
     serde_json::from_str(output.trim())
         .context("strict Envelope0 preflight returned invalid metrics")
         .map(Some)
 }
 
-pub fn uses_strict_envelope0(rpc: &Rpc, entry: &CatalogEntry) -> Result<bool> {
+pub fn uses_strict_envelope0(cfg: &Config, rpc: &Rpc, entry: &CatalogEntry) -> Result<bool> {
     if entry.program != Program::Trustgraphs {
         return Ok(false);
     }
@@ -429,7 +399,7 @@ pub fn uses_strict_envelope0(rpc: &Rpc, entry: &CatalogEntry) -> Result<bool> {
     if view.anchor_registry == Address::ZERO {
         return Ok(false);
     }
-    let path = params_path(entry)?;
+    let path = params_path(cfg, entry)?;
     let params: pagerank_core::Params = serde_json::from_str(&std::fs::read_to_string(path)?)
         .context("parsing trust-graph params for strict lane detection")?;
     Ok(params.envelope0_domain_separators.len() == 2 && params.lane2_max_head_age == 0)
@@ -894,12 +864,13 @@ pub fn prove(cfg: &Config, built: &Built) -> Result<Proved> {
 /// Write everything the submit needs, so a restart between proving and submitting re-attaches
 /// rather than paying again.
 pub fn save_held(
+    cfg: &Config,
     entry: &CatalogEntry,
     checkpoint_id: u64,
     built: &Built,
     proved: &Proved,
 ) -> Result<()> {
-    let dir = out_dir(entry, checkpoint_id);
+    let dir = out_dir(cfg, entry, checkpoint_id);
     std::fs::create_dir_all(&dir)?;
     let held = HeldProof {
         output_root: built.output_root,
@@ -919,12 +890,12 @@ pub fn save_held(
 }
 
 /// Whether a finished proof for this checkpoint is on disk and ready to submit.
-pub fn has_held_proof(entry: &CatalogEntry, checkpoint_id: u64) -> bool {
-    out_dir(entry, checkpoint_id).join("held.json").exists()
+pub fn has_held_proof(cfg: &Config, entry: &CatalogEntry, checkpoint_id: u64) -> bool {
+    out_dir(cfg, entry, checkpoint_id).join("held.json").exists()
 }
 
-pub fn load_proof(entry: &CatalogEntry, checkpoint_id: u64) -> Result<HeldProof> {
-    let path = out_dir(entry, checkpoint_id).join("held.json");
+pub fn load_proof(cfg: &Config, entry: &CatalogEntry, checkpoint_id: u64) -> Result<HeldProof> {
+    let path = out_dir(cfg, entry, checkpoint_id).join("held.json");
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("no held proof at {}", path.display()))?;
     Ok(serde_json::from_str(&text)?)
@@ -937,6 +908,7 @@ pub fn load_proof(entry: &CatalogEntry, checkpoint_id: u64) -> Result<HeldProof>
 /// or hand-edited held file before it can be called published. Legacy held files without
 /// `score_blob` are transparently reconstructed from the retained input.
 pub fn load_publication_blob(
+    cfg: &Config,
     entry: &CatalogEntry,
     checkpoint_id: u64,
 ) -> Result<(HeldProof, Vec<u8>)> {
@@ -944,10 +916,10 @@ pub fn load_publication_blob(
         entry.program != Program::Signer,
         "signer receipts carry their complete owner set and have no IPFS publication"
     );
-    let held = load_proof(entry, checkpoint_id)?;
+    let held = load_proof(cfg, entry, checkpoint_id)?;
     let rebuilt = native_journal(
         entry.program,
-        &out_dir(entry, checkpoint_id).join("input.json"),
+        &out_dir(cfg, entry, checkpoint_id).join("input.json"),
         held.recipient,
     )
     .with_context(|| format!("rebuilding canonical blob for checkpoint {checkpoint_id}"))?;
@@ -992,13 +964,13 @@ pub fn vault_quote(
     })
 }
 
-fn params_path(entry: &CatalogEntry) -> Result<String> {
+fn params_path(cfg: &Config, entry: &CatalogEntry) -> Result<String> {
     if let Some(m) = &entry.manifest {
         return Ok(m.params.clone());
     }
     // A factory instance's params came from the chain, so write them out for the tool that needs
     // a file. Nothing is typed in; this is a serialization step, not configuration.
-    let dir = PathBuf::from(".trustgraph/operator").join(format!("{:#x}", entry.instance_id));
+    let dir = cfg.work_dir(entry.instance_id);
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("params.json");
     let encoded =
@@ -1043,9 +1015,9 @@ fn params_path(entry: &CatalogEntry) -> Result<String> {
     Ok(path.display().to_string())
 }
 
-fn selection_path(entry: &CatalogEntry) -> Result<String> {
+fn selection_path(cfg: &Config, entry: &CatalogEntry) -> Result<String> {
     if let Some(selection) = &entry.selection {
-        let dir = PathBuf::from(".trustgraph/operator").join(format!("{:#x}", entry.instance_id));
+        let dir = cfg.work_dir(entry.instance_id);
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("selection.json");
         std::fs::write(&path, serde_json::to_string_pretty(selection)?)?;
@@ -1056,27 +1028,26 @@ fn selection_path(entry: &CatalogEntry) -> Result<String> {
     })
 }
 
-fn run_tool(bin: &str, args: Vec<&str>) -> Result<()> {
-    let out = Command::new(bin)
-        .args(&args)
-        // The spawned prover must use the same guest ELFs this binary's vkey checks were made
-        // against. Without this a bare daemon run (no wrapping task exporting it) lets build.rs
-        // rebuild the guests mid-tick, and the proof comes back under a vkey no verifier pinned.
-        .env("SP1_SKIP_PROGRAM_BUILD", "true")
+fn run_tool(cfg: &Config, tool: Tool, args: Vec<&str>) -> Result<()> {
+    let resolved = tools::resolve(tool, cfg.ops.tool_dir.as_deref())?;
+    let out = resolved
+        .command(&args)
         .output()
-        .with_context(|| format!("running {bin} {}", args.join(" ")))?;
+        .with_context(|| format!("running {} {}", resolved.describe(), args.join(" ")))?;
     if !out.status.success() {
-        bail!("{bin} {} failed:\n{}", args.join(" "), String::from_utf8_lossy(&out.stderr));
+        bail!(
+            "{} {} failed:\n{}",
+            resolved.describe(),
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(())
 }
 
-fn run_tool_output(bin: &str, args: &[String], label: &str) -> Result<String> {
-    let out = Command::new(bin)
-        .args(args)
-        .env("SP1_SKIP_PROGRAM_BUILD", "true")
-        .output()
-        .with_context(|| format!("starting {label}"))?;
+fn run_tool_output(cfg: &Config, tool: Tool, args: &[String], label: &str) -> Result<String> {
+    let resolved = tools::resolve(tool, cfg.ops.tool_dir.as_deref())?;
+    let out = resolved.command(args).output().with_context(|| format!("starting {label}"))?;
     if !out.status.success() {
         // Endpoint URLs can contain credentials. The hold is intentionally specific while its
         // message remains safe for logs, status APIs, and alert webhooks.

@@ -6,8 +6,10 @@ mod chain;
 mod composition;
 mod config;
 mod handlers;
+mod health;
 mod ops;
 mod run;
+mod tools;
 mod tx;
 mod weighted;
 

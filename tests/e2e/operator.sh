@@ -6,7 +6,14 @@
 # This is the acceptance test for the daemon, and it is deliberately separate from `run.sh`: that
 # script proves the CLI path a human drives, this one proves nobody has to.
 #
-#   bash tests/e2e/operator.sh
+#   bash tests/e2e/operator.sh                # both modes, back to back
+#   MODE=fallback bash tests/e2e/operator.sh  # `cargo run`, the developer loop
+#   MODE=prebuilt bash tests/e2e/operator.sh  # prebuilt binaries, with NO cargo on PATH
+#
+# The two modes are the packaging goal's M0 exit. `fallback` is what a source checkout has always
+# done and must keep doing. `prebuilt` runs the identical script against a config with
+# `[ops] tool_dir` set and the Rust toolchain removed from the daemon's PATH, which is the only
+# way to hold the "no compiler at runtime" claim to something rather than asserting it.
 #
 # Needs anvil + the SP1 toolchain (SP1_PROVER=mock runs the guest for real; only the SNARK is a
 # stub, exactly as in run.sh).
@@ -14,20 +21,76 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-RPC="${RPC:-http://127.0.0.1:8545}"
-PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
-WORK="${WORK:-/tmp/operator-e2e}"
-CONFIG="$WORK/operator.toml"
+MODE="${MODE:-both}"
 GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; NC=$'\033[0m'
 say() { echo -e "$*"; }
 die() { echo -e "${RED}FATAL:${NC} $*" >&2; exit 1; }
 
+if [ "$MODE" = both ]; then
+  for mode in fallback prebuilt; do
+    say ""
+    say "############################################################"
+    say "# tool resolution: $mode"
+    say "############################################################"
+    MODE="$mode" bash "${BASH_SOURCE[0]}" || die "operator e2e failed in $mode mode"
+  done
+  say ""
+  say "${GREEN}OPERATOR E2E PASS in BOTH modes: from a source checkout, and from prebuilt${NC}"
+  say "${GREEN}binaries with no cargo on PATH.${NC}"
+  exit 0
+fi
+[ "$MODE" = fallback ] || [ "$MODE" = prebuilt ] || die "MODE must be fallback, prebuilt or both"
+
+RPC="${RPC:-http://127.0.0.1:8545}"
+PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
+WORK="${WORK:-/tmp/operator-e2e-$MODE}"
+CONFIG="$WORK/operator.toml"
+
 rm -rf "$WORK"; mkdir -p "$WORK"
 
+# --- how the daemon is invoked ------------------------------------------------
+# One function, two modes. Everything downstream calls `op <config> <args...>` and never knows
+# which one it got.
+TOOL_DIR=""
+NOCARGO_PATH="$PATH"
+if [ "$MODE" = prebuilt ]; then
+  say "== build the operator and its tools, then take cargo away =="
+  TOOL_DIR="$WORK/bin"
+  mkdir -p "$TOOL_DIR"
+  SP1_SKIP_PROGRAM_BUILD=true cargo build -q --release --manifest-path zk/operator/Cargo.toml \
+    || die "could not build the operator"
+  cargo build -q --release -p input-exporter --bins || die "could not build the tool binaries"
+  cp zk/operator/target/release/operator "$TOOL_DIR/" || die "no operator binary to copy"
+  cp target/release/input-exporter target/release/envelope0-preflight "$TOOL_DIR/" \
+    || die "no tool binaries to copy"
+
+  # Drop every PATH entry that holds a cargo. A daemon that silently shells out to a compiler
+  # would otherwise pass this test on a developer's box and fail in the image.
+  CARGO_DIR=$(dirname "$(command -v cargo)")
+  NOCARGO_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$CARGO_DIR" | paste -sd: -)
+  if PATH="$NOCARGO_PATH" command -v cargo >/dev/null 2>&1; then
+    die "cargo is still on PATH after stripping $CARGO_DIR; the no-compiler claim is untested"
+  fi
+  say "   tools=$TOOL_DIR   cargo removed from PATH ($CARGO_DIR)"
+fi
+
+op() {
+  local cfg="$1"; shift
+  if [ "$MODE" = prebuilt ]; then
+    env PATH="$NOCARGO_PATH" "$TOOL_DIR/operator" --config "$cfg" "$@"
+  else
+    cargo run -q --release --manifest-path zk/operator/Cargo.toml -- --config "$cfg" "$@"
+  fi
+}
+
 # --- chain -------------------------------------------------------------------
+PORT=$(printf '%s' "$RPC" | sed -nE 's#^https?://[^/:]+:([0-9]+).*#\1#p')
+PORT="${PORT:-8545}"
 if ! cast block-number --rpc-url "$RPC" >/dev/null 2>&1; then
-  say "== starting anvil =="
-  anvil --silent &
+  # Honour the port $RPC names. Without this the script starts anvil on 8545 no matter what was
+  # asked for, which is how a test run lands its contracts on somebody else's running stack.
+  say "== starting anvil on port $PORT =="
+  anvil --silent --port "$PORT" &
   ANVIL_PID=$!
   for _ in $(seq 1 40); do cast block-number --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.25; done
 fi
@@ -107,13 +170,15 @@ max_basefee_gwei = 10000
 backend = "mock"
 groth16 = true
 
+# Everything the daemon owns goes beside this config file: journal, heartbeat, per-checkpoint
+# working files, both caches. Two runs of this script in different modes therefore cannot see
+# each other's held proofs, and neither can a demo running out of the same checkout.
 [ops]
-journal_path = "$WORK/journal.jsonl"
-status_path  = "$WORK/status.json"
-log_format   = "json"
+state_dir  = "."
+log_format = "json"
 EOF
+[ -n "$TOOL_DIR" ] && echo "tool_dir     = \"$TOOL_DIR\"" >> "$CONFIG"
 
-OP=(cargo run -q --release --manifest-path zk/operator/Cargo.toml -- --config "$CONFIG" --once)
 export SUBMITTER_PRIVATE_KEY="$PK"
 export SP1_SKIP_PROGRAM_BUILD=true
 
@@ -121,7 +186,7 @@ export SP1_SKIP_PROGRAM_BUILD=true
 say ""
 say "== tick 1: --dry-run decides but must not send =="
 BEFORE=$(cast call "$RESOLVER" "checkpointCount()(uint256)" --rpc-url "$RPC")
-"${OP[@]}" --dry-run 2>&1 | tee "$WORK/tick-dry.log" | grep -E '"event"' | head -5
+op "$CONFIG" --once --dry-run 2>&1 | tee "$WORK/tick-dry.log" | grep -E '"event"' | head -5
 AFTER=$(cast call "$RESOLVER" "checkpointCount()(uint256)" --rpc-url "$RPC")
 [ "$BEFORE" = "$AFTER" ] || die "--dry-run minted a checkpoint ($BEFORE -> $AFTER)"
 grep -q '"action":"trigger"' "$WORK/tick-dry.log" || die "expected a Trigger decision, got: $(cat "$WORK/tick-dry.log")"
@@ -131,7 +196,7 @@ say "   ${GREEN}decided Trigger, sent nothing ✓${NC}"
 for i in 1 2 3; do
   say ""
   say "== tick $i =="
-  "${OP[@]}" 2>&1 | tee "$WORK/tick-$i.log" | grep -E '"event":"(decision|triggered|proved|submitted|instance_skipped)"' | head -5
+  op "$CONFIG" --once 2>&1 | tee "$WORK/tick-$i.log" | grep -E '"event":"(decision|triggered|proved|submitted|instance_skipped)"' | head -5
 done
 
 # --- what must be true ------------------------------------------------------------
@@ -179,8 +244,7 @@ name = "repair-stub"
 api = "http://127.0.0.1:$REPAIR_PORT"
 gateway = "$REPAIR_GATEWAY"
 EOF
-cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
-  --config "$REPAIR_CONFIG" republish --instance "$INSTANCE_ID" --checkpoint 0 \
+op "$REPAIR_CONFIG" republish --instance "$INSTANCE_ID" --checkpoint 0 \
   >"$WORK/republish.log" 2>&1 \
   || die "republish failed: $(cat "$WORK/republish.log")"
 curl -fsS "$REPAIR_GATEWAY$CID" >/dev/null || die "CID remained unreadable after republish"
@@ -200,10 +264,32 @@ say "   journal: $INTENTS intent(s), $SETTLED settlement(s)"
 # --- restart must re-attach, not re-pay -------------------------------------------
 say ""
 say "== restart on a settled checkpoint: must not request again =="
-"${OP[@]}" 2>&1 | tee "$WORK/tick-restart.log" >/dev/null
+op "$CONFIG" --once 2>&1 | tee "$WORK/tick-restart.log" >/dev/null
 INTENTS2=$(grep -c '"kind":"intent"' "$WORK/journal.jsonl" || echo 0)
 [ "$INTENTS2" = "$INTENTS" ] || die "a restart re-requested a settled checkpoint ($INTENTS -> $INTENTS2)"
 say "   ${GREEN}re-attached, no second request ✓${NC}"
+
+# --- a restored journal re-attaches on a box with nothing else on it ----------------
+# The runbook's recovery table says a lost journal means re-requesting proofs already paid for,
+# which makes "take a copy, put it on a fresh box, keep going" the one recovery drill that has to
+# actually work. A FRESH state directory holds the restored journal and nothing else: no held
+# proof, no reconstructed input, no cached manifest.
+say ""
+say "== restore a journal backup onto a fresh state directory =="
+BACKUP="$WORK/journal.backup.jsonl"
+cp "$WORK/journal.jsonl" "$BACKUP"
+FRESH="$WORK/restored"
+rm -rf "$FRESH"; mkdir -p "$FRESH"
+cp "$CONFIG" "$FRESH/operator.toml"
+cp "$BACKUP" "$FRESH/journal.jsonl"
+[ -f "$FRESH/held.json" ] && die "the fresh state directory was supposed to hold only the journal"
+op "$FRESH/operator.toml" --once 2>&1 | tee "$WORK/tick-restored.log" >/dev/null
+RESTORED_INTENTS=$(grep -c '"kind":"intent"' "$FRESH/journal.jsonl" || echo 0)
+[ "$RESTORED_INTENTS" = "$INTENTS" ] \
+  || die "a restored journal re-requested work it had already paid for ($INTENTS -> $RESTORED_INTENTS)"
+grep -q '"event":"tick"' "$WORK/tick-restored.log" \
+  || die "the daemon did not complete a tick against the restored journal"
+say "   ${GREEN}restored journal re-attached; no second request ✓${NC}"
 
 # --- quiet is free -----------------------------------------------------------------
 grep -q '"idle":"quiet"' "$WORK/tick-restart.log" \
@@ -232,7 +318,7 @@ LEAVES_AFTER=$(cast call "$RESOLVER" "leafCount()(uint64)" --rpc-url "$RPC")
 
 for i in 1 2 3; do
   say "   later-root tick $i"
-  "${OP[@]}" 2>&1 | tee "$WORK/tick-later-$i.log" \
+  op "$CONFIG" --once 2>&1 | tee "$WORK/tick-later-$i.log" \
     | grep -E '"event":"(decision|triggered|proved|submitted|instance_skipped)"' | head -5
 done
 
@@ -250,6 +336,24 @@ say "   ${GREEN}new inputs landed as checkpoint $APPLIED_ID with root $ROOT2 ✓
 jq -e '.instances | length >= 1' "$WORK/status.json" >/dev/null || die "status.json has no instances"
 say "   status.json: $(jq -c '{head_block, instances: [.instances[] | {name, action: .action.action}]}' "$WORK/status.json")"
 
+# --- the tool resolution the daemon actually used --------------------------------------
+# `tools` is logged once at startup. In prebuilt mode every reconstruction must have resolved to
+# a file under tool_dir; a line naming `cargo` here means the compiler was still doing the work
+# and the mode proved nothing.
+TOOLS=$(grep -h '"event":"tools"' "$WORK"/tick-1.log | tail -1)
+[ -n "$TOOLS" ] || die "the daemon never reported how it resolved its tools"
+if [ "$MODE" = prebuilt ]; then
+  printf '%s' "$TOOLS" | jq -e --arg d "$TOOL_DIR" '."input-exporter" | startswith($d)' >/dev/null \
+    || die "input-exporter did not resolve to $TOOL_DIR: $TOOLS"
+  printf '%s' "$TOOLS" | grep -q 'cargo' \
+    && die "a tool still resolves to cargo in prebuilt mode: $TOOLS"
+  say "   ${GREEN}every reconstruction ran a prebuilt binary; no compiler was on PATH ✓${NC}"
+else
+  printf '%s' "$TOOLS" | jq -e '."input-exporter" | contains("cargo run")' >/dev/null \
+    || die "the source-checkout fallback did not resolve to cargo: $TOOLS"
+  say "   ${GREEN}the source-checkout fallback still works unchanged ✓${NC}"
+fi
+
 say ""
-say "${GREEN}OPERATOR E2E PASS — trigger, prove and submit two graph versions unattended;${NC}"
-say "${GREEN}repair an unreadable landed CID; and restart without paying again.${NC}"
+say "${GREEN}OPERATOR E2E PASS ($MODE) — trigger, prove and submit two graph versions${NC}"
+say "${GREEN}unattended; repair an unreadable landed CID; and restart without paying again.${NC}"

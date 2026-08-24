@@ -329,9 +329,8 @@ backend = "mock"
 groth16 = true
 
 [ops]
-journal_path = "$WORK/journal.jsonl"
-status_path  = "$WORK/status.json"
-log_format   = "json"
+state_dir  = "."
+log_format = "json"
 EOF
 
 OP=(cargo run -q --release --manifest-path zk/operator/Cargo.toml -- --config "$WORK/operator.toml" --once)
@@ -411,7 +410,7 @@ attest "$PK"; mine $((EPOCH + 2))
 "${OP[@]}" >>"$WORK/frontrun.log" 2>&1   # trigger
 "${OP[@]}" >>"$WORK/frontrun.log" 2>&1   # prove, and hold the result
 FR_CP=$(( $(cps) - 1 ))
-HELD=".trustgraph/operator/$INSTANCE/$FR_CP/held.json"
+HELD="$WORK/$INSTANCE/$FR_CP/held.json"
 if [ ! -f "$HELD" ]; then
   note "no held proof at $HELD — the daemon submitted in the same tick; front-run not exercised"
   FAILURES=$((FAILURES + 1))

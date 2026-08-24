@@ -39,6 +39,9 @@ vars:
   # The reader's view, and the exact string the indexer uses (packages/indexer/.env IPFS_GATEWAY). Keep the
   # trailing `/ipfs/`: both sides build the URL by plain concatenation.
   IPFS_GATEWAY: '{{.IPFS_GATEWAY | default "http://127.0.0.1:8080/ipfs/"}}'
+  # The operator's read-only health listener. `/health`, `/ready`, and the sanitized heartbeat
+  # the frontend reads through OPERATOR_STATUS_URL.
+  OPERATOR_PORT: '{{.OPERATOR_PORT | default "8799"}}'
   WORK: .demo
 
 tasks:
@@ -467,12 +470,22 @@ tasks:
         api     = "{{.IPFS_API}}"
         gateway = "{{.IPFS_GATEWAY}}"
 
+        # One directory holds everything the daemon owns: the request journal, the heartbeat,
+        # the per-checkpoint working files, and both recovery caches. "." means "beside this
+        # config file", so the demo state lives in {{.WORK}} and nothing depends on which
+        # directory the daemon was started from.
         [ops]
-        journal_path = "{{.WORK}}/journal.jsonl"
-        status_path  = "{{.WORK}}/status.json"
-        log_format   = "json"
+        state_dir  = "."
+        log_format = "json"
+        # The read-only health and heartbeat listener. The frontend already knows how to read a
+        # remote heartbeat through OPERATOR_STATUS_URL, and until this existed there was nothing
+        # to point it at — so that mode had never been run anywhere. Now the demo runs it.
+        listen     = "127.0.0.1:{{.OPERATOR_PORT}}"
+        # A one-second demo cadence would otherwise give /ready a three-second fuse.
+        ready_after_seconds = 60
         EOF
         echo "✓ {{.WORK}}/operator.toml"
+        echo "  heartbeat http://127.0.0.1:{{.OPERATOR_PORT}}/status (while the daemon runs)"
 
   dry-run:
     desc: 'Every chain read and every decision, no sends'
@@ -492,6 +505,11 @@ tasks:
         echo "→ proof scheduler watching every eligible instance (Ctrl-C to stop)"
         echo "  status  {{.WORK}}/status.json"
         echo "  journal {{.WORK}}/journal.jsonl"
+        echo "  health  http://127.0.0.1:{{.OPERATOR_PORT}}/health and /ready"
+        echo ""
+        echo "  To render operator status in the app from the LISTENER rather than the file,"
+        echo "  start the frontend with:"
+        echo "    OPERATOR_STATUS_URL=http://127.0.0.1:{{.OPERATOR_PORT}}/status pnpm frontend dev"
         exec env SUBMITTER_PRIVATE_KEY="$FUNDED_KEY" SP1_SKIP_PROGRAM_BUILD=true \
           cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
             --config {{.WORK}}/operator.toml
@@ -718,5 +736,5 @@ tasks:
   clean:
     desc: "Throw away the demo's local state (not the chain)"
     cmds:
-      - rm -rf {{.WORK}} .trustgraph/operator
-      - echo "✓ removed {{.WORK}} and .trustgraph/operator"
+      - rm -rf {{.WORK}}
+      - echo "✓ removed {{.WORK}} (the operator's whole state directory)"

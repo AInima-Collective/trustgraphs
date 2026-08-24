@@ -17,7 +17,6 @@ use operator_core::types::{
 };
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 use crate::chain::{
     entry_at_params_hash, expected_instance_domain, read_checkpoint, read_landed_publication,
@@ -26,10 +25,12 @@ use crate::chain::{
 };
 use crate::config::Config;
 use crate::handlers;
+use crate::health::{self, Health};
 use crate::ops::{
     action_json, action_key, alert, write_status, InstanceStatus, Logger, Narration,
     PublicSettings, Status as OpsStatus,
 };
+use crate::tools;
 use crate::tx::Sender;
 
 /// What one proof of this instance is expected to cost us, in cents.
@@ -104,10 +105,25 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // satisfy. Discovering otherwise on a failed submit costs a proof; discovering it here costs
     // one `eth_call`. A mismatch is a per-instance skip, not a refusal to start: one community
     // that rotated ahead of us must not stop the rest.
-    let vkeys = guest_vkeys()?;
+    let guests = guest_vkeys()?;
     logger.event(
         "vkeys",
-        json!(vkeys.iter().map(|(p, k)| (p.name(), format!("{k:#x}"))).collect::<Vec<_>>()),
+        json!(guests
+            .iter()
+            .map(|(p, (vkey, elf))| {
+                (p.name(), json!({ "vkey": format!("{vkey:#x}"), "elf_sha256": elf }))
+            })
+            .collect::<BTreeMap<_, _>>()),
+    );
+
+    // Which executable each input reconstruction will run, decided once and said out loud. A
+    // deployment that expected prebuilt tools and silently fell back to `cargo run` finds out
+    // here, at startup, instead of on the first tick that needs a compiler the image does not
+    // have. Unresolved tools are reported, not fatal: a lane this deployment never proves has no
+    // business grounding the daemon.
+    logger.event(
+        "tools",
+        json!(tools::report(cfg.ops.tool_dir.as_deref()).into_iter().collect::<BTreeMap<_, _>>()),
     );
 
     // A registry scan from genesis is the difference between a daemon that works on mainnet and
@@ -144,7 +160,30 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // already been said so a healthy tick is one line, not one line per instance per lane.
     let mut narration = Narration::default();
 
-    let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
+    // Off unless asked for (GOAL D3). Bound HERE, before the first tick, so a bad address or an
+    // occupied port is a startup failure rather than something discovered when a probe first
+    // fails hours later.
+    let health = Health::new(cfg.ready_after_seconds());
+    if let Some(addr) = cfg.ops.listen.as_deref() {
+        if once {
+            // A process that ticks once and exits has no liveness to report, and binding anyway
+            // would mean ten sequential `--once` runs fighting over one port. Say so rather than
+            // leaving a configured listener silently absent.
+            logger.event("listening", json!({ "skipped": "--once", "addr": addr }));
+        } else {
+            let bound = health::spawn(addr, health.clone())?;
+            logger.event(
+                "listening",
+                json!({
+                    "addr": bound.to_string(),
+                    "routes": ["/health", "/ready", "/status"],
+                    "ready_after_seconds": cfg.ready_after_seconds(),
+                }),
+            );
+        }
+    }
+
+    let mut journal = Journal::open(cfg.journal_path())?;
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
         alert(
@@ -170,6 +209,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
             &mut pending_settles,
             &mut narration,
             &logger,
+            &health,
             dry_run,
         ) {
             Ok(()) => {}
@@ -274,7 +314,7 @@ pub fn republish(cfg: Config, instance_id: B256, checkpoint_id: u64) -> Result<(
             "cid": built.cid,
         }),
     );
-    let mut journal = Journal::open(PathBuf::from(&cfg.ops.journal_path))?;
+    let mut journal = Journal::open(cfg.journal_path())?;
     let key = WorkKey { chain_id, instance_id, checkpoint_id };
     if !attempt_publication(&cfg, &mut journal, &logger, &historical, key, &built.cid, &built.blob)?
     {
@@ -297,6 +337,7 @@ fn tick(
     pending_settles: &mut BTreeMap<WorkKey, PendingSettle>,
     narration: &mut Narration,
     logger: &Logger,
+    health: &Health,
     dry_run: bool,
 ) -> Result<()> {
     let head = rpc.block_number()?;
@@ -352,7 +393,8 @@ fn tick(
     let mut statuses = Vec::new();
     let mut alerts_raised = Vec::new();
     let mut in_flight_now = 0usize;
-    let vkeys = guest_vkeys()?;
+    let vkeys: BTreeMap<Program, B256> =
+        guest_vkeys()?.into_iter().map(|(program, (vkey, _))| (program, vkey)).collect();
     let programs = supported()
         .into_iter()
         .filter(|program| *program != Program::Signer || cfg.signer_sync.enabled)
@@ -633,7 +675,7 @@ fn tick(
                 },
                 Action::Prove { checkpoint_id }
                     if entry.program == Program::Trustgraphs
-                        && handlers::uses_strict_envelope0(rpc, entry).unwrap_or(true) =>
+                        && handlers::uses_strict_envelope0(cfg, rpc, entry).unwrap_or(true) =>
                 {
                     let pinned = state
                         .checkpoints
@@ -781,60 +823,61 @@ fn tick(
         }),
     );
 
-    write_status(
-        &PathBuf::from(&cfg.ops.status_path),
-        &OpsStatus {
-            chain_id,
-            head_block: head,
-            tick_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            instances: statuses,
-            settings: PublicSettings {
-                capability_profile: cfg.prover.capability_profile,
-                cost_model_version: operator_core::work::COST_MODEL_VERSION,
-                cycle_limit: cfg.prover.cycle_limit,
-                protocol_max_total_inputs: operator_core::policy::MAX_PRICED_INPUTS,
-                paid_enabled: cfg.paid.enabled,
-                paid_vault: cfg.paid.vault.map(|v| format!("{v:#x}")),
-                paid_recipient: cfg.paid.recipient.map(|r| format!("{r:#x}")),
-                tick_seconds: cfg.cadence.tick_seconds,
-                subsidy_min_blocks: cfg.cadence.subsidy_min_blocks,
-                max_concurrent: cfg.cadence.max_concurrent,
-                max_per_instance: cfg.cadence.max_per_instance,
-                max_basefee_gwei: cfg.gas.max_basefee_gwei,
-                replacement_after_s: cfg.gas.replacement_after_s,
-                simulate_before_send: cfg.gas.simulate_before_send,
-                confirmations: cfg.finality.confirmations,
-                track_block_hash: cfg.finality.track_block_hash,
-                prover_backend: cfg.prover.backend.clone(),
-                groth16: cfg.prover.groth16,
-                proof_timeout_s: cfg.prover.timeout_s,
-                per_instance_usd_per_day: cfg.budget.per_instance_usd_per_day,
-                global_usd_per_day: cfg.budget.global_usd_per_day,
-                budget_window_seconds: cfg.budget.window_seconds,
-                publishes_scores: !cfg.ipfs.resolved_targets().is_empty(),
-                verifies_score_readback: !cfg.ipfs.resolved_targets().is_empty(),
-                publication_target_count: cfg.ipfs.resolved_targets().len(),
-                publication_min_success: cfg.ipfs.required_successes(),
-                publication_retry_seconds: cfg.ipfs.retry_seconds,
-                weighted_manifest_mirror_count: cfg.weighted_manifests.mirrors.len(),
-                weighted_manifest_cache_max_versions: cfg.weighted_manifests.max_versions,
-                weighted_manifest_cache_max_bytes: cfg.weighted_manifests.max_bytes,
-                weighted_manifest_retry_seconds: cfg.weighted_manifests.retry_seconds,
-                submit_failure_threshold: cfg.ops.submit_failure_threshold,
-                signer_sync_enabled: cfg.signer_sync.enabled,
-                signer_confirmations: cfg.signer_sync.confirmations,
-                signer_track_block_hash: cfg.signer_sync.track_block_hash,
-                signer_per_instance_usd_per_day: cfg.signer_sync.per_instance_usd_per_day,
-                signer_global_usd_per_day: cfg.signer_sync.global_usd_per_day,
-                signer_budget_window_seconds: cfg.signer_sync.budget_window_seconds,
-            },
-            unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
-            alerts: alerts_raised,
+    let status = OpsStatus {
+        chain_id,
+        head_block: head,
+        tick_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        instances: statuses,
+        settings: PublicSettings {
+            capability_profile: cfg.prover.capability_profile,
+            cost_model_version: operator_core::work::COST_MODEL_VERSION,
+            cycle_limit: cfg.prover.cycle_limit,
+            protocol_max_total_inputs: operator_core::policy::MAX_PRICED_INPUTS,
+            paid_enabled: cfg.paid.enabled,
+            paid_vault: cfg.paid.vault.map(|v| format!("{v:#x}")),
+            paid_recipient: cfg.paid.recipient.map(|r| format!("{r:#x}")),
+            tick_seconds: cfg.cadence.tick_seconds,
+            subsidy_min_blocks: cfg.cadence.subsidy_min_blocks,
+            max_concurrent: cfg.cadence.max_concurrent,
+            max_per_instance: cfg.cadence.max_per_instance,
+            max_basefee_gwei: cfg.gas.max_basefee_gwei,
+            replacement_after_s: cfg.gas.replacement_after_s,
+            simulate_before_send: cfg.gas.simulate_before_send,
+            confirmations: cfg.finality.confirmations,
+            track_block_hash: cfg.finality.track_block_hash,
+            prover_backend: cfg.prover.backend.clone(),
+            groth16: cfg.prover.groth16,
+            proof_timeout_s: cfg.prover.timeout_s,
+            per_instance_usd_per_day: cfg.budget.per_instance_usd_per_day,
+            global_usd_per_day: cfg.budget.global_usd_per_day,
+            budget_window_seconds: cfg.budget.window_seconds,
+            publishes_scores: !cfg.ipfs.resolved_targets().is_empty(),
+            verifies_score_readback: !cfg.ipfs.resolved_targets().is_empty(),
+            publication_target_count: cfg.ipfs.resolved_targets().len(),
+            publication_min_success: cfg.ipfs.required_successes(),
+            publication_retry_seconds: cfg.ipfs.retry_seconds,
+            weighted_manifest_mirror_count: cfg.weighted_manifests.mirrors.len(),
+            weighted_manifest_cache_max_versions: cfg.weighted_manifests.max_versions,
+            weighted_manifest_cache_max_bytes: cfg.weighted_manifests.max_bytes,
+            weighted_manifest_retry_seconds: cfg.weighted_manifests.retry_seconds,
+            submit_failure_threshold: cfg.ops.submit_failure_threshold,
+            signer_sync_enabled: cfg.signer_sync.enabled,
+            signer_confirmations: cfg.signer_sync.confirmations,
+            signer_track_block_hash: cfg.signer_sync.track_block_hash,
+            signer_per_instance_usd_per_day: cfg.signer_sync.per_instance_usd_per_day,
+            signer_global_usd_per_day: cfg.signer_sync.global_usd_per_day,
+            signer_budget_window_seconds: cfg.signer_sync.budget_window_seconds,
         },
-    )?;
+        unresolved: journal.unresolved().iter().map(|k| format!("{k:?}")).collect(),
+        alerts: alerts_raised,
+    };
+    write_status(&cfg.status_path(), &status)?;
+    // The listener publishes the same completed tick the file does, projected down to what a
+    // reader outside this box may see. One clock, two surfaces.
+    health.publish(&status);
     Ok(())
 }
 
@@ -1005,11 +1048,11 @@ fn build_state(
                 // A held proof is submit-ready only after its exact publication policy is
                 // durably satisfied. Failed attempts survive restart and produce a quiet
                 // backoff state until their retry time.
-                let flight_state = if handlers::has_held_proof(entry, id) {
+                let flight_state = if handlers::has_held_proof(cfg, entry, id) {
                     if program == Program::Signer || cfg.ipfs.required_successes() == 0 {
                         InFlightState::Ready
                     } else {
-                        let held = handlers::load_proof(entry, id)?;
+                        let held = handlers::load_proof(cfg, entry, id)?;
                         let policy_hash = cfg.ipfs.policy_hash();
                         if journal.publication_satisfied(&key, &held.cid, policy_hash) {
                             InFlightState::Ready
@@ -1344,7 +1387,7 @@ fn act(
             // Persist both the proof and its canonical score bytes before publication. A crash
             // after this point resumes the cheap, idempotent publish rather than buying a proof
             // again. Submission remains unreachable until publication satisfies policy.
-            handlers::save_held(entry, *checkpoint_id, &built, &proof)?;
+            handlers::save_held(cfg, entry, *checkpoint_id, &built, &proof)?;
             logger.event(
                 "proved",
                 json!({
@@ -1365,7 +1408,7 @@ fn act(
             );
             let key =
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
-            let (held, score_blob) = handlers::load_publication_blob(entry, *checkpoint_id)?;
+            let (held, score_blob) = handlers::load_publication_blob(cfg, entry, *checkpoint_id)?;
             attempt_publication(cfg, journal, logger, entry, key, &held.cid, &score_blob)?;
         }
 
@@ -1391,7 +1434,7 @@ fn act(
                 return Ok(());
             }
 
-            let held = handlers::load_proof(entry, *checkpoint_id)?;
+            let held = handlers::load_proof(cfg, entry, *checkpoint_id)?;
 
             // The claim policy. A curated instance is proven on us and lands through plain
             // `submitProof`, drawing no vault; everything else goes through the vault so the
@@ -1774,7 +1817,14 @@ mod tests {
 
 /// The vkey each of this binary's guests produces. Derived once per run: it is a function of the
 /// ELF, which cannot change while the process is alive.
-fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
+/// The guests this binary embeds: each program's vkey, and the sha256 of the ELF it came from.
+///
+/// The digest is not decoration. A vkey answers "will the deployed verifier accept what I
+/// produce"; the ELF digest answers "which build is this", which is the question anyone checking
+/// a container against the published release table is actually asking. Both are derived here,
+/// once, at startup — and the image ships the same digests at `/etc/trustgraph/elf-digests.txt`
+/// so the question can also be answered without starting anything.
+fn guest_vkeys() -> Result<BTreeMap<Program, (B256, String)>> {
     let mut out = BTreeMap::new();
     for (program, vk) in [
         (Program::Trustgraphs, trustgraph_prover::programs::trust_graph::elf()),
@@ -1784,10 +1834,11 @@ fn guest_vkeys() -> Result<BTreeMap<Program, B256>> {
         (Program::NostrWorkspace, trustgraph_prover::programs::nostr_workspace::elf()),
         (Program::Signer, trustgraph_prover::programs::signer::elf()),
     ] {
+        let elf_sha256 = trustgraph_prover::common::elf_sha256(&vk);
         let s = trustgraph_prover::common::vkey(vk)?;
         let b = hex::decode(s.trim().trim_start_matches("0x"))?;
         anyhow::ensure!(b.len() == 32, "vkey for {} was not 32 bytes", program.name());
-        out.insert(program, B256::from_slice(&b));
+        out.insert(program, (B256::from_slice(&b), elf_sha256));
     }
     Ok(out)
 }
