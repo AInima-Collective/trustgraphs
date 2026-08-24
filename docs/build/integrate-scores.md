@@ -10,8 +10,8 @@ verifies an SP1 zero-knowledge proof that the root is the correct fixed-point Pa
 network's chain-pinned vouch inputs. So a consumer never trusts a server, an operator, or this
 project's own indexer: everything below either *is* the chain or is checkable against it.
 
-Nothing is live in production yet; Ethereum mainnet is the target. All examples below run against
-the local stack ([`./quickstart.md`](./quickstart.md)), where the indexer serves
+The examples below run against
+the [local stack](./quickstart.md), where the indexer serves
 `http://localhost:65421`.
 
 Three consumption paths, strongest first:
@@ -214,7 +214,7 @@ roots in the body, never a quietly wrong proof.
 `/contributions/:snapshot[/root]/payout/:account`, and
 `/contributions/:snapshot[/root]/audit/:claimUid` serve the round state, per-claim scores, and the
 per-account payout bundles the payout page claims through. Details in
-[`./contributions/interfaces.md`](./contributions/interfaces.md).
+[Contributions](./contributions.md).
 
 ### Everything else
 

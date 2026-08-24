@@ -1,281 +1,62 @@
-# Deploy to production (advanced)
+# Deploy to production
 
-> **Pre-testnet status:** no trustgraphs contracts are deployed on any public chain. The first
-> planned public release is the core `trust-graph` path on Ethereum Sepolia (chain 11155111),
-> following the gates in [`sepolia.md`](./sepolia.md). Ethereum mainnet is a later production
-> target. The repository's existing chain-10 “production” profile is legacy configuration, not a
-> current deployment or the go-forward chain story. Treat this page as post-testnet production
-> preparation until the Sepolia release is complete.
+A production trustgraphs deployment combines immutable proving contracts with services that must
+remain available over time. Treat the deployment as a security-sensitive release, not a copy of
+the local demo.
 
-### Deploy new network
+## Before deployment
 
-Create `config/networks.production.json` (copy the development template) with the new
-network's metadata set, but leave the contracts and schemas blank — they are filled in by
-the deployment script.
+- Pin the source commit, Foundry dependencies, Rust toolchain, and SP1 version.
+- Run the Solidity, Rust, frontend, indexer, golden-vector, and end-to-end suites.
+- Produce a real proof with the intended backend and verify it through the target chain's SP1
+  gateway.
+- Review every admin, Safe, timelock, guardian, registrar, and operator role.
+- Decide which programs and optional modules the release will support.
 
-Set the ZK deployment parameters in your environment (see `contracts/deploy/env.ts` and `.env.example`):
+Do not deploy a verifier with a key derived from a different guest build.
 
-- `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- trust-graph vkey`)
-- `SP1_SIGNER_PROGRAM_VKEY` — the signer-sync vkey (the five selection/liveness fields are stored
-  individually and hashed by the deployed module; see the
-  [signer-sync runbook](./signer-sync/runbook.md))
-- `SP1_VERIFIER_GATEWAY` — the canonical SP1 verifier gateway on the target chain
-- `NETWORK_EPOCH_LENGTH` — a nonzero block count between score checkpoints for each network
-  created through the legacy production deploy path (for example, `1296000` is about 30 days on
-  Optimism). The deploy fails closed when this is missing or zero.
-- `DISTRIBUTOR_SAFE` — an initialized Safe when the legacy `DeployNetwork` distributor flag is
-  enabled. The script and all base factories reject an EOA distributor owner.
+## Deploy the contracts
 
-There is **no `PARAMS_HASH` env var**: `DeployNetwork` computes the params hash on-chain from
-`params.json` (the same file the prover feeds the guest) right after it registers the schema —
-see the note in `.env.example`.
-
-Then deploy the contracts, which will deploy and fill in the missing values:
+Set the target chain, canonical external dependencies, program verification keys, and governance
+addresses in the deployment environment. The repository deployment pipeline is:
 
 ```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=optimism pnpm deploy:contracts
+DEPLOY_STAGE=production DEPLOY_TARGET=<network> pnpm deploy:contracts
 ```
 
-This deploys EAS + resolvers, the `SP1JournalVerifier`, `MerkleSnapshot` (with the accumulator and
-the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the reward distributor.
+Inspect every simulated call and deployment receipt. Record the contract addresses, deployment
+blocks, source commit, verification keys, and transaction hashes in a chain-specific deployment
+manifest.
 
-### Prepare weighted and compose factories after the core testnet
+After deployment, transfer temporary bootstrap roles to their final Safe or timelock and verify
+the resulting role graph from the chain. A deployment is not complete while an unintended
+deployer key retains authority.
 
-The `/create/weighted` and `/create/composition` workspaces transact against two isolated
-factories: `WeightedTrustgraphsFactory` (`trust-graph-weighted`) and `TrustComposeFactory`
-(`trust-compose`). The dev pipeline deploys both automatically as part of `pnpm deploy:contracts`.
-These development deployments do not put either program in the first public release.
-`trust-compose` is explicitly outside the first Sepolia testnet and requires its own later release
-gate and coverage. The public-chain commands below are post-gate reference only; do not broadcast
-the compose scripts as part of the first Sepolia deployment.
+## Operate the services
 
-Each factory needs its own verifier, pinned to its own guest program. Compute the vkeys from the
-exact prover build you will operate:
+Production service requirements include:
 
-```bash
-export EXPECTED_CHAIN_ID=<target-chain-id>
+- finalized and failover RPC endpoints;
+- a durable Postgres database for the indexer;
+- at least two independent score-file publication targets;
+- a prover with persistent journal storage, budgets, finality checks, and alert delivery; and
+- monitoring for stale checkpoints, held proofs, publication failures, root mismatches, and low
+  proving-vault balances.
 
-export SP1_WEIGHTED_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-graph-weighted vkey)
-export SP1_COMPOSITION_PROGRAM_VKEY=$(cargo run -p trustgraph-prover -- trust-compose vkey)
+Set the operator's registry start block to the actual registry deployment block. Test restoration
+of the database, prover journal, weighted manifests, and published score files before relying on
+the deployment.
 
-forge script contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier \
-  --sig 'run(string,bytes32,string)' \
-  "$SP1_VERIFIER_GATEWAY" "$SP1_WEIGHTED_PROGRAM_VKEY" weighted \
-  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
+## Release verification
 
-forge script contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier \
-  --sig 'run(string,bytes32,string)' \
-  "$SP1_VERIFIER_GATEWAY" "$SP1_COMPOSITION_PROGRAM_VKEY" composition \
-  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
-```
+Before announcing a network:
 
-Then the factories. Both take an epoch floor in blocks (a mainnet block is ~12 s, so 216000 is
-about 30 days) and an activation delay in seconds: the immutable review window between proposing a
-new prior or policy and the earliest activation, during which proving operators re-verify the
-proposed bytes. The scripts refuse an epoch floor under ~1 day of blocks or a delay under 1 day on
-a non-dev chain, so a dev default cannot reach production by accident. The trailing argument is the
-chain's `ProvingVault` (pass `""` for no prepay path).
+1. Create a small governed instance through the same public factory users will call.
+2. Submit representative inputs and freeze a checkpoint.
+3. Produce, publish, and submit a real proof.
+4. Confirm the indexer independently derives the accepted root.
+5. Fetch an account proof through the public API and verify it against the chain.
+6. Exercise one governed settings change and the emergency pause path.
 
-```bash
-forge script contracts/script/DeployWeightedTrustgraphsFactory.s.sol:DeployWeightedTrustgraphsFactory \
-  --sig 'run(string,string,string,string,uint64,uint48,string)' \
-  "$EAS" "$SCHEMA_REGISTRAR" \
-  "$(jq -r .zk_verifier .docker/zk_verifier_weighted_deploy.json)" \
-  "$INSTANCE_REGISTRY" 216000 172800 "$PROVING_VAULT" \
-  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
-
-forge script contracts/script/DeployTrustComposeFactory.s.sol:DeployTrustComposeFactory \
-  --sig 'run(string,bytes32,string,uint64,uint48,string)' \
-  "$(jq -r .zk_verifier .docker/zk_verifier_composition_deploy.json)" \
-  "$SP1_COMPOSITION_PROGRAM_VKEY" \
-  "$INSTANCE_REGISTRY" 216000 172800 "$PROVING_VAULT" \
-  --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
-```
-
-The compose script also deploys the `CompositionSourceAdapterFactory` (the registry of reviewed
-source adapters) with the canonical instance registry pinned immutably, and passes the composition
-vkey into the factory constructor, which cross-checks it against the verifier's own
-`programVKey()` and reverts on a mismatch. Both scripts grant the new factory `REGISTRAR_ROLE` on
-the instance registry, which needs the registry's admin key: at
-bootstrap that is the deployer, and once registry admin has moved to the operational timelock, set
-`GRANT_REGISTRAR=false` and make the grant a governance action instead.
-
-Finally, wire the consumers. The indexer reads `weightedFactory.weighted_factory` and
-`trustComposeFactory.trust_compose_factory` from `.docker/deployment_summary.json`, or the explicit
-`WEIGHTED_FACTORY_ADDRESS_10` / `TRUST_COMPOSE_FACTORY_ADDRESS_10` environment variables in
-production. The frontend picks both up from the same summary keys during `config:generate`
-(`WEIGHTED_FACTORY_ADDRESS` / `TRUST_COMPOSE_FACTORY_ADDRESS` are the env overrides). The indexer
-reads the summary once at startup, so restart it after the factories land.
-
-### Strict EAS off-chain lane: testnet gate only
-
-The optional EAS off-chain v2 lane is built but is not authorized for mainnet by this production
-guide. It uses a separate hybrid factory entry point, detached trust-graph guest/vkey, admitted
-relays, and strict retained payload readers. Follow the
-[strict EAS off-chain testnet runbook](./eas-offchain/runbook.md) and obtain a passing
-[rollout report](./eas-offchain/rollout-report.md) first. That report still feeds a separate
-mainnet go/no-go decision; it does not turn the lane on automatically. Lane-1-only creation and
-operation do not require any off-chain relay or reader configuration.
-
-### Run the prover
-
-The `{account → score}` root is produced by a permissionless SP1 proof — anyone can post `(root, proof)`
-via `MerkleSnapshot.submitProof`. Real STARK → Groth16 proving needs ≥16–32 GiB of RAM or the Succinct
-prover network (`SP1_PROVER=network`). See [`trust-graph/runbook.md`](./trust-graph/runbook.md) for the guest/host build
-and the checkpoint → prove → submit flow.
-
-In production that loop is not driven by hand. Deploy the **proof scheduler** and it keeps every
-instance's scores fresh with nobody watching: [`run-a-prover.md`](./run-a-prover.md) is the whole
-contract — what it does, how to configure it, what it alerts on, and how to recover it.
-
-Four things to get right before the first tick:
-
-1. **`registry_from_block`.** Set it to the `InstanceRegistry` deployment block. Left at 0 the
-   daemon scans from genesis, which most providers reject outright as an archive request — the
-   failure is not slowness, it is no catalog and every tick failing. Startup alerts if you forget.
-2. **Two keys, separately funded.** `NETWORK_PRIVATE_KEY` (prover network requester) and
-   `SUBMITTER_PRIVATE_KEY` (submit gas). They are split because the payee lives in the journal, so
-   the submitting key holds no value and rotates freely.
-3. **A real Groth16 proof, verified by the canonical gateway, before anything else.** This is the
-   one thing the build could not exercise (11 GiB box, no network key — [`DEVIATIONS`](../../research/DEVIATIONS.md)
-   #20). Every proof in CI wraps at a mock gateway. Prove one checkpoint for real, submit it, watch
-   it land, and only then start the daemon.
-4. **Independent score-blob durability.** Configure at least two independently operated
-   `[[ipfs.targets]]` and set `ipfs.min_success = 2`. Each target needs a kubo-compatible add API
-   and the gateway readers actually use; the operator reads the exact bytes back before permitting
-   proof submission. A CID is a content identity, not a storage SLA. Contract for retention at
-   least as long as the root may be queried, keep an offline backup of every canonical blob (or
-   the checkpoint inputs and historical params needed to reproduce it), and test
-   `operator republish --instance <id> --checkpoint <id>` before launch. Two endpoints backed by
-   the same storage failure domain do not count as independent.
-
-### The accumulator ceiling — enforce, monitor, and recover
-
-**The fact.** Lane-1 accumulator leaves (every attestation and revocation appends one), lane-2
-anchor records, and strict envelope-0 append-only logs all add proof work; a chained history cannot
-be trimmed. A strict hybrid's lane-2 `workCount` is
-`anchorCount + aggregateLatestEnvelope0EntryCount * 4`, not raw anchor count. Its proving and price
-size is `leafCount + workCount`; legacy registries still use `leafCount + anchorCount`.
-`ProvingVault` and bounded registries share the absolute protocol/payment
-**`MAX_PRICED_INPUTS = 200,000`** boundary. That number is not an operator-capacity promise. The
-shipped host profile is calibrated to 1,800 raw inputs (and the cheap gate's corresponding 3,600
-conservative node bound), while its separately configurable 8B-cycle model would refuse at 3,468
-max-iteration trust inputs if the profile were raised. Thus the default profile binds first. A new
-anchor is rejected before the fold when it would exceed the registry's lower immutable
-`maxTotalInputs`; choose that cap below 200,000 on a two-lane instance to reserve the planned lane-1
-budget. Separately gate or price lane-1 EAS ingress.
-
-**Attacker cost (order of magnitude, mainnet).** The audit measured 78,191 gas per marginal folded
-lane-1 leaf. Reaching the default host's 1,800-input profile edge is therefore about 141M gas, or
-roughly **0.14–1.41 ETH** across 1–10 gwei; reaching the separate 200,000 protocol ceiling would be
-about 15.6B gas. Neither is an ingress defense. Lane-2 `anchor()` is not permissionless: only
-governance-admitted `ANCHORER_ROLE` relayers
-may append, all node kinds require increasing counts, and address heads also require the owner's
-signature. Forge traces put a first admitted append at ~88–93k transaction gas, with repeated
-updates to nonzero slots cheaper. An unaffiliated caller always reverts before changing the count; mass
-self-registration changes no proving input. A compromised admitted relayer can still consume the
-configured finite capacity, so use independent relayers, monitor role changes, and set a cap from
-the expected lifetime budget. Full analysis: [`research/ANCHOR_INGRESS.md`](../../research/ANCHOR_INGRESS.md).
-
-**What this means for the first experiments.** A bounded lane-2 instance cannot have its fee band
-moved by an unaffiliated address. It does trust admitted relayers for inclusion/liveness, so grant at
-least two independent operators and alert on role changes. An instance whose lane-1 attestation
-ingress is open to adversaries must still price or stake that ingress (the payable resolver exists
-for this) before real value depends on the scores.
-
-**Monitoring (in place).** The proof scheduler reads authenticated live work and compares it with
-the configured capability profile, configured cycle limit, and any lower immutable registry
-`maxTotalInputs`. It alerts (webhook + `operator_capacity_approaching` log event + status page) at
-**80% of whichever gate is nearest exhaustion**. It does not wait for 80% of the unrelated 200,000
-vault band. Legacy/no-lane-2 implementations use their existing anchor count or zero lane. Do not
-silence the alert: revoke unexpected ingress and start migration while an orderly final checkpoint
-still fits.
-
-**Recovery path (prepare BEFORE launch).** Both input-lane setters are available only before
-checkpoint 0. Re-seed by deploying a fresh resolver/accumulator, bounded registry, verifier, and
-snapshot; preserve the old final root, CID bytes, params, checkpoint block, and addresses as
-migration evidence; update the same instance-directory row; then have the old snapshot's
-constitutional authority call `ProvingVault.migrate`. Directory events preserve the generation
-link and the old contracts remain queryable. Re-register identities and re-anchor/re-attest only
-live inputs. Budget `timelock delay + deployment + re-ingress + first proof` before the 100% point.
-The exact ceremony and rollback checks are in
-[`research/ANCHOR_INGRESS.md`](../../research/ANCHOR_INGRESS.md).
-
-### Run the indexer
-
-The indexer has two production processes: a versioned writer and a stable read server. Set:
-
-```bash
-PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # the legacy production profile is
-                                        # pinned to chain 10; do not reuse it for the planned
-                                        # Sepolia testnet (11155111) or future mainnet (1)
-PONDER_START_BLOCK_<chainId>=<earliest configured contract deployment block>
-PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
-PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
-DATABASE_URL=postgresql://...
-IPFS_GATEWAY=https://.../ipfs/
-FRONTEND_URL=https://your-app.example   # defaults to https://trustgraph.network in PROD
-```
-
-Then run `docker compose -f docker-compose.prod.yml up -d`. The writer backfills into the versioned
-schema and only publishes the stable views after it is ready. `ponder-server` waits for that
-readiness signal and serves port 65421; a writer crash or restart does not take the last completed
-read schema away.
-
-Startup refuses three unsafe states before Ponder runs: the wrong chain id, deployment-record
-addresses with no code, or an RPC that cannot answer historical state at the start block. Sepolia
-uses the tracked finalized manifest; legacy/local profiles use the machine-local summary. It also
-records a finalized block hash in Postgres. A later production identity mismatch is never reset
-automatically—verify the RPC/database and deploy to a new versioned schema. Use
-`pnpm --dir packages/indexer preflight` for the same checks without starting Ponder.
-
-When upgrading a database that predates authenticated score-program columns, apply the offchain
-Drizzle migration before the writer starts. Let the writer replay the configured
-`InstanceRegistry`, then audit and apply the historical repair:
-
-```bash
-PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir packages/indexer programs:backfill
-PONDER_API_URL=http://127.0.0.1:65421 pnpm --dir packages/indexer programs:backfill --apply
-```
-
-The command obtains every binding from `/score-programs/:snapshot`, plans table families before
-writing anything, and refuses unknown, conflicted, or not-yet-enabled programs. Deploy the
-frontend after this pass; the new frontend deliberately rejects legacy responses without
-provenance. Ordinary event replay also repairs rows root by root, so restarts are idempotent.
-
-### Run the proving vault
-
-Optional, and only if you intend to pay for roots or let communities pay for their own.
-[`ProvingVault`](../../contracts/src/vault/ProvingVault.sol) is the tank a community tops up so
-somebody keeps proving its scores;
-[`IProvingVault`](../../contracts/src/interfaces/vault/IProvingVault.sol)
-documents why each piece is shaped the way it is. Deploy order and the settings that matter:
-
-```
-ProvingVault(registry, usdc, ethUsdFeed, feedMaxStaleness, minEthUsd, maxEthUsd, feeSetter, admin)
-```
-
-- **The price feed must be 8-decimal** — the constructor asserts it. An 18-decimal feed would
-  underpay every prover by 1e10.
-- **`minEthUsd` / `maxEthUsd` are a sanity band, not decoration.** `maxPerRootUsd` is denominated
-  in oracle-USD and the ETH leg converts at the same oracle, so a low-but-fresh price caps nothing:
-  at $1/ETH a $50 claim withdraws 50 ETH. An out-of-band answer is treated as no answer.
-- **Price the bands before anyone creates an instance** (`setFeePerRootUsd(program, band, usd)`),
-  or the first roots land and pay nothing. Band 0 is reserved for "we do not price this" and
-  refuses to be set. `GovernedTrustgraphsFactory` rejects a prepaid creation while trust-graph band
-  1 is zero; the app also shows the current band-1 price before signing.
-- **The factory's `vault` constructor argument** is what makes `createInstance` payable, so a
-  community can fund its network during creation. Passing zero means "no prepay path", and sending
-  value to such a factory reverts rather than being kept.
-
-The app's governed path takes an explicit initial `minPaidIntervalBlocks` and `maxPerRootUsd`, routes
-the ETH through its bootstrap Safe, and has that Safe call `setPolicy` before handing bootstrap
-ownership to the creator. A nonzero deposit with a zero policy, a policy without a deposit, a paid
-interval shorter than the initial score epoch, an initial cap below band 1 or above $10,000, and an
-unpriced band 1 all revert atomically. Zero/zero means unpaid or curated and opens no vault account.
-
-Communities can later change their limits with `setPolicy(instanceId, minPaidIntervalBlocks,
-maxPerRootUsd)`. That remains the only enforceable paid cadence: `EPOCH_FLOOR` binds at creation
-only, since `setEpochLength` is constitutional and a community can change its own epoch afterwards.
-Unused funds are not app-withdrawable: the constitutional Safe must request a withdrawal and wait
-the vault's advertised notice before executing it.
+Publish the final addresses and verification keys through the tracked deployment manifest. See
+[Addresses and vkeys](../verify/addresses-and-vkeys.md) and [Run a prover](./run-a-prover.md).

@@ -1,96 +1,62 @@
-# Adding a new program
+# Add a scoring program
 
-A *program* is one provable scoring pipeline: a guest binary, the core-crate semantics it compiles,
-one journal shape, and one params schema, with its own verification key and golden vectors
-(trust-graph, trust-graph-weighted, trust-compose, signer-sync, hypercerts, and contributions are
-the current set; the program vs. instance distinction is defined in
-[`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md)). This page is for
-contributors extending the platform itself: if you only want another network of an existing
-program, you never touch any of this, because that costs one factory transaction
-([`./create-a-network.md`](./create-a-network.md)).
+A scoring program defines how committed inputs become a proven output. Add a program only when the
+input model, score semantics, or output subject differs from the existing programs. To launch
+another network with existing semantics, use [Create a network](./create-a-network.md).
 
-Per [`../../research/MULTI_PROGRAM_PLATFORM.md`](../../research/MULTI_PROGRAM_PLATFORM.md) §3 / §8, a new
-program (call it `foo`) is exactly these additions — no change to any existing program's semantics:
+## 1. Define deterministic semantics
 
-1. **Core crate** — `packages/foo-core/`: the record→edge mapping, weight normalization, and the
-   program's own `Params`/`Journal` + byte encodings, depending on `crates/zk-core` (and
-   `crates/envelopes` if it ingests a *lane-2* substrate — off-chain signed data, like atproto repos, anchored on-chain by digest rather than attested via EAS). Same discipline as every core crate: no
-   floats, `BTreeMap` only, no non-deterministic iteration.
-2. **Isolated guest workspace** — add `zk/foo-program/` with a ~25-line `src/main.rs`, its own pinned
-   SP1 dependencies/lockfile, and `[workspace]`; then register it in `zk/prover/build.rs`. This is the
-   default for a new consensus program and follows `zk/weighted-program` and
-   `zk/composition-program`: changing `foo-core` cannot perturb a shipped guest dependency graph or
-   vkey. Adding a `[[bin]]` to the legacy `zk/program` multi-bin workspace remains possible only when
-   shared compilation is intentional. It recompiles every existing bin and therefore rotates their
-   vkeys; treat that as an explicit governed migration.
-3. **Prover subcommand group** — `zk/prover/src/programs/foo.rs` adding a `foo {vkey | paramshash |
-   [fetch] | execute | prove}` clap group that shares the existing proof-writing plumbing
-   (`abi.encode(publicValues, seal)`, blob export, local verify). Lane-2 programs also add host-only
-   witness assembly under `zk/prover/src/witness/` behind a feature gate.
-4. **Golden vector file** — `tests/golden/foo.json`, written by the core crate's `export_golden`
-   example, plus a per-program `contracts/test/unit/golden/FooGoldenVectors.t.sol` and a TS `golden.test.ts`. An
-   encoding change without a regenerated vector file in the same PR is a CI failure (now enforced per
-   program).
-5. **Docs dir** — `docs/build/foo/` with `architecture.md` (pointer to the research design) and
-   `runbook.md`, following the per-program directories already under `docs/build/`
-   (`trust-graph/`, `weighted-prior/`, `signer-sync/`, `hypercerts/`, `contributions/`), plus a new
-   row in the program index in
-   [`../concepts/networks-and-programs.md`](../concepts/networks-and-programs.md).
+Create a Rust core crate for input decoding, reconciliation, scoring, output construction, parameter
+encoding, and the public journal. Consensus code must avoid floating-point arithmetic and
+non-deterministic iteration.
 
-Task/CI plumbing: `zk:{vkey|execute|prove|parity}` are generic via `PROGRAM=foo`; `zk:vectors` needs a
-per-program branch (each program writes its own vector file — see the existing hypercerts branch),
-and the frontend `pnpm test` script must be extended to compile+run the new program's golden suite.
-The prover's `Cargo.toml` also gains the new core crate as a dependency (step 3's clap group needs it).
-The CI parity job runs for every program on every PR touching `packages/` or `zk/`.
+Assign the program:
 
-**Contracts are reuse, not new code.** A new program deploys a fresh labeled `SP1JournalVerifier`
-instance (same bytecode, its own immutable vkey) against the same SP1 gateway, reuses `MerkleSnapshot`
-on journal v3, and adds a `ParamsCodec` twin golden-locked to its crate's `params_hash`. Standing up
-another *instance* of an existing program costs only a deployment (a new contract set + params +
-indexer and frontend view) — no Rust, no guest, no vectors.
+- a stable program ID;
+- a versioned output domain;
+- a canonical key encoding, such as Ethereum address or `bytes32`; and
+- an explicit input decoder and API namespace.
 
-## Registering the score program and output domain
+Do not infer a program from a display name, key width, or output shape.
 
-Score-blob dispatch is consensus-facing. Before a program can publish a root, add one reviewed row
-to `packages/frontend/lib/score-program.ts` containing all of the following:
+## 2. Add an isolated guest
 
-- the exact `programId` written to `InstanceRegistry` (`keccak256("foo")` by convention);
-- a new, versioned `outputDomain` (`keccak256("trustgraphs.output.foo-subject.v1")`);
-- the canonical key encoding (`eip155-address` or `bytes32`);
-- its one ingestion decoder, table family, and allowed HTTP namespace.
+Create a dedicated workspace under `zk/<name>-program/` with pinned SP1 dependencies and its own
+lockfile. Register the guest in the prover build and add the usual `vkey`, `paramshash`,
+`execute`, and `prove` commands.
 
-Never reuse an output domain merely because two subjects have the same byte width. Hypercerts node
-IDs and ERC-8004 agent keys are both 32 bytes and deliberately have different domains. Likewise,
-TrustGraph accounts, Contributions recipients, and composition outputs may all be EVM addresses
-while retaining different semantic domains. Changing a shipped domain is a versioned program
-migration, not a refactor.
+Isolation matters because changing one program should not silently rebuild or rotate the
+verification keys of unrelated programs.
 
-The deployer/factory must register `(program, snapshot, verifier, registryOrAccumulator,
-paramsHash)` in the configured on-chain `InstanceRegistry` before the snapshot can emit a root. The
-indexer consumes only `InstanceRegistered`/`InstanceUpdated` and governed
-`InstanceParamsHashUpdated` events from that configured registry, checks the snapshot's live
-`zkVerifier()` against the record, and stores the source block/log/transaction in API provenance.
-A catalog name, deployment-summary `program` string, contract name, score-key
-length, or first blob entry is never an admissible discriminator. Unknown programs, reused
-snapshots, program/domain mismatches, wrong API namespaces, and registered-but-not-enabled decoders
-all fail closed.
+## 3. Freeze cross-language vectors
 
-Indexer additions are therefore explicit:
+Add a canonical fixture under `tests/golden/` and test it in every implementation that constructs
+consensus bytes:
 
-1. Add the stable registry row, decoder/table/API declarations, and colliding-key fixtures.
-2. Add nullable discriminator/provenance columns plus a Drizzle migration.
-3. Enable the decoder only after its schema and API exist.
-4. Expose and runtime-validate `scoreProgram` on every score response.
-5. Add the frontend page type only after the authenticated response can dispatch it.
+- the Rust core and guest;
+- Solidity parameter, journal, leaf, and Merkle helpers; and
+- TypeScript code used by the frontend or indexer.
 
-For an existing database, deploy in this order: apply the nullable migration; contracts/deploy/replay the new
-indexer so `score_program_binding` is rebuilt from registry events; run
-`pnpm --dir packages/indexer programs:backfill` (dry-run) and then
-`pnpm --dir packages/indexer programs:backfill --apply`; deploy the new frontend last. Old frontends ignore
-additive provenance fields. A new frontend against an old
-indexer refuses the response rather than guessing its type. Keep the dry-run output with the
-release evidence and audit all `409` responses before publishing the frontend.
+An encoding change and its regenerated vector belong in the same change.
 
-A legacy snapshot with no registry event must first be registered through the registry's governed
-operator path with its historical verifier/accumulator/params tuple. The backfill intentionally
-refuses it until that event exists; a hand-edited catalog label is not a migration.
+## 4. Register and index the program
+
+Deploy a verifier with the new guest's key and register each instance's program, snapshot,
+verifier, input contract, and parameter hash in `InstanceRegistry`.
+
+Add the program and output domain to `packages/frontend/lib/score-program.ts`. Indexer and
+frontend dispatch must validate that authenticated binding before interpreting score keys. Unknown
+or conflicting bindings should fail closed.
+
+When storage changes are required, deploy compatible database migrations and indexer support before
+the frontend begins requesting the new response shape.
+
+## 5. Document the public behavior
+
+Add one page at `docs/build/<name>.md` explaining what the program does, when to use it, and its
+trust boundary. Put architecture notes, runbooks, test procedures, rollout records, and review
+artifacts under `research/`, where they remain available to repository contributors without
+becoming public product documentation.
+
+Add the public page to the docs manifest and the program table in
+[Networks and programs](../concepts/networks-and-programs.md).

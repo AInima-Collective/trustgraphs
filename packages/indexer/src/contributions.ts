@@ -38,7 +38,7 @@ import {
 import { accumulate } from '../../frontend/lib/pagerank/encode'
 
 /**
- * Contributions-program handlers (GOAL.md M3, docs/build/contributions/interfaces.md).
+ * Contributions-program handlers (GOAL.md M3, research/operations/contributions/interfaces.md).
  *
  * Two jobs:
  *  1. Index the ContributionResolver's fold log (every attestation/revocation across the three

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { CopyForLlmsButton } from '@/components/CopyForLlmsButton'
 import { PageTitle, SectionHeading } from '@/components/SectionHeading'
 import {
   DOCS_ORDER,
@@ -170,9 +171,14 @@ export default async function DocPage({ params }: Props) {
           )}
         </nav>
 
-        {/* `break-words`: doc H1s carry unbreakable identifiers
-         * ("TrustAwarePageRank:") that overflow a 320px viewport otherwise. */}
-        <PageTitle className="tg-doc-title break-words">{doc.title}</PageTitle>
+        <header className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
+          {/* `break-words`: doc H1s carry unbreakable identifiers
+           * ("TrustAwarePageRank:") that overflow a 320px viewport otherwise. */}
+          <PageTitle className="tg-doc-title min-w-0 break-words">
+            {doc.title}
+          </PageTitle>
+          <CopyForLlmsButton markdown={doc.markdown} />
+        </header>
 
         {contents.length >= 3 && (
           <nav aria-label="Contents" className="mt-8">

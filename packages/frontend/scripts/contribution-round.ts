@@ -14,7 +14,7 @@
  *     payout page's claim seam.
  *
  * Orchestrated by `task contributions:*` (taskfile/contributions.yml); see
- * docs/build/contributions/local-testing.md for the full round walkthrough.
+ * research/operations/contributions/local-testing.md for the full round walkthrough.
  *
  * Persona map (deterministic anvil accounts):
  *   SEED  = account 0 (the trusted seed in params.contributions.json)

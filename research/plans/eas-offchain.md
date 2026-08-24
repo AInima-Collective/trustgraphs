@@ -87,10 +87,10 @@ When this goal is complete:
 
 ## Normative baseline
 
-- Two-lane architecture: [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](research/OFFCHAIN_ATTESTATIONS_ZK.md),
-  as corrected by [`research/DEVIATIONS.md`](research/DEVIATIONS.md), especially deviation 3.
+- Two-lane architecture: [`research/OFFCHAIN_ATTESTATIONS_ZK.md`](../OFFCHAIN_ATTESTATIONS_ZK.md),
+  as corrected by [`research/DEVIATIONS.md`](../DEVIATIONS.md), especially deviation 3.
 - Relayer admission and capacity:
-  [`research/ANCHOR_INGRESS.md`](research/ANCHOR_INGRESS.md).
+  [`research/ANCHOR_INGRESS.md`](../ANCHOR_INGRESS.md).
 - Current envelope verifier: `crates/envelopes/src/eas_offchain.rs`.
 - Current lane-2 reconciliation: `crates/pagerank-core/src/lane2.rs` and
   `crates/pagerank-core/src/reconcile.rs`.

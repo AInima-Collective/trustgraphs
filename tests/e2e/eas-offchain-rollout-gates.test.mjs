@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const checker = resolve(root, 'scripts/eas-offchain-soak-check.mjs')
 const example = resolve(
   root,
-  'docs/build/eas-offchain/rollout-evidence.example.json'
+  'research/operations/eas-offchain/rollout-evidence.example.json'
 )
 const instanceId = `0x${'11'.repeat(32)}`
 const cid = 'bafkreiaghkksmbqe3wdicjuiv3azpgxlqdsz6mv7dq5gisxvuahthol5ki'

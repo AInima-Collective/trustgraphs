@@ -239,7 +239,7 @@ Trustgraphs already contains examples adjacent to three of them:
   source identifier and repeated attester/recipient pairs use last-write-wins reconciliation, this
   is not an A/B/C score blend ([reconcile.rs](../crates/pagerank-core/src/reconcile.rs)).
 - Contributions **recomputes reputation and uses it to weight evaluations**, a directional,
-  application-specific composition ([contributions architecture](../docs/build/contributions/architecture.md)).
+  application-specific composition ([contributions architecture](../research/operations/contributions/architecture.md)).
 - The graph-seeding report proposes using external score distributions as **continuous teleport
   priors**, so imported standing propagates through a destination graph's edges
   ([GRAPH_SEEDING.md](GRAPH_SEEDING.md)).

@@ -117,7 +117,7 @@ contract ContributionsFactory {
     event SchemaAdopted(bytes32 indexed instanceId, uint8 schemaIndex, bytes32 uid);
 
     /// @notice The three contribution schemas, EXACTLY as frozen in
-    ///         docs/build/contributions/interfaces.md §1 (comma-separated without spaces — the
+    ///         research/operations/contributions/interfaces.md §1 (comma-separated without spaces — the
     ///         canonical registered form). Uniform on purpose, like the vouch schema: the guest,
     ///         indexer and frontend all decode these exact field layouts.
     string public constant CLAIM_SCHEMA =

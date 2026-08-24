@@ -249,7 +249,7 @@ zk/prover/src/witness/nostr.rs       host-only exporter/archive support behind w
 contracts/src/params/NostrWorkspaceParamsCodec.sol
 tests/fixtures/nostr/buzz/<sha>/      pinned real Buzz conformance export + adversarial derivatives
 tests/golden/nostr-workspace.json     Rust/guest/Solidity/TypeScript production vectors
-docs/build/nostr-workspace/          architecture, runbook, local testing, archive policy
+research/operations/nostr-workspace/          architecture, runbook, local testing, archive policy
 ```
 
 Existing generic registries, snapshot/verifier bytecode, journal encoding, PageRank machinery, and

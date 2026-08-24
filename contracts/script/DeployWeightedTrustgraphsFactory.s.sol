@@ -74,7 +74,7 @@ contract DeployWeightedTrustgraphsFactory is Common {
             "DeployWeightedTrustgraphsFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
         );
         require(priorActivationDelay > 0, "DeployWeightedTrustgraphsFactory: priorActivationDelay is zero");
-        // The delay is the runbook's operator review window (docs/build/weighted-prior/runbook.md
+        // The delay is the runbook's operator review window (research/operations/weighted-prior/runbook.md
         // "Activate"): during it every proving operator re-fetches and re-verifies the proposed
         // manifest bytes. A seconds-long dev default reaching a real chain would make rotation
         // effectively instant, so anything under a day cannot be deliberate off-devnet.

@@ -56,10 +56,6 @@ receipt.
 - **No trusted middleman.** The proof replaces the operator. Producing scores is
   permissionless; checking them is automatic.
 
-One status note: today this loop runs end to end on a test chain, and nothing is deployed
-to a production chain yet (Ethereum mainnet is the target). The [FAQ](./faq.md) keeps the
-current status honest.
-
 ---
 
 Don't take this page's word for it either: [reproduce an epoch from public

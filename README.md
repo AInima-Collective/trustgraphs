@@ -98,29 +98,26 @@ the security properties worth demonstrating, and every gotcha that has cost some
 > anywhere, and both paths above do exactly that: `SP1_PROVER=mock` runs the real guest and commits
 > its real public values, with only the SNARK itself stubbed. Generating a real STARK→Groth16
 > *proof* needs ≥16–32 GiB of RAM or the Succinct prover network (`SP1_PROVER=network`). The
-> mainnet-fork rehearsal where the proof is real — deployed contracts, the canonical SP1 gateway,
-> indexer and frontend showing the scores — is
-> [`docs/build/trust-graph/local-testing.md`](./docs/build/trust-graph/local-testing.md).
+> A local reproduction procedure is documented in
+> [`docs/verify/reproduce-an-epoch.md`](./docs/verify/reproduce-an-epoch.md).
 
 ## Programs
 
-[`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md) is the authoritative index — per program: its
-status, its *vkey* (program verification key — the on-chain fingerprint of the exact prover
-binary), and its deployed instances. Status snapshot:
+[`docs/concepts/networks-and-programs.md`](./docs/concepts/networks-and-programs.md) explains the
+program model and links to one public overview for each supported path:
 
-| Program | What it proves | Status | Docs |
-|---|---|---|---|
-| **trust-graph** | the `{account → score}` root over the EAS vouch graph | **Built** | [architecture](./docs/build/trust-graph/architecture.md) · [runbook](./docs/build/trust-graph/runbook.md) · [local testing](./docs/build/trust-graph/local-testing.md) |
-| **trust-graph-weighted** | PageRank with a persistent, governance-rotated weighted teleport prior | **Built**; factory in the deploy pipeline | [contract architecture](./docs/build/weighted-prior/architecture.md) · [rotation/recovery runbook](./docs/build/weighted-prior/runbook.md) |
-| **trust-compose** | a source-aware weighted composition of complete captured score distributions | **Built**; factory in the deploy pipeline | [runbook](./docs/build/composition/runbook.md) · [frontend workflow](./docs/build/composition/frontend.md) · [implementation and measurements](./research/composition/README.md) · [accepted design](./research/TRUSTGRAPHS_COMPOSITION.md) |
-| **signer-sync** | the top-N-by-score Safe owner set + threshold | **Built** | [architecture](./docs/build/signer-sync/architecture.md) · [runbook](./docs/build/signer-sync/runbook.md) |
-| **hypercerts** | reputation over anchored AT-Protocol (atproto) repos | **Built** | [architecture](./docs/build/hypercerts/architecture.md) · [runbook](./docs/build/hypercerts/runbook.md) · [local testing](./docs/build/hypercerts/local-testing.md) |
-| **contributions** | a rep-weighted funding split over contribution claims | **Built** | [architecture](./docs/build/contributions/architecture.md) · [runbook](./docs/build/contributions/runbook.md) · [local testing](./docs/build/contributions/local-testing.md) |
+| Program or extension | What it does | Docs |
+|---|---|---|
+| **trust-graph** | Produces address scores from an EAS vouch graph. | [Trust graph](./docs/build/trust-graph.md) |
+| **trust-graph-weighted** | Adds a governance-controlled weighted starting allocation. | [Weighted prior](./docs/build/weighted-prior.md) |
+| **trust-compose** | Combines complete proven score distributions. | [Score compositions](./docs/build/composition.md) |
+| **signer-sync** | Aligns a Safe owner set with proven scores and activity. | [Signer sync](./docs/build/signer-sync.md) |
+| **hypercerts** | Builds reputation from authenticated AT Protocol records. | [Hypercerts](./docs/build/hypercerts.md) |
+| **nostr-workspace** | Builds scores from a member-scoped Nostr workspace. | [Nostr workspace](./docs/build/nostr-workspace.md) |
+| **contributions** | Allocates funding using assessments weighted by proven reputation. | [Contributions](./docs/build/contributions.md) |
 
-Running one program by hand — `trigger()` a checkpoint, reconstruct the input from chain, prove,
-pin the score blob, `submitProof` — is step by step in each program's runbook, linked above. All
-generated artifacts (reconstructed inputs, proofs, score blobs, witness archives) land under the
-gitignored `.trustgraph/` directory, one subdirectory per program.
+Generated inputs, proofs, score blobs, and witness archives are written under the gitignored
+`.trustgraph/` directory.
 
 ## Repository map
 

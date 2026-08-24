@@ -171,7 +171,7 @@ pub enum Command {
     /// anchored envelope-1 witness, and badge-definition strongRef targets are resolved across
     /// the witness CARs. Anchor timestamps are 0 placeholders — after anchoring on-chain,
     /// rewrite them with each anchor() tx's real block.timestamp so the guest re-fold matches
-    /// the checkpointed anchorAcc (jq crib in docs/build/hypercerts/local-testing.md).
+    /// the checkpointed anchorAcc (jq crib in research/operations/hypercerts/local-testing.md).
     #[cfg(feature = "witness-atproto")]
     Buildinput {
         /// Archive root written by `witness fetch` (must contain manifest.json).

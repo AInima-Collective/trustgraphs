@@ -299,7 +299,7 @@ abstract class EnvBase implements IEnv {
       // DeployZodiacSafes writes a single .docker/zodiac_safes_deploy.json (the Safe + its
       // MerkleGovModule + SignerSyncZkModule). For a single-network deploy this is that network's
       // Safe; a multi-network deploy reuses the file, so the last-deployed Safe wins (fine for the
-      // local fork demo — see docs/build/trust-graph/runbook.md for the real loop).
+      // local fork demo — see research/operations/trust-graph/runbook.md for the real loop).
       const zodiacSafesDeployData = readJsonIfFileExists<ZodiacSafesDeploy>(
         '.docker/zodiac_safes_deploy.json'
       )

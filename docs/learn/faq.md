@@ -12,8 +12,8 @@ Attestation Service. A vouch is one kind. You can revoke it later.
 **Who picks the starting accounts?**
 Your community does, when the network is created. They anchor the whole graph, so choosing
 them well is the real work. Changing them later is a settings change made through the
-network's own governance. [Honest limits](./limits.md) covers why this choice, and who
-holds the settings key, matters.
+network's own governance. Who controls those settings is part of the network's trust
+model.
 
 **How often do scores update?**
 In rounds. Each round freezes the set of vouches at a cut-off, someone proves the new
@@ -54,17 +54,14 @@ dislike or add ones that never happened.
 Anyone. It takes one transaction and nobody approves it.
 
 **What does it cost?**
-Proving costs real money, so each network has a tank to pay whoever produces its
-scoreboard, once someone sets its per-round limit. Networks we curate will be proven at
-our expense. Pricing for everyone else is still being worked out.
+Creating and using a network costs transaction fees. Producing a score root also costs
+compute, publication, and submission gas. A network can fund a proving vault so an
+operator is paid for accepted work, or its community can run a prover directly.
 
 **Do I have to run a server?**
-Only if nobody else proves your rounds. Proving is permissionless, so anyone can freeze a
-round and land the result, and no operator can lock you out. Today that mostly means you
-or us: a tank cannot pay a bounty until someone sets its per-round limit with a direct
-contract call, and the networks we curate will be proven at our expense. If every machine
-we run vanished, anyone could recompute the scores of a network created through the app
-from what is on the chain, and prove them.
+Not necessarily. Proving is permissionless, so any compatible operator can freeze a round
+and submit its result. Run your own prover if you need independent availability or if no
+operator has agreed to cover your network.
 
 **Can I use the scores somewhere else?**
 Yes. A vouching network's scoreboard downloads as CSV or JSON, and any contract can check
@@ -73,17 +70,13 @@ one account's score against the on-chain root, given the score and its proof.
 ## Status
 
 **Is this ready for production?**
-No. Nothing is deployed to a production chain today; Ethereum mainnet is the target. The
-proof loop is built and runs end to end on a test chain, though the on-chain proof check
-there is still a stand-in and no real proof has been produced yet. The pieces around it
-are not finished. A network created through the app can pass proposals with its own
-scores, but the wallet that created it keeps an emergency key that can still change
-anything. More attestation sources are in progress.
+Trustgraphs is still pre-production. Review the contracts, deployment configuration, and
+operational assumptions before using a network for decisions with material consequences.
 
 **Has it been audited?**
 Not by an outside firm. Point a network at something you can afford to get wrong.
 
 **Where do I read the details?**
-The code and the design docs are open. Start with the plain-language explainer,
+The code and specifications are open. Start with the introduction,
 [What is trustgraphs?](./what-is-trustgraphs.md), then the
 [algorithm spec](../concepts/algorithm.md).

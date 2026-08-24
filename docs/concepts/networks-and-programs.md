@@ -1,67 +1,43 @@
 # Networks and programs
 
-A **network** is what a community deploys: its own vouch graph, its own scores, its own
-governance, running on its own set of contracts. When you [create a network](../build/create-a-network.md),
-you get an isolated deployment; your community's vouches never mix with anyone else's.
+A **network** is a community's deployed scoring system: its inputs, parameters, governance, proof
+history, and current score root. A **program** is the deterministic set of rules used to turn a
+network's committed inputs into an output.
 
-Under the hood, trustgraphs is a platform of zero-knowledge-proven graph computations, and
-"network" maps onto two internal axes that are worth keeping apart:
+Many networks can use the same program. They still remain independent because each network has its
+own contracts, governance, data, and proof history.
 
-- A **program** is one proven computation: one guest binary (the code that runs inside the
-  zkVM), one journal shape (its public outputs), and one parameter schema. Each program has its
-  own verification key (vkey) and its own golden-vector family. The flagship program is
-  **trust-graph**, the vouch-based scorer described in [the architecture](./architecture.md);
-  the others below reuse the same proving machinery for different computations.
-- An **instance** is one deployment of a program: a chain, a contract set (snapshot and
-  verifier, accumulator or registry), a parameter set, and an indexer and frontend view. The same
-  program can run as many instances as there are communities, with zero code changes.
+## Available programs and extensions
 
-So a community's network is an _instance_ of the trust-graph _program_ (plus any companion
-programs it enables). Adding a program costs code, proofs, and vectors; adding an instance
-costs only a deployment. The design rationale is in
-[`research/MULTI_PROGRAM_PLATFORM.md`](../../research/MULTI_PROGRAM_PLATFORM.md).
+| Program or extension | Purpose |
+| --- | --- |
+| [Trust graph](../build/trust-graph.md) | Scores an Ethereum vouch graph. |
+| [Weighted prior](../build/weighted-prior.md) | Seeds a vouch graph with an explicit starting allocation. |
+| [Score compositions](../build/composition.md) | Combines several accepted score sets under a governed allocation policy. |
+| [Signer sync](../build/signer-sync.md) | Uses proven scores and activity to manage a Safe owner set. |
+| [Hypercerts](../build/hypercerts.md) | Builds scores from authenticated Hypercerts AT Protocol records. |
+| [Nostr workspace](../build/nostr-workspace.md) | Builds scores from authenticated activity in a member-scoped Nostr workspace. |
+| [Contributions](../build/contributions.md) | Allocates a funding pool using assessments weighted by proven reputation. |
+| [Off-chain EAS attestations](../build/offchain-attestations.md) | Adds a gasless, signed input path to the trust graph. |
 
-## Program index
+Some entries produce score roots directly; others extend a network or consume roots produced by
+another program. Their individual pages explain that boundary.
 
-This table is the authoritative list of programs: status, vkey, docs, and instances.
+## What identifies a program
 
-| Program                                                  | Status                                      | vkey                                                                                                                                        | Docs                                                                                                                                                                                                                                                                                                                                  | Instances                                                                                                                                                                                                  |
-| -------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **trust-graph** (root producer)                          | **Built; strict lane testnet soak pending** | `0x0075af868e1b7f0f4a174ca6016b483b6f96b2cd0470b2e7442e57eab778ce2a` (params schema v3; journal v3; typed optional EAS envelope 0; detached SP1 6.3.1 guest) | [architecture](../build/trust-graph/architecture.md) · [runbook](../build/trust-graph/runbook.md) · [strict EAS off-chain rollout](../build/eas-offchain/runbook.md)                                                                                                                                                                  | no production deployment; lane 1 remains the default and strict envelope 0 is testnet-only pending its rollout report                                                                                      |
-| **trust-graph-weighted** (weighted-prior root producer)  | **Built**                                   | `0x0003d95a4a2b9272a55ad6a11f89cfa17b32e5c423a35dfb1257dd66ed68070b` (journal v3; detached SP1 6.3.1 guest)                                 | [contract architecture](../build/weighted-prior/architecture.md) · [rotation/recovery runbook](../build/weighted-prior/runbook.md)                                                                                                                                                                                                    | no production deployment yet; the dev pipeline deploys `WeightedTrustgraphsFactory` and the app creates instances at `/create/weighted`, with `GovernedWeightedTrustgraphsFactory` for Safe-owned creation |
-| **trust-compose** (captured final-distribution composer) | **Built**                                   | `0x000a37e6e865fb6ddd924f048fecd1b8c54be44c1c959342d75bb0df27091744` (journal v3; detached SP1 6.3.1 guest)                                 | [preview and provenance UI](../build/composition/frontend.md) · [contract architecture](../build/composition/architecture.md) · [rotation/recovery runbook](../build/composition/runbook.md) · [implementation and measurements](../../research/composition/README.md) · [accepted design](../../research/TRUSTGRAPHS_COMPOSITION.md) | no production deployment yet; the dev pipeline deploys `TrustComposeFactory` and the app creates instances at `/create/composition`, with `GovernedTrustComposeFactory` for Safe-owned creation            |
-| **signer-sync** (Safe owner rotation)                    | **Built**                                   | `0x00cdf2fd7b8c5e143a00d9ebe4fb3ff12b6f1ffd28701b2ff898582cf9caa7c2` (13-word activity-bound `SignerJournal`; SP1 6.3.1)                     | [architecture](../build/signer-sync/architecture.md) · [runbook](../build/signer-sync/runbook.md)                                                                                                                                                                                                                                     | consumer `SignerSyncZkModule` on the trust-graph instance (reuses its accumulator + `paramsHash`)                                                                                                          |
-| **hypercerts** (AT-proto graph)                          | **Built**                                   | `0x00226e75ae5db0e60a63045b161bb8f1f48aad68a0307f8bb82add90f1d6eabe` (journal v3; SP1 6.3.1)                                                | [architecture](../build/hypercerts/architecture.md) · [runbook](../build/hypercerts/runbook.md)                                                                                                                                                                                                                                       | pilot on Ethereum mainnet planned (Sepolia rehearsal first)                                                                                                                                                |
-| **contributions** (rep-weighted funding split)           | **Built**                                   | `0x00af1ddd4aa160f3627e462502537748522703857cff5a42365cc126974897c3` (journal v3; SP1 6.3.1)                                                | [architecture](../build/contributions/architecture.md) · [runbook](../build/contributions/runbook.md) · [interfaces](../build/contributions/interfaces.md) · [local testing](../build/contributions/local-testing.md)                                                                                                                 | local anvil dev (full round proven + paid out); rounds are created through `ContributionsFactory` by the parent network's authority — one transaction, indexed from the creation event                     |
-| **nostr-workspace** (Buzz/Nostr member graph)            | **Built; pilot pending**                    | `0x00a1d93b8f040284bf86841331064987bfb9fc282075963f153ec75ca87c1eed` (journal v3; detached SP1 6.3.1 guest)                                 | [architecture](../build/nostr-workspace/architecture.md) · [runbook](../build/nostr-workspace/runbook.md) · [local testing](../build/nostr-workspace/local-testing.md) · [verification](../build/nostr-workspace/verification.md)                                                                                                     | two-epoch Anvil rehearsal; member-scoped non-synthetic pilot is S5                                                                                                                                         |
+Every proving program has a program identifier and verification key. The network pins the expected
+values, and its verifier accepts only a proof produced by the matching program. A proof from a
+different program or network cannot be substituted just because its output has the same shape.
 
-**A note on vkeys.** A vkey identifies one exact guest binary. It rotates on any change to that
-guest's code or a shared crate it depends on, and even on toolchain changes, so deployment
-vkeys must be derived on the pinned toolchain (measurements:
-[`research/VKEY_NOTES.md`](../../research/VKEY_NOTES.md); re-derive with
-`task zk:vkey PROGRAM=…`).
+Changing consensus behavior creates a new program version and verification key. Existing accepted
+roots remain verifiable under the version that produced them.
 
-## Layout
+## What identifies a network
 
-Where each piece lives in the repository:
+A network has a stable instance ID and a registered contract set. The registry lets indexers,
+provers, and applications discover the network without trusting a hand-maintained list. The
+network's proof statement also includes an instance-specific domain so that two identically
+configured deployments cannot accept one another's proofs.
 
-- `crates/zk-core` — shared, program-agnostic byte encodings (words/fold/merkle/fixed/cid/journal),
-  the single source of truth for the primitives; every program's core crate re-exports it.
-- `crates/pagerank-core` — trust-graph + signer semantics and their Params/Journal encodings.
-- `crates/weighted-prior-core` and `zk/weighted-program` — isolated weighted-prior semantics and
-  guest, kept outside the legacy guest dependency graph.
-- `crates/composition-core` and `zk/composition-program` — isolated source-aware Hamilton
-  composition semantics and guest, likewise kept outside every legacy guest dependency graph.
-- `crates/nostr-envelope`, `crates/nostr-workspace-core`, and `zk/nostr-program` — the isolated
-  Buzz/Nostr envelope, graph semantics, and detached conformance/production guests.
-- `zk/program` — one multi-bin guest crate: every program's zkVM binary, built together.
-- `zk/prover` — one host CLI (`trustgraph-prover`) with a subcommand group per program.
-- `tests/golden/<program>.json` — one golden-vector file per program, enforcing four-way parity
-  (native Rust / SP1 guest / Solidity / TypeScript). Exception: signer-sync shares
-  `trust-graph.json`, since it reads the same attestation feed.
-- `docs/build/<program>/` — how to operate each program (runbooks, params, addresses);
-  [`research/`](../../research/) holds the design provenance.
-
-Want to add a program of your own? See [add a program](../build/add-a-program.md). To stand up
-another instance of an existing program, see [create a network](../build/create-a-network.md):
-it is only a deployment, no Rust, no guest, no vectors.
+To deploy an existing program, see [Create a network](../build/create-a-network.md). To implement a
+new one, see [Add a program](../build/add-a-program.md).

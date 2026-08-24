@@ -5,9 +5,6 @@ other on-chain, anyone can compute the scores, and a zero-knowledge proof guaran
 were computed correctly over the complete vouch history. This page walks the pipeline end to end
 for a technical reader.
 
-Nothing is deployed to production today; Ethereum mainnet is the target chain. Everything below
-runs today on local and test deployments.
-
 ## The pipeline
 
 ```
@@ -120,8 +117,8 @@ byte-identical outputs; a change that breaks parity fails CI. See
 You do not trust any operator to compute honestly: the proof enforces the math, and the
 accumulator enforces the inputs. What remains is governance: the authority that can rotate the
 verifier (which vkey defines "correct") and the scoring parameters, held behind timelocked
-roles. The full trust surface and design rationale are in
-[`research/ZK_ARCHITECTURE.md`](../../research/ZK_ARCHITECTURE.md).
+roles. Consumers must also rely on the availability of the published score file when they need to
+discover scores rather than verify a score they already have.
 
 ## Going deeper
 

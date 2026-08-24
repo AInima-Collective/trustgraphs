@@ -243,7 +243,7 @@ No dollar projection is frozen without a current prover-network clearing price. 
 
 **S3 — contracts + operator + instance.** Registrar flow for node kinds 2/3, labeled `SP1JournalVerifier`, `EmptyLaneAccumulator` + `AnchorRegistry` + reciprocal bind (the hypercerts 8-step runbook), `Program::NostrWorkspace` in operator-core, scheduler integration, InstanceRegistry row.
 
-**S4 — witness + surfaces.** `witness-nostr` fetcher + archival (bundle publicity param, pilot member-scoped), indexer score-program row + anchor events, frontend instance page, `docs/build/nostr-workspace/{architecture,runbook}.md`, program-index row. Live exit: a real buzz workspace's epoch proven on anvil end-to-end (the M4-style e2e).
+**S4 — witness + surfaces.** `witness-nostr` fetcher + archival (bundle publicity param, pilot member-scoped), indexer score-program row + anchor events, frontend instance page, `research/operations/nostr-workspace/{architecture,runbook}.md`, program-index row. Live exit: a real buzz workspace's epoch proven on anvil end-to-end (the M4-style e2e).
 
 **S5 (parallel, external — all optional, none load-bearing).** Coordinate vouch kind 36382 against Block's registry; NIP-85 provider publication of proven scores (§6); the Option-B "event-set commitment" NIP proposal *after* trustgraphs has proven its usefulness (§12.1 — an offer, never a dependency); ERC-8004 explorer pointing at workspace-fed agent scores.
 

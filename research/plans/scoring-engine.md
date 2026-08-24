@@ -24,7 +24,7 @@ engine findings, measured against the production Rust and the real SP1 executor.
 half: the admission gate, the founder floor, closed loops, complaints.
 [research/scoring-sim/](../scoring-sim/) — the model that reproduces the
 shipped payouts digit for digit.
-[docs/build/sepolia.md](../../docs/build/sepolia.md) — the deployment-path work this
+[research/operations/sepolia.md](../../research/operations/sepolia.md) — the deployment-path work this
 program does *not* cover, and the SP1 6.3.1 compatibility gate it shares.
 Cross-agent review outcomes — recorded in the program log below, threads `F1`-`F9`.
 
@@ -216,7 +216,7 @@ or it is a description of the new behaviour rather than a check on it.
       size cap in a pinned verification key would make a graph that outgrows one
       operator's economics invalid for every prover.
 - [x] Differential fuzzing between the Rust and the TypeScript kernels (D6).
-- [x] Publish the measured cycle table in `docs/build/trust-graph/runbook.md`.
+- [x] Publish the measured cycle table in `research/operations/trust-graph/runbook.md`.
 
 **Preserve exactly, or the rewrite is not identical:** the stopping condition is
 measured only over accounts a trusted path reaches; unreachable accounts take
@@ -326,7 +326,7 @@ signal for a signer they want removed.
 
 **M0 + M1 + M2**, deployed as one bundle. M1 is reviewed separately and never
 launched on its own. Beyond this program, Sepolia additionally needs the
-deployment-path work in [docs/build/sepolia.md](../../docs/build/sepolia.md): a chain
+deployment-path work in [research/operations/sepolia.md](../../research/operations/sepolia.md): a chain
 profile separate from deployment stage, a sanitized `deployments/sepolia.json`
 release manifest, and the **SP1 6.3.1 compatibility check**. If that toolchain
 has no supported verifier route, the bump rebuilds every ELF and regenerates
@@ -426,7 +426,7 @@ my vouch counts", and derive the affordable graph size from it.
 - **Voucher liability.** Four approaches tried, all defeated by normalisation.
 - The Sepolia deployment path itself, the Optimism retirement, and the
   contributions/hypercerts/signer-sync programs, all of which
-  `docs/build/sepolia.md` keeps off the launch-critical path.
+  `research/operations/sepolia.md` keeps off the launch-critical path.
 
 ---
 

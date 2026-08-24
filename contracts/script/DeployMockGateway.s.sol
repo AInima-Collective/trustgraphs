@@ -39,7 +39,7 @@ contract DeployMockGateway is Common {
     ///        vkey enforcement only happens against a real gateway.
     /// @return gateway The deployed `MockSP1Gateway`.
     function run(bytes32 expectedVKey) public returns (address gateway) {
-        // Chain id alone is not enough of a gate: `docs/build/trust-graph/local-testing.md` runs the
+        // Chain id alone is not enough of a gate: `research/operations/trust-graph/local-testing.md` runs the
         // MAINNET FORK as `anvil --fork-url … --chain-id 31337`, whose entire purpose is that a
         // real Groth16 proof verifies against Succinct's real gateway. Silently swapping in a stub
         // there would make that rehearsal prove nothing. So refuse whenever the configured gateway

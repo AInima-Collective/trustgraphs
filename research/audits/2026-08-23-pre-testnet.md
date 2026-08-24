@@ -31,7 +31,7 @@ Separately, and independently of any finding here: **the Sepolia deploy path doe
 exist in code yet.** `contracts/deploy/env.ts` knows only `dev` (31337) and `prod`
 (Optimism 10). There is no chain-11155111 target, no `deployments/` manifest, and
 `grep -rn 11155111 contracts/` returns nothing. The repo's own
-`docs/build/sepolia.md` says this plainly ("not ready to deploy to Sepolia by changing
+`research/operations/sepolia.md` says this plainly ("not ready to deploy to Sepolia by changing
 environment variables alone") and lists about fifteen required changes, none implemented.
 The SP1 6.3.1 versus supported-gateway compatibility gate that document calls blocking is
 also still open. Those are prerequisites to deploying at all, not audit findings.
@@ -228,7 +228,7 @@ underflow.
   stablecoin's; `_pay` and `_payableUsd` hardcode `1e6`. An 18-decimal token overstates
   `payableUsd` by 1e12, and a 2-decimal token *overpays* (a $10 fee moves 100,000 whole
   tokens). Production wires 6-decimal Circle USDC and the token is immutable, so this is
-  deployer error only. `docs/build/sepolia.md` already lists the check as required and
+  deployer error only. `research/operations/sepolia.md` already lists the check as required and
   unimplemented.
 - **L-2.** `GraphLineageRegistry`'s `MAX_REFERRAL_SUBJECTS` is documented as bounding the
   concurrently active referral set and implemented over the lifetime set:
@@ -336,7 +336,7 @@ match its own runbook. Deploy-readiness alone scored 5/10.
   certora or halmos. The lone invariant suite targets 3 selectors on one handler.
   `MerkleSnapshot.t.sol` has zero fuzz tests.
 - **`Common.s.sol:8-9` still defaults to the Anvil key** for all 29 deploy scripts, with no
-  chain-id assert, while `docs/build/sepolia.md` lists removing exactly that as a launch gate.
+  chain-id assert, while `research/operations/sepolia.md` lists removing exactly that as a launch gate.
 - **CI has no static analysis at all.** `forge fmt --check` fails on 6 source files, all in
   post-audit code; clippy is commented out in `rust.yml`; `nostr-workspace` is missing from
   the `zk-parity` matrix.

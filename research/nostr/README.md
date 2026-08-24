@@ -69,7 +69,7 @@ cycles**. The four-way vector freezes params hash
 `task zk:parity PROGRAM=nostr-workspace` passes Rust, guest, Solidity, and TypeScript parity. A
 same-absolute-path clean-HEAD audit also produced byte-identical trustgraph, signer, atproto
 conformance, hypercerts, and contributions ELFs; see
-[`docs/build/nostr-workspace/local-testing.md`](../../docs/build/nostr-workspace/local-testing.md).
+[`research/operations/nostr-workspace/local-testing.md`](../../research/operations/nostr-workspace/local-testing.md).
 
 Environment: SP1 v6.3.1 (`sp1-zkvm`/`sp1-sdk` `=6.3.1`, cargo-prove `8252c29`), Succinct
 toolchain `rustc 1.94.0-dev`, `SP1_PROVER=mock`, linux/arm64. Patch tags:

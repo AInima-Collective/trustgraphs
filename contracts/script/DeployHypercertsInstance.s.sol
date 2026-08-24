@@ -20,7 +20,7 @@ import {Common} from "script/Common.s.sol";
 
 /// @title DeployHypercertsInstance
 /// @notice One labeled script for the WHOLE lane-2-only hypercerts instance battery
-///         (docs/build/hypercerts/runbook.md): EmptyLaneAccumulator → AnchorRegistry →
+///         (research/operations/hypercerts/runbook.md): EmptyLaneAccumulator → AnchorRegistry →
 ///         SP1JournalVerifier (hypercerts vkey, canonical gateway) → MerkleSnapshot
 ///         (journal v3) → setAnchorRegistry → setEpochLength → optional InstanceRegistry
 ///         entry. Inputs via env so the OP Sepolia rehearsal and the Optimism pilot run

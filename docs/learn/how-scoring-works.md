@@ -45,7 +45,8 @@ One honest detail. The create form reserves all baseline trust for the starting 
 by default, so a disconnected account starts at zero. A community can lower that advanced
 setting. If it does, the remainder is split equally among everyone else, and a large
 enough island of bots can pool a real share of that baseline even with no vouches from
-outside. [Honest limits](./limits.md) has more.
+outside. The network's seed selection and baseline settings therefore remain important
+governance decisions.
 
 ## The scoreboard and its fingerprint
 
@@ -60,8 +61,8 @@ millions of scores.
 
 Scores refresh in rounds called **epochs**. Each round, the set of vouches is frozen at a
 cut-off, someone computes and proves the new scores, and the new fingerprint goes
-on-chain. Each network chooses its own cadence (a weekly rhythm is the working assumption;
-the development default is unscheduled, meaning anyone can start a round at any time).
+on-chain. Each network chooses its own cadence; a network may also allow anyone to start a round
+when its inputs have changed.
 
 Past rounds are never recalculated: whatever your score was when a round settled, it
 stays settled. Between rounds, new vouches queue up for the next cut-off.

@@ -2,7 +2,6 @@
 
 Trustgraphs is a reputation system where people publicly vouch for each other, and math
 that anyone can check turns those vouches into scores that fake accounts can't inflate.
-This page is the plain-language starting point: no jargon, no code.
 
 ## The problem
 
@@ -33,15 +32,6 @@ outward along the vouch arrows. Your score is how much of that liquid reaches yo
 army is an island no trusted arrow points at, so no trust flows in and all its vouches
 move nothing. [How scoring works](./how-scoring-works.md) tells this story properly.
 
-## In one paragraph
-
-Trustgraphs turns public vouches into spam-resistant reputation scores using
-trust-weighted PageRank, lets anyone compute the scores and prove them correct with a
-zero-knowledge receipt instead of trusting an operator, publishes a compact fingerprint of
-the scoreboard on-chain every epoch, and feeds those proven scores into voting and reward
-contracts. Fake crowds can't reach a high score, hidden operators can't fudge one, and the
-rules can only change slowly, visibly, and with an exit door open.
-
 ## Keep reading
 
 - [How scoring works](./how-scoring-works.md): vouches, trusted seeds, why bot armies
@@ -50,7 +40,6 @@ rules can only change slowly, visibly, and with an exit door open.
   cryptographic receipt keeps everyone honest.
 - [Governance](./governance.md): how the rules can change over time without anyone
   moving the goalposts on you.
-- [Honest limits](./limits.md): what trustgraphs does not solve.
 - [FAQ](./faq.md): what people ask before they trust a scoreboard.
 
 When you want the mechanics, the [algorithm spec](../concepts/algorithm.md) goes all the

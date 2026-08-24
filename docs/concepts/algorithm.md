@@ -2,8 +2,7 @@
 
 > **Scope:** this is the *algorithm* spec — the trust-aware PageRank variant itself, kept
 > deliberately implementation-agnostic. How the system runs it today (fixed-point arithmetic,
-> epochs, the SP1 zero-knowledge proof) is summarized in the closing section and detailed in
-> [`research/ZK_ARCHITECTURE.md`](../../research/ZK_ARCHITECTURE.md). The canonical
+> epochs, and the SP1 zero-knowledge proof) is summarized in the closing section. The canonical
 > implementation is `crates/pagerank-core`.
 
 ## Abstract
@@ -18,7 +17,6 @@ TrustAwarePageRank is an extension of the traditional PageRank algorithm designe
 - [Algorithm Details](#algorithm-details)
 - [Implementation Architecture](#implementation-architecture)
 - [How this runs today](#how-this-runs-today)
-- [Future Work](#future-work)
 - [References](#references)
 
 ## Introduction
@@ -162,38 +160,8 @@ The implementation of record departs from this spec in mechanics, never in seman
   (`MerkleSnapshot.trigger()`), and scores are computed over exactly that frozen input set.
 - **Zero-knowledge proof** — the `{account → score}` merkle root is proven correct in the SP1
   zkVM and verified on-chain (`submitProof`), so consumers trust the math, not the machine
-  that ran it. See [`research/ZK_ARCHITECTURE.md`](../../research/ZK_ARCHITECTURE.md) and the
-  per-program operations docs indexed in [networks and programs](./networks-and-programs.md).
-
-## Future Work
-
-### 1. Temporal Dynamics
-
-- Time-decay functions for aging attestations
-- Periodic trust seed rotation
-- Historical reputation tracking
-- Seasonal adjustment mechanisms
-
-### 2. Multi-Schema Support
-
-- Multiple attestation types with different weights
-- Cross-schema reputation aggregation
-- Domain-specific trust metrics
-- Hierarchical trust structures
-
-### 3. Advanced Trust Propagation
-
-- Personalized PageRank variants
-- Trust transitivity analysis
-- Multi-hop trust validation
-- Dynamic trust threshold adjustment
-
-### 4. Scalability Optimizations
-
-- Incremental computation updates
-- Distributed computation sharding
-- Advanced merkle tree structures
-- Real-time score approximations
+  that ran it. See the program overviews indexed in
+  [networks and programs](./networks-and-programs.md).
 
 ## References
 

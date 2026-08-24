@@ -73,7 +73,7 @@ contract DeployTrustComposeFactory is Common {
             "DeployTrustComposeFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
         );
         require(policyActivationDelay > 0, "DeployTrustComposeFactory: policyActivationDelay is zero");
-        // The delay is the runbook's operator review window (docs/build/composition/runbook.md
+        // The delay is the runbook's operator review window (research/operations/composition/runbook.md
         // "Rotate, cancel, roll back, or recover"). A seconds-long dev default reaching a real
         // chain would make policy rotation effectively instant, so anything under a day cannot be
         // deliberate off-devnet.

@@ -907,7 +907,7 @@ contract ContributionsFactoryTest is Test {
         uint256 used = before - gasleft();
         console2.log("createInstance gas:", used);
         // A whole round is seven contracts + three schema registrations; the number is real and
-        // recorded honestly in docs/build/contributions/runbook.md. Keep a ceiling so a regression
+        // recorded honestly in research/operations/contributions/runbook.md. Keep a ceiling so a regression
         // that doubles it fails loudly.
         assertLt(used, 20_000_000, "createInstance gas ceiling");
     }

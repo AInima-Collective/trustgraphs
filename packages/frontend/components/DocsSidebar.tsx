@@ -13,10 +13,7 @@ import { cn } from '@/lib/utils'
  * The register matches the rest of the chrome: section names are mono
  * uppercase labels (they are apparatus), page links are sentence-case mono at
  * label size. The current page is full ink with a hairline marker in the left
- * gutter; everything else sits a tonal step down until hovered. The four
- * per-program groups are native <details>, closed unless the reader is inside
- * one — they are reference depth, not the reading path, and 33 always-open
- * links would bury the reading path they bracket.
+ * gutter; everything else sits a tonal step down until hovered.
  */
 
 const ITEM =
@@ -61,6 +58,18 @@ export function DocsSidebar() {
 
   return (
     <nav aria-label="Documentation" className="flex flex-col gap-8">
+      <Link
+        href="/docs"
+        prefetch={false}
+        aria-current={pathname === '/docs' ? 'page' : undefined}
+        className={cn(
+          'tg-label-strong inline-flex min-h-8 items-center border-b border-border pb-2 transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+          pathname === '/docs' ? 'text-text' : 'text-text-muted'
+        )}
+      >
+        Docs home
+      </Link>
+
       {DOCS_SECTIONS.map((section) => {
         const sectionHref = `/docs/${section.dir}`
         return (

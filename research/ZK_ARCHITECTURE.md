@@ -5,7 +5,7 @@ fixed-point PageRank + encodings), `zk/program` (SP1 guest), `zk/prover` (host),
 `AttestationAccumulator` / `MerkleSnapshot.submitProof` / `SP1JournalVerifier` (né `SP1TrustgraphsVerifier`), and the frontend
 `packages/frontend/lib/pagerank` port. Guest output is cross-checked byte-identical against native Rust,
 Solidity (`contracts/test/unit/GoldenVectors.t.sol`), and TypeScript. Real STARK/Groth16 proving requires
-≥16–32 GiB or the Succinct prover network — see [`docs/build/trust-graph/runbook.md`](../docs/build/trust-graph/runbook.md). Privacy remains
+≥16–32 GiB or the Succinct prover network — see [`research/operations/trust-graph/runbook.md`](../research/operations/trust-graph/runbook.md). Privacy remains
 out of scope for v1.
 **Scope:** How to replace WAVS as the *root producer* with a zero-knowledge proof of correct Trust-Aware PageRank, **without** touching EAS, `MerkleSnapshot`'s storage/verification API, the Zodiac governance module, the distributor, or the frontend proof format.
 **Relationship to [`PRIVACY_ARCHITECTURE.md`](./archive/PRIVACY_ARCHITECTURE.md):** This is that document's Model C / Phase 3 made concrete for the *public-input* case. The seam specified here is the reusable substrate the privacy roadmap assumes — under encryption, only the guest's input-decoding step changes; the accumulator, journal, verifier, and write path are identical.

@@ -8,7 +8,7 @@ pragma solidity ^0.8.22;
 ///         `contracts/test/unit/golden/ContributionsGoldenVectors.t.sol`, which asserts this library
 ///         reproduces the golden vector exported from `contributions-core`.
 /// @dev    `paramsHash` is `keccak256(abi.encode(...21 static fields...))` — see
-///         `docs/build/contributions/interfaces.md` §3. Because every field is a static ABI type,
+///         `research/operations/contributions/interfaces.md` §3. Because every field is a static ABI type,
 ///         `abi.encode` is just the concatenation of 32-byte words — the same bytes the Rust
 ///         guest hand-rolls. Slots 1–11 are the stage-1 reputation params mirrored from the trust
 ///         program (slot 9 is `seedSetRoot` over the sorted seed addresses); slots 12–21 are the

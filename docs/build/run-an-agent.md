@@ -61,7 +61,7 @@ cast send "$SNAPSHOT" 'trigger()(uint256)' \
   --private-key "$TRUSTGRAPHS_AGENT_PRIVATE_KEY" --rpc-url "$RPC_URL"
 ```
 
-Do not hand-roll proof input selection around `submitProof`. Run the audited decision engine and
+Do not hand-roll proof input selection around `submitProof`. Run the shared decision engine and
 daemon in [`run-a-prover.md`](./run-a-prover.md); it handles finality, pinned params, monotonic
 checkpoints, journal-bound recipients, capacity, loss budgets, and `ProvingVault.submitAndClaim`.
 The same low-balance agent key can be its `SUBMITTER_PRIVATE_KEY` when operational separation is not
@@ -121,7 +121,7 @@ separate from transaction authority:
 }
 ```
 
-Run one audit-friendly pass or keep watching:
+Run one inspectable pass or keep watching:
 
 ```sh
 pnpm tsx scripts/governance-agent.ts --config ./governance-agent.json --once

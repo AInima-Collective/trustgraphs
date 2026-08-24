@@ -107,7 +107,7 @@ const ROUTES = [
   { name: 'docs', path: '/docs' },
   { name: 'docs-learn', path: '/docs/learn/what-is-trustgraphs' },
   { name: 'docs-algorithm', path: '/docs/concepts/algorithm' },
-  { name: 'docs-runbook', path: '/docs/build/trust-graph/runbook' },
+  { name: 'docs-runbook', path: '/docs/build/trust-graph' },
 ]
 
 const CONTRIBUTIONS_ROUTES = [

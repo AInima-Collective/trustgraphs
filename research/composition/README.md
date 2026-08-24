@@ -21,8 +21,8 @@ The implementation deliberately isolates the new program from every legacy guest
 - `CompositionSourceAdapter`, `CompositionSourceAccumulator`, `TrustComposeParamsController`, and
   `TrustComposeFactory` authenticate source deployments/proofs, freeze exact `TGCM` bytes in one
   trigger transaction, govern complete policy rotations, and register isolated composition
-  instances. The [contract architecture](../../docs/build/composition/architecture.md) and
-  [runbook](../../docs/build/composition/runbook.md) define the operational boundary.
+  instances. The [contract architecture](../../research/operations/composition/architecture.md) and
+  [runbook](../../research/operations/composition/runbook.md) define the operational boundary.
 - `production.ts` and `tests/golden/trust-compose.json` independently pin every byte consumed by
   Rust, SP1, and Solidity.
 

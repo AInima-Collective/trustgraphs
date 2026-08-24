@@ -4,7 +4,7 @@ Status: **IMPLEMENTED**. The capability is back as a permissionless SP1 proof, a
 root producer.
 
 > **M3 liveness addendum (2026-08-23):** the original score-only selector below is superseded by
-> the shipped design in [`docs/build/signer-sync/architecture.md`](../docs/build/signer-sync/architecture.md).
+> the shipped design in [`research/operations/signer-sync/architecture.md`](../research/operations/signer-sync/architecture.md).
 > Signer inputs now include the `MerkleGovModule` direct-vote activity hash chain and the Safe's
 > authenticated pre-rotation owner state. `selectionParamsHash` has five fields, and the journal
 > has thirteen words. Missing or insufficient activity preserves the exact owner set; it is never

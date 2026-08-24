@@ -228,7 +228,7 @@ file, with the one merged exception noted in Lane B. Any lane can land alone.
       its limit from `MAX_PRICED_INPUTS`, which `work.rs:202` contradicts outright.
       Move the alert onto the operator's **own** limit so it fires before the cliff
       instead of 46x after it. Set the shipped default from the measured envelope
-      in `docs/build/trust-graph/runbook.md:443` rather than from either number
+      in `research/operations/trust-graph/runbook.md:443` rather than from either number
       standing today: 8e9 was picked to look round and 3,467 is where it lands by
       accident, and neither was chosen.
       **Constraint:** `MAX_TOTAL_INPUTS` is pinned cross-language by hand-written
@@ -326,7 +326,7 @@ finding; it is the prerequisite the audit kept running into.
 - [x] Add a real chain target. `contracts/deploy/env.ts` knows only `dev` (31337)
       and `prod` (Optimism 10); `grep -rn 11155111 contracts/` returns nothing.
       Separate deployment *stage* from chain *target* and chain *profile*, per
-      `docs/build/sepolia.md`.
+      `research/operations/sepolia.md`.
 - [x] Produce a sanitized `deployments/sepolia.json` release manifest as the
       interface between deploy, indexer, operator and frontend. Do not use
       `.docker/deployment_summary.json`: it is machine-local, git-ignored, and
@@ -445,7 +445,7 @@ people's funds. Both conditions now fail closed.
   re-verifies, so soundness holds and only availability is at risk. M-1a and M-1b
   close the availability half; no soundness work is owed.
 - **Compose repetition as a design.** L-4 (`NoNewInputs` unreachable on compose)
-  is deliberate per `docs/build/composition/architecture.md`. The bug was that the
+  is deliberate per `research/operations/composition/architecture.md`. The bug was that the
   vault was never told, which lane E closes.
 - **`PayableEASIndexerResolver`.** Deployed nowhere, no accumulator, accounting
   proven exact. Leave it or delete it; do not audit it again.

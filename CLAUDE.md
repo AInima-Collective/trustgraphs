@@ -30,7 +30,7 @@ Trustgraphs implements attestation-based governance using EAS (Ethereum Attestat
 > **Root producer: ZK (not WAVS).** The `{account → score}` merkle root is produced by a permissionless
 > **SP1 zero-knowledge proof** of correct fixed-point PageRank, not a WAVS operator quorum. See
 > [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) for the design and
-> [`docs/build/trust-graph/runbook.md`](./docs/build/trust-graph/runbook.md) for build/contracts/deploy/run. The canonical algorithm + encodings live in `crates/pagerank-core` (compiled to
+> [`research/operations/trust-graph/runbook.md`](./research/operations/trust-graph/runbook.md) for build/contracts/deploy/run. The canonical algorithm + encodings live in `crates/pagerank-core` (compiled to
 > the SP1 guest in `zk/trustgraph-program-v2`, the host in `zk/prover`, and ported to the browser in
 > `packages/frontend/lib/pagerank`). **WAVS has been fully removed** — attestations are created directly against
 > EAS and indexing is done by Ponder reading contract events directly. The Safe signer-sync capability
@@ -61,7 +61,7 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 `packages/frontend/lib/pagerank`). Input completeness is proven against an on-chain `AttestationAccumulator`
 (a chained-hash mixin folded into `EASIndexerResolver`). See
 [`research/ZK_ARCHITECTURE.md`](./research/ZK_ARCHITECTURE.md) and
-[`docs/build/trust-graph/runbook.md`](./docs/build/trust-graph/runbook.md).
+[`research/operations/trust-graph/runbook.md`](./research/operations/trust-graph/runbook.md).
 
 > **WAVS has been fully removed.** The former WAVS root producer (`trust-graph` / `merkler-pruner`),
 > the non-producer WASI components (`eas-attest`, `aggregator`, `wavs-indexer`, `safe-signer-sync`),

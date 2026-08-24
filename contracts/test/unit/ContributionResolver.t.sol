@@ -21,7 +21,7 @@ import {AttestationAttested, AttestationRevoked} from "../../src/interfaces/IInd
 
 /// @title ContributionResolverTest
 /// @notice The contributions resolver against a REAL local EAS deployment: fold parity with the
-///         frozen leaf ABI + kind tagging (docs/build/contributions/interfaces.md §2, locked to
+///         frozen leaf ABI + kind tagging (research/operations/contributions/interfaces.md §2, locked to
 ///         tests/golden/contributions.json), the one-shot schema allowlist, and the
 ///         IAnchorRegistry aliases the contrib MerkleSnapshot reads as journal slot B.
 contract ContributionResolverTest is Test {

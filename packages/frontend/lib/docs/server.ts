@@ -43,6 +43,8 @@ export type RenderedDoc = {
   slug: string
   /** The file's own H1. */
   title: string
+  /** Original Markdown, including the H1, for the reader's copy action. */
+  markdown: string
   /** First plain paragraph, markdown stripped — standfirst and share card. */
   description: string
   /** Body HTML, H1 removed (the page renders the title itself). */
@@ -233,6 +235,7 @@ export const getDoc = (slug: string): RenderedDoc | null => {
   return {
     slug,
     title: title || slug,
+    markdown: file.raw,
     description: extractDescription(body),
     html,
     toc,

@@ -1,7 +1,7 @@
 //! Contributions root-producer program: proves stage-1 reputation (the canonical `pagerank-core`
 //! Trust-Aware PageRank over the trust accumulator's vouch edges) + stage-2 rep-weighted budgeted
 //! valuation with consent/collaborator discounts and the evaluator carve-out
-//! (`contributions-core`, docs/build/contributions/interfaces.md), and emits the journal-v2 merkle root
+//! (`contributions-core`, research/operations/contributions/interfaces.md), and emits the journal-v2 merkle root
 //! + payout blob. Mirrors `trust_graph.rs`/`hypercerts.rs`; the built-in sample is the 6-persona
 //! worked example (`contributions_core::testutil::fixture()`), identical to
 //! `tests/golden/contributions.json`'s `compute` family, so `execute`/`prove` run with no external

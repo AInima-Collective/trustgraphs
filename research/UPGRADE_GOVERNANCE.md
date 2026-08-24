@@ -411,7 +411,7 @@ positive upgrade power.
 `crates/pagerank-core/src/encode.rs`, `research/ZK_ARCHITECTURE.md` (Decisions 1–3, trust-surface
 table), `research/GRAPH_SEEDING.md` (§seed_prior_root, §open governance question),
 `research/MULTI_PROGRAM_PLATFORM.md`, `docs/concepts/networks-and-programs.md` (vkey table, toolchain caveat),
-`docs/build/trust-graph/runbook.md`, `research/DEVIATIONS.md`.
+`research/operations/trust-graph/runbook.md`, `research/DEVIATIONS.md`.
 
 **ZK / rollup governance**: [L2BEAT stages](https://l2beat.com/stages) ·
 [Introducing Stages](https://medium.com/l2beat/introducing-stages-a-framework-to-evaluate-rollups-maturity-d290bb22befe) ·

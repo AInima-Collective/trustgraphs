@@ -5,8 +5,6 @@ vouch set is frozen at a checkpoint, anyone proves the scores over exactly that 
 the proven result is recorded for good. This page explains the round structure, what the proof's
 public outputs (the journal) contain, and what the contract checks before accepting a proof.
 
-Nothing is deployed to production today; Ethereum mainnet is the target chain.
-
 ## What an epoch is
 
 An epoch is one scoring round. Anyone calls `MerkleSnapshot.trigger()`, which freezes the

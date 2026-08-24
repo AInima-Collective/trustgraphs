@@ -1,55 +1,33 @@
-# docs/ — trustgraphs product documentation
+# Trustgraphs documentation
 
-User-facing documentation for trustgraphs, organized shallow-to-deep. This tree is the source
-the in-app `/docs` pages render from; the filesystem layout is the sitemap.
+This directory contains the Markdown published at `/docs`. Each public page should help an
+external reader understand, use, integrate, or verify trustgraphs.
 
-Design provenance (the _why_) lives in [`../research/`](../research/); superseded designs are in
-[`../research/archive/`](../research/archive/). Historical build records (deviations, audits, lab
-measurements) also live in `research/` — they are not product documentation.
+Internal plans, deployment records, test procedures, audits, and operational checklists belong in
+[`research/`](../research/) rather than this directory. Detailed material moved out of the public
+site during the documentation cleanup is under
+[`research/operations/`](../research/operations/).
 
 ## Sections
 
-- [`learn/`](./learn/) — what trustgraphs is and why it works, for anyone. No jargon, no code.
-  Start at [`what-is-trustgraphs.md`](./learn/what-is-trustgraphs.md).
-- [`concepts/`](./concepts/) — how the system fits together, for readers who want the mechanics:
-  the [architecture](./concepts/architecture.md), [networks and programs](./concepts/networks-and-programs.md),
-  [epochs and proofs](./concepts/epochs-and-proofs.md), and the full
-  [algorithm spec](./concepts/algorithm.md).
-- [`build/`](./build/) — for developers. Leads with [creating a network](./build/create-a-network.md)
-  and [integrating scores](./build/integrate-scores.md); the advanced pages
-  ([run a prover](./build/run-a-prover.md), [run an agent](./build/run-an-agent.md),
-  [production](./build/production.md), [add a program](./build/add-a-program.md)) and the
-  per-program directories
-  (`trust-graph/`, `weighted-prior/`, `composition/`, `signer-sync/`, `hypercerts/`,
-  `contributions/`) cover operating the
-  machinery yourself.
-- [`verify/`](./verify/) — check the work: [reproduce an epoch from public data](./verify/reproduce-an-epoch.md),
-  [golden vectors and cross-language parity](./verify/golden-vectors.md), and
-  [addresses and vkeys](./verify/addresses-and-vkeys.md).
+- [Learn](./learn/) introduces trustgraphs, scoring, proofs, and governance.
+- [Concepts](./concepts/) explains the architecture and scoring mechanics.
+- [Build](./build/) covers network creation, score integration, local setup, operations, and one
+  overview for each specialized program.
+- [Verify](./verify/) explains how to reproduce and check published results.
 
-## By what you're trying to do
+The route manifest lives in
+[`packages/frontend/lib/docs/manifest.ts`](../packages/frontend/lib/docs/manifest.ts). A source
+test requires every Markdown page in this directory, except this README, to appear exactly once in
+that manifest.
 
-| I want to…                                         | Read                                                                                                                                                                           |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| understand what this is, without jargon            | [`learn/what-is-trustgraphs.md`](./learn/what-is-trustgraphs.md)                                                                                                               |
-| see how scores are computed and proven             | [`learn/how-scoring-works.md`](./learn/how-scoring-works.md) · [`concepts/algorithm.md`](./concepts/algorithm.md)                                                              |
-| stand up a trust network for my community          | [`build/create-a-network.md`](./build/create-a-network.md)                                                                                                                     |
-| understand or rotate a weighted prior              | [`build/weighted-prior/architecture.md`](./build/weighted-prior/architecture.md) · [`runbook.md`](./build/weighted-prior/runbook.md)                                           |
-| create or rotate a score composition               | [`build/composition/frontend.md`](./build/composition/frontend.md) · [`architecture.md`](./build/composition/architecture.md) · [`runbook.md`](./build/composition/runbook.md) |
-| read scores from my app or contract                | [`build/integrate-scores.md`](./build/integrate-scores.md)                                                                                                                     |
-| run everything locally, end to end                 | [`build/setup.md`](./build/setup.md) → [`build/quickstart.md`](./build/quickstart.md)                                                                                          |
-| run the proving daemon                             | [`build/run-a-prover.md`](./build/run-a-prover.md)                                                                                                                             |
-| delegate upkeep, voting, or human-signed EAS relay | [`build/run-an-agent.md`](./build/run-an-agent.md)                                                                                                                             |
-| deploy to a real chain                             | [`build/production.md`](./build/production.md)                                                                                                                                 |
-| check the system's claims for myself               | [`verify/`](./verify/)                                                                                                                                                         |
+## Editorial standard
 
-[`concepts/networks-and-programs.md`](./concepts/networks-and-programs.md) is the authoritative
-per-program index — status, vkey, deployed instances, and every doc each program owns. It is
-deliberately the only place that list is maintained.
+Public pages should:
 
-## Related
-
-- [`../research/`](../research/) — design documents (`ZK_ARCHITECTURE.md`, program plans,
-  economics); the file of record for _why_ the system is shaped this way
-- [`learn/governance.md`](./learn/governance.md) — the current governance model and its limits
-- [`../tests/golden/`](../tests/golden/) — cross-language golden vectors, one file per program
+- address the reader directly and explain why a feature matters before implementation details;
+- use one canonical explanation instead of repeating the same background across pages;
+- avoid milestone names, internal phases, handoff notes, acceptance checklists, and planning status;
+- link to source or internal engineering records only when a reader needs deeper implementation
+  detail; and
+- distinguish current product behavior from proposals or experimental work.

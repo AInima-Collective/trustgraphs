@@ -55,7 +55,7 @@ export type ContributionsInstanceRow = {
 
 /**
  * The three contribution schema strings, EXACTLY as frozen in
- * docs/build/contributions/interfaces.md §1 (and as the factory registers them). The strings are
+ * research/operations/contributions/interfaces.md §1 (and as the factory registers them). The strings are
  * uniform across every round; only the UIDs differ (they bind each round's own resolver).
  */
 export const CONTRIBUTION_SCHEMA_STRINGS = {

@@ -5,7 +5,7 @@ import {ContributionsParamsCodec} from "src/params/ContributionsParamsCodec.sol"
 
 /// @title ContributionsParamsValidator
 /// @notice Creation-time safety envelope for the contributions program's 21-field tuple
-///         (docs/build/contributions/interfaces.md §3). Slots 1–11 are the stage-1 reputation
+///         (research/operations/contributions/interfaces.md §3). Slots 1–11 are the stage-1 reputation
 ///         params mirrored from the trust program, so their bounds are RE-DERIVED from
 ///         `TrustgraphsParamsValidator` — the same fixed-point guest runs underneath, so the same
 ///         envelope applies. Slots 12–21 are the round params, which get their own bounds here:
