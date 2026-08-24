@@ -279,13 +279,21 @@ Two consequences that matter right now:
 
 - [x] Switch to `build_program_with_args` with `docker: true` and a pinned tag, in
       `zk/prover/build.rs`, `taskfile/zk.yml`, and `zk-parity.yml`.
-- [ ] **BLOCKED (no Docker here).** Verify rather than assume: build the same commit on two
-      architectures and
-      assert byte-identical ELF digests and equal vkeys. The flag is trivial; this check is the
-      milestone.
+- [ ] **DEVIATION, and the check is now two cold same-architecture builds.** Verify rather than
+      assume: build the same commit on two independent runners and assert byte-identical ELF
+      digests and equal vkeys. The exit said "different architectures"; the measurement said that
+      buys almost nothing here and costs everything. The pinned SP1 builder image is amd64-only,
+      so an arm64 runner executes the SAME amd64 container under QEMU — same image digest, same
+      toolchain, same rustflags — which is the same build on a slower CPU rather than an
+      independent one. Meanwhile the failure this gate exists to catch, per `VKEY_NOTES.md`, is a
+      TOOLCHAIN REINSTALL shifting vkeys with zero source change: a same-architecture,
+      different-environment problem that two cold runners test exactly.
 - [x] Rewrite the caveat in `addresses-and-vkeys.md` to describe what is then true.
-- [ ] **BLOCKED (no Docker here).** Measure the cost. Docker guest builds are slower, and both CI and a self-hoster now need
-      Docker present to build guests from source.
+- [x] Measure the cost. **Native x86_64 builds all five guests reproducibly in 5m52s** — cheap
+      enough to gate every PR on. Emulated arm64 took 13, 11, 9 and 9 minutes for the first four
+      guests and was externally terminated 43 minutes in, two minutes into the fifth: a free arm64
+      runner was reclaimed, which nobody can prevent and a release should not depend on. Both CI
+      and a self-hoster now need Docker present to build guests from source.
 
 **Exit:** two independent builds of one commit, on different architectures, produce identical
 ELF digests and identical vkeys.

@@ -37,27 +37,41 @@ concurrency:
 
 jobs:
   build:
-    name: Guests on ${{ matrix.arch }}
+    name: Guests, build ${{ matrix.id }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
+          # TWO COLD RUNNERS OF THE SAME ARCHITECTURE, deliberately, and the reasoning is worth
+          # keeping because the obvious design is the other one.
+          #
+          # The failure this gate exists to catch is the one research/VKEY_NOTES.md measured: a
+          # toolchain REINSTALL shifted vkeys with zero source change. That is a
+          # same-architecture, different-environment problem, and what tests it is two machines
+          # with cold caches and no shared state — which is exactly this.
+          #
+          # An arm64 leg looks like more independence and is mostly not. The pinned SP1 builder
+          # image is amd64-only, so an arm64 runner executes THE SAME amd64 container under QEMU:
+          # same image digest, same toolchain, same rustflags, different host CPU. It is the same
+          # build on a slower processor rather than an independent one.
+          #
+          # Measured on v0.0.2 before this changed: native x86_64 built all five guests in 5m52s;
+          # the emulated arm64 leg took 13, 11, 9 and 9 minutes for the first four and was
+          # externally terminated 43 minutes in, two minutes into the fifth. Nobody cancelled it —
+          # a free arm64 runner was reclaimed — and there is no way to stop that recurring, which
+          # is a poor property for something a release gates on.
+          #
+          # To get that axis back for one run, add `{ id: gamma, runner: ubuntu-24.04-arm }` here
+          # along with a `docker/setup-qemu-action@v3` step, and expect roughly an hour.
+          - id: alpha
             runner: ubuntu-latest
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
+          - id: beta
+            runner: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-
-      # The pinned SP1 builder image may be published for amd64 only. On the arm64 runner that
-      # makes this the difference between "runs under emulation, slowly" and "exec format error",
-      # and the point of the job is to find out rather than assume.
-      - name: Set up QEMU
-        if: matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@v3
 
       - name: Install SP1 toolchain (pinned 6.3.1)
         run: |
@@ -73,16 +87,16 @@ jobs:
 
       - name: Digest table
         run: |
-          sh scripts/guest-elf-digests.sh | tee "digests-${{ matrix.arch }}.txt"
+          sh scripts/guest-elf-digests.sh | tee "digests-${{ matrix.id }}.txt"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: guest-digests-${{ matrix.arch }}
-          path: digests-${{ matrix.arch }}.txt
+          name: guest-digests-${{ matrix.id }}
+          path: digests-${{ matrix.id }}.txt
           retention-days: 7
 
-      - name: Keep the ELFs from the x86_64 build
-        if: matrix.arch == 'x86_64'
+      - name: Keep the ELFs from one of the builds
+        if: matrix.id == 'alpha'
         run: |
           set -eu
           # The ELF FILES, at the paths cargo actually put them — not the directories holding
@@ -94,7 +108,7 @@ jobs:
           ls -lh sp1-guest-elfs.tar.gz
 
       - uses: actions/upload-artifact@v4
-        if: matrix.arch == 'x86_64'
+        if: matrix.id == 'alpha'
         with:
           name: sp1-guest-elfs
           path: sp1-guest-elfs.tar.gz
@@ -115,19 +129,24 @@ jobs:
       - id: compare
         run: |
           set -eu
-          test -s digests-x86_64.txt   || { echo "the x86_64 build produced no digests"; exit 1; }
-          test -s digests-aarch64.txt  || { echo "the aarch64 build produced no digests"; exit 1; }
-          if ! diff -u digests-x86_64.txt digests-aarch64.txt; then
+          test -s digests-alpha.txt || { echo "build alpha produced no digests"; exit 1; }
+          test -s digests-beta.txt  || { echo "build beta produced no digests"; exit 1; }
+          # A short table two builds agree about is agreement about nothing, so the count is
+          # checked as well as the content. `guest-elf-digests.sh` refuses to emit a short one,
+          # and this is the second half of that belt.
+          COUNT=$(wc -l < digests-alpha.txt)
+          [ "$COUNT" -ge 9 ] || { echo "only $COUNT guest ELFs in the table; expected at least 9"; exit 1; }
+          if ! diff -u digests-alpha.txt digests-beta.txt; then
             echo ""
             echo "Two machines built this commit and disagreed about the guest bytes."
             echo "Until they agree, a vkey is a property of the machine that produced it and"
             echo "must not be pinned into a verifier: see research/operations/addresses-and-vkeys.md."
             exit 1
           fi
-          echo "identical on both architectures:"
-          cat digests-x86_64.txt
+          echo "$COUNT guest ELFs, identical on two independent cold builds:"
+          cat digests-alpha.txt
           {
             echo 'digests<<EOF'
-            cat digests-x86_64.txt
+            cat digests-alpha.txt
             echo EOF
           } >> "$GITHUB_OUTPUT"
