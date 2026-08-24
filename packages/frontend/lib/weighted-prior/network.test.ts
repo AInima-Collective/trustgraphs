@@ -20,6 +20,13 @@ const instance: WeightedApiInstanceDetail = {
   admin: hex('5', 20),
   name: 'Weighted test',
   metadataURI: '',
+  metadata: {
+    name: 'Weighted community',
+    description: 'A weighted network for trusted maintainers.',
+    criteria: 'Vouch after working together on a shipped project.',
+    image: 'https://example.org/weighted-banner.png',
+    applicationUrl: 'https://example.org/join',
+  },
   resolver: hex('6', 20),
   schemaUid: hex('7', 32),
   snapshot: hex('8', 20),
@@ -60,6 +67,13 @@ const network = weightedInstanceToNetwork(instance, [
 
 assert.equal(network.program, 'trust-graph-weighted')
 assert.equal(network.id, instance.id)
+assert.equal(network.name, 'Weighted community')
+assert.equal(network.about, 'A weighted network for trusted maintainers.')
+assert.equal(
+  network.criteria,
+  'Vouch after working together on a shipped project.'
+)
+assert.equal(network.applicationUrl, 'https://example.org/join')
 assert.equal(network.contracts.merkleSnapshot, instance.snapshot)
 assert.equal(network.contracts.merkleGovModule, instance.governance?.module)
 assert.equal(network.contracts.safe?.proxy, instance.governance?.safe)

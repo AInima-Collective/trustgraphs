@@ -42,7 +42,6 @@ import {
   type SourceEligibility,
   classifySourceEligibility,
   fetchCompositionCandidates,
-  fetchCompositionInstances,
   fetchCompositionOverview,
   fetchCompositionSource,
   requireCompatibleCandidate,
@@ -75,7 +74,6 @@ import {
   parseWeightPercent,
 } from '@/lib/composition/core'
 import {
-  COMPOSITION_TRUTH_COPY,
   type CompositionQuote,
   compositionPreflight,
 } from '@/lib/composition/preflight'
@@ -91,14 +89,26 @@ import {
 import { txToast } from '@/lib/tx'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
-import { describeBlocks } from '../model'
+import {
+  type NetworkMetadata,
+  describeBlocks,
+  metadataFingerprint,
+  nameProblem,
+} from '../model'
+import {
+  EMPTY_NETWORK_PROFILE,
+  type NetworkProfile,
+  NetworkProfileFields,
+  hasNetworkProfile,
+  networkProfileProblem,
+} from '../NetworkProfileFields'
+import { pinMetadata } from '../pin'
 
 type Mode = 'create' | 'rotate'
 
 const factory = (TRUST_COMPOSE_CONFIG?.factory || '') as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (TRUST_COMPOSE_CONFIG?.governedFactory ||
-  '') as Address
+const governedFactory = (TRUST_COMPOSE_CONFIG?.governedFactory || '') as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {
@@ -117,13 +127,17 @@ const rebalance = (sources: CompositionSource[]) => {
   }))
 }
 
-export const CompositionWorkspace = () => {
+export const CompositionWorkspace = ({
+  settingsInstanceId,
+}: {
+  settingsInstanceId?: Hex
+} = {}) => {
   const { address, isConnected } = useAccount()
   const targetChainId = getTargetChainId()
   const chainId = useChainId()
   const publicClient = usePublicClient({ chainId: targetChainId })
   const { switchChain, isPending: switchingChain } = useSwitchChain()
-  const [mode, setMode] = useState<Mode>('create')
+  const mode: Mode = settingsInstanceId ? 'rotate' : 'create'
   const [catalog, setCatalog] = useState<CompositionCandidate[]>([])
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([])
   // Keyed by lowercase snapshot address. Read from the chain, not the indexer: eligibility is an
@@ -136,7 +150,11 @@ export const CompositionWorkspace = () => {
   const [sources, setSources] = useState<CompositionSource[]>([])
   const [loadingSource, setLoadingSource] = useState<Hex | null>(null)
   const [name, setName] = useState('')
-  const [metadataURI, setMetadataURI] = useState('')
+  const [profile, setProfile] = useState<NetworkProfile>(EMPTY_NETWORK_PROFILE)
+  const [pinnedMetadata, setPinnedMetadata] = useState<{
+    uri: string
+    fingerprint: string
+  } | null>(null)
   const [outputPool, setOutputPool] = useState('1000000000000000000000000')
   const [epochLength, setEpochLength] = useState('0')
   const [salt] = useState<Hex>(randomWord)
@@ -148,11 +166,9 @@ export const CompositionWorkspace = () => {
   const [withGovernance, setWithGovernance] = useState(false)
   const [prepayEth, setPrepayEth] = useState('')
   const [maxPerRootUsd, setMaxPerRootUsd] = useState(DEFAULT_MAX_PER_ROOT_USD)
-  const [instanceId, setInstanceId] = useState('')
+  const [instanceId] = useState(settingsInstanceId ?? '')
   const [instance, setInstance] = useState<CompositionInstance | null>(null)
   const [policies, setPolicies] = useState<CompositionPolicy[]>([])
-  const [rotateChoices, setRotateChoices] = useState<CompositionInstance[]>([])
-  const [rotateChoicesLoading, setRotateChoicesLoading] = useState(false)
   const [preview, setPreview] = useState<CompositionPreview | null>(null)
   const [previewConfig, setPreviewConfig] = useState<CompositionConfig | null>(
     null
@@ -160,9 +176,6 @@ export const CompositionWorkspace = () => {
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [simulatedPayloadHash, setSimulatedPayloadHash] = useState<Hex | null>(
     null
-  )
-  const [acknowledgements, setAcknowledgements] = useState<Set<string>>(
-    new Set()
   )
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
@@ -270,6 +283,31 @@ export const CompositionWorkspace = () => {
     void loadCatalog()
   }, [])
 
+  useEffect(() => {
+    if (!settingsInstanceId) return
+    let cancelled = false
+    setBusy(true)
+    fetchCompositionOverview(APIS.ponder, settingsInstanceId)
+      .then((overview) => {
+        if (cancelled) return
+        setInstance(overview.instance)
+        setPolicies(overview.policies)
+        setApiUnavailable(false)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        if (error instanceof CompositionApiUnavailableError)
+          setApiUnavailable(true)
+        setProblem(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [settingsInstanceId])
+
   // A read failure degrades to 'unknown' (candidate stays clickable; the selection path still
   // verifies) so an RPC hiccup never blanks the whole picker.
   useEffect(() => {
@@ -310,23 +348,6 @@ export const CompositionWorkspace = () => {
     }
   }, [catalog, publicClient])
 
-  // Rotate mode picks the instance from the indexer's composition list instead of asking for a
-  // bytes32 nobody has memorized. Unavailability degrades to the paste field, not an error.
-  useEffect(() => {
-    if (mode !== 'rotate') return
-    const controller = new AbortController()
-    setRotateChoicesLoading(true)
-    fetchCompositionInstances(APIS.ponder, controller.signal)
-      .then(setRotateChoices)
-      .catch(() => {
-        if (!controller.signal.aborted) setRotateChoices([])
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setRotateChoicesLoading(false)
-      })
-    return () => controller.abort()
-  }, [mode])
-
   const setSelected = (next: CompositionSource[], reason?: string) => {
     setSources(next)
     invalidate(reason)
@@ -346,12 +367,17 @@ export const CompositionWorkspace = () => {
       return
     }
     if (!publicClient) return setProblem('Target-chain RPC is unavailable.')
+    const switchingProgram =
+      sources.length > 0 &&
+      candidate.chainId === sources[0]!.chainId.toString() &&
+      candidate.programId.toLowerCase() !== sources[0]!.programId.toLowerCase()
+    const retainedSources = switchingProgram ? [] : sources
     setLoadingSource(candidate.instanceId)
     setProblem(null)
     try {
       requireCompatibleCandidate(
         candidate,
-        sources.map((source) => ({
+        retainedSources.map((source) => ({
           ...candidate,
           instanceId: source.instanceId,
           chainId: source.chainId.toString(),
@@ -404,7 +430,12 @@ export const CompositionWorkspace = () => {
         },
       })
       loaded.maxAgeBlocks = MAX_SOURCE_AGE_BLOCKS
-      setSelected(rebalance([...sources, loaded]))
+      setSelected(
+        rebalance([...retainedSources, loaded]),
+        switchingProgram
+          ? `Switched to ${candidate.programName} sources. Add at least one more graph of this score type.`
+          : undefined
+      )
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -540,24 +571,27 @@ export const CompositionWorkspace = () => {
           : null
       : null
 
-  // The optional refresh prepayment (governed creations only: it rides as transaction value and
-  // the wrapper installs the paid policy on the new composition's proving tank atomically).
+  // The optional refresh prepayment rides as transaction value in both creation paths. The
+  // governed wrapper can also install the paid-spend policy atomically; a wallet-owned instance
+  // receives the same proving-tank deposit and its constitutional admin can configure policy later.
   const prepayIssue: string | null = (() => {
-    if (!withGovernance) return null
     const trimmed = prepayEth.trim()
     if (!trimmed) return null
+    if (!vaultAvailable) {
+      return 'Refresh prepayment is not available on this deployment.'
+    }
     if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
       return 'Enter an amount like 0.5, or leave it blank.'
     }
     if (Number(trimmed) === 0) {
       return 'Leave it blank rather than entering zero.'
     }
-    return initialPolicyProblem(prepayEth, maxPerRootUsd)
+    return withGovernance
+      ? initialPolicyProblem(prepayEth, maxPerRootUsd)
+      : null
   })()
   const prepayWei =
-    withGovernance && prepayEth.trim() && !prepayIssue
-      ? parseEther(prepayEth.trim())
-      : 0n
+    prepayEth.trim() && !prepayIssue ? parseEther(prepayEth.trim()) : 0n
   const effectiveEpoch = useMemo(() => {
     const requested = BigInt(epochLength || '0')
     const floor = (epochFloor as bigint | undefined) ?? 0n
@@ -578,6 +612,35 @@ export const CompositionWorkspace = () => {
       : !authority.loading && !authority.valid
         ? 'The configured governed factory does not expose the sealed guard, member-delay, and 14-day recovery profile this app requires, so creating with governance is disabled here.'
         : null
+
+  const metadata = useMemo<NetworkMetadata>(
+    () => ({
+      name: name.trim(),
+      description: profile.description.trim(),
+      criteria: profile.criteria.trim(),
+      image: profile.image.trim(),
+      applicationUrl: profile.applicationUrl.trim(),
+    }),
+    [name, profile]
+  )
+  const metadataKey = metadataFingerprint(metadata)
+  const metadataURI =
+    pinnedMetadata?.fingerprint === metadataKey ? pinnedMetadata.uri : ''
+  const metadataIssue = nameProblem(name) || networkProfileProblem(profile)
+
+  const updateProfile = (patch: Partial<NetworkProfile>) => {
+    setProfile((current) => ({ ...current, ...patch }))
+    setSimulatedPayloadHash(null)
+  }
+
+  const ensureMetadataURI = async () => {
+    if (metadataIssue) throw new Error(metadataIssue)
+    if (!hasNetworkProfile(profile)) return ''
+    if (pinnedMetadata?.fingerprint === metadataKey) return pinnedMetadata.uri
+    const { uri } = await pinMetadata(metadata)
+    setPinnedMetadata({ uri, fingerprint: metadataKey })
+    return uri
+  }
 
   const createFields = {
     name,
@@ -636,36 +699,17 @@ export const CompositionWorkspace = () => {
     withGovernance,
   ])
 
-  const preflight = useMemo(
-    () =>
-      compositionPreflight({
-        config: previewConfig ?? {
-          chainId: BigInt(targetChainId),
-          captureBlock: 0n,
-          scopeHash: DEFAULT_COMPOSITION_SCOPE,
-          admittedProgramId:
-            sources[0]?.programId ?? (`0x${'00'.repeat(32)}` as Hex),
-          outputPool: BigInt(outputPool || '0'),
-          bounds: V1_COMPOSITION_BOUNDS,
-          sources,
-        },
-        preview,
-        previewError,
-        quote,
-        stage: 'sign',
-        acknowledgements,
-      }),
-    [
-      acknowledgements,
-      outputPool,
+  const preflight = useMemo(() => {
+    if (!preview || !previewConfig) return null
+    return compositionPreflight({
+      config: previewConfig,
       preview,
-      previewConfig,
       previewError,
-      quote,
-      sources,
-      targetChainId,
-    ]
-  )
+      // A proving quote is a creation blocker only when governance is installing a paid policy.
+      quote: withGovernance && prepayWei > 0n ? quote : null,
+      stage: 'sign',
+    })
+  }, [prepayWei, preview, previewConfig, previewError, quote, withGovernance])
 
   const assertPreviewSourcesCurrent = async () => {
     if (!publicClient || !previewConfig) return
@@ -721,10 +765,26 @@ export const CompositionWorkspace = () => {
       if (wrongChain) throw new Error('Switch to the target chain first.')
       if (!preview || !previewConfig || !payload)
         throw new Error('Build the exact preview first.')
-      if (preflight.blocked)
+      if (preflight?.blocked)
         throw new Error('Resolve every blocking preflight item first.')
       await assertPreviewSourcesCurrent()
       if (mode === 'create') {
+        const exactCreateFields = {
+          ...createFields,
+          metadataURI: await ensureMetadataURI(),
+        }
+        const exactPayload = withGovernance
+          ? initialPolicy
+            ? compositionGovernedCreatePayload(
+                exactCreateFields,
+                previewConfig,
+                preview,
+                initialPolicy
+              )
+            : null
+          : compositionCreatePayload(exactCreateFields, previewConfig, preview)
+        if (!exactPayload)
+          throw new Error('Fix the refresh prepayment fields first.')
         if (!factoryAvailable)
           throw new Error('No trust-compose factory is configured.')
         if (fundIssue || prepayIssue || governanceIssue)
@@ -738,7 +798,7 @@ export const CompositionWorkspace = () => {
             abi: governedTrustComposeFactoryAbi,
             functionName: 'createGovernedInstance',
             args: [
-              compositionCreateArgs(createFields, previewConfig, preview),
+              compositionCreateArgs(exactCreateFields, previewConfig, preview),
               initialPolicy,
               DISABLED_SIGNER_SYNC,
             ],
@@ -750,9 +810,13 @@ export const CompositionWorkspace = () => {
             address: factory,
             abi: trustComposeFactoryAbi,
             functionName: 'createInstance',
-            args: [compositionCreateArgs(createFields, previewConfig, preview)],
+            args: [
+              compositionCreateArgs(exactCreateFields, previewConfig, preview),
+            ],
+            ...(prepayWei > 0n ? { value: prepayWei } : {}),
           })
         }
+        setSimulatedPayloadHash(keccak256(exactPayload))
       } else {
         if (!active) throw new Error('Load an active composition policy first.')
         if (pending)
@@ -771,8 +835,8 @@ export const CompositionWorkspace = () => {
             ),
           ],
         })
+        setSimulatedPayloadHash(keccak256(payload))
       }
-      setSimulatedPayloadHash(keccak256(payload))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     } finally {
@@ -813,10 +877,11 @@ export const CompositionWorkspace = () => {
                 args: [
                   compositionCreateArgs(createFields, previewConfig, preview),
                 ],
+                ...(prepayWei > 0n ? { value: prepayWei } : {}),
               },
           successMessage: withGovernance
             ? 'Composition created; its Safe holds it from the first block.'
-            : 'Governed composition instance created.',
+            : 'Composition created.',
         })
         // One receipt-scanning path for both creation lanes, keyed by event topic rather than by
         // emitting address: under the governed wrapper the BASE factory emits the creation event
@@ -938,35 +1003,14 @@ export const CompositionWorkspace = () => {
     <main className="max-w-6xl space-y-8" aria-labelledby="composition-title">
       <header className="space-y-3">
         <h1 id="composition-title" className="text-2xl">
-          Compose proved distributions
+          {mode === 'create' ? 'Create composed graph' : 'Composition settings'}
         </h1>
         <p className="max-w-4xl text-sm text-muted-foreground">
-          {COMPOSITION_TRUTH_COPY.title}. {COMPOSITION_TRUTH_COPY.rawScale}{' '}
-          {COMPOSITION_TRUTH_COPY.weights} {COMPOSITION_TRUTH_COPY.prior}
+          {mode === 'create'
+            ? 'Blend two or more proved Trustgraph score distributions. Choose the influence of each source, review the result, then create it.'
+            : 'Review the current source policy, manage a pending change, or propose a new source mix.'}
         </p>
-        <Card type="outline" size="sm">
-          <p className="text-sm">
-            <strong>Fail-closed capture:</strong>{' '}
-            {COMPOSITION_TRUTH_COPY.noFallback}
-          </p>
-        </Card>
         <div className="flex flex-wrap gap-2">
-          {(['create', 'rotate'] as const).map((value) => (
-            <Button
-              key={value}
-              type="button"
-              variant={mode === value ? 'default' : 'outline'}
-              aria-pressed={mode === value}
-              onClick={() => {
-                setMode(value)
-                invalidate()
-              }}
-            >
-              {value === 'create'
-                ? 'Create composition'
-                : 'Rotate governed policy'}
-            </Button>
-          ))}
           <Button type="button" variant="outline" onClick={loadCatalog}>
             <RefreshCw className="mr-2 h-4 w-4" /> Refresh sources
           </Button>
@@ -1022,66 +1066,24 @@ export const CompositionWorkspace = () => {
 
       {mode === 'rotate' && (
         <Card type="outline" size="md" className="space-y-3">
-          <h2 className="font-medium">Composition to update</h2>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <select
-              id="composition-instance"
-              aria-describedby="composition-instance-help"
-              value={
-                rotateChoices.some((choice) => choice.id === instanceId)
-                  ? instanceId
-                  : ''
-              }
-              onChange={(event) => setInstanceId(event.target.value)}
-              disabled={rotateChoicesLoading}
-              className="h-9 min-w-0 flex-1 border border-input bg-surface px-3 text-sm text-text focus:border-ink focus:outline-none"
-            >
-              <option value="">
-                {rotateChoicesLoading
-                  ? 'Loading compositions…'
-                  : rotateChoices.length
-                    ? 'Choose a composition…'
-                    : 'No compositions available'}
-              </option>
-              {rotateChoices.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.name} · {short(choice.id)}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-medium">
+                {instance?.name ?? 'Current composition'}
+              </h2>
+              <p className="font-mono text-xs text-muted-foreground">
+                {instanceId}
+              </p>
+            </div>
             <Button
               type="button"
+              variant="outline"
               onClick={loadRotation}
-              disabled={busy || !instanceId}
+              disabled={busy}
             >
-              Load history
+              Refresh policy history
             </Button>
           </div>
-          <Input
-            value={instanceId}
-            onChange={(event) => setInstanceId(event.target.value.trim())}
-            placeholder="0x… or paste an instance ID instead"
-            aria-label="Or paste a composition instance ID"
-            aria-describedby="composition-instance-help"
-            className="font-mono text-xs"
-          />
-          <p
-            id="composition-instance-help"
-            className="text-xs text-muted-foreground"
-          >
-            These are the compositions the indexer knows. Each one also shows
-            this ID on its provenance page under{' '}
-            <Link href="/compositions" className="underline underline-offset-4">
-              /compositions
-            </Link>
-            .
-          </p>
-          {instanceId && (
-            <div className="flex items-baseline gap-2 text-xs">
-              <span className="text-muted-foreground">Instance ID:</span>
-              <CopyableText text={instanceId} alwaysShowCopyIcon />
-            </div>
-          )}
           {instance && (
             <p className="text-sm">
               {instance.name} · controller {short(instance.controller ?? '')} ·
@@ -1126,9 +1128,9 @@ export const CompositionWorkspace = () => {
             1. Compatible same-chain sources
           </h2>
           <p className="text-sm text-muted-foreground">
-            V1 accepts 2–8 address allocation outputs with one identical
-            authenticated program id. Raw edges and cross-program lookalikes are
-            excluded.
+            Choose 2–8 graphs from the same chain and score type. Standard and
+            weighted-score graphs are both supported; V1 keeps their source
+            types in separate compositions.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -1136,10 +1138,13 @@ export const CompositionWorkspace = () => {
             const selected = sources.some(
               (source) => source.instanceId === candidate.instanceId
             )
-            const incompatible =
+            const differentChain =
               sources.length > 0 &&
-              (candidate.chainId !== sources[0]!.chainId.toString() ||
-                candidate.programId !== sources[0]!.programId)
+              candidate.chainId !== sources[0]!.chainId.toString()
+            const differentProgram =
+              sources.length > 0 &&
+              candidate.programId.toLowerCase() !==
+                sources[0]!.programId.toLowerCase()
             const sourceEligibility =
               eligibility[candidate.snapshot.toLowerCase()]
             const ineligible =
@@ -1167,7 +1172,9 @@ export const CompositionWorkspace = () => {
                     disabled={
                       !!loadingSource ||
                       (!selected &&
-                        (incompatible || ineligible || sources.length >= 8))
+                        (differentChain ||
+                          ineligible ||
+                          (!differentProgram && sources.length >= 8)))
                     }
                     onClick={() => toggleCandidate(candidate)}
                   >
@@ -1175,6 +1182,8 @@ export const CompositionWorkspace = () => {
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                     ) : selected ? (
                       'Remove'
+                    ) : differentProgram ? (
+                      'Use this score type'
                     ) : (
                       'Add'
                     )}
@@ -1186,6 +1195,14 @@ export const CompositionWorkspace = () => {
                 {!selected && sourceEligibility?.detail && (
                   <p className="text-xs text-muted-foreground">
                     {sourceEligibility.detail}
+                  </p>
+                )}
+                {!selected && differentProgram && !differentChain && (
+                  <p className="text-xs text-muted-foreground">
+                    This graph is compatible, but it uses{' '}
+                    {candidate.programName} scores. Selecting it starts a
+                    composition of that score type and clears the current source
+                    selection.
                   </p>
                 )}
               </Card>
@@ -1320,21 +1337,34 @@ export const CompositionWorkspace = () => {
                     setSimulatedPayloadHash(null)
                   }}
                 />
+                {nameProblem(name) && (
+                  <p className="mt-1 text-xs text-destructive">
+                    {nameProblem(name)}
+                  </p>
+                )}
               </label>
             )}
           </div>
           {mode === 'create' && (
-            <label className="block text-sm">
-              Metadata URI
-              <Input
-                value={metadataURI}
-                onChange={(event) => {
-                  setMetadataURI(event.target.value)
-                  setSimulatedPayloadHash(null)
-                }}
-                placeholder="ipfs://…"
+            <Card type="outline" size="md" className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium">Graph profile</h3>
+                <p className="text-xs text-muted-foreground">
+                  Help people understand the composed graph before they rely on
+                  its scores.
+                </p>
+              </div>
+              <NetworkProfileFields
+                idPrefix="composition-profile"
+                value={profile}
+                onChange={updateProfile}
               />
-            </label>
+              {metadataURI && (
+                <p className="break-all text-xs text-emerald-700">
+                  Profile saved as {metadataURI}
+                </p>
+              )}
+            </Card>
           )}
 
           {mode === 'create' && (
@@ -1343,10 +1373,10 @@ export const CompositionWorkspace = () => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Add a shared fund</p>
                   <p className="text-xs text-muted-foreground max-w-xl">
-                    A shared fund lets your community put money in one place
-                    and split it by the composed scores. Anyone can top it up,
-                    and each member claims their own share. Skip this if you
-                    only want the scoreboard.
+                    A shared fund lets your community put money in one place and
+                    split it by the composed scores. Anyone can top it up, and
+                    each member claims their own share. Skip this if you only
+                    want the scoreboard.
                   </p>
                 </div>
                 <Switch
@@ -1432,10 +1462,10 @@ export const CompositionWorkspace = () => {
                     wallet. A Safe is a shared onchain account; one is created
                     for you in the same transaction and owns the composition
                     from the first block. Your wallet becomes the Safe&apos;s
-                    only recorded owner, but a permanently sealed guard
-                    disables owner-signed transactions: members direct the
-                    Safe through delayed voting, and your wallet keeps only a
-                    slow, visible recovery role.
+                    only recorded owner, but a permanently sealed guard disables
+                    owner-signed transactions: members direct the Safe through
+                    delayed voting, and your wallet keeps only a slow, visible
+                    recovery role.
                   </p>
                 </div>
                 <Switch
@@ -1445,16 +1475,14 @@ export const CompositionWorkspace = () => {
                   onClick={() => {
                     if (!governedAvailable) return
                     setWithGovernance(!withGovernance)
-                    setPrepayEth('')
-                    setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
                     setSimulatedPayloadHash(null)
                   }}
                 />
               </div>
               {!governedAvailable && (
                 <p className="text-xs text-muted-foreground">
-                  Create with governance is not available on this deployment,
-                  so a composition created here is owned by your wallet.
+                  Create with governance is not available on this deployment, so
+                  a composition created here is owned by your wallet.
                 </p>
               )}
               {withGovernance && (
@@ -1472,16 +1500,16 @@ export const CompositionWorkspace = () => {
                       </p>
                       <p>
                         Recovery: your wallet may publish one exact Safe action
-                        but cannot execute it early. Anyone may execute it
-                        after {describeSeconds(authority.recoveryDelay)}, and
-                        the member-governed Safe can cancel it or replace the
+                        but cannot execute it early. Anyone may execute it after{' '}
+                        {describeSeconds(authority.recoveryDelay)}, and the
+                        member-governed Safe can cancel it or replace the
                         proposer.
                       </p>
                       <p>
                         Policy rotations take longer under governance: a
                         proposed rotation must first pass a member vote (the
-                        delays above), and the composition&apos;s own
-                        activation timelock of{' '}
+                        delays above), and the composition&apos;s own activation
+                        timelock of{' '}
                         {describeSeconds(
                           policyActivationDelay as number | undefined
                         )}{' '}
@@ -1502,93 +1530,81 @@ export const CompositionWorkspace = () => {
                     compositions: the only signer verifier today proves the
                     standard trust-graph pipeline.
                   </p>
+                </div>
+              )}
+            </Card>
+          )}
 
-                  <div className="space-y-3 border-t border-border pt-3">
-                    <p className="text-sm font-medium">
-                      Pay for score refreshes up front?
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Composed scores only refresh if somebody does the work,
-                      and that costs gas and proving time. Put ETH in during
-                      creation to fund the first refreshes, or leave it blank.
-                      The ETH lands in the new composition&apos;s proving tank,
-                      and the DAO Safe controls it afterwards.
-                    </p>
+          {mode === 'create' && (
+            <Card type="outline" size="md" className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">
+                  Pay for score refreshes up front?
+                </p>
+                <p className="mt-1 max-w-xl text-xs text-muted-foreground">
+                  Optional. The ETH goes into this composition&apos;s proving
+                  tank and can pay for future score refreshes.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="w-32"
+                  inputMode="decimal"
+                  placeholder="0.5"
+                  aria-label="Refresh prepayment in ETH"
+                  value={prepayEth}
+                  onChange={(event) => {
+                    setPrepayEth(event.target.value)
+                    setSimulatedPayloadHash(null)
+                  }}
+                />
+                <span className="text-sm opacity-60">ETH (optional)</span>
+              </div>
+              {prepayEth.trim() && withGovernance && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label
+                      className="text-xs text-muted-foreground"
+                      htmlFor="composition-max-refresh"
+                    >
+                      Maximum per refresh
+                    </label>
                     <div className="flex items-center gap-2">
+                      <span className="text-sm opacity-60">$</span>
                       <Input
+                        id="composition-max-refresh"
                         className="w-32"
                         inputMode="decimal"
-                        placeholder="0.5"
-                        aria-label="Refresh prepayment in ETH"
-                        value={prepayEth}
+                        value={maxPerRootUsd}
                         onChange={(event) => {
-                          setPrepayEth(event.target.value)
+                          setMaxPerRootUsd(event.target.value)
                           setSimulatedPayloadHash(null)
                         }}
                       />
-                      <span className="text-sm opacity-60">
-                        ETH (optional)
-                      </span>
+                      <span className="text-sm opacity-60">USD</span>
                     </div>
-                    {prepayEth.trim() && (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1">
-                          <label
-                            className="text-xs text-muted-foreground"
-                            htmlFor="composition-max-refresh"
-                          >
-                            Maximum per refresh
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm opacity-60">$</span>
-                            <Input
-                              id="composition-max-refresh"
-                              className="w-32"
-                              inputMode="decimal"
-                              value={maxPerRootUsd}
-                              onChange={(event) => {
-                                setMaxPerRootUsd(event.target.value)
-                                setSimulatedPayloadHash(null)
-                              }}
-                            />
-                            <span className="text-sm opacity-60">USD</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Covers the proving fee and gas together; creation
-                            is capped at $10,000.
-                          </p>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">
-                            Paid no more often than
-                          </div>
-                          <div className="text-sm">
-                            every {effectiveEpoch.toLocaleString()} blocks, the
-                            epoch length
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            This starts equal to the epoch schedule. The DAO
-                            Safe can change it later.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {prepayIssue && (
-                      <p className="text-xs text-destructive" role="alert">
-                        {prepayIssue}
-                      </p>
-                    )}
-                    {prepayEth.trim() && !prepayIssue && (
-                      <p className="text-xs text-muted-foreground">
-                        Before anything is sent, the simulation checks that
-                        this chain has priced the trust-compose proving band
-                        (flat band 3) and that your cap covers that fee.
-                        Creation is atomic: the ETH and the paid policy either
-                        both land or neither does.
-                      </p>
-                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      Paid no more often than
+                    </div>
+                    <div className="text-sm">
+                      every {effectiveEpoch.toLocaleString()} blocks
+                    </div>
                   </div>
                 </div>
+              )}
+              {prepayIssue && (
+                <p className="text-xs text-destructive" role="alert">
+                  {prepayIssue}
+                </p>
+              )}
+              {prepayEth.trim() && !prepayIssue && (
+                <p className="text-xs text-muted-foreground">
+                  {withGovernance
+                    ? 'The simulation checks the proving price and installs this spending policy atomically with creation.'
+                    : 'The deposit is made with creation. Because this composition is wallet-owned, its constitutional admin can set the spending policy later through ProvingVault.'}
+                </p>
               )}
             </Card>
           )}
@@ -1761,68 +1777,49 @@ export const CompositionWorkspace = () => {
         </section>
       )}
 
-      {sources.length >= 2 && (
+      {preview && previewConfig && preflight && (
         <section className="space-y-4" aria-labelledby="preflight-heading">
           <h2 id="preflight-heading" className="text-lg font-medium">
-            4. Preflight and governed receipt
+            4. Final checks
           </h2>
           <div className="space-y-2">
-            {preflight.issues.map((issue, index) => (
-              <Card
-                key={`${issue.code}:${index}`}
-                type="outline"
-                size="sm"
-                className={issue.blocks ? 'border-destructive' : ''}
-              >
-                <div className="flex gap-2">
-                  {issue.blocks ? (
-                    <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-                  ) : (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                  )}
-                  <div>
-                    <p className="text-sm font-medium">{issue.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {issue.detail} {issue.action}
-                    </p>
-                    {issue.acknowledgementKey && (
-                      <label className="mt-2 flex gap-2 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={acknowledgements.has(
-                            issue.acknowledgementKey
-                          )}
-                          onChange={(event) => {
-                            const next = new Set(acknowledgements)
-                            event.target.checked
-                              ? next.add(issue.acknowledgementKey!)
-                              : next.delete(issue.acknowledgementKey!)
-                            setAcknowledgements(next)
-                            setSimulatedPayloadHash(null)
-                          }}
-                        />
-                        I explicitly acknowledge this governed limitation.
-                      </label>
+            {preflight.issues
+              .filter((issue) => issue.level !== 'info')
+              .map((issue, index) => (
+                <Card
+                  key={`${issue.code}:${index}`}
+                  type="outline"
+                  size="sm"
+                  className={issue.blocks ? 'border-destructive' : ''}
+                >
+                  <div className="flex gap-2">
+                    {issue.blocks ? (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+                    ) : (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
                     )}
+                    <div>
+                      <p className="text-sm font-medium">{issue.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {issue.detail} {issue.action}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Card>
+              ))}
+            {preflight.issues.every((issue) => issue.level === 'info') && (
+              <Card type="outline" size="sm">
+                <p className="text-sm text-emerald-700">
+                  The preview passed all source and policy checks.
+                </p>
               </Card>
-            ))}
-          </div>
-          <Card type="outline" size="sm">
-            <p className="text-xs">
-              Preview commitment is immutable until a source, accepted
-              checkpoint, weight, family, capture block, output pool, adapter,
-              or transaction field changes. The landed
-              policy/capture/blob/output commitments are compared byte-for-byte
-              on the durable epoch route.
-            </p>
-            {payload && (
-              <p className="mt-2 break-all font-mono text-xs">
-                payload {keccak256(payload)}
-              </p>
             )}
-          </Card>
+          </div>
+          {payload && (
+            <p className="break-all font-mono text-xs text-muted-foreground">
+              Exact transaction payload {keccak256(payload)}
+            </p>
+          )}
           {wrongChain ? (
             <Button
               type="button"
@@ -1844,6 +1841,7 @@ export const CompositionWorkspace = () => {
                   !payload ||
                   preflight.blocked ||
                   !!fundIssue ||
+                  (mode === 'create' && !!metadataIssue) ||
                   !!prepayIssue ||
                   !!governanceIssue ||
                   (mode === 'create' && withGovernance && authority.loading)
@@ -1859,11 +1857,19 @@ export const CompositionWorkspace = () => {
                 {mode === 'create'
                   ? withGovernance
                     ? 'Create the composition with its Safe'
-                    : 'Create governed composition'
+                    : 'Create composed graph'
                   : 'Propose timelocked rotation'}
               </Button>
             </div>
           )}
+          {!payload &&
+            previewConfig.sources.some((source) => !source.adapter) && (
+              <p className="text-sm text-muted-foreground">
+                To continue, use “Deploy reviewed adapter” on each source above.
+                The adapter authenticates that source for the composition
+                factory; it is a one-time onchain setup per source policy.
+              </p>
+            )}
           {simulatedPayloadHash && (
             <p className="text-sm text-emerald-700">
               Simulation passed for payload {short(simulatedPayloadHash)}.

@@ -8,7 +8,7 @@ import {
   boundedInteger,
   serializeNormalizedEntries,
   versionStatus,
-} from './weighted-prior-api-shared'
+} from './weighted-prior-api-shared.ts'
 
 test('weighted pagination is bounded and rejects negative/non-integer input', () => {
   assert.equal(boundedInteger(undefined, 50, 200), 50)
@@ -92,4 +92,18 @@ test('weighted routes are additive and leave the binary instance API mounted unc
   assert.match(handler, /governanceFor\(\[row\]\)/)
   assert.match(handler, /module: governance\.address/)
   assert.match(handler, /safe: governance\.target/)
+  assert.match(handler, /\.\.\.row/)
+
+  const schema = readFileSync(
+    new URL('../../ponder.schema.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(schema, /weightedPriorInstance[\s\S]*?metadata: t\.json\(\)/)
+
+  const eventHandler = readFileSync(
+    new URL('../weighted-prior.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(eventHandler, /fetchMetadata\(metadataURI\)/)
+  assert.match(eventHandler, /metadataURI,\s+metadata,/)
 })

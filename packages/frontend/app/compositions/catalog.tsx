@@ -96,7 +96,14 @@ export const CompositionCatalog = () => {
               size="md"
               className="h-full space-y-2 hover:border-foreground"
             >
-              <h2 className="font-medium">{instance.name}</h2>
+              <h2 className="font-medium">
+                {instance.metadata?.name?.trim() || instance.name}
+              </h2>
+              {instance.metadata?.description?.trim() && (
+                <p className="text-sm text-muted-foreground">
+                  {instance.metadata.description.trim()}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 chain {instance.chainId} · current policy v
                 {instance.currentVersion} · epoch {instance.epochLength} blocks

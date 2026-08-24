@@ -115,6 +115,13 @@ assert.match(source, /Vouches and ordinary score updates do not require/)
 assert.match(source, /Pay for score refreshes up front\?/)
 assert.match(source, /DISABLED_SIGNER_SYNC/)
 
+// Weighted creation exposes the standard public network profile, pins it only when populated,
+// and puts that exact metadata URI into the simulated create payload.
+assert.match(source, /<NetworkProfileFields/)
+assert.match(source, /hasNetworkProfile\(profile\)/)
+assert.match(source, /await pinMetadata\(metadata\)/)
+assert.match(source, /metadataURI: await ensureMetadataURI\(\)/)
+
 // Receipt scanning is topic-keyed (parseEventLogs), never filtered by emitting address: under
 // the governed wrapper the base factory emits the creation event and the Safe is the creator.
 assert.match(source, /parseEventLogs/)

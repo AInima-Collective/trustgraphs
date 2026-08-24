@@ -40,11 +40,11 @@ const signCheck = compositionPreflight({
   stage: 'sign',
 })
 assert.equal(signCheck.blocked, true)
-assert.ok(signCheck.acknowledgementKeys.includes('truth:normalization'))
-assert.ok(signCheck.acknowledgementKeys.includes('truth:weights'))
-assert.ok(signCheck.acknowledgementKeys.includes('truth:no-fallback'))
-assert.ok(signCheck.acknowledgementKeys.includes('support:missing-account'))
-assert.ok(signCheck.acknowledgementKeys.includes('support:sparse-coverage'))
+assert.ok(
+  signCheck.issues
+    .filter((issue) => issue.blocks)
+    .every((issue) => issue.code === 'adapter-required')
+)
 
 const unavailable = structuredClone(baseline)
 unavailable.sources[0]!.available = false
@@ -65,17 +65,12 @@ const familyCheck = compositionPreflight({
   config: sameFamily,
   preview: null,
   stage: 'sign',
-  acknowledgements: new Set([
-    'truth:normalization',
-    'truth:weights',
-    'truth:no-fallback',
-  ]),
 })
 const familyIssue = familyCheck.issues.find(
   (issue) => issue.code === 'same-family'
 )!
-assert.equal(familyIssue.blocks, true)
-assert.match(familyIssue.action, /acknowledge/)
+assert.equal(familyIssue.blocks, false)
+assert.match(familyIssue.action, /unintended/)
 
 const cloneSource = (source: CompositionSource): CompositionSource => {
   const entries = structuredClone(source.entries)

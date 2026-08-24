@@ -25,6 +25,7 @@ import {
   policyManifestFromCapture,
   verifyCompositionPolicy,
 } from './composition-shared'
+import { fetchMetadata } from './factory'
 import {
   compositionAccumulatorAbi,
   compositionSourceAdapterAbi,
@@ -231,6 +232,7 @@ ponder.on(
     } = event.args
     const params = compositionParamsFromChain(eventParams)
     const normalized = normalizeCompositionParams(params)
+    const metadata = await fetchMetadata(metadataURI)
     await context.db
       .insert(compositionInstance)
       .values({
@@ -242,6 +244,7 @@ ponder.on(
         admin,
         name,
         metadataURI,
+        metadata,
         accumulator,
         snapshot,
         distributor: distributor === zeroAddress ? null : distributor,

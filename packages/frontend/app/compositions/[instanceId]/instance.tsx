@@ -55,18 +55,25 @@ export const CompositionInstanceView = ({
           ← All compositions
         </Link>
         <h1 id="composition-instance-title" className="text-2xl">
-          {instance?.name ?? 'Composition instance'}
+          {instance?.metadata?.name?.trim() ||
+            instance?.name ||
+            'Composition instance'}
         </h1>
         <p className="break-all font-mono text-xs">{instanceId}</p>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={load}
-          disabled={loading}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh after confirmations/reorgs
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/compositions/${instanceId}/settings`}>
+            <Button type="button">Settings</Button>
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={load}
+            disabled={loading}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh after confirmations/reorgs
+          </Button>
+        </div>
       </header>
       {loading && (
         <p className="text-sm">
@@ -82,32 +89,80 @@ export const CompositionInstanceView = ({
         </Card>
       )}
       {instance && (
-        <div className="grid gap-3 md:grid-cols-3">
-          <Card type="outline" size="sm">
-            <p className="text-xs text-muted-foreground">Controller / admin</p>
-            <p className="break-all font-mono text-xs">
-              {instance.controller}
-              <br />
-              {instance.admin}
-            </p>
-          </Card>
-          <Card type="outline" size="sm">
-            <p className="text-xs text-muted-foreground">Current params</p>
-            <p className="break-all font-mono text-xs">
-              v{instance.currentVersion}
-              <br />
-              {instance.currentParamsHash}
-            </p>
-          </Card>
-          <Card type="outline" size="sm">
-            <p className="text-xs text-muted-foreground">Schedule</p>
-            <p className="text-sm">
-              {instance.epochLength} blocks · snapshot{' '}
-              <span className="font-mono">
-                {instance.snapshot.slice(0, 10)}…
-              </span>
-            </p>
-          </Card>
+        <div className="space-y-3">
+          {(instance.metadata?.description?.trim() ||
+            instance.metadata?.criteria?.trim() ||
+            instance.metadata?.image?.trim() ||
+            instance.metadata?.applicationUrl?.trim()) && (
+            <Card type="outline" size="md" className="space-y-3">
+              {instance.metadata.description?.trim() && (
+                <p className="text-sm">
+                  {instance.metadata.description.trim()}
+                </p>
+              )}
+              {instance.metadata.criteria?.trim() && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    What a vouch means here
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm">
+                    {instance.metadata.criteria.trim()}
+                  </p>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-3 text-sm">
+                {instance.metadata.applicationUrl?.trim() && (
+                  <a
+                    className="underline underline-offset-4"
+                    href={instance.metadata.applicationUrl.trim()}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Ask to join
+                  </a>
+                )}
+                {instance.metadata.image?.trim() && (
+                  <a
+                    className="underline underline-offset-4"
+                    href={instance.metadata.image.trim()}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Logo or banner
+                  </a>
+                )}
+              </div>
+            </Card>
+          )}
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card type="outline" size="sm">
+              <p className="text-xs text-muted-foreground">
+                Controller / admin
+              </p>
+              <p className="break-all font-mono text-xs">
+                {instance.controller}
+                <br />
+                {instance.admin}
+              </p>
+            </Card>
+            <Card type="outline" size="sm">
+              <p className="text-xs text-muted-foreground">Current params</p>
+              <p className="break-all font-mono text-xs">
+                v{instance.currentVersion}
+                <br />
+                {instance.currentParamsHash}
+              </p>
+            </Card>
+            <Card type="outline" size="sm">
+              <p className="text-xs text-muted-foreground">Schedule</p>
+              <p className="text-sm">
+                {instance.epochLength} blocks · snapshot{' '}
+                <span className="font-mono">
+                  {instance.snapshot.slice(0, 10)}…
+                </span>
+              </p>
+            </Card>
+          </div>
         </div>
       )}
 

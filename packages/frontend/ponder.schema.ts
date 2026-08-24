@@ -815,6 +815,9 @@ export const weightedPriorInstance = onchainTable(
     admin: t.hex().notNull(),
     name: t.text().notNull(),
     metadataURI: t.text().notNull(),
+    // Same presentation-only profile shape used by standard Trustgraphs. A failed fetch leaves
+    // this null and must never block indexing the consensus-relevant instance.
+    metadata: t.json(),
     resolver: t.hex().notNull(),
     schemaUid: t.hex().notNull(),
     snapshot: t.hex().notNull(),
@@ -911,6 +914,7 @@ export const compositionInstance = onchainTable(
     admin: t.hex().notNull(),
     name: t.text().notNull(),
     metadataURI: t.text().notNull(),
+    metadata: t.json(),
     accumulator: t.hex().notNull(),
     snapshot: t.hex().notNull(),
     distributor: t.hex(),
@@ -1442,7 +1446,7 @@ export const easOffchainMutation = onchainTable(
 
 // The chained-hash accumulator fold log, one row per fold (attest AND revoke), for every
 // accumulator-bearing resolver (the trust EASIndexerResolver instances, kinds {0, 1}, and the
-// ContributionResolver, kinds 0–5 per docs/build/contributions/interfaces.md §2). This is the indexer's
+// ContributionResolver, kinds 0–5 per research/operations/contributions/interfaces.md §2). This is the indexer's
 // mirror of the exact `RawEdge` stream the ZK guest consumes: ordering by (block_number, log_index)
 // is fold order (each fold emits exactly one AttestationAttested/AttestationRevoked marker), and
 // `data` is the payload preimage of the folded `dataHash`. The derived-scoring recompute truncates

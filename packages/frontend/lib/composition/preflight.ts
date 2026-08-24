@@ -55,7 +55,6 @@ export type CompositionPreflightIssue = {
   title: string
   detail: string
   action: string
-  acknowledgementKey?: string
   blocks: boolean
 }
 
@@ -91,14 +90,12 @@ export const compositionPreflight = ({
   previewError,
   quote,
   stage,
-  acknowledgements = new Set<string>(),
 }: {
   config: CompositionConfig
   preview: CompositionPreview | null
   previewError?: string | null
   quote?: CompositionQuote | null
   stage: 'preview' | 'sign'
-  acknowledgements?: ReadonlySet<string>
 }) => {
   const issues: CompositionPreflightIssue[] = [
     issue({
@@ -107,8 +104,7 @@ export const compositionPreflight = ({
       title: 'Raw source points normalize away',
       detail: COMPOSITION_TRUTH_COPY.rawScale,
       action: 'Compare quotas and normalized attribution, not source totals.',
-      acknowledgementKey: stage === 'sign' ? 'truth:normalization' : undefined,
-      blocks: stage === 'sign' && !acknowledgements.has('truth:normalization'),
+      blocks: false,
     }),
     issue({
       code: 'governed-weights',
@@ -117,8 +113,7 @@ export const compositionPreflight = ({
       detail: COMPOSITION_TRUTH_COPY.weights,
       action:
         'Review the simplex and leave-one-out sensitivity before signing.',
-      acknowledgementKey: stage === 'sign' ? 'truth:weights' : undefined,
-      blocks: stage === 'sign' && !acknowledgements.has('truth:weights'),
+      blocks: false,
     }),
     issue({
       code: 'no-fallback',
@@ -126,8 +121,7 @@ export const compositionPreflight = ({
       title: 'Required means fail closed',
       detail: COMPOSITION_TRUTH_COPY.noFallback,
       action: 'Restore the exact source or rotate policy through the timelock.',
-      acknowledgementKey: stage === 'sign' ? 'truth:no-fallback' : undefined,
-      blocks: stage === 'sign' && !acknowledgements.has('truth:no-fallback'),
+      blocks: false,
     }),
   ]
 
@@ -334,33 +328,27 @@ export const compositionPreflight = ({
 
   for (const [familyId, names] of families) {
     if (names.length < 2) continue
-    const acknowledgementKey = `family:${familyId}`
     issues.push(
       issue({
         code: 'same-family',
         level: 'warning',
         title: 'Sources share a publisher family',
         detail: `${names.join(', ')} use family ${familyId}. Treating them as independent evidence may overstate diversity.`,
-        action:
-          'Remove one source or explicitly acknowledge the shared control family.',
-        acknowledgementKey,
-        blocks: !acknowledgements.has(acknowledgementKey),
+        action: 'Remove one source if that overlap is unintended.',
+        blocks: false,
       })
     )
   }
   for (const [controller, names] of controllers) {
     if (names.length < 2 || controller === ZERO_ADDRESS) continue
-    const acknowledgementKey = `controller:${controller}`
     issues.push(
       issue({
         code: 'same-family',
         level: 'warning',
         title: 'Sources share a parameter controller',
         detail: `${names.join(', ')} are governed by ${controller}. Distinct family labels do not make their control independent.`,
-        action:
-          'Remove one source or explicitly acknowledge the shared controller.',
-        acknowledgementKey,
-        blocks: !acknowledgements.has(acknowledgementKey),
+        action: 'Remove one source if that overlap is unintended.',
+        blocks: false,
       })
     )
   }
@@ -387,11 +375,7 @@ export const compositionPreflight = ({
           title: 'Some accounts are absent from other sources',
           detail: `${preview.metrics.accountsInOneSource} accounts occur in exactly one complete distribution. Absence contributes zero; it is not imputed.`,
           action: 'Inspect per-account attribution and support coverage.',
-          acknowledgementKey:
-            stage === 'sign' ? 'support:missing-account' : undefined,
-          blocks:
-            stage === 'sign' &&
-            !acknowledgements.has('support:missing-account'),
+          blocks: false,
         })
       )
     }
@@ -403,28 +387,20 @@ export const compositionPreflight = ({
           title: 'Source support is sparse',
           detail: `Only ${(preview.metrics.supportCoverage * 100).toFixed(1)}% of source/account cells are populated.`,
           action: 'Review whether sparse coverage matches the governed scope.',
-          acknowledgementKey:
-            stage === 'sign' ? 'support:sparse-coverage' : undefined,
-          blocks:
-            stage === 'sign' &&
-            !acknowledgements.has('support:sparse-coverage'),
+          blocks: false,
         })
       )
     }
     for (const pair of preview.metrics.pairwise) {
       if (pair.overlapRatio < 0.8 || pair.correlation < 0.995) continue
-      const pairKey = [pair.left, pair.right].sort().join(':')
-      const acknowledgementKey = `clone:${pairKey}`
       issues.push(
         issue({
           code: 'clone-correlation',
           level: 'warning',
           title: 'Sources are near-clones',
           detail: `Support overlap ${(pair.overlapRatio * 100).toFixed(1)}%; correlation ${pair.correlation.toFixed(4)}. Extra weight may count the same signal twice.`,
-          action:
-            'Remove a clone or explicitly acknowledge correlated evidence.',
-          acknowledgementKey,
-          blocks: !acknowledgements.has(acknowledgementKey),
+          action: 'Remove a clone if the duplicated signal is unintended.',
+          blocks: false,
         })
       )
     }
@@ -501,8 +477,5 @@ export const compositionPreflight = ({
   return {
     issues,
     blocked: issues.some((item) => item.blocks),
-    acknowledgementKeys: issues
-      .map((item) => item.acknowledgementKey)
-      .filter((value): value is string => !!value),
   }
 }

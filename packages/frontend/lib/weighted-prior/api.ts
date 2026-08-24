@@ -35,6 +35,13 @@ export interface WeightedApiEntry {
 export interface WeightedApiInstance {
   id: Hex
   name: string
+  metadata?: {
+    name?: string
+    description?: string
+    criteria?: string
+    image?: string
+    applicationUrl?: string
+  } | null
 }
 
 export interface WeightedApiInstanceDetail extends WeightedApiInstance {

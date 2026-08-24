@@ -18,4 +18,18 @@ test('composition APIs are additive, paginated, and name both provenance classes
   assert.match(source, /governance:/)
   assert.match(source, /\.limit\(pagination\.limit\)/)
   assert.match(source, /MAX|500/)
+  assert.match(source, /\.\.\.row/)
+
+  const schema = readFileSync(
+    new URL('../../ponder.schema.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(schema, /compositionInstance[\s\S]*?metadata: t\.json\(\)/)
+
+  const eventHandler = readFileSync(
+    new URL('../composition.ts', import.meta.url),
+    'utf8'
+  )
+  assert.match(eventHandler, /fetchMetadata\(metadataURI\)/)
+  assert.match(eventHandler, /metadataURI,\s+metadata,/)
 })

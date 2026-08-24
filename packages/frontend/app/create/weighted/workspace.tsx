@@ -102,7 +102,20 @@ import type {
 } from '@/lib/weighted-prior/preview.worker'
 import { BINARY_REDEPLOYMENT_NOTICE } from '@/lib/weighted-prior/workflow'
 
-import { describeBlocks } from '../model'
+import {
+  type NetworkMetadata,
+  describeBlocks,
+  metadataFingerprint,
+  nameProblem,
+} from '../model'
+import {
+  EMPTY_NETWORK_PROFILE,
+  type NetworkProfile,
+  NetworkProfileFields,
+  hasNetworkProfile,
+  networkProfileProblem,
+} from '../NetworkProfileFields'
+import { pinMetadata } from '../pin'
 
 type Mode = 'create' | 'rotate' | 'redeploy'
 type Format = 'csv' | 'json'
@@ -208,7 +221,11 @@ export const WeightedPriorWorkspace = ({
   const workerId = useRef(0)
 
   const [name, setName] = useState('')
-  const [metadataURI, setMetadataURI] = useState('')
+  const [profile, setProfile] = useState<NetworkProfile>(EMPTY_NETWORK_PROFILE)
+  const [pinnedMetadata, setPinnedMetadata] = useState<{
+    uri: string
+    fingerprint: string
+  } | null>(null)
   const [sourceUri, setSourceUri] = useState('')
   const [author, setAuthor] = useState('')
   const [license, setLicense] = useState('')
@@ -300,6 +317,35 @@ export const WeightedPriorWorkspace = ({
   const authority = useAuthorityProfile(
     GOVERNED_AVAILABLE ? GOVERNED_WEIGHTED_FACTORY_ADDRESS : undefined
   )
+
+  const metadata = useMemo<NetworkMetadata>(
+    () => ({
+      name: name.trim(),
+      description: profile.description.trim(),
+      criteria: profile.criteria.trim(),
+      image: profile.image.trim(),
+      applicationUrl: profile.applicationUrl.trim(),
+    }),
+    [name, profile]
+  )
+  const metadataKey = metadataFingerprint(metadata)
+  const metadataURI =
+    pinnedMetadata?.fingerprint === metadataKey ? pinnedMetadata.uri : ''
+  const metadataIssue = nameProblem(name) || networkProfileProblem(profile)
+
+  const updateProfile = (patch: Partial<NetworkProfile>) => {
+    setProfile((current) => ({ ...current, ...patch }))
+    setSimulatedPayload(null)
+  }
+
+  const ensureMetadataURI = async () => {
+    if (metadataIssue) throw new Error(metadataIssue)
+    if (!hasNetworkProfile(profile)) return ''
+    if (pinnedMetadata?.fingerprint === metadataKey) return pinnedMetadata.uri
+    const { uri } = await pinMetadata(metadata)
+    setPinnedMetadata({ uri, fingerprint: metadataKey })
+    return uri
+  }
 
   const provenance = useMemo(
     () => ({ sourceUri, author, license, transform }),
@@ -645,6 +691,10 @@ export const WeightedPriorWorkspace = ({
         throw new Error('Switch the wallet to the target chain first.')
       const exact = await ensureFresh()
       if (!publicClient || !address) throw new Error('Connect a wallet first.')
+      const exactCreateFields =
+        mode === 'rotate'
+          ? createFields
+          : { ...createFields, metadataURI: await ensureMetadataURI() }
       if (mode === 'rotate') {
         if (!active) throw new Error('Load an active weighted instance first.')
         if (!rotationInstance)
@@ -683,7 +733,7 @@ export const WeightedPriorWorkspace = ({
           throw new Error(fundIssue ?? prepayIssue ?? '')
         if (!initialPolicy)
           throw new Error('Fix the refresh prepayment fields first.')
-        const args = weightedCreateArgs(createFields, exact)
+        const args = weightedCreateArgs(exactCreateFields, exact)
         const governedCall = {
           account: address,
           address: GOVERNED_WEIGHTED_FACTORY_ADDRESS,
@@ -696,14 +746,18 @@ export const WeightedPriorWorkspace = ({
         setGasEstimate(await publicClient.estimateContractGas(governedCall))
         setSimulatedPayload(
           keccak256(
-            weightedGovernedCreatePayload(createFields, exact, initialPolicy)
+            weightedGovernedCreatePayload(
+              exactCreateFields,
+              exact,
+              initialPolicy
+            )
           )
         )
       } else {
         if (!FACTORY_AVAILABLE)
           throw new Error('No weighted factory is configured.')
         if (fundIssue) throw new Error(fundIssue)
-        const args = weightedCreateArgs(createFields, exact)
+        const args = weightedCreateArgs(exactCreateFields, exact)
         await publicClient.simulateContract({
           account: address,
           address: WEIGHTED_FACTORY_ADDRESS,
@@ -721,7 +775,7 @@ export const WeightedPriorWorkspace = ({
           })
         )
         setSimulatedPayload(
-          keccak256(weightedCreatePayload(createFields, exact))
+          keccak256(weightedCreatePayload(exactCreateFields, exact))
         )
       }
     } catch (error) {
@@ -1551,23 +1605,11 @@ export const WeightedPriorWorkspace = ({
                       setSimulatedPayload(null)
                     }}
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="weighted-metadata"
-                    className="text-sm font-medium"
-                  >
-                    Description URI
-                  </label>
-                  <Input
-                    id="weighted-metadata"
-                    value={metadataURI}
-                    onChange={(e) => {
-                      setMetadataURI(e.target.value)
-                      setSimulatedPayload(null)
-                    }}
-                    placeholder="ipfs://… (optional)"
-                  />
+                  {nameProblem(name) && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {nameProblem(name)}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label
@@ -1586,11 +1628,23 @@ export const WeightedPriorWorkspace = ({
                     }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground self-end">
+                <p className="text-xs text-muted-foreground sm:col-span-2">
                   The factory floor is{' '}
                   {(epochFloor as bigint | undefined)?.toString() ?? 'loading'}{' '}
                   blocks; shorter requests are raised to it.
                 </p>
+                <div className="space-y-2 sm:col-span-2">
+                  <NetworkProfileFields
+                    idPrefix="weighted-profile"
+                    value={profile}
+                    onChange={updateProfile}
+                  />
+                  {metadataURI && (
+                    <p className="break-all text-xs text-emerald-700">
+                      Profile saved as {metadataURI}
+                    </p>
+                  )}
+                </div>
               </Card>
             )}
 
@@ -1910,7 +1964,7 @@ export const WeightedPriorWorkspace = ({
                         !!pending ||
                         active.availability.status === 'unavailable'
                       : !FACTORY_AVAILABLE ||
-                        !name.trim() ||
+                        !!metadataIssue ||
                         !!fundIssue ||
                         !!prepayIssue ||
                         !!governanceIssue ||

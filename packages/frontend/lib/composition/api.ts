@@ -433,6 +433,13 @@ export type CompositionInstance = {
   admin: Address
   name: string
   metadataURI: string
+  metadata?: {
+    name?: string
+    description?: string
+    criteria?: string
+    image?: string
+    applicationUrl?: string
+  } | null
   accumulator: Address
   snapshot: Address
   distributor: Address | null

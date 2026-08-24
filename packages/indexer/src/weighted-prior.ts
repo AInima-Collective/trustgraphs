@@ -7,6 +7,7 @@ import {
 } from 'ponder:schema'
 import { type Address, type Hex, zeroAddress } from 'viem'
 
+import { fetchMetadata } from './factory'
 import { weightedManifestFromCalldata } from './weighted-prior-calldata'
 import {
   type WeightedParams,
@@ -141,6 +142,7 @@ ponder.on(
     } = event.args
     const params = onchainParams(eventParams)
     const normalized = normalizeWeightedParams(params)
+    const metadata = await fetchMetadata(metadataURI)
     await context.db
       .insert(weightedPriorInstance)
       .values({
@@ -152,6 +154,7 @@ ponder.on(
         admin,
         name,
         metadataURI,
+        metadata,
         resolver,
         schemaUid,
         snapshot,

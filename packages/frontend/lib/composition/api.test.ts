@@ -105,7 +105,20 @@ const main = async () => {
         })
       }
       if (url === 'https://api.test/weighted-priors?limit=200&offset=0') {
-        return json({ error: 'route not deployed' }, 404)
+        return json({
+          instances: [
+            {
+              id: `0x${'a1'.repeat(32)}`,
+              name: 'Weighted source',
+              chainId: candidate.chainId,
+              snapshot: `0x${'a2'.repeat(20)}`,
+              controller: `0x${'a3'.repeat(20)}`,
+              currentParamsHash: `0x${'a4'.repeat(32)}`,
+              createdTimestamp: '102',
+            },
+          ],
+          page: { total: 1 },
+        })
       }
       if (url === `https://api.test/merkle/${candidate.snapshot}/current`) {
         return json({
@@ -133,14 +146,22 @@ const main = async () => {
     }) as typeof fetch
 
     const catalog = await fetchCompositionCandidates('https://api.test')
-    assert.equal(catalog.candidates.length, 1)
-    assert.equal(catalog.candidates[0]!.snapshot, candidate.snapshot)
+    assert.equal(catalog.candidates.length, 2)
+    assert.ok(
+      catalog.candidates.some((row) => row.snapshot === candidate.snapshot)
+    )
+    assert.ok(
+      catalog.candidates.some(
+        (row) => row.programName === 'trust-graph-weighted'
+      ),
+      'weighted-score Trustgraphs remain selectable composition sources'
+    )
     assert.equal(
       catalog.candidates.some((row) => row.programName === 'nostr-workspace'),
       false,
       'bytes32 Nostr scores cannot be relabeled as address-keyed trust-compose inputs'
     )
-    assert.match(catalog.warnings[0]!, /not deployed/)
+    assert.deepEqual(catalog.warnings, [])
 
     const source = await fetchCompositionSource({
       api: 'https://api.test',
@@ -209,6 +230,12 @@ const main = async () => {
           [candidate]
         ),
       /one admitted score program/
+    )
+    const weightedCandidate = catalog.candidates.find(
+      (row) => row.programName === 'trust-graph-weighted'
+    )!
+    assert.doesNotThrow(() =>
+      requireCompatibleCandidate(weightedCandidate, [weightedCandidate])
     )
 
     const unavailable = new CompositionApiUnavailableError('not deployed', 404)

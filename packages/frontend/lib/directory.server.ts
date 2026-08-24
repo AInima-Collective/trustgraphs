@@ -187,7 +187,12 @@ const readNostrWorkspaceBindings = async (): Promise<{
 }
 
 type WeightedPriorListPage = {
-  instances: Array<{ id: unknown; name: unknown; snapshot: unknown }>
+  instances: Array<{
+    id: unknown
+    name: unknown
+    snapshot: unknown
+    metadata?: unknown
+  }>
   page: { limit: unknown; offset: unknown; total: unknown }
 }
 
@@ -201,10 +206,20 @@ type WeightedPriorListPage = {
  * indexer yet, which is an empty section, not an error.
  */
 const readWeightedInstances = async (): Promise<{
-  rows: Array<{ id: string; name: string; snapshot: string }>
+  rows: Array<{
+    id: string
+    name: string
+    about: string
+    snapshot: string
+  }>
   error: string | null
 }> => {
-  const rows: Array<{ id: string; name: string; snapshot: string }> = []
+  const rows: Array<{
+    id: string
+    name: string
+    about: string
+    snapshot: string
+  }> = []
   const seen = new Set<string>()
   let offset = 0
 
@@ -241,12 +256,29 @@ const readWeightedInstances = async (): Promise<{
         ) {
           throw new Error('weighted network list row is malformed')
         }
+        const metadata =
+          row.metadata &&
+          typeof row.metadata === 'object' &&
+          !Array.isArray(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : null
         const id = row.id.toLowerCase()
         if (seen.has(id)) {
           throw new Error('weighted network list repeats a row')
         }
         seen.add(id)
-        rows.push({ id: row.id, name: row.name, snapshot: row.snapshot })
+        rows.push({
+          id: row.id,
+          name:
+            typeof metadata?.name === 'string' && metadata.name.trim()
+              ? metadata.name.trim()
+              : row.name,
+          about:
+            typeof metadata?.description === 'string'
+              ? metadata.description.trim()
+              : '',
+          snapshot: row.snapshot,
+        })
       }
 
       if (offset + page.instances.length >= total) break
@@ -387,7 +419,9 @@ export const loadDirectory = async (): Promise<Directory> => {
       program: 'trust-graph-weighted' as const,
       id: row.id,
       name: row.name,
-      about: `Weighted instance ${row.id.slice(0, 10)}…${row.id.slice(-8)}`,
+      about:
+        row.about ||
+        `Weighted instance ${row.id.slice(0, 10)}…${row.id.slice(-8)}`,
       snapshot: row.snapshot,
     })),
     ...VISIBLE_HYPERCERTS_NETWORKS.map((network) => ({
