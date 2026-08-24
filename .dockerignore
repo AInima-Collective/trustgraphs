@@ -1,0 +1,41 @@
+# Build context for zk/operator/Dockerfile.
+#
+# The awkward part is `target/`: it is enormous and must not be sent, EXCEPT for the guest ELFs,
+# which live under `zk/*/target/elf-compilation/` and are the one build output the image genuinely
+# needs (they are compiled outside the image — see the Dockerfile header for why). Docker applies
+# every pattern in order and the last match wins, so the negations below re-include exactly those
+# paths out of the blanket exclusion above them.
+
+**/target
+**/node_modules
+**/.git
+**/.next
+**/.turbo
+
+!zk/program/target/elf-compilation/**
+!zk/trustgraph-program-v2/target/elf-compilation/**
+!zk/weighted-program/target/elf-compilation/**
+!zk/composition-program/target/elf-compilation/**
+!zk/nostr-program/program/target/elf-compilation/**
+
+# ...but not the intermediate build state inside them. Only the ELFs.
+zk/**/elf-compilation/**/deps/**
+zk/**/elf-compilation/**/build/**
+zk/**/elf-compilation/**/incremental/**
+zk/**/elf-compilation/**/examples/**
+zk/**/elf-compilation/**/.fingerprint/**
+
+# Local state and generated artifacts. None of it belongs in an image, and `.demo` and
+# `.trustgraph` in particular can hold a request journal and a submitter's working files.
+.demo
+.trustgraph
+.docker
+broadcast
+cache
+out
+deployments/**/dev*
+repos
+docs
+research
+packages/frontend/.next
+**/*.log

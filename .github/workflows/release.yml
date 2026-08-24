@@ -1,0 +1,284 @@
+name: Release
+
+# Cut a release from a tag: a multi-arch operator image, a build-provenance attestation, and the
+# table of guest ELF digests and vkeys that the image was built from.
+#
+# There are no tags on this repository yet, so this also defines the convention: `vMAJOR.MINOR.PATCH`
+# on a commit that is already merged. Nothing here can be produced from a laptop, which is the
+# point — a vkey that gets pinned into an immutable verifier should trace to a public workflow run
+# on a public commit, which is what research/UPGRADE_GOVERNANCE.md already asks for.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/jakehartnell/trustgraphs-operator
+
+permissions: {}
+
+jobs:
+  # The gate. Two architectures build the guests and must produce identical ELF digests; if they
+  # do not, nothing below runs, because an image and a vkey table nobody else can reproduce are
+  # worse than no release at all.
+  guests:
+    name: Reproducible guests
+    uses: ./.github/workflows/guest-reproducibility.yml
+
+  manifest:
+    name: Guest digest and vkey table
+    needs: guests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zk/prover -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+
+      - name: Restore the guests the gate just agreed on
+        run: tar -xzf sp1-guest-elfs.tar.gz
+
+      # This is the Lane C artifact research/UPGRADE_GOVERNANCE.md commits us to: every program's
+      # ELF sha256 and vkey, against a public source commit, produced by a public workflow run.
+      - name: Derive the table
+        env:
+          SP1_SKIP_PROGRAM_BUILD: 'true'
+          SP1_PROVER: mock
+        run: |
+          set -eu
+          cargo run --release --locked --manifest-path zk/prover/Cargo.toml -- manifest \
+            --commit "${GITHUB_SHA}" --tag "${GITHUB_REF_NAME}" > guest-manifest.json
+          cat guest-manifest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guest-manifest
+          path: guest-manifest.json
+          retention-days: 30
+
+  image:
+    name: Image (${{ matrix.platform }})
+    needs: [guests, manifest]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners rather than QEMU: a cold Rust build of this size under emulation is the
+          # difference between minutes and hours. amd64 is what Railway runs; arm64 is what an
+          # Apple Silicon self-hoster runs.
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    outputs:
+      digest-amd64: ${{ steps.export.outputs.digest-amd64 }}
+      digest-arm64: ${{ steps.export.outputs.digest-arm64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A cold Rust build across several feature sets plus Docker layers is the likeliest way to
+      # run a standard runner out of disk. This buys back roughly 25 GB and costs seconds.
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+          df -h /
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sp1-guest-elfs
+
+      - name: Restore the guests the gate just agreed on
+        run: tar -xzf sp1-guest-elfs.tar.gz
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: The guest this image carries
+        id: elf
+        run: |
+          set -eu
+          sh scripts/guest-elf-digests.sh | tee elf-digests.txt
+          TRUST_GRAPH=$(awk '/trustgraph-program-v2$/ {print $1}' elf-digests.txt)
+          test -n "$TRUST_GRAPH" || { echo "no trust-graph ELF digest"; exit 1; }
+          echo "trust-graph=$TRUST_GRAPH" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: zk/operator/Dockerfile
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          build-args: |
+            SOURCE_COMMIT=${{ github.sha }}
+            TRUST_GRAPH_ELF_SHA256=${{ steps.elf.outputs.trust-graph }}
+          cache-from: type=gha,scope=${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export the digest
+        id: export
+        run: echo "digest-${{ matrix.suffix }}=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Multi-arch manifest and attestation
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.list.outputs.digest }}
+      tag: ${{ steps.list.outputs.tag }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the manifest list
+        id: list
+        run: |
+          set -eu
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in v*) ;; *) TAG="edge" ;; esac
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${TAG}" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}@${{ needs.image.outputs.digest-amd64 }}" \
+            "${IMAGE}@${{ needs.image.outputs.digest-arm64 }}"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      # Cryptographically traceable to this workflow run and this commit, rather than to a
+      # person's laptop.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.list.outputs.digest }}
+          push-to-registry: true
+
+  verify:
+    name: The published image is what the table says
+    needs: [manifest, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-manifest
+
+      # D8: anonymous `docker pull`, no GitHub account. A GHCR package pushed by GITHUB_TOKEN is
+      # created PRIVATE regardless of the repository being public, and the visibility has to be
+      # flipped by hand once, in the package settings. This step is why that is discovered here
+      # rather than by a stranger being asked to authenticate.
+      - name: Pull with no credentials at all
+        run: |
+          set -eu
+          docker logout ghcr.io || true
+          rm -f "$HOME/.docker/config.json"
+          if ! docker pull "${IMAGE}@${{ needs.publish.outputs.digest }}"; then
+            echo ""
+            echo "The image could not be pulled anonymously. A GHCR package created by"
+            echo "GITHUB_TOKEN is private by default, even on a public repository."
+            echo "Fix, once: https://github.com/users/JakeHartnell/packages/container/trustgraphs-operator/settings"
+            echo "  -> Danger Zone -> Change visibility -> Public, then re-run this job."
+            exit 1
+          fi
+
+      # The strongest form of the guard: re-derive the vkeys from the ELFs EMBEDDED IN THE IMAGE
+      # and require them to match the table that is about to be published. A table that describes
+      # a different build than the image is worse than no table.
+      - name: Re-derive the vkeys inside the image
+        run: |
+          set -eu
+          docker run --rm --entrypoint /usr/local/bin/trustgraph-prover \
+            -e SP1_PROVER=mock \
+            "${IMAGE}@${{ needs.publish.outputs.digest }}" manifest > from-image.json
+          jq -S '[.programs[] | {program, elf_sha256, vkey}]' guest-manifest.json > a.json
+          jq -S '[.programs[] | {program, elf_sha256, vkey}]' from-image.json    > b.json
+          if ! diff -u a.json b.json; then
+            echo "the published image does not carry the guests the table describes"
+            exit 1
+          fi
+          echo "image and table agree"
+
+  release:
+    name: Publish the release
+    needs: [manifest, publish, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-manifest
+
+      - name: Release notes
+        run: |
+          set -eu
+          {
+            echo "## Operator image"
+            echo
+            echo '```'
+            echo "docker pull ${IMAGE}:${{ needs.publish.outputs.tag }}"
+            echo '```'
+            echo
+            echo "Digest: \`${{ needs.publish.outputs.digest }}\`"
+            echo
+            echo "Built by [this workflow run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo "from \`${GITHUB_SHA}\`, with a build-provenance attestation you can check without"
+            echo "an account:"
+            echo
+            echo '```'
+            echo "gh attestation verify oci://${IMAGE}:${{ needs.publish.outputs.tag }} --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "## Guest programs"
+            echo
+            echo "Every guest was built inside the pinned SP1 builder image and produced identical"
+            echo "bytes on two architectures before this release was cut. \`guest-manifest.json\` is"
+            echo "attached; the same values are reproducible from source with:"
+            echo
+            echo '```'
+            echo "sh scripts/build-guests.sh && sh scripts/guest-elf-digests.sh"
+            echo '```'
+            echo
+            echo '| program | ELF sha256 | vkey |'
+            echo '| --- | --- | --- |'
+            jq -r '.programs[] | "| \(.program) | `\(.elf_sha256)` | `\(.vkey)` |"' guest-manifest.json
+          } > notes.md
+          cat notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: guest-manifest.json
+          fail_on_unmatched_files: true

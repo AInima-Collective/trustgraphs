@@ -20,25 +20,12 @@ tasks:
       # producing the ELFs. On a checkout that has never built them the host then fails at
       # `include_elf!` with a missing-file error — which reads like a broken repo and is really
       # "run this".
-      - |
-        set -eu
-        command -v cargo-prove >/dev/null 2>&1 || {
-          echo "✗ cargo-prove not found. The guests build with the SP1 \`succinct\` toolchain:" >&2
-          echo "    curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up --version v6.3.1" >&2
-          echo "    export PATH=\"\$HOME/.sp1/bin:\$PATH\"" >&2
-          exit 1
-        }
-        echo "→ building the guest ELFs (first run takes a few minutes; after that it's cached)"
-        (cd zk/program && cargo prove build)
-        (cd zk/trustgraph-program-v2 && cargo prove build)
-        (cd zk/weighted-program && cargo prove build)
-        (cd zk/composition-program && cargo prove build)
-        (cd zk/nostr-program/program && cargo prove build --locked)
-      # STALE-ELF WARNING: after editing anything under crates/, rerun `task zk:build` before any
-      # guest-side check. sp1_build does NOT watch path dependencies, so cargo will silently reuse
-      # an ELF that predates the crate change. Touching build.rs makes the prover pick up the ELFs
-      # built immediately above.
-      - touch zk/prover/build.rs
+      # One implementation, used by this task, the operator's Dockerfile and CI: the guests are
+      # compiled inside the pinned SP1 builder image so two machines building one commit produce
+      # the same bytes. The script also touches zk/prover/build.rs afterwards, because sp1_build
+      # does NOT watch path dependencies and cargo will otherwise reuse an ELF that predates a
+      # crates/ edit.
+      - sh scripts/build-guests.sh
       # The guests were just built explicitly, so skip build.rs's copy of that work rather than
       # doing it twice. Four host artifacts, because `task demo` and witness operations need them
       # warm and cargo caches per feature set: the plain prover (vkey derivation, e2e), the prover with `fetch`
@@ -49,6 +36,16 @@ tasks:
       - SP1_SKIP_PROGRAM_BUILD=true sh -c 'cd zk/prover && cargo build --release && cargo build --release --features fetch && cargo build --release --features witness-nostr'
       - SP1_SKIP_PROGRAM_BUILD=true cargo build --release --manifest-path zk/operator/Cargo.toml
       - echo "✓ guests + host + operator built. Vkeys they produce - task demo:vkeys"
+
+  elf-digests:
+    desc: 'sha256 of every built guest ELF — the value two machines must agree on'
+    cmds:
+      - sh scripts/guest-elf-digests.sh
+
+  manifest:
+    desc: 'Every program ELF sha256 + vkey as JSON (the Lane C reproducible-build artifact)'
+    cmds:
+      - SP1_SKIP_PROGRAM_BUILD=true SP1_PROVER=mock cargo run -q --release --manifest-path zk/prover/Cargo.toml -- manifest
 
   vectors:
     desc: 'Regenerate golden vectors for PROGRAM'

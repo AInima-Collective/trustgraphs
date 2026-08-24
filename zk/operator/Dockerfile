@@ -1,0 +1,106 @@
+# The operator, as one image: a daemon, its four helper binaries, and nothing else.
+#
+# Build context is the REPOSITORY ROOT, not this directory:
+#
+#   task zk:build                                   # the guest ELFs, once (needs Docker + SP1)
+#   docker build -f zk/operator/Dockerfile -t trustgraphs-operator .
+#
+# Two things about the guests. First, they are NOT built here: `cargo prove build --docker` runs
+# `docker run`, and there is no daemon inside a `docker build`. They are built beforehand, on the
+# host or in CI, and copied in from the context — which is also what makes the ELF in this image
+# the same bytes CI published a digest for. Second, every cargo invocation below sets
+# SP1_SKIP_PROGRAM_BUILD=true, so `include_elf!` embeds those exact ELFs rather than quietly
+# rebuilding them under a different toolchain and returning proofs under a vkey no verifier pinned.
+
+# ---------------------------------------------------------------------------------------------
+FROM rust:1.87-bookworm AS builder
+
+# protobuf-compiler is for the operator's `network` feature: SP1_PROVER=network pulls the
+# prover-network gRPC client, which generates its stubs at build time.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      protobuf-compiler pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# Fail here, with a sentence, rather than several minutes later inside a Rust build with a
+# missing-file error from `include_elf!` that reads like a broken checkout.
+RUN set -eu; \
+    T=riscv64im-succinct-zkvm-elf/release; \
+    for elf in \
+      "zk/trustgraph-program-v2/target/elf-compilation/docker/$T/trustgraph-program-v2" \
+      "zk/program/target/elf-compilation/docker/$T/trustgraph-signer-program" \
+      ; do \
+      [ -f "$elf" ] || { \
+        echo "missing REPRODUCIBLE guest ELF: $elf" >&2; \
+        echo "The guests are built outside this image, in the pinned SP1 builder container:" >&2; \
+        echo "    sh scripts/build-guests.sh" >&2; \
+        echo "A plainly-built ELF under target/elf-compilation/ is deliberately not accepted" >&2; \
+        echo "here: its vkey is a property of the machine that produced it." >&2; \
+        exit 1; \
+      }; \
+    done
+
+ENV SP1_SKIP_PROGRAM_BUILD=true
+
+# The input reconstruction tools. `input-exporter` is the only one the trust-graph and signer
+# lanes need; `envelope0-preflight` is a second binary of the same crate.
+RUN cargo build --release --locked -p input-exporter --bins
+
+# The prover host, with the two feature sets the heavier lanes shell out to. One binary carries
+# both: `tools::Tool` looks for `trustgraph-prover` when no lane-specific binary is present.
+RUN cargo build --release --locked --manifest-path zk/prover/Cargo.toml \
+      --features fetch,witness-nostr
+
+# The daemon. `network` is what makes SP1_PROVER=network work, which is how a self-hoster proves
+# without owning a proving rig.
+RUN cargo build --release --locked --manifest-path zk/operator/Cargo.toml --features network
+
+# The guest identity, shipped with the image so "which guest is this container running?" is a
+# `docker run --rm IMAGE cat /etc/trustgraph/elf-digests.txt` rather than an archaeology project.
+RUN set -eu; mkdir -p /out/bin /out/etc; \
+    sh scripts/guest-elf-digests.sh > /out/etc/elf-digests.txt; \
+    cp target/release/input-exporter target/release/envelope0-preflight /out/bin/; \
+    cp zk/prover/target/release/trustgraph-prover /out/bin/; \
+    cp zk/operator/target/release/operator /out/bin/
+
+# ---------------------------------------------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+
+# ca-certificates for TLS to the RPC, the prover network and IPFS gateways. curl is the container
+# healthcheck below and nothing else. No compiler, no toolchain, no source tree.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin operator
+
+COPY --from=builder /out/bin/ /usr/local/bin/
+COPY --from=builder /out/etc/elf-digests.txt /etc/trustgraph/elf-digests.txt
+
+# The state directory. Mount a volume here: `journal.jsonl` is the one file whose loss costs real
+# money, and the daemon REFUSES to start if this path's parent is missing — which is exactly what
+# an unmounted volume looks like.
+RUN mkdir -p /data && chown operator:operator /data
+VOLUME ["/data"]
+USER operator
+WORKDIR /data
+
+# `[ops] tool_dir` needs no configuration in this image: the daemon finds its tools beside itself.
+ENV OPERATOR_HEALTH_URL=http://127.0.0.1:8080/ready
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -fsS "$OPERATOR_HEALTH_URL" >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/operator"]
+CMD ["--config", "/etc/trustgraph/operator.toml"]
+
+# Filled in by the release workflow: the source commit, and the digest of the trust-graph guest
+# whose vkey the deployed verifier is pinned to.
+ARG SOURCE_COMMIT=unknown
+ARG TRUST_GRAPH_ELF_SHA256=unknown
+LABEL org.opencontainers.image.title="trustgraphs-operator" \
+      org.opencontainers.image.description="Keeps proven trustgraphs scores fresh, unattended." \
+      org.opencontainers.image.source="https://github.com/JakeHartnell/trustgraphs" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.trustgraphs.guest.trust-graph.sha256="${TRUST_GRAPH_ELF_SHA256}"

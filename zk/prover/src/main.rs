@@ -17,16 +17,18 @@
 //!                                                         `--features fetch`)
 //!   trustgraph-prover trust-graph-weighted {vkey|paramshash|execute|prove}
 //!   trustgraph-prover trust-compose {vkey|paramshash|execute|prove}
+//!   trustgraph-prover manifest [--commit SHA] [--tag vX.Y.Z]
+//!                                                         every program's ELF sha256 + vkey, JSON
 //!
 //! For `trust-graph`, `input.json` is a serialized `trustgraph_core::GuestInput`; for `signer` it is a
 //! `pagerank_core::SignerInput`; for `trust-graph-weighted`, `trust-compose`, and `contributions`
 //! it is their core crate's `GuestInput`. Omit it to use the relevant built-in golden sample.
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use trustgraph_prover::programs;
+use clap::{Args, Parser, Subcommand};
 #[cfg(any(feature = "witness-atproto", feature = "witness-nostr"))]
 use trustgraph_prover::witness;
+use trustgraph_prover::{common, programs};
 
 #[derive(Parser)]
 #[command(name = "trustgraph-prover")]
@@ -99,6 +101,45 @@ enum Program {
         #[command(subcommand)]
         cmd: witness::nostr::Command,
     },
+    /// Every program's ELF sha256 and vkey, as JSON, for the build this binary was compiled from.
+    ///
+    /// This is the reproducible-build artifact `research/UPGRADE_GOVERNANCE.md` promises: the
+    /// table anyone can check a deployed vkey against, from source, without trusting whoever
+    /// deployed it. The release workflow publishes it and then re-derives it INSIDE the published
+    /// image, so the table and the image cannot describe different builds.
+    Manifest(ManifestArgs),
+}
+
+#[derive(Args)]
+struct ManifestArgs {
+    /// Source commit this build came from. Recorded verbatim; nothing here verifies it.
+    #[arg(long)]
+    commit: Option<String>,
+    /// Release tag, when the table is being cut for one.
+    #[arg(long)]
+    tag: Option<String>,
+}
+
+fn manifest(args: &ManifestArgs) -> Result<()> {
+    let mut programs = Vec::new();
+    for (name, elf) in programs::all() {
+        let elf_sha256 = common::elf_sha256(&elf);
+        let vkey = common::vkey(elf)?;
+        programs.push(serde_json::json!({
+            "program": name,
+            "elf_sha256": elf_sha256,
+            "vkey": vkey,
+        }));
+    }
+    let doc = serde_json::json!({
+        "version": 1,
+        "commit": args.commit,
+        "tag": args.tag,
+        "sp1": sp1_sdk::SP1_CIRCUIT_VERSION,
+        "programs": programs,
+    });
+    println!("{}", serde_json::to_string_pretty(&doc)?);
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -117,5 +158,6 @@ fn main() -> Result<()> {
         Program::Witness { cmd } => witness::run(cmd),
         #[cfg(feature = "witness-nostr")]
         Program::NostrWitness { cmd } => witness::nostr::run(cmd),
+        Program::Manifest(args) => manifest(&args),
     }
 }

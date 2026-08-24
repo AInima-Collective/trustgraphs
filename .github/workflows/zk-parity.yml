@@ -46,11 +46,7 @@ jobs:
 
       - name: Build all isolated guest families
         run: |
-          (cd zk/program && cargo prove build)
-          (cd zk/trustgraph-program-v2 && cargo prove build)
-          (cd zk/weighted-program && cargo prove build)
-          (cd zk/composition-program && cargo prove build)
-          (cd zk/nostr-program/program && cargo prove build --locked)
+          sh scripts/build-guests.sh
           tar -czf sp1-guest-elfs.tar.gz \
             zk/program/target/elf-compilation \
             zk/trustgraph-program-v2/target/elf-compilation \

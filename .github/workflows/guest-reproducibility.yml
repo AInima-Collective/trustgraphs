@@ -1,0 +1,131 @@
+name: Guest reproducibility
+
+# Two machines, one commit, one set of guest ELF digests — or the build is not reproducible and a
+# vkey is a property of whoever compiled it rather than of the source.
+#
+# This is not a nicety. `SP1JournalVerifier` pins a vkey at construction and the factory pins the
+# verifier, so a vkey derived from a build nobody else can reproduce is a mistake that costs a new
+# verifier AND a new factory to undo. It is also the "reproducible-build artifact so anyone can
+# check vkey <-> source" that research/UPGRADE_GOVERNANCE.md already promises as a Lane C
+# requirement, and which could not be produced before `--docker`.
+#
+# Succinct's own documentation is explicit that the plain path is not enough: "Running
+# `cargo prove build` may not generate a reproducible ELF which is necessary for verifying that
+# your binary corresponds to given source code." Every guest build in this repo now takes the
+# `--docker` path, pinned at the same tag.
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'zk/**'
+      - 'taskfile/zk.yml'
+      - 'scripts/guest-elf-digests.sh'
+      - '.github/workflows/guest-reproducibility.yml'
+  workflow_dispatch:
+  # Called by the release workflow, so a release cannot publish an image whose guests two
+  # machines disagree about.
+  workflow_call:
+    outputs:
+      digests:
+        description: 'sha256 of every guest ELF, one per line'
+        value: ${{ jobs.compare.outputs.digests }}
+
+concurrency:
+  group: guest-reproducibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Guests on ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The pinned SP1 builder image may be published for amd64 only. On the arm64 runner that
+      # makes this the difference between "runs under emulation, slowly" and "exec format error",
+      # and the point of the job is to find out rather than assume.
+      - name: Set up QEMU
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Install SP1 toolchain (pinned 6.3.1)
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --version v6.3.1
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+
+      # No rust-cache here on purpose. A warm `target/` is the most likely way for a build to
+      # agree with itself for the wrong reason, and this job's whole output is a claim about a
+      # cold, independent build.
+      - name: Build every guest reproducibly
+        run: sh scripts/build-guests.sh
+
+      - name: Digest table
+        run: |
+          sh scripts/guest-elf-digests.sh | tee "digests-${{ matrix.arch }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guest-digests-${{ matrix.arch }}
+          path: digests-${{ matrix.arch }}.txt
+          retention-days: 7
+
+      - name: Keep the ELFs from the x86_64 build
+        if: matrix.arch == 'x86_64'
+        run: |
+          tar -czf sp1-guest-elfs.tar.gz \
+            zk/program/target/elf-compilation \
+            zk/trustgraph-program-v2/target/elf-compilation \
+            zk/weighted-program/target/elf-compilation \
+            zk/composition-program/target/elf-compilation \
+            zk/nostr-program/program/target/elf-compilation
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'x86_64'
+        with:
+          name: sp1-guest-elfs
+          path: sp1-guest-elfs.tar.gz
+          retention-days: 7
+
+  compare:
+    name: The two builds must agree
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      digests: ${{ steps.compare.outputs.digests }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: guest-digests-*
+          merge-multiple: true
+
+      - id: compare
+        run: |
+          set -eu
+          test -s digests-x86_64.txt   || { echo "the x86_64 build produced no digests"; exit 1; }
+          test -s digests-aarch64.txt  || { echo "the aarch64 build produced no digests"; exit 1; }
+          if ! diff -u digests-x86_64.txt digests-aarch64.txt; then
+            echo ""
+            echo "Two machines built this commit and disagreed about the guest bytes."
+            echo "Until they agree, a vkey is a property of the machine that produced it and"
+            echo "must not be pinned into a verifier: see research/operations/addresses-and-vkeys.md."
+            exit 1
+          fi
+          echo "identical on both architectures:"
+          cat digests-x86_64.txt
+          {
+            echo 'digests<<EOF'
+            cat digests-x86_64.txt
+            echo EOF
+          } >> "$GITHUB_OUTPUT"

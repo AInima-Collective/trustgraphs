@@ -9,3 +9,19 @@ pub mod nostr_workspace;
 pub mod signer;
 pub mod trust_graph;
 pub mod weighted;
+
+/// Every production program, in a stable order, with the ELF it is compiled from.
+///
+/// The order is the release manifest's order and must not depend on a hash map, a directory
+/// listing, or anything else that can differ between two machines producing the same table.
+pub fn all() -> Vec<(&'static str, sp1_sdk::Elf)> {
+    vec![
+        ("trust-graph", trust_graph::elf()),
+        ("trust-graph-weighted", weighted::elf()),
+        ("trust-compose", composition::elf()),
+        ("signer-sync", signer::elf()),
+        ("contributions", contributions::elf()),
+        ("hypercerts", hypercerts::elf()),
+        ("nostr-workspace", nostr_workspace::elf()),
+    ]
+}
