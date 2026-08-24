@@ -1,6 +1,8 @@
 # Run trustgraphs locally
 
 This walkthrough starts a local chain, storage, database, indexer, frontend, and proving flow.
+Start with a local clone of the
+[Trustgraphs repository on GitHub](https://github.com/JakeHartnell/trustgraphs).
 
 ## Install and build
 

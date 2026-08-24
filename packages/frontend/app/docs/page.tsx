@@ -29,10 +29,6 @@ export default function DocsIndexPage() {
   return (
     <div className="mx-auto w-full max-w-[72ch]">
       <PageTitle>Documentation</PageTitle>
-      <p className="text-lg text-text-muted">
-        From no jargon at all to running the machinery yourself, shallow to
-        deep.
-      </p>
 
       {/* The task index. Faster than the sitemap when the reader arrives with
           a goal instead of a topic. */}

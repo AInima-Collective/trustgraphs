@@ -2,11 +2,14 @@
 
 Trustgraphs uses several toolchains because the repository includes Solidity contracts, Rust
 scoring and proving code, a TypeScript frontend and indexer, and local infrastructure.
+The source code is available in the
+[Trustgraphs repository on GitHub](https://github.com/JakeHartnell/trustgraphs).
 
 ## Requirements
 
 Install:
 
+- Git;
 - Docker with Compose, for IPFS and Postgres;
 - [go-task](https://taskfile.dev/), the repository task runner;
 - `jq`;
@@ -26,6 +29,7 @@ Platform-specific installers are available from the projects above. Confirm that
 on your `PATH` before continuing:
 
 ```bash
+git --version
 docker --version
 task --version
 jq --version
@@ -34,6 +38,13 @@ pnpm --version
 forge --version
 anvil --version
 cargo --version
+```
+
+## Clone the repository
+
+```bash
+git clone https://github.com/JakeHartnell/trustgraphs.git
+cd trustgraphs
 ```
 
 ## Install SP1

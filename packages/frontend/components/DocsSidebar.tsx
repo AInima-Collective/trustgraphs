@@ -67,7 +67,7 @@ export function DocsSidebar() {
           pathname === '/docs' ? 'text-text' : 'text-text-muted'
         )}
       >
-        Docs home
+        Docs
       </Link>
 
       {DOCS_SECTIONS.map((section) => {
