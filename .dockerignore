@@ -1,10 +1,13 @@
 # Build context for zk/operator/Dockerfile.
 #
-# The awkward part is `target/`: it is enormous and must not be sent, EXCEPT for the guest ELFs,
-# which live under `zk/*/target/elf-compilation/` and are the one build output the image genuinely
-# needs (they are compiled outside the image — see the Dockerfile header for why). Docker applies
-# every pattern in order and the last match wins, so the negations below re-include exactly those
-# paths out of the blanket exclusion above them.
+# The awkward part is `target/`: it is 23 GB and must not be sent, EXCEPT for the guest ELFs, which
+# are the one build output the image genuinely needs. They are compiled outside the image — see the
+# Dockerfile header for why — and they are 4.7 MB sitting inside 1.3 GB of intermediate build
+# state, so the re-includes below name the release directory's direct children and nothing under
+# them. Docker applies every pattern and the last match wins; `*` does not cross a `/`, so
+# `release/deps/whatever.rlib` stays excluded by the blanket rule above.
+#
+# `cargo prove build --docker` and the plain path land in different directories, so both are named.
 
 **/target
 **/node_modules
@@ -12,21 +15,27 @@
 **/.next
 **/.turbo
 
-!zk/program/target/elf-compilation/**
-!zk/trustgraph-program-v2/target/elf-compilation/**
-!zk/weighted-program/target/elf-compilation/**
-!zk/composition-program/target/elf-compilation/**
-!zk/nostr-program/program/target/elf-compilation/**
+!zk/program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
+!zk/trustgraph-program-v2/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
+!zk/weighted-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
+!zk/composition-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
+!zk/nostr-program/program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 
-# ...but not the intermediate build state inside them. Only the ELFs.
-zk/**/elf-compilation/**/deps/**
-zk/**/elf-compilation/**/build/**
-zk/**/elf-compilation/**/incremental/**
-zk/**/elf-compilation/**/examples/**
-zk/**/elf-compilation/**/.fingerprint/**
+!zk/program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
+!zk/trustgraph-program-v2/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
+!zk/weighted-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
+!zk/composition-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
+!zk/nostr-program/program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 
-# Local state and generated artifacts. None of it belongs in an image, and `.demo` and
-# `.trustgraph` in particular can hold a request journal and a submitter's working files.
+# The frontend and indexer are not part of a Rust build, and `packages/` is 3.6 GB.
+packages
+
+# NOT excluded, however tempting: `research/`. `zk/prover` has two dev-dependencies with paths into
+# it, and cargo resolves dev-dependencies even for a plain `cargo build` — a missing path
+# dependency fails at manifest load, forty minutes into a release.
+
+# Local state and generated artifacts. `.demo` and `.trustgraph` in particular can hold a request
+# journal and a submitter's working files, which have no business in an image.
 .demo
 .trustgraph
 .docker
@@ -35,7 +44,4 @@ cache
 out
 deployments/**/dev*
 repos
-docs
-research
-packages/frontend/.next
 **/*.log

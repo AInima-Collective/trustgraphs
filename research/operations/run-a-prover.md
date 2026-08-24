@@ -702,8 +702,8 @@ guest table it was built from. Both are checkable without an account:
 
 ```bash
 # what this container's guests are, without starting it
-docker run --rm ghcr.io/jakehartnell/trustgraphs-operator:latest \
-  --entrypoint cat /etc/trustgraph/elf-digests.txt
+docker run --rm --entrypoint cat \
+  ghcr.io/jakehartnell/trustgraphs-operator:latest /etc/trustgraph/elf-digests.txt
 
 # who built it, and from which commit
 gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:latest \
@@ -784,14 +784,63 @@ guest, and submits the complete owner set directly to the module without IPFS or
 Catalog derivation, native receipt construction, isolated budgets, and the real-Safe owner update
 are regression-tested. Legacy signer deployments retain the manifest fallback above.
 
-**Still not run unattended here: a Contributions round.** Its typed chain discovery is covered,
-and `tests/e2e/run.sh` proves the full program pipeline through the CLI, but the fork rehearsal still
-drives only the curated and vault-funded trust-graph pair. The remaining Contributions part of
-[`DEVIATIONS`](../../research/DEVIATIONS.md) #23 therefore remains accurate.
+**A real reorg, against a running daemon — `tests/e2e/reorg.sh`.** This used to say "the
+block-hash finality check is unit-tested against a synthetic one", which is a test of the
+arithmetic rather than of the daemon: the anchor memory that lets the check fire at all is
+per-RUN state, so a reorg is only detectable by a process that was already running when the chain
+changed under it. A `--once` tick can never notice one. Both paths now run against a single
+long-lived daemon on an anvil snapshot/revert:
 
-**Also not run:** a multi-day soak, a real reorg (the block-hash finality check is unit-tested
-against a synthetic one), and the `RequestOutcomeUnknown` resolution path against the live prover
-network — that last one is measured against the SDK source in §3 rather than executed.
+- A checkpoint the daemon had already anchored is reverted away and comes back at a different
+  block. It refuses the stale anchor rather than proving against a block that is no longer on the
+  chain, then re-anchors and recovers on its own.
+- A submit that already landed is reverted away before its confirmations accrue. It notices,
+  alerts, and resubmits the proof it is still holding — one intent and one journaled landing
+  across the whole run, so it neither paid twice nor recorded a landing that had vanished.
+
+**A soak — `tests/e2e/soak.sh`.** Not a wall-clock one, deliberately. Three production days at a
+60-second cadence is 4,320 quiet ticks and zero restarts, which is a long time to prove very
+little. The harness accumulates the things that actually break a daemon instead: it kills the
+process every 45 seconds, black-holes the RPC for 8 seconds out of every 70, and adds a graph edge
+every 25 seconds. What it asserts afterwards: one request per checkpoint, a journal that parses
+line for line after every kill, no recorded landing that is not on chain, and growth that follows
+work rather than the clock. Note that ticks do NOT accumulate faster than wall-clock under that
+abuse — a restart re-reads the chain from scratch and a black-holed read burns its full
+`rpc_timeout_seconds` — so the tick count is the least interesting number it prints.
+
+**Three defects, all found by writing those two.** Each was a way for the daemon to be dead
+without saying so, and all three are fixed:
+
+| found | what it was |
+| --- | --- |
+| the chain client had no timeout | `reqwest` imposes none, so a provider that accepts the connection and never answers — what an overloaded one does, rather than refusing — stopped the daemon permanently: no tick, no `tick_failed`, no alert, until a human noticed |
+| readiness could not tell working from wedged | a proof takes up to an hour and a receipt watch up to ten minutes, logging nothing and completing no tick throughout; a tick-staleness probe calls both dead |
+| every tick re-derived every guest vkey | seven SP1 setups measure 68 seconds of CPU, and the loop did six of them per pass — roughly a full core, continuously, re-deriving constants that cannot change while the process runs. Ticks went from 11–25 seconds to 1.01 seconds once they were derived at startup |
+
+**What the soak shows about restarts, which is worth knowing before you deploy one.** Killing the
+daemon during a proof lands inside the ambiguous window §3 describes, and the window is as wide as
+the proving call rather than milliseconds: the intent is fsynced before the request and the handle
+is recorded after it returns. In a 20-minute soak with a restart every 45 seconds, roughly one
+request in nine ended that way. The daemon does exactly the right thing — it holds
+`RequestOutcomeUnknown`, refuses to auto-retry, and alerts — but that instance then waits for a
+human. A deployment that restarts often will accumulate these. Restart it rarely, and resolve them
+promptly.
+
+**Still not run: `RequestOutcomeUnknown` against the live prover network.** The hold above is
+produced and handled locally; what is measured from the SDK source in §3 rather than executed is
+the RESOLUTION — matching `public_values_hash` through `get_filtered_proof_requests` against the
+real network. That needs a funded Succinct key, which is the same key
+[`SEPOLIA_GOAL`](../../SEPOLIA_GOAL.md) needs, and the rehearsal belongs in the session that first
+funds one.
+
+**Still not run unattended in a rehearsal a runner can execute: a Contributions round.** The
+daemon-side gap is smaller than it was — `task demo` has scheduled a Contributions round through
+the daemon since 2026-08-04, and `demo:prove` fails unless both the trust root and the round root
+land. What is missing is that leg inside `tests/e2e/`, and the obstacle is now the demo harness
+rather than the daemon: `task demo` writes `.docker/` and `.demo/` at fixed paths and expects the
+default RPC port, so it takes over a checkout and cannot run beside a live stack. Restated in
+[`DEVIATIONS`](../../research/DEVIATIONS.md) #23 with that reason. `reorg.sh` and `soak.sh` drive
+only the trust-graph lane for the same reason the fork rehearsal does.
 
 ---
 

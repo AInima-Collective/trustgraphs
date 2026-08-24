@@ -1,329 +1,398 @@
-# GOAL: put Trustgraphs on Ethereum Sepolia
+# GOAL: make the operator something a stranger can run
 
-> The audit closed this morning and every verification key is still "none yet", so the
-> expensive parts of a public deployment are, right now, still cheap. This program spends
-> that window. It ends with a public chain holding contracts we cannot quietly edit, so
-> everything that has to be true before the first broadcast is written down here first.
+> The whole design rests on one claim: `submitProof` is permissionless, so nobody has to
+> trust us to keep their scores fresh. `run-a-prover.md` opens by saying exactly that.
+> But the instruction we actually ship is "clone an 11,600-line Rust workspace, install a
+> custom RISC-V toolchain, build for twenty minutes, and keep the source tree on the box
+> forever." This program closes the distance between the promise and the command. It ends
+> with one image, one config file, two secrets, and a health endpoint that says whether it
+> is alive.
 
-**Status:** opened 2026-08-23, on `main` at `b08db97`. Not started.
+**Status:** opened 2026-08-24, on `main` at `b13035d`. **M0, M1, M2 and M5's reorg and soak legs
+are done and green; M3 and M4 are built but cannot be verified on this box** (no SP1 toolchain, no
+usable Docker daemon — the same constraint SEPOLIA_GOAL 1.1 carries). M6 is blocked on the first
+tag, because there is no published image to follow the instructions against yet.
 
-**Baseline:** `pnpm test:deploy` 6/6 green. `pnpm deploy:contracts --dry-run` prints a
-five-step Sepolia plan. `forge test` was last recorded green at 738 by the audit-closure
-program, by exhaustive path sharding: the one-shot process exceeds the runner's memory.
+Commits on `main`: `e5b06bb` (M0-M2), `4814857` (M3-M4), `8cd0cc5` (M5 reorg + three defects it
+found).
 
-**Predecessor:** [research/plans/pre-testnet-audit-closure.md](research/plans/pre-testnet-audit-closure.md),
-whose M3 built the chain-profile and release-manifest machinery this program consumes.
-That program's testnet gate is this program's entry condition, and it is met.
+**Sibling program:** [SEPOLIA_GOAL.md](SEPOLIA_GOAL.md), which deploys the contracts. Its M7
+configures the operator for Sepolia and assumes it can be run somewhere. This program is
+what makes that true. They can proceed in parallel: nothing here touches a contract, and
+nothing there depends on the packaging below except at the moment the daemon actually starts.
+
+**Predecessor:** the proof-scheduler build program, closed 2026-07-28. That program built the
+decision engine and proved it works. This one is about everything around it.
 
 ---
 
 ## What is already true
 
-M3 of the audit closure shipped the deploy-path skeleton, and it works:
+Worth stating plainly, because the gap list below is short and specific, and the reflex on
+reading it is to assume the operator needs a rewrite. It does not.
 
-- `contracts/deploy/profiles.ts` separates deployment *stage* from chain *target*, with
-  Sepolia as an explicit profile (chain 11155111, `PONDER_RPC_URL_11155111`, explorer,
-  manifest path).
-- `deployments/sepolia.json` is the tracked release manifest, validated by
-  `deployments/schema.json`, with a validator that rejects secret-shaped keys.
-- `contracts/script/Common.s.sol` refuses the default Anvil key on a public chain and
-  asserts the expected chain ID before any broadcast.
-- The indexer (`ponder.config.ts`), its launcher preflight, the frontend config generator,
-  `lib/wagmi.ts`, and the operator (`zk/operator/src/config.rs:453`, which binds itself to
-  chain 11155111 from the manifest) all already have Sepolia branches.
+- **The hard part is done and tested.** Every decision that can be wrong lives in
+  `crates/operator-core` (3,714 lines), a plain root-workspace crate CI tests against a fake
+  chain. The sp1-sdk adapter in `zk/operator` (7,900 lines) is deliberately thin.
+- **Crash safety is real, not aspirational.** Append-only journal keyed
+  `(chain_id, instance_id, checkpoint_id)`, fsynced intent before request, re-attach on
+  restart. `tests/e2e/fork.sh` kills it mid-proof and confirms no second request.
+- **The money paths are guarded.** Rolling loss budgets that halt rather than bleed,
+  simulate-before-send, a basefee gate, deterministic-revert abandonment, and a front-run
+  test showing the fee follows the journal's recipient rather than `msg.sender`.
+- **A drifting guest ELF fails safe.** The operator derives its own vkeys at startup
+  (`zk/operator/src/run.rs:1777`) and compares them per instance against the deployed
+  verifier (`run.rs:1078`), producing a `VerifierRotated` hold and an alert instead of
+  spending. The failure mode is a loud outage, not a wasted proof.
+- **Observability exists, on disk.** `status.json` is a scrapable heartbeat, `journal.jsonl`
+  is the money record, and the log narrates changes rather than every tick.
+- **CI already builds the guests.** `.github/workflows/zk-parity.yml` installs the pinned SP1
+  toolchain and builds every guest family on a standard runner, then fans out a parity matrix
+  across all seven programs. A release flow is that job plus packaging, not new ground.
+- **The docs are ahead of most projects' code.** `research/operations/run-a-prover.md` has an
+  alert-by-alert response table, a recovery section, and a §7 that says what has *not* been
+  run. Most of this program's gap list came from that section rather than from discovering
+  anything.
 
-### External dependencies, re-verified on Sepolia 2026-08-23
+---
 
-Every address the manifest pins was checked live from this checkout today:
+## What is actually wrong
 
-| Dependency | Address | Result |
-| --- | --- | --- |
-| EAS | `0xC2679fBD37d54388Ce493F1DB75320D236e1815e` | 19,972 bytes of code |
-| EAS Schema Registry | `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0` | 1,977 bytes of code |
-| SP1 Groth16 gateway | `0x397A5f7f3dBd538f23DE225B51f532c34448dA9B` | route `0x4388a21c` resolves to `0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2`, `VERSION()` is `v6.1.0`, **not frozen** |
-| Chainlink ETH/USD | `0x694AA1769357215DE4FAC081bf1f309aDC325306` | 8 decimals, `"ETH / USD"`, live round $2,464.97, 1,095s old when sampled |
-| Circle test USDC | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | 6 decimals, symbol `USDC` |
-| Safe 1.3.0 singleton | `0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552` | canonical, `VERSION()` is `1.3.0` |
-| Safe 1.3.0 proxy factory | `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2` | canonical, has code |
+Four things, all in the layer between "the daemon decides correctly" and "a person other
+than its author can operate it."
 
-The SP1 version gate stays resolved: no toolchain bump, no second key rotation. Recheck the
-feed and the gateway route immediately before broadcast anyway, per `research/operations/sepolia.md`.
+### 1. It needs a Rust compiler at runtime
+
+`zk/operator/src/handlers.rs` shells out to `cargo run` to reconstruct each round's input:
+line 179 (trust-graph, via `input-exporter`), 216 (signer), 251 (contributions, via
+`zk/prover --features fetch`), 289 (weighted), 367 (nostr, `--features witness-nostr`), and
+418 (the strict Envelope0 preflight, via the `envelope0-preflight` binary).
+
+The subprocess boundary itself is correct and should stay: `zk/operator` is a *detached*
+workspace, on purpose, so that sp1-sdk's dependency graph never unifies with the root
+workspace's alloy graph (the reason is written into `zk/operator/Cargo.toml`). Calling
+`input-exporter` as a library would undo that. The problem is only that the subprocess is
+`cargo` rather than a binary, which drags the entire source tree, a toolchain, and a warm
+`target/` into production.
+
+Note the scope: the two lanes Sepolia runs, trust-graph and signer, need exactly one extra
+binary (`input-exporter`, from the root-workspace crate `crates/input-exporter`). The heavier
+prover binaries are only needed for contributions and nostr.
+
+### 2. Its state is wherever you happened to `cd`
+
+`zk/operator/src/config.rs:340` and its neighbours default to `./.trustgraph/operator/…` for
+the journal, the status file, the Envelope0 cache, and the weighted-manifest cache. Only
+`release_manifest` is resolved relative to the config file (`config.rs:453`); everything else
+is relative to the working directory. Combined with the `--manifest-path zk/prover/Cargo.toml`
+arguments above, the daemon silently requires that you start it from the repo root.
+
+That is a footgun anywhere and a data-loss bug on a platform with an ephemeral filesystem,
+because `journal.jsonl` is the one file whose loss costs money: the runbook's own recovery
+table says a lost journal means re-requesting proofs already paid for.
+
+### 3. There is no way to ask it whether it is alive
+
+The operator has no HTTP surface. The only liveness signal is `tick_at` inside a file on its
+local disk, which means a container healthcheck cannot see it and neither can an uptime
+check.
+
+This also strands a feature that is already built on the other side: the frontend's
+`packages/frontend/app/api/operator-status/[instanceId]/route.ts` accepts either
+`OPERATOR_STATUS_PATH` (a shared volume) or `OPERATOR_STATUS_URL` (remote), and sanitizes
+the heartbeat down to an explicit allowlist before it reaches a browser. The URL mode has no
+server to point at. The volume mode does not survive contact with a platform that allows one
+volume per service.
+
+### 4. It has never been packaged, and some claims have never been run
+
+There is no Dockerfile for the operator, no systemd unit, and no published image. The only
+things that start it are `taskfile/demo.yml` and `tests/e2e/`, both via `cargo run` from the
+repo root. The distance is shorter than it looks, though: the `guest-elfs` job in
+`.github/workflows/zk-parity.yml` already builds all five guest families on a stock
+`ubuntu-latest` runner with SP1 pinned at v6.3.1, which is the part everyone assumes will be
+the problem.
+
+And §7 of the runbook is honest about four things nobody has executed:
+
+| claim | current evidence |
+| --- | --- |
+| survives a multi-day run | never run |
+| survives a real reorg | synthetic unit test on the block-hash check only |
+| resolves `RequestOutcomeUnknown` against the live prover network | read off the pinned SDK source in §3, not executed |
+| schedules a Contributions round unattended | `DEVIATIONS` #23, still open |
+
+### 5. The guest ELF is not reproducible, and we already knew
+
+Found by asking whether CI could publish the image, which is a question that only has a good
+answer if two machines building one commit agree.
+
+Succinct's documentation says `cargo prove build` "may not generate a reproducible ELF" and
+points production builds at `--docker`. Every guest build here uses the plain path.
+`research/operations/addresses-and-vkeys.md` already records the consequence in our own words:
+"a toolchain reinstall has been observed to shift vkeys with zero source change," and it warns
+readers that their value "may legitimately differ from another machine's."
+
+This is the only item on this list with a deadline, because the Sepolia verifier pins a vkey
+at construction and the factory pins the verifier. M3 covers it.
 
 ---
 
 ## Decisions
 
-Ruled by the operator on 2026-08-23, at the top of this program:
-
-- **D1 — The ProvingVault ships in the first release.** `TrustgraphsFactory.VAULT` is
-  `immutable` (`contracts/src/factory/TrustgraphsFactory.sol:185`), so a factory deployed
-  without a vault can never offer prepay: adding it later means a second factory and a
-  migrated create path. Prepaid proving is rehearsed on testnet, where the asset has no
-  value, rather than first attempted on mainnet.
-- **D2 — Visitors can create their own networks.** The public testnet exposes the wizard,
-  not just a seeded instance. This is the ruling with the largest blast radius, and
-  everything in M1 exists because of it.
-- **D3 — An EOA holds registry and vault administration.** Reversed from an initial Safe
-  ruling on the same day: a Safe costs a setup step and a signing ceremony per administrative
-  action, and what it protects here is a deployment we expect to discard before mainnet. The
-  deployer remains a transit role and the program is not finished until it has renounced.
-  Two consequences are load-bearing. The admin EOA can call `InstanceRegistry.update()` on
-  **any** instance, including networks strangers created, so this key rewrites the discovery
-  layer for the whole deployment; it cannot touch vault deposits. And a Safe is still
-  mandatory in exactly one place: `TrustgraphsFactory.sol:358` rejects an EOA distributor
-  owner, so a seeded network **with a fund** must be created through the governed factory,
-  which mints its own Safe. Mainnet returns to Safe custody.
-- **D4 — Proving runs on the Succinct prover network.** No proving host to keep alive, and
-  it matches how the operator runs continuously.
-- **D5 — Testnet economics: price the vault for realism, put the real ceiling in the
-  operator.** Delegated to me and ruled below. Every fee collected on Sepolia is faucet money
-  and therefore worth zero, while every proof spends real prover credit, so the vault is a
-  rehearsal and the operator's loss budget is the actual spending limit. Fee bands stay at
-  $5/$10/$15 and we seed no liquidity; the free tier is the seeded network alone;
-  `budget.global_usd_per_day` drops 250 to **15** and `per_instance` 25 to **2**, capping the
-  worst case near $450/month instead of $7,500. Full reasoning and the cost table are in
-  [JAKE_HARTNELL_TODO.md](JAKE_HARTNELL_TODO.md#part-25-the-economics-decided).
-
-### What D2 costs, specifically
-
-The wizard calls `createGovernedInstance`, and the Sepolia plan does not deploy anything
-that answers it. Three facts, each verified:
-
-1. `SepoliaEnv.deployContracts` (`contracts/deploy/env.ts:1102`) stops at
-   `TrustgraphsFactory`. There is no governed factory step, and the dry-run confirms a
-   five-step plan.
-2. `packages/frontend/scripts/generate-config.ts:81` reads
-   `const governedFactoryAddress = isSepolia ? '' : localGovernedFactoryAddress`. Even if
-   the contract existed, the generated Sepolia config would not point at it.
-3. `DeployGovernedTrustgraphsFactory` requires a **real signer-program verifier**: it reads
-   `.docker/zk_verifier_signer_deploy.json` and passes both the verifier and
-   `signerProgramVKey` into an immutable constructor
-   (`contracts/script/DeployGovernedTrustgraphsFactory.s.sol:24-48`). So D2 also pulls
-   `SP1_SIGNER_PROGRAM_VKEY` and a second `DeployZkVerifier` run into the release.
-
-D2 does **not** pull in weighted or compose. Those factories stay undeployed and their
-wizard entry points stay hidden, per the audit closure's compose gate and
-`research/operations/sepolia.md`. First public release is trust-graph only, governed.
+- **D1 — The subprocess seam stays; only the executable changes.** Prebuilt binaries invoked
+  by path, not `cargo run`. The detached-workspace split that forces a subprocess is load
+  bearing and is not being undone.
+- **D2 — The dev loop must not regress.** `task demo`, `tests/e2e/operator.sh` and
+  `tests/e2e/fork.sh` run from a source checkout and must keep working unchanged. Tool
+  resolution therefore falls back to `cargo run` when no prebuilt binary is configured or
+  adjacent, rather than requiring every developer to pre-build.
+- **D3 — The HTTP surface is read-only and off by default.** No control plane, no way to
+  trigger or halt anything over the network. Binding it is opt-in, and what it serves is the
+  same allowlist the frontend adapter already enforces, so the boundary holds on both sides
+  instead of trusting the reader to sanitize.
+- **D4 — The image pins the ELF; it does not rebuild it.** Guests are built once, in a build
+  stage, with the SP1 toolchain pinned at v6.3.1. The runtime stage carries no toolchain. The
+  ELF digest is recorded as an image label and logged at startup, so "which guest is this
+  container running" is answerable without starting it.
+- **D6 — Releases are cut by CI, from a tag, and attested.** Not from anyone's laptop. A vkey
+  that gets pinned into an immutable verifier should trace to a public workflow run on a public
+  commit, which is also what `research/UPGRADE_GOVERNANCE.md:30` already asks for. This is only
+  worth anything on top of D7.
+- **D8 — The GHCR package is public.** Ruled 2026-08-24. Anonymous `docker pull` with no
+  GitHub account is the difference between "you may self-host" and "you may self-host if you
+  are one of us," and §5 of the runbook makes the first claim. It also lets anyone verify the
+  build provenance attestation against a public commit without credentials.
+- **D7 — Guests are built reproducibly, via `--docker`.** Accepting slower builds and a Docker
+  dependency, because without it "the published vkey differs from mine" and "the published
+  image is not what it claims" are indistinguishable.
+- **D5 — Scope fence: this program does not change any decision the operator makes.**
+  No policy edits, no budget changes, no new holds. `crates/operator-core` should come out of
+  this program byte-identical except where a path or a metric forces a signature change. If a
+  behavioural change looks necessary, it belongs in its own program.
 
 ---
 
 ## Delivery plan
 
-### M0 — The inputs that cannot be produced in this repo
+### M0 — Prebuilt tools instead of a compiler
 
-Nothing else can finish without these, and none of them are code. Tracked in the operator
-ledger below; listed here because they gate M8.
+- [x] A tool resolver: look for the binary in a configured `[ops].tool_dir`, then next to the
+      running executable, then fall back to `cargo run` with today's arguments (D2).
+- [x] Convert all six call sites in `handlers.rs` to it: `input-exporter`,
+      `envelope0-preflight`, and the three prover feature builds.
+- [x] Keep `SP1_SKIP_PROGRAM_BUILD=true` set on every spawned child, as `run_tool`
+      (`handlers.rs:1059`) already does. That env var is what stops a child from rebuilding the
+      guests mid-tick and returning a proof under a vkey no verifier pinned.
+- [x] A test that runs the trust-graph lane with `tool_dir` set and `cargo` removed from
+      `PATH`, so the "no compiler at runtime" claim is enforced rather than asserted.
 
-- [ ] Release vkeys and ELF digest, derived from the frozen release checkout on a machine
-      with the SP1 toolchain: `trust-graph` vkey, `signer` vkey, `SP1_PROGRAM_ELF_SHA256`.
-      **This sandbox has no SP1 toolchain at all** (`cargo-prove` and `sp1up` are both
-      absent), so this step is operator-side by construction.
-- [ ] The admin EOA that receives registry and vault administration (D3), ideally distinct
-      from the deployer key.
-- [ ] A funded deployer key that has never been published, plus a separate operator
-      submitter key.
-- [ ] A private Sepolia RPC that serves logs and historical calls from the deployment block.
-- [ ] A funded Succinct prover network account.
+**Exit:** `tests/e2e/operator.sh` passes twice, once via the fallback and once via `tool_dir`
+with no `cargo` on `PATH`.
 
-### M1 — Governed creation becomes part of the release
+### M1 — One state directory, resolved explicitly
 
-The largest lane, and the one D2 created.
+- [x] A single `[ops].state_dir`, with journal, status, and both caches defaulting inside it.
+      Existing explicit paths keep working so no deployed config breaks.
+- [x] Resolve every relative path in the config against the config file's directory, the way
+      `release_manifest` already is (`config.rs:453`), so cwd stops being load bearing.
+- [x] Refuse to start when the state directory is missing or not writable, alongside the
+      existing startup refusals for an empty `rpc` and a zero `registry`.
+- [x] A documented and tested journal backup and restore: take a copy, restore it onto a
+      fresh box, confirm re-attach rather than re-request.
 
-- [ ] Extend the manifest: `deployments/schema.json` is strict
-      (`additionalProperties: false`), so the signer verifier, the governed factory, and the
-      Safe singleton/proxy-factory addresses each need a slot, plus a `programs.signer`
-      entry beside `programs.trustGraph`. Update `contracts/deploy/release-manifest.ts` and
-      its validator in the same change. The operator's parser ignores unknown fields, so it
-      does not break, but it should learn to read the new ones.
-- [ ] Add the signer ZK verifier step to `SepoliaEnv`, gated on a nonzero
-      `SP1_SIGNER_PROGRAM_VKEY`. The existing zero-vkey fallback in `DeployZkVerifier`
-      silently pins the root vkey, which for a signer verifier is a verifier that can never
-      verify its own program. Fail closed instead.
-- [ ] Add the governed factory step to `SepoliaEnv`, after the base factory.
-- [ ] **Use the canonical Safe deployment.** `DeployGovernedTrustgraphsFactory.s.sol:35-36`
-      calls `new GnosisSafe()` and `new GnosisSafeProxyFactory()`. On a public chain that
-      makes every wizard-created DAO Safe invisible to app.safe.global and the Safe
-      Transaction Service, because those index known singletons. Parameterize the script to
-      accept a singleton and factory address, pass the canonical 1.3.0 pair on Sepolia, and
-      keep the self-deploying behaviour for local only.
-- [ ] Point `generate-config.ts` at the manifest instead of the empty-string literal, and
-      make it fail closed on a `planned` manifest.
-- [ ] Confirm the weighted and compose entry points stay hidden. `generate-config.ts:112-133`
-      already falls back to an empty address for both, since the manifest carries no such
-      key, so this should be a verification in the browser rather than a change. Prove it,
-      because D2 puts real visitors on the create page.
-- [ ] Update `contracts/deploy/release-manifest.test.ts`'s "Sepolia plan is trust-graph only
-      and reuses canonical EAS" case, which currently pins the five-step shape.
+**Exit:** the daemon runs correctly from an arbitrary working directory, and a restored
+journal re-attaches to in-flight work.
 
-**Exit:** a dry-run prints the full governed plan; a fork rehearsal creates a network
-through the wizard's exact code path and the resulting Safe is a canonical-singleton proxy.
+### M2 — A read-only health and heartbeat listener
 
-### M2 — The vault, validated
+- [x] `[ops].listen` (default unset). When set, serve three routes and nothing else:
+      `/health` (the process is up), `/ready` (`tick_at` is fresher than a small multiple of
+      `cadence.tick_seconds`), and the sanitized heartbeat.
+- [x] The heartbeat body is the frontend adapter's allowlist and no more: `head_block`,
+      `tick_at`, per-instance health, and the explicit `settings` projection. RPC and IPFS
+      endpoints, webhook URLs, filesystem paths, keys and unresolved journal entries never
+      appear. A test asserts absence by scanning the serialized body for known-secret values.
+- [x] Point `OPERATOR_STATUS_URL` at it in the local demo, so the mode the frontend already
+      supports is actually exercised before Sepolia depends on it.
 
-- [ ] `DeployProvingVault.s.sol:49-55` only checks that the feed and USDC are nonzero.
-      Before deploying on a public chain it must assert: both addresses have code; the feed
-      reports 8 decimals and a live, positive, in-window round; USDC reports 6 decimals.
-      A vault wired to a dead feed prices every proof at zero and looks like a bug for a
-      week before anyone notices.
-- [ ] Per D5, the fee bands, the oracle band and `FEED_MAX_STALENESS=7200` all stay as they
-      are, and we seed no liquidity. The work here is to *document* that in the runbook as a
-      deliberate choice rather than an unexamined default, so nobody "fixes" the fee bands to
-      zero later on the reasoning that testnet money is fake.
+**Exit:** `curl /ready` fails while the daemon is wedged and succeeds while it is ticking,
+and the demo frontend renders operator status from the URL rather than a shared volume.
 
-### M3 — The seeded instance, as a release step
+### M3 — A guest ELF that two machines can agree on
 
-- [ ] There is no release-capable creation script: `CreateDevInstances.s.sol` is a dev
-      fixture. Write one that takes an explicit admin, name, metadata CID, algorithm
-      parameters, quorum, participation floors, and a distributor choice, with a
-      deterministic salt.
-- [ ] Every minted distributor must be owned by an initialized Safe. The factories reject
-      EOAs at both creation and attachment (audit lane D), so under D3's EOA custody a seeded
-      network **with a fund** has to come from the governed factory, which mints its own Safe
-      in the creating transaction. That also means the seeded network exercises the same code
-      path visitors use, which is worth having. A fundless seeded network can use the base
-      factory directly.
-- [ ] Write the created instance into `deployments/sepolia.json`'s `instances[]` and into
-      `config/networks.sepolia.json`, which is currently `[]` and is the outage fallback for
-      the runtime catalog.
+This is the milestone with a deadline attached, and it is the one that came out of asking
+whether CI could publish the image.
 
-### M4 — Custody handoff and post-deploy invariants
+Succinct's own documentation says it plainly: "Running `cargo prove build` may not generate a
+reproducible ELF which is necessary for verifying that your binary corresponds to given
+source code," and directs production builds at the `--docker` path instead. Every guest build
+in this repo uses the plain path: `taskfile/zk.yml`, the five `sp1_build::build_program` calls
+in `zk/prover/build.rs`, and the `guest-elfs` job in `.github/workflows/zk-parity.yml`.
 
-- [ ] An idempotent handoff script: registry administrator and operator, and vault
-      administrator and fee-setter, move to the admin EOA (D3); the script verifies the
-      recipient holds each role **before** the deployer renounces anything. If the operator
-      elects one key for both deployer and admin, the script must say the handoff was a no-op
-      rather than reporting a pass it did not perform.
-- [ ] A release verification script asserting the invariant list in
-      `research/operations/sepolia.md`: chain ID; verifier gateway and vkey equal the manifest;
-      registry roles match the custody plan; the factory's EAS, registrar, verifier,
-      registry, vault, deployers and `EPOCH_FLOOR` match; the seeded `InstanceCreated` event
-      and the registry row agree; the instance's schema UID, resolver, accumulator, chain ID
-      and params hash agree; the accumulator is bound to the intended schema and snapshot;
-      distributor ownership and vault policy are correct; no unintended deployer privilege
-      remains; every manifest address has bytecode.
-- [ ] The existing skip/resume logic trusts local artifacts. Make it verify chain ID and
-      on-chain bytecode too, so a file left over from chain 31337 can never cause a Sepolia
-      step to be skipped.
+We already knew, and wrote down, that this bites. `research/operations/addresses-and-vkeys.md`
+records that "a toolchain reinstall has been observed to shift vkeys with zero source change,"
+with the measurements in `research/VKEY_NOTES.md`, and tells readers "your value may
+legitimately differ from another machine's." Its stated mitigation is to derive deployment
+vkeys "on a pinned toolchain as part of the deploy ceremony," but pinning the toolchain
+*version* does not fix a drift that was observed across a reinstall *at* a pinned version.
 
-**Exit:** the verification script passes against the fork rehearsal, and fails loudly when
-a role handoff is deliberately omitted.
+Two consequences that matter right now:
 
-### M5 — Preflight, executable rather than prose
+- **A CI-published image and a locally-derived vkey would simply disagree**, and nobody could
+  tell "not reproducible" apart from "compromised." That collapses the whole point of
+  publishing.
+- **`research/UPGRADE_GOVERNANCE.md:30` already promises a "reproducible-build artifact so
+  anyone can check vkey ↔ source before the window closes"** as a Lane C requirement. Today
+  we cannot produce one.
 
-- [ ] Turn today's manual checks into one command that fails closed: chain ID is 11155111;
-      deployer is not the Anvil key and holds enough ETH; EAS, registrar, gateway, feed,
-      USDC and the canonical Safe pair all have code; the gateway still routes `0x4388a21c`
-      and the route is not frozen; the feed answers live and in-window; both vkeys are
-      nonzero and match the manifest; `DEPLOYMENT_COMMIT` matches the working tree.
-- [ ] Record expected gas and balances, so the broadcast has a number to compare against.
+- [x] Switch to `build_program_with_args` with `docker: true` and a pinned tag, in
+      `zk/prover/build.rs`, `taskfile/zk.yml`, and `zk-parity.yml`.
+- [ ] **BLOCKED (no Docker here).** Verify rather than assume: build the same commit on two
+      architectures and
+      assert byte-identical ELF digests and equal vkeys. The flag is trivial; this check is the
+      milestone.
+- [x] Rewrite the caveat in `addresses-and-vkeys.md` to describe what is then true.
+- [ ] **BLOCKED (no Docker here).** Measure the cost. Docker guest builds are slower, and both CI and a self-hoster now need
+      Docker present to build guests from source.
 
-### M6 — A frontend fit for a public testnet
+**Exit:** two independent builds of one commit, on different architectures, produce identical
+ELF digests and identical vkeys.
 
-- [ ] Generate `config.sepolia.json` in the build path. `prebuild` currently runs
-      `config:link` and never `config:generate` (`packages/frontend/package.json:7`), so a
-      Sepolia build has nothing to link. `config.production.json` is a stale Optimism file
-      and must not be reused.
-- [ ] A persistent, unmissable "Ethereum Sepolia, testnet assets have no value" indicator,
-      plus a wrong-network prompt with an add/switch action. Neither exists today.
-- [ ] Harden `app/api/rpc/[chainId]/route.ts`: it caps body size and batch size but forwards
-      **any** JSON-RPC method to **any** chain that happens to have an env var set. Add a
-      chain allowlist and a read-method allowlist, and never relay raw transactions.
-- [ ] Harden `app/api/ipfs/route.ts`: it is an unauthenticated public write path with size
-      caps only. Add per-IP and per-wallet rate limits, origin authorization, and quota
-      alerts before it is exposed on a public domain.
-- [ ] Confirm WalletConnect origins for the deployed domain, and test or disable Porto on
-      Sepolia.
+**Do this before Sepolia.** Switching build modes changes every vkey. Right now every
+deployment vkey in `addresses-and-vkeys.md` reads "none yet," so the change is free. After the
+verifier is deployed it is a new verifier *and* a new factory, because the factory pins the
+verifier. This is exactly the window SEPOLIA_GOAL opens by pointing at.
 
-### M7 — Indexer and operator, in production shape
+### M4 — Built and published by CI
 
-- [ ] Fresh writer schema (`trustgraph_sepolia_v1`) and a separate public views schema.
-      Never share the Optimism production schema.
-- [ ] Start block from the manifest; confirm factory discovery works in production mode and
-      that a newly created instance appears without a restart.
-- [ ] Operator TOML for Sepolia: `release_manifest` pointing at the tracked file, RPC kept
-      private, separate submitter key, finalized confirmation policy, Succinct network
-      backend, IPFS API and public gateway, persistent journal path, alert webhook.
-- [ ] Apply D5's budget: `global_usd_per_day = 15`, `per_instance_usd_per_day = 2`, signer
-      `1`/`5`, `cents_per_billion_cycles` and `cycle_limit` untouched, `curated.instances` =
-      the seeded network only, `paid.enabled = true` against the deployed vault.
-- [ ] **Lower `cadence.subsidy_min_blocks` from 216,000 to 7,200 for this deployment.** The
-      default is a deliberate "we pay for a curated instance about once a month" (see the
-      comment at `crates/operator-core/src/policy.rs:117` and the prover runbook), and it
-      applies only to curated instances, which after D5 is exactly the seeded network. A
-      monthly cadence is correct when subsidizing someone else's network and wrong for the
-      demo everyone will judge the system by. Daily costs about $15/month, which fits the D5
-      cap. This is a config override for the Sepolia profile, not a change to the default.
-- [ ] Alert at 80% of the global cap, so a runaway is heard before it halts.
-- [ ] The score blob must be pinned and retrievable through the production gateway *before*
-      its root transaction is sent.
-- [ ] Backups for Postgres and the operator journal; test restart recovery.
+Most of this already exists. `.github/workflows/zk-parity.yml` builds all five guest families
+on a stock `ubuntu-latest` runner with SP1 pinned at v6.3.1 and uploads the ELFs as an
+artifact. The release flow is that job plus a packaging stage.
 
-### M8 — Dress rehearsal on a Sepolia fork
+The repository is public, which makes the economics trivial: standard runners are free,
+GHCR hosting for public images is free, and build provenance attestation is free. Publishing
+needs only `GITHUB_TOKEN` with `packages: write`, so it adds no secret to manage and nothing
+that has to live outside GitHub.
 
-Everything above, executed end to end against `anvil --fork-url` on Sepolia state, before a
-single real transaction. The fork carries the real EAS, the real gateway and the real feed,
-so it exercises the actual external surface at zero cost.
+- [x] `.github/workflows/release.yml`, triggered on a `v*` tag. There are no tags on this
+      repository yet, so this also defines the release convention.
+- [x] Reuse the guest build, then build the operator and tool binaries with
+      `SP1_SKIP_PROGRAM_BUILD=true`, assemble the runtime image, and push to
+      `ghcr.io/jakehartnell/trustgraphs-operator`.
+- [x] Publish, as a release asset, a table of every program's ELF sha256 and vkey against the
+      source commit. That asset is the Lane C reproducible-build artifact
+      `research/UPGRADE_GOVERNANCE.md:30` already commits us to.
+- [x] `actions/attest-build-provenance` on the image, so it is cryptographically traceable to
+      a workflow run and a commit rather than to a person's laptop.
+- [x] Build `linux/amd64` (what Railway runs) and `linux/arm64` (Apple Silicon self-hosters) on
+      native runners rather than under QEMU.
+- [x] A guard step that re-derives the vkeys inside the release job and fails the release if
+      they disagree with the published table.
+- [x] Assert the package is anonymously pullable (D8): a `docker pull` in a job with no
+      registry credentials. A private package is the silent default, so this has to be tested
+      rather than assumed.
+- [x] Watch runner disk. A cold Rust build of this size across several feature sets, plus
+      Docker layers, on a runner with roughly 14 GB free is the likeliest failure, and freeing
+      space is a known one-line action if it bites.
 
-- [ ] Full ordered deploy, including governed factory and seeded instance.
-- [ ] Role handoff, then the verification script.
-- [ ] Create a network through the wizard's code path; confirm the Safe is a canonical
-      proxy.
-- [ ] Vouch, revoke, index, and produce a root, then read the score back in the UI.
-- [ ] Record gas totals and the deployer balance delta.
+**Exit:** pushing a tag produces a pullable multi-arch image, a provenance attestation, and a
+published vkey and digest table, with no human step in between.
 
-### M9 — Broadcast and validate
+### M5 — Run the things that have never been run
 
-Operator-gated, in the order `research/operations/sepolia.md` sets out: freeze and test the release,
-preflight, deploy and verify, indexer, operator, frontend, then the browser acceptance run
-on the public domain with a clean wallet. Publish the finalized manifest only after every
-invariant passes.
+- [ ] **Soak.** A multi-day harness against anvil with restarts and RPC failures injected,
+      asserting no duplicate requests, no journal corruption, and bounded growth of the
+      journal and both caches.
+- [ ] **Reorg.** A real one, using anvil snapshot and revert on a fork, deep enough to remove a
+      checkpoint the operator has already decided to spend on. Today only the block-hash
+      finality check is covered, and only against a synthetic case.
+- [ ] **`RequestOutcomeUnknown`.** Crash inside the ambiguous window against the live prover
+      network, then resolve by `public_values_hash` through `get_filtered_proof_requests`, as
+      §3 of the runbook says is possible. This is the one leg that needs a funded Succinct key.
+- [ ] **Contributions, unattended.** Close the remaining half of `DEVIATIONS` #23, or restate
+      the deviation with a current reason if the setup cost still outweighs what it buys.
+- [ ] Update §7 of the runbook so each row moves from "not run" to what was actually observed.
+
+**Exit:** §7 contains no claim that rests on reading source rather than running it, except
+where a deviation is explicitly restated.
+
+### M6 — Follow our own instructions
+
+- [ ] Provision a clean machine with no checkout and no GitHub account. Using only the
+      published image and the published doc, bring up a daemon that proves a real instance, and
+      write down every place the instructions were wrong or incomplete.
+- [ ] Verify the published vkey independently, from source, on that machine. M3 is what makes
+      that a meaningful check rather than a coin flip.
+- [ ] Fix what was wrong, then have the walkthrough repeated by someone who did not write the
+      fixes.
+- [x] Rewrite §5 (Self-hosting) around `docker pull` rather than around `cargo run`.
+
+**Exit:** a self-hoster's first successful root, from a standing start, without reading Rust.
 
 ---
 
 ## Gates
 
-**Fork gate (blocks M9):** M1 through M7 complete, and M8 green end to end.
+**Reproducibility gate (blocks SEPOLIA_GOAL 1.1, and therefore its M0):** M3. Deriving a
+deployment vkey from a build we know is not reproducible, and pinning it into an immutable
+verifier, is the one mistake here that cannot be undone cheaply.
 
-**Broadcast gate:** the fork gate, plus every M0 input in hand, plus a genuine Groth16 proof
-verified through the real Sepolia gateway.
+**Hostable gate (blocks putting the operator on Railway, and blocks SEPOLIA_GOAL M7 from
+being called done):** M0 through M4, and the published image runs from a config plus two
+secrets with no repo checkout.
 
-**Announce gate:** the browser acceptance flow passes on the public domain, the operator is
-running continuously with alerts, and the testnet label is visible.
+**Production gate (blocks pointing it at a public chain we tell people about):** the hostable
+gate, plus M5's soak and reorg legs green, plus a tested journal restore.
+
+**Self-host gate (blocks telling strangers to run it):** the production gate, plus M6.
 
 ---
 
 ## Operator ledger
 
-1. **Derive the release keys.** `trust-graph` vkey, `signer` vkey, and the ELF digest, from
-   the frozen release checkout. Nothing downstream is real until these are.
-2. **Name the admin EOA** that receives registry and vault administration in M4, and say
-   whether it is a separate key from the deployer or the same one.
-3. **Provision secrets:** deployer key, operator submitter key, private Sepolia RPC,
-   Succinct network key, Pinata credentials, Postgres, Etherscan API key for verification.
-   None of these belong in the repo or in the manifest.
-4. **Economics are ruled (D5), not owed.** What remains for the operator is a veto, plus
-   confirming the Succinct account is actually billed for these proofs rather than sitting on
-   a testnet allowance, since that changes the expected bill but not the caps.
-5. **Name the seeded network:** name, purpose, metadata, parameters, and whether it carries
-   a fund at creation. The trusted-seed list is the one that deserves real thought: it is the
-   root of authority for the first public graph, and the template still holds Anvil accounts.
-6. **Ingress admission is still open** from the last audit, and this program does not close
-   it. Lane F made the ceiling honest; it did not stop anyone reaching it for roughly
-   0.0027 ETH. A public testnet where anyone can create a network is exactly the setting
-   that surfaces it.
-7. **Nothing is pushed.** `main` is ahead of `origin/main`, and publishing stays an explicit
-   operator action.
+1. **M3 should land before you derive the vkeys in SEPOLIA_GOAL 1.1.** Otherwise 1.1 gets done
+   twice, and the version that counts is the second one. If Sepolia needs to move first, say
+   so and we deploy on a non-reproducible vkey deliberately, with the redeploy cost written
+   down, rather than by accident.
+2. **The funded Succinct key unblocks one M5 leg.** The live `RequestOutcomeUnknown` rehearsal
+   cannot be run without it. It is the same key as SEPOLIA_GOAL's 1.5, so this costs nothing
+   extra beyond agreeing it may be used to deliberately abandon a request.
+3. **One click, once, after the first release publishes.** A GHCR package pushed by
+   `GITHUB_TOKEN` is created **private**, regardless of the repository being public, and the
+   visibility has to be flipped by hand in the package settings the first time. D8 is not in
+   effect until you do that, and the symptom if it is missed is a `docker pull` that asks a
+   stranger to authenticate. I will point at the exact package URL when the first tag lands.
+4. **Confirm the Railway plan.** Volumes are 5 GB on Hobby and 50 GB on Pro. The journal is
+   append-only and the weighted-manifest cache is bounded at 16 MiB, so Hobby is almost
+   certainly enough for a testnet, but bounded growth is an M5 assertion rather than a
+   measurement today.
+5. **A deliberate non-ask.** No decisions about budgets, cadence, curated membership or
+   pricing belong to this program. Those were ruled in SEPOLIA_GOAL D5 and are fenced out by
+   D5 here.
 
 ---
 
 ## Landmines
 
-- **This sandbox's `node_modules` are macOS binaries.** The Linux esbuild natives were
-  reinstalled by hand to get `pnpm test:deploy` running, and a `pnpm install` wipes that.
-- **The ponder 0.16.2 `getIntervals` patch is still non-durable**, and is carried in the
-  shared `node_modules` rather than in a lockfile. It has to survive onto whatever machine
-  runs the production indexer, or be replaced by a version bump.
-- **`forge test` in one process exceeds the runner's memory.** Shard by path.
-- **Em-dashes are invalid in Solidity string literals.** Use ASCII or `unicode""`.
-- **A vkey change requires a new verifier and, because the factory pins it, a new factory
-  for future instances.** Treat it as a release migration, never a config edit.
+- **`cargo prove build` is not reproducible, and this repo has already measured that.**
+  Until M3 lands, a vkey is a property of the machine that built it as much as of the source.
+  Do not compare vkeys across machines and conclude anything from a mismatch.
+- **`task zk:build` is the only thing in this repo that builds the guests.** Everything else
+  exports `SP1_SKIP_PROGRAM_BUILD=true`, so a fresh checkout that has never built them fails
+  at `include_elf!` with a missing-file error that reads like a broken repo.
+- **`sp1_build` does not watch path dependencies.** Edit anything under `crates/` and cargo
+  will happily reuse an ELF that predates the change. `taskfile/zk.yml` touches
+  `zk/prover/build.rs` to force the pickup; any new build path needs the same defence.
+- **A journal is bound to one chain.** `WorkKey` is `(chain_id, instance_id, checkpoint_id)`,
+  and a restarted devnet reproduces all three, so an old journal's `landed` record matches new
+  work exactly and wedges the planner. Never carry a journal across chains, and never restore
+  a backup taken from a different one.
+- **Never run two operators against one journal or one submitter key.** A Railway volume
+  forces the old deployment down before the new one starts, which is what we want. Do not
+  raise the replica count, and do not raise `cadence.max_per_instance` above 1.
+- **`registry_from_block` left at 0 produces no catalog at all**, not a slow one: the scan
+  issues thousands of empty `eth_getLogs` calls and most providers reject the range outright.
+- **This sandbox has no SP1 toolchain and no Docker**, so M3 and M4 cannot be verified here.
+  Both need a machine with `cargo-prove` v6.3.1, which is the same constraint as
+  SEPOLIA_GOAL's 1.1, or a CI run.

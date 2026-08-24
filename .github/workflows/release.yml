@@ -26,6 +26,10 @@ jobs:
   guests:
     name: Reproducible guests
     uses: ./.github/workflows/guest-reproducibility.yml
+    # A called workflow inherits the caller's permissions, and this workflow declares none by
+    # default. Without this, the checkout inside it fails.
+    permissions:
+      contents: read
 
   manifest:
     name: Guest digest and vkey table
@@ -85,9 +89,6 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
             suffix: arm64
-    outputs:
-      digest-amd64: ${{ steps.export.outputs.digest-amd64 }}
-      digest-arm64: ${{ steps.export.outputs.digest-arm64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -137,9 +138,22 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.suffix }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
-      - name: Export the digest
-        id: export
-        run: echo "digest-${{ matrix.suffix }}=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+      # A matrix job cannot carry per-leg outputs — every leg writes the same `outputs` key and
+      # the last one to finish wins, silently. Each leg leaves its digest as a file instead, and
+      # the next job collects them.
+      - name: Leave the digest for the manifest job
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          test -n "$digest" || { echo "the build produced no digest"; exit 1; }
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ matrix.suffix }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   publish:
     name: Multi-arch manifest and attestation
@@ -161,17 +175,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/download-artifact@v4
+        with:
+          path: digests
+          pattern: image-digest-*
+          merge-multiple: true
+
       - name: Create the manifest list
         id: list
+        working-directory: digests
         run: |
           set -eu
           TAG="${GITHUB_REF_NAME}"
           case "$TAG" in v*) ;; *) TAG="edge" ;; esac
+          # One file per architecture, named by its digest.
+          COUNT=$(ls -1 | wc -l)
+          [ "$COUNT" -eq 2 ] || { echo "expected 2 per-arch digests, found $COUNT"; ls -la; exit 1; }
           docker buildx imagetools create \
             --tag "${IMAGE}:${TAG}" \
             --tag "${IMAGE}:latest" \
-            "${IMAGE}@${{ needs.image.outputs.digest-amd64 }}" \
-            "${IMAGE}@${{ needs.image.outputs.digest-arm64 }}"
+            $(printf "${IMAGE}@sha256:%s " *)
           DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
           echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"

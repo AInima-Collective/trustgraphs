@@ -2,15 +2,18 @@
 #
 # The soak. What "survives a multi-day run" is actually a claim about, held to something.
 #
-# It is a claim about CYCLES, not about wall-clock: how many ticks, how many restarts, how many
-# times the RPC went away mid-decision, how many checkpoints came and went — and whether the
-# journal is still an exact record of what was paid for at the end of all of it. Three production
-# days at a 60-second cadence is 4,320 ticks. This harness runs a 1-second cadence with restarts
-# and injected RPC failures, so a 90-minute run executes MORE ticks, more restarts and more
-# induced outages than those three days, and does it while you are still at the keyboard.
+# Not wall-clock. Three production days at a 60-second cadence is 4,320 quiet ticks and zero
+# restarts, which is a long time to prove very little. What this harness accumulates instead is
+# the things that actually break a daemon: it kills the process every 45 seconds, black-holes the
+# RPC for 8 seconds out of every 70, and adds a graph edge every 25 seconds — so restarts, outages
+# survived, and crashes inside the ambiguous window pile up in minutes rather than in days.
+#
+# Ticks do NOT accumulate faster, and it is worth knowing why before reading the count: under that
+# abuse a tick costs several seconds rather than one, because every restart re-reads the chain
+# from scratch and every black-holed read burns its full `rpc_timeout_seconds`.
 #
 #   bash tests/e2e/soak.sh                    # ~15 minutes, the default
-#   MINUTES=90 bash tests/e2e/soak.sh         # past a three-day tick budget
+#   MINUTES=90 bash tests/e2e/soak.sh         # longer, if you want more of everything
 #
 # What must hold at the end:
 #
@@ -269,6 +272,28 @@ if [ -n "$HIGHEST" ]; then
   say "   ${GREEN}$LANDED landing(s), highest = $HIGHEST, chain agrees ✓${NC}"
 else
   say "   (nothing landed in this run)"
+fi
+
+# --- what a restart-heavy run actually converges to ----------------------------------------
+# Killing the daemon during a proof lands inside the ambiguous window: the intent is fsynced
+# before the request and the handle is recorded after it returns, so the window is as wide as the
+# proving call rather than milliseconds. The daemon then holds `RequestOutcomeUnknown` and waits
+# for a human, which is exactly right and also means the instance stops doing new work. A
+# restart-heavy soak therefore stalls ITSELF, and saying so is the difference between a soak that
+# reports coverage and one that reports wall-clock.
+say ""
+say "== unresolved requests: the safe stop a restart-heavy run converges to =="
+UNRESOLVED=$(grep -c '"kind":"intent"' "$WORK/journal.jsonl" || echo 0)
+RESOLVED=$(grep -c '"kind":"requested"' "$WORK/journal.jsonl" || echo 0)
+STUCK=$((UNRESOLVED - RESOLVED))
+if [ "$STUCK" -gt 0 ]; then
+  say "   $STUCK request(s) ended with an unknown outcome and are waiting on a human."
+  say "   ${GREEN}That is the designed stop, not a failure — but it means the instance did no${NC}"
+  say "   ${GREEN}further work after it, so read the counts above as a floor. ✓${NC}"
+  grep -q 'request_outcome_unknown' "$LOG" \
+    || die "an intent has no request record but the daemon never held RequestOutcomeUnknown"
+else
+  say "   ${GREEN}none: every request this run made resolved one way or the other ✓${NC}"
 fi
 
 # --- the journal survived every kill ------------------------------------------------------

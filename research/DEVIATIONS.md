@@ -60,6 +60,21 @@ creation now emits a complete signer descriptor, the daemon discovers and schedu
 manifest, signer proofs have distinct finality/loss budgets, and a real Safe integration applies
 the resulting owner set. The Contributions unattended leg remains outstanding exactly as #23 says.
 
+**2026-08-24 restatement of the Contributions half of #23.** The operator-packaging program asked
+for it to be closed or restated with a current reason. Restated, and the reason has changed since
+2026-07-28: it is no longer only setup cost. `task demo` HAS driven a Contributions round through
+the daemon unattended since 2026-08-04 — the round is a `[[manifest]]` entry on the curated tier
+and `demo:prove` fails unless both the trust root and the round root land. What is still missing is
+the same leg inside a rehearsal a CI runner can execute, and the obstacle now is that `task demo`
+takes over one checkout: it writes `.docker/*_deploy.json` and `.demo/` at fixed paths and expects
+the default RPC port, so it cannot be run beside a live stack on the same working tree without
+corrupting both. The fix is to make the demo's paths and port parameterizable, which is a change to
+the demo harness rather than to the daemon — and the daemon-side gap #23 names (scheduling a
+second program end to end) is the part `task demo` already closes. Both `tests/e2e/reorg.sh` and
+`tests/e2e/soak.sh`, added by the packaging program, drive only the trust-graph lane for the same
+reason the fork rehearsal does: per-instance setup, not a daemon code path the trust-graph legs
+miss.
+
 Notes that are **not** deviations, recorded for context:
 
 - Executor-only prover commands (`execute`, `vkey`, `paramshash`) default to `SP1_PROVER=mock` in

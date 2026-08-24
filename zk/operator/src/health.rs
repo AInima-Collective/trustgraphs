@@ -74,6 +74,7 @@ const SETTINGS_KEYS: &[&str] = &[
 /// Request line cap. A health endpoint has no use for a long URL, and an unbounded read from an
 /// anonymous socket is the one way a read-only server can still be a liability.
 const MAX_REQUEST_BYTES: u64 = 8 * 1024;
+const MAX_HEADER_LINES: usize = 64;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the daemon is doing right now.
@@ -240,20 +241,27 @@ fn serve_one(mut stream: TcpStream, health: &Health) -> std::io::Result<()> {
     }
     // Headers are read and discarded so the client sees a complete exchange rather than a reset,
     // but nothing in them is ever consulted: there is no auth, no content negotiation and no
-    // behaviour to influence.
+    // behaviour to influence. Bounded in COUNT as well as in length — each line being under the
+    // byte cap says nothing about how many of them an anonymous client can send.
     let mut header = String::new();
-    while reader.by_ref().take(MAX_REQUEST_BYTES).read_line(&mut header)? > 0 {
-        if header.trim().is_empty() {
+    for _ in 0..MAX_HEADER_LINES {
+        if reader.by_ref().take(MAX_REQUEST_BYTES).read_line(&mut header)? == 0
+            || header.trim().is_empty()
+        {
             break;
         }
         header.clear();
     }
 
     let (status, content_type, body) = respond(&request_line, health);
+    // A HEAD gets the headers a GET would, and no body — including the Content-Length the GET
+    // would have had, which is the whole point of asking.
+    let head_only = request_line.split_whitespace().next() == Some("HEAD");
     let response = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
-         Cache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
-        body.len()
+         Cache-Control: no-store\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        if head_only { "" } else { body.as_str() }
     );
     stream.write_all(response.as_bytes())?;
     stream.flush()?;
@@ -586,6 +594,19 @@ mod tests {
             response
         };
         assert!(get("/health").starts_with("HTTP/1.1 200 OK"));
+
+        // A HEAD gets the GET's headers and none of its body.
+        let head = {
+            let mut stream = TcpStream::connect(addr).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            write!(stream, "HEAD /status HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            response
+        };
+        assert!(head.contains("Content-Length: "), "{head}");
+        assert!(!head.contains("head_block"), "a HEAD must not carry the body: {head}");
+
         assert!(get("/ready").starts_with("HTTP/1.1 200 OK"));
         let status_response = get("/status");
         assert!(status_response.contains("application/json"), "{status_response}");

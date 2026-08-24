@@ -1413,6 +1413,7 @@ fn act(
                 }),
             );
             if entry.program != Program::Signer {
+                health.enter(Phase::Publishing);
                 attempt_publication(cfg, journal, logger, entry, key, &built.cid, &built.blob)?;
             }
         }
@@ -1425,6 +1426,7 @@ fn act(
             let key =
                 WorkKey { chain_id, instance_id: entry.instance_id, checkpoint_id: *checkpoint_id };
             let (held, score_blob) = handlers::load_publication_blob(cfg, entry, *checkpoint_id)?;
+            health.enter(Phase::Publishing);
             attempt_publication(cfg, journal, logger, entry, key, &held.cid, &score_blob)?;
         }
 
