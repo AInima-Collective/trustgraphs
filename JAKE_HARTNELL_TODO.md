@@ -278,9 +278,11 @@ prover CLI, any script, or preflight. So the first thing that would tell us the 
 the wrong account is a failed proof request during step 6 of deploy day.
 
 `sp1-sdk` 6.3.1 exposes `NetworkProver::get_balance()` (`network/prover.rs:219`), so the guard
-is small and mirrors the ETH one exactly. I have **not** written it: `run.rs` has uncommitted
-changes from the operator session right now, and a second hand in that file buys a merge
-conflict for a check that a dashboard glance covers today. Flagged there instead.
+is small and mirrors the ETH one exactly. I have **not** written it. It was blocked while
+`run.rs` had uncommitted changes; `f4c7953` has since landed and re-checked — still absent —
+so it is now just a small unrequested change to a module that was committed minutes before we
+tag. Say the word and it goes in; otherwise the dashboard glance covers deploy day and this is
+the right thing to add in the first quiet moment after.
 
 ---
 
