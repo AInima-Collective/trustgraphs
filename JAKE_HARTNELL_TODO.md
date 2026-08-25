@@ -1,4 +1,4 @@
-- ~~Tag release~~ **done: v0.0.4**
+- ~~Tag release~~ **done: v0.0.5** (`f64a4c7`; v0.0.4 predates every deploy fix)
 - ~~Generate vkeys and elf digest~~ **done: published in the release**
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
 - ~~Fresh deployer key (with Sepolia ETH)~~ **done: `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`, 0.5 ETH**
@@ -129,8 +129,8 @@ box forever. That is fixed and released as a container image.
 
 ### 1.1 Verification keys — DONE, nothing for you to do
 
-Published in [v0.0.4](https://github.com/AInima-Collective/trustgraphs/releases/tag/v0.0.4), built
-by a public workflow from commit `95faa6f`, agreed on by two cold runners before it shipped.
+Published in [v0.0.5](https://github.com/AInima-Collective/trustgraphs/releases/tag/v0.0.5), built
+by a public workflow from commit `f64a4c7`, agreed on by two cold runners before it shipped.
 
 | Variable | Value |
 | --- | --- |
@@ -149,18 +149,33 @@ new verifier and a new factory.
 > section at the top of this file. The table above is still the right table; it just has to be
 > the one that reaches the chain. Planning a Sepolia deploy now checks it against the release.
 
-My recommendation is now **a later tag, not `v0.0.4`**. Two deploy defects have been fixed
-since it (`4735840`, `f021f97`), and the operator has substantial uncommitted work in flight.
-None of that touches guest source, so **the vkeys in the table above are unchanged either
-way** — a later tag republishes exactly these values. What changes is that the tag matches the
-code we actually run. If we do cut one, `DEPLOYMENT_COMMIT` in `.env` moves to that commit.
+**Decided, and already in `.env`: we deploy from `v0.0.5`**, commit
+`f64a4c7c9b5e552e2392894a2e0d6f6c40973549`. That was the only line that moved. Every value in
+the table above is byte-identical between v0.0.4 and v0.0.5 — all seven programs, vkey and ELF
+digest alike — which was predicted from the diff and then checked against the published asset
+rather than assumed. No guest source changed between the tags: the only `zk/` path touched is
+`zk/operator`, the trust-graph closure is `crates/pagerank-core` plus `crates/trustgraph-core`
+and both are untouched, and the two `Cargo.toml` edits are `repository =` URLs that reach no
+binary because nothing in the workspace reads `CARGO_PKG_*`.
+
+What v0.0.5 buys is that the tag matches the code we actually run: the two deploy defects
+(`4735840`, `f021f97`), the release-vkey guard, the demo's chain pin, and the operator
+hardening are all inside it. v0.0.4 predates every one of them.
+
+One wrinkle worth remembering for the next org-level change. The release failed its final job the
+first time — not on anything in the code, but on "pull the image with no credentials at all". A
+GHCR package created by `GITHUB_TOKEN` is private by default even on a public repo, and moving the
+repo to the org created a **brand-new package**, so the visibility flip had to be made again under
+`AInima-Collective`. Everything upstream had already passed. The check is doing exactly its job:
+it exists so the self-hosting instructions cannot quietly go back to "clone the repo and install a
+RISC-V toolchain", and it caught precisely that.
 
 If you want to check the values rather than trust them:
 
 ```bash
-gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4 \
+gh attestation verify oci://ghcr.io/ainima-collective/trustgraphs-operator:v0.0.5 \
   --repo AInima-Collective/trustgraphs
-gh release download v0.0.4 -R AInima-Collective/trustgraphs -p guest-manifest.json
+gh release download v0.0.5 -R AInima-Collective/trustgraphs -p guest-manifest.json
 ```
 
 ### 1.2 The admin EOA — DONE
@@ -493,7 +508,7 @@ is not part of this release.
 build step:
 
 ```
-ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4
+ghcr.io/ainima-collective/trustgraphs-operator:v0.0.5
 ```
 
 One config file, two secrets, one volume. Full instructions in
@@ -556,8 +571,8 @@ five: `instances` is empty.
    plan if they disagree, so this is belt and braces rather than the only line of defence — but
    it is the line that failed last time.
 2. **Fetch the release manifest** next to the checkout, because the planner needs it:
-   `gh release download v0.0.4 -R AInima-Collective/trustgraphs -p guest-manifest.json`
-   (or point `GUEST_MANIFEST` at a copy).
+   `gh release download v0.0.5 -R AInima-Collective/trustgraphs -p guest-manifest.json`
+   (or point `GUEST_MANIFEST` at a copy). Already done: the checkout holds v0.0.5's.
 3. **Clear `.docker/*_deploy.json`.** Gitignored scratch shared with every local anvil run, and
    it currently holds a dev stack from 14:35 today — including `zk_verifier_deploy.json` with
    the local vkey. A clean full run overwrites each file before the next step reads it, so this

@@ -382,7 +382,7 @@ that has to live outside GitHub.
       repository yet, so this also defines the release convention.
 - [x] Reuse the guest build, then build the operator and tool binaries with
       `SP1_SKIP_PROGRAM_BUILD=true`, assemble the runtime image, and push to
-      `ghcr.io/jakehartnell/trustgraphs-operator`.
+      `ghcr.io/ainima-collective/trustgraphs-operator`.
 - [x] Publish, as a release asset, a table of every program's ELF sha256 and vkey against the
       source commit. That asset is the Lane C reproducible-build artifact
       `research/UPGRADE_GOVERNANCE.md:30` already commits us to.
@@ -408,13 +408,22 @@ published vkey and digest table, with no human step in between.
 **MET, 2026-08-25, `v0.0.4` (run 32800847557, commit `95faa6f`).** All nine jobs green on the
 first attempt after the reading pass: both cold guest builds and their comparison, the vkey table,
 both images, the multi-arch manifest, the attestation, the anonymous pull, the in-image vkey
-re-derivation, and the release. `ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4` at
+re-derivation, and the release. `ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4` (the path as
+it was then; packages do not follow a repo transfer, so the image now lives under
+`ghcr.io/ainima-collective/`) at
 `sha256:1656285b28c526016ce259bb84528d04fce3b544edbb9e1ca89fe59e256141bd`, `:latest` moved to it.
 
 Two things worth recording because they were predicted wrong. The GHCR visibility flip did not
 happen: I expected `verify` to go red on a private-by-default package and said so in advance, and
 it pulled anonymously with no credentials and no manual step, so D8 was already satisfied and the
-"no human step in between" in that exit line is literal. And the seven published vkeys are
+"no human step in between" in that exit line is literal.
+
+> Deferred rather than wrong, it turns out. On 2026-08-25 the repo moved to the
+> `AInima-Collective` org, and `v0.0.5` failed on exactly that job: a transfer does not carry the
+> package, so `GITHUB_TOKEN` created a **new** one, private by default, and the flip had to be
+> made again under the new owner. The prediction was right about the mechanism and wrong only
+> about which release would meet it. "No human step in between" holds for a release cut under an
+> owner that has already been flipped once, and not for the first release under a new one. And the seven published vkeys are
 byte-identical to the values derived on two earlier commits, so the reproducibility claim now rests
 on three independent builds across three commits rather than on one run.
 
