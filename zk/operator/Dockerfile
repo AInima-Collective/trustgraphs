@@ -31,12 +31,17 @@ FROM rust:1-bookworm AS builder
 # prover-network gRPC client, and `sp1-prover-types` generates its stubs at build time from
 # `cluster.proto` — which imports `google/protobuf/empty.proto`.
 #
-# That import is why `libprotobuf-dev` is here too. `prost-build` passes `-I` only when
-# PROTOC_INCLUDE is set, which nothing here sets, so protoc has to resolve the well-known types on
-# its own. Whether that works is a packaging detail of the base image, and an unresolvable import
-# would surface as a protoc error twenty minutes into the prover build. So both packages are
-# installed and the import is then COMPILED, here, in two seconds. Three releases have now been
-# spent discovering a base-image fact the hard way; this one gets asserted instead of assumed.
+# That import is worth a word. `prost-build` passes `-I` only when PROTOC_INCLUDE is set, which
+# nothing here sets, so protoc must resolve the well-known types itself — and it does: measured on
+# protoc 27.3, `import "google/protobuf/empty.proto"` resolves with no `-I` and with no such file
+# anywhere on disk, because protoc links those descriptors in. `libprotobuf-dev` is therefore
+# redundancy rather than the fix, kept only because bookworm ships an older protoc than the one
+# that was measured.
+#
+# The assertion below is the part that matters. An unresolvable import would otherwise surface as
+# a protoc error twenty minutes into the prover build; compiling that one line here costs two
+# seconds. Five release-path bugs have now been base-image facts discovered the expensive way, so
+# this one is tested where it is cheap to be wrong.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       protobuf-compiler libprotobuf-dev pkg-config \
     && rm -rf /var/lib/apt/lists/* \
