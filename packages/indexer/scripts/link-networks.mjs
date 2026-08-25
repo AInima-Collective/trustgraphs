@@ -9,7 +9,10 @@ const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
 const { loadTargetEnvironment } = environmentLoader
 
-loadTargetEnvironment({ repositoryRoot: repoDir })
+loadTargetEnvironment({
+  repositoryRoot: repoDir,
+  createBaseFrom: '.env.example',
+})
 
 const profile = resolveDeploymentProfile(process.env, repoDir)
 const environment =

@@ -107,3 +107,25 @@ test('a public overlay replaces local service settings', (t) => {
   assert.equal(environment.IPFS_GATEWAY, 'https://public-gateway')
   assert.equal(environment.DATABASE_URL, 'postgresql://shared')
 })
+
+test('clean local tooling can create the base environment from the example', (t) => {
+  const repositoryRoot = fixture({
+    '.env.example':
+      'DEPLOY_STAGE=development\nDEPLOY_TARGET=local\nRPC_URL=http://local\n',
+  })
+  t.after(() => fs.rmSync(repositoryRoot, { recursive: true, force: true }))
+  const environment: NodeJS.ProcessEnv = {}
+
+  const loaded = loadTargetEnvironment({
+    repositoryRoot,
+    environment,
+    createBaseFrom: '.env.example',
+  })
+
+  assert.equal(loaded.target, 'local')
+  assert.equal(environment.RPC_URL, 'http://local')
+  assert.equal(
+    fs.readFileSync(path.join(repositoryRoot, '.env'), 'utf8'),
+    fs.readFileSync(path.join(repositoryRoot, '.env.example'), 'utf8')
+  )
+})
