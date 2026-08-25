@@ -689,9 +689,13 @@ curl localhost:8080/ready
 
 Two things about that volume, both of which cost money if they are wrong:
 
-- **`/data` must be a real volume.** `journal.jsonl` lives there, and it is the only file whose
-  loss duplicates paid work. The daemon refuses to start rather than create a named `state_dir`
-  whose parent is missing, because that is precisely what an unmounted volume looks like.
+- **`/data` must be a NAMED volume.** `journal.jsonl` lives there, and it is the only file whose
+  loss duplicates paid work. The image's `VOLUME ["/data"]` means the journal is never on the
+  container's writable layer, but the volume you get without asking is anonymous and is orphaned
+  when the container is replaced rather than restarted. Replacing the container is what a deploy
+  is. The daemon's own guard does not cover this case and should not be relied on to: it refuses
+  a named `state_dir` whose PARENT is missing, which protects `/mnt/operator/state` against an
+  unmounted `/mnt/operator`, and cannot fire for `/data`, whose parent is `/`.
 - **Never run two operators against one journal or one submitter key.** Do not raise the replica
   count, and do not raise `cadence.max_per_instance` above 1.
 

@@ -84,10 +84,18 @@ listen = "0.0.0.0:8080"
 Capability limits, gas policy, finality, budgets, weighted-manifest recovery, and alert delivery
 should also be configured before production use.
 
-The daemon refuses to start rather than write its journal somewhere it will not survive. It
-creates `state_dir`, but not the tree above it: an absolute path whose parent is missing is what
-an unmounted volume looks like, and a journal on a container's own filesystem is gone at the next
-deploy — after which the operator re-requests, and re-pays for, proofs it already has.
+Give that volume a name. `journal.jsonl` is the one file whose loss costs money: a fresh journal
+re-requests, and re-pays for, proofs the operator already has. The image declares `/data` a
+volume, so the journal never lands on the container's own writable layer. But the volume you get
+by not naming one is anonymous, and an anonymous volume is orphaned the moment the container is
+replaced rather than restarted, which is what a deploy does.
+
+The daemon has a guard of its own, and it is worth knowing what it covers. When a config names a
+`state_dir`, the daemon creates that directory but not the tree above it, so
+`state_dir = "/mnt/operator/state"` refuses to start while `/mnt/operator` is missing: that is
+what an unmounted volume looks like from inside. `state_dir = "/data"` cannot trip the same check,
+because its parent is `/` and `/` always exists. For the layout above, the named volume is the
+protection, not the guard.
 
 ## Run it
 

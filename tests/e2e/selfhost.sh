@@ -129,18 +129,38 @@ AFTER=$(docker exec "$NAME" ls /data 2>/dev/null | sort | tr '\n' ' ')
 [ "$BEFORE" = "$AFTER" ] || die "the state directory changed across a restart: [$BEFORE] -> [$AFTER]"
 say "   ${GREEN}/data survived: $AFTER${NC}"
 
-# --- 6. and it refuses the mistake that costs money ---------------------------------------------
-say "== the unmounted-volume refusal =="
+# --- 6. the two things that actually keep the journal ---------------------------------------------
+# This section used to assert that the daemon "refuses to start without a volume", which is not
+# true of the config this image ships and never was: the refusal fires when state_dir's PARENT is
+# missing, and the parent of `/data` is `/`. Testing an overstated claim is worse than testing
+# nothing, because it comes back green. So both real protections get tested instead.
+say "== what actually keeps journal.jsonl =="
+
+# (a) `/data` is a declared volume, so the journal is never on the container's writable layer.
+#     A named volume is still the operator's job; this is the half the IMAGE is responsible for.
+docker image inspect "$IMAGE" --format '{{json .Config.Volumes}}' 2>/dev/null \
+  | grep -q '"/data"' \
+  || die "the image does not declare /data a volume, so an unmounted run would put the request
+   journal on the container's writable layer and lose it at the next deploy"
+say "   ${GREEN}/data is a declared volume: the journal is never on the writable layer ✓${NC}"
+
+# (b) The guard, tested on the path shape it actually covers: a state_dir UNDER a mount point that
+#     has not been mounted. This is the mistake that costs money on a real host, and the daemon
+#     has to refuse it rather than helpfully create the tree.
+sed 's|^state_dir  = "/data"|state_dir  = "/mnt/operator/state"|' \
+  "$WORK/operator.toml" > "$WORK/guard.toml"
+grep -q '/mnt/operator/state' "$WORK/guard.toml" || die "could not build the guard fixture"
 if docker run --rm \
-     -v "$WORK/operator.toml:/etc/trustgraph/operator.toml:ro" \
+     -v "$WORK/guard.toml:/etc/trustgraph/operator.toml:ro" \
      --entrypoint /usr/local/bin/operator "$IMAGE" \
-     --config /etc/trustgraph/operator.toml --once --dry-run >"$WORK/nomount" 2>&1; then
-  say "   (note: /data exists in the image, so this run had somewhere to write)"
-else
-  grep -qi "state_dir\|unmounted" "$WORK/nomount" \
-    && say "   ${GREEN}refuses to start rather than write the journal somewhere ephemeral ✓${NC}" \
-    || say "   (it failed for another reason: $(tail -1 "$WORK/nomount"))"
+     --config /etc/trustgraph/operator.toml --once --dry-run >"$WORK/guard.out" 2>&1; then
+  die "the daemon started with state_dir=/mnt/operator/state and /mnt/operator missing. That is
+   what an unmounted volume looks like, and creating the tree anyway puts the request journal on
+   a filesystem that disappears at the next deploy."
 fi
+grep -qi "state_dir" "$WORK/guard.out" \
+  && say "   ${GREEN}refuses a state_dir whose mount point is missing ✓${NC}" \
+  || die "it refused, but for another reason: $(tail -1 "$WORK/guard.out")"
 
 say ""
 say "${GREEN}SELF-HOST PASS — pulled anonymously, started from one config and one key, read${NC}"
