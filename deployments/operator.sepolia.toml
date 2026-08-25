@@ -1,4 +1,6 @@
 # Production operator policy for the public Sepolia app.
+# Candidate image (release run 32892667547, commit 22bbf4a):
+# ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40
 #
 # Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
 # operator at startup and never enter its public status response. The transaction and Succinct

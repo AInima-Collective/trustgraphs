@@ -33,7 +33,14 @@ the production indexer preflight still reached chain 11,155,111 through its fall
 browser observed proxy transport 0 return 502 and Wagmi continue through transport 1 at 200. A
 PostgreSQL 17.10 custom-format backup then passed its SHA-256 check and restored 451 application
 tables across 9 schemas; source and restored counts matched, and the exact temporary drill database
-was removed afterward.
+was removed afterward. Release run
+[`32892667547`](https://github.com/AInima-Collective/trustgraphs/actions/runs/32892667547), at
+commit `22bbf4a`, then reproduced the guests twice and published the attested linux/amd64 +
+linux/arm64 operator index as
+`ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40`.
+The workflow's anonymous pull and embedded-vkey derivation passed, an independent anonymous registry
+read returned that same index digest and both platforms, and the production compose preflight
+accepted the complete digest reference. The persistent-volume restart drill remains outstanding.
 
 **Baseline, measured today on live Sepolia:** the five contracts are deployed and all
 nineteen post-deploy invariants pass. `InstanceRegistry.instanceCount()` is 0.
@@ -474,8 +481,8 @@ Inputs this program cannot produce.
 | Ponder public API URL | `PONDER_URL` | still needed; the existing public site's old Ponder upstream is unavailable |
 | Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | PublicNode and Tenderly selected and live-validated for chain id, head, historical code, calls, balances, blocks, and estimates; both are recorded in the ignored overlay and still need copying into the public host |
 | Hosting for indexer and operator | | still needed for M5/M6; local writer is not the public service |
-| Operator image for this source | `OPERATOR_IMAGE` | publish and record a complete `@sha256:` reference before M5/M6 |
-| Docker-capable drill host | | needed for the image build, Postgres restore, restart drill, and week soak |
+| Operator image for this source | `OPERATOR_IMAGE` | published, attested, anonymously pulled, and recorded as `ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40`; host deployment and restart drill remain |
+| Docker-capable drill host | | image publication and the direct Postgres restore are complete; still needed for the service restart drill and week soak |
 | Funded Succinct prover account | `NETWORK_PRIVATE_KEY` | present in `.env` |
 
 Pinata's API key and secret are for the legacy `api.pinata.cloud/pinning/*` endpoints, which

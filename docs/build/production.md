@@ -85,8 +85,17 @@ docker compose -f docker-compose.prod.yml up -d
 `OPERATOR_IMAGE` must be the release workflow's complete
 `ghcr.io/.../trustgraphs-operator@sha256:...` reference. The preflight rejects a tag. On startup,
 the operator also refuses unless its embedded trust-graph and signer ELF digests and vkeys match
-the tracked release manifest. The writer schema must be a new versioned name for each indexer
-release; the views schema stays stable. The
+the tracked release manifest. The Sepolia candidate built from commit `22bbf4a` by
+[release run 32892667547](https://github.com/AInima-Collective/trustgraphs/actions/runs/32892667547)
+is:
+
+```text
+ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40
+```
+
+That run reproduced the guest ELFs twice, published a linux/amd64 + linux/arm64 OCI index,
+attested it, pulled it anonymously, and re-derived the embedded vkeys. The writer schema must be a
+new versioned name for each indexer release; the views schema stays stable. The
 primary Sepolia RPC and `PONDER_RPC_URLS_11155111` must name different providers so a single
 provider outage does not stop ingestion. The frontend host must receive `PONDER_URL`,
 `IPFS_GATEWAY_PUBLIC`, and both `RPC_URL_11155111_0` and `RPC_URL_11155111_1`; the two browser RPC
