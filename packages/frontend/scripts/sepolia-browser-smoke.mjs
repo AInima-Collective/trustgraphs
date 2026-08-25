@@ -8,11 +8,21 @@ if (!configuredUrl) {
 }
 const baseUrl = new URL(configuredUrl)
 const createUrl = new URL('/create', baseUrl).toString()
+const expectRpcFailover = process.env.SEPOLIA_EXPECT_RPC_FAILOVER === 'true'
 const browser = await chromium.launch({ headless: true })
 
 try {
   const context = await browser.newContext()
   const page = await context.newPage()
+  const rpcResponses = []
+  page.on('response', (response) => {
+    const url = new URL(response.url())
+    if (url.pathname !== '/api/rpc/11155111') return
+    rpcResponses.push({
+      id: url.searchParams.get('id') ?? '0',
+      status: response.status(),
+    })
+  })
   await page.goto(createUrl, { waitUntil: 'networkidle' })
 
   const body = await page.locator('body').innerText()
@@ -38,6 +48,17 @@ try {
     .getByText(/Connect the wallet that will create this network/i)
     .waitFor()
 
+  if (expectRpcFailover) {
+    assert.ok(
+      rpcResponses.some(({ id, status }) => id === '0' && status >= 500),
+      `primary RPC was not observed failing: ${JSON.stringify(rpcResponses)}`
+    )
+    assert.ok(
+      rpcResponses.some(({ id, status }) => id === '1' && status === 200),
+      `secondary RPC was not observed succeeding: ${JSON.stringify(rpcResponses)}`
+    )
+  }
+
   console.log(
     JSON.stringify({
       url: createUrl,
@@ -46,6 +67,7 @@ try {
       standardCreationOffered: true,
       optionalCreationEntriesHidden: true,
       cleanWalletContext: true,
+      rpcFailover: expectRpcFailover ? rpcResponses : 'not requested',
     })
   )
 } finally {

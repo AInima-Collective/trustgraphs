@@ -28,7 +28,12 @@ An optimized Sepolia Next build against the live manifest also passed with local
 a clean Playwright browser saw the persistent testnet banner and the standard governed creation
 path, with weighted, composition, and contributions entry points absent. The development config
 links were restored after that probe; the generated Sepolia artifact was deliberately not retained
-with localhost URLs.
+with localhost URLs. A later outage drill forced the primary RPC to an unreachable loopback port:
+the production indexer preflight still reached chain 11,155,111 through its fallback, while a clean
+browser observed proxy transport 0 return 502 and Wagmi continue through transport 1 at 200. A
+PostgreSQL 17.10 custom-format backup then passed its SHA-256 check and restored 451 application
+tables across 9 schemas; source and restored counts matched, and the exact temporary drill database
+was removed afterward.
 
 **Baseline, measured today on live Sepolia:** the five contracts are deployed and all
 nineteen post-deploy invariants pass. `InstanceRegistry.instanceCount()` is 0.
@@ -419,9 +424,9 @@ rather than cited.
 
 - [x] An indexer build that does not install into a bind-mounted checkout: an image, or an
       explicit hosting build path with its own dependency install.
-- [ ] Durable Postgres with a backup and a restore that has actually been run, not just
+- [x] Durable Postgres with a backup and a restore that has actually been run, not just
       configured.
-- [ ] RPC failover, since one provider outage currently stops both the indexer and every
+- [x] RPC failover, since one provider outage currently stops both the indexer and every
       browser read through the proxy.
 - [ ] The operator image pinned **by digest**, with a persistent volume for its journal, and
       a restart-and-recover drill.
@@ -467,7 +472,7 @@ Inputs this program cannot produce.
 | Read gateway, browser facing | `IPFS_GATEWAY_PUBLIC` | implemented and in the ignored overlay; still needs the final host build |
 | Public domain and its WalletConnect origins | | domain/origin configuration still needed for M3 |
 | Ponder public API URL | `PONDER_URL` | still needed; the existing public site's old Ponder upstream is unavailable |
-| Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | two independent hosted endpoints still needed for M3/M6 |
+| Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | PublicNode and Tenderly selected and live-validated for chain id, head, historical code, calls, balances, blocks, and estimates; both are recorded in the ignored overlay and still need copying into the public host |
 | Hosting for indexer and operator | | still needed for M5/M6; local writer is not the public service |
 | Operator image for this source | `OPERATOR_IMAGE` | publish and record a complete `@sha256:` reference before M5/M6 |
 | Docker-capable drill host | | needed for the image build, Postgres restore, restart drill, and week soak |

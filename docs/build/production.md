@@ -105,10 +105,29 @@ This checks the persistent testnet warning, offers the standard governed path, a
 expose weighted or composition creation when their factories are absent. It does not submit a
 transaction; M4 still requires the clean-wallet creation itself.
 
+On a preview deployment where transport 0 is deliberately pointed at an unreachable endpoint,
+the same smoke command can prove the browser actually continues through transport 1:
+
+```bash
+SEPOLIA_FRONTEND_URL=https://preview.testnet.example.org \
+SEPOLIA_EXPECT_RPC_FAILOVER=true \
+  pnpm --filter trustgraphs-frontend smoke:sepolia
+```
+
+The assertion requires a 5xx response from `id=0` followed by a 200 response from `id=1`; do not
+use it during an ordinary healthy smoke run.
+
 Back up Postgres from the consistent server-side snapshot emitted by `pg_dump`:
 
 ```bash
 BACKUP_DIR=/durable/backups ops/postgres-backup.sh
+```
+
+The scripts default to the Compose database. For managed Postgres, provide the live connection URL
+and PostgreSQL client tools of the same major version as the server:
+
+```bash
+DATABASE_URL="$DATABASE_URL" BACKUP_DIR=/durable/backups ops/postgres-backup.sh
 ```
 
 Every dump receives a SHA-256 sidecar. A backup is not accepted until it has been restored into an
@@ -119,10 +138,19 @@ RESTORE_DATABASE=ponder_restore_20260825 \
   ops/postgres-restore-drill.sh /durable/backups/ponder-20260825T000000Z.dump
 ```
 
+For managed Postgres, `RESTORE_DATABASE_URL` must point at that exact throwaway database. The
+script connects and checks `current_database()` before restoring anything:
+
+```bash
+DATABASE_URL="$DATABASE_URL" \
+RESTORE_DATABASE=ponder_restore_20260825 \
+RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+  ops/postgres-restore-drill.sh /durable/backups/ponder-20260825T000000Z.dump
+```
+
 The restore script refuses production database names and refuses to replace an existing drill
-database unless `REPLACE_RESTORE_DATABASE=1` is explicit. This repository cannot execute the
-container drill where the Docker socket is unavailable; record the dump path, checksum, restored
-database, table count, and time in the deployment log when it is run on the host.
+database unless `REPLACE_RESTORE_DATABASE=1` is explicit. Record the dump path, checksum, restored
+database, table count, and time in the deployment log.
 
 The monitor checks the indexer and operator `/ready` routes, operator heartbeat age, root age,
 publication holds, per-instance vault balances/unpaid roots, and Ponder lag against the live
