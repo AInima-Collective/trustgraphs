@@ -287,6 +287,11 @@ jobs:
   release:
     name: Publish the release
     needs: [manifest, publish, verify]
+    # Only a real tag gets a GitHub Release. A `workflow_dispatch` dry run exercises everything
+    # above this — the guests, the vkey table, both images, the attestation, the anonymous pull —
+    # and then stops, because `action-gh-release` requires a tag and inventing one from a branch
+    # name would publish a release nobody asked for.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
