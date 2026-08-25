@@ -68,6 +68,26 @@ test('stage and target resolve independently', () => {
 
 test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
   const previous = { ...process.env }
+  // `validateDeployment` refuses to plan a public-chain deploy whose vkeys are not the ones a
+  // release published, so the fixture stands in for `guest-manifest.json` here.
+  const guestManifest = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'trustgraphs-guests-')),
+    'guest-manifest.json'
+  )
+  fs.writeFileSync(
+    guestManifest,
+    JSON.stringify({
+      tag: 'v0.0.0-test',
+      commit: 'aa'.repeat(20),
+      programs: [
+        {
+          program: 'trust-graph',
+          vkey: BYTES32,
+          elf_sha256: '44'.repeat(32),
+        },
+      ],
+    })
+  )
   Object.assign(process.env, {
     SP1_VERIFIER_GATEWAY: ADDRESS,
     SP1_PROGRAM_VKEY: BYTES32,
@@ -77,6 +97,7 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
     SP1_PROGRAM_ELF_SHA256: `0x${'44'.repeat(32)}`,
     ETH_USD_FEED: ADDRESS,
     USDC: ADDRESS,
+    GUEST_MANIFEST: guestManifest,
   })
   try {
     const env = new SepoliaEnv({ rpcUrl: 'https://rpc.invalid' })
@@ -97,6 +118,65 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
       ]
     )
     assert.doesNotMatch(JSON.stringify(env.deployContracts), /compose|signer/i)
+  } finally {
+    process.env = previous
+  }
+})
+
+// The failure this exists for happened on Sepolia on 2026-08-25: `SP1_PROGRAM_VKEY` held a
+// local (non-`--docker`) trust-graph build, every shape check passed, and the verifier fixed the
+// wrong vkey into an immutable. Nothing downstream could have caught it — a locally built vkey is
+// well-formed bytes32, and `.docker/zk_verifier_deploy.json` agreed with it because the same run
+// wrote both.
+test('Sepolia planning refuses vkeys that are not in the release', () => {
+  const previous = { ...process.env }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trustgraphs-guests-'))
+  const guestManifest = path.join(dir, 'guest-manifest.json')
+  fs.writeFileSync(
+    guestManifest,
+    JSON.stringify({
+      tag: 'v0.0.0-test',
+      commit: 'aa'.repeat(20),
+      programs: [
+        { program: 'trust-graph', vkey: BYTES32, elf_sha256: '44'.repeat(32) },
+      ],
+    })
+  )
+  const base = {
+    SP1_VERIFIER_GATEWAY: ADDRESS,
+    SP1_PROGRAM_VKEY: BYTES32,
+    INSTANCE_REGISTRY_ADMIN: ADDRESS,
+    FACTORY_EPOCH_FLOOR: '7200',
+    DEPLOYMENT_COMMIT: 'aa'.repeat(20),
+    SP1_PROGRAM_ELF_SHA256: `0x${'44'.repeat(32)}`,
+    ETH_USD_FEED: ADDRESS,
+    USDC: ADDRESS,
+    GUEST_MANIFEST: guestManifest,
+  }
+  const plan = () =>
+    new SepoliaEnv({ rpcUrl: 'https://rpc.invalid' }).validateDeployment?.()
+  try {
+    Object.assign(process.env, base, { SP1_PROGRAM_VKEY: `0x${'55'.repeat(32)}` })
+    assert.throws(plan, /is a local build/)
+
+    // A digest from one build and a vkey from another describe different ELFs.
+    Object.assign(process.env, base, {
+      SP1_PROGRAM_ELF_SHA256: `0x${'66'.repeat(32)}`,
+    })
+    assert.throws(plan, /SP1_PROGRAM_ELF_SHA256/)
+
+    // A manifest from some other release proves nothing about these pins.
+    Object.assign(process.env, base, { DEPLOYMENT_COMMIT: 'bb'.repeat(20) })
+    assert.throws(plan, /was built at commit/)
+
+    // Fail closed when the release artifact is simply absent.
+    Object.assign(process.env, base, {
+      GUEST_MANIFEST: path.join(dir, 'absent.json'),
+    })
+    assert.throws(plan, /gh release download/)
+
+    Object.assign(process.env, base)
+    assert.doesNotThrow(plan)
   } finally {
     process.env = previous
   }

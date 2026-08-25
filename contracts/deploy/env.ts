@@ -107,6 +107,103 @@ function requireReleaseDigest(): string {
   return value
 }
 
+/**
+ * Bind the pinned guest vkeys to a published release's `guest-manifest.json`.
+ *
+ * The other checks around these values all test shape or freshness: `requireProdBytes32` says a
+ * vkey is well-formed, `requireReleaseDigest` says a digest is well-formed, and the staleness
+ * guard in `generateReleaseManifest` says `.docker/zk_verifier_deploy.json` agrees with
+ * `SP1_PROGRAM_VKEY`. None of them can tell whether the pin itself is the right one, and on
+ * 2026-08-25 that is precisely what reached Sepolia: `.env` pinned a LOCAL (non-`--docker`)
+ * trust-graph build, `.docker` agreed with it because the same run wrote both, and
+ * `SP1JournalVerifier` fixed `0x00d9bbff…` into an `immutable`. `TrustgraphsFactory.VERIFIER` is
+ * immutable as well, so the price of that one wrong line was two redeploys rather than a setter.
+ *
+ * A vkey is a deterministic function of the guest ELF, which makes the pair checkable: (vkey,
+ * elf_sha256) either appears in the release built at `DEPLOYMENT_COMMIT` or this is not that
+ * release. The manifest is a release asset rather than a file in the repo on purpose — a
+ * checked-in table is one more thing a local build can overwrite.
+ */
+function requireReleaseVkeys(): void {
+  const file = process.env.GUEST_MANIFEST || 'guest-manifest.json'
+  const commit = requireReleaseCommit()
+  const hex = (value: string): string =>
+    value.trim().toLowerCase().replace(/^0x/, '')
+
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `${file} not found, so the pinned vkeys cannot be checked against the release they claim ` +
+        `to come from. Fetch it next to this checkout:\n` +
+        `  gh release download <tag> -R JakeHartnell/trustgraphs -p guest-manifest.json\n` +
+        `(or point GUEST_MANIFEST at a copy). Deploying without it pins whatever the environment ` +
+        `happens to hold, and SP1JournalVerifier.programVKey is immutable.`
+    )
+  }
+
+  let manifest: {
+    commit?: string
+    tag?: string
+    programs?: { program?: string; vkey?: string; elf_sha256?: string }[]
+  }
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`${file} is not readable JSON: ${String(error)}`)
+  }
+
+  if (hex(manifest.commit || '') !== hex(commit)) {
+    throw new Error(
+      `${file} was built at commit ${manifest.commit ?? '<none>'} (tag ${manifest.tag ?? '?'}), ` +
+        `but DEPLOYMENT_COMMIT is ${commit}. Download the manifest for the release actually ` +
+        `being deployed; a manifest from a different build proves nothing about these vkeys.`
+    )
+  }
+
+  const released = new Map(
+    (manifest.programs ?? []).map((entry) => [entry.program, entry])
+  )
+
+  // Every guest vkey this environment carries, whether or not this particular deploy path
+  // consumes it. A weighted vkey that disagrees with the release is not harmless here: it is
+  // evidence the environment is not the release's environment, and this is the one moment a
+  // deploy looks at it.
+  const pins: [string, string][] = [
+    ['SP1_PROGRAM_VKEY', 'trust-graph'],
+    ['SP1_WEIGHTED_PROGRAM_VKEY', 'trust-graph-weighted'],
+    ['SP1_COMPOSITION_PROGRAM_VKEY', 'trust-compose'],
+    ['SP1_SIGNER_PROGRAM_VKEY', 'signer-sync'],
+  ]
+
+  for (const [name, program] of pins) {
+    const pinned = process.env[name]
+    if (!pinned) continue
+    const entry = released.get(program)
+    if (!entry?.vkey) {
+      throw new Error(
+        `${file} has no ${program} entry, so ${name} cannot be checked against the release.`
+      )
+    }
+    if (hex(pinned) !== hex(entry.vkey)) {
+      throw new Error(
+        `${name} pins ${pinned}, but ${program} in the ${commit} release is ${entry.vkey}. ` +
+          `A vkey that is not in the release is a local build: proofs from the released image ` +
+          `will not verify against it, and the verifier fixes it at construction. Fix the pin ` +
+          `before deploying — after deploying it costs a new verifier and a new factory.`
+      )
+    }
+  }
+
+  const trustGraph = released.get('trust-graph')
+  const digest = requireReleaseDigest()
+  if (trustGraph?.elf_sha256 && hex(digest) !== hex(trustGraph.elf_sha256)) {
+    throw new Error(
+      `SP1_PROGRAM_ELF_SHA256 pins ${digest}, but trust-graph in the ${commit} release is ` +
+        `0x${hex(trustGraph.elf_sha256)}. The digest and the vkey describe the same ELF, so ` +
+        `disagreement here means one of the two was copied from a different build.`
+    )
+  }
+}
+
 type EnvConstructorOptions = Omit<
   IEnv,
   'uploadToIpfs' | 'generateDeploymentSummary' | 'generateReleaseManifest'
@@ -1178,6 +1275,7 @@ export class SepoliaEnv extends EnvBase {
       validateDeployment: () => {
         requireReleaseCommit()
         requireReleaseDigest()
+        requireReleaseVkeys()
         gateway()
         requireProdBytes32('SP1_PROGRAM_VKEY')
         requiredAddress(
