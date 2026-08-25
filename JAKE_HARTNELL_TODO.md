@@ -1,7 +1,7 @@
 - ~~Tag release~~ **done: v0.0.4**
 - ~~Generate vkeys and elf digest~~ **done: published in the release**
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
-- Fresh deployer key (with Sepolia ETH) FUNDED_KEY
+- Deployer key: **address given, `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`** — still needs Sepolia ETH
 - Sepolia RPC endpoint
 - NETWORK_PRIVATE_KEY (needs a topup of $PROVE)
 - SUBMITTER_PRIVATE_KEY (doesn't need funds)
@@ -156,19 +156,27 @@ works and makes the handoff step a no-op. Tell me which.
 
 **Send me:** the admin address.
 
-### 1.3 Fund a fresh deployer key
+### 1.3 The deployer key — GIVEN, still needs funding
 
-`Common.s.sol` refuses the default Anvil key on a public chain, so there is no fallback.
+```
+0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30
+```
 
-Generate a **brand new** key. Do not reuse `0x3ED16f90e8EA54D9A1BAe67Ab2D6BDC177EadeeC` or
-its private key: the August audit found it committed at `taskfile/trustgraph.yml:58` under
-commit `6f5b260`, and it is burned permanently.
+Checked: EIP-55 checksum valid; no code on Sepolia; **nonce 0**, so genuinely unused, which is
+the property a deployer needs and the one worth verifying rather than assuming. Distinct from
+the admin key in 1.2, not the burned `0x3ED16f9…`, absent from this repo.
 
-Fund with Sepolia ETH. I will give you a measured number after the fork rehearsal; until then
-budget generously, since the run deploys a schema registrar, two verifiers, a registry, a
-vault, a factory, a governed factory, and a seeded instance.
+The private key goes in `FUNDED_KEY` in your environment. `.env` is gitignored and only
+`.env.example` is tracked, so that path is safe — worth stating in a repo that has leaked a
+key before.
 
-**Send me:** the deployer address only. The key goes in `FUNDED_KEY` in your environment.
+**Still open: fund it.** Balance is currently 0. I will give you a measured number after the
+fork rehearsal; until then budget generously, since the run deploys a schema registrar, two
+verifiers, a registry, a vault, a factory, a governed factory, the registry timelock, and the
+seeded instance.
+
+This key is hot: it signs a long broadcast session and renounces its roles at the end. It
+stays separate from the admin, which is why we generated a new one rather than reusing 1.2.
 
 ### 1.4 A private Sepolia RPC endpoint
 
