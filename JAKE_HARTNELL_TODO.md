@@ -170,7 +170,16 @@ repo to the org created a **brand-new package**, so the visibility flip had to b
 it exists so the self-hosting instructions cannot quietly go back to "clone the repo and install a
 RISC-V toolchain", and it caught precisely that.
 
-If you want to check the values rather than trust them:
+**Checked, 2026-08-25.** You ran the attestation verify and it passed: the image
+`sha256:347345b4…` was built and signed by `.github/workflows/release.yml@refs/tags/v0.0.5` in
+`AInima-Collective/trustgraphs`, via GitHub's OIDC issuer, with build repo and signer repo the
+same. The detail that matters is `refs/tags/v0.0.5` rather than a branch: the artifact is bound
+to the tag, so it cannot have come from an arbitrary push. That closes the last link in the
+chain a stranger has to trust — two independent guest builds agreed, the vkey table came from
+them, the published image re-derives the same vkeys inside itself, it pulls with no credentials,
+its provenance is signed, and the deploy planner refuses any vkey that is not in that manifest.
+
+To re-check either half later:
 
 ```bash
 gh attestation verify oci://ghcr.io/ainima-collective/trustgraphs-operator:v0.0.5 \
