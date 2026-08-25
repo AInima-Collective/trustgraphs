@@ -35,6 +35,19 @@ and — worst — `build.rs`'s local fallback found a STALE copy at the old path
 correct answer, so the prover was embedding a nostr guest that no longer matched its source. All
 four now ask cargo instead of guessing, and the digest table refuses to print a short table.
 
+**Release-path bugs, in the order execution found them.** Each run died one job further along
+than the last, which is the honest signature of finding by execution what inspection could not
+reach — every one was an environment difference this box cannot reproduce (no Docker daemon, no
+arm64 runner, protoc installed locally but not in CI, a base image whose group list is
+uninspectable here).
+
+| run | died at | cause |
+| --- | --- | --- |
+| `v0.0.1` | guest build | `--docker` mounts the guest's own workspace; guests depend on `crates/` outside it (`workspace_directory`) |
+| `v0.0.2` | archiving the ELFs | a target directory belongs to the WORKSPACE; the nostr guest's is one level up |
+| `v0.0.3` | vkey table | `sp1-sdk` reaches `prost-build` transitively, so protoc is required — and `cargo tree --edges build` cannot show that |
+| dispatch 1 | image build | `operator` is a stock Debian system group, so `useradd` exits 9 |
+
 **Where it stands after two tags.** Six further commits fixed the five release-path bugs those
 tags exposed (all mine; see the commit log from `4144e0c`). The gate now runs in ~6 minutes and can
 be exercised without spending a tag:
