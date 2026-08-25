@@ -1231,6 +1231,23 @@ export class SepoliaEnv extends EnvBase {
           name: 'Trustgraphs Factory',
           script: 'contracts/script/DeployFactory.s.sol:DeployFactory',
           sig: 'run(string,string,string,string,uint64,string)',
+          // The factory's REGISTRAR_ROLE grant is NOT made here, and the reason is the custody
+          // shape this deployment is rehearsing. `DeployFactory` grants by default, signed by the
+          // deployer, on the assumption stated in its own natspec: "the registry's admin key,
+          // which at bootstrap is the deployer". That assumption does not hold here. Sepolia
+          // deploys the registry with `INSTANCE_REGISTRY_ADMIN` as its admin from birth, so the
+          // deployer never holds DEFAULT_ADMIN_ROLE and `grantRole` reverts
+          // AccessControlUnauthorizedAccount — measured on anvil, deployer vs. a separate admin,
+          // selector 0xe2517d3f. Step 5 of 5 would fail after the first four had landed.
+          //
+          // Bootstrapping the registry to the deployer and transferring afterwards would make the
+          // grant work, and is the wrong trade: it puts the whole directory under the deploy
+          // machine's key for the length of the deploy, which is exactly the window mainnet must
+          // not have. So the grant becomes what it will be on mainnet — a separate action by the
+          // registry's admin — and `postRun` prints it rather than leaving it to be discovered
+          // when the first network creation reverts. Same choice research/operations/production.md
+          // already documents.
+          env: () => ({ GRANT_REGISTRAR: 'false' }),
           args: () => [
             manifest.external.eas,
             readJsonKey('.docker/eas_deploy.json', 'schema_registrar'),
@@ -1247,6 +1264,46 @@ export class SepoliaEnv extends EnvBase {
                   'proving_vault'
                 ),
           ],
+          // Printed, not enforced. Nothing in here may throw: it runs after the last contract has
+          // landed but BEFORE the release manifest is written, so an exception raised while
+          // formatting an instruction would cost the record of a deploy that actually succeeded.
+          postRun: () => {
+            const registry =
+              readJsonIfFileExists<Record<string, string>>(
+                '.docker/instance_registry_deploy.json'
+              )?.instance_registry ?? '<InstanceRegistry>'
+            const factory =
+              readJsonIfFileExists<Record<string, string>>(
+                '.docker/factory_deploy.json'
+              )?.factory ?? '<TrustgraphsFactory>'
+            const admin = process.env.INSTANCE_REGISTRY_ADMIN ?? '<the admin>'
+            console.log(
+              [
+                '',
+                'ONE STEP REMAINS, and it is not the deployer\'s to take.',
+                '',
+                'The factory is deployed but cannot yet register anything: REGISTRAR_ROLE was',
+                'deliberately not granted, because only the registry admin can grant it. Until',
+                `it is, every network creation reverts. Signed by ${admin}:`,
+                '',
+                `  cast send ${registry} \\`,
+                "    'grantRole(bytes32,address)' \\",
+                `    $(cast keccak 'REGISTRAR_ROLE') ${factory} \\`,
+                '    --rpc-url "$RPC_URL" --private-key <the admin key, however you hold it>',
+                '',
+                'Then confirm it, rather than assuming the send landed:',
+                '',
+                `  cast call ${registry} 'hasRole(bytes32,address)(bool)' \\`,
+                `    $(cast keccak 'REGISTRAR_ROLE') ${factory} --rpc-url "$RPC_URL"   # -> true`,
+                `  cast call ${registry} 'hasRole(bytes32,address)(bool)' \\`,
+                `    $(cast keccak 'OPERATOR_ROLE') ${factory} --rpc-url "$RPC_URL"    # -> false`,
+                '',
+                'The second one matters as much as the first: OPERATOR_ROLE would let the factory',
+                'rewrite existing records, not just append its own.',
+                '',
+              ].join('\n')
+            )
+          },
         },
       ],
     })
@@ -1273,6 +1330,32 @@ export class SepoliaEnv extends EnvBase {
     const factory = readJsonIfFileExists<Record<string, string>>(
       '.docker/factory_deploy.json'
     )
+
+    // `.docker/*_deploy.json` is a scratch directory shared with every local anvil run, and it is
+    // gitignored, so it routinely holds yesterday's dev stack. In a clean full run each step
+    // overwrites its file before the next reads it and none of that matters. It matters if a run
+    // is resumed, or if a step is skipped: the vkey below would then be whatever the last LOCAL
+    // deploy wrote, and `validateReleaseManifest` would not object, because it only checks that a
+    // vkey is well-formed bytes32 and present. A locally-built guest has a perfectly well-formed
+    // vkey — it is simply a property of the machine that built it, and pinning it is the one
+    // mistake this whole reproducible-build chain exists to prevent.
+    //
+    // So the manifest asserts identity with the vkey the verifier was DEPLOYED against, rather
+    // than trusting the file it was read from to be fresh.
+    const deployedVkey = verifier?.program_vkey
+    const expectedVkey = process.env.SP1_PROGRAM_VKEY
+    if (
+      deployedVkey &&
+      expectedVkey &&
+      deployedVkey.toLowerCase() !== expectedVkey.toLowerCase()
+    ) {
+      throw new Error(
+        `.docker/zk_verifier_deploy.json records vkey ${deployedVkey}, but this deployment ` +
+          `pinned SP1_PROGRAM_VKEY=${expectedVkey}. That file is stale — almost certainly from a ` +
+          `local anvil run. Clear .docker/*_deploy.json and redeploy; do not write this manifest.`
+      )
+    }
+
     const contracts = {
       schemaRegistrar: deploymentRecord(eas?.schema_registrar, broadcasts),
       rootVerifier: deploymentRecord(verifier?.zk_verifier, broadcasts),
