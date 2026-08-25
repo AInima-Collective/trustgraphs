@@ -20,9 +20,11 @@ env:
 permissions: {}
 
 jobs:
-  # The gate. Two architectures build the guests and must produce identical ELF digests; if they
+  # The gate. Two cold runners build the guests and must produce identical ELF digests; if they
   # do not, nothing below runs, because an image and a vkey table nobody else can reproduce are
-  # worse than no release at all.
+  # worse than no release at all. Two COLD BUILDS, not two architectures: the pinned SP1 builder
+  # image is amd64-only, so an arm64 runner runs that same container under emulation and would
+  # be comparing a build against itself.
   guests:
     name: Reproducible guests
     uses: ./.github/workflows/guest-reproducibility.yml
@@ -329,8 +331,11 @@ jobs:
             echo
             echo "## Guest programs"
             echo
-            echo "Every guest was built inside the pinned SP1 builder image and produced identical"
-            echo "bytes on two architectures before this release was cut. \`guest-manifest.json\` is"
+            echo "Every guest was built inside the pinned SP1 builder image, twice, on two cold"
+            echo "runners that share no state, and produced identical bytes before this release"
+            echo "was cut. Two cold builds rather than two architectures: the pinned SP1 builder"
+            echo "image is amd64-only, so an arm64 runner would run that same container under"
+            echo "emulation and compare a build against itself. \`guest-manifest.json\` is"
             echo "attached; the same values are reproducible from source with:"
             echo
             echo '```'

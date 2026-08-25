@@ -405,6 +405,19 @@ that has to live outside GitHub.
 **Exit:** pushing a tag produces a pullable multi-arch image, a provenance attestation, and a
 published vkey and digest table, with no human step in between.
 
+**MET, 2026-08-25, `v0.0.4` (run 32800847557, commit `95faa6f`).** All nine jobs green on the
+first attempt after the reading pass: both cold guest builds and their comparison, the vkey table,
+both images, the multi-arch manifest, the attestation, the anonymous pull, the in-image vkey
+re-derivation, and the release. `ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4` at
+`sha256:1656285b28c526016ce259bb84528d04fce3b544edbb9e1ca89fe59e256141bd`, `:latest` moved to it.
+
+Two things worth recording because they were predicted wrong. The GHCR visibility flip did not
+happen: I expected `verify` to go red on a private-by-default package and said so in advance, and
+it pulled anonymously with no credentials and no manual step, so D8 was already satisfied and the
+"no human step in between" in that exit line is literal. And the seven published vkeys are
+byte-identical to the values derived on two earlier commits, so the reproducibility claim now rests
+on three independent builds across three commits rather than on one run.
+
 ### M5 — Run the things that have never been run
 
 - [x] **Soak.** A harness against anvil with restarts and RPC failures injected,
