@@ -50,8 +50,16 @@ image's feature set produces a byte-identical vkey table to the default build (t
 from `debian:bookworm-slim`; and artifact → pristine checkout → digest script yields all ten
 entries, which is the Dockerfile's builder stage simulated.
 
-**Gates.** The *reproducibility* gate is not met until `guest-reproducibility.yml` runs green —
-the mechanism exists and has demonstrated it fails loudly, which is half of what a gate is for. The *hostable* gate needs that plus a published
+**Gates.** The *reproducibility* gate is **MET** as of 2026-08-25: two cold builds of `de6e1cb`
+produced byte-identical digests for all nine guests, and seven of them match a run on an earlier
+commit. SEPOLIA_GOAL 1.1 is unblocked — a vkey derived from this build is a property of the source
+rather than of the machine, which is the whole thing that was not true yesterday. The vkey table
+itself comes from a release's `guest-manifest.json`, so cutting a tag is now the next step rather
+than a risk.
+
+The *hostable* gate still needs a published image; the *production* gate's two runnable legs (soak,
+reorg) are green and a journal restore is tested; the *self-host* gate needs M6, whose walkthrough
+is now `tests/e2e/selfhost.sh` rather than prose. The *hostable* gate needs that plus a published
 image. The *production* gate's two runnable legs are met (soak and reorg green, journal restore
 tested); it is otherwise waiting on hostable. The *self-host* gate waits on M6.
 
@@ -293,9 +301,14 @@ Two consequences that matter right now:
 
 - [x] Switch to `build_program_with_args` with `docker: true` and a pinned tag, in
       `zk/prover/build.rs`, `taskfile/zk.yml`, and `zk-parity.yml`.
-- [ ] **DEVIATION, and the check is now two cold same-architecture builds.** Verify rather than
-      assume: build the same commit on two independent runners and assert byte-identical ELF
-      digests and equal vkeys. The exit said "different architectures"; the measurement said that
+- [x] **VERIFIED 2026-08-25, run
+      [32792835537](https://github.com/JakeHartnell/trustgraphs/actions/runs/32792835537).** Nine
+      guests, byte-identical across two independent cold runners. Stronger than asked for: all
+      seven digests from `v0.0.2`'s earlier run on a DIFFERENT commit (`628aa7a`, ninety minutes
+      before) appear unchanged in today's table from `de6e1cb`, so three independent builds across
+      two commits agree. **DEVIATION: the check is two cold same-architecture builds**, not two
+      architectures. Verify rather than assume: build the same commit on two independent runners
+      and assert byte-identical ELF digests and equal vkeys. The exit said "different architectures"; the measurement said that
       buys almost nothing here and costs everything. The pinned SP1 builder image is amd64-only,
       so an arm64 runner executes the SAME amd64 container under QEMU — same image digest, same
       toolchain, same rustflags — which is the same build on a slower CPU rather than an
