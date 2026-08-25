@@ -16,7 +16,7 @@
     "test:pagerank-differential": "tsc lib/pagerank/differential.test.ts --outDir node_modules/.cache/pagerank-differential --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/pagerank-differential/differential.test.js",
     "test:ens:integration": "tsc lib/ens.integration.test.ts --outDir node_modules/.cache/ens-integration-test --module commonjs --target es2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false && node node_modules/.cache/ens-integration-test/ens.integration.test.js",
     "test:eas-offchain-product": "npm run prepare:typecheck-config && tsx --test lib/eas-offchain-product.source.test.ts",
-    "prepare:typecheck-config": "node scripts/link-deployment-config.mjs config --allow-typecheck-template && node scripts/link-deployment-config.mjs networks --allow-typecheck-template",
+    "prepare:typecheck-config": "node scripts/link-deployment-config.mjs config --allow-typecheck-template && node scripts/link-deployment-config.mjs networks --allow-typecheck-template && npm run wagmi:generate",
     "indexer:config": "cp ../indexer/*.schema.ts .",
     "config:generate": "tsx scripts/generate-config.ts",
     "config:link": "node scripts/link-deployment-config.mjs config",
