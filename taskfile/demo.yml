@@ -104,6 +104,24 @@ tasks:
 
         cast block-number --rpc-url {{.RPC}} >/dev/null 2>&1 \
           || fail "no chain at {{.RPC}} — start one: anvil --silent &"
+
+        # This task deploys contracts and spends whatever the signer holds, so being on a
+        # development chain is a precondition, not a detail. `deploy` now pins --chain local, and
+        # Common.s.sol asserts EXPECTED_CHAIN_ID, but both of those fail deep inside a Forge run;
+        # say it here, where someone is still reading.
+        DEMO_CHAIN=$(cast chain-id --rpc-url {{.RPC}} 2>/dev/null || echo 0)
+        [ "$DEMO_CHAIN" = "31337" ] \
+          || fail "{{.RPC}} is chain $DEMO_CHAIN, not a local anvil (31337) — the demo pins verifiers to vkeys built from THIS checkout, which are a fact about this machine and must never reach a public chain"
+
+        # `.env` is shared with the release path, and every task reads it (Taskfile dotenv). The
+        # demo no longer follows DEPLOY_TARGET, but FUNDED_KEY, RPC_URL and the vkeys still come
+        # from that file, so a release-shaped `.env` is worth saying out loud before a demo runs
+        # against it.
+        if [ -f .env ] && grep -qiE '^DEPLOY_TARGET=(sepolia|mainnet|optimism)' .env; then
+          echo "  note: .env has DEPLOY_TARGET=$(grep -iE '^DEPLOY_TARGET=' .env | cut -d= -f2)."
+          echo "        The demo ignores it and deploys to {{.RPC}} (chain 31337) regardless."
+        fi
+
         [ -n "${FUNDED_KEY:-}" ] || fail "FUNDED_KEY unset (it comes from .env)"
 
         # Proof submission is deliberately blocked until the score blob is both pinned and
@@ -169,10 +187,18 @@ tasks:
           | .chain_id = 0
         ' tests/e2e/params.template.json > {{.WORK}}/params.json
         echo "→ deploying against trust-graph vkey $SP1_PROGRAM_VKEY"
+        # `--stage` and `--chain` are pinned here rather than left to default, because their
+        # defaults are $DEPLOY_STAGE and $DEPLOY_TARGET out of `.env` — so a `.env` left pointing
+        # at a public chain sent this task, with the locally derived vkeys exported above, to
+        # that chain. It happened on 2026-08-25: five contracts on real Sepolia, real ETH, and a
+        # verifier holding a laptop's vkey in an immutable. `preflight` did not catch it because
+        # it probes {{.RPC}} while the deploy read `.env`. Passing both explicitly means the demo
+        # deploys where the demo runs whatever `.env` says, and `development` + a public chain is
+        # refused outright by `resolveDeploymentSelection`.
         PARAMS_JSON={{.WORK}}/params.json \
           DEV_SEED_PREPAY_WEI={{.PREPAY_WEI}} \
           DEV_SEED_MAX_PER_ROOT_USD={{.MAX_PER_ROOT_USD}} \
-          pnpm deploy:contracts
+          pnpm deploy:contracts --stage development --chain local --rpc-url {{.RPC}}
       - task: addresses
       - |
         # The indexer reads .docker/deployment_summary.json ONCE, at startup (ponder.config.ts

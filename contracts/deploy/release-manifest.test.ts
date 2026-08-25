@@ -18,19 +18,32 @@ const ADDRESS = '0x1111111111111111111111111111111111111111'
 const TX_HASH = `0x${'22'.repeat(32)}` as `0x${string}`
 const BYTES32 = `0x${'33'.repeat(32)}` as `0x${string}`
 
-test('tracked Sepolia manifest is planned, sanitized, and chain-bound', () => {
+test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its status', () => {
   const manifest = loadReleaseManifest(MANIFEST)
   const serialized = fs.readFileSync(MANIFEST, 'utf8')
 
   assert.equal(manifest.stage, 'production')
   assert.equal(manifest.chain, 'sepolia')
   assert.equal(manifest.chainId, 11155111)
-  assert.equal(manifest.status, 'planned')
   assert.doesNotMatch(serialized, /rpc_url|rpcUrl|privateKey|fundedKey|secret/i)
-  assert.throws(
-    () => loadReleaseManifest(MANIFEST, { requireComplete: true }),
-    /status=deployed/
-  )
+
+  // A real deploy writes its record straight over this file, because the Sepolia profile names
+  // it as `releaseManifestFile` and it is also tracked. So `planned` (the committed template)
+  // and `deployed` (a working tree that has deployed) are both honest states, and pinning the
+  // assertion to `planned` made the suite go red on exactly the machines doing the work — the
+  // fastest way to teach someone to ignore a red suite on deploy day. What must hold either way
+  // is that the file carries no secrets and is complete for whatever it claims to be.
+  assert.ok(['planned', 'deployed'].includes(manifest.status))
+  if (manifest.status === 'planned') {
+    assert.throws(
+      () => loadReleaseManifest(MANIFEST, { requireComplete: true }),
+      /status=deployed/
+    )
+  } else {
+    assert.doesNotThrow(() =>
+      loadReleaseManifest(MANIFEST, { requireComplete: true })
+    )
+  }
 })
 
 test('manifest validator rejects unknown fields and secret-bearing keys', () => {

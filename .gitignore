@@ -59,3 +59,7 @@ tests/e2e/deploy.json
 # only the small hypercerts fixture CAR is committed.
 tests/fixtures/atproto/repos/*.car
 tests/fixtures/atproto/hypercerts/gen/node_modules/
+
+# Downloaded per release by the deploy planner (see requireReleaseVkeys). Never commit it:
+# a checked-in vkey table is one more thing a local build can overwrite.
+guest-manifest.json
