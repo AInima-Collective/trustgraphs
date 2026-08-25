@@ -8,7 +8,9 @@
 - [ ] Metadata for the seeded network
 - [ ] Trusted seeds for the seeded network
 - [ ] Railway: indexer, operator, frontend
-- [ ] Postgres, IPFS pinning, DNS, Etherscan key
+- [x] Etherscan API key — in `.env`; **nothing reads it yet**, see 5.1
+- [ ] Postgres, IPFS pinning, DNS
+- [ ] **Redeploy the verifier and the factory** — the live ones pin a local build's vkey, see below
 
 ==== long version...
 
@@ -24,6 +26,69 @@ read it and veto. Part 4 is accounts. Part 5 is deploy day.
 **One rule:** no key, RPC URL, database URL, or API token goes into this repo, into
 `deployments/sepolia.json`, or into a chat message. Variable names and where each value goes
 are in [`.env.example`](.env.example). Send me addresses and public URLs only.
+
+---
+
+## Read this first: the deploy already ran, and one contract has to be redone
+
+Between roughly 14:27 and 14:32 UTC on 2026-08-25 the five-contract plan was broadcast to
+Sepolia. All fifteen transactions succeeded, the wiring is right, the roles are what they were
+designed to be. One number is wrong, and it is the one number that cannot be edited afterwards.
+
+**The verifier pins a local build's vkey.** `SP1JournalVerifier` at
+`0xF8A72bcc271F298b8E75d5Bb8D4C966680Ae1C36` carries
+
+```
+programVKey = 0x00d9bbffc7d47f8a808333359a60f3e213eabe45363d94fc837203b895e8404c
+```
+
+The release built at the pinned `DEPLOYMENT_COMMIT` publishes
+`0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e` for trust-graph. That is
+from `v0.0.4`'s `guest-manifest.json`, downloaded from the release and read, not recalled.
+`0x00d9bbff…` is the local non-`--docker` build — the single value the whole reproducible-build
+chain in 1.1 exists to keep off-chain. **A proof from the released operator image will not
+verify against this verifier.** Nothing in the system would have said so: it surfaces at the
+first real proof request and nowhere earlier.
+
+`programVKey` is `immutable`, and `TrustgraphsFactory.VERIFIER` is `immutable` as well, so this
+is not a setting to correct. It is a new verifier and a new factory. The blast radius stops
+there: `instances` is empty, so no network was ever created against it.
+
+Your `.env` now holds the correct vkey, so whatever produced the wrong one is already fixed. The
+on-chain artifact is the only thing left over.
+
+**What is live right now, all verified against the chain a few minutes ago:**
+
+| contract | address | state |
+| --- | --- | --- |
+| SchemaRegistrar | `0x6094420aD64FF8ab5e1909222Dc1aa549fc89721` | fine, reusable |
+| SP1JournalVerifier | `0xF8A72bcc271F298b8E75d5Bb8D4C966680Ae1C36` | **wrong vkey, replace** |
+| InstanceRegistry | `0x66Af3e14552a845Ed0848f3ad4008265071bfD52` | fine; admin + `OPERATOR_ROLE` are your EOA |
+| ProvingVault | `0xD1f54EFFe670D0F8f781BB2E92589F126363Fa0f` | fine, but still under the deployer |
+| TrustgraphsFactory | `0xD5e29B116124AaD2bDbCbCc46D91214FA6f5cc38` | pins the bad verifier, replace |
+
+**The other two findings are open on-chain exactly as predicted.** `REGISTRAR_ROLE` → factory is
+**false**, so network creation would revert today. Vault `DEFAULT_ADMIN_ROLE` and
+`FEE_SETTER_ROLE` are both **the deployer**, and your admin EOA holds neither. Both should be
+done against the *replacement* factory rather than this one.
+
+Everything else checked clean: the factory points at the right registry, vault, EAS and schema
+registrar; `EPOCH_FLOOR` is 7200; the verifier's gateway is the canonical Sepolia SP1 gateway
+`0x397A5f7f3dBd538f23DE225B51f532c34448dA9B`.
+
+**The guard that would have caught this now exists** (`8879915`). The checks in this path all
+tested shape or freshness: a locally built vkey is well-formed bytes32, and the staleness guard
+compared `.docker/zk_verifier_deploy.json` against `SP1_PROGRAM_VKEY` — which agreed, because
+the same run wrote both. Planning a Sepolia deploy now also requires `guest-manifest.json` for
+the pinned commit and refuses any vkey that is not in it. A vkey is a deterministic function of
+the guest ELF, so the pair `(vkey, elf_sha256)` either appears in that release or this is not
+that release.
+
+**Two housekeeping notes.** `deployments/sepolia.json` in the tree is now the live (wrong)
+record and is uncommitted — leave it, it regenerates on the redeploy. And `pnpm test:deploy`
+reports one failure for that reason alone: the tracked manifest is a `planned` template and a
+real deploy overwrites it in place. Not a code defect, but the test can never pass on a machine
+that has deployed, which is worth fixing before it trains anyone to ignore a red suite.
 
 ---
 
@@ -63,6 +128,11 @@ by a public workflow from commit `95faa6f`, agreed on by two cold runners before
 **Decide:** which commit we deploy from. It matters because `SP1JournalVerifier` pins its vkey
 at construction and `TrustgraphsFactory` pins its verifier: changing a vkey afterwards means a
 new verifier and a new factory.
+
+> That sentence stopped being hypothetical on 2026-08-25. The morning's broadcast pinned
+> `0x00d9bbff…`, a local build, and the verifier and factory now have to be replaced. See the
+> section at the top of this file. The table above is still the right table; it just has to be
+> the one that reaches the chain. Planning a Sepolia deploy now checks it against the release.
 
 My recommendation is now **a later tag, not `v0.0.4`**. Two deploy defects have been fixed
 since it (`4735840`, `f021f97`), and the operator has substantial uncommitted work in flight.
@@ -452,60 +522,86 @@ Set `[ops] listen` so Railway's healthcheck has something to probe, and point th
 
 ---
 
-## Part 5: Deploy day, with me
+## Part 5: Deploy day, take two
 
-Where you press the button, in order. I will have everything staged.
+The first broadcast has already happened; see the section at the top of this file for what
+landed and what is wrong with it. This is the corrected run.
 
-The plan is **five contracts**, and I have run it as a dry run against your `.env`: EAS schema
-registrar, ZK verifier, InstanceRegistry, ProvingVault, TrustgraphsFactory. No timelocks, no
-governed factory, no weighted or compose lane, no instance — those are outside the first
-testnet gate. Two consequences worth knowing now: the gas is **~24.4M, not the ~54M I budgeted
-before** (the old number summed steps this plan does not run), so 0.5 ETH covers roughly twenty
-full attempts at today's ~1.1 gwei; and **creating the seeded network is a separate step after
-this**, so 2.1 and 2.2 do not block the button.
+**The simplest correct move is to re-run all five and abandon today's addresses.** The verifier
+and the factory must be replaced, and only the registry, vault and schema registrar could in
+principle be reused. Reusing them means threading three existing addresses through a plan built
+to deploy them, for a saving of about 12M gas — roughly 0.013 ETH at today's ~1.1 gwei, against
+a deployer holding 0.5. A clean full run costs ~24.4M gas, leaves one internally consistent
+manifest, and is the version I can dry-run end to end beforehand. Nothing points at today's
+five: `instances` is empty.
 
-1. **Approve the release commit** and confirm the vkeys in 1.1 are the ones we pin.
-2. **Clear `.docker/*_deploy.json`.** It is gitignored scratch shared with every local anvil
-   run, and it currently holds yesterday's dev stack — including a `program_vkey` from a local
-   non-docker build, the exact value that must never be pinned. A clean full run overwrites
-   each file before the next step reads it, so this only bites a resumed or partial run. The
-   manifest now refuses to be written if that vkey disagrees with the pinned one, so the
-   failure is loud, but starting clean is one command.
-3. **Run preflight** and read it. Fails closed on a wrong chain, a default key, a frozen SP1
-   route, a stale feed, a zero vkey, or a commit mismatch.
-4. **Broadcast the deployment** with your key. I never hold it.
-5. **Grant the factory `REGISTRAR_ROLE`, signed by the admin EOA.** This is a real step, not a
-   formality, and it is new: the registry is constructed with your admin EOA as its admin from
-   birth — the mainnet shape you asked for — so the deployer cannot make this grant. Until it
-   lands, **every network creation reverts**. The deploy prints the exact `cast send` and the
-   two `hasRole` checks that confirm it, including the negative one: the factory must hold
-   `REGISTRAR_ROLE` and must **not** hold `OPERATOR_ROLE`, because the second would let it
-   rewrite existing records instead of only appending its own.
+1. **Confirm the pin.** `SP1_PROGRAM_VKEY` in `.env` must read
+   `0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e`. It does now. The
+   planner also checks it against `guest-manifest.json` for `DEPLOYMENT_COMMIT` and refuses to
+   plan if they disagree, so this is belt and braces rather than the only line of defence — but
+   it is the line that failed last time.
+2. **Fetch the release manifest** next to the checkout, because the planner needs it:
+   `gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json`
+   (or point `GUEST_MANIFEST` at a copy).
+3. **Clear `.docker/*_deploy.json`.** Gitignored scratch shared with every local anvil run, and
+   it currently holds a dev stack from 14:35 today — including `zk_verifier_deploy.json` with
+   the local vkey. A clean full run overwrites each file before the next step reads it, so this
+   only bites a resumed or partial run, but starting clean is one command.
+4. **Dry run.** `pnpm deploy:contracts --dry-run` validates and prints the ordered plan without
+   touching the chain. Then preflight: it fails closed on a wrong chain, a default key, a frozen
+   SP1 route, a stale feed, a zero vkey, or a commit mismatch.
+5. **Broadcast**, with your key. I never hold it.
+6. **Grant the new factory `REGISTRAR_ROLE`, signed by the admin EOA.** A real step, not a
+   formality: the registry is constructed with your admin EOA as its admin from birth — the
+   mainnet shape you asked for — so the deployer cannot make this grant. Until it lands, every
+   network creation reverts. This is why it is `false` on-chain right now. The deploy prints the
+   exact `cast send` and the two `hasRole` checks that confirm it, including the negative one:
+   the factory must hold `REGISTRAR_ROLE` and must **not** hold `OPERATOR_ROLE`, because the
+   second would let it rewrite existing records rather than only appending its own.
 
-   (Until 2026-08-25 the deploy tried to make this grant itself and would have reverted at step
-   5 of 5, after the other four had landed. Fixed in `4735840`; reproduced on anvil first.)
-6. **Prove one real root** through the live Sepolia gateway. The last thing that can surprise
-   us, and the difference between "deployed" and "working". Needs the submitter funded (1.5).
-7. **Walk the browser flow** on the public domain with a clean wallet before we tell anyone.
+   (Until 2026-08-25 the deploy tried to make this grant itself and reverted at step 5 of 5.
+   Fixed in `4735840`, reproduced on anvil first.)
+7. **Hand the vault over, signed by the deployer.** `DeployProvingVault` hardcodes the deployer
+   as both `DEFAULT_ADMIN_ROLE` and `FEE_SETTER_ROLE` and the plan has no handoff step, so left
+   alone a key generated for one afternoon permanently holds the vault's fee authority — which
+   is what the live vault looks like today. The exposure is narrow: `setFeePerRootUsd` and
+   `setGasParams`, nothing that moves funds, so mispricing and denial rather than theft. It is
+   still the wrong key to leave it under, and rehearsing the handoff is much of why we are doing
+   this on Sepolia in the mainnet shape. The deploy prints the three sends — grant admin, grant
+   fee-setter, renounce admin — and the checks confirming the deployer holds nothing afterwards.
+   **Order matters:** grant first, renounce second. Reversed, the vault has no admin at all and
+   the roles can never be granted again.
+8. **Prove one real root** through the live Sepolia gateway. The last thing that can surprise
+   us, and the difference between "deployed" and "working". This is also the step that would
+   have exposed the vkey, three contracts too late. Needs the submitter funded (1.5).
+9. **Walk the browser flow** on the public domain with a clean wallet before we tell anyone.
 
-An earlier version of this list said the deploy "moves registry and vault administration to
-your admin EOA and the deployer renounces". Half of that is now true by construction and half
-of it does not happen at all:
+### 5.1 Etherscan verification — the key is in, the step is not built
 
-- **Registry:** correct, and better than described. `InstanceRegistry` is constructed with your
-  admin EOA as admin, so there is no window in which the deployer holds it and nothing to
-  renounce. That is why step 5 exists.
-- **Vault:** not correct. `DeployProvingVault` hardcodes the **deployer** as both
-  `DEFAULT_ADMIN_ROLE` and `FEE_SETTER_ROLE`, and the Sepolia plan has no handoff step. Left
-  alone, a key generated for one afternoon's deploy permanently holds the vault's fee
-  authority. Step 5b below is the fix.
+`ETHERSCAN_API_KEY` is in `.env` and it is fine there. It is also, today, read by nothing:
+there is no `--verify` in the deploy pipeline, no `[etherscan]` block in `foundry.toml`, and no
+verification script. `.env.example` says as much next to the variable. So adding it changes
+nothing on its own — the contracts deployed this morning are unverified on Sepolia and will
+stay that way until the step exists.
 
-**5b. Hand the vault over, signed by the deployer.** Narrow but real: `FEE_SETTER_ROLE` is the
-vault's entire privileged surface — `setFeePerRootUsd` and `setGasParams`, nothing that can
-move funds — so the exposure is mispricing and denial, not theft. It is still the wrong key to
-leave it under, and rehearsing the handoff is a large part of why we are doing this on Sepolia
-in the mainnet shape at all. The deploy prints the three sends (grant admin, grant fee-setter,
-renounce admin) and the checks that confirm the deployer holds nothing afterwards.
+Two ways to build it, and I would not choose the first:
+
+- **`--verify` inline in the deploy.** One flag, but it puts Etherscan on the critical path of
+  a broadcast. The runner has no try/catch around each step, so a rate-limit or a propagation
+  delay on contract two aborts contracts three through five *after* their predecessors have
+  landed. Trading a deploy-day abort for a cosmetic nicety is a bad trade.
+- **A separate verify pass, after the fact.** Reads the broadcast receipts, recovers each
+  constructor's arguments from the creation input, and calls `forge verify-contract` per
+  address. It holds no private key, so it cannot broadcast anything; it is rerunnable, and
+  Etherscan treats a repeat as already-verified. If it fails, nothing is lost.
+
+I will build the second unless you say otherwise. It also verifies retroactively, so if you
+would rather leave today's five up as a testnet artifact they can be verified too.
+
+One housekeeping note: the value got echoed into my terminal while I was checking whether
+anything read it. An Etherscan key is a read-only rate-limit token, so the exposure is
+somewhere between nil and mild, but it is your key and rotating it costs a minute if you would
+rather not think about it.
 
 ---
 
