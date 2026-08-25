@@ -68,6 +68,10 @@ and published output files before relying on the deployment.
 
 ### Sepolia service package
 
+Railway is the selected host for the first public testnet. Its project definition and deployment
+runbook are in [Run the Sepolia services on Railway](./railway.md). The Compose package below
+remains the portable reference implementation and local recovery-drill path.
+
 `docker-compose.prod.yml` is the production package, not a developer convenience stack. The
 writer, serving API, and monitor run from `packages/indexer/Dockerfile`; none installs dependencies
 into or bind-mounts the checkout. Postgres and the operator state use explicitly named volumes.

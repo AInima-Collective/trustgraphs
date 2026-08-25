@@ -480,9 +480,9 @@ Inputs this program cannot produce.
 | Public domain and its WalletConnect origins | | `https://trustgraphs.xyz` selected; host and WalletConnect origin configuration still needed for M3 |
 | Ponder public API URL | `PONDER_URL` | still needed; the existing public site's old Ponder upstream is unavailable |
 | Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | PublicNode and Tenderly selected and live-validated for chain id, head, historical code, calls, balances, blocks, and estimates; both are recorded in the ignored overlay and still need copying into the public host |
-| Hosting for indexer and operator | | still needed for M5/M6; local writer is not the public service |
+| Hosting for indexer and operator | | Railway selected; project plan/apply and live service evidence still needed for M5/M6 |
 | Operator image for this source | `OPERATOR_IMAGE` | published, attested, anonymously pulled, and recorded as `ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40`; host deployment and restart drill remain |
-| Docker-capable drill host | | image publication and the direct Postgres restore are complete; still needed for the service restart drill and week soak |
+| Docker-capable drill host | | Railway selected; image publication and the direct Postgres restore are complete, while the service restart drill and week soak remain |
 | Funded Succinct prover account | `NETWORK_PRIVATE_KEY` | present in `.env` |
 
 Pinata's API key and secret are for the legacy `api.pinata.cloud/pinning/*` endpoints, which
