@@ -24,6 +24,8 @@ assert.equal(
 )
 
 for (const required of [
+  'createRailwayContext',
+  'const ctx = createRailwayContext(input)',
   "project('trustgraphs-sepolia'",
   "github('AInima-Collective/trustgraphs', { branch: 'sepolia' })",
   "postgres('Postgres', { region })",

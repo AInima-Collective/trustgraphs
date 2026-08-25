@@ -76,7 +76,8 @@ larger compute ceilings.
 
 ## 3. Create the shared variables
 
-Create these as Railway **shared variables** in the production environment. Keep the values in
+A local `.env` is not loaded by `railway config plan`. Create these as Railway **shared
+variables** in the environment you linked above (`production` in this guide). Keep the values in
 Railway, not in this repository or the IaC file.
 
 | Variable                | Purpose                                                                |
@@ -87,6 +88,10 @@ Railway, not in this repository or the IaC file.
 | `IPFS_PIN_API_KEY`      | Pinata bearer JWT                                                      |
 | `SUBMITTER_PRIVATE_KEY` | Gas-only Sepolia transaction key                                       |
 | `NETWORK_PRIVATE_KEY`   | Separate Succinct prover-network key                                   |
+
+In the Railway dashboard, open **Project Settings → Shared Variables**, select the linked
+environment, and add the six names above. Seal every credential-bearing value, including paid
+RPC URLs, private keys, and the Pinata token. Do not commit `.env` to make Railway discover it.
 
 The IaC references these variables but does not create or reveal them. Postgres supplies its own
 private `DATABASE_URL` through Railway's service reference. This first testnet intentionally has

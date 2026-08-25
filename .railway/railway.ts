@@ -1,4 +1,5 @@
 import {
+  createRailwayContext,
   defineRailway,
   github,
   group,
@@ -52,7 +53,11 @@ const monitorWatchPaths = [
   '/ops/monitor-production.mjs',
 ]
 
-export default defineRailway((ctx) => {
+export default defineRailway((input) => {
+  // Railway CLI currently evaluates TypeScript IaC callbacks with a plain input object. Normalize
+  // it through the SDK before using helpers such as ctx.shared and ctx.isEnvironment.
+  const ctx = createRailwayContext(input)
+
   const database = postgres('Postgres', { region })
   const operatorState = volume('operator-state', {
     region,
