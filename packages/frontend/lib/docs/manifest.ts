@@ -24,7 +24,7 @@ export type DocSection = {
   groups: DocGroup[]
 }
 
-export const REPO_URL = 'https://github.com/JakeHartnell/trustgraphs'
+export { REPO_URL } from '../repository'
 
 export const DOCS_SECTIONS: DocSection[] = [
   {

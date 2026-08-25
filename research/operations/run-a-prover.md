@@ -434,7 +434,7 @@ docker run --rm \
   -v "$PWD/operator.toml:/etc/trustgraph/operator.toml:ro" \
   -e SUBMITTER_PRIVATE_KEY -e NETWORK_PRIVATE_KEY \
   -p 8080:8080 \
-  ghcr.io/jakehartnell/trustgraphs-operator:latest
+  ghcr.io/ainima-collective/trustgraphs-operator:latest
 ```
 
 From a source checkout, the same four invocations:
@@ -641,7 +641,7 @@ One image, one config file, two secrets, one volume. No checkout, no Rust toolch
 account:
 
 ```bash
-docker pull ghcr.io/jakehartnell/trustgraphs-operator:latest
+docker pull ghcr.io/ainima-collective/trustgraphs-operator:latest
 ```
 
 `operator.toml`:
@@ -682,7 +682,7 @@ docker run -d --name operator \
   -e SUBMITTER_PRIVATE_KEY \
   -e NETWORK_PRIVATE_KEY \
   -p 8080:8080 \
-  ghcr.io/jakehartnell/trustgraphs-operator:latest
+  ghcr.io/ainima-collective/trustgraphs-operator:latest
 
 curl localhost:8080/ready
 ```
@@ -707,11 +707,11 @@ guest table it was built from. Both are checkable without an account:
 ```bash
 # what this container's guests are, without starting it
 docker run --rm --entrypoint cat \
-  ghcr.io/jakehartnell/trustgraphs-operator:latest /etc/trustgraph/elf-digests.txt
+  ghcr.io/ainima-collective/trustgraphs-operator:latest /etc/trustgraph/elf-digests.txt
 
 # who built it, and from which commit
-gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:latest \
-  --repo JakeHartnell/trustgraphs
+gh attestation verify oci://ghcr.io/ainima-collective/trustgraphs-operator:latest \
+  --repo AInima-Collective/trustgraphs
 
 # and, from source, that those are the bytes the source produces
 sh scripts/build-guests.sh && sh scripts/guest-elf-digests.sh

@@ -339,7 +339,7 @@ Two consequences that matter right now:
 - [x] Switch to `build_program_with_args` with `docker: true` and a pinned tag, in
       `zk/prover/build.rs`, `taskfile/zk.yml`, and `zk-parity.yml`.
 - [x] **VERIFIED 2026-08-25, run
-      [32792835537](https://github.com/JakeHartnell/trustgraphs/actions/runs/32792835537).** Nine
+      [32792835537](https://github.com/AInima-Collective/trustgraphs/actions/runs/32792835537).** Nine
       guests, byte-identical across two independent cold runners. Stronger than asked for: all
       seven digests from `v0.0.2`'s earlier run on a DIFFERENT commit (`628aa7a`, ninety minutes
       before) appear unchanged in today's table from `de6e1cb`, so three independent builds across

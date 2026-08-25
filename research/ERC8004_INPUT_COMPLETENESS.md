@@ -4,7 +4,7 @@
 
 **Decision date:** 2026-08-14
 
-**Issue:** [#60](https://github.com/JakeHartnell/trustgraphs/issues/60)
+**Issue:** [#60](https://github.com/AInima-Collective/trustgraphs/issues/60)
 
 **Scope:** authenticate the finite external Identity/Reputation event set consumed by a future
 agent-reputation proof. This ADR does not choose a reputation formula, ship a guest, upgrade an
@@ -352,13 +352,13 @@ matrix live in [`erc8004-completeness/README.md`](./erc8004-completeness/README.
 
 The selected path is viable only in this order:
 
-1. [#86](https://github.com/JakeHartnell/trustgraphs/issues/86) — implement/audit the immutable
+1. [#86](https://github.com/AInima-Collective/trustgraphs/issues/86) — implement/audit the immutable
    sidecar, cooperative proxy hooks, upgrade-epoch discipline,
    activation freeze/state import, exact golden vectors, and automatic count milestones.
-2. [#87](https://github.com/JakeHartnell/trustgraphs/issues/87) — integrate checkpoint/finality/
+2. [#87](https://github.com/AInima-Collective/trustgraphs/issues/87) — integrate checkpoint/finality/
    export/availability/recovery and benchmark the complete input adapter under burst/backlog
    conditions.
-3. [#88](https://github.com/JakeHartnell/trustgraphs/issues/88) — revisit the policy no-go from #59
+3. [#88](https://github.com/AInima-Collective/trustgraphs/issues/88) — revisit the policy no-go from #59
    with materially broader complete-era evidence. Only after it records a go may #62 implement and
    deploy an agent-reputation guest.
 

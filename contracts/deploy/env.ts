@@ -134,7 +134,7 @@ function requireReleaseVkeys(): void {
     throw new Error(
       `${file} not found, so the pinned vkeys cannot be checked against the release they claim ` +
         `to come from. Fetch it next to this checkout:\n` +
-        `  gh release download <tag> -R JakeHartnell/trustgraphs -p guest-manifest.json\n` +
+        `  gh release download <tag> -R AInima-Collective/trustgraphs -p guest-manifest.json\n` +
         `(or point GUEST_MANIFEST at a copy). Deploying without it pins whatever the environment ` +
         `happens to hold, and SP1JournalVerifier.programVKey is immutable.`
     )

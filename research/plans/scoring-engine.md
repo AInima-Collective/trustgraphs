@@ -397,7 +397,7 @@ my vouch counts", and derive the affordable graph size from it.
 ## Out of scope (filed, not forgotten)
 
 - **Complaints and negative attestations.**
-  [trustgraphs#104](https://github.com/JakeHartnell/trustgraphs/issues/104). The
+  [trustgraphs#104](https://github.com/AInima-Collective/trustgraphs/issues/104). The
   graph cannot say "this person defrauded me", and withdrawing a vouch is
   byte-identical to never having made one. Fully designed and measured against
   real data; blocked on a product decision about the recovery path. Includes the
@@ -458,7 +458,7 @@ my vouch counts", and derive the affordable graph size from it.
   lowers standing relative to others and the final normalisation handles it. The
   one place the accounting genuinely breaks is complaints, where lowering
   someone's score raises everyone else's including the accuser's, and that now
-  travels with [#104](https://github.com/JakeHartnell/trustgraphs/issues/104)
+  travels with [#104](https://github.com/AInima-Collective/trustgraphs/issues/104)
   where it belongs.
 
   **The earned founder prior.** Measured: recommending three to five founders

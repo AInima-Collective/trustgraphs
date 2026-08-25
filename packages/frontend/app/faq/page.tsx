@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { PageTitle, SectionHeading } from '@/components/SectionHeading'
 import { socialCard } from '@/lib/metadata'
+import { REPO_URL } from '@/lib/repository'
 
 import { OpenTargetAnswer } from './OpenTargetAnswer'
 
@@ -50,7 +51,6 @@ export const metadata: Metadata = {
   }),
 }
 
-const REPO = 'https://github.com/JakeHartnell/trustgraphs'
 // The explainer and the spec are served by this app now (/docs renders the
 // repo's docs/ tree), so these two stay on-site; only the code link leaves.
 const ELI5 = '/docs/learn/what-is-trustgraphs'
@@ -208,7 +208,7 @@ const GROUPS: Group[] = [
         answer: (
           <>
             <a
-              href={REPO}
+              href={REPO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className={PROSE_LINK}

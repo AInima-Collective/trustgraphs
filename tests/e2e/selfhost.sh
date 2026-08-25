@@ -7,7 +7,7 @@
 # repository except itself — no cargo, no forge, no anvil, no source tree — because a test that
 # needs the checkout cannot check a claim whose whole content is "you do not need the checkout".
 #
-#   curl -O https://raw.githubusercontent.com/JakeHartnell/trustgraphs/main/tests/e2e/selfhost.sh
+#   curl -O https://raw.githubusercontent.com/AInima-Collective/trustgraphs/main/tests/e2e/selfhost.sh
 #   RPC=https://sepolia.example REGISTRY=0x… IPFS_API=https://… IPFS_GATEWAY=https://… bash selfhost.sh
 #
 #   IMAGE     which image to test        (default: the published :latest)
@@ -25,7 +25,7 @@
 
 set -uo pipefail
 
-IMAGE="${IMAGE:-ghcr.io/jakehartnell/trustgraphs-operator:latest}"
+IMAGE="${IMAGE:-ghcr.io/ainima-collective/trustgraphs-operator:latest}"
 RPC="${RPC:-}"
 REGISTRY="${REGISTRY:-}"
 IPFS_API="${IPFS_API:-}"

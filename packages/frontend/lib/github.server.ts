@@ -1,3 +1,5 @@
+import { REPO } from './repository'
+
 /**
  * The repository's star count, for the landing page's open-source CTA.
  *
@@ -32,9 +34,6 @@ const STARS_TIMEOUT_MS = 2_500
  * always show the number.
  */
 export const MIN_STARS_SHOWN = 25
-
-/** `owner/repo`, matching REPO_URL on the landing page. */
-const REPO = 'JakeHartnell/trustgraphs'
 
 /**
  * The star count, or `null` when it cannot be read. Never throws.

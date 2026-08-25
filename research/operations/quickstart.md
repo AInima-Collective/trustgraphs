@@ -215,7 +215,7 @@ task demo:settle                       # mine, so Ponder will serve it
 
 Seed **before** the first trigger. A checkpoint frozen over an empty graph proves to a zero root,
 the gov hook rejects it, and its contents are immutable —
-[#15](https://github.com/JakeHartnell/trustgraphs/issues/15).
+[#15](https://github.com/AInima-Collective/trustgraphs/issues/15).
 
 Reload the network page: scored members. Proving by hand instead of by scheduler is
 `task instances:prove-all`, kept as the documented fallback
@@ -347,7 +347,7 @@ Everything below cost someone real time.
   own guest produces). Every prover call in the taskfiles and the daemon's own spawned `cargo run`
   now pin the skip; if you add one, pin it too. Only `task zk:build` builds guests.
 - **Attest before the first trigger.** §4, and
-  [#15](https://github.com/JakeHartnell/trustgraphs/issues/15). The same rule is why `task demo`
+  [#15](https://github.com/AInima-Collective/trustgraphs/issues/15). The same rule is why `task demo`
   seeds the contribution round before `prove` writes the operator config: the daemon's first
   trigger on the round freezes both of its lanes, and a checkpoint frozen over an empty round is
   immutable.

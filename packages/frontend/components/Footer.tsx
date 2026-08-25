@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { REPO_URL } from '@/lib/repository'
+
 import { BrandMark } from './BrandMark'
 import { GitHubIcon } from './icons/GitHubIcon'
 import { XIcon } from './icons/XIcon'
@@ -51,7 +53,7 @@ export const Footer = () => {
           Docs
         </Link>
         <a
-          href="https://github.com/JakeHartnell/trustgraphs"
+          href={REPO_URL}
           target="_blank"
           rel="noopener noreferrer"
           className={ICON_LINK}

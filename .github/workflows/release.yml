@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/jakehartnell/trustgraphs-operator
+  IMAGE: ghcr.io/ainima-collective/trustgraphs-operator
 
 permissions: {}
 
@@ -271,7 +271,7 @@ jobs:
             echo ""
             echo "The image could not be pulled anonymously. A GHCR package created by"
             echo "GITHUB_TOKEN is private by default, even on a public repository."
-            echo "Fix, once: https://github.com/users/JakeHartnell/packages/container/trustgraphs-operator/settings"
+            echo "Fix, once: https://github.com/orgs/AInima-Collective/packages/container/trustgraphs-operator/settings"
             echo "  -> Danger Zone -> Change visibility -> Public, then re-run this job."
             exit 1
           fi

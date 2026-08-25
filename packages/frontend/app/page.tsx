@@ -11,6 +11,7 @@ import { resolveNetwork } from '@/lib/catalog'
 import { getCatalog } from '@/lib/catalog.server'
 import { MIN_STARS_SHOWN, formatStars, getRepoStars } from '@/lib/github.server'
 import { socialCard } from '@/lib/metadata'
+import { REPO_URL } from '@/lib/repository'
 import { cn } from '@/lib/utils'
 
 import { HeroGraph } from './HeroGraph'
@@ -35,8 +36,6 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
 // Must be a literal — Next statically analyses this export. Keep it equal to
 // `CATALOG_REVALIDATE_SECONDS` in lib/catalog.server.ts.
 export const revalidate = 10
-
-const REPO_URL = 'https://github.com/JakeHartnell/trustgraphs'
 
 /**
  * The slug of the demo network in `config/networks.<env>.json`. The landing

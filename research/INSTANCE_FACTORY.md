@@ -2,7 +2,7 @@
 
 Status: **BUILD DECIDED 2026-07-24** — the execution spec is
 `GOAL.md` (retired; see git history); all §8 questions are answered in place below.
-Tracked as [issue #6](https://github.com/JakeHartnell/trustgraphs/issues/6). **The repo cleanup
+Tracked as [issue #6](https://github.com/AInima-Collective/trustgraphs/issues/6). **The repo cleanup
 program this was sequenced after closed 2026-07-24** (all six milestones landed; see
 `research/DEVIATIONS.md` for the log), so every precondition now holds: Localism-specific
 code is gone, generated artifacts live under `.trustgraph/`, and there is no live

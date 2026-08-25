@@ -3,7 +3,7 @@
 Trustgraphs uses several toolchains because the repository includes Solidity contracts, Rust
 scoring and proving code, a TypeScript frontend and indexer, and local infrastructure.
 The source code is available in the
-[Trustgraphs repository on GitHub](https://github.com/JakeHartnell/trustgraphs).
+[Trustgraphs repository on GitHub](https://github.com/AInima-Collective/trustgraphs).
 
 ## Requirements
 
@@ -43,7 +43,7 @@ cargo --version
 ## Clone the repository
 
 ```bash
-git clone https://github.com/JakeHartnell/trustgraphs.git
+git clone https://github.com/AInima-Collective/trustgraphs.git
 cd trustgraphs
 ```
 

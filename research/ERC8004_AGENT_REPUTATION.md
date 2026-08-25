@@ -469,10 +469,10 @@ the currently deployed Optimism registries as a **no-go**: their pre-activation 
 cannot support the required no-omission claim. It defines a conditional activation-era path only
 for a cooperating official or new registry domain: an immutable sidecar, a complete activation
 wallet seed, reviewed implementation epochs, and fixed finalized milestones. That work proceeds
-through [#86](https://github.com/JakeHartnell/trustgraphs/issues/86),
-[#87](https://github.com/JakeHartnell/trustgraphs/issues/87), and
-[#88](https://github.com/JakeHartnell/trustgraphs/issues/88) before the program in
-[#62](https://github.com/JakeHartnell/trustgraphs/issues/62). The score policy remains a separate
+through [#86](https://github.com/AInima-Collective/trustgraphs/issues/86),
+[#87](https://github.com/AInima-Collective/trustgraphs/issues/87), and
+[#88](https://github.com/AInima-Collective/trustgraphs/issues/88) before the program in
+[#62](https://github.com/AInima-Collective/trustgraphs/issues/62). The score policy remains a separate
 no-go until it is re-evaluated on complete activation-era data.
 
 ### Phase 4 — validation and composed trust

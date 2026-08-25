@@ -362,16 +362,16 @@ human provenance.
 
 Implementation is intentionally split at reviewable trust boundaries:
 
-1. [#52 — weighted core, guest, and golden fixtures](https://github.com/JakeHartnell/trustgraphs/issues/52)
+1. [#52 — weighted core, guest, and golden fixtures](https://github.com/AInima-Collective/trustgraphs/issues/52)
    — normative arithmetic/manifest implementation, sparse performance envelope, and new isolated
    ELF/vkey; no weighted-prior implementation dependency.
-2. [#53 — factory/controller commitment and rotation lifecycle](https://github.com/JakeHartnell/trustgraphs/issues/53)
+2. [#53 — factory/controller commitment and rotation lifecycle](https://github.com/AInima-Collective/trustgraphs/issues/53)
    — compact calldata validation, pending activation, params hashing, events, and recovery tests;
    depends on #52.
-3. [#54 — operator recovery and indexer API](https://github.com/JakeHartnell/trustgraphs/issues/54)
+3. [#54 — operator recovery and indexer API](https://github.com/AInima-Collective/trustgraphs/issues/54)
    — version recovery, cache/pinning/refusal behavior, schema/API, and reorg handling; depends on
    #52 and #53.
-4. [#55 — import, preview, creation, and redeployment UX](https://github.com/JakeHartnell/trustgraphs/issues/55)
+4. [#55 — import, preview, creation, and redeployment UX](https://github.com/AInima-Collective/trustgraphs/issues/55)
    — canonical CSV/JSON, ENS recheck, concentration display, wallet payload, and weighted-instance
    migration language; depends on #53 and #54.
 

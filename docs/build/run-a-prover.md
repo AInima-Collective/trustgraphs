@@ -110,7 +110,7 @@ docker run -d --name operator \
   -v "$PWD/operator.toml:/etc/trustgraph/operator.toml:ro" \
   -e SUBMITTER_PRIVATE_KEY -e NETWORK_PRIVATE_KEY \
   -p 8080:8080 \
-  ghcr.io/jakehartnell/trustgraphs-operator:latest
+  ghcr.io/ainima-collective/trustgraphs-operator:latest
 ```
 
 From a source checkout, the same daemon with the same config:

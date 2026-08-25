@@ -3,7 +3,7 @@
 **Status:** plan, 2026-08-22, revised after cross-agent review and then **scoped down**.
 Releases 4 and 5 in this document are no longer planned: the single-core rewrite is filed as a
 code-quality item without a forcing reason, and complaints moved to
-[trustgraphs#104](https://github.com/JakeHartnell/trustgraphs/issues/104). The earned founder
+[trustgraphs#104](https://github.com/AInima-Collective/trustgraphs/issues/104). The earned founder
 prior in Release 3 is also out, replaced by a template default of three to five founders. The
 findings and measurements below stand; the completed program is archived as
 [`plans/scoring-engine.md`](./plans/scoring-engine.md).
