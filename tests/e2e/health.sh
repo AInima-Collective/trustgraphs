@@ -110,14 +110,23 @@ wait_for() { # wait_for <path> <code> <seconds>
   return 1
 }
 
+# Build BEFORE starting the clock, and run the binary rather than `cargo run`. Two reasons, both
+# learned the hard way: a `cargo run` that has to recompile spends minutes before the daemon
+# exists, which reads as "the listener never answered" and is nothing of the kind; and killing
+# `cargo run` leaves the operator it spawned holding the listener port.
+say "== build the daemon =="
+SP1_SKIP_PROGRAM_BUILD=true cargo build -q --release --manifest-path zk/operator/Cargo.toml \
+  || die "could not build the operator"
+OPERATOR=zk/operator/target/release/operator
+
 say "== start the daemon =="
 SUBMITTER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
 SP1_SKIP_PROGRAM_BUILD=true \
-  cargo run -q --release --manifest-path zk/operator/Cargo.toml -- \
-    --config "$WORK/operator.toml" >"$WORK/run.log" 2>&1 &
+  "$OPERATOR" --config "$WORK/operator.toml" >"$WORK/run.log" 2>&1 &
 OP_PID=$!
 
-wait_for /health 200 180 || die "the listener never answered /health: $(tail -5 "$WORK/run.log")"
+# Generous because startup derives every guest vkey — 68 seconds of CPU, once.
+wait_for /health 200 240 || die "the listener never answered /health: $(tail -5 "$WORK/run.log")"
 say "   ${GREEN}/health 200 ✓${NC}"
 
 wait_for /ready 200 30 || die "/ready never went green: $(tail -5 "$WORK/run.log")"
@@ -152,6 +161,20 @@ WEDGED=$(cat "$WORK/body.txt")
   || die "/health must stay 200 for a wedged process — it reports the process, not the work"
 say "   ${GREEN}/ready 503 while wedged, /health still 200 ✓${NC}"
 say "   $WEDGED"
+
+# And it must STAY 503. "Does it ever go red" is the easy half; the half that matters is that it
+# does not come back. The daemon's chain reads time out after `rpc_timeout_seconds` and the tick
+# retries, so anything that resets the readiness clock on a retry would report ready for the first
+# seconds of every cycle — forever, while completing nothing, and invisibly to any monitor polling
+# less often than the budget. Sixty seconds covers two full timeout cycles.
+say "   holding the wedge to prove readiness does not flap back"
+for _ in $(seq 1 12); do
+  if [ "$(code /ready)" = "200" ]; then
+    die "/ready flapped back to 200 while still wedged: $(cat "$WORK/body.txt")"
+  fi
+  sleep 5
+done
+say "   ${GREEN}still 503 across two RPC-timeout cycles ✓${NC}"
 
 say "== lift the wedge =="
 rm -f "$MARKER"

@@ -177,7 +177,17 @@ impl Health {
     pub fn enter(&self, phase: Phase) {
         let mut inner = self.lock();
         inner.phase = phase;
-        inner.phase_since = unix_now();
+        inner.phase_since = if phase == Phase::Ticking {
+            // Ordinary tick work is measured from the last COMPLETED pass, never from the start
+            // of the current attempt. The loop enters this phase at the top of every tick, so
+            // anchoring to `now` would let a daemon whose chain reads time out and retry reset
+            // its own clock once a cycle — reporting ready for the first seconds of each one,
+            // indefinitely, while completing nothing. A monitor polling on any interval longer
+            // than the budget would see a healthy daemon forever.
+            inner.tick_at
+        } else {
+            unix_now()
+        };
     }
 
     /// Publish a completed tick. `status` is projected here, once, rather than on every request.
@@ -508,6 +518,34 @@ mod tests {
         let (ready, detail) = health.ready(1_000_031);
         assert!(!ready, "31s into a 30s tick budget is not");
         assert!(detail.contains("ticking for 31s"), "{detail}");
+    }
+
+    #[test]
+    fn a_failing_tick_cannot_reset_its_own_readiness_clock() {
+        // The daemon enters `Ticking` at the top of EVERY attempt, including the ones that go on
+        // to fail. If that reset the clock, a permanently wedged daemon would report ready for
+        // the first seconds of every retry — which is indistinguishable from healthy to anything
+        // that polls less often than the budget.
+        let health = Health::new(budgets());
+        let mut status = sample();
+        status.tick_at = 1_000_000;
+        health.publish(&status);
+
+        // Three failed attempts, each re-entering the phase, none completing.
+        for _ in 0..3 {
+            health.enter(Phase::Ticking);
+            assert!(!health.ready(1_000_100).0, "a retry must not look like progress");
+        }
+        let (_, detail) = health.ready(1_000_100);
+        assert!(
+            detail.contains("ticking for 100s"),
+            "the clock is the last COMPLETED tick: {detail}"
+        );
+
+        // A tick that actually completes moves it, and only then.
+        status.tick_at = 1_000_100;
+        health.publish(&status);
+        assert!(health.ready(1_000_110).0);
     }
 
     #[test]
