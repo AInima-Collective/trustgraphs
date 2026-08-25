@@ -465,8 +465,9 @@ export class DevEnv extends EnvBase {
           ],
         },
         // The chain's instance directory. One per chain; the factory below is granted
-        // OPERATOR_ROLE on it so creating a network is permissionless *through the factory* while
-        // rewriting a record stays with the operational timelock.
+        // REGISTRAR_ROLE on it so creating a network is permissionless *through the factory* while
+        // rewriting an existing record stays with OPERATOR_ROLE. (This comment said OPERATOR_ROLE
+        // until the role split landed; `DeployFactory` now asserts the factory does NOT hold it.)
         {
           name: 'Instance Registry',
           script:

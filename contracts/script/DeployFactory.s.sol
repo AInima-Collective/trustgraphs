@@ -24,8 +24,9 @@ import {Common} from "script/Common.s.sol";
 
 /// @title DeployFactory
 /// @notice Stands up the permissionless instance factory: the two creation-code deployers, the
-///         `TrustgraphsFactory` itself, and the `OPERATOR_ROLE` grant that lets it register into the
-///         chain's `InstanceRegistry`.
+///         `TrustgraphsFactory` itself, and the `REGISTRAR_ROLE` grant that lets it register into the
+///         chain's `InstanceRegistry`. REGISTRAR, not OPERATOR: appending a row and rewriting one
+///         are different privileges, and the assertion below enforces the difference.
 ///
 /// @dev Runs AFTER `DeployEAS`, `DeployZkVerifier` and `DeployInstanceRegistry` — it consumes all
 ///      three. The grant needs the registry's admin key, which at bootstrap is the deployer; once
