@@ -1,6 +1,6 @@
 - ~~Tag release~~ **done: v0.0.4**
 - ~~Generate vkeys and elf digest~~ **done: published in the release**
-- Admin EOA
+- ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
 - Fresh deployer key (with Sepolia ETH) FUNDED_KEY
 - Sepolia RPC endpoint
 - NETWORK_PRIVATE_KEY (needs a topup of $PROVE)
@@ -73,10 +73,23 @@ gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4 \
 gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json
 ```
 
-### 1.2 Pick the admin EOA
+### 1.2 The admin EOA — GIVEN
 
-Receives `InstanceRegistry` administrator and operator, plus `ProvingVault` administrator and
-fee-setter. You ruled EOA over Safe, which is right for a testnet.
+```
+0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE
+```
+
+Checked, so it is checked once rather than at broadcast time: EIP-55 checksum valid; no code
+on Sepolia, so a plain EOA rather than a Safe; 1.0199 Sepolia ETH; nonce 11, so a live key
+with history rather than a fresh one. Not the burned `0x3ED16f9…`, not a stock Anvil account,
+and it appears nowhere in this repo.
+
+**It holds:** `ProvingVault` administrator and fee-setter directly, and proposer plus executor
+on the registry timelock described below. **It must not be the deployer from 1.3**, which has
+to be a brand new key — this one has spent history and holds funds.
+
+Originally scoped as "EOA over Safe, right for a testnet". That framing is superseded by the
+decision below.
 
 What the key actually holds, checked against the contracts rather than summarised:
 
