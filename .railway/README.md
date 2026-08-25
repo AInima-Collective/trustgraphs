@@ -9,9 +9,13 @@ and workspace spending limit that project IaC cannot safely choose.
 Run the repository preflight before asking Railway for a plan:
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm railway:check
 railway config plan
 ```
+
+The globally installed Railway CLI does not provide the `railway/iac` import to Node. The frozen
+install supplies the separately pinned project-local authoring SDK.
 
 Do not run `railway config apply` until the plan has been reviewed. Omitted managed resources are
 deletions in Railway IaC. The complete setup, shared-variable list, and restart drill are in

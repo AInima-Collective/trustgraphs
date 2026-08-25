@@ -12,9 +12,16 @@ const operatorDockerfile = read('.railway/operator.Dockerfile')
 const monitorDockerfile = read('.railway/monitor.Dockerfile')
 const operatorProfile = read('deployments/operator.sepolia.toml')
 const manifest = JSON.parse(read('deployments/sepolia.json'))
+const packageManifest = JSON.parse(read('package.json'))
 
 const operatorImage =
   'ghcr.io/ainima-collective/trustgraphs-operator@sha256:876aa9e9569e2de4366404a96b24ae4222e75763cbc692820bd9cdbfd15e0a40'
+
+assert.equal(
+  packageManifest.devDependencies?.railway,
+  '3.11.0',
+  'the Railway IaC authoring SDK must be installed and pinned locally'
+)
 
 for (const required of [
   "project('trustgraphs-sepolia'",
@@ -39,7 +46,6 @@ for (const required of [
   'ctx.shared.IPFS_PIN_API_KEY',
   'ctx.shared.SUBMITTER_PRIVATE_KEY',
   'ctx.shared.NETWORK_PRIVATE_KEY',
-  'ctx.shared.OPERATOR_ALERT_WEBHOOK',
 ]) {
   assert.ok(iac.includes(required), `Railway IaC is missing ${required}`)
 }

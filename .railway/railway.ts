@@ -114,7 +114,6 @@ export default defineRailway((ctx) => {
       IPFS_PIN_API: 'https://uploads.pinata.cloud/v3/files',
       IPFS_PIN_API_KEY: ctx.shared.IPFS_PIN_API_KEY,
       IPFS_GATEWAY: ctx.shared.IPFS_GATEWAY,
-      OPERATOR_ALERT_WEBHOOK: ctx.shared.OPERATOR_ALERT_WEBHOOK,
     },
   })
 
@@ -128,7 +127,6 @@ export default defineRailway((ctx) => {
       MONITOR_INDEXER_URL: `http://${indexer.env.RAILWAY_PRIVATE_DOMAIN}:65421`,
       MONITOR_OPERATOR_URL: `http://${operator.env.RAILWAY_PRIVATE_DOMAIN}:8080`,
       MONITOR_RPC_URL: ctx.shared.RPC_URL_11155111_0,
-      MONITOR_ALERT_WEBHOOK: ctx.shared.OPERATOR_ALERT_WEBHOOK,
       MONITOR_INTERVAL_SECONDS: '60',
       MONITOR_INDEXER_MAX_LAG_BLOCKS: '20',
       MONITOR_OPERATOR_MAX_STALE_SECONDS: '300',

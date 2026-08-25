@@ -168,7 +168,8 @@ database, table count, and time in the deployment log.
 The monitor checks the indexer and operator `/ready` routes, operator heartbeat age, root age,
 publication holds, per-instance vault balances/unpaid roots, and Ponder lag against the live
 Sepolia head. Defaults are in the compose file and every threshold has a `MONITOR_*` override. It
-sends a webhook only when a finding becomes active and logs recovery when it clears.
+logs findings and recovery transitions; webhook delivery remains an optional monitor capability
+but is not configured for the first testnet.
 
 For the restart drill, record the writer's sync block, the operator journal checksum, and the
 latest backup checksum; stop both application services, recreate them from their exact image

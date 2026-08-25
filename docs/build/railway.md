@@ -32,11 +32,17 @@ surface beta/experimental, so a reviewed plan is mandatory before every apply.
 Run the offline repository checks before pushing anything:
 
 ```bash
+corepack pnpm install --frozen-lockfile
 corepack pnpm railway:check
 corepack pnpm --dir packages/indexer exec tsc
 corepack pnpm --dir packages/frontend exec tsc --noEmit
 bash scripts/secret-scan.sh
 ```
+
+The globally installed `railway` command and the repository's `railway` package are different
+pieces. The CLI evaluates `.railway/railway.ts`, while Node resolves its `railway/iac` import from
+this repository's installed dependencies. If `config plan` reports `ERR_MODULE_NOT_FOUND` for
+`railway`, run the frozen install above; reinstalling the global CLI does not fix that error.
 
 The operator service uses `.railway/operator.Dockerfile`, a two-file layer on top of the reviewed
 operator image digest. It copies the public Sepolia policy and release manifest that Compose used
@@ -73,18 +79,18 @@ larger compute ceilings.
 Create these as Railway **shared variables** in the production environment. Keep the values in
 Railway, not in this repository or the IaC file.
 
-| Variable                 | Purpose                                                                |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `RPC_URL_11155111_0`     | Primary private Sepolia RPC used by the indexer, operator, and monitor |
-| `RPC_URL_11155111_1`     | Independent indexer failover RPC                                       |
-| `IPFS_GATEWAY`           | Server-side gateway ending in `/ipfs/`                                 |
-| `IPFS_PIN_API_KEY`       | Pinata bearer JWT                                                      |
-| `SUBMITTER_PRIVATE_KEY`  | Gas-only Sepolia transaction key                                       |
-| `NETWORK_PRIVATE_KEY`    | Separate Succinct prover-network key                                   |
-| `OPERATOR_ALERT_WEBHOOK` | Operator and monitor alert destination                                 |
+| Variable                | Purpose                                                                |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `RPC_URL_11155111_0`    | Primary private Sepolia RPC used by the indexer, operator, and monitor |
+| `RPC_URL_11155111_1`    | Independent indexer failover RPC                                       |
+| `IPFS_GATEWAY`          | Server-side gateway ending in `/ipfs/`                                 |
+| `IPFS_PIN_API_KEY`      | Pinata bearer JWT                                                      |
+| `SUBMITTER_PRIVATE_KEY` | Gas-only Sepolia transaction key                                       |
+| `NETWORK_PRIVATE_KEY`   | Separate Succinct prover-network key                                   |
 
 The IaC references these variables but does not create or reveal them. Postgres supplies its own
-private `DATABASE_URL` through Railway's service reference.
+private `DATABASE_URL` through Railway's service reference. This first testnet intentionally has
+no alert webhook: the operator and monitor write alerts to Railway logs instead.
 
 ## 4. Review and apply the Railway plan
 

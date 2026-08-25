@@ -49,6 +49,7 @@
     "eslint-plugin-unused-imports": "^3.0.0",
     "napa": "^3.0.0",
     "prettier": "^3.6.2",
+    "railway": "3.11.0",
     "typescript": "5.5.4"
   },
   "devEngines": {

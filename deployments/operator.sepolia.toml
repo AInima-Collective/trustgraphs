@@ -84,6 +84,5 @@ status_path = "/data/status.json"
 listen = "[::]:8080"
 ready_after_seconds = 10800
 tool_timeout_seconds = 900
-alert_webhook = "env:OPERATOR_ALERT_WEBHOOK"
 log_format = "json"
 submit_failure_threshold = 3

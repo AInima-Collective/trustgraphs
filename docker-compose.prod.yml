@@ -91,7 +91,6 @@ services:
       IPFS_PIN_API: ${IPFS_PIN_API:-https://uploads.pinata.cloud/v3/files}
       IPFS_PIN_API_KEY: ${IPFS_PIN_API_KEY:?Set the Pinata bearer JWT}
       IPFS_GATEWAY: ${IPFS_GATEWAY}
-      OPERATOR_ALERT_WEBHOOK: ${OPERATOR_ALERT_WEBHOOK:?Set the operator alert webhook}
     volumes:
       - operator-state:/data
       - ./deployments:/etc/trustgraph/deployments:ro
@@ -113,7 +112,6 @@ services:
       MONITOR_INDEXER_URL: http://ponder-server:65421
       MONITOR_OPERATOR_URL: http://operator:8080
       MONITOR_RPC_URL: ${RPC_URL_11155111}
-      MONITOR_ALERT_WEBHOOK: ${OPERATOR_ALERT_WEBHOOK}
       MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-60}
       MONITOR_INDEXER_MAX_LAG_BLOCKS: ${MONITOR_INDEXER_MAX_LAG_BLOCKS:-20}
       MONITOR_OPERATOR_MAX_STALE_SECONDS: ${MONITOR_OPERATOR_MAX_STALE_SECONDS:-300}
