@@ -14,8 +14,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/indexer/package.json packages/indexer/package.json
 COPY packages/eas-offchain-client/package.json packages/eas-offchain-client/package.json
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --filter trustgraphs-indexer...
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter trustgraphs-indexer...
 
 FROM node:22-alpine AS runtime
 

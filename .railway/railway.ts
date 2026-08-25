@@ -17,7 +17,6 @@ const repository = () =>
 const region = 'us-west2'
 const indexerDockerfile = 'packages/indexer/Dockerfile'
 const operatorDockerfile = '.railway/operator.Dockerfile'
-const monitorDockerfile = '.railway/monitor.Dockerfile'
 
 // Railway bills actual usage rather than a reserved machine size. These are its current minimum
 // per-replica ceilings; start here for testnet and raise only the service that proves it needs more.
@@ -29,7 +28,7 @@ const minimumCompute = {
 }
 
 // GitHub sources autodeploy by default. Restrict each service to files that can change its image
-// so an unrelated monorepo commit does not spend Railway build credits three times.
+// so an unrelated monorepo commit does not spend Railway build credits twice.
 const indexerWatchPaths = [
   '/.env.example',
   '/packages/indexer/**',
@@ -47,10 +46,6 @@ const operatorWatchPaths = [
   '/.railway/operator.Dockerfile',
   '/deployments/operator.sepolia.toml',
   '/deployments/sepolia.json',
-]
-const monitorWatchPaths = [
-  '/.railway/monitor.Dockerfile',
-  '/ops/monitor-production.mjs',
 ]
 
 export default defineRailway((input) => {
@@ -100,8 +95,7 @@ export default defineRailway((input) => {
     build: { watchPatterns: operatorWatchPaths },
     deploy: { limitOverride: minimumCompute },
     // Gate deployment on a bound, responsive daemon rather than a completed tick. A first tick can
-    // include a paid network proof; the monitor below checks /ready continuously without making
-    // Railway kill and repeat in-flight work when deployment activation reaches its timeout.
+    // include a paid network proof, so deployment activation must not time out and repeat it.
     healthcheck: '/health',
     healthcheckTimeout: 300,
     volumeMounts: {
@@ -122,27 +116,7 @@ export default defineRailway((input) => {
     },
   })
 
-  const monitor = service('monitor', {
-    source: repository(),
-    build: { watchPatterns: monitorWatchPaths },
-    deploy: { limitOverride: minimumCompute },
-    replicas: { [region]: 1 },
-    env: {
-      RAILWAY_DOCKERFILE_PATH: monitorDockerfile,
-      MONITOR_INDEXER_URL: `http://${indexer.env.RAILWAY_PRIVATE_DOMAIN}:65421`,
-      MONITOR_OPERATOR_URL: `http://${operator.env.RAILWAY_PRIVATE_DOMAIN}:8080`,
-      MONITOR_RPC_URL: ctx.shared.RPC_URL_11155111_0,
-      MONITOR_INTERVAL_SECONDS: '60',
-      MONITOR_INDEXER_MAX_LAG_BLOCKS: '20',
-      MONITOR_OPERATOR_MAX_STALE_SECONDS: '300',
-      MONITOR_STALE_ROOT_BLOCKS: '7200',
-      MONITOR_MIN_VAULT_ETH_WEI: '0',
-      MONITOR_MIN_VAULT_USDC: '0',
-      MONITOR_REQUIRE_ROOT: 'true',
-    },
-  })
-
-  const dataPlane = group('Data plane', [database, indexer, monitor])
+  const dataPlane = group('Data plane', [database, indexer])
   const proving = group('Proof service', [operatorState, operator])
 
   return project('trustgraphs-sepolia', {

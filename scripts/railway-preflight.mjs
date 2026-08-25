@@ -8,8 +8,8 @@ const read = (relative) =>
   fs.readFileSync(path.join(repository, relative), 'utf8')
 
 const iac = read('.railway/railway.ts')
+const indexerDockerfile = read('packages/indexer/Dockerfile')
 const operatorDockerfile = read('.railway/operator.Dockerfile')
-const monitorDockerfile = read('.railway/monitor.Dockerfile')
 const operatorProfile = read('deployments/operator.sepolia.toml')
 const manifest = JSON.parse(read('deployments/sepolia.json'))
 const packageManifest = JSON.parse(read('package.json'))
@@ -31,13 +31,10 @@ for (const required of [
   "postgres('Postgres', { region })",
   "service('indexer'",
   "service('operator'",
-  "service('monitor'",
   "healthcheck: '/health'",
   'cpu: 0.5',
   'memoryBytes: 512 * 1024 * 1024',
-  'RAILWAY_DOCKERFILE_PATH: monitorDockerfile',
   "'/.railway/operator.Dockerfile'",
-  "'/.railway/monitor.Dockerfile'",
   "volume('operator-state'",
   "'/data': operatorState",
   "RAILWAY_RUN_UID: '0'",
@@ -54,8 +51,18 @@ for (const required of [
 
 assert.equal(
   iac.match(/deploy: \{ limitOverride: minimumCompute \}/g)?.length,
-  3,
+  2,
   'every application service must use the minimum testnet compute ceiling'
+)
+assert.equal(
+  iac.includes("service('monitor'"),
+  false,
+  'the log-only monitor must not consume an always-on Railway service'
+)
+assert.doesNotMatch(
+  indexerDockerfile,
+  /--mount=type=cache/,
+  'Railway cache mounts require a service-ID prefix; use the dependency layer cache instead'
 )
 
 assert.ok(
@@ -69,16 +76,6 @@ assert.match(
 assert.match(
   operatorDockerfile,
   /COPY --chown=10001:10001 deployments\/sepolia\.json \/etc\/trustgraph\/sepolia\.json/
-)
-
-assert.match(monitorDockerfile, /^FROM node:22-alpine$/m)
-assert.match(
-  monitorDockerfile,
-  /^COPY --chown=node:node ops\/monitor-production\.mjs \/app\/monitor-production\.mjs$/m
-)
-assert.match(
-  monitorDockerfile,
-  /^CMD \["node", "\/app\/monitor-production\.mjs"\]$/m
 )
 
 assert.match(operatorProfile, /^release_manifest = "sepolia\.json"$/m)

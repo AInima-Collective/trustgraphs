@@ -2,7 +2,7 @@
 
 `.railway/railway.ts` is the single Railway Infrastructure-as-Code definition for the Sepolia
 environment. It manages a small rebuildable Postgres database, the indexer, the digest-pinned
-operator with persistent state, and the monitor. Application services start at one replica with
+operator, and its persistent state. The two application services start at one replica with
 Railway's minimum 0.5 vCPU / 512 MB ceiling; the runbook includes the separate managed-Postgres cap
 and workspace spending limit that project IaC cannot safely choose.
 
