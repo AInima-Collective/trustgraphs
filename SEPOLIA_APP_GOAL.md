@@ -42,7 +42,11 @@ its wiring was verified after the fact, so those assertions matter for mainnet r
 here. Its M0 inputs are in hand except the ones listed in the operator ledger below.
 
 **Sibling:** [GOAL.md](GOAL.md) is the operator packaging program and is still open at its
-M6. Nothing here touches it. M5 of this program consumes its `v0.0.4` release.
+M6. Nothing here touches it. M5 of this program consumes its release, which as of today is
+**`v0.0.5`**, published 2026-08-25. Pin it **by image digest** rather than by tag, and verify
+the guest identities embedded in it against both vkeys in the manifest before the first real
+root. A mutable tag is not a pin, and the release that matters here is the one whose guests
+match what the verifiers were built against.
 
 ---
 
@@ -112,8 +116,15 @@ Ten findings, each measured. Numbered for reference from the milestones, not as 
 5. **The pin route has no target on a public chain.** `app/api/ipfs/route.ts:37` defaults to
    Pinata off-local and needs a bearer token. Without it the wizard cannot save a network's
    description, so creation fails at the last step before the transaction.
-6. **No testnet indicator and no wrong-network prompt.** Neither exists anywhere in the
-   frontend. A visitor on mainnet gets a failed transaction and no explanation.
+6. **No testnet indicator, and the wrong-network handling is worse than absent.** There is no
+   "testnet assets have no value" copy anywhere in the frontend. The wrong-network path, by
+   contrast, is already built and then some: the create page renders an explicit switch card
+   (`app/create/component.tsx:309`), and `WalletConnectionProvider` has a full add-and-switch
+   fallback that calls `wallet_addEthereumChain` when the switch fails
+   (`components/WalletConnectionProvider.tsx:85`). The problem is that it fires from a
+   `useEffect` the moment a connected wallet is seen on the wrong chain
+   (`WalletConnectionProvider.tsx:101`). An unrequested wallet popup on page load is
+   acceptable on a dev stack and reads as hostile on a public domain.
 7. **The RPC proxy forwards any method to any configured chain.**
    `app/api/rpc/[chainId]/route.ts` caps body size and batch size and nothing else, so
    `eth_sendRawTransaction` relays through our provider credentials today.
@@ -127,6 +138,23 @@ Ten findings, each measured. Numbered for reference from the milestones, not as 
     this checkout is switched off right now. The frontend is unaffected, because
     `generate-config.ts` never loads dotenv, which is surprising enough to be worth writing
     down.
+11. **The deploy runner has no additive path, and this blocks M2.** It loops every entry in
+    `env.deployContracts` and skips only when a `skip` predicate says so
+    (`contracts/deploy/deploy-contracts.ts:93`). In the Sepolia plan exactly one entry has
+    one, and it reads an environment variable rather than chain state
+    (`contracts/deploy/env.ts:1326`). Appending two steps therefore redeploys the live five.
+    `generateReleaseManifest` makes it worse: it rebuilds the record from `.docker/*_deploy.json`
+    plus local broadcast files (`contracts/deploy/env.ts:1462`), and preflight requires
+    `.docker` be cleared, so a continuation run would overwrite a correct manifest with an
+    empty one.
+12. **The manifest to deployment-summary converter drops every governed record.**
+    `releaseManifestToDeploymentSummary` emits `eas`, `factory`, `provingVault` and
+    `networks` and nothing else (`contracts/deploy/release-manifest.ts:451`), while the
+    indexer reads `governedFactory.governed_factory` and
+    `governedFactory.signer_sync_deployer` to populate its governed-wrapper and signer-sync
+    sources (`packages/indexer/ponder.config.ts:243`). On Sepolia both are undefined, so
+    those sources are disabled. **A wizard-created network would index its instance row and
+    none of its Safe or governance events, and `/instances` would still look correct.**
 
 ### The operator cannot pin to Pinata, and it is not a missing token field
 
@@ -188,6 +216,14 @@ Open, for the operator, at the top of this program.
   addressed by a content id. The shape that serves all three is to give a publication target
   a *kind*: kubo today, direct upload for Pinata, and the IPFS Pinning Service API spec,
   which is one backend covering Filecoin Pin and everything else implementing it.
+
+  **A publication target is a writer, not a reader.** Every target is written through
+  `{api}/api/v0/add` and then read back through its own gateway, and the validator counts
+  configured targets, not gateways (`zk/operator/src/config.rs:1076`). So pairing a kubo API
+  with a hosted read gateway is one target, not two, and `min_success = 2` needs two distinct
+  writable services. Until the Pinata backend exists, Sepolia runs either two kubos or a
+  single target with `min_success = 1`, and the second option must be a recorded choice
+  rather than a default nobody noticed.
 - **D4 — When `.env` gets restructured.** M0 moves Sepolia values into a gitignored
   `.env.sepolia` overlay and returns `.env` to local defaults. That file is read by a live
   stack on the operator's Mac, so the swap is scheduled by the operator, not by the program.
@@ -236,10 +272,19 @@ by reading: whether the RPC actually serves logs and historical calls from block
 
 Additive. Nothing already deployed is redeployed, re-wired or re-granted.
 
+- [ ] **A continuation command, before anything else** (finding 11). It verifies the five
+      live addresses against chain state, deploys only the two new contracts, merges their
+      records into the existing manifest rather than rebuilding it from `.docker`, and
+      asserts the original five addresses are byte-identical afterwards. Without this, M2
+      redeploys the chain we just paid for.
 - [ ] Extend `deployments/schema.json`, which is strict, with slots for the signer verifier,
       the governed factory, the Safe singleton and proxy factory, and a `programs.signer`
       entry beside `programs.trustGraph`. Update `release-manifest.ts` and its validator in
       the same change.
+- [ ] **Extend `releaseManifestToDeploymentSummary` to emit the governed records**
+      (finding 12), so the indexer's governed-wrapper and signer-sync sources are populated
+      on a public chain. This is the difference between indexing a governed network and
+      indexing its instance row alone.
 - [ ] Parameterize `DeployGovernedTrustgraphsFactory.s.sol:35-36` to accept a Safe singleton
       and proxy factory, keeping the self-deploying behaviour for local only. On a public
       chain, `new GnosisSafe()` makes every DAO Safe the wizard mints invisible to
@@ -274,13 +319,20 @@ resulting Safe is a canonical-singleton proxy. Then broadcast, then the post-dep
 - [ ] Add `IPFS_GATEWAY_PUBLIC` as the browser-facing read gateway, replacing the hardcoded
       value at `generate-config.ts:100`.
 - [ ] A persistent, unmissable indicator: Ethereum Sepolia, testnet assets have no value.
-- [ ] A wrong-network prompt with an add-and-switch action. `createNetworkAddParams` in
-      `lib/wagmi.ts` already builds the parameters; nothing calls it.
+      This is the genuinely missing half of finding 6.
+- [ ] Replace the automatic chain switch (`WalletConnectionProvider.tsx:101`) with an
+      explicit prompt. The add-and-switch flow underneath it is already correct and should be
+      kept; what changes is that a person asks for it rather than a `useEffect` firing a
+      wallet popup at them on page load.
 - [ ] Harden the RPC proxy (finding 7): allow only the configured public chain ids, allow
       only the read methods the application uses, never relay raw transactions. Wallets
       submit writes through their own provider.
-- [ ] Harden the pin route (finding 8): per-IP and per-wallet rate limits, origin
-      authorization, quota alerts.
+- [ ] Harden the pin route (finding 8): per-IP and global quotas, origin authorization,
+      quota alerts. **Not per-wallet.** `app/create/pin.ts:11` posts unauthenticated JSON
+      with no wallet identity attached, and origin checking is not authentication, so a
+      per-wallet limit would need a signed challenge and a session. That is a larger design
+      and it is out of scope here; say what the route actually enforces rather than implying
+      an identity it does not have.
 - [ ] Add Sepolia's block time to `lib/blocks.ts` explicitly rather than relying on the
       default.
 - [ ] Confirm WalletConnect origins for the deployed domain, and test or disable Porto on
@@ -299,6 +351,11 @@ with no placeholder URLs anywhere in the bundle.
       governed factory, and the Safe that comes back is a canonical proxy.
 - [ ] Confirm the new instance appears in `GET /instances` without an indexer restart. This
       is the claim factory discovery makes and it has never been tested on a public chain.
+- [ ] **Confirm the Safe, the governance module and the governed-authority records appear
+      too**, without a restart. `/instances` answering is not sufficient evidence: finding 12
+      is a failure mode where the instance row is correct and every governed source is
+      silently disabled, so an exit that only checks `/instances` would pass on a half-indexed
+      network.
 - [ ] Write the created instance into `deployments/sepolia.json`'s `instances[]` and into
       `config/networks.sepolia.json`, which is the outage fallback for the runtime catalog.
 - [ ] Confirm the network page renders with description and criteria resolved through the
@@ -329,6 +386,29 @@ with no placeholder URLs anywhere in the bundle.
 **Exit:** a score on a public chain, proven by a real Groth16 proof, rendered from indexed
 state.
 
+### M6 — Something that survives being left alone
+
+Finding 9 says the existing compose path must never be pointed at this checkout, and then no
+milestone replaces it. Without this, M1 can exit with an indexer running out of a developer's
+working tree and M5 can exit on a one-off operator run, and neither is a service. The
+requirements are already written down in
+[docs/build/production.md](docs/build/production.md); this milestone is where they get met
+rather than cited.
+
+- [ ] An indexer build that does not install into a bind-mounted checkout: an image, or an
+      explicit hosting build path with its own dependency install.
+- [ ] Durable Postgres with a backup and a restore that has actually been run, not just
+      configured.
+- [ ] RPC failover, since one provider outage currently stops both the indexer and every
+      browser read through the proxy.
+- [ ] The operator image pinned **by digest**, with a persistent volume for its journal, and
+      a restart-and-recover drill.
+- [ ] Monitoring with thresholds: `/ready` and `/status`, stale checkpoints, publication
+      failures, vault balance, and indexer lag.
+
+**Exit:** kill both services, bring them back, and lose nothing. Then leave them alone for a
+week and have the alerts, not a person, be what notices anything.
+
 ---
 
 ## What this program does not do
@@ -345,11 +425,11 @@ not in scope.
 **Creation gate (blocks M4):** M0 through M3 complete, with the M2 fork rehearsal green end
 to end and the post-deploy check passing against the real broadcast.
 
-**Root gate (blocks M5):** the creation gate, plus D3 settled and a pin target that two
-independent readers can serve.
+**Root gate (blocks M5):** the creation gate, plus two writable publication targets, or a
+recorded decision to run at `min_success = 1` and why.
 
-**Announce gate:** M5 green, the operator running continuously with alerts, and the testnet
-label visible on every page.
+**Announce gate:** M5 and M6 both green. The operator and indexer survive a restart drill,
+the alerts are the thing that notices, and the testnet label is visible on every page.
 
 ---
 
