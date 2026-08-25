@@ -227,6 +227,13 @@ jobs:
             $LATEST \
             $(printf "${IMAGE}@sha256:%s " *)
           DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
+          # Named here rather than three jobs later. An empty or malformed digest would fail the
+          # attestation, and then the anonymous pull, with errors about neither.
+          case "$DIGEST" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "imagetools returned no usable index digest: '$DIGEST'"; exit 1 ;;
+          esac
+          echo "published ${IMAGE}:${TAG} at $DIGEST"
           echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 

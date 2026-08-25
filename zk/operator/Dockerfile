@@ -13,7 +13,17 @@
 # rebuilding them under a different toolchain and returning proofs under a vkey no verifier pinned.
 
 # ---------------------------------------------------------------------------------------------
-FROM rust:1.87-bookworm AS builder
+# Latest stable 1.x, not the workspace's declared `rust-version = "1.87.0"`. That claim is stale:
+# `pagerank-core` reaches `base45` through `ipld-core`/`cid`/`multibase`, and it uses a library
+# feature that was unstable in 1.87, so the tree does not actually build on its stated MSRV.
+# Nothing noticed because `rust.yml` builds with `@stable` and this Dockerfile was the first thing
+# ever to honour the pin.
+#
+# Not pinning an exact rustc is deliberate. The reproducibility guarantee lives in the GUESTS,
+# which are compiled separately inside the pinned SP1 container and whose digests two machines
+# must agree on. These host binaries carry no such claim — the release attests the image digest
+# it actually published, not the ability to recreate it byte-for-byte later.
+FROM rust:1-bookworm AS builder
 
 # protobuf-compiler is for the operator's `network` feature: SP1_PROVER=network pulls the
 # prover-network gRPC client, which generates its stubs at build time.
