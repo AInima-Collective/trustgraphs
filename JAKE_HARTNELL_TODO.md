@@ -3,7 +3,7 @@
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
 - ~~Fresh deployer key (with Sepolia ETH)~~ **done: `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`, 0.5 ETH**
 - [x] Sepolia RPC endpoint
-- [x] NETWORK_PRIVATE_KEY (needs a topup of $PROVE) — throwaway key, decided; see 1.5
+- [x] NETWORK_PRIVATE_KEY — PROVE credit confirmed; throwaway key, decided; see 1.5
 - [x] SUBMITTER_PRIVATE_KEY — funded: `0xf6161E3c…`, 0.2 ETH
 - [ ] Metadata for the seeded network
 - [ ] Trusted seeds for the seeded network
@@ -60,10 +60,15 @@ by a public workflow from commit `95faa6f`, agreed on by two cold runners before
 | `SP1_COMPOSITION_PROGRAM_VKEY` | `0x00e2847cc257d916a6422283094e8764296045e5f9ed8805b7aaa9b3dd6f7aed` |
 | `SP1_PROGRAM_ELF_SHA256` | `1ad727e35139b7db669430052a376b6850352c2fc5792a0f6815c7da21b7059d` |
 
-**Decide:** that we deploy from the `v0.0.4` commit, or say the word and I cut a later tag.
-That is the only choice left here, and it matters because `SP1JournalVerifier` pins its vkey
-at construction and `TrustgraphsFactory` pins its verifier: changing a vkey afterwards means
-a new verifier and a new factory.
+**Decide:** which commit we deploy from. It matters because `SP1JournalVerifier` pins its vkey
+at construction and `TrustgraphsFactory` pins its verifier: changing a vkey afterwards means a
+new verifier and a new factory.
+
+My recommendation is now **a later tag, not `v0.0.4`**. Two deploy defects have been fixed
+since it (`4735840`, `f021f97`), and the operator has substantial uncommitted work in flight.
+None of that touches guest source, so **the vkeys in the table above are unchanged either
+way** — a later tag republishes exactly these values. What changes is that the tag matches the
+code we actually run. If we do cut one, `DEPLOYMENT_COMMIT` in `.env` moves to that commit.
 
 If you want to check the values rather than trust them:
 
@@ -73,7 +78,7 @@ gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4 \
 gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json
 ```
 
-### 1.2 The admin EOA — GIVEN
+### 1.2 The admin EOA — DONE
 
 ```
 0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE
@@ -82,19 +87,29 @@ gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json
 Checked, so it is checked once rather than at broadcast time: EIP-55 checksum valid; no code
 on Sepolia, so a plain EOA rather than a Safe; 1.0199 Sepolia ETH; nonce 11, so a live key
 with history rather than a fresh one. Not the burned `0x3ED16f9…`, not a stock Anvil account,
-and it appears nowhere in this repo.
+and it appears nowhere in this repo. (Now 0.8198 ETH at nonce 12: this is the account that
+funded the submitter in 1.5.)
 
-**It holds:** `ProvingVault` administrator and fee-setter directly, and proposer plus executor
-on the registry timelock described below. **It must not be the deployer from 1.3**, which has
-to be a brand new key — this one has spent history and holds funds.
+**It holds:** `InstanceRegistry` `DEFAULT_ADMIN_ROLE` and `OPERATOR_ROLE`, set in the
+constructor, so it holds them from the moment the registry exists. **It must not be the
+deployer from 1.3**, which has to be a brand new key — this one has spent history and holds
+funds.
+
+**It does not hold the `ProvingVault`,** and an earlier version of this line said it did.
+`DeployProvingVault` hardcodes the **deployer** as vault admin and fee-setter and accepts no
+argument to point elsewhere, so without an explicit handoff the vault stays under a key made
+for one afternoon. Step 5b of Part 5 is that handoff. The registry timelock this line also
+referenced does not exist yet either; see the DECIDED block below.
 
 Originally scoped as "EOA over Safe, right for a testnet". That framing is superseded by the
 decision below.
 
 What the key actually holds, checked against the contracts rather than summarised:
 
-- **`ProvingVault` admin** sets fee bands and gas parameters. It **cannot** take depositors'
-  funds: there is no admin sweep, and `withdrawCredit` pays out the caller's own credit.
+- **`ProvingVault` admin** sets fee bands and gas parameters — its entire privileged surface is
+  `setFeePerRootUsd` and `setGasParams`. It **cannot** take depositors' funds: there is no admin
+  sweep, and `withdrawCredit` pays out the caller's own credit. (Held by the deployer at deploy
+  time, not by this key, until step 5b hands it over.)
 - **`InstanceRegistry` OPERATOR_ROLE** can rewrite any instance's directory row and repoint
   any instance's params authority.
 
@@ -150,11 +165,8 @@ Not doing: renouncing `OPERATOR_ROLE` outright to make rows append-only forever.
 not do that, so rehearsing it teaches us nothing, and a mistyped row would become unfixable
 short of a new `instanceId` and asking every affected community to call `migrate()`.
 
-**Decide:** use a key that is *not* the deployer from 1.3. The deployer is hot and signs a
-long broadcast session; this one should live in a hardware wallet. One key for both also
-works and makes the handoff step a no-op. Tell me which.
-
-**Send me:** the admin address.
+**Settled:** a key that is *not* the deployer from 1.3, which is why 1.3 generated a fresh one.
+Address given and checked above.
 
 ### 1.3 The deployer key — DONE
 
@@ -192,7 +204,7 @@ currently trusts local artifacts rather than on-chain state (a known gap, SEPOLI
 This key is hot: it signs a long broadcast session and renounces its roles at the end. It
 stays separate from the admin, which is why we generated a new one rather than reusing 1.2.
 
-### 1.4 A private Sepolia RPC endpoint
+### 1.4 A private Sepolia RPC endpoint — DONE
 
 Alchemy, Infura, QuickNode, paid tier. Must serve logs and historical state from the
 deployment block onward; an archive node back to genesis is not required.
@@ -200,10 +212,11 @@ deployment block onward; an archive node back to genesis is not required.
 This is the binding constraint on the indexer, not Railway. Ponder's historical backfill is
 heavy and a rate-limited public endpoint will stall it.
 
-**Send me:** confirmation it exists and the provider. The URL stays in secret storage as
-`PONDER_RPC_URL_11155111`, and as `RPC_URL_11155111` for the frontend's server side.
+**Done.** Alchemy, in the `.env` as `PONDER_RPC_URL_11155111`; the deploy dry run reads the
+chain through it. Still needed when the frontend goes up: the same URL as `RPC_URL_11155111`
+for its server side.
 
-### 1.5 A funded Succinct prover network account
+### 1.5 A funded Succinct prover network account — DONE
 
 We are a **requester**, not a prover: no on-chain proving obligation. Two separate keys:
 
@@ -250,7 +263,24 @@ redirect governance or fund distribution: `ProvingVault` caches its binding and 
 `RegistryRecordChanged`, and the gov module and fund distributor never read the registry.
 Denial and misdirection on a testnet. Not theft.
 
-**Send me:** confirmation the network account has PROVE credit. That is the last item in 1.5.
+**PROVE credit: confirmed 2026-08-25.** Part 1 is closed; nothing in it is waiting on you.
+
+**One thing to eyeball, because I cannot check it from here and nothing else will.** Credit is
+tied to the *requesting key*, so the balance has to sit under
+`0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE` specifically. Depositing under a different Succinct
+account is an easy mistake and produces a state that looks exactly like "we have credit" right
+up until the first request fails. Worth ten seconds on the dashboard.
+
+The reason it is worth those ten seconds: **there is no PROVE-balance check anywhere in the
+system.** The operator checks the submitter's *ETH* balance at startup and alerts on zero
+(`zk/operator/src/run.rs:87`), and that check has no PROVE counterpart in the operator, the
+prover CLI, any script, or preflight. So the first thing that would tell us the credit is under
+the wrong account is a failed proof request during step 6 of deploy day.
+
+`sp1-sdk` 6.3.1 exposes `NetworkProver::get_balance()` (`network/prover.rs:219`), so the guard
+is small and mirrors the ETH one exactly. I have **not** written it: `run.rs` has uncommitted
+changes from the operator session right now, and a second hand in that file buys a merge
+conflict for a check that a dashboard glance covers today. Flagged there instead.
 
 ---
 
