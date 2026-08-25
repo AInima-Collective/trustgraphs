@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 
 import environmentLoader from '../../../scripts/load-env.cjs'
+import secretRedactor from '../../../scripts/redact-secrets.cjs'
 import {
   localSchemaName,
   parseRpcQuantity,
@@ -19,6 +20,7 @@ import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const { Client } = pg
 const { loadTargetEnvironment } = environmentLoader
+const { redactSecrets } = secretRedactor
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
 const mode = process.argv[2]
@@ -413,32 +415,30 @@ async function prepareDatabase({ chainId, head }) {
 }
 
 async function run(command, args, env) {
+  // Keep Ponder's interactive local development UI attached to its terminal. Hosted and
+  // non-interactive commands stay piped so upstream URLs can be scrubbed before forwarding.
+  const redactChildOutput = production || mode !== 'dev'
   const child = spawn(command, args, {
     cwd: indexerDir,
     env,
-    stdio: ['inherit', 'pipe', 'pipe'],
+    stdio: redactChildOutput ? ['inherit', 'pipe', 'pipe'] : 'inherit',
   })
-  // Ponder/viem include the complete upstream URL in RPC errors. Provider keys commonly live in
-  // that URL path, so forwarding child output verbatim turns a routine 429 into a credential leak.
-  const redact = (value) =>
-    value.replace(
-      /(https?:\/\/[^/\s"']+)([^\s"']*)/g,
-      (_match, origin, rest) => (rest ? `${origin}/<redacted>` : origin)
-    )
   const forwardRedacted = (stream, destination) => {
     let pending = ''
     stream.on('data', (chunk) => {
       pending += String(chunk)
       const lines = pending.split('\n')
       pending = lines.pop() ?? ''
-      for (const line of lines) destination.write(`${redact(line)}\n`)
+      for (const line of lines) destination.write(`${redactSecrets(line)}\n`)
     })
     stream.on('end', () => {
-      if (pending) destination.write(redact(pending))
+      if (pending) destination.write(redactSecrets(pending))
     })
   }
-  forwardRedacted(child.stdout, process.stdout)
-  forwardRedacted(child.stderr, process.stderr)
+  if (redactChildOutput) {
+    forwardRedacted(child.stdout, process.stdout)
+    forwardRedacted(child.stderr, process.stderr)
+  }
   let forwardedSignal
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => {
@@ -489,10 +489,9 @@ async function main() {
   }
   const ponderEnv = {
     ...childEnv,
-    // This shared checkout can need different native esbuild versions: drizzle/tsx currently use
-    // 0.25.x while Ponder's config loader uses 0.21.x. Keep the Ponder-only override off the
-    // migration subprocess so both can be pointed at matching temporary Linux binaries.
-    ...(process.env.PONDER_ESBUILD_BINARY_PATH
+    // Local-only escape hatch for a shared macOS/Linux checkout with incompatible native esbuild
+    // binaries. Production images install their own dependencies and must never override them.
+    ...(!production && process.env.PONDER_ESBUILD_BINARY_PATH
       ? { ESBUILD_BINARY_PATH: process.env.PONDER_ESBUILD_BINARY_PATH }
       : {}),
   }

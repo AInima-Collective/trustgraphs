@@ -50,6 +50,12 @@ for (const required of [
 }
 
 assert.equal(
+  (iac.match(/healthcheck: '\/health'/g) ?? []).length,
+  2,
+  'both Railway services must use liveness health checks'
+)
+
+assert.equal(
   iac.match(/deploy: \{ limitOverride: minimumCompute \}/g)?.length,
   2,
   'every application service must use the minimum testnet compute ceiling'

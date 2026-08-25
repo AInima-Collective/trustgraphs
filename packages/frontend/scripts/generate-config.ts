@@ -12,21 +12,24 @@ import {
 import { loadTargetEnvironment } from '../../../scripts/load-env.cjs'
 
 const repositoryRoot = path.join(__dirname, '../../..')
-if (process.env.DEPLOY_TARGET) {
-  loadTargetEnvironment({ repositoryRoot })
-}
-
 const env = process.env.NODE_ENV || 'development'
-const target =
-  process.env.DEPLOY_TARGET || (env === 'development' ? 'local' : 'optimism')
+const requestedTarget =
+  process.env.DEPLOY_TARGET || (env === 'development' ? 'local' : 'sepolia')
+const { target } = loadTargetEnvironment({
+  repositoryRoot,
+  target: requestedTarget,
+  createBaseFrom: '.env.example',
+  // Vercel injects the build environment directly and has no ignored target overlay.
+  fromProcess: process.env.VERCEL === '1',
+})
 const stage =
   process.env.DEPLOY_STAGE ||
   (env === 'development' ? 'development' : 'production')
 if (!['development', 'production'].includes(stage)) {
   throw new Error('DEPLOY_STAGE must be development or production')
 }
-if (!['local', 'optimism', 'sepolia'].includes(target)) {
-  throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+if (!['local', 'sepolia'].includes(target)) {
+  throw new Error('DEPLOY_TARGET must be local or sepolia for the frontend')
 }
 if ((stage === 'development') !== (target === 'local')) {
   throw new Error(`Invalid deployment profile ${stage}/${target}`)
@@ -128,11 +131,7 @@ try {
   console.log('📋 Found deployment data')
 
   // Set chain based on environment
-  configOutput.chain = isSepolia
-    ? 'sepolia'
-    : env === 'development'
-      ? 'local'
-      : 'optimism'
+  configOutput.chain = isSepolia ? 'sepolia' : 'local'
   configOutput.apis = {
     ponder: !isPublic
       ? 'http://127.0.0.1:65421'

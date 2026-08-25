@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { mainnet } from 'viem/chains'
 
 import { CHAIN } from '@/lib/config'
+import { rpcUpstreamUrl } from '@/lib/rpc-upstream'
 
 const MAX_RPC_BODY_BYTES = 256 * 1024
 const MAX_RPC_BATCH_SIZE = 50
@@ -11,7 +12,6 @@ const DEVELOPMENT_MAINNET_RPC_URLS = [
 ] as const
 
 const PUBLIC_CHAIN_IDS: Record<string, string> = {
-  optimism: '10',
   sepolia: '11155111',
 }
 
@@ -75,9 +75,7 @@ export async function POST(
     }
 
     // Get the private RPC URL from environment variables based on chain ID
-    const configuredRpcUrl =
-      (!id && process.env[`RPC_URL_${chainId}`]) ||
-      process.env[`RPC_URL_${chainId}_${id}`]
+    const configuredRpcUrl = rpcUpstreamUrl(chainId, id)
     // Keep browser clients on one same-origin transport. Developers should not
     // need a paid mainnet RPC just to exercise ENS locally, while production
     // remains explicitly configured and never depends on public capacity.

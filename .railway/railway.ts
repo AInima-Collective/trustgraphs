@@ -38,6 +38,7 @@ const indexerWatchPaths = [
   '/config/**',
   '/deployments/**',
   '/scripts/load-env.cjs',
+  '/scripts/redact-secrets.cjs',
   '/package.json',
   '/pnpm-lock.yaml',
   '/pnpm-workspace.yaml',
@@ -67,7 +68,10 @@ export default defineRailway((input) => {
     build: { watchPatterns: indexerWatchPaths },
     deploy: { limitOverride: minimumCompute },
     start: 'node /app/packages/indexer/scripts/launch-indexer.mjs start',
-    healthcheck: '/ready',
+    // Ponder's /ready stays 503 until historical indexing finishes. Railway only needs to know
+    // the HTTP process is live before activating the deployment; the stable views schema remains
+    // available while a fresh writer backfills.
+    healthcheck: '/health',
     healthcheckTimeout: 600,
     replicas: { [region]: 1 },
     env: {

@@ -152,9 +152,11 @@ Generate a Railway public domain for the `indexer` service only:
 railway domain --service indexer --port 65421
 ```
 
-The process listens on `PORT=65421`, and Railway's deployment health check calls `/ready`. Record
-the resulting origin, without a trailing `/sql`, as `PONDER_URL` for the frontend build; the
-frontend client appends `/sql` itself.
+The process listens on `PORT=65421`, and Railway's deployment health check calls `/health`.
+Ponder's `/ready` intentionally returns 503 until historical indexing completes, which can take
+longer than Railway's deploy window on the minimum testnet CPU. Record the resulting origin,
+without a trailing `/sql`, as `PONDER_URL` for the frontend build; the frontend client appends
+`/sql` itself.
 
 The operator stays on Railway private networking. Railway only uses configured
 [deployment health checks](https://docs.railway.com/deployments/healthchecks) while bringing a

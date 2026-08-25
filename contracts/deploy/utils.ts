@@ -9,6 +9,7 @@ import { get } from 'lodash'
 import { isAddress } from 'viem'
 
 import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
+import { redactSecrets } from '../../scripts/redact-secrets.cjs'
 import { Network } from './types'
 
 // Deployment helpers moved from `<repo>/deploy` to `<repo>/contracts/deploy`.
@@ -105,12 +106,7 @@ export const readJsonKeyIfFileExists = <T = any>(
  * which is a slow leak rather than a loud one. Keep the host so the line still says which
  * provider and which network, and drop everything after it.
  */
-export const redactSecrets = (line: string): string =>
-  line.replace(
-    /(https?:\/\/[^/\s"']+)([^\s"']*)/g,
-    (_match, origin: string, rest: string) =>
-      rest ? `${origin}/<redacted>` : origin
-  )
+export { redactSecrets }
 
 /**
  * Executes a command and returns a promise that resolves when the command

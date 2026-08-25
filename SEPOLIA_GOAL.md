@@ -221,8 +221,7 @@ a role handoff is deliberately omitted.
 
 - [ ] Generate `config.sepolia.json` in the build path. `prebuild` currently runs
       `config:link` and never `config:generate` (`packages/frontend/package.json:7`), so a
-      Sepolia build has nothing to link. `config.production.json` is a stale Optimism file
-      and must not be reused.
+      Sepolia build has nothing to link. The legacy production artifact must not be reused.
 - [ ] A persistent, unmissable "Ethereum Sepolia, testnet assets have no value" indicator,
       plus a wrong-network prompt with an add/switch action. Neither exists today.
 - [ ] Harden `app/api/rpc/[chainId]/route.ts`: it caps body size and batch size but forwards

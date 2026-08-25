@@ -20,6 +20,7 @@ FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production
 ENV TRUSTGRAPHS_CONTAINER_ENV=1
+ENV TRUSTGRAPHS_ENV_FROM_PROCESS=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -29,7 +30,6 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/packages/indexer/node_modules ./packages/indexer/node_modules
 COPY --from=dependencies /app/packages/eas-offchain-client/node_modules ./packages/eas-offchain-client/node_modules
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY .env.example ./.env
 COPY packages/indexer ./packages/indexer
 COPY packages/eas-offchain-client ./packages/eas-offchain-client
 COPY packages/frontend/lib ./packages/frontend/lib
@@ -37,14 +37,13 @@ COPY contracts/deploy ./contracts/deploy
 COPY config ./config
 COPY deployments ./deployments
 COPY scripts/load-env.cjs ./scripts/load-env.cjs
+COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 COPY ops/monitor-production.mjs ./ops/monitor-production.mjs
 
-# The target is selected explicitly at runtime. A blank tracked-target overlay lets the common
-# loader keep its public-target fail-closed contract while all deploy-specific values arrive as
-# container environment variables. The static fallback catalog is fixed at image-build time, so
-# startup never mutates the read-only application tree.
-RUN touch .env.sepolia \
-    && rm -f packages/indexer/networks.json \
+# Hosted services explicitly load their complete configuration from the process environment.
+# The static fallback catalog is fixed at image-build time, so startup never mutates the read-only
+# application tree.
+RUN rm -f packages/indexer/networks.json \
     && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
     && chown -R node:node /app
 

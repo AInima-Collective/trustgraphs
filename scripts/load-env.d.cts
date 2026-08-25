@@ -4,6 +4,7 @@ export interface LoadTargetEnvironmentOptions {
   higherPriorityFiles?: string[]
   target?: string
   createBaseFrom?: string
+  fromProcess?: boolean
 }
 
 export interface LoadedTargetEnvironment {

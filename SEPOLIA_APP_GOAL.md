@@ -62,8 +62,9 @@ landmines). The working tree is clean and six commits are unpushed.
   config generated from the finalized manifest carries the five live addresses correctly,
   and ships `"ponder": "https://ponder.example.com/ponder"` and
   `"GovernedTrustgraphsFactory": ""` without complaint.
-- **`config.production.json` is tracked but `config.development.json` is not.** The Sepolia
-  config is a release artifact for a public chain, so it should follow the tracked sibling.
+- **The tracked production frontend config was a legacy-chain artifact.** The Sepolia launch now
+  generates and links a separate `config.sepolia.json`; the stale artifact was removed instead of
+  being silently repurposed.
 
 **Predecessor:** [SEPOLIA_GOAL.md](SEPOLIA_GOAL.md), whose broadcast happened on 2026-08-25.
 This program takes over that program's M1, M3, M6 and M7 and rewrites them against what is
@@ -399,8 +400,9 @@ with no placeholder URLs anywhere in the bundle.
 
 ### M5 — The first real root, and the score read back
 
-- [x] Measure Pinata's returned content id against `cid_v1_raw` of the same bytes, before
-      writing any adapter.
+- [ ] Measure Pinata's returned content id against `cid_v1_raw` of the same bytes and record both
+      values here. The adapter compares them at runtime, but the earlier live measurement was
+      checked off without preserving its observed CID and therefore is not auditable yet.
 - [x] Give a publication target a kind, add the direct-upload backend for Pinata, and leave
       the kubo backend exactly as it is. Keep both invariants at the call site.
 - [x] Add the bounded blob-size check, so the 256 KiB ceiling fails with an error that names

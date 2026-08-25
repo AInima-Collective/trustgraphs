@@ -286,6 +286,18 @@ export const validateReleaseManifest = (
     )
   }
 
+  assertObject(
+    value.contracts.signerVerifier,
+    'manifest.contracts.signerVerifier'
+  )
+  assertObject(
+    value.contracts.governedTrustgraphsFactory,
+    'manifest.contracts.governedTrustgraphsFactory'
+  )
+  assertObject(
+    value.contracts.signerSyncModuleDeployer,
+    'manifest.contracts.signerSyncModuleDeployer'
+  )
   const signerVerifier = value.contracts.signerVerifier
   const governedFactory = value.contracts.governedTrustgraphsFactory
   const signerSyncDeployer = value.contracts.signerSyncModuleDeployer
@@ -294,7 +306,6 @@ export const validateReleaseManifest = (
     [governedFactory, 'governedTrustgraphsFactory'],
     [signerSyncDeployer, 'signerSyncModuleDeployer'],
   ] as const) {
-    assertObject(record, `manifest.contracts.${label}`)
     validateRecord(
       record,
       `manifest.contracts.${label}`,
@@ -308,9 +319,6 @@ export const validateReleaseManifest = (
       throw new Error(`manifest.contracts.${key}.address is required`)
     }
   }
-  assertObject(governedFactory, 'manifest.contracts.governedTrustgraphsFactory')
-  assertObject(signerSyncDeployer, 'manifest.contracts.signerSyncModuleDeployer')
-  assertObject(signerVerifier, 'manifest.contracts.signerVerifier')
   const governedAddress = governedFactory.address
   const signerDeployerAddress = signerSyncDeployer.address
   if ((governedAddress === null) !== (signerDeployerAddress === null)) {
@@ -318,10 +326,7 @@ export const validateReleaseManifest = (
       'manifest governedTrustgraphsFactory and signerSyncModuleDeployer must be recorded together'
     )
   }
-  if (
-    governedAddress !== null &&
-    signerVerifier.address === null
-  ) {
+  if (governedAddress !== null && signerVerifier.address === null) {
     throw new Error(
       'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
     )

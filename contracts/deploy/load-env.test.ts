@@ -129,3 +129,36 @@ test('clean local tooling can create the base environment from the example', (t)
     fs.readFileSync(path.join(repositoryRoot, '.env.example'), 'utf8')
   )
 })
+
+test('hosted processes can opt out of repository environment files', () => {
+  const repositoryRoot = path.join(os.tmpdir(), 'trustgraphs-missing-env-root')
+  const environment: NodeJS.ProcessEnv = {
+    DEPLOY_TARGET: 'sepolia',
+    PONDER_RPC_URL_11155111: 'https://rpc.example.invalid',
+    TRUSTGRAPHS_ENV_FROM_PROCESS: '1',
+  }
+
+  const loaded = loadTargetEnvironment({ repositoryRoot, environment })
+
+  assert.equal(loaded.target, 'sepolia')
+  assert.deepEqual(loaded.files, [])
+  assert.equal(
+    loaded.environment.PONDER_RPC_URL_11155111,
+    'https://rpc.example.invalid'
+  )
+})
+
+test('a caller can select process-only loading and supply the default target', () => {
+  const environment: NodeJS.ProcessEnv = { VERCEL: '1' }
+
+  const loaded = loadTargetEnvironment({
+    repositoryRoot: path.join(os.tmpdir(), 'trustgraphs-missing-vercel-root'),
+    environment,
+    target: 'sepolia',
+    fromProcess: true,
+  })
+
+  assert.equal(loaded.target, 'sepolia')
+  assert.equal(environment.DEPLOY_TARGET, 'sepolia')
+  assert.deepEqual(loaded.files, [])
+})

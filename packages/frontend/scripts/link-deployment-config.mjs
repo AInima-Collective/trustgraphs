@@ -7,16 +7,14 @@ const repoDir = path.dirname(path.dirname(frontendDir))
 const kind = process.argv[2]
 const target =
   process.env.DEPLOY_TARGET ||
-  (process.env.NODE_ENV === 'production' ? 'optimism' : 'local')
-const suffix =
-  target === 'sepolia'
-    ? 'sepolia'
-    : process.env.NODE_ENV === 'production'
-      ? 'production'
-      : 'development'
+  (process.env.NODE_ENV === 'production' ? 'sepolia' : 'local')
+const suffix = target === 'sepolia' ? 'sepolia' : 'development'
 
 if (!['config', 'networks'].includes(kind)) {
   throw new Error('Usage: link-deployment-config.mjs <config|networks>')
+}
+if (!['local', 'sepolia'].includes(target)) {
+  throw new Error('DEPLOY_TARGET must be local or sepolia for the frontend')
 }
 
 const generatedSource =

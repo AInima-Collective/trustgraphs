@@ -403,10 +403,7 @@ export const AccountProfilePage = ({
                     {erc8004AgentLabel(agent)}
                   </span>
                   <span className="mt-0.5 block text-[10px] text-text-subtle">
-                    {agent.chainId === '10'
-                      ? 'Optimism'
-                      : `Chain ${agent.chainId}`}{' '}
-                    · ERC-8004 #{agent.agentId}
+                    Chain {agent.chainId} · ERC-8004 #{agent.agentId}
                   </span>
                   <span className="mt-1 block text-[9px] uppercase tracking-wider text-success">
                     {agent.roles

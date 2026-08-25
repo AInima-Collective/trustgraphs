@@ -425,17 +425,8 @@ pub fn uses_strict_envelope0(cfg: &Config, rpc: &Rpc, entry: &CatalogEntry) -> R
 
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
-    let built = native_journal_unbounded(program, input_path, recipient)?;
-    ensure_raw_publication_blob(&built.blob)?;
-    Ok(built)
-}
-
-fn native_journal_unbounded(
-    program: Program,
-    input_path: &PathBuf,
-    recipient: Address,
-) -> Result<Built> {
-    let text = std::fs::read_to_string(input_path)?;
+    let built = (|| -> Result<Built> {
+        let text = std::fs::read_to_string(input_path)?;
     if program == Program::Signer {
         let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
         let vk = trustgraph_prover::common::vkey(trustgraph_prover::programs::signer::elf())?;
@@ -619,7 +610,7 @@ fn native_journal_unbounded(
     }
 
     let encoded = pagerank_core::encode::journal_encoded(&j);
-    Ok(Built {
+        Ok(Built {
         program,
         input_path: input_path.clone(),
         public_values_hash: keccak256(&encoded),
@@ -636,7 +627,10 @@ fn native_journal_unbounded(
         activity_checkpoint_id: 0,
         signer_activity_applied: false,
         work,
-    })
+        })
+    })()?;
+    ensure_raw_publication_blob(&built.blob)?;
+    Ok(built)
 }
 
 /// Pure signer receipt construction, split from vkey derivation so unit tests do not regenerate
@@ -828,7 +822,11 @@ fn pin_kubo(target: &PinTarget, blob: &[u8]) -> Result<String> {
 fn pin_pinata(target: &PinTarget, blob: &[u8], token: &str) -> Result<String> {
     let boundary = "----trustgraph-operator-pinata-blob";
     let mut body = Vec::new();
-    for (name, value) in [("network", "public"), ("name", "trustgraph-score-blob")] {
+    for (name, value) in [
+        ("network", "public"),
+        ("name", "trustgraph-score-blob"),
+        ("cid_version", "1"),
+    ] {
         body.extend_from_slice(
             format!(
                 "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
@@ -1535,6 +1533,8 @@ mod readback_tests {
         assert!(request.contains("authorization: Bearer test-bearer-token"), "{request}");
         assert!(request.contains("name=\"network\""), "{request}");
         assert!(request.contains("\r\n\r\npublic\r\n"), "{request}");
+        assert!(request.contains("name=\"cid_version\""), "{request}");
+        assert!(request.contains("\r\n\r\n1\r\n"), "{request}");
         assert!(request.contains(std::str::from_utf8(BLOB).unwrap()), "{request}");
     }
 

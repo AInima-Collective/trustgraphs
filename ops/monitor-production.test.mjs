@@ -52,7 +52,9 @@ test('production monitor distinguishes active publication from failure and honor
       response.writeHead(200).end()
     } else if (request.url === '/indexer/metrics') {
       response.writeHead(200, { 'content-type': 'text/plain' })
-      response.end('ponder_sync_block{chain="sepolia"} 100\n')
+      response.end(
+        'ponder_sync_block{rpc="primary",network="sepolia",chain_id="11155111"} 100\n'
+      )
     } else if (request.url === '/indexer/instances?limit=200&offset=0') {
       sendJson({ instances: [{ id: instanceId }] })
     } else if (request.url === `/indexer/vault/${instanceId}`) {
@@ -91,7 +93,10 @@ test('production monitor distinguishes active publication from failure and honor
       { MONITOR_MIN_VAULT_ETH_WEI: '10', MONITOR_MIN_VAULT_USDC: '0' }
     )
     assert.equal(activePublish.code, 0)
-    assert.match(activePublish.stderr, /below every configured reserve threshold/)
+    assert.match(
+      activePublish.stderr,
+      /below every configured reserve threshold/
+    )
     assert.doesNotMatch(activePublish.stderr, /publication failure/)
 
     const failedPublish = await runMonitor(base, {

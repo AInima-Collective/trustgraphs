@@ -44,7 +44,7 @@ interface UseEnsOptions {
   /** Retained for call-site compatibility; avatars are not fetched. */
   enableAvatar?: boolean
   cacheDuration?: number
-  /** The chain whose address record should be read (Optimism in production). */
+  /** The chain whose address record should be read (Sepolia on the public testnet). */
   targetChainId?: number
 }
 

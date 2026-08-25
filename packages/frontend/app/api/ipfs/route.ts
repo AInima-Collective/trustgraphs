@@ -31,9 +31,6 @@ const positiveQuota = (name: string, fallback: number): number => {
   return value
 }
 
-const PER_IP_QUOTA = positiveQuota('IPFS_PIN_PER_IP_HOURLY_QUOTA', 5)
-const GLOBAL_QUOTA = positiveQuota('IPFS_PIN_GLOBAL_HOURLY_QUOTA', 100)
-
 type PinQuotaState = {
   windowStartedAt: number
   globalCount: number
@@ -130,13 +127,13 @@ const quotaExceeded = (retryAfter: number) =>
     { status: 429, headers: { 'Retry-After': String(retryAfter) } }
   )
 
-const alertOnQuota = async (state: PinQuotaState) => {
-  if (state.alerted || state.globalCount < Math.ceil(GLOBAL_QUOTA * 0.8)) {
+const alertOnQuota = async (state: PinQuotaState, globalQuota: number) => {
+  if (state.alerted || state.globalCount < Math.ceil(globalQuota * 0.8)) {
     return
   }
   state.alerted = true
   console.warn(
-    `IPFS pin quota is at ${state.globalCount}/${GLOBAL_QUOTA} in the current window`
+    `IPFS pin quota is at ${state.globalCount}/${globalQuota} in the current window`
   )
   const webhook = process.env.IPFS_PIN_QUOTA_ALERT_WEBHOOK
   if (!webhook) return
@@ -147,7 +144,7 @@ const alertOnQuota = async (state: PinQuotaState) => {
       body: JSON.stringify({
         event: 'ipfs_pin_quota_warning',
         used: state.globalCount,
-        limit: GLOBAL_QUOTA,
+        limit: globalQuota,
         windowStartedAt: new Date(state.windowStartedAt).toISOString(),
       }),
       signal: AbortSignal.timeout(3_000),
@@ -158,6 +155,19 @@ const alertOnQuota = async (state: PinQuotaState) => {
 }
 
 export async function POST(request: NextRequest) {
+  let perIpQuota: number
+  let globalQuota: number
+  try {
+    perIpQuota = positiveQuota('IPFS_PIN_PER_IP_HOURLY_QUOTA', 5)
+    globalQuota = positiveQuota('IPFS_PIN_GLOBAL_HOURLY_QUOTA', 100)
+  } catch (error) {
+    console.error('IPFS pin quota configuration is invalid:', error)
+    return NextResponse.json(
+      { error: 'IPFS pin service is not configured' },
+      { status: 503 }
+    )
+  }
+
   const configurationError = publicPinConfigurationError()
   if (configurationError) {
     console.error(`IPFS pin service is unavailable: ${configurationError}`)
@@ -181,14 +191,14 @@ export async function POST(request: NextRequest) {
     1,
     Math.ceil((quota.windowStartedAt + QUOTA_WINDOW_MS - Date.now()) / 1_000)
   )
-  if (quota.globalCount >= GLOBAL_QUOTA || ipCount >= PER_IP_QUOTA) {
+  if (quota.globalCount >= globalQuota || ipCount >= perIpQuota) {
     return quotaExceeded(retryAfter)
   }
   // Count attempts before any await so concurrent requests cannot all pass the same quota check.
   // Invalid bodies and upstream failures count too: both consume public route capacity.
   quota.globalCount += 1
   quota.perIp.set(ip, ipCount + 1)
-  await alertOnQuota(quota)
+  await alertOnQuota(quota, globalQuota)
 
   const declaredLength = Number(request.headers.get('content-length') || 0)
   if (declaredLength > MAX_REQUEST_BYTES) {
@@ -279,6 +289,7 @@ export async function POST(request: NextRequest) {
   if (apiKey) {
     formData.append('network', 'public')
     formData.append('name', `trustgraph-network-${Date.now()}.json`)
+    formData.append('cid_version', '1')
   }
 
   try {

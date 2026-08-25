@@ -423,7 +423,9 @@ it pulled anonymously with no credentials and no manual step, so D8 was already 
 > package, so `GITHUB_TOKEN` created a **new** one, private by default, and the flip had to be
 > made again under the new owner. The prediction was right about the mechanism and wrong only
 > about which release would meet it. "No human step in between" holds for a release cut under an
-> owner that has already been flipped once, and not for the first release under a new one. And the seven published vkeys are
+> owner that has already been flipped once, and not for the first release under a new one.
+
+And the seven published vkeys are
 byte-identical to the values derived on two earlier commits, so the reproducibility claim now rests
 on three independent builds across three commits rather than on one run.
 

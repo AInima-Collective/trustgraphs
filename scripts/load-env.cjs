@@ -38,7 +38,9 @@ const normalizedTarget = (value) => {
  * public-chain overlay, caller-owned files such as the indexer's `.env.local`, then `.env`.
  * `.env` therefore remains safe local defaults while `DEPLOY_TARGET=sepolia` opts into secrets and
  * endpoints held in the ignored `.env.sepolia` file. A public target without its overlay fails
- * closed instead of quietly borrowing local or another chain's values.
+ * closed instead of quietly borrowing local or another chain's values. Hosted images can set
+ * `TRUSTGRAPHS_ENV_FROM_PROCESS=1` to skip every file; their entry points remain responsible for
+ * validating all required process variables.
  */
 function loadTargetEnvironment({
   repositoryRoot,
@@ -46,8 +48,24 @@ function loadTargetEnvironment({
   higherPriorityFiles = [],
   target: requestedTarget,
   createBaseFrom,
+  fromProcess = false,
 } = {}) {
   if (!repositoryRoot) throw new Error('repositoryRoot is required')
+
+  const inherited = environmentEntries(environment)
+  const processOnly =
+    fromProcess || inherited.TRUSTGRAPHS_ENV_FROM_PROCESS === '1'
+  if (processOnly) {
+    const target = normalizedTarget(requestedTarget ?? inherited.DEPLOY_TARGET)
+    const resolved = { ...inherited, DEPLOY_TARGET: target }
+    Object.assign(environment, resolved)
+    return {
+      environment: resolved,
+      parsed: resolved,
+      target,
+      files: [],
+    }
+  }
 
   const baseFile = path.join(repositoryRoot, '.env')
   if (!fs.existsSync(baseFile) && createBaseFrom) {
@@ -65,7 +83,6 @@ function loadTargetEnvironment({
       parseFile(path.resolve(file), { required: false })
     )
   )
-  const inherited = environmentEntries(environment)
   const target = normalizedTarget(
     requestedTarget ??
       inherited.DEPLOY_TARGET ??

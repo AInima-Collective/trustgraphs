@@ -33,9 +33,10 @@ const once = (process.env.MONITOR_ONCE ?? 'false') === 'true'
 const active = new Set()
 
 const fetchWithDeadline = async (url, init = {}) => {
+  const deadline = AbortSignal.timeout(10_000)
   const response = await fetch(url, {
     ...init,
-    signal: AbortSignal.timeout(10_000),
+    signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   })
   if (!response.ok)
     throw new Error(`${new URL(url).pathname} returned HTTP ${response.status}`)
@@ -52,16 +53,28 @@ const rpc = async (method, params = []) => {
     throw new Error(`${method}: ${body.error.message ?? 'JSON-RPC error'}`)
   return body.result
 }
-const metric = (text, name, labels = '') => {
-  const suffix = labels ? `\\{${labels}\\}` : ''
-  const match = text.match(
-    new RegExp(`^${name}${suffix}\\s+([0-9.eE+-]+)$`, 'm')
+const metric = (text, name, acceptsLabels = () => true) => {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(
+    `^${escapedName}(?:\\{([^}]*)\\})?\\s+([0-9.eE+-]+)(?:\\s+\\d+)?$`
   )
-  return match ? Number(match[1]) : undefined
+  for (const line of text.split('\n')) {
+    const match = line.match(pattern)
+    if (!match) continue
+    const labels = Object.fromEntries(
+      [
+        ...(match[1] ?? '').matchAll(
+          /([a-zA-Z_:][a-zA-Z0-9_:]*)="((?:\\\\.|[^"])*)"/g
+        ),
+      ].map(([, key, value]) => [key, value])
+    )
+    if (acceptsLabels(labels)) return Number(match[2])
+  }
+  return undefined
 }
 
-async function notify(text) {
-  console.error(text)
+async function emit(text, recovered = false) {
+  recovered ? console.log(text) : console.error(text)
   if (!webhook) return
   try {
     await fetchWithDeadline(webhook, {
@@ -72,6 +85,22 @@ async function notify(text) {
   } catch (error) {
     console.error(`monitor alert delivery failed: ${error.message}`)
   }
+}
+const notify = (text) => emit(text, false)
+const recover = (text) => emit(text, true)
+
+const mapWithConcurrency = async (items, concurrency, worker) => {
+  let cursor = 0
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      for (;;) {
+        const index = cursor
+        cursor += 1
+        if (index >= items.length) return
+        await worker(items[index])
+      }
+    })
+  )
 }
 
 async function evaluate() {
@@ -95,10 +124,8 @@ async function evaluate() {
     add('operator-ready', `operator not ready: ${operatorReady.reason.message}`)
 
   if (metrics.status === 'fulfilled' && headHex.status === 'fulfilled') {
-    const synced = metric(
-      metrics.value,
-      'ponder_sync_block',
-      'chain="sepolia"'
+    const synced = metric(metrics.value, 'ponder_sync_block', (labels) =>
+      [labels.chain, labels.network].includes('sepolia')
     )
     const head = Number(BigInt(headHex.value))
     if (synced === undefined)
@@ -139,10 +166,7 @@ async function evaluate() {
       // `publish` is an ordinary active phase. Page only when a failed publication has moved the
       // instance into its durable retry backoff; the operator's own alert webhook covers the
       // detailed target error without exposing credential-bearing transport text through status.
-      if (
-        action.action === 'idle' &&
-        action.idle === 'publication_backoff'
-      )
+      if (action.action === 'idle' && action.idle === 'publication_backoff')
         add(
           `publication:${id}`,
           `${id} is backing off after a score publication failure`
@@ -156,43 +180,54 @@ async function evaluate() {
   }
 
   if (instances.status === 'fulfilled') {
-    for (const instance of instances.value.instances ?? []) {
-      const id = instance.id ?? instance.instanceId
-      if (!id) continue
-      try {
-        const vault = await json(`${indexer}/vault/${id}`)
-        if (!vault.funded) continue
-        const reserveChecks = []
-        if (minVaultEth > 0n)
-          reserveChecks.push(BigInt(vault.ethBalance) < minVaultEth)
-        if (minVaultUsdc > 0n)
-          reserveChecks.push(BigInt(vault.usdcBalance) < minVaultUsdc)
-        if (reserveChecks.length > 0 && reserveChecks.every(Boolean))
+    const vaultDeadline = AbortSignal.timeout(10_000)
+    await mapWithConcurrency(
+      instances.value.instances ?? [],
+      20,
+      async (instance) => {
+        const id = instance.id ?? instance.instanceId
+        if (!id) return
+        try {
+          const vault = await json(`${indexer}/vault/${id}`, {
+            signal: vaultDeadline,
+          })
+          if (!vault.funded) return
+          const reserveChecks = []
+          if (minVaultEth > 0n)
+            reserveChecks.push(BigInt(vault.ethBalance) < minVaultEth)
+          if (minVaultUsdc > 0n)
+            reserveChecks.push(BigInt(vault.usdcBalance) < minVaultUsdc)
+          if (reserveChecks.length > 0 && reserveChecks.every(Boolean))
+            add(
+              `vault-low:${id}`,
+              `${id} proving vault is below every configured reserve threshold`
+            )
+          if (Number(vault.unpaidRootsSinceLastPayment ?? 0) > 0)
+            add(
+              `vault-unpaid:${id}`,
+              `${id} has ${vault.unpaidRootsSinceLastPayment} unpaid root(s)`
+            )
+        } catch (error) {
           add(
-            `vault-low:${id}`,
-            `${id} proving vault is below every configured reserve threshold`
+            `vault-unreadable:${id}`,
+            `${id} vault status unavailable: ${error.message}`
           )
-        if (Number(vault.unpaidRootsSinceLastPayment ?? 0) > 0)
-          add(
-            `vault-unpaid:${id}`,
-            `${id} has ${vault.unpaidRootsSinceLastPayment} unpaid root(s)`
-          )
-      } catch (error) {
-        add(
-          `vault-unreadable:${id}`,
-          `${id} vault status unavailable: ${error.message}`
-        )
+        }
       }
-    }
+    )
   } else {
-    add('instances', `instance catalog unavailable: ${instances.reason.message}`)
+    add(
+      'instances',
+      `instance catalog unavailable: ${instances.reason.message}`
+    )
   }
 
   for (const [key, text] of findings) {
     if (!active.has(key)) await notify(`Trustgraphs Sepolia alert: ${text}`)
   }
   for (const key of active) {
-    if (!findings.has(key)) console.log(`Trustgraphs Sepolia recovered: ${key}`)
+    if (!findings.has(key))
+      await recover(`Trustgraphs Sepolia recovered: ${key}`)
   }
   active.clear()
   for (const key of findings.keys()) active.add(key)

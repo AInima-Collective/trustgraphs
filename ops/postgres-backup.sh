@@ -20,12 +20,16 @@ if [ -n "${DATABASE_URL:-}" ]; then
     echo "pg_dump is required when DATABASE_URL is set" >&2
     exit 1
   }
-  pg_dump --dbname "$DATABASE_URL" --format=custom --no-owner --no-acl > "$partial"
+  dump_database() {
+    pg_dump --dbname "$DATABASE_URL" --format=custom --no-owner --no-acl
+  }
 else
-  docker compose -f "$COMPOSE_FILE" exec -T ponder-db \
-    pg_dump --username "$DATABASE_USER" --format=custom --no-owner --no-acl "$DATABASE_NAME" \
-    > "$partial"
+  dump_database() {
+    docker compose -f "$COMPOSE_FILE" exec -T ponder-db \
+      pg_dump --username "$DATABASE_USER" --format=custom --no-owner --no-acl "$DATABASE_NAME"
+  }
 fi
+dump_database > "$partial"
 test -s "$partial"
 mv "$partial" "$output"
 sha256sum "$output" > "$output.sha256"
