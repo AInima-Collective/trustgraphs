@@ -265,6 +265,7 @@ pub fn await_receipt(rpc: &Rpc, tx: B256, timeout_s: u64, poll_s: u64) -> Result
 pub struct Receipt {
     pub success: bool,
     pub block_number: u64,
+    pub block_hash: B256,
     pub gas_used: u64,
     /// What each gas unit actually cost (EIP-1559 `effectiveGasPrice`); zero when the node
     /// omits it, which only under-counts the budget — never blocks.
@@ -304,9 +305,22 @@ impl Rpc {
         let hexu128 = |v: Option<&str>| -> u128 {
             v.and_then(|s| u128::from_str_radix(s.trim_start_matches("0x"), 16).ok()).unwrap_or(0)
         };
+        let block_hash = r["blockHash"]
+            .as_str()
+            .ok_or_else(|| anyhow!("transaction receipt has no blockHash"))?
+            .parse::<B256>()
+            .context("transaction receipt blockHash was not bytes32")?;
+        let block_number = r["blockNumber"]
+            .as_str()
+            .ok_or_else(|| anyhow!("transaction receipt has no blockNumber"))
+            .and_then(|value| {
+                u64::from_str_radix(value.trim_start_matches("0x"), 16)
+                    .context("transaction receipt blockNumber was not a quantity")
+            })?;
         Ok(Some(Receipt {
             success: r["status"].as_str() == Some("0x1"),
-            block_number: hexu(r["blockNumber"].as_str()),
+            block_number,
+            block_hash,
             gas_used: hexu(r["gasUsed"].as_str()),
             effective_gas_price: hexu128(r["effectiveGasPrice"].as_str()),
         }))
@@ -347,6 +361,29 @@ mod tests {
         assert_eq!(gas_cost_cents(1, 1, 1), 1);
         // A node that omits effectiveGasPrice under-counts but still books the floor.
         assert_eq!(gas_cost_cents(1_000_000, 0, 5_000), 1);
+    }
+
+    #[test]
+    fn receipt_carries_the_exact_mined_block_hash() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let body = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","blockNumber":"0x2a","blockHash":"0x7777777777777777777777777777777777777777777777777777777777777777","gasUsed":"0x5208","effectiveGasPrice":"0x3b9aca00"}}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+
+        let receipt =
+            Rpc::new(format!("http://{addr}")).receipt(B256::from([0x11; 32])).unwrap().unwrap();
+        assert_eq!(receipt.block_number, 42);
+        assert_eq!(receipt.block_hash, B256::from([0x77; 32]));
     }
 
     // ---- H-3 end-to-end: a reverting estimate is a hold, not a broadcast ----

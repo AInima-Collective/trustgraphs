@@ -94,7 +94,7 @@ if ! cast block-number --rpc-url "$RPC" >/dev/null 2>&1; then
   ANVIL_PID=$!
   for _ in $(seq 1 40); do cast block-number --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.25; done
 fi
-trap '[ -n "${KUBO_PID:-}" ] && kill "$KUBO_PID" 2>/dev/null; [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
+trap '[ -n "${KUBO_PID:-}" ] && kill "$KUBO_PID" 2>/dev/null; [ -n "${REPAIR_KUBO_PID:-}" ] && kill "$REPAIR_KUBO_PID" 2>/dev/null; [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
 cast block-number --rpc-url "$RPC" >/dev/null || die "no chain at $RPC"
 DEPLOYER=$(cast wallet address --private-key "$PK")
 
@@ -142,6 +142,16 @@ VERIFIER=$(forge create contracts/src/merkle/SP1JournalVerifier.sol:SP1JournalVe
 cast send "$SNAPSHOT" "setZkVerifier(address)" "$VERIFIER" --rpc-url "$RPC" --private-key "$PK" >/dev/null
 say "   vkey=$VKEY verifier=$VERIFIER"
 
+PIN_PORT=15000
+PIN_GATEWAY="http://127.0.0.1:$PIN_PORT/ipfs/"
+PORT="$PIN_PORT" node tests/e2e/kubo-stub.mjs &
+KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$PIN_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$PIN_PORT/health" >/dev/null || die "kubo stub did not start"
+
 cat > "$CONFIG" <<EOF
 rpc      = "$RPC"
 registry = "$REGISTRY"
@@ -169,6 +179,14 @@ max_basefee_gwei = 10000
 [prover]
 backend = "mock"
 groth16 = true
+
+[ipfs]
+min_success = 1
+retry_seconds = 1
+[[ipfs.targets]]
+name = "primary-stub"
+api = "http://127.0.0.1:$PIN_PORT"
+gateway = "$PIN_GATEWAY"
 
 # Everything the daemon owns goes beside this config file: journal, heartbeat, per-checkpoint
 # working files, both caches. Two runs of this script in different modes therefore cannot see
@@ -209,23 +227,21 @@ ROOT=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,
 say ""
 say "   ${GREEN}root landed unattended: $ROOT ✓${NC}"
 
-# --- an unavailable landed CID can be repaired, then ingested --------------------
-# The daemon intentionally had no [ipfs] targets above, so the chain now names canonical bytes
-# no service has. Add a target only to the repair config, reconstruct from chain history, and
-# prove the exact production indexer derivation accepts the bytes that become readable.
+# --- the landed CID is readable, and can be reconstructed onto another target ----------------
 STATE=$(cast call "$SNAPSHOT" "getLatestState()((uint256,uint256,bytes32,bytes32,string,uint256))" \
   --rpc-url "$RPC")
 CID=$(printf '%s\n' "$STATE" | grep -o 'baf[a-z0-9]*' | head -1)
 [ -n "$CID" ] || die "could not read the landed CID from getLatestState: $STATE"
+curl -fsS "$PIN_GATEWAY$CID" >/dev/null || die "the daemon submitted before its CID was readable"
 INSTANCE_ID=$(jq -r '.instances[0].instance_id' "$WORK/status.json")
 REPAIR_PORT=15001
 REPAIR_GATEWAY="http://127.0.0.1:$REPAIR_PORT/ipfs/"
 if curl -fsS "$REPAIR_GATEWAY$CID" >/dev/null 2>&1; then
   die "repair precondition failed: landed CID was already readable"
 fi
-say "== landed CID is unreadable; reconstruct and republish =="
+say "== landed CID is readable; reconstruct and republish onto a fresh target =="
 EXPECTED_CID="$CID" PORT="$REPAIR_PORT" node tests/e2e/kubo-stub.mjs &
-KUBO_PID=$!
+REPAIR_KUBO_PID=$!
 for _ in $(seq 1 40); do
   curl -fsS "http://127.0.0.1:$REPAIR_PORT/health" >/dev/null 2>&1 && break
   sleep 0.1
@@ -233,17 +249,10 @@ done
 curl -fsS "http://127.0.0.1:$REPAIR_PORT/health" >/dev/null \
   || die "repair kubo stub did not start"
 REPAIR_CONFIG="$WORK/operator-repair.toml"
-cp "$CONFIG" "$REPAIR_CONFIG"
-cat >> "$REPAIR_CONFIG" <<EOF
-
-[ipfs]
-min_success = 1
-retry_seconds = 1
-[[ipfs.targets]]
-name = "repair-stub"
-api = "http://127.0.0.1:$REPAIR_PORT"
-gateway = "$REPAIR_GATEWAY"
-EOF
+sed -e 's/name = "primary-stub"/name = "repair-stub"/' \
+    -e "s|api = \"http://127.0.0.1:$PIN_PORT\"|api = \"http://127.0.0.1:$REPAIR_PORT\"|" \
+    -e "s|gateway = \"$PIN_GATEWAY\"|gateway = \"$REPAIR_GATEWAY\"|" \
+    "$CONFIG" > "$REPAIR_CONFIG"
 op "$REPAIR_CONFIG" republish --instance "$INSTANCE_ID" --checkpoint 0 \
   >"$WORK/republish.log" 2>&1 \
   || die "republish failed: $(cat "$WORK/republish.log")"

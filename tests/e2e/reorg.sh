@@ -3,9 +3,9 @@
 # A real reorg, against a running daemon.
 #
 # The runbook's §7 said this was covered by "a synthetic unit test on the block-hash check only".
-# That is a test of the arithmetic, not of the daemon: the anchor memory that makes the check able
-# to fire at all (`seen_anchors`) is per-RUN state, so a reorg is only detectable by a process that
-# was already running when the chain changed under it. A `--once` tick can never notice one.
+# That is a test of the arithmetic, not of the daemon. Checkpoint anchors need the process that
+# observed them; successful-submit anchors must additionally survive a process restart while the
+# receipt is waiting for confirmations.
 #
 # Two things have to hold, and they are different code paths:
 #
@@ -26,6 +26,7 @@ RPC_PORT="${RPC_PORT:-8566}"
 RPC="http://127.0.0.1:$RPC_PORT"
 PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
 HEALTH_PORT="${HEALTH_PORT:-8567}"
+IPFS_PORT="${IPFS_PORT:-8572}"
 WORK="${WORK:-/tmp/reorg-e2e}"
 CONFIG="$WORK/operator.toml"
 LOG="$WORK/run.log"
@@ -47,6 +48,7 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 cleanup() {
   [ -n "${MINER_PID:-}" ] && kill "$MINER_PID" 2>/dev/null
   [ -n "${OP_PID:-}" ]    && kill "$OP_PID"    2>/dev/null
+  [ -n "${KUBO_PID:-}" ]  && kill "$KUBO_PID"  2>/dev/null
   [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null
   return 0
 }
@@ -66,6 +68,7 @@ port_free() { # port_free <port> <what>
 }
 port_free "${RPC_PORT}" "the chain"
 port_free "${HEALTH_PORT}" "the health listener"
+port_free "${IPFS_PORT}" "the publication stub"
 
 rpc()      { cast rpc --rpc-url "$RPC" "$@" 2>/dev/null; }
 snapshot() { rpc evm_snapshot | tr -d '"'; }
@@ -100,6 +103,14 @@ anvil --silent --port "$RPC_PORT" & ANVIL_PID=$!
 for _ in $(seq 1 40); do cast block-number --rpc-url "$RPC" >/dev/null 2>&1 && break; sleep 0.25; done
 cast block-number --rpc-url "$RPC" >/dev/null 2>&1 || die "anvil did not start"
 DEPLOYER=$(cast wallet address --private-key "$PK")
+
+PORT="$IPFS_PORT" node tests/e2e/kubo-stub.mjs >"$WORK/kubo.log" 2>&1 & KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null \
+  || die "the publication stub did not start: $(cat "$WORK/kubo.log")"
 
 say "== deploy EAS + resolver + schema + snapshot =="
 RPC_URL="$RPC" forge script contracts/script/DeployEasResolver.s.sol:DeployEasResolver \
@@ -161,6 +172,14 @@ max_basefee_gwei = 10000
 backend = "mock"
 groth16 = true
 
+[ipfs]
+min_success = 1
+retry_seconds = 1
+[[ipfs.targets]]
+name = "reorg-stub"
+api = "http://127.0.0.1:$IPFS_PORT"
+gateway = "http://127.0.0.1:$IPFS_PORT/ipfs/"
+
 [ops]
 state_dir  = "."
 log_format = "json"
@@ -174,9 +193,10 @@ BEFORE_TRIGGER=$(snapshot)
 [ -n "$BEFORE_TRIGGER" ] || die "anvil would not take a snapshot"
 say "   snapshot=$BEFORE_TRIGGER at block $(head_block)"
 
-# One long-running daemon, for the whole test. `seen_anchors` is per-run memory: restarting between
-# steps would re-observe the new chain as if it had always been that way, and the detector could
-# never fire. This is the difference between testing the daemon and testing the arithmetic.
+# Phase A needs one long-running daemon. Its checkpoint observation is intentionally per-run:
+# restarting before that reorg would re-observe the new chain as if it had always been that way.
+# Phase B deliberately restarts after the submit to verify that receipt finality is different: its
+# exact transaction/block anchor is durable journal state.
 #
 # The BINARY, not `cargo run`: killing cargo leaves the operator it spawned running, and a stray
 # daemon that reconnects to the next run's chain and writes into the same log makes a test that
@@ -191,7 +211,7 @@ cp target/release/input-exporter target/release/envelope0-preflight "$WORK/bin/"
 OPERATOR="$WORK/bin/operator"
 echo "tool_dir = \"$WORK/bin\"" >> "$CONFIG"
 
-say "== start the daemon (one process, for the whole test) =="
+say "== start the daemon =="
 SUBMITTER_PRIVATE_KEY="$PK" SP1_SKIP_PROGRAM_BUILD=true \
   "$OPERATOR" --config "$CONFIG" >"$LOG" 2>&1 &
 OP_PID=$!
@@ -265,12 +285,20 @@ await_log '"event":"submitted"' 900 || die "the daemon never submitted"
 SUBMIT_BLOCK=$(grep '"event":"submitted"' "$LOG" | head -1 | jq -r .block)
 say "   submitted at block $SUBMIT_BLOCK; the journal is NOT yet settled ($CONFIRMATIONS confirmations required)"
 
+kill "$OP_PID" 2>/dev/null; wait "$OP_PID" 2>/dev/null; OP_PID=""
 kill "$MINER_PID" 2>/dev/null; wait "$MINER_PID" 2>/dev/null
 [ "$(revert "$BEFORE_SUBMIT")" = "true" ] || die "evm_revert of the submit refused"
 mine $((CONFIRMATIONS + 3))
 APPLIED_AFTER_REORG=$(cast call "$SNAPSHOT" "hasAppliedCheckpoint()(bool)" --rpc-url "$RPC")
 say "   reverted to block $(head_block); hasAppliedCheckpoint=$APPLIED_AFTER_REORG"
 [ "$APPLIED_AFTER_REORG" = "false" ] || die "the revert did not actually undo the submit"
+
+SUBMITTER_PRIVATE_KEY="$PK" SP1_SKIP_PROGRAM_BUILD=true \
+  "$OPERATOR" --config "$CONFIG" >>"$LOG" 2>&1 &
+OP_PID=$!
+await_log '"event":"submit_watches_restored"' 120 \
+  || die "the restarted daemon did not restore the pending submit watch"
+say "   ${GREEN}restarted with the pending submit watch restored from the journal ✓${NC}"
 ( while kill -0 "$OP_PID" 2>/dev/null; do cast rpc anvil_mine 1 --rpc-url "$RPC" >/dev/null 2>&1; sleep 0.5; done ) &
 MINER_PID=$!
 

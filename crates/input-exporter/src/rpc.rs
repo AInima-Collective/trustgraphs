@@ -7,6 +7,9 @@
 use alloy_primitives::{hex, Address, B256};
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
+use std::time::Duration;
+
+pub const DEFAULT_RPC_TIMEOUT_SECONDS: u64 = 30;
 
 /// A JSON-RPC endpoint.
 pub struct Rpc {
@@ -26,7 +29,16 @@ pub struct RawLog {
 
 impl Rpc {
     pub fn new(url: impl Into<String>) -> Self {
-        Rpc { client: reqwest::Client::new(), url: url.into() }
+        Self::with_timeout(url, Duration::from_secs(DEFAULT_RPC_TIMEOUT_SECONDS))
+    }
+
+    pub fn with_timeout(url: impl Into<String>, timeout: Duration) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .connect_timeout(timeout.min(Duration::from_secs(10)))
+            .build()
+            .expect("a reqwest client with finite timeouts is valid");
+        Rpc { client, url: url.into() }
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
@@ -163,4 +175,29 @@ pub fn parse_b256(s: &str) -> Result<B256> {
 
 pub fn parse_addr(s: &str) -> Result<Address> {
     s.parse().with_context(|| format!("invalid address: {s}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Rpc;
+    use std::io::Read as _;
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn a_provider_that_accepts_and_never_answers_hits_the_request_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            std::thread::sleep(Duration::from_millis(500));
+        });
+
+        let rpc = Rpc::with_timeout(format!("http://{addr}"), Duration::from_millis(100));
+        let started = Instant::now();
+        let error = rpc.block_number().await.unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(1), "{error:#}");
+    }
 }

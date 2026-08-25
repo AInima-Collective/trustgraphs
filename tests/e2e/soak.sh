@@ -30,6 +30,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 MINUTES="${MINUTES:-15}"
 RPC_PORT="${RPC_PORT:-8568}"
 PROXY_PORT="${PROXY_PORT:-8569}"
+IPFS_PORT="${IPFS_PORT:-8570}"
 RPC="http://127.0.0.1:$RPC_PORT"
 PROXY="http://127.0.0.1:$PROXY_PORT"
 PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
@@ -53,6 +54,7 @@ cleanup() {
   [ -n "${OP_PID:-}" ]    && kill "$OP_PID"    2>/dev/null
   [ -n "${MINER_PID:-}" ] && kill "$MINER_PID" 2>/dev/null
   [ -n "${PROXY_PID:-}" ] && kill "$PROXY_PID" 2>/dev/null
+  [ -n "${KUBO_PID:-}" ]  && kill "$KUBO_PID"  2>/dev/null
   [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null
   return 0
 }
@@ -72,6 +74,7 @@ port_free() { # port_free <port> <what>
 }
 port_free "${RPC_PORT}" "the chain"
 port_free "${PROXY_PORT}" "the proxy"
+port_free "${IPFS_PORT}" "the publication stub"
 
 say "== chain on :$RPC_PORT, wedgeable proxy on :$PROXY_PORT =="
 anvil --silent --port "$RPC_PORT" & ANVIL_PID=$!
@@ -83,6 +86,14 @@ PORT="$PROXY_PORT" UPSTREAM="$RPC_PORT" MARKER="$MARKER" \
   node tests/e2e/rpc-blackhole.mjs >"$WORK/proxy.log" 2>&1 & PROXY_PID=$!
 for _ in $(seq 1 40); do cast block-number --rpc-url "$PROXY" >/dev/null 2>&1 && break; sleep 0.25; done
 cast block-number --rpc-url "$PROXY" >/dev/null 2>&1 || die "the proxy is not forwarding"
+
+PORT="$IPFS_PORT" node tests/e2e/kubo-stub.mjs >"$WORK/kubo.log" 2>&1 & KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null \
+  || die "the publication stub did not start: $(cat "$WORK/kubo.log")"
 
 say "== deploy EAS + resolver + schema + snapshot =="
 forge script contracts/script/DeployEasResolver.s.sol:DeployEasResolver \
@@ -141,6 +152,14 @@ max_basefee_gwei = 10000
 backend = "mock"
 groth16 = true
 timeout_s = 120
+
+[ipfs]
+min_success = 1
+retry_seconds = 1
+[[ipfs.targets]]
+name = "soak-stub"
+api = "http://127.0.0.1:$IPFS_PORT"
+gateway = "http://127.0.0.1:$IPFS_PORT/ipfs/"
 
 [ops]
 state_dir           = "."

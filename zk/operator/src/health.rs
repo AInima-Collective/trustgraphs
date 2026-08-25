@@ -22,10 +22,10 @@
 use crate::ops::Status;
 use anyhow::{Context, Result};
 use serde_json::{Map, Value};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// Top-level heartbeat fields a reader outside the box may see.
 const TOP_KEYS: &[&str] = &["chain_id", "head_block", "tick_at"];
@@ -73,9 +73,13 @@ const SETTINGS_KEYS: &[&str] = &[
 
 /// Request line cap. A health endpoint has no use for a long URL, and an unbounded read from an
 /// anonymous socket is the one way a read-only server can still be a liability.
-const MAX_REQUEST_BYTES: u64 = 8 * 1024;
+const MAX_REQUEST_BYTES: usize = 8 * 1024;
+const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_HEADER_LINES: usize = 64;
-const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_DEADLINE: Duration = Duration::from_secs(1);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+const HEALTH_WORKERS: usize = 8;
+const HEALTH_QUEUE: usize = 16;
 
 /// What the daemon is doing right now.
 ///
@@ -190,6 +194,16 @@ impl Health {
         };
     }
 
+    /// Run one operation under a non-ticking readiness budget and always restore ordinary tick
+    /// accounting, including when the operation returns an error. This keeps early preflight and
+    /// reconstruction paths from being forgotten when phases are added at a distant call site.
+    pub fn during<T>(&self, phase: Phase, operation: impl FnOnce() -> T) -> T {
+        debug_assert!(phase != Phase::Ticking);
+        self.enter(phase);
+        let _restore = RestoreTicking(self);
+        operation()
+    }
+
     /// Publish a completed tick. `status` is projected here, once, rather than on every request.
     pub fn publish(&self, status: &Status) {
         let body = heartbeat_body(status);
@@ -223,45 +237,44 @@ impl Health {
     }
 }
 
+struct RestoreTicking<'a>(&'a Health);
+
+impl Drop for RestoreTicking<'_> {
+    fn drop(&mut self) {
+        self.0.enter(Phase::Ticking);
+    }
+}
+
 /// Bind the listener and serve it on a background thread. Returns once the socket is bound, so a
 /// bad address is a startup failure and not a surprise an hour later.
 pub fn spawn(addr: &str, health: Arc<Health>) -> Result<std::net::SocketAddr> {
     let listener = TcpListener::bind(addr)
         .with_context(|| format!("[ops] listen address {addr} could not be bound"))?;
     let local = listener.local_addr()?;
-    std::thread::Builder::new().name("health".into()).spawn(move || {
-        // Deliberately serial. A read-only endpoint that a healthcheck polls has no need for
-        // concurrency, and a thread per connection is how a three-route server becomes a way to
-        // exhaust the box.
-        for stream in listener.incoming().flatten() {
+    let (sender, receiver) = mpsc::sync_channel::<TcpStream>(HEALTH_QUEUE);
+    let receiver = Arc::new(Mutex::new(receiver));
+    for index in 0..HEALTH_WORKERS {
+        let receiver = Arc::clone(&receiver);
+        let health = Arc::clone(&health);
+        std::thread::Builder::new().name(format!("health-worker-{index}")).spawn(move || loop {
+            let stream = receiver.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).recv();
+            let Ok(stream) = stream else { break };
             let _ = serve_one(stream, &health);
+        })?;
+    }
+    std::thread::Builder::new().name("health-accept".into()).spawn(move || {
+        for stream in listener.incoming().flatten() {
+            // A bounded queue keeps anonymous clients from allocating unbounded threads or memory.
+            // When it is full, dropping the socket fails fast and leaves the accept loop responsive.
+            let _ = sender.try_send(stream);
         }
     })?;
     Ok(local)
 }
 
 fn serve_one(mut stream: TcpStream, health: &Health) -> std::io::Result<()> {
-    stream.set_read_timeout(Some(SOCKET_TIMEOUT))?;
-    stream.set_write_timeout(Some(SOCKET_TIMEOUT))?;
-
-    let mut reader = BufReader::new(stream.try_clone()?);
-    let mut request_line = String::new();
-    if reader.by_ref().take(MAX_REQUEST_BYTES).read_line(&mut request_line)? == 0 {
-        return Ok(());
-    }
-    // Headers are read and discarded so the client sees a complete exchange rather than a reset,
-    // but nothing in them is ever consulted: there is no auth, no content negotiation and no
-    // behaviour to influence. Bounded in COUNT as well as in length — each line being under the
-    // byte cap says nothing about how many of them an anonymous client can send.
-    let mut header = String::new();
-    for _ in 0..MAX_HEADER_LINES {
-        if reader.by_ref().take(MAX_REQUEST_BYTES).read_line(&mut header)? == 0
-            || header.trim().is_empty()
-        {
-            break;
-        }
-        header.clear();
-    }
+    stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
+    let Some(request_line) = read_request(&mut stream)? else { return Ok(()) };
 
     let (status, content_type, body) = respond(&request_line, health);
     // A HEAD gets the headers a GET would, and no body — including the Content-Length the GET
@@ -277,6 +290,62 @@ fn serve_one(mut stream: TcpStream, health: &Health) -> std::io::Result<()> {
     stream.flush()?;
     let _ = stream.shutdown(std::net::Shutdown::Both);
     Ok(())
+}
+
+/// Read one bounded HTTP header under an absolute deadline. Socket read timeouts are inactivity
+/// timers: a client sending one byte just before each timeout can hold them forever. Nonblocking
+/// reads plus an `Instant` make the deadline independent of traffic rate.
+fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<String>> {
+    stream.set_nonblocking(true)?;
+    let deadline = Instant::now() + REQUEST_DEADLINE;
+    let mut bytes = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 1024];
+    loop {
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "health request exceeded its absolute deadline",
+            ));
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(count) => {
+                bytes.extend_from_slice(&chunk[..count]);
+                if bytes.len() > MAX_HEADER_BYTES {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "health request headers exceeded the byte limit",
+                    ));
+                }
+                if bytes.windows(4).any(|window| window == b"\r\n\r\n")
+                    || bytes.windows(2).any(|window| window == b"\n\n")
+                {
+                    break;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "health request was not UTF-8")
+    })?;
+    let mut lines = text.lines();
+    let request_line = lines.next().unwrap_or_default().trim_end_matches('\r');
+    if request_line.len() > MAX_REQUEST_BYTES || lines.count() > MAX_HEADER_LINES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "health request exceeded its line limits",
+        ));
+    }
+    stream.set_nonblocking(false)?;
+    Ok(Some(request_line.to_string()))
 }
 
 /// The whole routing table. Anything not named here is 404, including anything that would need a
@@ -549,6 +618,22 @@ mod tests {
     }
 
     #[test]
+    fn scoped_reconstruction_uses_its_budget_and_restores_the_tick_clock() {
+        let mut limits = budgets();
+        limits.ticking = 1;
+        let health = Health::new(limits);
+        let now = unix_now();
+        let mut status = sample();
+        status.tick_at = now.saturating_sub(10);
+        health.publish(&status);
+        assert!(!health.ready(now).0, "the completed tick is deliberately stale");
+
+        let reconstructing_was_ready = health.during(Phase::Reconstructing, || health.ready(now).0);
+        assert!(reconstructing_was_ready, "legitimate reconstruction gets its own budget");
+        assert!(!health.ready(now).0, "leaving the scope restores the stale completed-tick clock");
+    }
+
+    #[test]
     fn a_daemon_that_is_proving_is_working_rather_than_wedged() {
         // The failure this prevents: a probe with a tick-sized threshold calls an hour-long proof
         // dead, and a platform that restarts on a failed probe kills the daemon mid-proof.
@@ -650,6 +735,46 @@ mod tests {
         assert!(status_response.contains("application/json"), "{status_response}");
         assert!(status_response.contains("\"head_block\":9100200"), "{status_response}");
         assert!(get("/journal.jsonl").starts_with("HTTP/1.1 404"));
+    }
+
+    #[test]
+    fn a_slow_client_cannot_starve_a_health_probe() {
+        let health = Health::new(budgets());
+        let mut status = sample();
+        status.tick_at = unix_now();
+        health.publish(&status);
+        let addr = spawn("127.0.0.1:0", health).expect("binds");
+
+        let mut slow = TcpStream::connect(addr).unwrap();
+        slow.write_all(b"G").unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        let started = Instant::now();
+        let mut probe = TcpStream::connect(addr).unwrap();
+        probe.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        probe.write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
+        let mut response = String::new();
+        probe.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(started.elapsed() < REQUEST_DEADLINE, "the slow socket serialized the listener");
+        drop(slow);
+    }
+
+    #[test]
+    fn incomplete_requests_are_closed_on_an_absolute_deadline() {
+        let health = Health::new(budgets());
+        let addr = spawn("127.0.0.1:0", health).expect("binds");
+        let mut slow = TcpStream::connect(addr).unwrap();
+        slow.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        slow.write_all(b"G").unwrap();
+
+        let started = Instant::now();
+        let mut response = Vec::new();
+        let _ = slow.read_to_end(&mut response);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a trickling client outlived the absolute deadline"
+        );
     }
 
     #[test]

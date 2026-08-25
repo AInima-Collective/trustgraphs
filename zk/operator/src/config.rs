@@ -76,8 +76,9 @@ pub struct Config {
 ///
 /// The chain carries the root and the CID, never the scores. Without this the daemon lands roots
 /// nobody can read: the indexer fetches the blob by CID to build its member list, and a network
-/// page over an unpublished root renders empty. Unset means "we are not publishing", which is
-/// legitimate only if something else does.
+/// page over an unpublished root renders empty. An empty target set is accepted only so `--dry-run`
+/// can inspect a chain without storage credentials; [`crate::run::run`] rejects it before enabling
+/// a submitter.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ipfs {
@@ -85,7 +86,7 @@ pub struct Ipfs {
     #[serde(default)]
     pub targets: Vec<PinTarget>,
     /// How many independent targets must accept and serve the exact CID before a proof may submit.
-    /// Defaults to all configured targets. Zero is valid only when no publication target exists.
+    /// Defaults to all configured targets. Zero is valid only for targetless `--dry-run`.
     #[serde(default)]
     pub min_success: Option<usize>,
     /// Persistent retry cadence after a failed publication policy, in seconds.
@@ -284,6 +285,11 @@ pub struct Ops {
     /// [`crate::tools`].
     #[serde(default)]
     pub tool_dir: Option<String>,
+    /// Hard wall-clock deadline for one helper subprocess. A helper that outlives this budget is
+    /// killed as a process group so a stalled RPC, compiler, or grandchild cannot wedge the tick
+    /// loop forever.
+    #[serde(default = "d_tool_timeout")]
+    pub tool_timeout_seconds: u64,
     #[serde(default)]
     pub alert_webhook: Option<String>,
     #[serde(default)]
@@ -388,6 +394,9 @@ const WEIGHTED_CACHE: &str = "weighted-manifests";
 fn d_submit_failure_threshold() -> u32 {
     3
 }
+fn d_tool_timeout() -> u64 {
+    900
+}
 
 impl Default for Cadence {
     fn default() -> Self {
@@ -480,6 +489,7 @@ impl Default for Ops {
             journal_path: None,
             status_path: None,
             tool_dir: None,
+            tool_timeout_seconds: d_tool_timeout(),
             alert_webhook: None,
             log_format: LogFormat::default(),
             submit_failure_threshold: d_submit_failure_threshold(),
@@ -579,6 +589,11 @@ impl Config {
         )
     }
 
+    /// The hard deadline for input reconstruction and preflight subprocesses.
+    pub fn tool_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.ops.tool_timeout_seconds)
+    }
+
     /// How stale `/ready` tolerates the last completed tick being.
     pub fn ready_after_seconds(&self) -> u64 {
         self.ops.ready_after_seconds.unwrap_or_else(|| (3 * self.cadence.tick_seconds).max(90))
@@ -590,10 +605,9 @@ impl Config {
     pub fn health_budgets(&self) -> crate::health::Budgets {
         crate::health::Budgets {
             ticking: self.ready_after_seconds(),
-            // A reconstruction subprocess. Generous because the source-checkout fallback COMPILES
-            // it: a cold `cargo run -p input-exporter` is minutes, not seconds. A deployment with
-            // `[ops] tool_dir` set never comes close.
-            reconstructing: 900,
+            // The subprocess is killed at its configured deadline. Readiness allows another minute
+            // for process-group termination, error reporting, and the tick's cleanup path.
+            reconstructing: self.ops.tool_timeout_seconds.saturating_add(60),
             // The prover's own timeout, plus room to fail and report cleanly.
             proving: self.prover.timeout_s.saturating_add(120),
             // `send_watched` watches for a receipt for up to ten minutes and logs nothing while it
@@ -809,6 +823,10 @@ impl Config {
         anyhow::ensure!(
             self.ops.submit_failure_threshold > 0,
             "ops.submit_failure_threshold must be at least 1"
+        );
+        anyhow::ensure!(
+            self.ops.tool_timeout_seconds > 0,
+            "ops.tool_timeout_seconds must be at least 1; helper processes may not wait forever"
         );
         if let Some(listen) = self.ops.listen.as_deref().map(str::trim) {
             anyhow::ensure!(
@@ -1233,6 +1251,12 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
     fn a_zero_submit_failure_threshold_is_rejected() {
         let err = parse(&format!("{GOOD}\n[ops]\nsubmit_failure_threshold = 0\n")).unwrap_err();
         assert!(err.contains("must be at least 1"), "{err}");
+    }
+
+    #[test]
+    fn a_zero_helper_timeout_is_rejected() {
+        let err = parse(&format!("{GOOD}\n[ops]\ntool_timeout_seconds = 0\n")).unwrap_err();
+        assert!(err.contains("tool_timeout_seconds must be at least 1"), "{err}");
     }
 
     #[test]

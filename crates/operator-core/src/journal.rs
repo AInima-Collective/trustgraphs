@@ -43,10 +43,11 @@
 //! must call the lower-level `NetworkClient::request_proof` with the hash we already computed,
 //! rather than the convenience builder.
 
+use crate::finality::Anchor;
 use crate::policy::Spend;
 use alloy_primitives::B256;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -133,6 +134,23 @@ pub enum Record {
         cost_cents: u64,
         at: u64,
     },
+    /// A successful submit receipt waiting for its configured confirmation depth. Persisting the
+    /// receipt anchor makes the finality watch survive an operator restart.
+    SubmitPending {
+        key: WorkKey,
+        tx_hash: B256,
+        block_number: u64,
+        block_hash: B256,
+        confirmations: u64,
+        /// Successful submit gas is recorded in the same fsynced fact as its finality watch.
+        /// Older journals deserialize this as zero.
+        #[serde(default)]
+        cost_cents: u64,
+        at: u64,
+    },
+    /// The canonical block at a pending receipt's height changed. This clears only that submission
+    /// watch; the paid proof remains `InFlight` and may be submitted again.
+    SubmitReorged { key: WorkKey, tx_hash: B256, at: u64 },
     /// A deterministic pre-broadcast failure. Receipt reverts are already represented by
     /// `SubmitGas { reverted: true }`; keeping this record preflight-only avoids double-counting
     /// a mined revert while putting both paths through the same failure counter.
@@ -217,6 +235,13 @@ pub struct PublicationRetry {
 pub struct CompositionAvailabilityRetry {
     pub error: String,
     pub last_at: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingSubmission {
+    pub tx_hash: B256,
+    pub anchor: Anchor,
+    pub confirmations: u64,
 }
 
 /// Append-only JSONL, one file, fsynced at the points that matter.
@@ -353,6 +378,46 @@ impl Journal {
         keys
     }
 
+    /// Successful submit receipts that still need finality, replayed from the durable journal.
+    pub fn pending_submissions(&self) -> BTreeMap<WorkKey, PendingSubmission> {
+        let mut pending = BTreeMap::new();
+        for record in &self.records {
+            match record {
+                Record::SubmitPending {
+                    key,
+                    tx_hash,
+                    block_number,
+                    block_hash,
+                    confirmations,
+                    ..
+                } => {
+                    pending.insert(
+                        *key,
+                        PendingSubmission {
+                            tx_hash: *tx_hash,
+                            anchor: Anchor { block_number: *block_number, block_hash: *block_hash },
+                            confirmations: *confirmations,
+                        },
+                    );
+                }
+                Record::SubmitReorged { key, tx_hash, .. }
+                    if pending
+                        .get(key)
+                        .is_some_and(|submission| submission.tx_hash == *tx_hash) =>
+                {
+                    pending.remove(key);
+                }
+                Record::Settled { key, .. }
+                | Record::Abandoned { key, .. }
+                | Record::Resolved { key, request_id: None, .. } => {
+                    pending.remove(key);
+                }
+                _ => {}
+            }
+        }
+        pending
+    }
+
     /// Whether a fresh proof request for this key is allowed.
     ///
     /// The only "yes" is `Untouched`. In particular an ambiguous record is a NO: re-requesting is
@@ -463,9 +528,10 @@ impl Journal {
     /// Rolling spend inside `window_secs` ending at `now`, for the budget check.
     ///
     /// Counts INTENTS (the moment proving money is committed — a request that fails still cost
-    /// something) plus on-chain [`Record::SubmitGas`] (H-3: gas burned by a submit, landed or
-    /// reverted, is unpreventable spend the moment it broadcast). Counting settlements alone
-    /// would let a run of failures spend without ever registering.
+    /// something) plus on-chain submit gas. Reverted receipts use [`Record::SubmitGas`]; a
+    /// successful receipt carries its spend in [`Record::SubmitPending`] so its gas and finality
+    /// watch become durable atomically. Counting settlements alone would let a run of failures
+    /// spend without ever registering.
     pub fn spend(&self, instance_id: B256, now: u64, window_secs: u64) -> Spend {
         self.spend_scoped(instance_id, now, window_secs, None)
     }
@@ -495,6 +561,7 @@ impl Journal {
             match r {
                 Record::Intent { key, at, cost_cents, .. } => add(key, *at, *cost_cents),
                 Record::SubmitGas { key, at, cost_cents, .. } => add(key, *at, *cost_cents),
+                Record::SubmitPending { key, at, cost_cents, .. } => add(key, *at, *cost_cents),
                 _ => {}
             }
         }
@@ -543,8 +610,12 @@ impl Journal {
                     key: k,
                     cid: published_cid,
                     policy_hash: published_policy,
+                    successes,
+                    required,
                     ..
                 } if k == key && published_cid == cid && *published_policy == policy_hash
+                    && *required > 0
+                    && *successes >= *required
             )
         })
     }

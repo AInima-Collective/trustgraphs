@@ -8,11 +8,13 @@
 # needs the checkout cannot check a claim whose whole content is "you do not need the checkout".
 #
 #   curl -O https://raw.githubusercontent.com/JakeHartnell/trustgraphs/main/tests/e2e/selfhost.sh
-#   RPC=https://sepolia.example REGISTRY=0x… bash selfhost.sh
+#   RPC=https://sepolia.example REGISTRY=0x… IPFS_API=https://… IPFS_GATEWAY=https://… bash selfhost.sh
 #
 #   IMAGE     which image to test        (default: the published :latest)
 #   RPC       a JSON-RPC endpoint        (required)
 #   REGISTRY  the InstanceRegistry       (required)
+#   IPFS_API  Kubo-compatible add API    (required)
+#   IPFS_GATEWAY  public read gateway    (required)
 #   FROM_BLOCK  registry deployment block  (default 0, and see the warning it prints)
 #
 # What it does NOT prove: that a root lands. That needs a funded instance and a prover key, and it
@@ -26,6 +28,8 @@ set -uo pipefail
 IMAGE="${IMAGE:-ghcr.io/jakehartnell/trustgraphs-operator:latest}"
 RPC="${RPC:-}"
 REGISTRY="${REGISTRY:-}"
+IPFS_API="${IPFS_API:-}"
+IPFS_GATEWAY="${IPFS_GATEWAY:-}"
 FROM_BLOCK="${FROM_BLOCK:-0}"
 PORT="${PORT:-18080}"
 WORK="${WORK:-$(mktemp -d)}"
@@ -49,6 +53,8 @@ command -v curl   >/dev/null 2>&1 || die "curl not found"
 command -v jq     >/dev/null 2>&1 || die "jq not found"
 [ -n "$RPC" ]      || die "RPC is required (an endpoint the daemon can read)"
 [ -n "$REGISTRY" ] || die "REGISTRY is required (the InstanceRegistry address)"
+[ -n "$IPFS_API" ] || die "IPFS_API is required (a Kubo-compatible publication endpoint)"
+[ -n "$IPFS_GATEWAY" ] || die "IPFS_GATEWAY is required (the corresponding public read gateway)"
 
 cleanup
 
@@ -81,6 +87,13 @@ instances = []
 
 [prover]
 backend = "mock"
+
+[ipfs]
+min_success = 1
+[[ipfs.targets]]
+name = "self-hosted"
+api = "$IPFS_API"
+gateway = "$IPFS_GATEWAY"
 
 [ops]
 state_dir  = "/data"

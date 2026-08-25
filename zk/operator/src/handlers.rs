@@ -24,7 +24,10 @@ use operator_core::catalog::CatalogEntry;
 use operator_core::types::{Program, VaultView};
 use operator_core::work::{WorkProfile, COST_MODEL_VERSION};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::PathBuf;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 use crate::chain::Rpc;
 use crate::config::{Config, PinTarget};
@@ -172,6 +175,7 @@ pub fn build_input(
     let _ = std::fs::remove_file(&input_path);
 
     let params_path = params_path(cfg, entry)?;
+    let rpc_timeout_seconds = cfg.rpc_timeout().as_secs().to_string();
 
     match entry.program {
         Program::Trustgraphs => {
@@ -184,6 +188,8 @@ pub fn build_input(
                 vec![
                     "--rpc",
                     &cfg.rpc,
+                    "--rpc-timeout-seconds",
+                    &rpc_timeout_seconds,
                     "--accumulator",
                     &format!("{:#x}", accumulator),
                     "--eas",
@@ -217,6 +223,8 @@ pub fn build_input(
                 vec![
                     "--rpc",
                     &cfg.rpc,
+                    "--rpc-timeout-seconds",
+                    &rpc_timeout_seconds,
                     "--accumulator",
                     &format!("{:#x}", accumulator),
                     "--eas",
@@ -279,6 +287,8 @@ pub fn build_input(
                 vec![
                     "--rpc",
                     &cfg.rpc,
+                    "--rpc-timeout-seconds",
+                    &rpc_timeout_seconds,
                     "--accumulator",
                     &format!("{:#x}", accumulator),
                     "--eas",
@@ -369,6 +379,8 @@ pub fn preflight_live_envelope0(
     let mut args = vec![
         "--rpc".to_string(),
         cfg.rpc.clone(),
+        "--rpc-timeout-seconds".to_string(),
+        cfg.rpc_timeout().as_secs().to_string(),
         "--registry".to_string(),
         format!("{:#x}", view.anchor_registry),
         "--params".to_string(),
@@ -665,7 +677,7 @@ pub struct PublicationReport {
 
 impl PublicationReport {
     pub fn satisfied(&self) -> bool {
-        self.successes.len() >= self.required
+        self.required > 0 && self.successes.len() >= self.required
     }
 
     pub fn failure_strings(&self) -> Vec<String> {
@@ -1034,10 +1046,12 @@ fn selection_path(cfg: &Config, entry: &CatalogEntry) -> Result<String> {
 
 fn run_tool(cfg: &Config, tool: Tool, args: Vec<&str>) -> Result<()> {
     let resolved = tools::resolve(tool, cfg.ops.tool_dir.as_deref())?;
-    let out = resolved
-        .command(&args)
-        .output()
-        .with_context(|| format!("running {} {}", resolved.describe(), args.join(" ")))?;
+    let out = command_output_with_timeout(
+        resolved.command(&args),
+        cfg.tool_timeout(),
+        &format!("{} helper", tool.label()),
+    )
+    .with_context(|| format!("running {}", resolved.describe()))?;
     if !out.status.success() {
         bail!(
             "{} {} failed:\n{}",
@@ -1051,7 +1065,8 @@ fn run_tool(cfg: &Config, tool: Tool, args: Vec<&str>) -> Result<()> {
 
 fn run_tool_output(cfg: &Config, tool: Tool, args: &[String], label: &str) -> Result<String> {
     let resolved = tools::resolve(tool, cfg.ops.tool_dir.as_deref())?;
-    let out = resolved.command(args).output().with_context(|| format!("starting {label}"))?;
+    let out = command_output_with_timeout(resolved.command(args), cfg.tool_timeout(), label)
+        .with_context(|| format!("starting {label}"))?;
     if !out.status.success() {
         // Endpoint URLs can contain credentials. The hold is intentionally specific while its
         // message remains safe for logs, status APIs, and alert webhooks.
@@ -1059,6 +1074,84 @@ fn run_tool_output(cfg: &Config, tool: Tool, args: &[String], label: &str) -> Re
     }
     String::from_utf8(out.stdout).with_context(|| format!("{label} output was not UTF-8"))
 }
+
+/// Run a helper under one hard wall-clock deadline while draining both output pipes. On Unix each
+/// helper becomes a process-group leader so killing a timed-out `cargo run` also kills rustc and the
+/// eventual tool rather than leaving grandchildren holding the pipes open forever.
+fn command_output_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+    label: &str,
+) -> Result<Output> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+
+    let mut child = command.spawn().with_context(|| format!("spawning {label}"))?;
+    let child_id = child.id();
+    let stdout = child.stdout.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            pipe.read_to_end(&mut bytes).map(|_| bytes)
+        })
+    });
+    let stderr = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            pipe.read_to_end(&mut bytes).map(|_| bytes)
+        })
+    });
+
+    let started = Instant::now();
+    let (status, timed_out) = loop {
+        if let Some(status) = child.try_wait().with_context(|| format!("waiting for {label}"))? {
+            // A well-behaved tool has no descendants after its leader exits. Kill any that remain
+            // before joining the pipe readers so a stray background process cannot wedge us here.
+            kill_process_group(child_id);
+            break (status, false);
+        }
+        if started.elapsed() >= timeout {
+            kill_process_group(child_id);
+            let _ = child.kill();
+            let status = child.wait().with_context(|| format!("reaping timed-out {label}"))?;
+            break (status, true);
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+
+    let join = |reader: Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>>,
+                stream: &str|
+     -> Result<Vec<u8>> {
+        match reader {
+            Some(reader) => reader
+                .join()
+                .map_err(|_| anyhow!("{label} {stream} reader panicked"))?
+                .with_context(|| format!("reading {label} {stream}")),
+            None => Ok(Vec::new()),
+        }
+    };
+    let stdout = join(stdout, "stdout")?;
+    let stderr = join(stderr, "stderr")?;
+    if timed_out {
+        bail!("{label} timed out after {}s and was terminated", timeout.as_secs());
+    }
+    Ok(Output { status, stdout, stderr })
+}
+
+#[cfg(unix)]
+fn kill_process_group(child_id: u32) {
+    // SAFETY: a negative pid asks kill(2) to signal the process group whose id is the child's pid.
+    // The child was placed in exactly that group before exec. ESRCH simply means it already exited.
+    unsafe {
+        libc::kill(-(child_id as i32), libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_process_group(_child_id: u32) {}
 
 fn parse_b256(s: &str) -> Result<B256> {
     let b = hex::decode(s.trim().trim_start_matches("0x"))?;
@@ -1068,7 +1161,9 @@ fn parse_b256(s: &str) -> Result<B256> {
 
 #[cfg(test)]
 mod readback_tests {
-    use super::{native_journal, native_signer_journal, publish, readable};
+    use super::{
+        command_output_with_timeout, native_journal, native_signer_journal, publish, readable,
+    };
     use crate::config::Config;
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolValue;
@@ -1078,6 +1173,22 @@ mod readback_tests {
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_helper_and_its_children_are_terminated() {
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", "sleep 30 & wait"]);
+        let started = std::time::Instant::now();
+        let error = command_output_with_timeout(
+            command,
+            std::time::Duration::from_millis(100),
+            "test helper",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("timed out"), "{error:#}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
 
     #[test]
     #[ignore = "release gate: executes the real SP1 guest; run with --release --ignored"]
@@ -1376,6 +1487,21 @@ gateway = "{backup}/ipfs/"
         assert!(!report.satisfied());
         assert_eq!(report.successes.len(), 1);
         assert_eq!(report.required, 2);
+    }
+
+    #[test]
+    fn zero_targets_can_never_claim_publication_success() {
+        let cfg: Config = toml::from_str(
+            r#"
+rpc = "http://127.0.0.1:8545"
+registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
+"#,
+        )
+        .unwrap();
+        let report = publish(&cfg, "bafkreiunpublished", b"canonical score bytes");
+        assert_eq!(report.required, 0);
+        assert!(report.successes.is_empty());
+        assert!(!report.satisfied());
     }
 }
 

@@ -178,18 +178,77 @@ fn every_record_survives_a_round_trip_through_the_file() {
             at: 8,
         })
         .unwrap();
+        j.append(Record::SubmitPending {
+            key: key(4),
+            tx_hash: B256::from([0x44; 32]),
+            block_number: 123,
+            block_hash: B256::from([0x45; 32]),
+            confirmations: 12,
+            cost_cents: 17,
+            at: 9,
+        })
+        .unwrap();
+        j.append(Record::SubmitReorged { key: key(4), tx_hash: B256::from([0x44; 32]), at: 10 })
+            .unwrap();
         j.append(Record::CompositionAvailabilityAttempt {
             chain_id: 31_337,
             instance_id: B256::from([0x44; 32]),
             checkpoint_id: Some(9),
             error: "source CID unavailable from durability quorum".into(),
-            at: 9,
+            at: 11,
         })
         .unwrap();
         j.records().to_vec()
     };
     let reopened = Journal::open(&path).unwrap();
     assert_eq!(reopened.records(), written.as_slice());
+}
+
+#[test]
+fn pending_submit_finality_survives_restart_and_clears_durably() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let tx = B256::from([0x71; 32]);
+    {
+        let mut journal = Journal::open(&path).unwrap();
+        journal
+            .append(Record::SubmitPending {
+                key: key(7),
+                tx_hash: tx,
+                block_number: 900,
+                block_hash: B256::from([0x72; 32]),
+                confirmations: 12,
+                cost_cents: 23,
+                at: 100,
+            })
+            .unwrap();
+    }
+
+    let mut reopened = Journal::open(&path).unwrap();
+    let pending = reopened.pending_submissions();
+    let restored = pending.get(&key(7)).expect("the finality watch survives restart");
+    assert_eq!(restored.tx_hash, tx);
+    assert_eq!(restored.anchor.block_number, 900);
+    assert_eq!(restored.anchor.block_hash, B256::from([0x72; 32]));
+    assert_eq!(restored.confirmations, 12);
+    assert_eq!(reopened.spend(key(7).instance_id, 100, 86_400).instance_cents_today, 23);
+
+    reopened.append(Record::SubmitReorged { key: key(7), tx_hash: tx, at: 101 }).unwrap();
+    assert!(reopened.pending_submissions().is_empty());
+
+    reopened
+        .append(Record::SubmitPending {
+            key: key(7),
+            tx_hash: B256::from([0x73; 32]),
+            block_number: 901,
+            block_hash: B256::from([0x74; 32]),
+            confirmations: 12,
+            cost_cents: 29,
+            at: 102,
+        })
+        .unwrap();
+    reopened.append(Record::Settled { key: key(7), outcome: Outcome::Landed, at: 114 }).unwrap();
+    assert!(reopened.pending_submissions().is_empty());
 }
 
 #[test]
@@ -277,6 +336,24 @@ fn publication_success_is_bound_to_the_exact_cid_and_policy() {
     assert!(j.publication_satisfied(&key(0), "bafkreiblob", policy));
     assert!(!j.publication_satisfied(&key(0), "bafkreiother", policy));
     assert!(!j.publication_satisfied(&key(0), "bafkreiblob", B256::from([0x55; 32])));
+}
+
+#[test]
+fn a_legacy_zero_of_zero_publication_record_is_not_success() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(dir.path().join("journal.jsonl")).unwrap();
+    let policy = B256::from([0x66; 32]);
+    j.append(Record::Published {
+        key: key(0),
+        cid: "bafkreiunpublished".into(),
+        policy_hash: policy,
+        successes: 0,
+        required: 0,
+        at: 100,
+    })
+    .unwrap();
+
+    assert!(!j.publication_satisfied(&key(0), "bafkreiunpublished", policy));
 }
 
 #[test]

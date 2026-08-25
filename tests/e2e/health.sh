@@ -19,6 +19,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 RPC_PORT="${RPC_PORT:-8562}"
 PROXY_PORT="${PROXY_PORT:-8563}"
 HEALTH_PORT="${HEALTH_PORT:-8564}"
+IPFS_PORT="${IPFS_PORT:-8565}"
 WORK="${WORK:-/tmp/health-e2e}"
 MARKER="$WORK/wedge"
 READY_AFTER=5
@@ -31,6 +32,7 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 cleanup() {
   [ -n "${OP_PID:-}" ]    && kill "$OP_PID"    2>/dev/null
   [ -n "${PROXY_PID:-}" ] && kill "$PROXY_PID" 2>/dev/null
+  [ -n "${KUBO_PID:-}" ]  && kill "$KUBO_PID"  2>/dev/null
   [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null
   return 0
 }
@@ -51,6 +53,7 @@ port_free() { # port_free <port> <what>
 port_free "${RPC_PORT}" "the chain"
 port_free "${PROXY_PORT}" "the proxy"
 port_free "${HEALTH_PORT}" "the health listener"
+port_free "${IPFS_PORT}" "the publication stub"
 
 say "== chain on :$RPC_PORT, wedgeable proxy on :$PROXY_PORT =="
 anvil --silent --port "$RPC_PORT" & ANVIL_PID=$!
@@ -68,6 +71,14 @@ for _ in $(seq 1 40); do
 done
 cast block-number --rpc-url "http://127.0.0.1:$PROXY_PORT" >/dev/null 2>&1 \
   || die "the proxy is not forwarding: $(cat "$WORK/proxy.log")"
+
+PORT="$IPFS_PORT" node tests/e2e/kubo-stub.mjs >"$WORK/kubo.log" 2>&1 & KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null \
+  || die "the publication stub did not start: $(cat "$WORK/kubo.log")"
 
 PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
 DEPLOYER=$(cast wallet address --private-key "$PK")
@@ -90,6 +101,13 @@ tick_seconds = 1
 
 [prover]
 backend = "mock"
+
+[ipfs]
+min_success = 1
+[[ipfs.targets]]
+name = "health-stub"
+api = "http://127.0.0.1:$IPFS_PORT"
+gateway = "http://127.0.0.1:$IPFS_PORT/ipfs/"
 
 [ops]
 state_dir           = "."

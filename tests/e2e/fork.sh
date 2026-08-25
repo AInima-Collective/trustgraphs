@@ -39,6 +39,7 @@ FORK_RPC_CANDIDATES=(
   https://1rpc.io/eth
 )
 PORT="${PORT:-8547}"
+IPFS_PORT="${IPFS_PORT:-8548}"
 RPC="${RPC:-http://127.0.0.1:$PORT}"
 PK="${PK:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
 # anvil key 1: the front-runner, and the stranger.
@@ -81,7 +82,7 @@ step "fork mainnet"
 CANDIDATES=("${FORK_RPC_CANDIDATES[@]}")
 [ -n "${FORK_RPC:-}" ] && CANDIDATES=("$FORK_RPC")   # an explicit choice is honoured, not probed
 ANVIL_PID=""
-trap '[ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
+trap '[ -n "${KUBO_PID:-}" ] && kill "$KUBO_PID" 2>/dev/null; [ -n "${ANVIL_PID:-}" ] && kill "$ANVIL_PID" 2>/dev/null' EXIT
 
 for candidate in "${CANDIDATES[@]}"; do
   HEAD_HEX=$(curl -s -m 8 -X POST "$candidate" -H 'content-type: application/json' \
@@ -188,6 +189,14 @@ if cast call "$GATEWAY_MAINNET" "verifyProof(bytes32,bytes,bytes)" \
   die "the carried gateway bytecode accepted a fabricated proof"
 fi
 ok "chain 1, upstream detached, canonical gateway bytecode carried across and still refusing"
+
+PORT="$IPFS_PORT" node tests/e2e/kubo-stub.mjs >"$WORK/kubo.log" 2>&1 & KUBO_PID=$!
+for _ in $(seq 1 40); do
+  curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+curl -fsS "http://127.0.0.1:$IPFS_PORT/health" >/dev/null \
+  || die "the publication stub did not start: $(cat "$WORK/kubo.log")"
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 step "deploy: EAS, registry, vault, factory"
@@ -327,6 +336,14 @@ max_basefee_gwei = 100000
 [prover]
 backend = "mock"
 groth16 = true
+
+[ipfs]
+min_success = 1
+retry_seconds = 1
+[[ipfs.targets]]
+name = "fork-stub"
+api = "http://127.0.0.1:$IPFS_PORT"
+gateway = "http://127.0.0.1:$IPFS_PORT/ipfs/"
 
 [ops]
 state_dir  = "."

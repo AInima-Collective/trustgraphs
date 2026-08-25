@@ -46,6 +46,8 @@ rpc = "https://rpc.example"
 registry = "0x..."
 chain_id = 10
 registry_from_block = 123456789
+# Every helper RPC call has its own deadline; it is never allowed to wait forever.
+rpc_timeout_seconds = 30
 
 [curated]
 instances = []
@@ -79,6 +81,8 @@ gateway = "https://backup.example/ipfs/"
 state_dir = "/data"
 # Read-only health and heartbeat listener. Three GET routes, no control plane.
 listen = "0.0.0.0:8080"
+# Absolute wall-clock deadline for input reconstruction and other helper processes.
+tool_timeout_seconds = 900
 ```
 
 Capability limits, gas policy, finality, budgets, weighted-manifest recovery, and alert delivery
@@ -127,6 +131,10 @@ cargo run --release --manifest-path zk/operator/Cargo.toml -- \
 
 Start with `--dry-run` after every configuration change.
 
+An active run refuses to start unless `[ipfs]` has at least one target and `min_success` is at
+least one. Targetless operation is available only with `--dry-run`: the operator will not submit
+an onchain CID that it did not first publish and read back successfully.
+
 Every release publishes the guest table its image was built from — each program's ELF sha256 and
 verification key against a public source commit — so a deployed verifier's pinned vkey can be
 checked against source without trusting whoever deployed it.
@@ -144,10 +152,10 @@ With `[ops] listen` set, three read-only routes answer from outside the box:
 - `/status` — the sanitized heartbeat, which is what `OPERATOR_STATUS_URL` in the app reads.
 
 The status file is the same heartbeat on disk. Alert if its tick time stops advancing or an
-instance enters a held state. The append-only journal records proof intents and outcomes, submission gas and
-failures, publication attempts, and composition-availability retries. Weighted-manifest recovery
-uses its separate cache and metrics. Back up all persistent operator state; losing the request
-journal can duplicate paid work.
+instance enters a held state. The append-only journal records proof intents and outcomes,
+submission gas, pending finality watches and reorgs, failures, publication attempts, and
+composition-availability retries. Weighted-manifest recovery uses its separate cache and metrics.
+Back up all persistent operator state; losing the request journal can duplicate paid work.
 
 Score publication is part of success. A valid onchain root without an available score file cannot
 render member scores. The operator therefore reads published bytes back from the configured

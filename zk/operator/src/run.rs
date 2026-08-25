@@ -58,11 +58,13 @@ fn supported() -> BTreeSet<Program> {
 
 #[derive(Clone, Copy)]
 struct PendingSettle {
+    tx_hash: B256,
     anchor: Anchor,
     confirmations: u64,
 }
 
 pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
+    ensure_publication_policy(&cfg, dry_run)?;
     let logger = Logger::new(cfg.ops.log_format);
     let rpc = Rpc::with_timeout(cfg.rpc.clone(), cfg.rpc_timeout());
 
@@ -157,10 +159,9 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // chain against that observation instead of against itself. `pending_settles` holds
     // successful submits until their block has N confirmations — only then is `Settled{Landed}`
     // journaled, so a reorged-out submit re-plans (the proof is still held) instead of wedging
-    // the journal behind manual surgery. Both are per-run: a restart re-reads the live chain,
-    // which is a fresh observation.
+    // the journal behind manual surgery. Checkpoint observations are per-run; successful submit
+    // receipts are replayed from the journal below so their confirmation watch survives restart.
     let mut seen_anchors: BTreeMap<(B256, u64), Anchor> = BTreeMap::new();
-    let mut pending_settles: BTreeMap<WorkKey, PendingSettle> = BTreeMap::new();
 
     // The log narrates changes; the heartbeat file carries steady state. This remembers what has
     // already been said so a healthy tick is one line, not one line per instance per lane.
@@ -190,6 +191,23 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     }
 
     let mut journal = Journal::open(cfg.journal_path())?;
+    let mut pending_settles: BTreeMap<WorkKey, PendingSettle> = journal
+        .pending_submissions()
+        .into_iter()
+        .map(|(key, pending)| {
+            (
+                key,
+                PendingSettle {
+                    tx_hash: pending.tx_hash,
+                    anchor: pending.anchor,
+                    confirmations: pending.confirmations,
+                },
+            )
+        })
+        .collect();
+    if !pending_settles.is_empty() {
+        logger.event("submit_watches_restored", json!({ "count": pending_settles.len() }));
+    }
     let unresolved = journal.unresolved();
     if !unresolved.is_empty() {
         alert(
@@ -360,7 +378,12 @@ fn tick(
     let mut resolved: Vec<WorkKey> = Vec::new();
     for (key, pending) in pending_settles.iter() {
         let anchor = pending.anchor;
-        let live = rpc.block_hash(anchor.block_number).ok().flatten();
+        let live = rpc.block_hash(anchor.block_number).with_context(|| {
+            format!(
+                "checking canonical block hash for pending submit {:#x} at block {}",
+                pending.tx_hash, anchor.block_number
+            )
+        })?;
         match anchor.finality(head, pending.confirmations, live) {
             Finality::Final => {
                 journal.append(Record::Settled {
@@ -380,6 +403,11 @@ fn tick(
                 resolved.push(*key);
             }
             Finality::Reorged { expected, canonical } => {
+                journal.append(Record::SubmitReorged {
+                    key: *key,
+                    tx_hash: pending.tx_hash,
+                    at: now(),
+                })?;
                 let text = format!(
                     "submit for checkpoint {} of {:#x} was REORGED OUT (block {} was {expected:#x}, \
                      chain now has {canonical:#x}); the held proof will be resubmitted",
@@ -665,7 +693,9 @@ fn tick(
             let mut prepared_input = None;
             let mut envelope0_preflight = None;
             match action {
-                Action::Trigger => match handlers::preflight_live_envelope0(cfg, rpc, entry) {
+                Action::Trigger => match health.during(Phase::Reconstructing, || {
+                    handlers::preflight_live_envelope0(cfg, rpc, entry)
+                }) {
                     Ok(report) => envelope0_preflight = report,
                     Err(_) => {
                         logger.event(
@@ -690,18 +720,22 @@ fn tick(
                         .iter()
                         .find(|checkpoint| checkpoint.id == checkpoint_id)
                         .and_then(|checkpoint| checkpoint.pinned_params_hash);
-                    let build = pinned
-                        .ok_or_else(|| anyhow::anyhow!("checkpoint has no pinned params"))
-                        .and_then(|hash| entry_at_params_hash(rpc, entry, hash, state.head_block))
-                        .and_then(|proving_entry| {
-                            handlers::build_input(
-                                cfg,
-                                rpc,
-                                &proving_entry,
-                                checkpoint_id,
-                                cfg.recipient(),
-                            )
-                        });
+                    let build = health.during(Phase::Reconstructing, || {
+                        pinned
+                            .ok_or_else(|| anyhow::anyhow!("checkpoint has no pinned params"))
+                            .and_then(|hash| {
+                                entry_at_params_hash(rpc, entry, hash, state.head_block)
+                            })
+                            .and_then(|proving_entry| {
+                                handlers::build_input(
+                                    cfg,
+                                    rpc,
+                                    &proving_entry,
+                                    checkpoint_id,
+                                    cfg.recipient(),
+                                )
+                            })
+                    });
                     match build {
                         Ok(built) => prepared_input = Some(built),
                         Err(_) => {
@@ -1061,7 +1095,7 @@ fn build_state(
                 // durably satisfied. Failed attempts survive restart and produce a quiet
                 // backoff state until their retry time.
                 let flight_state = if handlers::has_held_proof(cfg, entry, id) {
-                    if program == Program::Signer || cfg.ipfs.required_successes() == 0 {
+                    if program == Program::Signer {
                         InFlightState::Ready
                     } else {
                         let held = handlers::load_proof(cfg, entry, id)?;
@@ -1328,14 +1362,9 @@ fn act(
             let built = if let Some(prepared) = prepared_input {
                 prepared
             } else {
-                health.enter(Phase::Reconstructing);
-                owned_built = handlers::build_input(
-                    cfg,
-                    rpc,
-                    &proving_entry,
-                    *checkpoint_id,
-                    cfg.recipient(),
-                )?;
+                owned_built = health.during(Phase::Reconstructing, || {
+                    handlers::build_input(cfg, rpc, &proving_entry, *checkpoint_id, cfg.recipient())
+                })?;
                 &owned_built
             };
 
@@ -1453,6 +1482,17 @@ fn act(
             }
 
             let held = handlers::load_proof(cfg, entry, *checkpoint_id)?;
+            if entry.program != Program::Signer {
+                anyhow::ensure!(
+                    cfg.ipfs.required_successes() > 0
+                        && journal.publication_satisfied(
+                            &key,
+                            &held.cid,
+                            cfg.ipfs.policy_hash()
+                        ),
+                    "checkpoint {checkpoint_id} has no durable successful publication under the current nonzero policy; refusing submission"
+                );
+            }
 
             // The claim policy. A curated instance is proven on us and lands through plain
             // `submitProof`, drawing no vault; everything else goes through the vault so the
@@ -1524,19 +1564,19 @@ fn act(
                 cfg.prover.timeout_s.min(600),
             ) {
                 Ok((tx, r)) => {
-                    // H-3: whatever the outcome, the gas is spent — book it into the same
-                    // rolling budget as proving cost, and a revert counts a strike.
-                    journal.append(Record::SubmitGas {
-                        key,
-                        reverted: !r.success,
-                        cost_cents: crate::tx::gas_cost_cents(
-                            r.gas_used,
-                            r.effective_gas_price,
-                            cfg.budget.eth_usd,
-                        ),
-                        at: now(),
-                    })?;
+                    let submit_cost_cents = crate::tx::gas_cost_cents(
+                        r.gas_used,
+                        r.effective_gas_price,
+                        cfg.budget.eth_usd,
+                    );
                     if !r.success {
+                        // H-3: reverted gas is spent and counts as a deterministic strike.
+                        journal.append(Record::SubmitGas {
+                            key,
+                            reverted: true,
+                            cost_cents: submit_cost_cents,
+                            at: now(),
+                        })?;
                         let (attempts, _) = journal.submit_failures(&key);
                         if attempts >= cfg.ops.submit_failure_threshold {
                             abandon_checkpoint(
@@ -1566,12 +1606,22 @@ fn act(
                     } else {
                         cfg.finality.confirmations
                     };
+                    journal.append(Record::SubmitPending {
+                        key,
+                        tx_hash: tx,
+                        block_number: r.block_number,
+                        block_hash: r.block_hash,
+                        confirmations: confirmations_required,
+                        cost_cents: submit_cost_cents,
+                        at: now(),
+                    })?;
                     pending_settles.insert(
                         key,
                         PendingSettle {
+                            tx_hash: tx,
                             anchor: Anchor {
                                 block_number: r.block_number,
-                                block_hash: rpc.block_hash(r.block_number)?.unwrap_or(B256::ZERO),
+                                block_hash: r.block_hash,
                             },
                             confirmations: confirmations_required,
                         },
@@ -1632,6 +1682,19 @@ fn act(
     Ok(())
 }
 
+fn ensure_publication_policy(cfg: &Config, dry_run: bool) -> Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+    let targets = cfg.ipfs.resolved_targets();
+    let required = cfg.ipfs.required_successes();
+    anyhow::ensure!(
+        !targets.is_empty() && required > 0,
+        "a submitting operator needs at least one [[ipfs.targets]] entry and [ipfs] min_success >= 1; targetless operation is available only with --dry-run"
+    );
+    Ok(())
+}
+
 /// Attempt every configured publication target and make the result restart-safe.
 ///
 /// A failed minimum is ordinary queued work, not a failed tick: it is journaled, logged every
@@ -1646,6 +1709,10 @@ fn attempt_publication(
     cid: &str,
     score_blob: &[u8],
 ) -> Result<bool> {
+    anyhow::ensure!(
+        cfg.ipfs.required_successes() > 0 && !cfg.ipfs.resolved_targets().is_empty(),
+        "score publication requires a nonzero minimum and at least one configured target"
+    );
     let report = handlers::publish(cfg, cid, score_blob);
     let policy_hash = cfg.ipfs.policy_hash();
     let at = now();
@@ -1784,6 +1851,24 @@ fn now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn targetless_config() -> Config {
+        toml::from_str(
+            r#"
+rpc = "http://127.0.0.1:8545"
+registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn targetless_operation_is_dry_run_only() {
+        let cfg = targetless_config();
+        ensure_publication_policy(&cfg, true).unwrap();
+        let error = ensure_publication_policy(&cfg, false).unwrap_err();
+        assert!(error.to_string().contains("targetless operation"), "{error:#}");
+    }
 
     /// M-6 regression: an underpaying vault is REJECTED, not accepted. The pre-fix `.min(1)`
     /// turned a $500 quote into a `minPayoutUsd` of 1.

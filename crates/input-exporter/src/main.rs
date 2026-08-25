@@ -66,6 +66,9 @@ struct Args {
     /// JSON-RPC endpoint.
     #[arg(long)]
     rpc: String,
+    /// Hard deadline for each JSON-RPC request.
+    #[arg(long, default_value_t = input_exporter::rpc::DEFAULT_RPC_TIMEOUT_SECONDS)]
+    rpc_timeout_seconds: u64,
     /// The AttestationAccumulator (i.e. the EASIndexerResolver) address.
     #[arg(long)]
     accumulator: String,
@@ -140,7 +143,8 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let rpc = Rpc::new(args.rpc.clone());
+    anyhow::ensure!(args.rpc_timeout_seconds > 0, "--rpc-timeout-seconds must be at least 1");
+    let rpc = Rpc::with_timeout(args.rpc.clone(), Duration::from_secs(args.rpc_timeout_seconds));
     let accumulator = parse_addr(&args.accumulator)?;
     let eas = parse_addr(&args.eas)?;
 

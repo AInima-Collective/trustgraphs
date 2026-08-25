@@ -21,6 +21,9 @@ sol! {
 struct Args {
     #[arg(long)]
     rpc: String,
+    /// Hard deadline for each JSON-RPC request.
+    #[arg(long, default_value_t = input_exporter::rpc::DEFAULT_RPC_TIMEOUT_SECONDS)]
+    rpc_timeout_seconds: u64,
     #[arg(long)]
     registry: String,
     #[arg(long)]
@@ -40,7 +43,8 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let rpc = Rpc::new(args.rpc);
+    anyhow::ensure!(args.rpc_timeout_seconds > 0, "--rpc-timeout-seconds must be at least 1");
+    let rpc = Rpc::with_timeout(args.rpc, Duration::from_secs(args.rpc_timeout_seconds));
     let registry = parse_addr(&args.registry)?;
     let params: Params = serde_json::from_str(
         &std::fs::read_to_string(&args.params)
