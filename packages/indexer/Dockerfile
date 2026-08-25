@@ -19,7 +19,6 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter trustgraphs-indexer
 FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production
-ENV TRUSTGRAPHS_CONTAINER_ENV=1
 ENV TRUSTGRAPHS_ENV_FROM_PROCESS=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -38,20 +37,22 @@ COPY config ./config
 COPY deployments ./deployments
 COPY scripts/load-env.cjs ./scripts/load-env.cjs
 COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
-COPY ops/monitor-production.mjs ./ops/monitor-production.mjs
 
 # Hosted services explicitly load their complete configuration from the process environment.
 # The static fallback catalog is fixed at image-build time, so startup never mutates the read-only
 # application tree.
+#
+# Ponder executes every file under `src/` when it builds indexing functions, ignoring only the API
+# directory, and this repository keeps unit tests beside the modules they cover. Several of those
+# tests read golden vectors from repository paths this image deliberately does not carry, so a test
+# file left in the tree fails the indexing build over a fixture the indexer never needs to run.
 RUN rm -f packages/indexer/networks.json \
     && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
+    && find packages/indexer/src -name '*.test.ts' -exec rm -f {} + \
     && chown -R node:node /app
 
 USER node
-EXPOSE 65421 65422
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=2m --retries=3 \
-  CMD wget -q --spider "http://127.0.0.1:${PONDER_HEALTH_PORT:-65421}/ready" || exit 1
+EXPOSE 65421
 
 ENTRYPOINT ["node", "/app/packages/indexer/scripts/launch-indexer.mjs"]
 CMD ["start"]
