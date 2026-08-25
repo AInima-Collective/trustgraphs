@@ -40,6 +40,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+
+      # `sp1-sdk` reaches `prost-build` through `sp1-prover-types`, whose build script needs
+      # protoc — even for the DEFAULT feature set, and even though nothing here talks to the
+      # prover network. It is a build script inside a transitive normal dependency, which is
+      # exactly what `cargo tree --edges build` does not show; `cargo tree -i prost-build` does.
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "27.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zk/prover -> target
@@ -200,14 +210,21 @@ jobs:
         working-directory: digests
         run: |
           set -eu
+          # A tag release is `vX.Y.Z`; anything else (a workflow_dispatch dry run) publishes as
+          # `edge` and must NOT move `latest`, which means "the newest RELEASE" to anyone pulling.
           TAG="${GITHUB_REF_NAME}"
-          case "$TAG" in v*) ;; *) TAG="edge" ;; esac
+          LATEST=""
+          case "$TAG" in
+            v*) LATEST="--tag ${IMAGE}:latest" ;;
+            *)  TAG="edge" ;;
+          esac
           # One file per architecture, named by its digest.
           COUNT=$(ls -1 | wc -l)
           [ "$COUNT" -eq 2 ] || { echo "expected 2 per-arch digests, found $COUNT"; ls -la; exit 1; }
+          # shellcheck disable=SC2086
           docker buildx imagetools create \
             --tag "${IMAGE}:${TAG}" \
-            --tag "${IMAGE}:latest" \
+            $LATEST \
             $(printf "${IMAGE}@sha256:%s " *)
           DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{json .Manifest}}' | jq -r .digest)
           echo "tag=$TAG"       >> "$GITHUB_OUTPUT"
