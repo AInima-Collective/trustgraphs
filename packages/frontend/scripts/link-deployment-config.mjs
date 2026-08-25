@@ -19,10 +19,22 @@ if (!['config', 'networks'].includes(kind)) {
   throw new Error('Usage: link-deployment-config.mjs <config|networks>')
 }
 
-const source =
+const generatedSource =
   kind === 'config'
     ? path.join(frontendDir, `config.${suffix}.json`)
     : path.join(repoDir, 'config', `networks.${suffix}.json`)
+const allowTypecheckTemplate = process.argv.includes(
+  '--allow-typecheck-template'
+)
+const source =
+  target === 'local' &&
+  suffix === 'development' &&
+  allowTypecheckTemplate &&
+  !fs.existsSync(generatedSource)
+    ? kind === 'config'
+      ? path.join(frontendDir, 'config.typecheck.json')
+      : path.join(repoDir, 'config', 'networks.development.template.json')
+    : generatedSource
 const destination = path.join(frontendDir, `${kind}.json`)
 if (!fs.existsSync(source)) {
   throw new Error(
