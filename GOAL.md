@@ -72,8 +72,10 @@ is right (`cargo locate-project --workspace` agrees for all eight crates, which 
 bug class); `sp1-build` under `SP1_SKIP_PROGRAM_BUILD=true` still emits `SP1_ELF_*`, and with
 `docker: true` it points at the reproducible subdirectory, so the image embeds the bytes CI
 published a digest for; `programs::all()` and every `include_elf!` are ungated, so the lean
-manifest build and the image's feature-rich one enumerate the same eight programs and the `verify`
-diff compares like with like; and the four binary names the image copies are exactly the ones
+manifest build and the image's feature-rich one enumerate the same seven programs and the `verify`
+diff compares like with like (seven, not eight: there are eight `include_elf!` sites, but
+`atproto-conformance` is not exposed by `all()`. The digest table is a longer list than the
+manifest by design, since it counts ELF files rather than programs); and the four binary names the image copies are exactly the ones
 `tools::binaries()` looks for.
 
 Two things were not sound, and both were of the same shape as the five before them — an
