@@ -289,12 +289,39 @@ async function prepareDatabase({ chainId, head }) {
     )
   }
 
-  const client = new Client({ connectionString: databaseUrl })
+  // A hosted indexer reaches its database over a network it does not control. Bound the connect
+  // so an unreachable host fails with a message instead of hanging silently before anything logs.
+  const client = new Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: 15_000,
+  })
+  console.log('indexer: connecting to the database')
   await client.connect()
   try {
-    await client.query('SELECT pg_advisory_lock(hashtext($1))', [
-      'trustgraph-indexer-lifecycle',
-    ])
+    // `pg_advisory_lock` waits forever. A session that died without closing its connection - a
+    // killed container behind a TCP proxy is the usual way - keeps its lock until the backend is
+    // reaped, and every later start would then block here with no output at all. Poll a
+    // non-blocking acquire instead so the wait is visible and bounded.
+    const lockDeadline = Date.now() + 60_000
+    for (let attempt = 0; ; attempt += 1) {
+      const acquired = await client.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        ['trustgraph-indexer-lifecycle']
+      )
+      if (acquired.rows[0]?.acquired) break
+      if (Date.now() >= lockDeadline) {
+        throw new Error(
+          'Timed out acquiring the indexer lifecycle lock. Another indexer holds it on this ' +
+            'database. Inspect pg_stat_activity and pg_locks, and terminate any orphaned backend.'
+        )
+      }
+      if (attempt === 0) {
+        console.warn(
+          'indexer: another indexer holds the lifecycle lock on this database; waiting'
+        )
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+    }
     await client.query('CREATE SCHEMA IF NOT EXISTS trustgraph_meta')
     await client.query(`
       CREATE TABLE IF NOT EXISTS trustgraph_meta.indexer_chain (
@@ -468,8 +495,17 @@ async function main() {
     return
   }
 
+  console.log(
+    `indexer: starting ${deploymentProfile.stage}/${deploymentProfile.target} (chain ${deploymentProfile.chainId}, start block ${startBlock})`
+  )
   const chain = await rpcPreflight()
+  console.log(
+    `indexer: rpc ready across ${rpcUrls.length} endpoint(s) (head ${chain.head.number})`
+  )
   const indexSchema = await prepareDatabase(chain)
+  console.log(
+    `indexer: database ready (schema ${indexSchema}); running migrations`
+  )
   const childEnv = {
     ...process.env,
     DATABASE_SCHEMA: indexSchema,

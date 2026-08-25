@@ -27,6 +27,18 @@ const minimumCompute = {
   },
 }
 
+// The indexer is the one service that has outgrown that minimum. Its start path chains three Node
+// processes - this launcher, pnpm, and Ponder itself - beside esbuild's native child while Ponder
+// bundles the config, every indexing function, and the API. Node also sizes its heap from the
+// host's RAM rather than from the container limit, so at 512 MB it grows past the ceiling and is
+// killed before it writes its first line.
+const indexerCompute = {
+  containers: {
+    cpu: 0.5,
+    memoryBytes: 1024 * 1024 * 1024,
+  },
+}
+
 // GitHub sources autodeploy by default. Restrict each service to files that can change its image
 // so an unrelated monorepo commit does not spend Railway build credits twice.
 const indexerWatchPaths = [
@@ -66,7 +78,7 @@ export default defineRailway((input) => {
   const indexer = service('indexer', {
     source: repository(),
     build: { watchPatterns: indexerWatchPaths },
-    deploy: { limitOverride: minimumCompute },
+    deploy: { limitOverride: indexerCompute },
     start: 'node /app/packages/indexer/scripts/launch-indexer.mjs start',
     // Ponder's /ready stays 503 until historical indexing finishes. Railway only needs to know
     // the HTTP process is live before activating the deployment; the stable views schema remains
@@ -78,6 +90,9 @@ export default defineRailway((input) => {
       RAILWAY_DOCKERFILE_PATH: indexerDockerfile,
       PORT: '65421',
       NODE_ENV: 'production',
+      // Keep V8's own ceiling under the container limit so heap exhaustion raises a JavaScript
+      // error the logs can carry, rather than a silent kernel kill that loses buffered stdout.
+      NODE_OPTIONS: '--max-old-space-size=768',
       DEPLOY_STAGE: 'production',
       DEPLOY_TARGET: 'sepolia',
       DATABASE_URL: database.env.DATABASE_URL,

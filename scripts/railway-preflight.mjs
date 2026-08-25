@@ -56,9 +56,25 @@ assert.equal(
 )
 
 assert.equal(
-  iac.match(/deploy: \{ limitOverride: minimumCompute \}/g)?.length,
+  iac.match(/deploy: \{ limitOverride: \w+ \}/g)?.length,
   2,
-  'every application service must use the minimum testnet compute ceiling'
+  'every application service must declare a reviewed compute ceiling'
+)
+assert.ok(
+  iac.includes('deploy: { limitOverride: minimumCompute }'),
+  'the operator must stay on the minimum testnet compute ceiling'
+)
+assert.ok(
+  iac.includes('deploy: { limitOverride: indexerCompute }'),
+  'the indexer must use its own declared ceiling'
+)
+assert.ok(
+  iac.includes('memoryBytes: 1024 * 1024 * 1024'),
+  "the indexer's ceiling must be the reviewed 1 GB; Ponder's start path runs three Node processes and was killed at 512 MB before it could log"
+)
+assert.ok(
+  iac.includes("NODE_OPTIONS: '--max-old-space-size=768'"),
+  'the indexer must cap V8 below its container limit so heap exhaustion is logged, not silently killed'
 )
 assert.equal(
   iac.includes("service('monitor'"),
