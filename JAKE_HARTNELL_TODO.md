@@ -3,8 +3,8 @@
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
 - ~~Fresh deployer key (with Sepolia ETH)~~ **done: `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`, 0.5 ETH**
 - [x] Sepolia RPC endpoint
-- [x] NETWORK_PRIVATE_KEY (needs a topup of $PROVE) — **but see 1.5: it is the admin EOA's key**
-- [x] SUBMITTER_PRIVATE_KEY — **needs gas. `0xf6161E3c…` has 0 ETH; send it ~0.1**
+- [x] NETWORK_PRIVATE_KEY (needs a topup of $PROVE) — throwaway key, decided; see 1.5
+- [x] SUBMITTER_PRIVATE_KEY — funded: `0xf6161E3c…`, 0.2 ETH
 - [ ] Metadata for the seeded network
 - [ ] Trusted seeds for the seeded network
 - [ ] Railway: indexer, operator, frontend
@@ -215,43 +215,42 @@ We are a **requester**, not a prover: no on-chain proving obligation. Two separa
 Separate on purpose: the payee is named in the proof journal, so the submitting key never
 needs to hold funds beyond gas.
 
-**Two things I found in the `.env` you filled in.** Neither is a mistake in the file; both are
-consequences worth seeing before they are load-bearing.
+**Both settled, 2026-08-25.**
 
-**`SUBMITTER_PRIVATE_KEY` needs gas, and has none.** It derives to
-`0xf6161E3c1e83EF8297690153120462633570B8D1`, balance 0.000 ETH, nonce 0. "Holds no value"
-above means it never custodies anything, not that it runs on nothing: it signs every
-checkpoint and `submitProof`, so with an empty balance no root ever lands. Send it ~0.1 ETH.
-That is roughly 60 root submissions at today's ~1.1 gwei, and it is deliberately a small,
-rotatable float rather than a share of the deployer's balance.
+**`SUBMITTER_PRIVATE_KEY` — funded.** `0xf6161E3c1e83EF8297690153120462633570B8D1`, **0.2 ETH**,
+verified on chain. It needed it: "holds no value" means it never custodies anything, not that
+it runs on nothing, and it signs every checkpoint and `submitProof`. At the measured ~0.6M gas
+per `submitProof` ([PROOF_SCHEDULER §216](research/PROOF_SCHEDULER.md)) and today's ~1.08 gwei
+that is on the order of **300 submissions**, so it will not be what stops us. Watch it if
+Sepolia gas spikes: at 20 gwei the same 0.2 ETH is closer to 16.
 
-**`NETWORK_PRIVATE_KEY` is the admin EOA's key.** It derives to
-`0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE` — the same key that is `INSTANCE_REGISTRY_ADMIN`.
-That is a real choice, not a typo, since you told me the Succinct account is that address. The
-consequence: `SP1_PROVER=network` means sp1-sdk reads that variable inside the **operator
-container**, so the key with `DEFAULT_ADMIN_ROLE` and `OPERATOR_ROLE` over the registry lives
-in a long-running hosted service's environment. Part 4.1 says the opposite in as many words:
-"good reason to keep the admin EOA nowhere near that box."
+**`NETWORK_PRIVATE_KEY` is the admin EOA's key, and that is the decision.** It derives to
+`0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`, the same key as `INSTANCE_REGISTRY_ADMIN`. You
+ruled it a throwaway holding little value, to be handled carefully anyway. Recorded here
+because the consequence is not obvious from the variable name: `SP1_PROVER=network` means
+sp1-sdk reads it **inside the operator container**, so the key with `DEFAULT_ADMIN_ROLE` and
+`OPERATOR_ROLE` over the registry lives in a long-running hosted service's environment. Part
+4.1 was written assuming the opposite.
 
-What that key can do if the box is compromised, precisely, because it is narrower than it
-sounds: rewrite any instance's registry record (misdirecting discovery), seize any instance's
-`paramsAuthority`, and grant itself more roles. It **cannot** steal funds, forge scores, or
-redirect governance or fund distribution — `ProvingVault` caches its binding and gates
+Being careful with it, concretely — three things, none of which cost time:
+
+1. **The operator service is admin-privileged.** It gets its own secrets, not a set shared with
+   the indexer or the frontend, and nobody gets a shell on it casually.
+2. **Both roles rotate together.** If that key is ever exposed, it is not enough to rotate the
+   Succinct account: the registry's `DEFAULT_ADMIN_ROLE` has to move too, or the exposure
+   outlives the rotation.
+3. **This shape does not travel to mainnet.** On mainnet the registry admin is a timelock and
+   the Succinct requester is a separate funded key. Filed as a deviation, not a pattern.
+
+The ceiling, so the risk is a known size rather than a worry. If that box is taken, the key can
+rewrite any instance's registry record (misdirecting discovery), seize any instance's
+`paramsAuthority`, and grant itself further roles. It **cannot** steal funds, forge scores, or
+redirect governance or fund distribution: `ProvingVault` caches its binding and gates
 `migrate()` on `onlyConstitutional`, `CompositionSourceAdapter` fails closed with
 `RegistryRecordChanged`, and the gov module and fund distributor never read the registry.
+Denial and misdirection on a testnet. Not theft.
 
-Denial and misdirection on a testnet, then. Not theft. Your call whether that is worth a
-second Succinct account, and it is a five-minute fix either way:
-
-- **Cleanest:** open a second Succinct account on a throwaway key, credit it, and let
-  `NETWORK_PRIVATE_KEY` be that. The admin EOA then never leaves your hands, which is the
-  shape mainnet needs anyway.
-- **Fine for a testnet:** leave it, and treat the operator container as admin-privileged —
-  meaning it does not get shared credentials, and it gets rotated before mainnet.
-
-I have not changed anything here; the `.env` works as written.
-
-**Send me:** confirmation the network account has credit, and which of the two above you want.
+**Send me:** confirmation the network account has PROVE credit. That is the last item in 1.5.
 
 ---
 
@@ -391,7 +390,12 @@ One config file, two secrets, one volume. Full instructions in
   and double the bill. A Railway volume forces the old deployment down before the new one
   starts, which here is exactly what we want.
 - **Two hot keys live in that service's environment** (`NETWORK_PRIVATE_KEY`,
-  `SUBMITTER_PRIVATE_KEY`). Good reason to keep the admin EOA from 1.2 nowhere near that box.
+  `SUBMITTER_PRIVATE_KEY`), and on Sepolia the first of them **is** the admin EOA from 1.2 —
+  a deliberate testnet call on a throwaway key, recorded in 1.5 and filed as DEVIATIONS #41.
+  This line used to say to keep the admin EOA nowhere near this box; that remains the right
+  rule and is what mainnet will do. It means this service gets its own secrets rather than a
+  set shared with the indexer or frontend, and that a leak here rotates the registry's
+  `DEFAULT_ADMIN_ROLE` as well as the Succinct account.
 
 Set `[ops] listen` so Railway's healthcheck has something to probe, and point the frontend's
 `OPERATOR_STATUS_URL` at the same service.
