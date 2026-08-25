@@ -586,9 +586,10 @@ five: `instances` is empty.
    it currently holds a dev stack from 14:35 today — including `zk_verifier_deploy.json` with
    the local vkey. A clean full run overwrites each file before the next step reads it, so this
    only bites a resumed or partial run, but starting clean is one command.
-4. **Dry run.** `pnpm deploy:contracts --dry-run` validates and prints the ordered plan without
-   touching the chain. Then preflight: it fails closed on a wrong chain, a default key, a frozen
-   SP1 route, a stale feed, a zero vkey, or a commit mismatch.
+4. **Preflight, then dry run.** `bash scripts/sepolia-preflight.sh` is 22 read-only checks over
+   the release pin, the vkeys, the chain, the keys, the gas at this moment, the contracts we
+   reuse and the gateway route (5.2). `pnpm deploy:contracts --dry-run` then validates the plan
+   and prints it in order without touching the chain. Neither can broadcast.
 5. **Broadcast**, with your key. I never hold it.
 6. **Grant the new factory `REGISTRAR_ROLE`, signed by the admin EOA.** A real step, not a
    formality: the registry is constructed with your admin EOA as its admin from birth — the
@@ -687,6 +688,57 @@ anything read it. An Etherscan key is a read-only rate-limit token, so the expos
 somewhere between nil and mild, but it is your key and rotating it costs a minute if you would
 rather not think about it.
 
+### 5.2 The preflight, now one command
+
+`bash scripts/sepolia-preflight.sh`
+
+It reads and it prints. It broadcasts nothing, writes nothing, and echoes no key, RPC URL or API
+token: it derives addresses from the keys in `.env` and shows you those. Its exit code is the
+number of failed checks, so it chains with `&&` in front of a deploy. **22 checks, all passing
+right now.**
+
+What it covers, in the order a deploy would trip over them: the checkout is the release we mean
+(`DEPLOYMENT_COMMIT` is v0.0.5); every one of the four vkeys is the one that release published,
+and the ELF digest describes the same build; no leftover `.docker/*_deploy.json` can be picked up
+mid-run; `.env` still points at Sepolia in production stage; the RPC really answers 11155111; the
+three keys with their balances and nonces; the cost of the broadcast at the base fee at the
+moment you run it, against what the deployer holds; the five contracts the plan reuses rather
+than deploys all have code; the gateway will route our proofs; and whether the record this deploy
+overwrites still matters.
+
+Current numbers: base fee 1.03 gwei, so 19.94M gas is about **0.021 ETH** against 0.478 held.
+Deployer nonce 16, admin 12, submitter 0. `deployments/sepolia.json` is back to `planned`, so the
+run writes a clean record.
+
+**The gas check demands threefold headroom, not enough-right-now.** The risk is not the price
+when you start, it is a spike partway through sixteen transactions, which strands the deploy
+half-finished.
+
+### 5.3 The one thing preflight could not settle, now settled
+
+The verifier holds the SP1 gateway address in an immutable, and the gateway dispatches proofs by
+a four-byte selector carried inside each proof. If our selector had no route, or a frozen one,
+proofs could never verify and the only remedy would be a new verifier and therefore a new
+factory: exactly the redeploy we are already doing, done twice.
+
+It turns out this is derivable offline. The selector is the first four bytes of the sha256 of the
+Groth16 verifying key that ships inside the `sp1-verifier` crate the prover pins, so no proof and
+no gas are needed to know it. For sp1 6.3.1 it is **`0x4388a21c`**, and on Sepolia that route is
+**live and not frozen**, served by the v6.1.0 verifier at `0xb69f2584…`. The check is now step 9
+of the preflight, deriving the selector from your local crate artifacts when they are unpacked
+and falling back to the pinned value otherwise, and reading the route from the chain either way.
+
+The gateway carries six routes. Two are frozen: the v3.0.0 one, and one of two that both report
+v6.1.0. That second freeze looks alarming until you check which crate versions produce it, which
+is worth doing rather than assuming: sp1-verifier 6.1.0, 6.2.0, 6.3.0 and 6.3.1 all hash to the
+live selector, so no published version produces the frozen one. Succinct appears to have
+deployed a verifier built against pre-release artifacts, frozen it, and replaced it eight minutes
+later. The freeze protected people rather than endangering them, and we are not near it.
+
+The practical consequence for us is smaller than the check: our selector is stable across the
+whole 6.1.0 to 6.3.1 range, so a patch bump of sp1 would not move it. A minor bump might, and
+that is the moment to rerun this before pinning anything immutable.
+
 ---
 
 ## Part 6: What I'm doing meanwhile
@@ -696,7 +748,6 @@ rather not think about it.
 - Feed and USDC validation in the vault deploy
 - The release-capable seeded-instance script
 - Role-handoff and post-deploy invariant scripts
-- The executable preflight
 - Contract verification tooling
 - Frontend: Sepolia in the build path, testnet label, wrong-network prompt, and hardening the
   RPC and IPFS proxies before they face the public
