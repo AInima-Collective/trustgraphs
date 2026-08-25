@@ -129,7 +129,7 @@ box forever. That is fixed and released as a container image.
 
 ### 1.1 Verification keys — DONE, nothing for you to do
 
-Published in [v0.0.4](https://github.com/JakeHartnell/trustgraphs/releases/tag/v0.0.4), built
+Published in [v0.0.4](https://github.com/AInima-Collective/trustgraphs/releases/tag/v0.0.4), built
 by a public workflow from commit `95faa6f`, agreed on by two cold runners before it shipped.
 
 | Variable | Value |
@@ -159,8 +159,8 @@ If you want to check the values rather than trust them:
 
 ```bash
 gh attestation verify oci://ghcr.io/jakehartnell/trustgraphs-operator:v0.0.4 \
-  --repo JakeHartnell/trustgraphs
-gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json
+  --repo AInima-Collective/trustgraphs
+gh release download v0.0.4 -R AInima-Collective/trustgraphs -p guest-manifest.json
 ```
 
 ### 1.2 The admin EOA — DONE
@@ -556,7 +556,7 @@ five: `instances` is empty.
    plan if they disagree, so this is belt and braces rather than the only line of defence — but
    it is the line that failed last time.
 2. **Fetch the release manifest** next to the checkout, because the planner needs it:
-   `gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json`
+   `gh release download v0.0.4 -R AInima-Collective/trustgraphs -p guest-manifest.json`
    (or point `GUEST_MANIFEST` at a copy).
 3. **Clear `.docker/*_deploy.json`.** Gitignored scratch shared with every local anvil run, and
    it currently holds a dev stack from 14:35 today — including `zk_verifier_deploy.json` with
@@ -591,27 +591,72 @@ five: `instances` is empty.
    have exposed the vkey, three contracts too late. Needs the submitter funded (1.5).
 9. **Walk the browser flow** on the public domain with a clean wallet before we tell anyone.
 
-### 5.1 Etherscan verification — the key is in, the step is not built
+### 5.0 The dress rehearsal, already run and green
 
-`ETHERSCAN_API_KEY` is in `.env` and it is fine there. It is also, today, read by nothing:
-there is no `--verify` in the deploy pipeline, no `[etherscan]` block in `foundry.toml`, and no
-verification script. `.env.example` says as much next to the variable. So adding it changes
-nothing on its own — the contracts deployed this morning are unverified on Sepolia and will
-stay that way until the step exists.
+Before any of the above touches Sepolia for real, the whole thing was run against a **fork of
+Sepolia at block 11,564,866** — real state, real deployer balance, real canonical EAS and SP1
+gateway, no real ETH. It ran in an isolated git worktree so it could not touch `.docker/`,
+`broadcast/` or `deployments/sepolia.json` in your checkout.
 
-Two ways to build it, and I would not choose the first:
+Every step of Part 5 executed, in order, and every post-condition was checked rather than
+assumed:
 
-- **`--verify` inline in the deploy.** One flag, but it puts Etherscan on the critical path of
-  a broadcast. The runner has no try/catch around each step, so a rate-limit or a propagation
-  delay on contract two aborts contracts three through five *after* their predecessors have
-  landed. Trading a deploy-day abort for a cosmetic nicety is a bad trade.
-- **A separate verify pass, after the fact.** Reads the broadcast receipts, recovers each
-  constructor's arguments from the creation input, and calls `forge verify-contract` per
-  address. It holds no private key, so it cannot broadcast anything; it is rerunnable, and
-  Etherscan treats a repeat as already-verified. If it fails, nothing is lost.
+| check | result |
+| --- | --- |
+| verifier `programVKey` | `0x003c8e19…` — the release vkey, not a local build |
+| factory → verifier | points at the verifier just deployed |
+| registry `REGISTRAR_ROLE` → factory | true |
+| registry `OPERATOR_ROLE` → factory | false (the one that must stay false) |
+| vault admin + fee-setter → your EOA | true, true |
+| vault admin + fee-setter → deployer | false, false |
+| **creating a network through it** | succeeded, `instanceCount` 1, tank funded |
 
-I will build the second unless you say otherwise. It also verifies retroactively, so if you
-would rather leave today's five up as a testnet artifact they can be verified too.
+The last row is the one worth having. `REGISTRAR_ROLE` exists so the factory can register, and
+until a network is actually created through the deployed stack, that grant is only theory. It
+now has a real `createInstance` behind it, on Sepolia state.
+
+**The gas number is better than I told you.** Measured from the rehearsal's receipts, the five
+scripts cost **19.94M gas**, not the ~24.4M I estimated:
+
+| script | txs | gas |
+| --- | --- | --- |
+| DeployEAS | 1 | 170,400 |
+| DeployZkVerifier | 1 | 230,101 |
+| DeployInstanceRegistry | 1 | 935,719 |
+| DeployProvingVault | 8 | 3,876,164 |
+| DeployFactory | 5 | 14,730,205 |
+| **total** | **16** | **19,942,589** |
+
+At Sepolia's recent ~1.1 gwei that is about **0.022 ETH** against a deployer holding 0.478. The
+margin only gets interesting if gas spikes: at 20 gwei the same run costs 0.399 ETH, which is
+most of the balance. Worth a glance at the base fee before broadcasting rather than a rule.
+Creating a network afterwards is a further 6.95M gas.
+
+### 5.1 Etherscan verification — built, and today's contracts are verified
+
+`ETHERSCAN_API_KEY` is in `.env` and it is fine there. Until today it was read by nothing: no
+`--verify` in the deploy pipeline, no `[etherscan]` block in `foundry.toml`, no script.
+
+`pnpm verify:contracts` is that step now. It runs **after** a deploy rather than inside one,
+because the deploy loop has no try/catch around a step: an explorer rate-limit or a propagation
+delay on contract two would abort contracts three through five *after* their predecessors had
+landed on-chain. Trading a deploy-day abort for a cosmetic nicety is a bad trade. Run afterwards
+and the worst case is a retry. It also holds no private key and signs nothing, so it cannot
+broadcast a transaction however it fails.
+
+Constructor arguments are recovered, not remembered: a creation transaction's input is the
+artifact's creation bytecode with the arguments appended, so stripping the known prefix leaves
+exactly the encoding the explorer wants. That beats `--guess-constructor-args`, which asks the
+explorer to infer what we already know, and beats reading them out of the deploy scripts, which
+would be a second source able to disagree with the chain. If a creation input does not start
+with this checkout's creation bytecode, it says so rather than skipping: that means the local
+build is not the build that produced the on-chain code.
+
+**Already run: 9/9 verified on Sepolia**, over this morning's deployment. So the five contracts
+and the four factory deployer libraries are readable source on Etherscan right now, and the tool
+is proven against the real explorer rather than only in a dry run. It is also how the argument
+recovery was checked: `SP1JournalVerifier`'s recovered arguments decode to the canonical gateway
+plus `0x00d9bbff…`, independently confirming the wrong vkey from a different direction.
 
 One housekeeping note: the value got echoed into my terminal while I was checking whether
 anything read it. An Etherscan key is a read-only rate-limit token, so the exposure is
