@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+#
 # The operator, as one image: a daemon, its four helper binaries, and nothing else.
 #
 # Build context is the REPOSITORY ROOT, not this directory:
@@ -26,10 +28,21 @@
 FROM rust:1-bookworm AS builder
 
 # protobuf-compiler is for the operator's `network` feature: SP1_PROVER=network pulls the
-# prover-network gRPC client, which generates its stubs at build time.
+# prover-network gRPC client, and `sp1-prover-types` generates its stubs at build time from
+# `cluster.proto` — which imports `google/protobuf/empty.proto`.
+#
+# That import is why `libprotobuf-dev` is here too. `prost-build` passes `-I` only when
+# PROTOC_INCLUDE is set, which nothing here sets, so protoc has to resolve the well-known types on
+# its own. Whether that works is a packaging detail of the base image, and an unresolvable import
+# would surface as a protoc error twenty minutes into the prover build. So both packages are
+# installed and the import is then COMPILED, here, in two seconds. Three releases have now been
+# spent discovering a base-image fact the hard way; this one gets asserted instead of assumed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      protobuf-compiler pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+      protobuf-compiler libprotobuf-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/* \
+    && printf 'syntax = "proto3";\nimport "google/protobuf/empty.proto";\n' > /tmp/wkt.proto \
+    && protoc -I /tmp --descriptor_set_out=/dev/null /tmp/wkt.proto \
+    && rm /tmp/wkt.proto
 
 WORKDIR /src
 COPY . .
@@ -55,27 +68,61 @@ RUN set -eu; \
 
 ENV SP1_SKIP_PROGRAM_BUILD=true
 
+# Each cargo step below keeps its target directory in a BuildKit cache mount instead of an image
+# layer, and copies out the binaries it wants before the mount goes away.
+#
+# The reason is measured rather than stylistic. These three trees are 464 MB, 4.8 GB and 5.1 GB:
+# 10.4 GB of intermediate build state that a plain `RUN cargo build` commits as layer diffs, on a
+# runner whose free disk is already why the workflow deletes the Android SDK before starting. The
+# release then asks `cache-to: mode=max` to upload all of it into a 10 GB cache. None of it is
+# wanted downstream — the image needs four binaries and a text file.
+#
+# The cargo registry is mounted for the inverse reason: these are three SEPARATE workspaces, so
+# without it each one downloads the index and every shared crate from scratch.
+#
+# What is deliberately NOT mounted: the guests' own target directories. Those hold the ELFs that
+# came in from the build context, they are different directories from all three of these, and
+# hiding them behind an empty cache would silently produce an image with no guests in it.
+
 # The input reconstruction tools. `input-exporter` is the only one the trust-graph and signer
 # lanes need; `envelope0-preflight` is a second binary of the same crate.
-RUN cargo build --release --locked -p input-exporter --bins
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    set -eu; \
+    cargo build --release --locked -p input-exporter --bins; \
+    mkdir -p /out/bin; \
+    cp target/release/input-exporter target/release/envelope0-preflight /out/bin/
 
 # The prover host, with the two feature sets the heavier lanes shell out to. One binary carries
 # both: `tools::Tool` looks for `trustgraph-prover` when no lane-specific binary is present.
-RUN cargo build --release --locked --manifest-path zk/prover/Cargo.toml \
-      --features fetch,witness-nostr
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/zk/prover/target,sharing=locked \
+    set -eu; \
+    cargo build --release --locked --manifest-path zk/prover/Cargo.toml \
+      --features fetch,witness-nostr; \
+    cp zk/prover/target/release/trustgraph-prover /out/bin/
 
 # The daemon. `network` is what makes SP1_PROVER=network work, which is how a self-hoster proves
-# without owning a proving rig.
-RUN cargo build --release --locked --manifest-path zk/operator/Cargo.toml --features network
+# without owning a proving rig. It reaches sp1-sdk through `trustgraph-prover` as a LIBRARY and
+# proves in-process; the subprocess seam is for the input tools above, not for proving.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/zk/operator/target,sharing=locked \
+    set -eu; \
+    cargo build --release --locked --manifest-path zk/operator/Cargo.toml --features network; \
+    cp zk/operator/target/release/operator /out/bin/
 
 # The guest identity, shipped with the image so "which guest is this container running?" is one
 # command rather than an archaeology project. The entrypoint is the daemon, so ask for another:
 #   docker run --rm --entrypoint cat IMAGE /etc/trustgraph/elf-digests.txt
-RUN set -eu; mkdir -p /out/bin /out/etc; \
+#
+# The count is checked because a SHORTER table is the failure this file cannot afford to ship: it
+# would mean the image carries fewer guests than the release says it does, and every reader
+# downstream — the self-host test, the verify job — would be comparing against a table that
+# already agreed with itself about nothing.
+RUN set -eu; mkdir -p /out/etc; \
     sh scripts/guest-elf-digests.sh > /out/etc/elf-digests.txt; \
-    cp target/release/input-exporter target/release/envelope0-preflight /out/bin/; \
-    cp zk/prover/target/release/trustgraph-prover /out/bin/; \
-    cp zk/operator/target/release/operator /out/bin/
+    n=$(wc -l < /out/etc/elf-digests.txt); \
+    [ "$n" -ge 9 ] || { echo "only $n guest ELFs in this image; expected at least 9" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
@@ -103,6 +150,13 @@ RUN mkdir -p /data && chown trustgraphs:trustgraphs /data
 VOLUME ["/data"]
 USER trustgraphs
 WORKDIR /data
+
+# Set explicitly rather than left to the runtime's user lookup. sp1-sdk and cargo-adjacent code
+# write into `$HOME` without asking, and the volume is the only place in this container that is
+# both writable by an unprivileged user and meant to survive. A container where `$HOME` is `/`
+# fails at the first write, as root-less containers do, with an error about permissions rather
+# than about the assumption that caused it.
+ENV HOME=/data
 
 # `[ops] tool_dir` needs no configuration in this image: the daemon finds its tools beside itself.
 # The start period covers the FIRST pass, not just process startup: `/ready` reports failure

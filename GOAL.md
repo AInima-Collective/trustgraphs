@@ -47,6 +47,7 @@ uninspectable here).
 | `v0.0.2` | archiving the ELFs | a target directory belongs to the WORKSPACE; the nostr guest's is one level up |
 | `v0.0.3` | vkey table | `sp1-sdk` reaches `prost-build` transitively, so protoc is required — and `cargo tree --edges build` cannot show that |
 | dispatch 1 | image build | `operator` is a stock Debian system group, so `useradd` exits 9 |
+| dispatch 2 | image build | the workspace does not build on its own declared `rust-version = "1.87.0"`: `base45`, reached through `pagerank-core → envelopes → ipld-core → cid → multibase`, uses `slice_as_chunks` |
 
 **Where it stands after two tags.** Six further commits fixed the five release-path bugs those
 tags exposed (all mine; see the commit log from `4144e0c`). The gate now runs in ~6 minutes and can
@@ -62,6 +63,27 @@ image's feature set produces a byte-identical vkey table to the default build (t
 `verify` gates on); the default build needs no protoc; the binaries need no shared library absent
 from `debian:bookworm-slim`; and artifact → pristine checkout → digest script yields all ten
 entries, which is the Dockerfile's builder stage simulated.
+
+**What reading found that running had not reached yet.** Before cutting `v0.0.4` the whole
+untried remainder of the image was gone through by hand rather than by dispatch, because each run
+was costing twenty minutes to surface one fact. Four things were confirmed sound and are worth
+recording as checked rather than assumed: every target-directory path the Dockerfile copies from
+is right (`cargo locate-project --workspace` agrees for all eight crates, which is the `v0.0.2`
+bug class); `sp1-build` under `SP1_SKIP_PROGRAM_BUILD=true` still emits `SP1_ELF_*`, and with
+`docker: true` it points at the reproducible subdirectory, so the image embeds the bytes CI
+published a digest for; `programs::all()` and every `include_elf!` are ungated, so the lean
+manifest build and the image's feature-rich one enumerate the same eight programs and the `verify`
+diff compares like with like; and the four binary names the image copies are exactly the ones
+`tools::binaries()` looks for.
+
+Two things were not sound, and both were of the same shape as the five before them — an
+environment fact about a base image, assumed because this box cannot inspect it. The disk one is
+above. The other: `cluster.proto` imports `google/protobuf/empty.proto`, and `prost-build` passes
+`-I` only when `PROTOC_INCLUDE` is set, which nothing here sets — so protoc must resolve the
+well-known types from its own include path, and which Debian package ships those files is not
+answerable from this sandbox. Rather than guess a sixth time, the builder installs both candidate
+packages and then *compiles* that import in two seconds at the top of the build. The eight `RUN`
+bodies were extracted and run through `sh -n`; all parse.
 
 **Gates.** The *reproducibility* gate is **MET** as of 2026-08-25: two cold builds of `de6e1cb`
 produced byte-identical digests for all nine guests, and seven of them match a run on an earlier
@@ -371,9 +393,12 @@ that has to live outside GitHub.
 - [x] Assert the package is anonymously pullable (D8): a `docker pull` in a job with no
       registry credentials. A private package is the silent default, so this has to be tested
       rather than assumed.
-- [x] Watch runner disk. A cold Rust build of this size across several feature sets, plus
-      Docker layers, on a runner with roughly 14 GB free is the likeliest failure, and freeing
-      space is a known one-line action if it bites.
+- [x] Watch runner disk. **Measured rather than watched.** The three cargo steps produce 464 MB,
+      4.8 GB and 5.1 GB of target directories — 10.4 GB that a plain `RUN cargo build` commits
+      as image layers and that `cache-to: mode=max` then uploads into a 10 GB cache. All three
+      now live in BuildKit cache mounts and each step copies out only its binaries, so the
+      layers carry four executables and a text file instead. Freeing space was the one-line
+      action; not needing it is the better one.
 
 **Exit:** pushing a tag produces a pullable multi-arch image, a provenance attestation, and a
 published vkey and digest table, with no human step in between.
