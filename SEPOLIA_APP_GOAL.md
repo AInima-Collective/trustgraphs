@@ -14,6 +14,23 @@ nineteen post-deploy invariants pass. `InstanceRegistry.instanceCount()` is 0.
 day at Sepolia's cadence. Base fee sampled at 1.02 gwei. The deployer holds 0.457 ETH and the
 submitter key holds 0.200 ETH at nonce 0.
 
+**Test baseline:** `pnpm test:deploy` 7/7, the indexer's profile and chain-identity suites
+5/5, and the frontend suite green in full once `ESBUILD_BINARY_PATH` is set (see the
+landmines). The working tree is clean and six commits are unpushed.
+
+**Readiness checks run before opening, so no milestone starts on an assumption:**
+
+- **The RPC serves the deployment block.** `eth_getBalance` and an event-time `eth_call` both
+  answer at block 11,565,413, and `eth_getLogs` spans the full deployed range. This was M1's
+  one genuine unknown and it is answered: no archive provider is needed. The backfill is 307
+  blocks, so it will be over in seconds.
+- **Findings 2 and 3 are confirmed by running the generator, not by reading it.** A Sepolia
+  config generated from the finalized manifest carries the five live addresses correctly,
+  and ships `"ponder": "https://ponder.example.com/ponder"` and
+  `"GovernedTrustgraphsFactory": ""` without complaint.
+- **`config.production.json` is tracked but `config.development.json` is not.** The Sepolia
+  config is a release artifact for a public chain, so it should follow the tracked sibling.
+
 **Predecessor:** [SEPOLIA_GOAL.md](SEPOLIA_GOAL.md), whose broadcast happened on 2026-08-25.
 This program takes over that program's M1, M3, M6 and M7 and rewrites them against what is
 actually in the tree, which turned out to be considerably more than that document assumed.
@@ -111,14 +128,36 @@ Ten findings, each measured. Numbered for reference from the milestones, not as 
     `generate-config.ts` never loads dotenv, which is surprising enough to be worth writing
     down.
 
-### The operator cannot pin to Pinata
+### The operator cannot pin to Pinata, and it is not a missing token field
 
 `PinTarget` is `{name, api, gateway}` with no authentication field
-(`zk/operator/src/config.rs:127`), and publication posts to `{api}/api/v0/add`
-(`zk/operator/src/handlers.rs:726`), which is the kubo RPC shape. Pinata does not expose that
-API. Score blob publication therefore needs one of: a kubo the operator runs, an
-authenticating proxy in front of Pinata, or an optional `token` field on `PinTarget`. This is
-a decision, not a defect, and it is D3 below.
+(`zk/operator/src/config.rs:127`), and `pin_target` (`zk/operator/src/handlers.rs:723`) does
+four things, of which only the first is about credentials: it posts a hand-rolled multipart
+body to `{api}/api/v0/add`, parses `{"Hash": …}`, asserts the returned content id equals the
+one the guest committed in circuit, then fetches the bytes back through the reader's gateway
+and compares them.
+
+Pinata breaks the first two outright: it is `uploads.pinata.cloud/v3/files` with a bearer
+token, answering `{data: {cid}}`. The third is the one to measure rather than assume. The
+guest commits `cid_v1_raw(sha256(blob))`, a CIDv1 raw-codec single block
+(`crates/zk-core/src/cid.rs:45`), and Pinata takes a `cid_version` field defaulting to v1,
+where CIDv1 auto-enables raw leaves. That should match. **One upload with the real token,
+compared against `cid_v1_raw` of the same bytes, decides whether the adapter is small or
+needs a CAR builder**, since a single-block CAR pins exactly the block it is handed and the
+content id cannot drift.
+
+Both assertions exist for good reasons the comments state plainly: publishing bytes the root
+does not commit to is worse than publishing nothing, and "the API accepted it" and "a reader
+can fetch these exact bytes" are different claims. Any new backend has to satisfy both.
+
+### A latent ceiling on blob size
+
+`cid_v1_raw` is only the content id a kubo produces when the blob fits one 256 KiB chunk, and
+nothing bounds the blob. `canonical_blob` costs about 53 bytes per scored account, so above
+roughly 5,000 accounts a kubo returns a dag-pb root instead, the equality assertion fails,
+and the daemon refuses to publish. That is fail-closed, which is the right direction, but it
+is undocumented and the error message blames the wrong thing. Worth a bounded check and a
+comment whichever backends we end up with.
 
 ---
 
@@ -139,10 +178,16 @@ Open, for the operator, at the top of this program.
   the 1.3.0 pair is the exact match and the recommendation. The 1.4.1 pair is also live on
   Sepolia if there is a reason to prefer it, but it would mean a dependency bump, not a
   configuration change.
-- **D3 — Where score blobs get pinned.** See above. A self-hosted kubo gives the operator two
-  independent targets when paired with Pinata's read gateway and satisfies `min_success = 2`.
-  Pinata alone requires the new token field and still leaves `min_success` at 1, which is one
-  service away from an unavailable score.
+- **D3 — Where score blobs get pinned. DECIDED: Pinata now, kubo forever, Filecoin later.**
+  Pinata is the quickest thing to stand up for a public testnet. **Kubo support stays**,
+  because running the whole stack locally with no account at any service is a property worth
+  protecting, and it is also the second independent target that makes `min_success = 2`
+  honest rather than nominal. Filecoin Onchain Cloud is deferred to
+  [issue #107](https://github.com/AInima-Collective/trustgraphs/issues/107), which covers
+  both a Filecoin publication backend and a program that proves a graph from a dataset
+  addressed by a content id. The shape that serves all three is to give a publication target
+  a *kind*: kubo today, direct upload for Pinata, and the IPFS Pinning Service API spec,
+  which is one backend covering Filecoin Pin and everything else implementing it.
 - **D4 — When `.env` gets restructured.** M0 moves Sepolia values into a gitignored
   `.env.sepolia` overlay and returns `.env` to local defaults. That file is read by a live
   stack on the operator's Mac, so the swap is scheduled by the operator, not by the program.
@@ -263,7 +308,12 @@ with no placeholder URLs anywhere in the bundle.
 
 ### M5 — The first real root, and the score read back
 
-- [ ] Settle D3 and configure the operator's pin targets accordingly.
+- [ ] Measure Pinata's returned content id against `cid_v1_raw` of the same bytes, before
+      writing any adapter.
+- [ ] Give a publication target a kind, add the direct-upload backend for Pinata, and leave
+      the kubo backend exactly as it is. Keep both invariants at the call site.
+- [ ] Add the bounded blob-size check, so the 256 KiB ceiling fails with an error that names
+      the real cause.
 - [ ] Operator profile for Sepolia: release manifest pointing at the tracked file, RPC kept
       private, the separate submitter key, finalized confirmation policy, Succinct network
       backend, persistent journal path, alert webhook.
@@ -336,9 +386,12 @@ nothing in this repo calls. Keep them out of `.env` so nobody assumes they are w
   the compose file installs into the bind mount.
 - **Never run local demo tasks while the operator's stack is live.** Shared checkout, one
   `.docker` directory, one set of generated artifacts.
-- **`esbuild` in this sandbox resolves darwin binaries** from the shared store, so
-  `packages/frontend` scripts under `tsx` fail here. `node --import tsx` works from the
-  repository root but not from the frontend package.
+- **`esbuild` in this sandbox resolves darwin binaries** from the shared store, so anything
+  that transforms TypeScript through `tsx` fails with "You installed esbuild for another
+  platform." That is the frontend config generator and four source tests, among others. **The
+  fix is `ESBUILD_BINARY_PATH` pointing at a linux-arm64 esbuild of the matching version**,
+  which esbuild honours directly. Do not repair this by installing anything: `node_modules`
+  is shared with a macOS checkout and only one platform's binaries can live there.
 - **The tracked manifest is also the deploy's output file.** A real deploy writes straight
   over `deployments/sepolia.json`, which is why its test accepts both `planned` and
   `deployed`.
