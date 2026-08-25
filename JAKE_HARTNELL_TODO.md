@@ -106,21 +106,38 @@ snapshot of the attacker's choosing), **seizure of any instance's params authori
 **denial** (making composition adapters and params rotations revert). Not theft, not forged
 scores, not redirection of governance or fund distribution.
 
-**Decide (1): where OPERATOR_ROLE goes.** The contract's own NatSpec says this role is held by
-the operational timelock, and the `REGISTRAR_ROLE` / `OPERATOR_ROLE` split exists precisely so
-the permissionless factory can append without being able to rewrite. Handing it to an EOA is
-the one place this deployment is more centralised than the design.
+**DECIDED: rehearse the mainnet custody shape, not a testnet shortcut.** Your call, and it
+turned out to be worth more than the question that prompted it. I said "give OPERATOR_ROLE to
+the operational timelock, which is already being deployed." I was wrong about the second half.
 
-I recommend **the operational timelock**, which is already being deployed. Registry rewrites
-are rare (a redeploy or a params rotation), so the delay costs us nothing on a testnet, and it
-makes any rewrite publicly visible before it lands. The EOA keeps the vault admin and
-fee-setter roles, where the downside really is just parameters.
+**There is no platform-level timelock anywhere in this repo.** `DeployTimelocks.s.sol` exists,
+but the timelocks it deploys are **per-network** and hold `CONSTITUTIONAL_ROLE` /
+`OPERATIONAL_ROLE` on a single `MerkleSnapshot`. Nothing holds `InstanceRegistry.OPERATOR_ROLE`
+except whatever address is passed as the registry admin, and the Sepolia profile deploys five
+contracts with no timelock among them. So the `InstanceRegistry` NatSpec, which says this role
+is "held by the operational timelock", describes an intention that no deploy path implements
+— on any chain, including production.
 
-Renouncing `OPERATOR_ROLE` entirely, making rows append-only forever, is stronger and I would
-not do it on a first testnet: a mistyped row becomes unfixable, and correcting it would mean a
-new `instanceId` plus asking every affected community to call `migrate()` themselves.
+That makes this the right thing to find on a testnet rather than after mainnet. Building it is
+mine, and I have added it to the plan. **What I need from you is two numbers and one shape:**
 
-**Decide (2):** use a key that is *not* the deployer from 1.3. The deployer is hot and signs a
+- **Delays.** Mainnet defaults elsewhere in this repo are 14 days constitutional, 2 days
+  operational. My recommendation is to use the real operational delay of **2 days** on Sepolia
+  rather than a token one. The delay is the part that changes how you operate: it forces every
+  registry fix to be planned two days ahead, and finding out whether we can live with that is
+  the whole reason you chose this. The number is trivially changeable later; the habit is not.
+- **Proposer and executor.** Your admin EOA to start. A Safe as proposer is the fuller mainnet
+  shape and I would add it before mainnet rather than now, because it mostly constrains
+  signing, whereas the timelock constrains operations.
+
+The EOA still holds `ProvingVault` admin and fee-setter directly. Those are parameters, and
+putting a two-day delay on a fee band would make the testnet worse at the thing it is for.
+
+Not doing: renouncing `OPERATOR_ROLE` outright to make rows append-only forever. Mainnet will
+not do that, so rehearsing it teaches us nothing, and a mistyped row would become unfixable
+short of a new `instanceId` and asking every affected community to call `migrate()`.
+
+**Decide:** use a key that is *not* the deployer from 1.3. The deployer is hot and signs a
 long broadcast session; this one should live in a hardware wallet. One key for both also
 works and makes the handoff step a no-op. Tell me which.
 
