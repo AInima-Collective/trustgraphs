@@ -78,18 +78,49 @@ gh release download v0.0.4 -R JakeHartnell/trustgraphs -p guest-manifest.json
 Receives `InstanceRegistry` administrator and operator, plus `ProvingVault` administrator and
 fee-setter. You ruled EOA over Safe, which is right for a testnet.
 
-What the key actually holds, so the choice is informed:
+What the key actually holds, checked against the contracts rather than summarised:
 
-- `InstanceRegistry.update()` rewrites **any** instance's record, including repointing a
-  network's snapshot or resolver. Whoever holds it can rewrite the discovery layer for every
-  network on the deployment, including strangers'.
-- `ProvingVault` admin sets fee bands and gas parameters. It **cannot** take depositors'
+- **`ProvingVault` admin** sets fee bands and gas parameters. It **cannot** take depositors'
   funds: there is no admin sweep, and `withdrawCredit` pays out the caller's own credit.
+- **`InstanceRegistry` OPERATOR_ROLE** can rewrite any instance's directory row and repoint
+  any instance's params authority.
 
-So the downside of a compromise is griefing and misdirection, not theft. For mainnet this
-goes back to a Safe.
+That second one deserves precision, because the registry is read on-chain and not only by
+frontends. Every reader that could lose money or integrity already defends against a rewrite:
 
-**Decide:** use a key that is *not* the deployer from 1.3. The deployer is hot and signs a
+- `ProvingVault` binds an instance's snapshot at first deposit and caches it. `migrate()`
+  re-reads the registry but is `onlyConstitutional`, gated on the **currently bound**
+  snapshot's role, so a rewritten row cannot redirect anyone's prepaid balance.
+- `CompositionSourceAdapter` pins the record at construction and reverts
+  `RegistryRecordChanged` if it moves: composition **fails closed** rather than producing
+  wrong scores.
+- `TrustgraphsParamsController` cross-checks the registry against the snapshot's own
+  `paramsHash` and reverts on mismatch.
+- `MerkleGovModule` and `MerkleFundDistributor` never read the registry. Their snapshot is
+  constructor-set and only movable by `onlyOwner`, which is the community's own Safe.
+- No registry write can forge a root: that needs a valid SP1 proof against a vkey pinned at
+  verifier construction.
+
+So the real downside of a compromise is **misdirection of discovery** (a UI pointed at a
+snapshot of the attacker's choosing), **seizure of any instance's params authority**, and
+**denial** (making composition adapters and params rotations revert). Not theft, not forged
+scores, not redirection of governance or fund distribution.
+
+**Decide (1): where OPERATOR_ROLE goes.** The contract's own NatSpec says this role is held by
+the operational timelock, and the `REGISTRAR_ROLE` / `OPERATOR_ROLE` split exists precisely so
+the permissionless factory can append without being able to rewrite. Handing it to an EOA is
+the one place this deployment is more centralised than the design.
+
+I recommend **the operational timelock**, which is already being deployed. Registry rewrites
+are rare (a redeploy or a params rotation), so the delay costs us nothing on a testnet, and it
+makes any rewrite publicly visible before it lands. The EOA keeps the vault admin and
+fee-setter roles, where the downside really is just parameters.
+
+Renouncing `OPERATOR_ROLE` entirely, making rows append-only forever, is stronger and I would
+not do it on a first testnet: a mistyped row becomes unfixable, and correcting it would mean a
+new `instanceId` plus asking every affected community to call `migrate()` themselves.
+
+**Decide (2):** use a key that is *not* the deployer from 1.3. The deployer is hot and signs a
 long broadcast session; this one should live in a hardware wallet. One key for both also
 works and makes the handoff step a no-op. Tell me which.
 
