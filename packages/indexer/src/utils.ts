@@ -3,7 +3,7 @@ import type { Hex } from 'viem'
 
 const defaultFrontendOrigin = (env: NodeJS.ProcessEnv): string =>
   env.DEPLOY_STAGE?.trim().toLowerCase() === 'production'
-    ? 'https://trustgraph.network'
+    ? 'https://trustgraphs.xyz'
     : 'http://127.0.0.1:3000'
 
 /** The app origin whose cache the indexer invalidates after an indexed state change. */

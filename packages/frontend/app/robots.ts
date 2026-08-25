@@ -21,6 +21,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/'],
     },
-    sitemap: 'https://trustgraph.network/sitemap.xml',
+    sitemap: 'https://trustgraphs.xyz/sitemap.xml',
   }
 }

@@ -21,8 +21,8 @@ export const makeWalletConnectors = (): CreateConnectorFn[] => [
       name: 'Trustgraphs',
       description:
         'Turn community vouches into reputation scores that apps can use and contracts can verify.',
-      url: 'https://trustgraph.network',
-      icons: ['https://trustgraph.network/images/icon-512.png'],
+      url: 'https://trustgraphs.xyz',
+      icons: ['https://trustgraphs.xyz/images/icon-512.png'],
     },
   }),
 ]

@@ -477,7 +477,7 @@ Inputs this program cannot produce.
 | Pinata uploads endpoint | `IPFS_PIN_API` | `https://uploads.pinata.cloud/v3/files`, already the default off-local |
 | Read gateway, server side | `IPFS_GATEWAY` | in the ignored overlay; live indexer and exact-byte Pinata readback passed |
 | Read gateway, browser facing | `IPFS_GATEWAY_PUBLIC` | implemented and in the ignored overlay; still needs the final host build |
-| Public domain and its WalletConnect origins | | domain/origin configuration still needed for M3 |
+| Public domain and its WalletConnect origins | | `https://trustgraphs.xyz` selected; host and WalletConnect origin configuration still needed for M3 |
 | Ponder public API URL | `PONDER_URL` | still needed; the existing public site's old Ponder upstream is unavailable |
 | Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | PublicNode and Tenderly selected and live-validated for chain id, head, historical code, calls, balances, blocks, and estimates; both are recorded in the ignored overlay and still need copying into the public host |
 | Hosting for indexer and operator | | still needed for M5/M6; local writer is not the public service |

@@ -216,7 +216,7 @@ PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
 PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
 DATABASE_URL=postgresql://...
 IPFS_GATEWAY=https://.../ipfs/
-FRONTEND_URL=https://your-app.example   # defaults to https://trustgraph.network in PROD
+FRONTEND_URL=https://your-app.example   # defaults to https://trustgraphs.xyz in PROD
 ```
 
 Then run `docker compose -f docker-compose.prod.yml up -d`. The writer backfills into the versioned

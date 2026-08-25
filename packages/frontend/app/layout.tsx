@@ -45,7 +45,7 @@ const DESCRIPTION =
 // app/opengraph-image.png and app/twitter-image.png are wired automatically.
 // Regenerate every one of them with `pnpm run brand:assets`.
 export const metadata: Metadata = {
-  metadataBase: new URL('https://trustgraph.network'),
+  metadataBase: new URL('https://trustgraphs.xyz'),
   title: {
     default: 'Trustgraphs',
     template: '%s | trustgraphs',
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
   applicationName: 'Trustgraphs',
   openGraph: {
     type: 'website',
-    url: 'https://trustgraph.network',
+    url: 'https://trustgraphs.xyz',
     siteName: 'Trustgraphs',
     title: 'Trustgraphs',
     description: DESCRIPTION,
