@@ -78,8 +78,9 @@ token_env = "IPFS_PIN_API_KEY"
 state_dir = "/data"
 journal_path = "/data/journal.jsonl"
 status_path = "/data/status.json"
-# Railway private networking is IPv6. Binding the unspecified IPv6 address is dual-stack on the
-# Linux runtime, so Docker's existing IPv4 localhost health check keeps working too.
+# Railway private networking is dual-stack for new environments and IPv6-only for legacy ones.
+# Binding the unspecified IPv6 address is dual-stack on Linux, so either network generation and
+# Docker's existing IPv4 localhost health check work with the same profile.
 listen = "[::]:8080"
 ready_after_seconds = 10800
 tool_timeout_seconds = 900

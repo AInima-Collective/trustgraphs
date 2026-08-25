@@ -16,9 +16,44 @@ const repository = () =>
 const region = 'us-west2'
 const indexerDockerfile = 'packages/indexer/Dockerfile'
 const operatorDockerfile = '.railway/operator.Dockerfile'
+const monitorDockerfile = '.railway/monitor.Dockerfile'
+
+// Railway bills actual usage rather than a reserved machine size. These are its current minimum
+// per-replica ceilings; start here for testnet and raise only the service that proves it needs more.
+const minimumCompute = {
+  containers: {
+    cpu: 0.5,
+    memoryBytes: 512 * 1024 * 1024,
+  },
+}
+
+// GitHub sources autodeploy by default. Restrict each service to files that can change its image
+// so an unrelated monorepo commit does not spend Railway build credits three times.
+const indexerWatchPaths = [
+  '/.env.example',
+  '/packages/indexer/**',
+  '/packages/eas-offchain-client/**',
+  '/packages/frontend/lib/**',
+  '/contracts/deploy/**',
+  '/config/**',
+  '/deployments/**',
+  '/scripts/load-env.cjs',
+  '/package.json',
+  '/pnpm-lock.yaml',
+  '/pnpm-workspace.yaml',
+]
+const operatorWatchPaths = [
+  '/.railway/operator.Dockerfile',
+  '/deployments/operator.sepolia.toml',
+  '/deployments/sepolia.json',
+]
+const monitorWatchPaths = [
+  '/.railway/monitor.Dockerfile',
+  '/ops/monitor-production.mjs',
+]
 
 export default defineRailway((ctx) => {
-  const database = postgres('Postgres')
+  const database = postgres('Postgres', { region })
   const operatorState = volume('operator-state', {
     region,
     sizeMB: 512,
@@ -29,6 +64,8 @@ export default defineRailway((ctx) => {
   // schemas directly; SQLite is not a runtime switch in this repository.
   const indexer = service('indexer', {
     source: repository(),
+    build: { watchPatterns: indexerWatchPaths },
+    deploy: { limitOverride: minimumCompute },
     start: 'node /app/packages/indexer/scripts/launch-indexer.mjs start',
     healthcheck: '/ready',
     healthcheckTimeout: 600,
@@ -55,6 +92,8 @@ export default defineRailway((ctx) => {
 
   const operator = service('operator', {
     source: repository(),
+    build: { watchPatterns: operatorWatchPaths },
+    deploy: { limitOverride: minimumCompute },
     // Gate deployment on a bound, responsive daemon rather than a completed tick. A first tick can
     // include a paid network proof; the monitor below checks /ready continuously without making
     // Railway kill and repeat in-flight work when deployment activation reaches its timeout.
@@ -81,10 +120,11 @@ export default defineRailway((ctx) => {
 
   const monitor = service('monitor', {
     source: repository(),
-    start: 'node /app/ops/monitor-production.mjs',
+    build: { watchPatterns: monitorWatchPaths },
+    deploy: { limitOverride: minimumCompute },
     replicas: { [region]: 1 },
     env: {
-      RAILWAY_DOCKERFILE_PATH: indexerDockerfile,
+      RAILWAY_DOCKERFILE_PATH: monitorDockerfile,
       MONITOR_INDEXER_URL: `http://${indexer.env.RAILWAY_PRIVATE_DOMAIN}:65421`,
       MONITOR_OPERATOR_URL: `http://${operator.env.RAILWAY_PRIVATE_DOMAIN}:8080`,
       MONITOR_RPC_URL: ctx.shared.RPC_URL_11155111_0,
