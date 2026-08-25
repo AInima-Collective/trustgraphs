@@ -21,7 +21,20 @@ const environment =
     : profile.target === 'sepolia'
       ? 'sepolia'
       : 'production'
-const source = path.join(repoDir, 'config', `networks.${environment}.json`)
+const generatedSource = path.join(
+  repoDir,
+  'config',
+  `networks.${environment}.json`
+)
+const allowDevelopmentTemplate = process.argv.includes(
+  '--allow-development-template'
+)
+const source =
+  profile.target === 'local' &&
+  allowDevelopmentTemplate &&
+  !fs.existsSync(generatedSource)
+    ? path.join(repoDir, 'config', 'networks.development.template.json')
+    : generatedSource
 const destination = path.join(indexerDir, 'networks.json')
 
 if (!fs.existsSync(source)) {
@@ -37,4 +50,4 @@ try {
 }
 
 fs.symlinkSync(path.relative(indexerDir, source), destination)
-console.log(`indexer: using config/networks.${environment}.json`)
+console.log(`indexer: using ${path.relative(repoDir, source)}`)

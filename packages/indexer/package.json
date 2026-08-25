@@ -24,7 +24,7 @@
     "metadata:erc8004:watch": "tsx scripts/refresh-erc8004-metadata.ts --watch",
     "nostr:validate-artifacts": "tsx scripts/validate-nostr-workspace-artifacts.ts",
     "programs:backfill": "tsx scripts/backfill-score-programs.ts",
-    "typecheck": "node scripts/link-networks.mjs && ponder codegen && tsc"
+    "typecheck": "node scripts/link-networks.mjs --allow-development-template && ponder codegen && tsc"
   },
   "dependencies": {
     "@trustgraphs/eas-offchain-client": "workspace:*",
