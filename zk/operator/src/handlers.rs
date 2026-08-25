@@ -1378,3 +1378,154 @@ gateway = "{backup}/ipfs/"
         assert_eq!(report.required, 2);
     }
 }
+
+#[cfg(test)]
+mod state_layout_tests {
+    //! Where the per-checkpoint working files land.
+    //!
+    //! These three helpers moved from a hardcoded `.trustgraph/operator` to `[ops] state_dir`, and
+    //! two of them are only reached by the signer and weighted lanes — which no end-to-end test
+    //! drives, because each needs its own instance, module and Safe. A wrong directory there
+    //! compiles perfectly and is discovered in production, so it is asserted here instead.
+
+    use super::{out_dir, params_path, selection_path};
+    use crate::config::Config;
+    use alloy_primitives::{Address, B256};
+    use operator_core::catalog::CatalogEntry;
+    use operator_core::manifest::ManifestEntry;
+    use operator_core::types::Program;
+
+    const PARAMS: &str = include_str!("../../../tests/e2e/params.template.json");
+    const SELECTION: &str = include_str!("../../../tests/e2e/selection.json");
+
+    fn config(home: &std::path::Path) -> Config {
+        let path = home.join("operator.toml");
+        std::fs::write(
+            &path,
+            "rpc = \"http://127.0.0.1:8545\"\n\
+             registry = \"0x8D08973774F1Da59728e5a0f66453113A3E35A0F\"\n",
+        )
+        .unwrap();
+        Config::load(&path).expect("a minimal config loads")
+    }
+
+    /// The e2e template with its placeholder filled in, exactly as `tests/e2e/operator.sh` does
+    /// with `jq` before handing it to the daemon. Deserialized with `expect`, never `ok`: a
+    /// fixture that silently becomes `None` makes every assertion below vacuous, which is the
+    /// same shape of bug as a digest table that silently skips a guest.
+    fn sample_params() -> pagerank_core::Params {
+        let mut raw: serde_json::Value =
+            serde_json::from_str(PARAMS).expect("the e2e params template is valid JSON");
+        raw["schema_uid"] = serde_json::json!(format!("{:#x}", B256::repeat_byte(0x77)));
+        serde_json::from_value(raw).expect("the patched template is a valid Params")
+    }
+
+    fn entry(program: Program) -> CatalogEntry {
+        CatalogEntry {
+            instance_id: B256::repeat_byte(0x5a),
+            parent_instance_id: None,
+            program,
+            snapshot: Address::repeat_byte(0x11),
+            submit_to: Address::repeat_byte(0x22),
+            accumulator: Address::repeat_byte(0x33),
+            verifier: Address::repeat_byte(0x44),
+            program_vkey: None,
+            selection: Some(
+                serde_json::from_str(SELECTION).expect("the e2e selection fixture is valid"),
+            ),
+            params: Some(sample_params()),
+            contributions_params: None,
+            weighted_params: None,
+            composition_params: None,
+            reconstructed_params_hash: B256::ZERO,
+            params_controller: None,
+            params_version: None,
+            eas: Some(Address::repeat_byte(0x55)),
+            created_block: 0,
+            name: "fixture".into(),
+            manifest: None,
+        }
+    }
+
+    #[test]
+    fn per_checkpoint_working_files_live_under_the_state_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let cfg = config(home.path());
+        let entry = entry(Program::Trustgraphs);
+        let dir = out_dir(&cfg, &entry, 7);
+        assert_eq!(dir, cfg.state_dir().join(format!("{:#x}", entry.instance_id)).join("7"));
+        assert!(dir.starts_with(cfg.state_dir()), "{dir:?} escaped the state directory");
+    }
+
+    #[test]
+    fn chain_described_params_are_written_under_the_state_directory() {
+        // Not typed in by anyone: a factory instance's params come from the chain and are
+        // serialized to a file only because the reconstruction tool takes a path.
+        let home = tempfile::tempdir().unwrap();
+        let cfg = config(home.path());
+        let entry = entry(Program::Trustgraphs);
+        let written = params_path(&cfg, &entry).expect("params serialize");
+        let written = std::path::Path::new(&written);
+        assert!(written.starts_with(cfg.state_dir()), "{written:?} escaped the state directory");
+        assert!(written.is_file(), "params were not actually written");
+        serde_json::from_str::<pagerank_core::Params>(&std::fs::read_to_string(written).unwrap())
+            .expect("what was written is what the tool will read");
+    }
+
+    #[test]
+    fn a_manifest_keeps_pointing_at_its_own_params_file() {
+        // The other branch, and the one a deployed config depends on: a manifest instance names a
+        // params file, and nothing may relocate it.
+        let home = tempfile::tempdir().unwrap();
+        let cfg = config(home.path());
+        let mut entry = entry(Program::Trustgraphs);
+        entry.manifest = Some(ManifestEntry {
+            program: Program::Trustgraphs,
+            snapshot: entry.snapshot,
+            params: "/somewhere/else/params.json".into(),
+            eas: entry.eas,
+            submit_to: None,
+            selection: None,
+            depends_on: Vec::new(),
+            from_block: 0,
+            witness_manifests: Vec::new(),
+        });
+        assert_eq!(params_path(&cfg, &entry).unwrap(), "/somewhere/else/params.json");
+    }
+
+    #[test]
+    fn the_signer_lane_writes_its_selection_under_the_state_directory() {
+        // Reached only by the signer program, which no end-to-end test drives.
+        let home = tempfile::tempdir().unwrap();
+        let cfg = config(home.path());
+        let entry = entry(Program::Signer);
+        let written = selection_path(&cfg, &entry).expect("selection serializes");
+        let written = std::path::Path::new(&written);
+        assert!(written.starts_with(cfg.state_dir()), "{written:?} escaped the state directory");
+        assert!(written.is_file());
+        serde_json::from_str::<pagerank_core::SelectionParams>(
+            &std::fs::read_to_string(written).unwrap(),
+        )
+        .expect("what was written is what the tool will read");
+    }
+
+    #[test]
+    fn a_legacy_signer_manifest_keeps_its_own_selection_file() {
+        let home = tempfile::tempdir().unwrap();
+        let cfg = config(home.path());
+        let mut entry = entry(Program::Signer);
+        entry.selection = None;
+        entry.manifest = Some(ManifestEntry {
+            program: Program::Signer,
+            snapshot: entry.snapshot,
+            params: "/somewhere/else/params.json".into(),
+            eas: entry.eas,
+            submit_to: None,
+            selection: Some("/somewhere/else/selection.json".into()),
+            depends_on: Vec::new(),
+            from_block: 0,
+            witness_manifests: Vec::new(),
+        });
+        assert_eq!(selection_path(&cfg, &entry).unwrap(), "/somewhere/else/selection.json");
+    }
+}
