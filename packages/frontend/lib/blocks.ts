@@ -7,6 +7,7 @@ import { CHAIN } from '@/lib/config'
  */
 const BLOCK_TIME_SECONDS: Record<string, number> = {
   optimism: 2,
+  sepolia: 12,
   local: 12, // Anvil demo cadence mirrors mainnet
 }
 

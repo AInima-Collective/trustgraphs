@@ -45,7 +45,7 @@ export type IEnv = {
   validateDeployment?: () => void | Promise<void>
   uploadToIpfs: (file: string, apiKey?: string) => Promise<string>
   generateDeploymentSummary: () => object
-  generateReleaseManifest?: () => object
+  generateReleaseManifest?: (ctx?: ProgramContext) => object
 }
 
 export type EnvOverrides = {

@@ -142,6 +142,7 @@ fn log_level(event: &str, fields: &serde_json::Value) -> LogLevel {
             | "envelope0_unavailable"
             | "instance_skipped"
             | "instance_unreadable"
+            | "operator_budget_approaching"
             | "operator_capacity_approaching"
             | "signer_liveness_no_change"
             | "submit_reorged"
@@ -346,6 +347,7 @@ pub struct PublicSettings {
     pub proof_timeout_s: u64,
     pub per_instance_usd_per_day: u64,
     pub global_usd_per_day: u64,
+    pub global_budget_alert_percent: u8,
     pub budget_window_seconds: u64,
     pub publishes_scores: bool,
     pub verifies_score_readback: bool,

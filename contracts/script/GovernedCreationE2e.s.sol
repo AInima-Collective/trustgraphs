@@ -21,6 +21,7 @@ import {Common} from "script/Common.s.sol";
 contract CreateGovernedInstanceE2e is Common {
     function run(string calldata governedFactoryAddr, string calldata paramsPath, string calldata name) public {
         GovernedTrustgraphsFactory governed = GovernedTrustgraphsFactory(vm.parseAddress(governedFactoryAddr));
+        uint64 epochFloor = governed.FACTORY().EPOCH_FLOOR();
 
         // The governance knobs, with every derived (instance-identity) field left at zero — the
         // factory rejects anything else, and fills them itself (CreateDevInstances convention).
@@ -33,7 +34,10 @@ contract CreateGovernedInstanceE2e is Common {
                 metadataURI: "",
                 params: params,
                 admin: address(0), // ignored: the Safe becomes the admin
-                epochLength: 1,
+                // The browser clamps its cadence choice to this immutable floor. Reading it here
+                // keeps the same harness valid on both the one-block dev stack and Sepolia's
+                // 7,200-block production factory.
+                epochLength: epochFloor,
                 withDistributor: true,
                 distributorToken: address(0),
                 salt: keccak256(abi.encode(name, block.number, block.timestamp))

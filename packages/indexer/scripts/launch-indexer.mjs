@@ -5,9 +5,9 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-import dotenv from 'dotenv'
 import pg from 'pg'
 
+import environmentLoader from '../../../scripts/load-env.cjs'
 import {
   localSchemaName,
   parseRpcQuantity,
@@ -18,6 +18,7 @@ import {
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const { Client } = pg
+const { loadTargetEnvironment } = environmentLoader
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
 const mode = process.argv[2]
@@ -28,9 +29,13 @@ if (!['dev', 'start', 'serve', 'preflight'].includes(mode)) {
   )
 }
 
-// Explicit process variables win, then indexer-local settings, then repository deployment values.
-dotenv.config({ path: path.join(indexerDir, '.env.local'), quiet: true })
-dotenv.config({ path: path.join(repoDir, '.env'), quiet: true })
+// Explicit process variables win. The public-target overlay comes next so a local indexer file
+// cannot leak local RPC/IPFS settings into Sepolia; `.env.local` then fills service-specific values
+// such as DATABASE_URL that are absent from the repository environment.
+loadTargetEnvironment({
+  repositoryRoot: repoDir,
+  higherPriorityFiles: [path.join(indexerDir, '.env.local')],
+})
 
 const deploymentProfile = resolveDeploymentProfile(process.env, repoDir)
 const production = deploymentProfile.production
@@ -45,19 +50,40 @@ const viewsSchema =
 const configuredProductionSchema =
   process.env.PONDER_DATABASE_SCHEMA ?? process.env.DATABASE_SCHEMA
 
-const rpcUrl = production
+const primaryRpcUrl = production
   ? process.env[deploymentProfile.rpcEnv]
   : (process.env.PONDER_RPC_URL_31337 ??
     process.env.PONDER_RPC_URL ??
     process.env.RPC_URL ??
     'http://127.0.0.1:8545')
 
-if (!rpcUrl) {
+if (!primaryRpcUrl) {
   throw new Error(
     production
       ? `${deploymentProfile.rpcEnv} is required for ${deploymentProfile.target}`
       : 'No local RPC URL is configured'
   )
+}
+
+const fallbackRpcEnv = `PONDER_RPC_URLS_${deploymentProfile.chainId}`
+const rpcUrls = [
+  primaryRpcUrl,
+  ...(production ? (process.env[fallbackRpcEnv] ?? '').split(/[\n,]/) : []),
+]
+  .map((value) => value?.trim())
+  .filter(Boolean)
+  .filter((value, index, values) => values.indexOf(value) === index)
+
+for (const value of rpcUrls) {
+  let protocol
+  try {
+    protocol = new URL(value).protocol
+  } catch {
+    throw new Error(`${fallbackRpcEnv} contains an invalid URL`)
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(`${fallbackRpcEnv} only accepts HTTP(S) RPC URLs`)
+  }
 }
 
 const expectedChainId = deploymentProfile.chainId
@@ -110,29 +136,34 @@ function indexerAppFingerprint() {
 const appFingerprint = indexerAppFingerprint()
 
 async function rpc(method, params = []) {
-  let response
-  try {
-    response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-      signal: AbortSignal.timeout(10_000),
-    })
-  } catch (error) {
-    throw new Error(
-      `RPC preflight could not reach the configured endpoint: ${error.message}`
-    )
+  const failures = []
+  for (let index = 0; index < rpcUrls.length; index += 1) {
+    try {
+      const response = await fetch(rpcUrls[index], {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!response.ok) {
+        failures.push(`endpoint ${index + 1}: HTTP ${response.status}`)
+        continue
+      }
+      const body = await response.json()
+      if (body.error) {
+        failures.push(
+          `endpoint ${index + 1}: ${body.error.message ?? 'JSON-RPC error'}`
+        )
+        continue
+      }
+      return body.result
+    } catch (error) {
+      failures.push(`endpoint ${index + 1}: ${error.message}`)
+    }
   }
-
-  if (!response.ok) {
-    throw new Error(`RPC preflight received HTTP ${response.status}`)
-  }
-  const body = await response.json()
-  if (body.error) {
-    const detail = body.error.message ?? JSON.stringify(body.error)
-    throw new Error(`${method} failed during RPC preflight: ${detail}`)
-  }
-  return body.result
+  throw new Error(
+    `${method} failed on all ${rpcUrls.length} configured RPC endpoints (${failures.join('; ')})`
+  )
 }
 
 async function blockAt(blockNumber) {
@@ -385,8 +416,29 @@ async function run(command, args, env) {
   const child = spawn(command, args, {
     cwd: indexerDir,
     env,
-    stdio: 'inherit',
+    stdio: ['inherit', 'pipe', 'pipe'],
   })
+  // Ponder/viem include the complete upstream URL in RPC errors. Provider keys commonly live in
+  // that URL path, so forwarding child output verbatim turns a routine 429 into a credential leak.
+  const redact = (value) =>
+    value.replace(
+      /(https?:\/\/[^/\s"']+)([^\s"']*)/g,
+      (_match, origin, rest) => (rest ? `${origin}/<redacted>` : origin)
+    )
+  const forwardRedacted = (stream, destination) => {
+    let pending = ''
+    stream.on('data', (chunk) => {
+      pending += String(chunk)
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) destination.write(`${redact(line)}\n`)
+    })
+    stream.on('end', () => {
+      if (pending) destination.write(redact(pending))
+    })
+  }
+  forwardRedacted(child.stdout, process.stdout)
+  forwardRedacted(child.stderr, process.stderr)
   let forwardedSignal
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.once(signal, () => {
@@ -435,7 +487,16 @@ async function main() {
   if (mode === 'start') {
     args.push('--schema', indexSchema, '--views-schema', viewsSchema)
   }
-  await run('pnpm', args, childEnv)
+  const ponderEnv = {
+    ...childEnv,
+    // This shared checkout can need different native esbuild versions: drizzle/tsx currently use
+    // 0.25.x while Ponder's config loader uses 0.21.x. Keep the Ponder-only override off the
+    // migration subprocess so both can be pointed at matching temporary Linux binaries.
+    ...(process.env.PONDER_ESBUILD_BINARY_PATH
+      ? { ESBUILD_BINARY_PATH: process.env.PONDER_ESBUILD_BINARY_PATH }
+      : {}),
+  }
+  await run('pnpm', args, ponderEnv)
 }
 
 main().catch((error) => {

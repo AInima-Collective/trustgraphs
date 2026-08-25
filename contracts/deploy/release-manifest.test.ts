@@ -17,6 +17,7 @@ const MANIFEST = 'deployments/sepolia.json'
 const ADDRESS = '0x1111111111111111111111111111111111111111'
 const TX_HASH = `0x${'22'.repeat(32)}` as `0x${string}`
 const BYTES32 = `0x${'33'.repeat(32)}` as `0x${string}`
+const SIGNER_BYTES32 = `0x${'55'.repeat(32)}` as `0x${string}`
 
 test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its status', () => {
   const manifest = loadReleaseManifest(MANIFEST)
@@ -55,6 +56,41 @@ test('manifest validator rejects unknown fields and secret-bearing keys', () => 
   assert.throws(
     () => validateReleaseManifest({ ...manifest, surprise: true }),
     /unknown key/
+  )
+})
+
+test('manifest validator rejects half-recorded governed deployments', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  const governedOnly = structuredClone(manifest)
+  governedOnly.contracts.governedTrustgraphsFactory = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  governedOnly.contracts.signerSyncModuleDeployer = {
+    address: null,
+    block: null,
+    txHash: null,
+  }
+  assert.throws(
+    () => validateReleaseManifest(governedOnly),
+    /must be recorded together/
+  )
+
+  const withoutVerifier = structuredClone(governedOnly)
+  withoutVerifier.contracts.signerSyncModuleDeployer = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  withoutVerifier.contracts.signerVerifier = {
+    address: null,
+    block: null,
+    txHash: null,
+  }
+  assert.throws(
+    () => validateReleaseManifest(withoutVerifier),
+    /signerVerifier is required/
   )
 })
 
@@ -98,12 +134,18 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
           vkey: BYTES32,
           elf_sha256: '44'.repeat(32),
         },
+        {
+          program: 'signer-sync',
+          vkey: SIGNER_BYTES32,
+          elf_sha256: '66'.repeat(32),
+        },
       ],
     })
   )
   Object.assign(process.env, {
     SP1_VERIFIER_GATEWAY: ADDRESS,
     SP1_PROGRAM_VKEY: BYTES32,
+    SP1_SIGNER_PROGRAM_VKEY: SIGNER_BYTES32,
     INSTANCE_REGISTRY_ADMIN: ADDRESS,
     FACTORY_EPOCH_FLOOR: '7200',
     DEPLOYMENT_COMMIT: 'aa'.repeat(20),
@@ -128,9 +170,14 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
         'Instance Registry',
         'Proving Vault',
         'Trustgraphs Factory',
+        'Signer ZK Verifier',
+        'Governed Factory',
       ]
     )
-    assert.doesNotMatch(JSON.stringify(env.deployContracts), /compose|signer/i)
+    assert.doesNotMatch(
+      JSON.stringify(env.deployContracts),
+      /compose|weighted/i
+    )
   } finally {
     process.env = previous
   }
@@ -152,12 +199,18 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
       commit: 'aa'.repeat(20),
       programs: [
         { program: 'trust-graph', vkey: BYTES32, elf_sha256: '44'.repeat(32) },
+        {
+          program: 'signer-sync',
+          vkey: SIGNER_BYTES32,
+          elf_sha256: '66'.repeat(32),
+        },
       ],
     })
   )
   const base = {
     SP1_VERIFIER_GATEWAY: ADDRESS,
     SP1_PROGRAM_VKEY: BYTES32,
+    SP1_SIGNER_PROGRAM_VKEY: SIGNER_BYTES32,
     INSTANCE_REGISTRY_ADMIN: ADDRESS,
     FACTORY_EPOCH_FLOOR: '7200',
     DEPLOYMENT_COMMIT: 'aa'.repeat(20),
@@ -169,7 +222,9 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
   const plan = () =>
     new SepoliaEnv({ rpcUrl: 'https://rpc.invalid' }).validateDeployment?.()
   try {
-    Object.assign(process.env, base, { SP1_PROGRAM_VKEY: `0x${'55'.repeat(32)}` })
+    Object.assign(process.env, base, {
+      SP1_PROGRAM_VKEY: `0x${'55'.repeat(32)}`,
+    })
     assert.throws(plan, /is a local build/)
 
     // A digest from one build and a vkey from another describe different ELFs.
@@ -227,7 +282,25 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
     contracts: {
       ...planned.contracts,
       instanceRegistry: { address: ADDRESS, block: 123, txHash: TX_HASH },
+      signerVerifier: { address: ADDRESS, block: 123, txHash: TX_HASH },
+      governedTrustgraphsFactory: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
+      signerSyncModuleDeployer: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
     },
   })
   assert.equal(summary.factory.instance_registry, ADDRESS)
+  assert.equal(summary.governedFactory?.governed_factory, ADDRESS)
+  assert.equal(summary.governedFactory?.signer_sync_deployer, ADDRESS)
+  assert.equal(summary.signerVerifier?.zk_verifier, ADDRESS)
+  assert.equal(
+    summary.signerVerifier?.program_vkey,
+    planned.programs.signer.vkey
+  )
 })

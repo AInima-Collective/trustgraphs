@@ -1,124 +1,135 @@
-###################################
-#
-# task start-all-local
-#
-###################################
+name: trustgraphs-sepolia
 
-# docker volume rm $(docker volume ls -q -f "dangling=true")
+x-indexer-environment: &indexer-environment
+  NODE_ENV: production
+  DEPLOY_STAGE: production
+  DEPLOY_TARGET: sepolia
+  DATABASE_URL: postgresql://ponder:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (URL-safe)}@ponder-db:5432/ponder
+  PONDER_DATABASE_SCHEMA: ${PONDER_DATABASE_SCHEMA:?Set a new versioned writer schema}
+  PONDER_VIEWS_SCHEMA: ${PONDER_VIEWS_SCHEMA:-trust-graph}
+  PONDER_RPC_URL_11155111: ${RPC_URL_11155111:?Set the private Sepolia RPC}
+  PONDER_RPC_URLS_11155111: ${PONDER_RPC_URLS_11155111:?Set at least one independent Sepolia RPC failover}
+  PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111: ${PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111:-10}
+  IPFS_GATEWAY: ${IPFS_GATEWAY:?Set the server-side raw-CID gateway}
+  EAS_OFFCHAIN_GATEWAYS: ${EAS_OFFCHAIN_GATEWAYS:-${IPFS_GATEWAY}}
+  FRONTEND_URL: ${FRONTEND_URL:?Set the public frontend origin}
+
+x-indexer-service: &indexer-service
+  image: trustgraphs-indexer:${INDEXER_IMAGE_TAG:?Set INDEXER_IMAGE_TAG to an immutable release identifier}
+  build:
+    context: .
+    dockerfile: packages/indexer/Dockerfile
+  init: true
+  depends_on:
+    ponder-db:
+      condition: service_healthy
+  restart: unless-stopped
+  stop_grace_period: 30s
 
 services:
-  # ipfs:
-  #   image: ipfs/kubo:v0.37.0
-  #   container_name: ipfs
-  #   network_mode: host
-  #   ports:
-  #     - "4001:4001"
-  #     - "4001:4001/udp"
-  #     - "8080:8080"
-  #     - "5001:5001"
-  #   stop_signal: SIGKILL
-  #   command: daemon
-  #   restart: unless-stopped
-
   ponder-db:
-    image: postgres:17
-    container_name: ponder-db
+    image: postgres:17-alpine
     environment:
       POSTGRES_DB: ponder
       POSTGRES_USER: ponder
-      POSTGRES_PASSWORD: ponder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong Postgres password}
     volumes:
       - ponder-db-data:/var/lib/postgresql/data
-    ports:
-      - '6432:5432'
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -d ponder -U ponder']
-      interval: 1s
+      test: [CMD-SHELL, pg_isready -d ponder -U ponder]
+      interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 12
     restart: unless-stopped
+    stop_grace_period: 60s
 
-  # The writer/indexer. Its HTTP port is internal and used for readiness only; public traffic goes
-  # to ponder-server below, which keeps serving the last completed views schema during a writer
-  # restart or a new-version backfill.
+  # The writer backfills into a new versioned schema. The separate serving process keeps the last
+  # completed views schema available while that happens.
   ponder:
-    image: node:22-alpine
-    container_name: ponder
-    working_dir: /app/packages/indexer
-    init: true
-    volumes:
-      - .:/app
-    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run start"
-    depends_on:
-      ponder-db:
-        condition: service_healthy
-    expose:
-      - '65422'
-    healthcheck:
-      test:
-        ['CMD-SHELL', 'wget -q --spider http://localhost:65422/ready || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+    <<: *indexer-service
+    command: [start]
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
+      <<: *indexer-environment
       PONDER_PORT: 65422
-      PONDER_DATABASE_SCHEMA: ${PONDER_DATABASE_SCHEMA:-trustgraph_v1}
-      PONDER_VIEWS_SCHEMA: ${PONDER_VIEWS_SCHEMA:-trust-graph}
-    restart: unless-stopped
-    stop_grace_period: 30s
+      PONDER_HEALTH_PORT: 65422
+    expose: [65422]
+    healthcheck:
+      test: [CMD-SHELL, wget -q --spider http://127.0.0.1:65422/ready]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 2m
 
   ponder-server:
-    image: node:22-alpine
-    container_name: ponder-server
-    working_dir: /app/packages/indexer
-    init: true
-    volumes:
-      - .:/app
-    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run serve"
-    depends_on:
-      ponder:
-        condition: service_healthy
-    ports:
-      - '65421:65421'
-    healthcheck:
-      test:
-        ['CMD-SHELL', 'wget -q --spider http://localhost:65421/ready || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+    <<: *indexer-service
+    command: [serve]
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
+      <<: *indexer-environment
       PONDER_HTTP_PORT: 65421
-      PONDER_VIEWS_SCHEMA: ${PONDER_VIEWS_SCHEMA:-trust-graph}
-    restart: unless-stopped
-    stop_grace_period: 30s
+      PONDER_HEALTH_PORT: 65421
+    ports:
+      - ${PONDER_PUBLIC_BIND:-127.0.0.1:65421}:65421
+    healthcheck:
+      test: [CMD-SHELL, wget -q --spider http://127.0.0.1:65421/ready]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # Serving the last completed views schema must not wait for a new writer backfill. The shared
+    # service template already waits for Postgres; writer readiness is intentionally independent.
 
-  # Registration files are mutable/untrusted availability data, so they are fetched outside the
-  # chain handler. This bounded worker reads current URI tasks from the serving indexer and writes
-  # timestamped observations to the offchain schema without ever stalling event ingestion.
-  erc8004-metadata:
-    image: node:22-alpine
-    container_name: erc8004-metadata
-    working_dir: /app/packages/indexer
+  operator:
+    # Tags are rejected by ops/production-preflight.sh. Record the multi-arch digest produced by
+    # the release workflow and deploy the exact artifact that was reviewed.
+    image: ${OPERATOR_IMAGE:?Set ghcr.io/.../trustgraphs-operator@sha256:<64 hex>}
     init: true
+    command: [--config, /etc/trustgraph/deployments/operator.sepolia.toml]
+    environment:
+      RPC_URL: ${RPC_URL_11155111}
+      SUBMITTER_PRIVATE_KEY: ${SUBMITTER_PRIVATE_KEY:?Set the gas-only transaction key}
+      NETWORK_PRIVATE_KEY: ${NETWORK_PRIVATE_KEY:?Set the separate Succinct prover key}
+      IPFS_PIN_API: ${IPFS_PIN_API:-https://uploads.pinata.cloud/v3/files}
+      IPFS_PIN_API_KEY: ${IPFS_PIN_API_KEY:?Set the Pinata bearer JWT}
+      IPFS_GATEWAY: ${IPFS_GATEWAY}
+      OPERATOR_ALERT_WEBHOOK: ${OPERATOR_ALERT_WEBHOOK:?Set the operator alert webhook}
     volumes:
-      - .:/app
-    command: sh -c "corepack enable && CI=true pnpm install --frozen-lockfile --ignore-scripts && pnpm run metadata:erc8004:watch"
+      - operator-state:/data
+      - ./deployments:/etc/trustgraph/deployments:ro
+    expose: [8080]
+    healthcheck:
+      test: [CMD-SHELL, curl -fsS http://127.0.0.1:8080/ready >/dev/null]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15m
+    restart: unless-stopped
+    stop_grace_period: 10m
+
+  monitor:
+    <<: *indexer-service
+    entrypoint: [node, /app/ops/monitor-production.mjs]
+    command: []
+    environment:
+      MONITOR_INDEXER_URL: http://ponder-server:65421
+      MONITOR_OPERATOR_URL: http://operator:8080
+      MONITOR_RPC_URL: ${RPC_URL_11155111}
+      MONITOR_ALERT_WEBHOOK: ${OPERATOR_ALERT_WEBHOOK}
+      MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-60}
+      MONITOR_INDEXER_MAX_LAG_BLOCKS: ${MONITOR_INDEXER_MAX_LAG_BLOCKS:-20}
+      MONITOR_OPERATOR_MAX_STALE_SECONDS: ${MONITOR_OPERATOR_MAX_STALE_SECONDS:-300}
+      MONITOR_STALE_ROOT_BLOCKS: ${MONITOR_STALE_ROOT_BLOCKS:-7200}
+      MONITOR_MIN_VAULT_ETH_WEI: ${MONITOR_MIN_VAULT_ETH_WEI:-0}
+      MONITOR_MIN_VAULT_USDC: ${MONITOR_MIN_VAULT_USDC:-0}
+      MONITOR_REQUIRE_ROOT: ${MONITOR_REQUIRE_ROOT:-true}
     depends_on:
       ponder-server:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://ponder:ponder@ponder-db:5432/ponder
-      ERC8004_METADATA_TASKS_URL: http://ponder-server:65421/erc8004/metadata-tasks
-      ERC8004_IPFS_GATEWAY: ${ERC8004_IPFS_GATEWAY:-https://ipfs.io/ipfs/}
-      ERC8004_METADATA_INTERVAL_MS: ${ERC8004_METADATA_INTERVAL_MS:-3600000}
+        condition: service_started
+      operator:
+        condition: service_started
     restart: unless-stopped
-    stop_grace_period: 10s
 
 volumes:
   ponder-db-data:
+    name: ${POSTGRES_VOLUME_NAME:-trustgraphs-sepolia-postgres}
+  operator-state:
+    name: ${OPERATOR_VOLUME_NAME:-trustgraphs-sepolia-operator}

@@ -39,6 +39,31 @@
       "address": "0xd14aF10B0546A247d68E01AE5ef3b73C6e116E35",
       "block": 11565430,
       "txHash": "0x607feb7f84c4eafe1b7146f516ed1adeb62e3c5681e0876d3edd84a1d62e159e"
+    },
+    "signerVerifier": {
+      "address": "0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63",
+      "block": 11565969,
+      "txHash": "0x0199e3376ebb3dbbd72b59e84df07a792e6543d7cad5a69ae289efb70da37ad5"
+    },
+    "governedTrustgraphsFactory": {
+      "address": "0xFd0ee86105bF67C5c74653b8268c74120C485b6b",
+      "block": 11565975,
+      "txHash": "0xa7b7795853b9e060812ea38db575efd6f49616bf81d0d13268f07921eb40dccb"
+    },
+    "signerSyncModuleDeployer": {
+      "address": "0x71CaAe36fF68b329422283bD14Eb88c1D90952c9",
+      "block": 11565972,
+      "txHash": "0x4fdc4c194bb05af25a76a349bae3d8e8b03645930079d87dfee51daf3bacf447"
+    },
+    "safeSingleton": {
+      "address": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+      "block": null,
+      "txHash": null
+    },
+    "safeProxyFactory": {
+      "address": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+      "block": null,
+      "txHash": null
     }
   },
   "programs": {
@@ -46,6 +71,11 @@
       "sp1Version": "6.3.1",
       "elfSha256": "0x1ad727e35139b7db669430052a376b6850352c2fc5792a0f6815c7da21b7059d",
       "vkey": "0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e"
+    },
+    "signer": {
+      "sp1Version": "6.3.1",
+      "elfSha256": "0x9e4c6757fdfbf6e4f2ace056e902379f7fb362d3f0de6a79dcacc0827f40c715",
+      "vkey": "0x00d1b981df6bee1682be2b212151d2ac74c30108215d8e949a84a604ae4baadb"
     }
   },
   "instances": []

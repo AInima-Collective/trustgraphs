@@ -15,6 +15,12 @@
 **/.next
 **/.turbo
 
+# Runtime credentials and machine-local overlays must never enter either production image's build
+# context. Examples are tracked and safe; every other dotenv file is deployer-owned input.
+**/.env
+**/.env.*
+!**/.env.example
+
 !zk/program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 !zk/trustgraph-program-v2/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
 !zk/weighted-program/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/*
@@ -27,8 +33,21 @@
 !zk/composition-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 !zk/nostr-program/target/elf-compilation/docker/riscv64im-succinct-zkvm-elf/release/*
 
-# The frontend and indexer are not part of a Rust build, and `packages/` is 3.6 GB.
+# The frontend and indexer are not part of the Rust operator build, and `packages/` is 3.6 GB.
+# The production indexer image re-includes only its own package, its workspace dependency, and the
+# small shared frontend libraries its handlers import directly. Build artifacts and node_modules
+# remain excluded by the blanket rules above.
 packages
+!packages/
+packages/*
+!packages/indexer/
+!packages/indexer/**
+!packages/eas-offchain-client/
+!packages/eas-offchain-client/**
+!packages/frontend/
+packages/frontend/*
+!packages/frontend/lib/
+!packages/frontend/lib/**
 
 # NOT excluded, however tempting: `research/`. `zk/prover` has two dev-dependencies with paths into
 # it, and cargo resolves dev-dependencies even for a plain `cargo build` — a missing path

@@ -31,15 +31,54 @@ contract DeployGovernedTrustgraphsFactory is Common {
         address signerVerifier = signerVerifierJson.readAddress(".zk_verifier");
         bytes32 signerProgramVKey = signerVerifierJson.readBytes32(".program_vkey");
 
+        return _run(factoryAddr, signerVerifier, signerProgramVKey, "", "");
+    }
+
+    /// @notice Public-chain entry point. Reuses the canonical Safe singleton and proxy factory so
+    ///         every Safe produced by the browser is visible to the Safe Transaction Service.
+    ///         Empty Safe inputs retain the self-deploying local-development behaviour.
+    function run(
+        string calldata factoryAddr,
+        string calldata signerVerifierAddr,
+        bytes32 signerProgramVKey,
+        string calldata safeSingletonAddr,
+        string calldata safeFactoryAddr
+    ) public returns (address governedFactory, address safeSingleton, address safeFactory) {
+        require(signerProgramVKey != bytes32(0), "DeployGoverned: signer vkey is zero");
+        address signerVerifier = vm.parseAddress(signerVerifierAddr);
+        require(signerVerifier.code.length != 0, "DeployGoverned: signer verifier has no code");
+        return _run(factoryAddr, signerVerifier, signerProgramVKey, safeSingletonAddr, safeFactoryAddr);
+    }
+
+    function _run(
+        string calldata factoryAddr,
+        address signerVerifier,
+        bytes32 signerProgramVKey,
+        string memory safeSingletonAddr,
+        string memory safeFactoryAddr
+    ) internal returns (address governedFactory, address safeSingleton, address safeFactory) {
+        address baseFactory = vm.parseAddress(factoryAddr);
+        require(baseFactory.code.length != 0, "DeployGoverned: base factory has no code");
+        bool reuseSafe = bytes(safeSingletonAddr).length != 0 || bytes(safeFactoryAddr).length != 0;
+        require(
+            !reuseSafe || (bytes(safeSingletonAddr).length != 0 && bytes(safeFactoryAddr).length != 0),
+            "DeployGoverned: both Safe addresses are required"
+        );
+
         _startBroadcast();
-        GnosisSafe singleton = new GnosisSafe();
-        GnosisSafeProxyFactory proxyFactory = new GnosisSafeProxyFactory();
+        GnosisSafe singleton =
+            reuseSafe ? GnosisSafe(payable(vm.parseAddress(safeSingletonAddr))) : new GnosisSafe();
+        GnosisSafeProxyFactory proxyFactory = reuseSafe
+            ? GnosisSafeProxyFactory(vm.parseAddress(safeFactoryAddr))
+            : new GnosisSafeProxyFactory();
+        require(address(singleton).code.length != 0, "DeployGoverned: Safe singleton has no code");
+        require(address(proxyFactory).code.length != 0, "DeployGoverned: Safe factory has no code");
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();
         SignerSyncModuleDeployer signerSyncDeployer = new SignerSyncModuleDeployer();
         // Shared by all governed wrappers (weighted + compose read it from this artifact).
         MerkleGovModuleDeployer govModuleDeployer = new MerkleGovModuleDeployer();
         GovernedTrustgraphsFactory governed = new GovernedTrustgraphsFactory(
-            TrustgraphsFactory(vm.parseAddress(factoryAddr)),
+            TrustgraphsFactory(baseFactory),
             proxyFactory,
             address(singleton),
             authorityDeployer,

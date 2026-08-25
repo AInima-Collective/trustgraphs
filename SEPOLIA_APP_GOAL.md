@@ -6,7 +6,29 @@
 > Sepolia is one somebody made in a browser rather than one we minted with a script. The
 > same path a visitor takes is the path we take first.
 
-**Status:** opened 2026-08-25, on `main` at `13eb98d`. Not started.
+**Status:** opened 2026-08-25, on `main` at `13eb98d`. In progress: M0 and M2 are complete, and the
+M1 live indexer is complete, but its finalized frontend artifact still needs the public URL. M3,
+M5, and M6 have their repository implementation but still need the public-host/browser/live
+service evidence described below. M4 has not started because the first network must remain a
+browser transaction.
+
+**Execution record, 2026-08-25:** the additive continuation deployed signer verifier
+`0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63`, governed factory
+`0xFd0ee86105bF67C5c74653b8268c74120C485b6b`, and signer-sync deployer
+`0x71CaAe36fF68b329422283bD14Eb88c1D90952c9`. The fork rehearsal used the wizard's exact governed
+creation path and produced a canonical Safe 1.3.0 proxy; the live post-deploy audit passes 27/27
+with all original addresses unchanged. The `trustgraph_sepolia_v2` indexer historical phase took
+21.6 seconds and is in realtime mode; at the latest audit it served `/ready`, `/health`,
+`/instances`, and `/metrics`, with zero instances. Its current process had issued 554
+`eth_getLogs` calls and recovered from 38 log and 14 block RPC failures, which is direct evidence
+that production needs the independent failover required by M6. A Pinata compatibility upload
+returned and served the exact expected raw CID
+`bafkreihn2e6333b6fme3vpdb7udr5bhwynraq4w4bpu3rhpjhtif3mebyi`.
+An optimized Sepolia Next build against the live manifest also passed with local smoke endpoints;
+a clean Playwright browser saw the persistent testnet banner and the standard governed creation
+path, with weighted, composition, and contributions entry points absent. The development config
+links were restored after that probe; the generated Sepolia artifact was deliberately not retained
+with localhost URLs.
 
 **Baseline, measured today on live Sepolia:** the five contracts are deployed and all
 nineteen post-deploy invariants pass. `InstanceRegistry.instanceCount()` is 0.
@@ -237,16 +259,16 @@ Open, for the operator, at the top of this program.
 The cheapest milestone and the one that unblocks the rest, because right now the indexer can
 only be run against one chain at a time and switching means editing a file two machines share.
 
-- [ ] A shared env loader that reads `.env`, then overlays `.env.<target>` when
+- [x] A shared env loader that reads `.env`, then overlays `.env.<target>` when
       `DEPLOY_TARGET` names a public chain. Used by the three entry points that load dotenv
       today: `contracts/deploy/utils.ts:36`, `packages/indexer/scripts/launch-indexer.mjs`,
       and `packages/indexer/ponder.config.ts`.
-- [ ] Move the Sepolia values out of `.env` into `.env.sepolia`. `.env.*` is already
+- [x] Move the Sepolia values out of `.env` into `.env.sepolia`. `.env.*` is already
       gitignored, so nothing changes tracking status. `.env` keeps local defaults and
       anything genuinely shared.
-- [ ] A guard so the local demo tasks refuse to run when the resolved target is not local.
+- [x] A guard so the local demo tasks refuse to run when the resolved target is not local.
       The shared checkout makes this a real hazard, not a theoretical one.
-- [ ] Tests for both resolutions, and for the overlay not leaking Sepolia secrets into a
+- [x] Tests for both resolutions, and for the overlay not leaking Sepolia secrets into a
       local run.
 
 **Exit:** `pnpm indexer:dev` is local and `DEPLOY_TARGET=sepolia pnpm indexer:start` is
@@ -259,11 +281,11 @@ by reading: whether the RPC actually serves logs and historical calls from block
 
 - [ ] Generate `config.sepolia.json` from the finalized manifest and confirm its contents
       against the live addresses.
-- [ ] Set `IPFS_GATEWAY` (finding 4) and bring the indexer to head against the live factory
+- [x] Set `IPFS_GATEWAY` (finding 4) and bring the indexer to head against the live factory
       on the `trustgraph_sepolia_v1` writer schema.
-- [ ] Confirm `GET /instances` returns `[]` without error and that the factory source is
+- [x] Confirm `GET /instances` returns `[]` without error and that the factory source is
       live rather than silently disabled.
-- [ ] Record the backfill wall time and the getLogs volume, so the provider tier is chosen
+- [x] Record the backfill wall time and the getLogs volume, so the provider tier is chosen
       on a number.
 
 **Exit:** the indexer sits at head with zero errors, and `/instances` answers.
@@ -272,40 +294,40 @@ by reading: whether the RPC actually serves logs and historical calls from block
 
 Additive. Nothing already deployed is redeployed, re-wired or re-granted.
 
-- [ ] **A continuation command, before anything else** (finding 11). It verifies the five
+- [x] **A continuation command, before anything else** (finding 11). It verifies the five
       live addresses against chain state, deploys only the two new contracts, merges their
       records into the existing manifest rather than rebuilding it from `.docker`, and
       asserts the original five addresses are byte-identical afterwards. Without this, M2
       redeploys the chain we just paid for.
-- [ ] Extend `deployments/schema.json`, which is strict, with slots for the signer verifier,
+- [x] Extend `deployments/schema.json`, which is strict, with slots for the signer verifier,
       the governed factory, the Safe singleton and proxy factory, and a `programs.signer`
       entry beside `programs.trustGraph`. Update `release-manifest.ts` and its validator in
       the same change.
-- [ ] **Extend `releaseManifestToDeploymentSummary` to emit the governed records**
+- [x] **Extend `releaseManifestToDeploymentSummary` to emit the governed records**
       (finding 12), so the indexer's governed-wrapper and signer-sync sources are populated
       on a public chain. This is the difference between indexing a governed network and
       indexing its instance row alone.
-- [ ] Parameterize `DeployGovernedTrustgraphsFactory.s.sol:35-36` to accept a Safe singleton
+- [x] Parameterize `DeployGovernedTrustgraphsFactory.s.sol:35-36` to accept a Safe singleton
       and proxy factory, keeping the self-deploying behaviour for local only. On a public
       chain, `new GnosisSafe()` makes every DAO Safe the wizard mints invisible to
       app.safe.global and the Safe Transaction Service, because those index known singletons.
-- [ ] Add the signer ZK verifier step to `SepoliaEnv`, gated on a nonzero
+- [x] Add the signer ZK verifier step to `SepoliaEnv`, gated on a nonzero
       `SP1_SIGNER_PROGRAM_VKEY`. `DeployZkVerifier`'s zero-vkey fallback silently pins the
       root vkey, which for a signer verifier is a verifier that can never verify its own
       program. Fail closed.
-- [ ] Add the governed factory step after it.
-- [ ] Extend `scripts/sepolia-preflight.sh` to gate the signer vkey against the release
+- [x] Add the governed factory step after it.
+- [x] Extend `scripts/sepolia-preflight.sh` to gate the signer vkey against the release
       manifest exactly as it gates the root vkey. This is the immutable that cost us a
       verifier and a factory on 2026-08-25, and the signer verifier is the same shape of
       mistake waiting to happen a second time.
-- [ ] Point `generate-config.ts:81` at the manifest slot and fail closed on a `planned`
+- [x] Point `generate-config.ts:81` at the manifest slot and fail closed on a `planned`
       manifest.
-- [ ] Confirm the weighted, compose and contributions entry points stay hidden. The
+- [x] Confirm the weighted, compose and contributions entry points stay hidden. The
       generator already falls back to empty for all three, so this is a browser
       verification, not a change. Prove it, because the create page will have real visitors.
-- [ ] Update `release-manifest.test.ts`'s "Sepolia plan is trust-graph only" case, which
+- [x] Update `release-manifest.test.ts`'s "Sepolia plan is trust-graph only" case, which
       pins the five-step shape.
-- [ ] Extend `scripts/sepolia-postdeploy-check.sh` with the new invariants: the governed
+- [x] Extend `scripts/sepolia-postdeploy-check.sh` with the new invariants: the governed
       factory's `FACTORY`, `SAFE_SINGLETON` and `SAFE_FACTORY` match the manifest, and its
       `SIGNER_SYNC_PROGRAM_VKEY` matches the released signer vkey.
 
@@ -314,30 +336,30 @@ resulting Safe is a canonical-singleton proxy. Then broadcast, then the post-dep
 
 ### M3 — A frontend fit for a public testnet
 
-- [ ] Generate the Sepolia config in the build path (finding 1) and fail closed on
+- [x] Generate the Sepolia config in the build path (finding 1) and fail closed on
       placeholder or missing URLs (finding 2).
-- [ ] Add `IPFS_GATEWAY_PUBLIC` as the browser-facing read gateway, replacing the hardcoded
+- [x] Add `IPFS_GATEWAY_PUBLIC` as the browser-facing read gateway, replacing the hardcoded
       value at `generate-config.ts:100`.
-- [ ] A persistent, unmissable indicator: Ethereum Sepolia, testnet assets have no value.
+- [x] A persistent, unmissable indicator: Ethereum Sepolia, testnet assets have no value.
       This is the genuinely missing half of finding 6.
-- [ ] Replace the automatic chain switch (`WalletConnectionProvider.tsx:101`) with an
+- [x] Replace the automatic chain switch (`WalletConnectionProvider.tsx:101`) with an
       explicit prompt. The add-and-switch flow underneath it is already correct and should be
       kept; what changes is that a person asks for it rather than a `useEffect` firing a
       wallet popup at them on page load.
-- [ ] Harden the RPC proxy (finding 7): allow only the configured public chain ids, allow
+- [x] Harden the RPC proxy (finding 7): allow only the configured public chain ids, allow
       only the read methods the application uses, never relay raw transactions. Wallets
       submit writes through their own provider.
-- [ ] Harden the pin route (finding 8): per-IP and global quotas, origin authorization,
+- [x] Harden the pin route (finding 8): per-IP and global quotas, origin authorization,
       quota alerts. **Not per-wallet.** `app/create/pin.ts:11` posts unauthenticated JSON
       with no wallet identity attached, and origin checking is not authentication, so a
       per-wallet limit would need a signed challenge and a session. That is a larger design
       and it is out of scope here; say what the route actually enforces rather than implying
       an identity it does not have.
-- [ ] Add Sepolia's block time to `lib/blocks.ts` explicitly rather than relying on the
+- [x] Add Sepolia's block time to `lib/blocks.ts` explicitly rather than relying on the
       default.
 - [ ] Confirm WalletConnect origins for the deployed domain, and test or disable Porto on
       Sepolia.
-- [ ] Hide vault prepayment when `Factory.VAULT` is zero. It is not zero on Sepolia, so this
+- [x] Hide vault prepayment when `Factory.VAULT` is zero. It is not zero on Sepolia, so this
       is a correctness item for future deployments rather than a launch blocker.
 
 **Exit:** a production build against the finalized manifest, served on the public domain,
@@ -365,21 +387,21 @@ with no placeholder URLs anywhere in the bundle.
 
 ### M5 — The first real root, and the score read back
 
-- [ ] Measure Pinata's returned content id against `cid_v1_raw` of the same bytes, before
+- [x] Measure Pinata's returned content id against `cid_v1_raw` of the same bytes, before
       writing any adapter.
-- [ ] Give a publication target a kind, add the direct-upload backend for Pinata, and leave
+- [x] Give a publication target a kind, add the direct-upload backend for Pinata, and leave
       the kubo backend exactly as it is. Keep both invariants at the call site.
-- [ ] Add the bounded blob-size check, so the 256 KiB ceiling fails with an error that names
+- [x] Add the bounded blob-size check, so the 256 KiB ceiling fails with an error that names
       the real cause.
-- [ ] Operator profile for Sepolia: release manifest pointing at the tracked file, RPC kept
+- [x] Operator profile for Sepolia: release manifest pointing at the tracked file, RPC kept
       private, the separate submitter key, finalized confirmation policy, Succinct network
       backend, persistent journal path, alert webhook.
-- [ ] Apply the budget the predecessor program decided: global 15 USD per day, per instance
+- [x] Apply the budget the predecessor program decided: global 15 USD per day, per instance
       2, signer 1 and 5, curated instances set to the created network only, paid enabled
       against the deployed vault, and `cadence.subsidy_min_blocks` lowered from 216,000 to
       7,200 for this deployment. The default is a deliberate monthly cadence for subsidizing
       someone else's network, and it is wrong for the network everyone will judge us by.
-- [ ] Alert at 80% of the global cap, so a runaway is heard before it halts.
+- [x] Alert at 80% of the global cap, so a runaway is heard before it halts.
 - [ ] Vouch, revoke, prove one real root through the live gateway, and read the resulting
       score back in the browser.
 
@@ -395,7 +417,7 @@ requirements are already written down in
 [docs/build/production.md](docs/build/production.md); this milestone is where they get met
 rather than cited.
 
-- [ ] An indexer build that does not install into a bind-mounted checkout: an image, or an
+- [x] An indexer build that does not install into a bind-mounted checkout: an image, or an
       explicit hosting build path with its own dependency install.
 - [ ] Durable Postgres with a backup and a restore that has actually been run, not just
       configured.
@@ -403,7 +425,7 @@ rather than cited.
       browser read through the proxy.
 - [ ] The operator image pinned **by digest**, with a persistent volume for its journal, and
       a restart-and-recover drill.
-- [ ] Monitoring with thresholds: `/ready` and `/status`, stale checkpoints, publication
+- [x] Monitoring with thresholds: `/ready` and `/status`, stale checkpoints, publication
       failures, vault balance, and indexer lag.
 
 **Exit:** kill both services, bring them back, and lose nothing. Then leave them alone for a
@@ -441,11 +463,14 @@ Inputs this program cannot produce.
 | --- | --- | --- |
 | Pinata bearer token (the **JWT**, not the API key or secret) | `IPFS_PIN_API_KEY` | in hand |
 | Pinata uploads endpoint | `IPFS_PIN_API` | `https://uploads.pinata.cloud/v3/files`, already the default off-local |
-| Read gateway, server side | `IPFS_GATEWAY` | needed for M1, must end in `/ipfs/` |
-| Read gateway, browser facing | `IPFS_GATEWAY_PUBLIC` | needed for M3, variable does not exist yet |
-| Public domain and its WalletConnect origins | | needed for M3 |
-| Ponder public API URL | `PONDER_URL` | needed for M3, and finding 2 makes its absence loud |
-| Hosting for indexer and operator | | needed for M1 and M5, and see finding 9 |
+| Read gateway, server side | `IPFS_GATEWAY` | in the ignored overlay; live indexer and exact-byte Pinata readback passed |
+| Read gateway, browser facing | `IPFS_GATEWAY_PUBLIC` | implemented and in the ignored overlay; still needs the final host build |
+| Public domain and its WalletConnect origins | | domain/origin configuration still needed for M3 |
+| Ponder public API URL | `PONDER_URL` | still needed; the existing public site's old Ponder upstream is unavailable |
+| Browser RPC primary and failover | `RPC_URL_11155111_0`, `RPC_URL_11155111_1` | two independent hosted endpoints still needed for M3/M6 |
+| Hosting for indexer and operator | | still needed for M5/M6; local writer is not the public service |
+| Operator image for this source | `OPERATOR_IMAGE` | publish and record a complete `@sha256:` reference before M5/M6 |
+| Docker-capable drill host | | needed for the image build, Postgres restore, restart drill, and week soak |
 | Funded Succinct prover account | `NETWORK_PRIVATE_KEY` | present in `.env` |
 
 Pinata's API key and secret are for the legacy `api.pinata.cloud/pinning/*` endpoints, which

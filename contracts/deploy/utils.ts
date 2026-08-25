@@ -4,10 +4,11 @@ import path from 'path'
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import chalk, { ChalkInstance } from 'chalk'
-import dotenv, { DotenvParseOutput } from 'dotenv'
+import { DotenvParseOutput } from 'dotenv'
 import { get } from 'lodash'
 import { isAddress } from 'viem'
 
+import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import { Network } from './types'
 
 // Deployment helpers moved from `<repo>/deploy` to `<repo>/contracts/deploy`.
@@ -21,28 +22,12 @@ const REPOSITORY_ROOT = path.resolve(__dirname, '../..')
  *
  * @returns The environment variables
  */
-export const loadDotenv = (): DotenvParseOutput => {
-  const envFile = path.join(REPOSITORY_ROOT, '.env')
-  if (!fs.existsSync(envFile)) {
-    const exampleEnvFile = path.join(REPOSITORY_ROOT, '.env.example')
-    if (!fs.existsSync(exampleEnvFile)) {
-      throw new Error(
-        `Example environment file ${exampleEnvFile} does not exist.`
-      )
-    }
-    fs.copyFileSync(exampleEnvFile, envFile)
-  }
-
-  const { error, parsed } = dotenv.config({ path: envFile, quiet: true })
-  if (error) {
-    throw new Error(`Error loading .env file: ${error.message}`)
-  }
-  if (!parsed) {
-    throw new Error('No environment variables loaded from .env file')
-  }
-
-  return parsed
-}
+export const loadDotenv = (target?: string): DotenvParseOutput =>
+  loadTargetEnvironment({
+    repositoryRoot: REPOSITORY_ROOT,
+    target,
+    createBaseFrom: '.env.example',
+  }).parsed
 
 /**
  * Reads a file and returns the contents as a string.

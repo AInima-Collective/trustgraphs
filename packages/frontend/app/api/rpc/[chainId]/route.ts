@@ -1,12 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { mainnet } from 'viem/chains'
 
+import { CHAIN } from '@/lib/config'
+
 const MAX_RPC_BODY_BYTES = 256 * 1024
 const MAX_RPC_BATCH_SIZE = 50
 const DEVELOPMENT_MAINNET_RPC_URLS = [
   'https://ethereum-rpc.publicnode.com',
   'https://public.1rpc.io/eth',
 ] as const
+
+const PUBLIC_CHAIN_IDS: Record<string, string> = {
+  optimism: '10',
+  sepolia: '11155111',
+}
+
+// The browser uses the configured deployment chain plus Ethereum mainnet for ENS resolution.
+// Wallet writes go through the connected wallet's EIP-1193 provider and must never reach this
+// credentialed, read-only proxy.
+const allowedChainIds = new Set([
+  String(mainnet.id),
+  ...(PUBLIC_CHAIN_IDS[CHAIN] ? [PUBLIC_CHAIN_IDS[CHAIN]] : []),
+])
+const READ_RPC_METHODS = new Set([
+  'eth_blockNumber',
+  'eth_call',
+  'eth_chainId',
+  'eth_estimateGas',
+  'eth_feeHistory',
+  'eth_gasPrice',
+  'eth_getBalance',
+  'eth_getBlockByHash',
+  'eth_getBlockByNumber',
+  'eth_getBlockReceipts',
+  'eth_getCode',
+  'eth_getLogs',
+  'eth_getProof',
+  'eth_getStorageAt',
+  'eth_getTransactionByHash',
+  'eth_getTransactionCount',
+  'eth_getTransactionReceipt',
+  'eth_maxPriorityFeePerGas',
+  'net_version',
+])
 
 export async function POST(
   request: NextRequest,
@@ -29,6 +65,12 @@ export async function POST(
       return NextResponse.json(
         { error: 'Chain ID must be a valid number' },
         { status: 400 }
+      )
+    }
+    if (!allowedChainIds.has(chainId)) {
+      return NextResponse.json(
+        { error: `RPC chain ${chainId} is not allowed` },
+        { status: 403 }
       )
     }
 
@@ -99,6 +141,12 @@ export async function POST(
         return NextResponse.json(
           { error: 'Invalid JSON-RPC request format' },
           { status: 400 }
+        )
+      }
+      if (!READ_RPC_METHODS.has(req.method)) {
+        return NextResponse.json(
+          { error: `RPC method ${req.method} is not allowed` },
+          { status: 403 }
         )
       }
     }

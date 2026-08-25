@@ -5,10 +5,9 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
 } from 'react'
-import { useAccount, useSwitchChain } from 'wagmi'
+import { useSwitchChain } from 'wagmi'
 
 import {
   createNetworkAddParams,
@@ -22,11 +21,15 @@ const WalletConnectionContext = createContext<{
   walletOptionsLoading: boolean
   prepareWalletConnectors: () => Promise<void>
   openConnectWallet: (event?: BaseSyntheticEvent) => void
+  switchToTarget: () => Promise<void>
+  switchingTarget: boolean
 }>({
   _openId: 0,
   walletOptionsLoading: false,
   prepareWalletConnectors: async () => {},
   openConnectWallet: () => {},
+  switchToTarget: async () => {},
+  switchingTarget: false,
 })
 
 export const useWalletConnectionContext = () =>
@@ -62,7 +65,7 @@ export const WalletConnectionProvider = ({
     [prepareWalletConnectors]
   )
 
-  const addTargetNetwork = async () => {
+  const addTargetNetwork = useCallback(async () => {
     try {
       const chainConfig = getTargetChainConfig()
       const networkParams = createNetworkAddParams(chainConfig)
@@ -77,12 +80,11 @@ export const WalletConnectionProvider = ({
       console.error('Failed to add target network:', err)
       throw err
     }
-  }
+  }, [])
 
-  const { switchChainAsync } = useSwitchChain()
-  const { isConnected, chain } = useAccount()
+  const { switchChainAsync, isPending: switchingTarget } = useSwitchChain()
 
-  const handleSwitchToTarget = async () => {
+  const switchToTarget = useCallback(async () => {
     try {
       const targetChainId = getTargetChainId()
       await switchChainAsync({ chainId: targetChainId })
@@ -96,22 +98,7 @@ export const WalletConnectionProvider = ({
         console.error('Failed to add and switch network:', addErr)
       }
     }
-  }
-
-  // Auto-switch to target network when connected to wrong chain
-  useEffect(() => {
-    const targetChainId = getTargetChainId()
-    const targetChainConfig = getTargetChainConfig()
-
-    if (isConnected && (!chain || chain.id !== targetChainId)) {
-      console.log(
-        `Current chain: ${chain?.id || 'unknown'}, switching to target chain: ${
-          targetChainConfig.name
-        } (${targetChainId})`
-      )
-      handleSwitchToTarget()
-    }
-  }, [isConnected, chain])
+  }, [addTargetNetwork, switchChainAsync])
 
   return (
     <WalletConnectionContext.Provider
@@ -120,6 +107,8 @@ export const WalletConnectionProvider = ({
         walletOptionsLoading,
         prepareWalletConnectors,
         openConnectWallet,
+        switchToTarget,
+        switchingTarget,
       }}
     >
       {children}

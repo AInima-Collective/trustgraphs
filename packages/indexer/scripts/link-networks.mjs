@@ -2,13 +2,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import dotenv from 'dotenv'
+import environmentLoader from '../../../scripts/load-env.cjs'
 import { resolveDeploymentProfile } from './deployment-profile.mjs'
 
 const indexerDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(indexerDir))
+const { loadTargetEnvironment } = environmentLoader
 
-dotenv.config({ path: path.join(repoDir, '.env'), quiet: true })
+loadTargetEnvironment({ repositoryRoot: repoDir })
 
 const profile = resolveDeploymentProfile(process.env, repoDir)
 const environment =

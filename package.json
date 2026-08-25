@@ -9,6 +9,7 @@
     "indexer": "pnpm --filter trustgraphs-indexer",
     "deploy:full": "pnpm deploy:create-deployer && pnpm deploy:contracts",
     "deploy:contracts": "tsx contracts/deploy/deploy-contracts.ts",
+    "deploy:sepolia:continue": "tsx contracts/deploy/deploy-contracts.ts --stage production --chain sepolia --continue-existing",
     "test:deploy": "node --import tsx --test contracts/deploy/*.test.ts",
     "deploy:create-deployer": "tsx contracts/deploy/create-deployer.ts",
     "verify:contracts": "tsx contracts/deploy/verify-contracts.ts",

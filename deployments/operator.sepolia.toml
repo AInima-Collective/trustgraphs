@@ -1,0 +1,84 @@
+# Production operator policy for the public Sepolia app.
+#
+# Endpoint credentials stay outside this tracked file. `env:NAME` references are resolved by the
+# operator at startup and never enter its public status response. The transaction and Succinct
+# credentials are separately supplied as SUBMITTER_PRIVATE_KEY and NETWORK_PRIVATE_KEY.
+rpc = "env:RPC_URL"
+release_manifest = "sepolia.json"
+chain_id = 11155111
+rpc_timeout_seconds = 30
+
+[curated]
+# Fail closed until the browser-created showcase network is recorded in sepolia.json, then fund
+# exactly that one tracked instance. Additional permissionless instances must use the vault.
+single_release_instance = true
+
+[paid]
+enabled = true
+# The vault address is read from the finalized release manifest and checked for conflicts.
+# This is the public address of the separately funded Sepolia submitter key.
+recipient = "0xf6161E3c1e83EF8297690153120462633570B8D1"
+
+[cadence]
+tick_seconds = 60
+subsidy_min_blocks = 7200
+max_concurrent = 1
+max_per_instance = 1
+
+[gas]
+max_basefee_gwei = 40
+priority_fee_gwei = 0.1
+replacement_after_s = 300
+simulate_before_send = true
+
+[finality]
+# Two Ethereum epochs: spend only after the checkpoint is beyond ordinary short reorg depth.
+confirmations = 64
+track_block_hash = true
+
+[prover]
+backend = "network"
+groth16 = true
+timeout_s = 3600
+
+[budget]
+per_instance_usd_per_day = 2
+global_usd_per_day = 15
+global_alert_percent = 80
+window_seconds = 86400
+cents_per_billion_cycles = 100
+eth_usd = 5000
+
+[signer_sync]
+enabled = true
+confirmations = 64
+track_block_hash = true
+per_instance_usd_per_day = 1
+global_usd_per_day = 5
+budget_window_seconds = 86400
+
+[ipfs]
+# Recorded root-gate decision: Sepolia currently has one genuinely independent writable service,
+# Pinata. Counting the same Pinata account or gateway twice would invent durability. Run at one,
+# require exact CID equality plus byte-for-byte gateway readback, and add a second target only when
+# it is independently writable and readable.
+min_success = 1
+retry_seconds = 300
+
+[[ipfs.targets]]
+name = "pinata"
+kind = "pinata"
+api = "env:IPFS_PIN_API"
+gateway = "env:IPFS_GATEWAY"
+token_env = "IPFS_PIN_API_KEY"
+
+[ops]
+state_dir = "/data"
+journal_path = "/data/journal.jsonl"
+status_path = "/data/status.json"
+listen = "0.0.0.0:8080"
+ready_after_seconds = 10800
+tool_timeout_seconds = 900
+alert_webhook = "env:OPERATOR_ALERT_WEBHOOK"
+log_format = "json"
+submit_failure_threshold = 3

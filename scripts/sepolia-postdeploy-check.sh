@@ -16,8 +16,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f .env ] || { echo "no .env in $(pwd)" >&2; exit 1; }
-set -a; . ./.env; set +a
+if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
+  exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
+fi
 
 MANIFEST=deployments/sepolia.json
 R=--rpc-url
@@ -42,11 +43,18 @@ VERIFIER=$(addr rootVerifier)
 REGISTRY=$(addr instanceRegistry)
 VAULT=$(addr provingVault)
 FACTORY=$(addr trustgraphsFactory)
+SIGNER_VERIFIER=$(addr signerVerifier)
+GOVERNED_FACTORY=$(addr governedTrustgraphsFactory)
+SIGNER_DEPLOYER=$(addr signerSyncModuleDeployer)
+SAFE_SINGLETON=$(addr safeSingleton)
+SAFE_FACTORY=$(addr safeProxyFactory)
 ADMIN="${INSTANCE_REGISTRY_ADMIN:-}"
 DEPLOYER=$(cast wallet address --private-key "${FUNDED_KEY:-}" 2>/dev/null || echo unknown)
 
 for pair in "schemaRegistrar:$REGISTRAR" "rootVerifier:$VERIFIER" "instanceRegistry:$REGISTRY" \
-            "provingVault:$VAULT" "trustgraphsFactory:$FACTORY"; do
+            "provingVault:$VAULT" "trustgraphsFactory:$FACTORY" "signerVerifier:$SIGNER_VERIFIER" \
+            "governedTrustgraphsFactory:$GOVERNED_FACTORY" "signerSyncModuleDeployer:$SIGNER_DEPLOYER" \
+            "safeSingleton:$SAFE_SINGLETON" "safeProxyFactory:$SAFE_FACTORY"; do
   [ -n "${pair##*:}" ] || { echo "$MANIFEST has no address for ${pair%%:*}; deploy first" >&2; exit 1; }
 done
 
@@ -69,6 +77,25 @@ fi
 GW=$(call "$VERIFIER" "gateway()(address)")
 same "$GW" "$(ext sp1Gateway)" && ok "verifier delegates to the canonical SP1 gateway" \
   || bad "verifier delegates to $GW, expected $(ext sp1Gateway)"
+
+echo "=== the signer verifier and governed wrapper pin the released signer guest ==="
+SPVK=$(call "$SIGNER_VERIFIER" "programVKey()(bytes32)")
+same "$SPVK" "${SP1_SIGNER_PROGRAM_VKEY:-}" && ok "signer verifier pins SP1_SIGNER_PROGRAM_VKEY" \
+  || bad "signer verifier pins $SPVK, .env.sepolia says ${SP1_SIGNER_PROGRAM_VKEY:-unset}"
+SGW=$(call "$SIGNER_VERIFIER" "gateway()(address)")
+same "$SGW" "$(ext sp1Gateway)" && ok "signer verifier delegates to the canonical SP1 gateway" \
+  || bad "signer verifier delegates to $SGW, expected $(ext sp1Gateway)"
+for pair in "FACTORY()(address):$FACTORY" "SAFE_SINGLETON()(address):$SAFE_SINGLETON" \
+            "SAFE_FACTORY()(address):$SAFE_FACTORY" "SIGNER_SYNC_VERIFIER()(address):$SIGNER_VERIFIER" \
+            "SIGNER_SYNC_DEPLOYER()(address):$SIGNER_DEPLOYER"; do
+  sig=${pair%%:*}; want=${pair##*:}
+  got=$(call "$GOVERNED_FACTORY" "$sig")
+  same "$got" "$want" && ok "governed factory ${sig%%(*} is $want" \
+    || bad "governed factory ${sig%%(*} is $got, expected $want"
+done
+GSPVK=$(call "$GOVERNED_FACTORY" "SIGNER_SYNC_PROGRAM_VKEY()(bytes32)")
+same "$GSPVK" "${SP1_SIGNER_PROGRAM_VKEY:-}" && ok "governed factory pins the released signer vkey" \
+  || bad "governed factory signer vkey is $GSPVK, expected ${SP1_SIGNER_PROGRAM_VKEY:-unset}"
 
 echo "=== the factory points at the contracts we just deployed ==="
 for pair in "VERIFIER()(address):$VERIFIER" "VAULT()(address):$VAULT" \

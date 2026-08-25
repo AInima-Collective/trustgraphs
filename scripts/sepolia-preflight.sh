@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Read-only preflight for a public-chain deploy. Broadcasts nothing, writes nothing, and prints
-# no secret: it derives addresses from the keys in `.env` but never echoes a key, an RPC URL or
+# no secret: it derives addresses from the keys in `.env.sepolia` but never echoes a key, an RPC URL or
 # an API token.
 #
 # It exists because the checks that matter before a deploy were spread across a checklist, a dry
@@ -15,8 +15,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f .env ] || { echo "no .env in $(pwd)" >&2; exit 1; }
-set -a; . ./.env; set +a
+if [ "${TRUSTGRAPHS_TARGET_ENV_LOADED:-}" != "1" ]; then
+  exec node scripts/run-with-target-env.cjs sepolia bash "$0" "$@"
+fi
 
 # The release the deploy is pinned to. Bump both together.
 RELEASE_TAG=v0.0.5
@@ -84,13 +85,31 @@ else
   bad "guest-manifest.json absent: gh release download $RELEASE_TAG -R AInima-Collective/trustgraphs -p guest-manifest.json"
 fi
 
-echo "=== 3. no local build can be picked up mid-run ==="
-# Gitignored scratch shared with every local anvil run. A resumed or partial deploy reads it.
-LEFTOVER=$(ls .docker/*_deploy.json 2>/dev/null | wc -l | tr -d ' ')
-[ "$LEFTOVER" = "0" ] && ok ".docker holds no *_deploy.json" \
-  || bad "$LEFTOVER stale .docker/*_deploy.json present, remove them first"
+echo "=== 3. scratch artifacts cannot steer the continuation ==="
+# The continuation ignores all five core artifacts and preserves those addresses from the tracked
+# manifest. Matching originals are useful deployment evidence, so do not demand their deletion.
+# Additive outputs are different: their presence could be a fork rehearsal or a partial prior run,
+# and must be investigated before a transaction is sent.
+for file in .docker/zk_verifier_signer_deploy.json .docker/governed_factory_deploy.json; do
+  [ ! -f "$file" ] && ok "$file is absent" \
+    || bad "$file exists; determine whether it is live or a rehearsal, then remove or resume it"
+done
+for item in \
+  ".docker/eas_deploy.json:schema_registrar:schemaRegistrar" \
+  ".docker/zk_verifier_deploy.json:zk_verifier:rootVerifier" \
+  ".docker/instance_registry_deploy.json:instance_registry:instanceRegistry" \
+  ".docker/proving_vault_deploy.json:proving_vault:provingVault" \
+  ".docker/factory_deploy.json:factory:trustgraphsFactory"; do
+  file=${item%%:*}; rest=${item#*:}; field=${rest%%:*}; key=${rest##*:}
+  [ -f "$file" ] || { note "$file absent (the manifest remains authoritative)"; continue; }
+  have=$(jq -r --arg field "$field" '.[$field] // empty' "$file")
+  want=$(jq -r --arg key "$key" '.contracts[$key].address // empty' deployments/sepolia.json)
+  [ "$(echo "$have" | tr 'A-Z' 'a-z')" = "$(echo "$want" | tr 'A-Z' 'a-z')" ] \
+    && ok "$file agrees with manifest.contracts.$key" \
+    || bad "$file disagrees with manifest.contracts.$key (the continuation will ignore it)"
+done
 
-echo "=== 4. .env points at the chain we mean ==="
+echo "=== 4. .env.sepolia points at the chain we mean ==="
 # `pnpm deploy:contracts` with no flags follows these. A demo once inherited them and deployed
 # the production plan to a public chain.
 [ "${DEPLOY_TARGET:-}" = "sepolia" ]   && ok "DEPLOY_TARGET=sepolia"     || bad "DEPLOY_TARGET=${DEPLOY_TARGET:-unset}"

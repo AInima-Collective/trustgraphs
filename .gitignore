@@ -63,3 +63,7 @@ tests/fixtures/atproto/hypercerts/gen/node_modules/
 # Downloaded per release by the deploy planner (see requireReleaseVkeys). Never commit it:
 # a checked-in vkey table is one more thing a local build can overwrite.
 guest-manifest.json
+
+# Operator-created database dumps and restore-drill artifacts are durable deployment data, not
+# source. Keep them outside git even when the backup script uses its local default directory.
+backups/

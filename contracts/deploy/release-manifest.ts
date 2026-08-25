@@ -33,9 +33,19 @@ export type ReleaseManifest = {
     instanceRegistry: DeploymentRecord
     provingVault: DeploymentRecord
     trustgraphsFactory: DeploymentRecord
+    signerVerifier: DeploymentRecord
+    governedTrustgraphsFactory: DeploymentRecord
+    signerSyncModuleDeployer: DeploymentRecord
+    safeSingleton: DeploymentRecord
+    safeProxyFactory: DeploymentRecord
   }
   programs: {
     trustGraph: {
+      sp1Version: string
+      elfSha256: Hex | null
+      vkey: Hex | null
+    }
+    signer: {
       sp1Version: string
       elfSha256: Hex | null
       vkey: Hex | null
@@ -241,6 +251,11 @@ export const validateReleaseManifest = (
       'instanceRegistry',
       'provingVault',
       'trustgraphsFactory',
+      'signerVerifier',
+      'governedTrustgraphsFactory',
+      'signerSyncModuleDeployer',
+      'safeSingleton',
+      'safeProxyFactory',
     ],
     'manifest.contracts'
   )
@@ -271,40 +286,86 @@ export const validateReleaseManifest = (
     )
   }
 
+  const signerVerifier = value.contracts.signerVerifier
+  const governedFactory = value.contracts.governedTrustgraphsFactory
+  const signerSyncDeployer = value.contracts.signerSyncModuleDeployer
+  for (const [record, label] of [
+    [signerVerifier, 'signerVerifier'],
+    [governedFactory, 'governedTrustgraphsFactory'],
+    [signerSyncDeployer, 'signerSyncModuleDeployer'],
+  ] as const) {
+    assertObject(record, `manifest.contracts.${label}`)
+    validateRecord(
+      record,
+      `manifest.contracts.${label}`,
+      record.address !== null
+    )
+  }
+  for (const key of ['safeSingleton', 'safeProxyFactory'] as const) {
+    assertObject(value.contracts[key], `manifest.contracts.${key}`)
+    validateRecord(value.contracts[key], `manifest.contracts.${key}`, false)
+    if (requireComplete && value.contracts[key].address === null) {
+      throw new Error(`manifest.contracts.${key}.address is required`)
+    }
+  }
+  assertObject(governedFactory, 'manifest.contracts.governedTrustgraphsFactory')
+  assertObject(signerSyncDeployer, 'manifest.contracts.signerSyncModuleDeployer')
+  assertObject(signerVerifier, 'manifest.contracts.signerVerifier')
+  const governedAddress = governedFactory.address
+  const signerDeployerAddress = signerSyncDeployer.address
+  if ((governedAddress === null) !== (signerDeployerAddress === null)) {
+    throw new Error(
+      'manifest governedTrustgraphsFactory and signerSyncModuleDeployer must be recorded together'
+    )
+  }
+  if (
+    governedAddress !== null &&
+    signerVerifier.address === null
+  ) {
+    throw new Error(
+      'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
+    )
+  }
+
   assertObject(value.programs, 'manifest.programs')
-  assertKeys(value.programs, ['trustGraph'], 'manifest.programs')
-  assertObject(value.programs.trustGraph, 'manifest.programs.trustGraph')
-  assertKeys(
-    value.programs.trustGraph,
-    ['sp1Version', 'elfSha256', 'vkey'],
-    'manifest.programs.trustGraph'
-  )
-  if (value.programs.trustGraph.sp1Version !== '6.3.1') {
-    throw new Error(
-      'manifest trust-graph SP1 version must match the pinned 6.3.1 toolchain'
+  assertKeys(value.programs, ['trustGraph', 'signer'], 'manifest.programs')
+  for (const [key, label] of [
+    ['trustGraph', 'trust-graph'],
+    ['signer', 'signer'],
+  ] as const) {
+    const program = value.programs[key]
+    assertObject(program, `manifest.programs.${key}`)
+    assertKeys(
+      program,
+      ['sp1Version', 'elfSha256', 'vkey'],
+      `manifest.programs.${key}`
     )
-  }
-  if (
-    value.programs.trustGraph.elfSha256 !== null &&
-    (typeof value.programs.trustGraph.elfSha256 !== 'string' ||
-      !BYTES32.test(value.programs.trustGraph.elfSha256))
-  ) {
-    throw new Error('manifest trust-graph ELF digest must be bytes32 or null')
-  }
-  if (
-    value.programs.trustGraph.vkey !== null &&
-    (typeof value.programs.trustGraph.vkey !== 'string' ||
-      !BYTES32.test(value.programs.trustGraph.vkey))
-  ) {
-    throw new Error('manifest trust-graph vkey must be bytes32 or null')
-  }
-  if (requireComplete && value.programs.trustGraph.vkey === null) {
-    throw new Error('manifest trust-graph vkey is required after deployment')
-  }
-  if (requireComplete && value.programs.trustGraph.elfSha256 === null) {
-    throw new Error(
-      'manifest trust-graph ELF digest is required after deployment'
-    )
+    if (program.sp1Version !== '6.3.1') {
+      throw new Error(
+        `manifest ${label} SP1 version must match the pinned 6.3.1 toolchain`
+      )
+    }
+    if (
+      program.elfSha256 !== null &&
+      (typeof program.elfSha256 !== 'string' ||
+        !BYTES32.test(program.elfSha256))
+    ) {
+      throw new Error(`manifest ${label} ELF digest must be bytes32 or null`)
+    }
+    if (
+      program.vkey !== null &&
+      (typeof program.vkey !== 'string' || !BYTES32.test(program.vkey))
+    ) {
+      throw new Error(`manifest ${label} vkey must be bytes32 or null`)
+    }
+    if (requireComplete && program.vkey === null) {
+      throw new Error(`manifest ${label} vkey is required after deployment`)
+    }
+    if (requireComplete && program.elfSha256 === null) {
+      throw new Error(
+        `manifest ${label} ELF digest is required after deployment`
+      )
+    }
   }
   if (!Array.isArray(value.instances)) {
     throw new Error('manifest.instances must be an array')
@@ -450,21 +511,42 @@ export const deploymentRecord = (
 /** Convert the public release interface into the legacy consumer shape during migration. */
 export const releaseManifestToDeploymentSummary = (
   manifest: ReleaseManifest
-) => ({
-  eas: {
-    eas: manifest.external.eas,
-    schema_registry: manifest.external.schemaRegistry,
-    schema_registrar: manifest.contracts.schemaRegistrar.address,
-  },
-  factory: {
-    factory: manifest.contracts.trustgraphsFactory.address,
-    instance_registry: manifest.contracts.instanceRegistry.address,
-  },
-  provingVault: manifest.contracts.provingVault.address,
-  networks: manifest.instances.map((instance) => ({
-    id: instance.instanceId,
-    name: instance.name,
-    contracts: instance.contracts,
-    schemas: [{ uid: instance.schemaUid }],
-  })),
-})
+) => {
+  const governedFactory =
+    manifest.contracts.governedTrustgraphsFactory.address &&
+    manifest.contracts.signerSyncModuleDeployer.address
+      ? {
+          governed_factory:
+            manifest.contracts.governedTrustgraphsFactory.address,
+          signer_sync_deployer:
+            manifest.contracts.signerSyncModuleDeployer.address,
+        }
+      : undefined
+  const signerVerifier = manifest.contracts.signerVerifier.address
+    ? {
+        zk_verifier: manifest.contracts.signerVerifier.address,
+        program_vkey: manifest.programs.signer.vkey,
+      }
+    : undefined
+
+  return {
+    eas: {
+      eas: manifest.external.eas,
+      schema_registry: manifest.external.schemaRegistry,
+      schema_registrar: manifest.contracts.schemaRegistrar.address,
+    },
+    factory: {
+      factory: manifest.contracts.trustgraphsFactory.address,
+      instance_registry: manifest.contracts.instanceRegistry.address,
+    },
+    provingVault: manifest.contracts.provingVault.address,
+    governedFactory,
+    signerVerifier,
+    networks: manifest.instances.map((instance) => ({
+      id: instance.instanceId,
+      name: instance.name,
+      contracts: instance.contracts,
+      schemas: [{ uid: instance.schemaUid }],
+    })),
+  }
+}

@@ -30,7 +30,7 @@ use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::chain::Rpc;
-use crate::config::{Config, PinTarget};
+use crate::config::{Config, PinTarget, PinTargetKind};
 use crate::tools::{self, Tool};
 
 sol! {
@@ -72,6 +72,12 @@ pub struct Built {
     /// the request intent puts money at risk.
     pub work: WorkProfile,
 }
+
+/// A CIDv1 `raw` score blob must stay one block. Above this bound Kubo switches to a chunked DAG
+/// and managed services are free to return that DAG's CID, while the guest has committed the raw
+/// CID of the complete byte string. Refuse before proving rather than discover the mismatch after
+/// paying for a proof.
+pub const MAX_RAW_IPFS_BLOCK_BYTES: usize = 256 * 1024;
 
 fn count(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
@@ -419,6 +425,16 @@ pub fn uses_strict_envelope0(cfg: &Config, rpc: &Rpc, entry: &CatalogEntry) -> R
 
 /// Compute the journal natively, before asking anyone to prove it.
 fn native_journal(program: Program, input_path: &PathBuf, recipient: Address) -> Result<Built> {
+    let built = native_journal_unbounded(program, input_path, recipient)?;
+    ensure_raw_publication_blob(&built.blob)?;
+    Ok(built)
+}
+
+fn native_journal_unbounded(
+    program: Program,
+    input_path: &PathBuf,
+    recipient: Address,
+) -> Result<Built> {
     let text = std::fs::read_to_string(input_path)?;
     if program == Program::Signer {
         let input: pagerank_core::SignerInput = serde_json::from_str(&text)?;
@@ -710,6 +726,15 @@ pub fn publish(cfg: &Config, cid: &str, blob: &[u8]) -> PublicationReport {
         failures: Vec::new(),
         required,
     };
+    if let Err(error) = ensure_raw_publication_blob(blob) {
+        let error = error.to_string();
+        report.failures.extend(
+            targets
+                .into_iter()
+                .map(|target| PublicationFailure { target: target.name, error: error.clone() }),
+        );
+        return report;
+    }
     for target in targets {
         match pin_target(&target, cid, blob) {
             Ok(()) => report.successes.push(target.name),
@@ -721,7 +746,52 @@ pub fn publish(cfg: &Config, cid: &str, blob: &[u8]) -> PublicationReport {
     report
 }
 
+fn ensure_raw_publication_blob(blob: &[u8]) -> Result<()> {
+    anyhow::ensure!(
+        blob.len() <= MAX_RAW_IPFS_BLOCK_BYTES,
+        "canonical score blob is {} bytes; raw CID publication is limited to {} bytes. Reduce the output set or add an explicitly verified chunked-CID publication format; refusing before proving or uploading",
+        blob.len(),
+        MAX_RAW_IPFS_BLOCK_BYTES
+    );
+    Ok(())
+}
+
 fn pin_target(target: &PinTarget, cid: &str, blob: &[u8]) -> Result<()> {
+    let got = match target.kind {
+        PinTargetKind::Kubo => pin_kubo(target, blob)?,
+        PinTargetKind::Pinata => {
+            let variable = target
+                .token_env
+                .as_deref()
+                .ok_or_else(|| anyhow!("Pinata target {:?} has no token_env", target.name))?;
+            let token = std::env::var(variable).with_context(|| {
+                format!(
+                    "Pinata target {:?} needs bearer token environment variable {variable}",
+                    target.name
+                )
+            })?;
+            anyhow::ensure!(
+                !token.trim().is_empty(),
+                "Pinata target {:?} bearer token environment variable {variable} is empty",
+                target.name
+            );
+            pin_pinata(target, blob, &token)?
+        }
+    };
+
+    // The guest computed the CID in-circuit from these exact bytes. A mismatch means we just
+    // published something the root does not commit to, which is worse than publishing nothing.
+    anyhow::ensure!(
+        got == cid,
+        "ipfs returned CID {got}, the guest committed {cid} — refusing to call target {:?} published",
+        target.name
+    );
+
+    // "The API accepted it" and "a reader can fetch these exact bytes" are different claims.
+    readable(&target.gateway, &got, blob)
+}
+
+fn pin_kubo(target: &PinTarget, blob: &[u8]) -> Result<String> {
     let url = format!(
         "{}/api/v0/add?cid-version=1&raw-leaves=true&pin=true",
         target.api.trim_end_matches('/')
@@ -752,18 +822,41 @@ fn pin_target(target: &PinTarget, cid: &str, blob: &[u8]) -> Result<()> {
         .send()?;
     anyhow::ensure!(resp.status().is_success(), "ipfs add returned {}", resp.status());
     let v: serde_json::Value = resp.json()?;
-    let got = v.get("Hash").and_then(|h| h.as_str()).unwrap_or_default().to_string();
+    Ok(v.get("Hash").and_then(|h| h.as_str()).unwrap_or_default().to_string())
+}
 
-    // The guest computed the CID in-circuit from these exact bytes. A mismatch means we just
-    // published something the root does not commit to, which is worse than publishing nothing.
-    anyhow::ensure!(
-        got == cid,
-        "ipfs returned CID {got}, the guest committed {cid} — refusing to call target {:?} published",
-        target.name
+fn pin_pinata(target: &PinTarget, blob: &[u8], token: &str) -> Result<String> {
+    let boundary = "----trustgraph-operator-pinata-blob";
+    let mut body = Vec::new();
+    for (name, value) in [("network", "public"), ("name", "trustgraph-score-blob")] {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\n\
+             Content-Disposition: form-data; name=\"file\"; filename=\"blob.json\"\r\n\
+             Content-Type: application/json\r\n\r\n"
+        )
+        .as_bytes(),
     );
+    body.extend_from_slice(blob);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
-    // "The API accepted it" and "a reader can fetch these exact bytes" are different claims.
-    readable(&target.gateway, &got, blob)
+    let resp = reqwest::blocking::Client::new()
+        .post(&target.api)
+        .bearer_auth(token)
+        .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+        .body(body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()?;
+    anyhow::ensure!(resp.status().is_success(), "Pinata upload returned {}", resp.status());
+    let value: serde_json::Value = resp.json()?;
+    Ok(value.pointer("/data/cid").and_then(|cid| cid.as_str()).unwrap_or_default().to_string())
 }
 
 /// Fetch the CID back through a reader's gateway, so a pin means what it says.
@@ -1162,9 +1255,10 @@ fn parse_b256(s: &str) -> Result<B256> {
 #[cfg(test)]
 mod readback_tests {
     use super::{
-        command_output_with_timeout, native_journal, native_signer_journal, publish, readable,
+        command_output_with_timeout, ensure_raw_publication_blob, native_journal,
+        native_signer_journal, pin_pinata, publish, readable, MAX_RAW_IPFS_BLOCK_BYTES,
     };
-    use crate::config::Config;
+    use crate::config::{Config, PinTarget, PinTargetKind};
     use alloy_primitives::{Address, B256, U256};
     use alloy_sol_types::SolValue;
     use operator_core::types::Program;
@@ -1404,6 +1498,57 @@ mod readback_tests {
         assert!(request.starts_with("GET /ipfs/bafkreicid "), "{request}");
     }
 
+    #[test]
+    fn pinata_upload_is_typed_authenticated_and_parses_the_v3_cid() {
+        const CID: &str = "bafkreipinatav3";
+        const BLOB: &[u8] = b"canonical pinata score bytes";
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 8192];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            request.extend_from_slice(&buf[..n]);
+            let _ = tx.send(request);
+            let body = format!(r#"{{"data":{{"cid":"{CID}"}}}}"#);
+            let _ = stream.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            );
+        });
+        let target = PinTarget {
+            name: "pinata".into(),
+            kind: PinTargetKind::Pinata,
+            api: format!("http://127.0.0.1:{port}/v3/files"),
+            gateway: "http://127.0.0.1:1/ipfs/".into(),
+            token_env: Some("IPFS_PIN_API_KEY".into()),
+        };
+        assert_eq!(pin_pinata(&target, BLOB, "test-bearer-token").unwrap(), CID);
+        let request = rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+        let request = String::from_utf8_lossy(&request);
+        assert!(request.starts_with("POST /v3/files HTTP/1.1"), "{request}");
+        assert!(request.contains("authorization: Bearer test-bearer-token"), "{request}");
+        assert!(request.contains("name=\"network\""), "{request}");
+        assert!(request.contains("\r\n\r\npublic\r\n"), "{request}");
+        assert!(request.contains(std::str::from_utf8(BLOB).unwrap()), "{request}");
+    }
+
+    #[test]
+    fn raw_publication_ceiling_accepts_the_boundary_and_rejects_one_more_byte() {
+        ensure_raw_publication_blob(&vec![0; MAX_RAW_IPFS_BLOCK_BYTES]).unwrap();
+        let error = ensure_raw_publication_blob(&vec![0; MAX_RAW_IPFS_BLOCK_BYTES + 1])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("262145"), "{error}");
+        assert!(error.contains("262144"), "{error}");
+        assert!(error.contains("refusing before proving"), "{error}");
+    }
+
     /// A minimal kubo-compatible target: one `add` response followed by gateway readback.
     fn serve_target(cid: &'static str, blob: &'static [u8], add_ok: bool) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1487,6 +1632,19 @@ gateway = "{backup}/ipfs/"
         assert!(!report.satisfied());
         assert_eq!(report.successes.len(), 1);
         assert_eq!(report.required, 2);
+    }
+
+    #[test]
+    fn an_oversize_blob_fails_every_target_without_attempting_an_upload() {
+        let report = publish(
+            &publication_config("http://127.0.0.1:1", "http://127.0.0.1:2", 1),
+            "bafkreioversize",
+            &vec![0; MAX_RAW_IPFS_BLOCK_BYTES + 1],
+        );
+        assert!(!report.satisfied());
+        assert!(report.successes.is_empty());
+        assert_eq!(report.failures.len(), 2);
+        assert!(report.failures.iter().all(|failure| failure.error.contains("262144")));
     }
 
     #[test]

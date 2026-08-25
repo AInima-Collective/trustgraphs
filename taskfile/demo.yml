@@ -47,6 +47,9 @@ vars:
 tasks:
   default:
     desc: 'Finite demo: deploy one funded Demo Co-op, seed graph + contribution round, prove both, pay out'
+    preconditions: &local-only
+      - sh: node scripts/assert-local-target.cjs
+        msg: 'The demo is local-only; select development/local first.'
     cmds:
       # `clean` FIRST, because this task deploys a fresh stack and the journal from the last one
       # would block it. An instance id is keccak(creator, name, salt) and a restarted anvil counts
@@ -73,12 +76,14 @@ tasks:
 
   live:
     desc: 'Deploy the full demo, then keep the proof scheduler in the foreground for new attestations'
+    preconditions: *local-only
     cmds:
       - task: default
       - task: operator
 
   preflight:
     desc: 'Refuse to start rather than fail halfway'
+    preconditions: *local-only
     cmds:
       - |
         fail() { echo "✗ $1" >&2; exit 1; }
@@ -153,6 +158,7 @@ tasks:
 
   vkeys:
     desc: 'Print the guest vkeys this checkout produces (deploy pins them immutably)'
+    preconditions: *local-only
     cmds:
       - |
         cd zk/prover
@@ -162,6 +168,7 @@ tasks:
 
   deploy:
     desc: "Deploy the stack and complete Demo Co-op, with verifiers pinned to THIS checkout's guests"
+    preconditions: *local-only
     cmds:
       - |
         # The one ordering that silently ruins a demo: SP1JournalVerifier pins its vkey at
@@ -209,6 +216,7 @@ tasks:
 
   fund:
     desc: "Top up Demo Co-op's proving tank after deployment"
+    preconditions: *local-only
     cmds:
       - |
         VAULT=$(jq -r .proving_vault .docker/proving_vault_deploy.json)
@@ -221,6 +229,7 @@ tasks:
 
   addresses:
     desc: 'Print every address the demo uses, read from chain and deploy artifacts'
+    preconditions: *local-only
     cmds:
       - |
         R={{.RPC}}
@@ -236,6 +245,7 @@ tasks:
 
   create:
     desc: 'Create and fund an additional runtime network (pass a NAME other than Demo Co-op)'
+    preconditions: *local-only
     cmds:
       - |
         [ '{{.NAME}}' != 'Demo Co-op' ] || {
@@ -260,6 +270,7 @@ tasks:
 
   id:
     desc: 'The instance id, resolved from the factory event (no scratch files)'
+    preconditions: *local-only
     cmds:
       - |
         FAC=$(jq -r .factory .docker/factory_deploy.json)
@@ -272,6 +283,7 @@ tasks:
 
   seed:
     desc: "Vouch: 21 edges over 14 accounts, rooted at the instance's trusted seed"
+    preconditions: *local-only
     cmds:
       - |
         # BEFORE the first trigger, always. A checkpoint frozen over an empty graph proves to a
@@ -280,6 +292,7 @@ tasks:
 
   seed-round:
     desc: 'Seed the 6-persona contribution round over the demo graph (claims, responses, valuations)'
+    preconditions: *local-only
     cmds:
       - |
         # The round driver is frontend code (SchemaManager → EAS.attest), and while its SCHEMA
@@ -324,6 +337,7 @@ tasks:
 
   govern:
     desc: 'Give the demo network a Safe, a gov module and a UI entry for them'
+    preconditions: *local-only
     cmds:
       - |
         # Raw factory instances have no governance module. This bolts the Zodiac stack on and, in
@@ -412,6 +426,7 @@ tasks:
 
   contributions:
     desc: "A contributions round over the demo network's own trust graph"
+    preconditions: *local-only
     cmds:
       - |
         # Rounds are factory-minted (one transaction by the parent network's authority; the
@@ -438,6 +453,7 @@ tasks:
 
   config:
     desc: 'Write the operator config'
+    preconditions: *local-only
     cmds:
       - |
         mkdir -p {{.WORK}}
@@ -517,6 +533,7 @@ tasks:
 
   dry-run:
     desc: 'Every chain read and every decision, no sends'
+    preconditions: *local-only
     deps: [config]
     cmds:
       - |
@@ -527,6 +544,7 @@ tasks:
 
   operator:
     desc: 'Keep the demo proof scheduler running in the foreground (Ctrl-C to stop)'
+    preconditions: *local-only
     deps: [config]
     cmds:
       - |
@@ -544,6 +562,7 @@ tasks:
 
   prove:
     desc: 'Run the daemon until the trust root and the round root have both landed'
+    preconditions: *local-only
     deps: [config]
     cmds:
       - |
@@ -609,6 +628,7 @@ tasks:
 
   settle:
     desc: "Mine past Ponder's finality window so the indexer will actually serve what just happened"
+    preconditions: *local-only
     cmds:
       - |
         # anvil mines only on transactions, so the chain stops dead the moment the demo does — and
@@ -628,6 +648,7 @@ tasks:
 
   payout:
     desc: 'Fund the proven round and pay the contributors (skips itself without an indexer)'
+    preconditions: *local-only
     cmds:
       - |
         CSNAP=$(jq -r '.merkle_snapshot // empty' \
@@ -674,6 +695,7 @@ tasks:
 
   resolver:
     desc: "The instance's EASIndexerResolver (its accumulator), from the registry"
+    preconditions: *local-only
     cmds:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
@@ -682,6 +704,7 @@ tasks:
 
   snapshot:
     desc: "The instance's MerkleSnapshot address, from the registry"
+    preconditions: *local-only
     cmds:
       - |
         REG=$(jq -r .instance_registry .docker/instance_registry_deploy.json)
@@ -690,6 +713,7 @@ tasks:
 
   report:
     desc: "What happened: the root, the payment, and every instance's decision"
+    preconditions: *local-only
     cmds:
       - |
         R={{.RPC}}
@@ -763,6 +787,7 @@ tasks:
 
   clean:
     desc: "Throw away the demo's local state (not the chain)"
+    preconditions: *local-only
     cmds:
       - rm -rf {{.WORK}}
       - echo "✓ removed {{.WORK}} (the operator's whole state directory)"

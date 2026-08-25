@@ -14,6 +14,11 @@ import { Command } from 'commander'
 
 import { DEPLOYMENT_SUMMARY_FILE } from './constants'
 import { initProgram } from './env'
+import {
+  type ReleaseManifest,
+  loadReleaseManifest,
+  validateReleaseManifest,
+} from './release-manifest'
 import { execFull } from './utils'
 
 const program = new Command('deploy-contracts')
@@ -40,6 +45,10 @@ const program = new Command('deploy-contracts')
     '--dry-run',
     'Validate the selected profile and print the ordered plan without Forge or RPC calls'
   )
+  .option(
+    '--continue-existing',
+    'Sepolia only: verify and preserve the five live contracts, then deploy only missing additive steps'
+  )
 
 const ANVIL_DEFAULT_KEY =
   '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
@@ -60,14 +69,103 @@ const requireFundedKey = (value: unknown, publicChain: boolean): string => {
   return value
 }
 
+const SEPOLIA_CORE_CONTRACTS = [
+  'schemaRegistrar',
+  'rootVerifier',
+  'instanceRegistry',
+  'provingVault',
+  'trustgraphsFactory',
+] as const
+
+const rpc = async (url: string, method: string, params: unknown[] = []) => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!response.ok)
+    throw new Error(`Sepolia RPC returned HTTP ${response.status}`)
+  const body = (await response.json()) as {
+    result?: string
+    error?: { message?: string }
+  }
+  if (body.error) {
+    throw new Error(
+      `Sepolia RPC ${method} failed: ${body.error.message || 'unknown error'}`
+    )
+  }
+  return body.result
+}
+
+const verifySepoliaContinuation = async (
+  manifest: ReleaseManifest,
+  rpcUrl: string
+) => {
+  if (manifest.status !== 'deployed') {
+    throw new Error('--continue-existing requires a deployed Sepolia manifest')
+  }
+  const chainId = await rpc(rpcUrl, 'eth_chainId')
+  if (chainId === undefined || Number(BigInt(chainId)) !== manifest.chainId) {
+    throw new Error(
+      `Continuation RPC is chain ${chainId ?? 'unknown'}, expected ${manifest.chainId}`
+    )
+  }
+  for (const key of SEPOLIA_CORE_CONTRACTS) {
+    const address = manifest.contracts[key].address
+    if (!address) {
+      throw new Error(`Sepolia manifest has no live ${key} address to preserve`)
+    }
+    const code = await rpc(rpcUrl, 'eth_getCode', [address, 'latest'])
+    if (!code || code === '0x' || code === '0x0') {
+      throw new Error(
+        `Sepolia continuation refused: manifest ${key} has no code at ${address}`
+      )
+    }
+  }
+}
+
+const assertCoreUnchanged = (
+  before: ReleaseManifest,
+  after: ReleaseManifest
+) => {
+  for (const key of SEPOLIA_CORE_CONTRACTS) {
+    const previous = before.contracts[key].address?.toLowerCase()
+    const next = after.contracts[key].address?.toLowerCase()
+    if (previous !== next) {
+      throw new Error(
+        `Sepolia continuation changed ${key} from ${previous} to ${next}; refusing to overwrite the manifest`
+      )
+    }
+  }
+}
+
 const main = async () => {
   const context = initProgram(program)
   const {
     env,
-    options: { fundedKey, dryRun },
+    options: { fundedKey, dryRun, continueExisting },
   } = context
 
   await env.validateDeployment?.()
+
+  const sepoliaManifest =
+    env.profile.target === 'sepolia'
+      ? loadReleaseManifest('deployments/sepolia.json', {
+          requireComplete: Boolean(continueExisting),
+        })
+      : undefined
+  if (continueExisting && env.profile.target !== 'sepolia') {
+    throw new Error('--continue-existing is only valid for Sepolia')
+  }
+  if (sepoliaManifest?.status === 'deployed' && !continueExisting) {
+    throw new Error(
+      'Sepolia already has a deployed manifest. Use pnpm deploy:sepolia:continue; a full deploy is refused.'
+    )
+  }
+  if (continueExisting && sepoliaManifest) {
+    await verifySepoliaContinuation(sepoliaManifest, env.rpcUrl)
+  }
 
   if (dryRun) {
     console.log(
@@ -82,7 +180,9 @@ const main = async () => {
       )
     }
     console.log(
-      'No RPC calls, Forge scripts, files, or broadcasts were performed.'
+      continueExisting
+        ? 'The continuation made read-only RPC checks; no Forge scripts, files, or broadcasts were performed.'
+        : 'No RPC calls, Forge scripts, files, or broadcasts were performed.'
     )
     return
   }
@@ -136,9 +236,16 @@ const main = async () => {
 
   const releaseManifestFile = env.profile.releaseManifestFile
   if (releaseManifestFile && env.generateReleaseManifest) {
+    const generatedManifest = validateReleaseManifest(
+      env.generateReleaseManifest(context),
+      { requireComplete: true }
+    )
+    if (continueExisting && sepoliaManifest) {
+      assertCoreUnchanged(sepoliaManifest, generatedManifest)
+    }
     fs.writeFileSync(
       releaseManifestFile,
-      `${JSON.stringify(env.generateReleaseManifest(), null, 2)}\n`
+      `${JSON.stringify(generatedManifest, null, 2)}\n`
     )
   } else {
     fs.writeFileSync(

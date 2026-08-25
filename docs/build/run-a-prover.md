@@ -66,6 +66,7 @@ min_success = 2
 
 [[ipfs.targets]]
 name = "primary"
+kind = "kubo"
 api = "https://ipfs-api.example"
 gateway = "https://ipfs.example/ipfs/"
 
@@ -87,6 +88,33 @@ tool_timeout_seconds = 900
 
 Capability limits, gas policy, finality, budgets, weighted-manifest recovery, and alert delivery
 should also be configured before production use.
+
+Tracked production profiles may keep endpoint credentials outside TOML by using an `env:NAME`
+reference for `rpc`, a target's `api` or `gateway`, and `ops.alert_webhook`. The operator resolves
+those references at startup and fails if a variable is absent or empty. Private keys are never
+config fields: supply `SUBMITTER_PRIVATE_KEY` and `NETWORK_PRIVATE_KEY` separately.
+
+Pinata uses a typed target rather than pretending its v3 upload API is Kubo:
+
+```toml
+[[ipfs.targets]]
+name = "pinata"
+kind = "pinata"
+api = "https://uploads.pinata.cloud/v3/files"
+gateway = "env:IPFS_GATEWAY"
+token_env = "IPFS_PIN_API_KEY"
+```
+
+The token variable must contain a Pinata bearer JWT. The daemon sends `network=public`, requires
+Pinata's returned CID to equal the guest's CIDv1 raw commitment, and then reads the exact bytes
+back through the configured gateway. Canonical score blobs larger than 256 KiB are refused before
+proving because a chunked DAG would have a different CID. Kubo targets remain the default when
+`kind` is omitted.
+
+The tracked Sepolia policy is `deployments/operator.sepolia.toml`. It intentionally requires the
+release manifest to contain exactly one curated showcase instance, uses one real Pinata target
+instead of counting aliases as independent durability, and pages at 80% of each rolling global
+budget before the hard cap stops new work.
 
 Give that volume a name. `journal.jsonl` is the one file whose loss costs money: a fresh journal
 re-requests, and re-pays for, proofs the operator already has. The image declares `/data` a
@@ -137,7 +165,9 @@ an onchain CID that it did not first publish and read back successfully.
 
 Every release publishes the guest table its image was built from — each program's ELF sha256 and
 verification key against a public source commit — so a deployed verifier's pinned vkey can be
-checked against source without trusting whoever deployed it.
+checked against source without trusting whoever deployed it. When `release_manifest` is set, the
+operator enforces this at startup for both the trust-graph and signer guests: either a vkey or ELF
+digest mismatch stops the process before its first chain scan or proof request.
 
 ## Monitor and recover
 

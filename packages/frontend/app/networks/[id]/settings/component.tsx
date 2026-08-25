@@ -52,6 +52,7 @@ import { useNetwork } from '@/contexts/NetworkContext'
 import { useContributionsRounds } from '@/hooks/useContributionsRounds'
 import type { InstanceRow } from '@/lib/catalog'
 import {
+  CONTRIBUTIONS_FACTORY,
   CONTRACT_CONFIG,
   GOVERNED_WEIGHTED_FACTORY,
   PROVING_VAULT,
@@ -2074,6 +2075,12 @@ export const SettingsPage = ({
                       ? `$${operatorStatus.settings?.globalUsdPerDay ?? '—'} / day`
                       : '—'}
                   </SettingRow>
+                  <SettingRow label="Global budget alert">
+                    {operatorStatus?.available &&
+                    operatorStatus.settings?.globalBudgetAlertPercent !== null
+                      ? `${operatorStatus.settings?.globalBudgetAlertPercent ?? '—'}% of cap`
+                      : '—'}
+                  </SettingRow>
                   <SettingRow label="Budget window">
                     {operatorStatus?.available
                       ? duration(
@@ -2799,7 +2806,12 @@ export const SettingsPage = ({
                       : 'Connect to check access'}
                   </SettingRow>
                   <div className="flex flex-wrap gap-3 pt-4">
-                    {weighted ? (
+                    {!realAddress(CONTRIBUTIONS_FACTORY) ? (
+                      <p className="text-xs text-muted-foreground">
+                        Contribution rounds are not available on this
+                        deployment.
+                      </p>
+                    ) : weighted ? (
                       <p className="text-xs text-muted-foreground">
                         The current ContributionsFactory accepts standard
                         trust-graph parents only. Weighted networks cannot start

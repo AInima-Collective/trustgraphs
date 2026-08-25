@@ -175,6 +175,9 @@ const sanitizeSettings = (value: unknown) => {
     proofTimeoutSeconds: safeInteger(input.proof_timeout_s),
     perInstanceUsdPerDay: safeInteger(input.per_instance_usd_per_day),
     globalUsdPerDay: safeInteger(input.global_usd_per_day),
+    globalBudgetAlertPercent: safeInteger(
+      input.global_budget_alert_percent
+    ),
     budgetWindowSeconds: safeInteger(input.budget_window_seconds),
     publishesScores: boolean(input.publishes_scores),
     verifiesScoreReadback: boolean(input.verifies_score_readback),

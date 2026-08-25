@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 
-import dotenv from 'dotenv'
 import { createConfig, factory } from 'ponder'
 import { Hex, getAbiItem } from 'viem'
 
@@ -38,6 +37,7 @@ import {
   loadReleaseManifest,
   releaseManifestToDeploymentSummary,
 } from '../../contracts/deploy/release-manifest'
+import { loadTargetEnvironment } from '../../scripts/load-env.cjs'
 import {
   contributionResolverAbi,
   easIndexerResolverAbi,
@@ -94,10 +94,9 @@ type DeploymentSummary = {
   graphLineage?: { registry?: string }
 }
 
-const dotenvFile = path.join(__dirname, '../../.env')
-dotenv.config({
-  path: dotenvFile,
-  quiet: true,
+loadTargetEnvironment({
+  repositoryRoot: path.join(__dirname, '../..'),
+  higherPriorityFiles: [path.join(__dirname, '.env.local')],
 })
 
 const deploymentStage =
@@ -153,6 +152,44 @@ const blockNumberEnv = (name: string, fallback: number): number => {
     throw new Error(`${name} must be a non-negative safe integer, got "${raw}"`)
   }
   return value
+}
+
+const positiveIntegerEnv = (name: string, fallback: number): number => {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive safe integer, got "${raw}"`)
+  }
+  return value
+}
+
+const rpcUrlsEnv = (
+  primaryName: string,
+  fallbacksName: string
+): string | string[] => {
+  const primary = requiredEnv(primaryName)
+  const urls = [
+    primary,
+    ...(process.env[fallbacksName] ?? '')
+      .split(/[\n,]/)
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ].filter((value, index, values) => values.indexOf(value) === index)
+
+  for (const value of urls) {
+    let protocol: string
+    try {
+      protocol = new URL(value).protocol
+    } catch {
+      throw new Error(`${fallbacksName} contains an invalid URL`)
+    }
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      throw new Error(`${fallbacksName} only accepts HTTP(S) RPC URLs`)
+    }
+  }
+
+  return urls.length === 1 ? primary : urls
 }
 
 const LOCAL_RPC_URL =
@@ -511,7 +548,21 @@ export default createConfig({
         : {
             sepolia: {
               id: 11155111,
-              rpc: requiredEnv('PONDER_RPC_URL_11155111'),
+              // Ponder treats an RPC array as an ordered, health-aware backend pool. Operators
+              // keep the private primary separate from a comma/newline-delimited failover list.
+              rpc: rpcUrlsEnv(
+                'PONDER_RPC_URL_11155111',
+                'PONDER_RPC_URLS_11155111'
+              ),
+              // Provider limits vary dramatically: the current free primary accepts only ten
+              // blocks, while the verified public fallback accepts the full deployment range.
+              // Keep the restrictive default safe and make production tuning explicit. Ponder
+              // discovers request-rate limits dynamically; its old maxRequestsPerSecond option is
+              // deprecated and ignored, so do not imply it offers a hard throttle.
+              ethGetLogsBlockRange: positiveIntegerEnv(
+                'PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111',
+                10
+              ),
               ...(process.env.PONDER_WS_URL_11155111
                 ? { ws: process.env.PONDER_WS_URL_11155111 }
                 : {}),

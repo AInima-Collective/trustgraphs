@@ -54,22 +54,42 @@
         "rootVerifier",
         "instanceRegistry",
         "provingVault",
-        "trustgraphsFactory"
+        "trustgraphsFactory",
+        "signerVerifier",
+        "governedTrustgraphsFactory",
+        "signerSyncModuleDeployer",
+        "safeSingleton",
+        "safeProxyFactory"
       ],
       "properties": {
         "schemaRegistrar": { "$ref": "#/$defs/deployment" },
         "rootVerifier": { "$ref": "#/$defs/deployment" },
         "instanceRegistry": { "$ref": "#/$defs/deployment" },
         "provingVault": { "$ref": "#/$defs/deployment" },
-        "trustgraphsFactory": { "$ref": "#/$defs/deployment" }
+        "trustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "signerVerifier": { "$ref": "#/$defs/deployment" },
+        "governedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "signerSyncModuleDeployer": { "$ref": "#/$defs/deployment" },
+        "safeSingleton": { "$ref": "#/$defs/deployment" },
+        "safeProxyFactory": { "$ref": "#/$defs/deployment" }
       }
     },
     "programs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["trustGraph"],
+      "required": ["trustGraph", "signer"],
       "properties": {
         "trustGraph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sp1Version", "elfSha256", "vkey"],
+          "properties": {
+            "sp1Version": { "const": "6.3.1" },
+            "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
+            "vkey": { "$ref": "#/$defs/nullableBytes32" }
+          }
+        },
+        "signer": {
           "type": "object",
           "additionalProperties": false,
           "required": ["sp1Version", "elfSha256", "vkey"],

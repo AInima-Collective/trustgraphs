@@ -10,7 +10,7 @@ The repository currently exposes two production-stage targets with different con
 
 | Target | Current profile |
 | --- | --- |
-| `sepolia` | Modern registry, standard `trust-graph` verifier and base factory, plus an optional proving vault. It does not deploy the governed wrapper, weighted prior, composition, contributions, or signer sync. |
+| `sepolia` | Modern registry, `trust-graph` and signer verifiers, base and governed factories, canonical Safe integration, signer-sync module deployer, and proving vault. Weighted prior, composition, and contributions remain disabled. |
 | `optimism` | Legacy configuration-driven deployment of named standard networks, signer verifier, Safes, and timelocks. It is not the modern self-service factory profile. |
 
 The `mainnet` target is intentionally disabled because the repository has no authorized Ethereum
@@ -65,6 +65,74 @@ Public service requirements include:
 
 Test restoration of the database, operator journal, weighted manifests if that program is present,
 and published output files before relying on the deployment.
+
+### Sepolia service package
+
+`docker-compose.prod.yml` is the production package, not a developer convenience stack. The
+writer, serving API, and monitor run from `packages/indexer/Dockerfile`; none installs dependencies
+into or bind-mounts the checkout. Postgres and the operator state use explicitly named volumes.
+Only the small tracked `deployments/` directory is mounted read-only so the operator can consume
+the finalized manifest and policy.
+
+Set the variables required by `ops/production-preflight.sh`, then run:
+
+```bash
+ops/production-preflight.sh
+docker compose -f docker-compose.prod.yml build ponder ponder-server monitor
+docker compose -f docker-compose.prod.yml up -d
+```
+
+`OPERATOR_IMAGE` must be the release workflow's complete
+`ghcr.io/.../trustgraphs-operator@sha256:...` reference. The preflight rejects a tag. On startup,
+the operator also refuses unless its embedded trust-graph and signer ELF digests and vkeys match
+the tracked release manifest. The writer schema must be a new versioned name for each indexer
+release; the views schema stays stable. The
+primary Sepolia RPC and `PONDER_RPC_URLS_11155111` must name different providers so a single
+provider outage does not stop ingestion. The frontend host must receive `PONDER_URL`,
+`IPFS_GATEWAY_PUBLIC`, and both `RPC_URL_11155111_0` and `RPC_URL_11155111_1`; the two browser RPC
+upstreams must also be independent. The preflight requires these frontend values even though the
+frontend itself may be deployed by a separate hosting platform.
+
+After the frontend is deployed, exercise its clean-browser, read-only launch surface before using
+a funded wallet:
+
+```bash
+SEPOLIA_FRONTEND_URL=https://testnet.example.org \
+  pnpm --filter trustgraphs-frontend smoke:sepolia
+```
+
+This checks the persistent testnet warning, offers the standard governed path, and refuses to
+expose weighted or composition creation when their factories are absent. It does not submit a
+transaction; M4 still requires the clean-wallet creation itself.
+
+Back up Postgres from the consistent server-side snapshot emitted by `pg_dump`:
+
+```bash
+BACKUP_DIR=/durable/backups ops/postgres-backup.sh
+```
+
+Every dump receives a SHA-256 sidecar. A backup is not accepted until it has been restored into an
+isolated database and found to contain application tables:
+
+```bash
+RESTORE_DATABASE=ponder_restore_20260825 \
+  ops/postgres-restore-drill.sh /durable/backups/ponder-20260825T000000Z.dump
+```
+
+The restore script refuses production database names and refuses to replace an existing drill
+database unless `REPLACE_RESTORE_DATABASE=1` is explicit. This repository cannot execute the
+container drill where the Docker socket is unavailable; record the dump path, checksum, restored
+database, table count, and time in the deployment log when it is run on the host.
+
+The monitor checks the indexer and operator `/ready` routes, operator heartbeat age, root age,
+publication holds, per-instance vault balances/unpaid roots, and Ponder lag against the live
+Sepolia head. Defaults are in the compose file and every threshold has a `MONITOR_*` override. It
+sends a webhook only when a finding becomes active and logs recovery when it clears.
+
+For the restart drill, record the writer's sync block, the operator journal checksum, and the
+latest backup checksum; stop both application services, recreate them from their exact image
+references, and confirm the sync block advances and the journal checksum is unchanged before new
+work is requested. The named volumes must remain attached throughout.
 
 ## Verify the release
 

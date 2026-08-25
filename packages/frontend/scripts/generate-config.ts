@@ -9,6 +9,12 @@ import {
   loadReleaseManifest,
   releaseManifestToDeploymentSummary,
 } from '../../../contracts/deploy/release-manifest'
+import { loadTargetEnvironment } from '../../../scripts/load-env.cjs'
+
+const repositoryRoot = path.join(__dirname, '../../..')
+if (process.env.DEPLOY_TARGET) {
+  loadTargetEnvironment({ repositoryRoot })
+}
 
 const env = process.env.NODE_ENV || 'development'
 const target =
@@ -26,9 +32,43 @@ if ((stage === 'development') !== (target === 'local')) {
   throw new Error(`Invalid deployment profile ${stage}/${target}`)
 }
 const isSepolia = target === 'sepolia'
+const isPublic = stage === 'production'
 const configName = isSepolia ? 'sepolia' : env
 const configOutputFile = path.join(__dirname, `../config.${configName}.json`)
 const configOutput: any = {}
+
+const requiredPublicUrl = (
+  name: string,
+  options: { requiredSuffix?: string } = {}
+): string => {
+  const value = process.env[name]?.trim()
+  if (!value) throw new Error(`${name} is required for a public frontend build`)
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`${name} must be an absolute http(s) URL`)
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(`${name} must be an absolute http(s) URL`)
+  }
+  if (
+    parsed.hostname === 'example.com' ||
+    parsed.hostname.endsWith('.example.com')
+  ) {
+    throw new Error(`${name} must not use an example.com placeholder`)
+  }
+  if (
+    options.requiredSuffix &&
+    !parsed.pathname.endsWith(options.requiredSuffix)
+  ) {
+    throw new Error(`${name} must end with ${options.requiredSuffix}`)
+  }
+  if (options.requiredSuffix && (parsed.search || parsed.hash)) {
+    throw new Error(`${name} must not include a query string or fragment`)
+  }
+  return value
+}
 
 // Path to deployment summary and config files
 const deploymentSummaryFile = path.join(
@@ -78,10 +118,12 @@ try {
   const factoryAddress = isSepolia
     ? deployment.factory?.factory || ''
     : localFactoryAddress
-  const governedFactoryAddress = isSepolia ? '' : localGovernedFactoryAddress
   const signerVerifierDeployment: any = isSepolia
-    ? {}
+    ? deployment.signerVerifier || {}
     : localSignerVerifierDeployment
+  const governedFactoryAddress = isSepolia
+    ? deployment.governedFactory?.governed_factory || ''
+    : localGovernedFactoryAddress
 
   console.log('📋 Found deployment data')
 
@@ -92,15 +134,14 @@ try {
       ? 'local'
       : 'optimism'
   configOutput.apis = {
-    ponder:
-      env === 'development'
-        ? 'http://127.0.0.1:65421'
-        : // No production deployment exists today; set PONDER_URL when one does.
-          process.env.PONDER_URL || 'https://ponder.example.com/ponder',
-    ipfsGateway:
-      env === 'development'
-        ? 'http://127.0.0.1:8080/ipfs/'
-        : 'https://gateway.pinata.cloud/ipfs/',
+    ponder: !isPublic
+      ? 'http://127.0.0.1:65421'
+      : requiredPublicUrl('PONDER_URL'),
+    ipfsGateway: !isPublic
+      ? 'http://127.0.0.1:8080/ipfs/'
+      : requiredPublicUrl('IPFS_GATEWAY_PUBLIC', {
+          requiredSuffix: '/ipfs/',
+        }),
   }
   configOutput.signerSync = {
     verifier: signerVerifierDeployment.zk_verifier ?? '',
