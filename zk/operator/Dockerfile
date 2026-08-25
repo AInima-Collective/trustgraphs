@@ -72,10 +72,16 @@ FROM debian:bookworm-slim AS runtime
 
 # ca-certificates for TLS to the RPC, the prover network and IPFS gateways. curl is the container
 # healthcheck below and nothing else. No compiler, no toolchain, no source tree.
+# The user is `trustgraphs`, not `operator`, and the reason is not taste: `operator` is already
+# a system GROUP in Debian (legacy, GID 37), so `useradd operator` fails at its default "create a
+# group of the same name" step with exit 9. Naming our own group explicitly also stops the daemon
+# from inheriting a legacy admin group by accident.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin operator
+    && groupadd --system --gid 10001 trustgraphs \
+    && useradd --system --uid 10001 --gid 10001 \
+         --home-dir /data --shell /usr/sbin/nologin trustgraphs
 
 COPY --from=builder /out/bin/ /usr/local/bin/
 COPY --from=builder /out/etc/elf-digests.txt /etc/trustgraph/elf-digests.txt
@@ -83,9 +89,9 @@ COPY --from=builder /out/etc/elf-digests.txt /etc/trustgraph/elf-digests.txt
 # The state directory. Mount a volume here: `journal.jsonl` is the one file whose loss costs real
 # money, and the daemon REFUSES to start if this path's parent is missing — which is exactly what
 # an unmounted volume looks like.
-RUN mkdir -p /data && chown operator:operator /data
+RUN mkdir -p /data && chown trustgraphs:trustgraphs /data
 VOLUME ["/data"]
-USER operator
+USER trustgraphs
 WORKDIR /data
 
 # `[ops] tool_dir` needs no configuration in this image: the daemon finds its tools beside itself.
