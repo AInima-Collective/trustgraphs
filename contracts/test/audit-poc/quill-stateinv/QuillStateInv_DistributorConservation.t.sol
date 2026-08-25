@@ -135,7 +135,9 @@ contract QuillStateInv_DistributorConservation is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 100 ether);
-        uint256 r0 = dist.distribute(address(token), 100 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 r0 = dist.distribute(
+            address(token), 100 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         vm.stopPrank();
         _assertSolvent(address(token));
 
@@ -145,7 +147,15 @@ contract QuillStateInv_DistributorConservation is Test {
         vm.startPrank(funderB);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 200 ether);
-        uint256 r1 = dist.distribute(address(token), 200 ether, _pins1.root, _pins1.totalValue, uint64(block.timestamp + 7 days), type(uint256).max, _pins1.feeRecipient);
+        uint256 r1 = dist.distribute(
+            address(token),
+            200 ether,
+            _pins1.root,
+            _pins1.totalValue,
+            uint64(block.timestamp + 7 days),
+            type(uint256).max,
+            _pins1.feeRecipient
+        );
         vm.stopPrank();
         _assertSolvent(address(token));
 
@@ -187,14 +197,18 @@ contract QuillStateInv_DistributorConservation is Test {
         vm.startPrank(funderA);
         feeToken.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, 100 ether);
-        dist.distribute(address(feeToken), 100 ether, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        dist.distribute(
+            address(feeToken), 100 ether, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
         vm.stopPrank();
 
         feeToken.mint(funderB, 1_000 ether);
         vm.startPrank(funderB);
         feeToken.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins3 = RoundPins.read(dist, 100 ether);
-        uint256 r1 = dist.distribute(address(feeToken), 100 ether, _pins3.root, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient);
+        uint256 r1 = dist.distribute(
+            address(feeToken), 100 ether, _pins3.root, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient
+        );
         vm.stopPrank();
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(r1);
@@ -220,14 +234,18 @@ contract QuillStateInv_DistributorConservation is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins4 = RoundPins.read(dist, 100 ether);
-        uint256 r0 = dist.distribute(address(token), 100 ether, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient);
+        uint256 r0 = dist.distribute(
+            address(token), 100 ether, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient
+        );
         vm.stopPrank();
 
         token.mint(funderB, 1_000 ether);
         vm.startPrank(funderB);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins5 = RoundPins.read(dist, 100 ether);
-        uint256 r1 = dist.distribute(address(token), 100 ether, _pins5.root, _pins5.totalValue, 0, type(uint256).max, _pins5.feeRecipient);
+        uint256 r1 = dist.distribute(
+            address(token), 100 ether, _pins5.root, _pins5.totalValue, 0, type(uint256).max, _pins5.feeRecipient
+        );
         vm.stopPrank();
 
         uint256 honestLiability = _liability(address(token));
@@ -244,7 +262,9 @@ contract QuillStateInv_DistributorConservation is Test {
         vm.startPrank(attacker);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins6 = RoundPins.read(dist, 1);
-        uint256 rBad = dist.distribute(address(token), 1, _pins6.root, _pins6.totalValue, 0, type(uint256).max, _pins6.feeRecipient);
+        uint256 rBad = dist.distribute(
+            address(token), 1, _pins6.root, _pins6.totalValue, 0, type(uint256).max, _pins6.feeRecipient
+        );
         vm.stopPrank();
 
         IMerkleFundDistributor.DistributionState memory bad = dist.getDistribution(rBad);

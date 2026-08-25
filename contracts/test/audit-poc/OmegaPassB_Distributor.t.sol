@@ -72,13 +72,17 @@ contract OmegaPassB_Distributor is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 500_000e18);
-        dist.distribute(address(token), 500_000e18, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        dist.distribute(
+            address(token), 500_000e18, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         vm.stopPrank();
 
         vm.startPrank(funderB);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 400_000e18);
-        dist.distribute(address(token), 400_000e18, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        dist.distribute(
+            address(token), 400_000e18, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
         vm.stopPrank();
 
         uint256 held = token.balanceOf(address(dist));
@@ -96,7 +100,9 @@ contract OmegaPassB_Distributor is Test {
         vm.startPrank(attacker);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, 1);
-        uint256 idx = dist.distribute(address(token), 1, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), 1, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
         vm.stopPrank();
 
         // 3. The formula proposes a huge claim, but the round cap rejects it before transfer.
@@ -125,7 +131,15 @@ contract OmegaPassB_Distributor is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins3 = RoundPins.read(dist, 1_000e18);
-        uint256 idx = dist.distribute(address(token), 1_000e18, _pins3.root, _pins3.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins3.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token),
+            1_000e18,
+            _pins3.root,
+            _pins3.totalValue,
+            uint64(block.timestamp + 1 days),
+            type(uint256).max,
+            _pins3.feeRecipient
+        );
         vm.stopPrank();
 
         vm.prank(owner);
@@ -150,7 +164,9 @@ contract OmegaPassB_Distributor is Test {
         vm.startPrank(attacker);
         token.approve(address(dist), type(uint256).max);
         RoundPins.Pins memory _pins4 = RoundPins.read(dist, 0);
-        uint256 i0 = dist.distribute(address(token), 0, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient);
+        uint256 i0 = dist.distribute(
+            address(token), 0, _pins4.root, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient
+        );
         vm.stopPrank();
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(i0);
         assertEq(d.amountFunded, 0);

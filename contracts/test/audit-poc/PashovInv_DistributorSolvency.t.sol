@@ -62,7 +62,9 @@ contract PashovInvDistHandler is Test {
         vm.startPrank(funder);
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, amount);
         token.approve(address(dist), amount);
-        try dist.distribute(address(token), amount, _pins0.root, _pins0.totalValue, deadline, type(uint256).max, _pins0.feeRecipient) {
+        try dist.distribute(
+            address(token), amount, _pins0.root, _pins0.totalValue, deadline, type(uint256).max, _pins0.feeRecipient
+        ) {
             totalFundedIn += amount;
         } catch {
             token.transfer(address(0xdead), amount);
@@ -135,7 +137,9 @@ contract PashovInv_DistributorSolvency is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), 1_000 ether);
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, 1_000 ether);
-        uint256 honest = dist.distribute(address(token), 1_000 ether, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 honest = dist.distribute(
+            address(token), 1_000 ether, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
         vm.stopPrank();
         assertEq(token.balanceOf(address(dist)), 1_000 ether);
 
@@ -153,7 +157,9 @@ contract PashovInv_DistributorSolvency is Test {
         vm.startPrank(attacker);
         token.approve(address(dist), 1);
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, 1);
-        uint256 evilRound = dist.distribute(address(token), 1, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        uint256 evilRound = dist.distribute(
+            address(token), 1, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
         vm.stopPrank();
 
         // Claim: mulDiv(1 - 0, 1e21, 1) proposes 1e21, but the round cap is one wei.
@@ -187,7 +193,15 @@ contract PashovInv_DistributorSolvency is Test {
         vm.startPrank(funderA);
         token.approve(address(dist), 100 ether);
         RoundPins.Pins memory _pins3 = RoundPins.read(dist, 100 ether);
-        uint256 round = dist.distribute(address(token), 100 ether, _pins3.root, _pins3.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins3.feeRecipient);
+        uint256 round = dist.distribute(
+            address(token),
+            100 ether,
+            _pins3.root,
+            _pins3.totalValue,
+            uint64(block.timestamp + 1 days),
+            type(uint256).max,
+            _pins3.feeRecipient
+        );
         vm.stopPrank();
 
         // Incident response: pause.

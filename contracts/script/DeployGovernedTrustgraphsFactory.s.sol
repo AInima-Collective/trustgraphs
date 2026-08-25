@@ -66,11 +66,9 @@ contract DeployGovernedTrustgraphsFactory is Common {
         );
 
         _startBroadcast();
-        GnosisSafe singleton =
-            reuseSafe ? GnosisSafe(payable(vm.parseAddress(safeSingletonAddr))) : new GnosisSafe();
-        GnosisSafeProxyFactory proxyFactory = reuseSafe
-            ? GnosisSafeProxyFactory(vm.parseAddress(safeFactoryAddr))
-            : new GnosisSafeProxyFactory();
+        GnosisSafe singleton = reuseSafe ? GnosisSafe(payable(vm.parseAddress(safeSingletonAddr))) : new GnosisSafe();
+        GnosisSafeProxyFactory proxyFactory =
+            reuseSafe ? GnosisSafeProxyFactory(vm.parseAddress(safeFactoryAddr)) : new GnosisSafeProxyFactory();
         require(address(singleton).code.length != 0, "DeployGoverned: Safe singleton has no code");
         require(address(proxyFactory).code.length != 0, "DeployGoverned: Safe factory has no code");
         GovernedAuthorityDeployer authorityDeployer = new GovernedAuthorityDeployer();

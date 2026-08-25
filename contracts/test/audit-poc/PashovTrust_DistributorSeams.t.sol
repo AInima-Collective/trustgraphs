@@ -123,7 +123,9 @@ contract PashovTrust_DistributorSeams is Test {
 
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, amount);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), amount, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), amount, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
         assertEq(d.amountFunded, amount);
@@ -178,7 +180,9 @@ contract PashovTrust_DistributorSeams is Test {
         uint256 amount = 100 ether;
         RoundPins.Pins memory _pins1 = RoundPins.read(dist, amount);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), amount, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), amount, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
         assertEq(d.root, rogueLeaf, "round pinned to the owner's own tree");
@@ -213,7 +217,9 @@ contract PashovTrust_DistributorSeams is Test {
 
         RoundPins.Pins memory _pins2 = RoundPins.read(dist, amount);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), amount, _pins2.root, _pins2.totalValue, deadline, type(uint256).max, _pins2.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), amount, _pins2.root, _pins2.totalValue, deadline, type(uint256).max, _pins2.feeRecipient
+        );
 
         // Alice could claim 60% right now.
         bytes32[] memory proofA = new bytes32[](1);

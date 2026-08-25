@@ -163,7 +163,9 @@ contract PashovTrust_RootPinningAsymmetry is Test {
         //        the block.)
         RoundPins.Pins memory _pins0 = RoundPins.read(dist, 100 ether);
         vm.prank(funder);
-        uint256 idx = dist.distribute(address(token), 100 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 idx = dist.distribute(
+            address(token), 100 ether, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
 
         IMerkleFundDistributor.DistributionState memory d = dist.getDistribution(idx);
         assertEq(d.root, rootV2, "the DAO's approved payout bound the epoch-N+1 scoreboard");

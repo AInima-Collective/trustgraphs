@@ -268,9 +268,7 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(alice);
         mockToken.approve(address(distributor), amount);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.UnexpectedMerkleRoot.selector, bytes32(0), TEST_ROOT
-            )
+            abi.encodeWithSelector(IMerkleFundDistributor.UnexpectedMerkleRoot.selector, bytes32(0), TEST_ROOT)
         );
         distributor.distribute(
             address(mockToken), amount, bytes32(0), TEST_TOTAL_VALUE, 0, type(uint256).max, feeRecipient
@@ -283,9 +281,7 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(alice);
         mockToken.approve(address(distributor), amount);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0), feeRecipient
-            )
+            abi.encodeWithSelector(IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0), feeRecipient)
         );
         distributor.distribute(
             address(mockToken), amount, TEST_ROOT, TEST_TOTAL_VALUE, 0, type(uint256).max, address(0)
@@ -314,9 +310,7 @@ contract MerkleFundDistributorTest is Test {
                 IMerkleFundDistributor.UnexpectedFeeRecipient.selector, address(0xD00D), feeRecipient
             )
         );
-        distributor.distribute(
-            address(mockToken), amount, TEST_ROOT, TEST_TOTAL_VALUE, 0, expectedFee, address(0xD00D)
-        );
+        distributor.distribute(address(mockToken), amount, TEST_ROOT, TEST_TOTAL_VALUE, 0, expectedFee, address(0xD00D));
 
         // As agreed: passes and books the expected fee.
         distributor.distribute(address(mockToken), amount, TEST_ROOT, TEST_TOTAL_VALUE, 0, expectedFee, feeRecipient);
@@ -605,7 +599,9 @@ contract MerkleFundDistributorTest is Test {
         emit IMerkleFundDistributor.Distributed(0, alice, address(mockToken), amount, expectedFee);
 
         RoundPins.Pins memory _pins0 = RoundPins.read(distributor, amount);
-        uint256 distributionIndex = distributor.distribute(address(mockToken), amount, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient);
+        uint256 distributionIndex = distributor.distribute(
+            address(mockToken), amount, _pins0.root, _pins0.totalValue, 0, type(uint256).max, _pins0.feeRecipient
+        );
         vm.stopPrank();
 
         assertEq(distributionIndex, 0);
@@ -645,7 +641,9 @@ contract MerkleFundDistributorTest is Test {
         vm.expectEmit(true, true, true, true);
         emit IMerkleFundDistributor.Distributed(0, alice, address(0), amount, expectedFee);
 
-        uint256 distributionIndex = distributor.distribute{value: amount}(address(0), amount, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient);
+        uint256 distributionIndex = distributor.distribute{value: amount}(
+            address(0), amount, _pins1.root, _pins1.totalValue, 0, type(uint256).max, _pins1.feeRecipient
+        );
 
         assertEq(distributionIndex, 0);
 
@@ -665,7 +663,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins2 = RoundPins.read(distributor, amount);
         vm.prank(alice);
-        distributor.distribute{value: amount}(address(0), amount, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient);
+        distributor.distribute{value: amount}(
+            address(0), amount, _pins2.root, _pins2.totalValue, 0, type(uint256).max, _pins2.feeRecipient
+        );
 
         assertEq(alice.balance, aliceBalanceBefore - amount);
         assertEq(feeRecipient.balance, feeRecipientBalanceBefore + expectedFee);
@@ -676,7 +676,9 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(alice);
         mockToken.approve(address(distributor), 100 ether);
         RoundPins.Pins memory _pins3 = RoundPins.read(distributor, 100 ether);
-        distributor.distribute(address(mockToken), 100 ether, TEST_ROOT, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, TEST_ROOT, _pins3.totalValue, 0, type(uint256).max, _pins3.feeRecipient
+        );
         vm.stopPrank();
 
         assertEq(distributor.getDistributionCount(), 1);
@@ -692,7 +694,9 @@ contract MerkleFundDistributorTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IMerkleFundDistributor.UnexpectedMerkleRoot.selector, wrongRoot, TEST_ROOT)
         );
-        distributor.distribute(address(mockToken), 100 ether, wrongRoot, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, wrongRoot, _pins4.totalValue, 0, type(uint256).max, _pins4.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -713,7 +717,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins5 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.InvalidMerkleState.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins5.root, _pins5.totalValue, 0, type(uint256).max, _pins5.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, _pins5.root, _pins5.totalValue, 0, type(uint256).max, _pins5.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -734,7 +740,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins6 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.InvalidMerkleState.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins6.root, _pins6.totalValue, 0, type(uint256).max, _pins6.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, _pins6.root, _pins6.totalValue, 0, type(uint256).max, _pins6.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -742,7 +750,9 @@ contract MerkleFundDistributorTest is Test {
         RoundPins.Pins memory _pins7 = RoundPins.read(distributor, 10 ether);
         vm.prank(alice);
         vm.expectRevert(IMerkleFundDistributor.InvalidNativeTokenTransferAmount.selector);
-        distributor.distribute{value: 5 ether}(address(0), 10 ether, _pins7.root, _pins7.totalValue, 0, type(uint256).max, _pins7.feeRecipient);
+        distributor.distribute{value: 5 ether}(
+            address(0), 10 ether, _pins7.root, _pins7.totalValue, 0, type(uint256).max, _pins7.feeRecipient
+        );
     }
 
     function test_Distribute_ERC20_RevertsIfMsgValueSent() public {
@@ -751,7 +761,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins8 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.InvalidNativeTokenTransfer.selector);
-        distributor.distribute{value: 1 ether}(address(mockToken), 100 ether, _pins8.root, _pins8.totalValue, 0, type(uint256).max, _pins8.feeRecipient);
+        distributor.distribute{value: 1 ether}(
+            address(mockToken), 100 ether, _pins8.root, _pins8.totalValue, 0, type(uint256).max, _pins8.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -764,7 +776,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins9 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
-        distributor.distribute(address(mockToken), 100 ether, _pins9.root, _pins9.totalValue, 0, type(uint256).max, _pins9.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, _pins9.root, _pins9.totalValue, 0, type(uint256).max, _pins9.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -777,7 +791,9 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins10 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.CannotDistribute.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins10.root, _pins10.totalValue, 0, type(uint256).max, _pins10.feeRecipient);
+        distributor.distribute(
+            address(mockToken), 100 ether, _pins10.root, _pins10.totalValue, 0, type(uint256).max, _pins10.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -802,7 +818,9 @@ contract MerkleFundDistributorTest is Test {
         RoundPins.Pins memory _pins11 = RoundPins.read(distributor, 10 ether);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FailedToTransferFee.selector, ""));
-        distributor.distribute{value: 10 ether}(address(0), 10 ether, _pins11.root, _pins11.totalValue, 0, type(uint256).max, _pins11.feeRecipient);
+        distributor.distribute{value: 10 ether}(
+            address(0), 10 ether, _pins11.root, _pins11.totalValue, 0, type(uint256).max, _pins11.feeRecipient
+        );
     }
 
     function test_Distribute_ZeroFeePercentage() public {
@@ -901,7 +919,9 @@ contract MerkleFundDistributorTest is Test {
         uint256 fundedAmount = 10 ether;
         RoundPins.Pins memory _pins12 = RoundPins.read(distributor, fundedAmount);
         vm.prank(alice);
-        distributor.distribute{value: fundedAmount}(address(0), fundedAmount, _pins12.root, _pins12.totalValue, 0, type(uint256).max, _pins12.feeRecipient);
+        distributor.distribute{value: fundedAmount}(
+            address(0), fundedAmount, _pins12.root, _pins12.totalValue, 0, type(uint256).max, _pins12.feeRecipient
+        );
 
         uint256 feeAmount = (fundedAmount * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
         uint256 distributable = fundedAmount - feeAmount;
@@ -1146,7 +1166,9 @@ contract MerkleFundDistributorTest is Test {
         // Create native token distribution
         RoundPins.Pins memory _pins13 = RoundPins.read(distributor, 10 ether);
         vm.prank(alice);
-        distributor.distribute{value: 10 ether}(address(0), 10 ether, _pins13.root, _pins13.totalValue, 0, type(uint256).max, _pins13.feeRecipient);
+        distributor.distribute{value: 10 ether}(
+            address(0), 10 ether, _pins13.root, _pins13.totalValue, 0, type(uint256).max, _pins13.feeRecipient
+        );
 
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = bobLeaf;
@@ -1274,7 +1296,15 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins14 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins14.root, _pins14.totalValue, uint64(999), type(uint256).max, _pins14.feeRecipient);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            _pins14.root,
+            _pins14.totalValue,
+            uint64(999),
+            type(uint256).max,
+            _pins14.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -1286,7 +1316,15 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins15 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.InvalidClaimDeadline.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins15.root, _pins15.totalValue, uint64(1000), type(uint256).max, _pins15.feeRecipient);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            _pins15.root,
+            _pins15.totalValue,
+            uint64(1000),
+            type(uint256).max,
+            _pins15.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -1299,7 +1337,15 @@ contract MerkleFundDistributorTest is Test {
 
         RoundPins.Pins memory _pins16 = RoundPins.read(distributor, 100 ether);
         vm.expectRevert(IMerkleFundDistributor.CannotDistribute.selector);
-        distributor.distribute(address(mockToken), 100 ether, _pins16.root, _pins16.totalValue, uint64(block.timestamp + 1 days), type(uint256).max, _pins16.feeRecipient);
+        distributor.distribute(
+            address(mockToken),
+            100 ether,
+            _pins16.root,
+            _pins16.totalValue,
+            uint64(block.timestamp + 1 days),
+            type(uint256).max,
+            _pins16.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -1405,7 +1451,9 @@ contract MerkleFundDistributorTest is Test {
         uint64 deadline = uint64(block.timestamp + 7 days);
         RoundPins.Pins memory _pins17 = RoundPins.read(distributor, 10 ether);
         vm.prank(alice);
-        distributor.distribute{value: 10 ether}(address(0), 10 ether, _pins17.root, _pins17.totalValue, deadline, type(uint256).max, _pins17.feeRecipient);
+        distributor.distribute{value: 10 ether}(
+            address(0), 10 ether, _pins17.root, _pins17.totalValue, deadline, type(uint256).max, _pins17.feeRecipient
+        );
 
         uint256 feeAmount = (10 ether * DEFAULT_FEE_PERCENTAGE) / FEE_RANGE;
         uint256 distributable = 10 ether - feeAmount;
@@ -1549,7 +1597,9 @@ contract MerkleFundDistributorTest is Test {
         uint64 deadline = uint64(block.timestamp + 7 days);
         RoundPins.Pins memory _pins18 = RoundPins.read(distributor, 10 ether);
         vm.prank(address(rejecter));
-        distributor.distribute{value: 10 ether}(address(0), 10 ether, _pins18.root, _pins18.totalValue, deadline, type(uint256).max, _pins18.feeRecipient);
+        distributor.distribute{value: 10 ether}(
+            address(0), 10 ether, _pins18.root, _pins18.totalValue, deadline, type(uint256).max, _pins18.feeRecipient
+        );
 
         vm.warp(uint256(deadline) + 1);
         vm.expectRevert(abi.encodeWithSelector(IMerkleFundDistributor.FailedToTransferTokens.selector, ""));
@@ -1658,7 +1708,9 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(from);
         mockToken.approve(address(distributor), amount);
         RoundPins.Pins memory _pins19 = RoundPins.read(distributor, amount);
-        distributor.distribute(address(mockToken), amount, _pins19.root, _pins19.totalValue, 0, type(uint256).max, _pins19.feeRecipient);
+        distributor.distribute(
+            address(mockToken), amount, _pins19.root, _pins19.totalValue, 0, type(uint256).max, _pins19.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -1666,7 +1718,15 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(from);
         mockToken.approve(address(distributor), amount);
         RoundPins.Pins memory _pins20 = RoundPins.read(distributor, amount);
-        distributor.distribute(address(mockToken), amount, _pins20.root, _pins20.totalValue, claimDeadline, type(uint256).max, _pins20.feeRecipient);
+        distributor.distribute(
+            address(mockToken),
+            amount,
+            _pins20.root,
+            _pins20.totalValue,
+            claimDeadline,
+            type(uint256).max,
+            _pins20.feeRecipient
+        );
         vm.stopPrank();
     }
 
@@ -1704,7 +1764,9 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(alice);
         fot.approve(address(distributor), type(uint256).max);
         RoundPins.Pins memory _pins21 = RoundPins.read(distributor, 1000 ether);
-        uint256 idx = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, _pins21.totalValue, 0, type(uint256).max, _pins21.feeRecipient);
+        uint256 idx = distributor.distribute(
+            address(fot), 1000 ether, TEST_ROOT, _pins21.totalValue, 0, type(uint256).max, _pins21.feeRecipient
+        );
         vm.stopPrank();
 
         IMerkleFundDistributor.DistributionState memory d = distributor.getDistribution(idx);
@@ -1726,9 +1788,13 @@ contract MerkleFundDistributorTest is Test {
         vm.startPrank(alice);
         fot.approve(address(distributor), type(uint256).max);
         RoundPins.Pins memory _pins22 = RoundPins.read(distributor, 1000 ether);
-        uint256 a = distributor.distribute(address(fot), 1000 ether, TEST_ROOT, _pins22.totalValue, 0, type(uint256).max, _pins22.feeRecipient);
+        uint256 a = distributor.distribute(
+            address(fot), 1000 ether, TEST_ROOT, _pins22.totalValue, 0, type(uint256).max, _pins22.feeRecipient
+        );
         RoundPins.Pins memory _pins23 = RoundPins.read(distributor, 2000 ether);
-        uint256 b = distributor.distribute(address(fot), 2000 ether, TEST_ROOT, _pins23.totalValue, 0, type(uint256).max, _pins23.feeRecipient);
+        uint256 b = distributor.distribute(
+            address(fot), 2000 ether, TEST_ROOT, _pins23.totalValue, 0, type(uint256).max, _pins23.feeRecipient
+        );
         vm.stopPrank();
 
         IMerkleFundDistributor.DistributionState memory da = distributor.getDistribution(a);
