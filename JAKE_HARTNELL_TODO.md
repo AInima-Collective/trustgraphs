@@ -2,13 +2,13 @@
 - ~~Generate vkeys and elf digest~~ **done: published in the release**
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
 - ~~Fresh deployer key (with Sepolia ETH)~~ **done: `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`, 0.5 ETH**
-- Sepolia RPC endpoint
-- NETWORK_PRIVATE_KEY (needs a topup of $PROVE)
-- SUBMITTER_PRIVATE_KEY (doesn't need funds)
-- Metadata for the seeded network
-- Trusted seeds for the seeded network
-- Railway: indexer, operator, frontend
-- Postgres, IPFS pinning, DNS, Etherscan key
+- [x] Sepolia RPC endpoint
+- [x] NETWORK_PRIVATE_KEY (needs a topup of $PROVE) — **but see 1.5: it is the admin EOA's key**
+- [x] SUBMITTER_PRIVATE_KEY — **needs gas. `0xf6161E3c…` has 0 ETH; send it ~0.1**
+- [ ] Metadata for the seeded network
+- [ ] Trusted seeds for the seeded network
+- [ ] Railway: indexer, operator, frontend
+- [ ] Postgres, IPFS pinning, DNS, Etherscan key
 
 ==== long version...
 
@@ -215,8 +215,43 @@ We are a **requester**, not a prover: no on-chain proving obligation. Two separa
 Separate on purpose: the payee is named in the proof journal, so the submitting key never
 needs to hold funds beyond gas.
 
-**Send me:** the submitter address (so preflight can check it is funded), and confirmation
-the network account has credit.
+**Two things I found in the `.env` you filled in.** Neither is a mistake in the file; both are
+consequences worth seeing before they are load-bearing.
+
+**`SUBMITTER_PRIVATE_KEY` needs gas, and has none.** It derives to
+`0xf6161E3c1e83EF8297690153120462633570B8D1`, balance 0.000 ETH, nonce 0. "Holds no value"
+above means it never custodies anything, not that it runs on nothing: it signs every
+checkpoint and `submitProof`, so with an empty balance no root ever lands. Send it ~0.1 ETH.
+That is roughly 60 root submissions at today's ~1.1 gwei, and it is deliberately a small,
+rotatable float rather than a share of the deployer's balance.
+
+**`NETWORK_PRIVATE_KEY` is the admin EOA's key.** It derives to
+`0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE` — the same key that is `INSTANCE_REGISTRY_ADMIN`.
+That is a real choice, not a typo, since you told me the Succinct account is that address. The
+consequence: `SP1_PROVER=network` means sp1-sdk reads that variable inside the **operator
+container**, so the key with `DEFAULT_ADMIN_ROLE` and `OPERATOR_ROLE` over the registry lives
+in a long-running hosted service's environment. Part 4.1 says the opposite in as many words:
+"good reason to keep the admin EOA nowhere near that box."
+
+What that key can do if the box is compromised, precisely, because it is narrower than it
+sounds: rewrite any instance's registry record (misdirecting discovery), seize any instance's
+`paramsAuthority`, and grant itself more roles. It **cannot** steal funds, forge scores, or
+redirect governance or fund distribution — `ProvingVault` caches its binding and gates
+`migrate()` on `onlyConstitutional`, `CompositionSourceAdapter` fails closed with
+`RegistryRecordChanged`, and the gov module and fund distributor never read the registry.
+
+Denial and misdirection on a testnet, then. Not theft. Your call whether that is worth a
+second Succinct account, and it is a five-minute fix either way:
+
+- **Cleanest:** open a second Succinct account on a throwaway key, credit it, and let
+  `NETWORK_PRIVATE_KEY` be that. The admin EOA then never leaves your hands, which is the
+  shape mainnet needs anyway.
+- **Fine for a testnet:** leave it, and treat the operator container as admin-privileged —
+  meaning it does not get shared credentials, and it gets rotated before mainnet.
+
+I have not changed anything here; the `.env` works as written.
+
+**Send me:** confirmation the network account has credit, and which of the two above you want.
 
 ---
 
@@ -385,17 +420,56 @@ Set `[ops] listen` so Railway's healthcheck has something to probe, and point th
 
 Where you press the button, in order. I will have everything staged.
 
+The plan is **five contracts**, and I have run it as a dry run against your `.env`: EAS schema
+registrar, ZK verifier, InstanceRegistry, ProvingVault, TrustgraphsFactory. No timelocks, no
+governed factory, no weighted or compose lane, no instance — those are outside the first
+testnet gate. Two consequences worth knowing now: the gas is **~24.4M, not the ~54M I budgeted
+before** (the old number summed steps this plan does not run), so 0.5 ETH covers roughly twenty
+full attempts at today's ~1.1 gwei; and **creating the seeded network is a separate step after
+this**, so 2.1 and 2.2 do not block the button.
+
 1. **Approve the release commit** and confirm the vkeys in 1.1 are the ones we pin.
-2. **Run preflight** and read it. Fails closed on a wrong chain, a default key, a frozen SP1
+2. **Clear `.docker/*_deploy.json`.** It is gitignored scratch shared with every local anvil
+   run, and it currently holds yesterday's dev stack — including a `program_vkey` from a local
+   non-docker build, the exact value that must never be pinned. A clean full run overwrites
+   each file before the next step reads it, so this only bites a resumed or partial run. The
+   manifest now refuses to be written if that vkey disagrees with the pinned one, so the
+   failure is loud, but starting clean is one command.
+3. **Run preflight** and read it. Fails closed on a wrong chain, a default key, a frozen SP1
    route, a stale feed, a zero vkey, or a commit mismatch.
-3. **Broadcast the deployment** with your key. I never hold it.
-4. **Confirm the role handoff** moved registry and vault administration to your admin EOA and
-   that the deployer renounced. The script asserts this; you should still read it. If you
-   chose one key for both in 1.2, this is a no-op and the script says so rather than silently
-   passing.
-5. **Prove one real root** through the live Sepolia gateway. The last thing that can surprise
-   us, and the difference between "deployed" and "working".
-6. **Walk the browser flow** on the public domain with a clean wallet before we tell anyone.
+4. **Broadcast the deployment** with your key. I never hold it.
+5. **Grant the factory `REGISTRAR_ROLE`, signed by the admin EOA.** This is a real step, not a
+   formality, and it is new: the registry is constructed with your admin EOA as its admin from
+   birth — the mainnet shape you asked for — so the deployer cannot make this grant. Until it
+   lands, **every network creation reverts**. The deploy prints the exact `cast send` and the
+   two `hasRole` checks that confirm it, including the negative one: the factory must hold
+   `REGISTRAR_ROLE` and must **not** hold `OPERATOR_ROLE`, because the second would let it
+   rewrite existing records instead of only appending its own.
+
+   (Until 2026-08-25 the deploy tried to make this grant itself and would have reverted at step
+   5 of 5, after the other four had landed. Fixed in `4735840`; reproduced on anvil first.)
+6. **Prove one real root** through the live Sepolia gateway. The last thing that can surprise
+   us, and the difference between "deployed" and "working". Needs the submitter funded (1.5).
+7. **Walk the browser flow** on the public domain with a clean wallet before we tell anyone.
+
+An earlier version of this list said the deploy "moves registry and vault administration to
+your admin EOA and the deployer renounces". Half of that is now true by construction and half
+of it does not happen at all:
+
+- **Registry:** correct, and better than described. `InstanceRegistry` is constructed with your
+  admin EOA as admin, so there is no window in which the deployer holds it and nothing to
+  renounce. That is why step 5 exists.
+- **Vault:** not correct. `DeployProvingVault` hardcodes the **deployer** as both
+  `DEFAULT_ADMIN_ROLE` and `FEE_SETTER_ROLE`, and the Sepolia plan has no handoff step. Left
+  alone, a key generated for one afternoon's deploy permanently holds the vault's fee
+  authority. Step 5b below is the fix.
+
+**5b. Hand the vault over, signed by the deployer.** Narrow but real: `FEE_SETTER_ROLE` is the
+vault's entire privileged surface — `setFeePerRootUsd` and `setGasParams`, nothing that can
+move funds — so the exposure is mispricing and denial, not theft. It is still the wrong key to
+leave it under, and rehearsing the handoff is a large part of why we are doing this on Sepolia
+in the mainnet shape at all. The deploy prints the three sends (grant admin, grant fee-setter,
+renounce admin) and the checks that confirm the deployer holds nothing afterwards.
 
 ---
 

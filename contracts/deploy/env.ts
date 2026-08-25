@@ -1226,6 +1226,58 @@ export class SepoliaEnv extends EnvBase {
           ],
           env: vaultEnvironment,
           skip: () => process.env.SKIP_PROVING_VAULT === 'true',
+          // `DeployProvingVault` hardcodes the DEPLOYER as both DEFAULT_ADMIN_ROLE and
+          // FEE_SETTER_ROLE, and takes no admin argument to point elsewhere. On a local anvil
+          // that is invisible. Here it would leave a key generated for one afternoon holding the
+          // vault's fee authority for the life of the deployment, which is the opposite of the
+          // custody shape this run exists to rehearse. Narrow — the whole privileged surface is
+          // setFeePerRootUsd and setGasParams, and nothing there moves funds — but wrong, and
+          // wrong in the direction that gets copied to mainnet if nobody says it out loud.
+          //
+          // Nothing in here may throw: see the factory's postRun for why.
+          postRun: () => {
+            const vault =
+              readJsonIfFileExists<Record<string, string>>(
+                '.docker/proving_vault_deploy.json'
+              )?.proving_vault ?? '<ProvingVault>'
+            const admin = process.env.INSTANCE_REGISTRY_ADMIN ?? '<the admin>'
+            console.log(
+              [
+                '',
+                'The vault is under the DEPLOYER, not the admin. Hand it over before you stop.',
+                '',
+                `  cast send ${vault} 'grantRole(bytes32,address)' \\`,
+                `    0x${'0'.repeat(64)} ${admin} \\`,
+                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
+                `  cast send ${vault} 'grantRole(bytes32,address)' \\`,
+                `    $(cast keccak 'FEE_SETTER_ROLE') ${admin} \\`,
+                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
+                '',
+                'The zero bytes32 above is DEFAULT_ADMIN_ROLE and is not a placeholder: OpenZeppelin',
+                'defines it as 0x00, not as the keccak of its name, which is the one role hash you',
+                'cannot derive the way every other one here is derived.',
+                '',
+                'Then, last, the deployer drops its own. Renounce takes the account as an argument',
+                'and it must be the caller, which is the deployer:',
+                '',
+                `  cast send ${vault} 'renounceRole(bytes32,address)' \\`,
+                `    0x${'0'.repeat(64)} <deployer address> \\`,
+                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
+                `  cast send ${vault} 'renounceRole(bytes32,address)' \\`,
+                `    $(cast keccak 'FEE_SETTER_ROLE') <deployer address> \\`,
+                '    --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY"',
+                '',
+                'Confirm before moving on. Grant first, renounce second: reversed, the vault has',
+                'no admin at all and the roles can never be granted again.',
+                '',
+                `  cast call ${vault} 'hasRole(bytes32,address)(bool)' \\`,
+                `    $(cast keccak 'FEE_SETTER_ROLE') ${admin} --rpc-url "$RPC_URL"   # -> true`,
+                `  cast call ${vault} 'hasRole(bytes32,address)(bool)' \\`,
+                '    $(cast keccak \'FEE_SETTER_ROLE\') <deployer> --rpc-url "$RPC_URL"  # -> false',
+                '',
+              ].join('\n')
+            )
+          },
         },
         {
           name: 'Trustgraphs Factory',
