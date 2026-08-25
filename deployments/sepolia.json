@@ -1,12 +1,12 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "status": "planned",
+  "status": "deployed",
   "stage": "production",
   "chain": "sepolia",
   "chainId": 11155111,
-  "deploymentCommit": null,
-  "firstDeploymentBlock": null,
+  "deploymentCommit": "f64a4c7c9b5e552e2392894a2e0d6f6c40973549",
+  "firstDeploymentBlock": 11565413,
   "external": {
     "eas": "0xC2679fBD37d54388Ce493F1DB75320D236e1815e",
     "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
@@ -16,36 +16,36 @@
   },
   "contracts": {
     "schemaRegistrar": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x4f74b6C19e84639421692df9abD5c587e0d20fb9",
+      "block": 11565413,
+      "txHash": "0xfaf518159264a3e15da27b42f83655c4ab507344fd7c3e6a8a78cad8059388ba"
     },
     "rootVerifier": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xFF850b9c0198Fa9fF9e28e9DFEdB39b1cb7E0bd4",
+      "block": 11565414,
+      "txHash": "0xe8be4cb88345629cc1925e3724314a4ae71151a848bf0c9265b0570db1fab10c"
     },
     "instanceRegistry": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x4369ad64D4E378BEc45eE1081394cCD8A0052904",
+      "block": 11565416,
+      "txHash": "0x3e50addadf182b27e3a4586450af1ed007eee873105be994a7b23f4ba1cba8d4"
     },
     "provingVault": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0x940e4D678a1581560b5C59701aF283beD9F9BFFc",
+      "block": 11565424,
+      "txHash": "0x90065f52e7306fd6b1acfde352172c98fd319d21c899f1972693499ffb7c937d"
     },
     "trustgraphsFactory": {
-      "address": null,
-      "block": null,
-      "txHash": null
+      "address": "0xd14aF10B0546A247d68E01AE5ef3b73C6e116E35",
+      "block": 11565430,
+      "txHash": "0x607feb7f84c4eafe1b7146f516ed1adeb62e3c5681e0876d3edd84a1d62e159e"
     }
   },
   "programs": {
     "trustGraph": {
       "sp1Version": "6.3.1",
-      "elfSha256": null,
-      "vkey": null
+      "elfSha256": "0x1ad727e35139b7db669430052a376b6850352c2fc5792a0f6815c7da21b7059d",
+      "vkey": "0x003c8e19b8e12c260e5450a068c61460180b5cf93f03dc1214187a9ad3bdde5e"
     }
   },
   "instances": []

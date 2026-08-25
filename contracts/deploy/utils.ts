@@ -111,6 +111,23 @@ export const readJsonKeyIfFileExists = <T = any>(
 }
 
 /**
+ * Strip credentials out of a command line before it is printed.
+ *
+ * Private keys are already safe here by construction: they are passed as the literal string
+ * `"$FUNDED_KEY"` for the shell to expand, so what gets echoed is the variable name. Endpoint
+ * URLs are not, because they are interpolated, and a provider URL usually carries an API key in
+ * its path. That put a working credential into every deploy log, transcript and screenshot,
+ * which is a slow leak rather than a loud one. Keep the host so the line still says which
+ * provider and which network, and drop everything after it.
+ */
+export const redactSecrets = (line: string): string =>
+  line.replace(
+    /(https?:\/\/[^/\s"']+)([^\s"']*)/g,
+    (_match, origin: string, rest: string) =>
+      rest ? `${origin}/<redacted>` : origin
+  )
+
+/**
  * Executes a command and returns a promise that resolves when the command
  * completes (with the stdout) or rejects with the status code if the command
  * fails. Stdout and stderr are both logged to the console if log is true.
@@ -141,7 +158,7 @@ export const execFull = ({
     const args = cmd.slice(1)
 
     if (log === 'cmd' || log === 'all') {
-      console.log(chalk.gray(`$ ${cmd.join(' ')}`))
+      console.log(chalk.gray(`$ ${redactSecrets(cmd.join(' '))}`))
     }
 
     const childProcess = spawn(command, args, {
