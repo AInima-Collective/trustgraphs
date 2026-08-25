@@ -57,6 +57,21 @@ there: `instances` is empty, so no network was ever created against it.
 Your `.env` now holds the correct vkey, so whatever produced the wrong one is already fixed. The
 on-chain artifact is the only thing left over.
 
+**How it happened, because the fix follows from it.** `task demo:deploy` derives the guest vkeys
+from the local checkout and exports them, which is correct for a demo: a local stack must pin the
+guests it can actually prove against. It then ran a bare `pnpm deploy:contracts`, and that
+command's `--stage` and `--chain` default to `$DEPLOY_STAGE` and `$DEPLOY_TARGET` out of `.env`.
+With `.env` still release-shaped, the demo deployed the five-contract *Sepolia* plan to real
+Sepolia, signed by the real deployer, pinning a laptop's vkey. `demo:preflight` gave no warning
+because it probes `http://127.0.0.1:8545` while the deploy read `.env` — the check and the action
+were looking at different chains.
+
+Fixed in `f4c486d`: the demo now passes `--stage development --chain local --rpc-url` explicitly,
+so `.env` cannot redirect it, and `development` plus a public chain is refused outright.
+`preflight` also confirms the chain it probed is really 31337 and says so before anything is
+signed. Two independent guards now stand between a demo and a public chain, and a third
+(`8879915`) between any local vkey and a Sepolia deploy.
+
 **What is live right now, all verified against the chain a few minutes ago:**
 
 | contract | address | state |
