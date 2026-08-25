@@ -12,6 +12,20 @@ M5, and M6 have their repository implementation but still need the public-host/b
 service evidence described below. M4 has not started because the first network must remain a
 browser transaction.
 
+**Scope correction, 2026-08-25:** limiting the public testnet to the base trust-graph program was
+an oversight, not a product constraint. The continuation now deploys every factory-backed program
+the hosted operator can serve: weighted trust graphs, composition, and contributions, including
+the governed weighted/composition wrappers. Their release identities were already in `v0.0.5`.
+Hypercerts remains excluded because the hosted operator explicitly refuses it; Nostr remains a
+separately parameterized pilot because a generic deploy cannot invent its community roster and
+immutable witness archives.
+
+The continuation landed the complete factory-backed expansion at blocks 11,567,209–11,567,231:
+weighted verifier/factory/governed wrapper `0xf195…6ee2` / `0x59a5…7133` / `0x182C…732D`,
+composition verifier/factory/governed wrapper `0xd6d9…3707` / `0x2f5E…c696` / `0x5654…0337`,
+and contributions verifier/factory `0x099F…9e12` / `0xa93F…933e`. The registry admin grants are
+still pending; the base factories correctly hold neither registrar nor operator role yet.
+
 **Execution record, 2026-08-25:** the additive continuation deployed signer verifier
 `0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63`, governed factory
 `0xFd0ee86105bF67C5c74653b8268c74120C485b6b`, and signer-sync deployer
@@ -26,9 +40,10 @@ returned and served the exact expected raw CID
 `bafkreihn2e6333b6fme3vpdb7udr5bhwynraq4w4bpu3rhpjhtif3mebyi`.
 An optimized Sepolia Next build against the live manifest also passed with local smoke endpoints;
 a clean Playwright browser saw the persistent testnet banner and the standard governed creation
-path, with weighted, composition, and contributions entry points absent. The development config
-links were restored after that probe; the generated Sepolia artifact was deliberately not retained
-with localhost URLs. A later outage drill forced the primary RPC to an unreachable loopback port:
+path, with weighted, composition, and contributions entry points absent under the earlier narrow
+manifest. That observation is historical and is superseded by the scope correction above. The
+development config links were restored after that probe; the generated Sepolia artifact was
+deliberately not retained with localhost URLs. A later outage drill forced the primary RPC to an unreachable loopback port:
 the production indexer preflight still reached chain 11,155,111 through its fallback, while a clean
 browser observed proxy transport 0 return 502 and Wagmi continue through transport 1 at 200. A
 PostgreSQL 17.10 custom-format backup then passed its SHA-256 check and restored 451 application
@@ -79,9 +94,9 @@ here. Its M0 inputs are in hand except the ones listed in the operator ledger be
 **Sibling:** [GOAL.md](GOAL.md) is the operator packaging program and is still open at its
 M6. Nothing here touches it. M5 of this program consumes its release, which as of today is
 **`v0.0.5`**, published 2026-08-25. Pin it **by image digest** rather than by tag, and verify
-the guest identities embedded in it against both vkeys in the manifest before the first real
-root. A mutable tag is not a pin, and the release that matters here is the one whose guests
-match what the verifiers were built against.
+the guest identities embedded in it against every hosted-program identity in the manifest
+before the first real root. A mutable tag is not a pin, and the release that matters here is
+the one whose guests match what the verifiers were built against.
 
 ---
 
@@ -99,7 +114,7 @@ tree today, not inferred:
 | `packages/frontend/scripts/generate-config.ts` | Reads the release manifest and writes `config.sepolia.json` |
 | `scripts/link-deployment-config.mjs` | Links `config.sepolia.json` and `config/networks.sepolia.json` |
 | `packages/frontend/lib/wagmi.ts` | Sepolia chain behind the `/api/rpc/11155111` proxy |
-| `.env` | Already carries `PONDER_RPC_URL_11155111`, `PONDER_DATABASE_SCHEMA=trustgraph_sepolia_v1`, `PONDER_VIEWS_SCHEMA`, and both released vkeys |
+| `.env` | Carries `PONDER_RPC_URL_11155111`, the production schema names, and the released vkeys consumed by the Sepolia deployment |
 | `config/networks.sepolia.json` | Exists as `[]`, the outage fallback for the runtime catalog |
 | `packages/frontend/lib/blocks.ts` | No Sepolia entry, but falls through to `?? 12`, which is correct |
 
@@ -335,11 +350,13 @@ Additive. Nothing already deployed is redeployed, re-wired or re-granted.
       mistake waiting to happen a second time.
 - [x] Point `generate-config.ts:81` at the manifest slot and fail closed on a `planned`
       manifest.
-- [x] Confirm the weighted, compose and contributions entry points stay hidden. The
-      generator already falls back to empty for all three, so this is a browser
-      verification, not a change. Prove it, because the create page will have real visitors.
-- [x] Update `release-manifest.test.ts`'s "Sepolia plan is trust-graph only" case, which
-      pins the five-step shape.
+- [x] Deploy the weighted, composition, and contributions families and record their complete
+      transaction receipts in the public manifest.
+- [ ] Grant each new base factory `REGISTRAR_ROLE` (and never `OPERATOR_ROLE`), then confirm the
+      weighted/composition creation entries are visible and a contribution round can be started
+      under a parent network.
+- [x] Update `release-manifest.test.ts` to pin the complete factory-backed hosted surface rather
+      than the obsolete trust-graph-only shape.
 - [x] Extend `scripts/sepolia-postdeploy-check.sh` with the new invariants: the governed
       factory's `FACTORY`, `SAFE_SINGLETON` and `SAFE_FACTORY` match the manifest, and its
       `SIGNER_SYNC_PROGRAM_VKEY` matches the released signer vkey.
@@ -409,7 +426,8 @@ with no placeholder URLs anywhere in the bundle.
       the real cause.
 - [x] Operator profile for Sepolia: release manifest pointing at the tracked file, RPC kept
       private, the separate submitter key, finalized confirmation policy, Succinct network
-      backend, persistent journal path, alert webhook.
+      backend, and persistent journal path. The first Railway soak deliberately has no alert
+      webhook or dedicated monitor.
 - [x] Apply the budget the predecessor program decided: global 15 USD per day, per instance
       2, signer 1 and 5, curated instances set to the created network only, paid enabled
       against the deployed vault, and `cadence.subsidy_min_blocks` lowered from 216,000 to
@@ -449,10 +467,11 @@ week and have the alerts, not a person, be what notices anything.
 
 ## What this program does not do
 
-The weighted, compose and contributions programs stay hidden on Sepolia. Their factories are
-not deployed, their config keys fall back to empty, and their entry points explain
-themselves as unavailable rather than failing. Confirming that is an M2 item; changing it is
-not in scope.
+It does not pretend unsupported programs are generic factories. Hypercerts has a guest and a
+manual deployment path, but the hosted operator still rejects that workload. Nostr workspace has
+an operator path, but every instance needs a real community identity, roster, params hash, and
+immutable witness-manifest selection. Both stay explicit follow-on milestones; neither is replaced
+with fixture identities merely to make the Sepolia contract count larger.
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://trustgraphs.example/deployments/schema.json",
+  "$id": "https://trustgraphs.xyz/deployments/schema.json",
   "title": "Trustgraphs public release manifest",
   "type": "object",
   "additionalProperties": false,
@@ -59,7 +59,15 @@
         "governedTrustgraphsFactory",
         "signerSyncModuleDeployer",
         "safeSingleton",
-        "safeProxyFactory"
+        "safeProxyFactory",
+        "weightedVerifier",
+        "weightedTrustgraphsFactory",
+        "governedWeightedTrustgraphsFactory",
+        "compositionVerifier",
+        "trustComposeFactory",
+        "governedTrustComposeFactory",
+        "contributionsVerifier",
+        "contributionsFactory"
       ],
       "properties": {
         "schemaRegistrar": { "$ref": "#/$defs/deployment" },
@@ -71,13 +79,29 @@
         "governedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
         "signerSyncModuleDeployer": { "$ref": "#/$defs/deployment" },
         "safeSingleton": { "$ref": "#/$defs/deployment" },
-        "safeProxyFactory": { "$ref": "#/$defs/deployment" }
+        "safeProxyFactory": { "$ref": "#/$defs/deployment" },
+        "weightedVerifier": { "$ref": "#/$defs/deployment" },
+        "weightedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "governedWeightedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "compositionVerifier": { "$ref": "#/$defs/deployment" },
+        "trustComposeFactory": { "$ref": "#/$defs/deployment" },
+        "governedTrustComposeFactory": { "$ref": "#/$defs/deployment" },
+        "contributionsVerifier": { "$ref": "#/$defs/deployment" },
+        "contributionsFactory": { "$ref": "#/$defs/deployment" }
       }
     },
     "programs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["trustGraph", "signer"],
+      "required": [
+        "trustGraph",
+        "weighted",
+        "composition",
+        "signer",
+        "contributions",
+        "hypercerts",
+        "nostrWorkspace"
+      ],
       "properties": {
         "trustGraph": {
           "type": "object",
@@ -98,6 +122,21 @@
             "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
             "vkey": { "$ref": "#/$defs/nullableBytes32" }
           }
+        },
+        "weighted": {
+          "$ref": "#/$defs/program"
+        },
+        "composition": {
+          "$ref": "#/$defs/program"
+        },
+        "contributions": {
+          "$ref": "#/$defs/program"
+        },
+        "hypercerts": {
+          "$ref": "#/$defs/program"
+        },
+        "nostrWorkspace": {
+          "$ref": "#/$defs/program"
         }
       }
     },
@@ -151,6 +190,16 @@
           "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }]
         },
         "txHash": { "$ref": "#/$defs/nullableBytes32" }
+      }
+    },
+    "program": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sp1Version", "elfSha256", "vkey"],
+      "properties": {
+        "sp1Version": { "const": "6.3.1" },
+        "elfSha256": { "$ref": "#/$defs/nullableBytes32" },
+        "vkey": { "$ref": "#/$defs/nullableBytes32" }
       }
     }
   }

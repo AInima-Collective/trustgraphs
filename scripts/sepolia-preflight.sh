@@ -23,8 +23,10 @@ fi
 RELEASE_TAG=v0.0.5
 RELEASE_COMMIT=f64a4c7c9b5e552e2392894a2e0d6f6c40973549
 
-# Measured from a full run against a Sepolia fork, not estimated. Update if the plan changes.
-GAS_TOTAL=19942589
+# The expansion adds weighted, composition and contributions factory families. Their latest local
+# receipts total 39,406,718 gas with registry grants enabled; Sepolia disables those grants, but
+# budget 50m anyway so a base-fee move cannot strand a continuation between families.
+GAS_TOTAL=50000000
 
 # A key that was exposed and must never be funded or used again.
 BURNED_KEY_ADDRESS=0x3ed16f90e8ea54d9a1bae67ab2d6bdc177eadeec
@@ -69,7 +71,8 @@ if [ -f guest-manifest.json ]; then
   for pair in "trust-graph:SP1_PROGRAM_VKEY" \
               "trust-graph-weighted:SP1_WEIGHTED_PROGRAM_VKEY" \
               "trust-compose:SP1_COMPOSITION_PROGRAM_VKEY" \
-              "signer-sync:SP1_SIGNER_PROGRAM_VKEY"; do
+              "signer-sync:SP1_SIGNER_PROGRAM_VKEY" \
+              "contributions:CONTRIBUTIONS_PROGRAM_VKEY"; do
     prog=${pair%%:*}; var=${pair##*:}
     want=$(jq -r --arg p "$prog" '.programs[] | select(.program==$p) | .vkey' guest-manifest.json)
     eval "have=\${$var:-unset}"
@@ -88,25 +91,36 @@ fi
 echo "=== 3. scratch artifacts cannot steer the continuation ==="
 # The continuation ignores all five core artifacts and preserves those addresses from the tracked
 # manifest. Matching originals are useful deployment evidence, so do not demand their deletion.
-# Additive outputs are different: their presence could be a fork rehearsal or a partial prior run,
-# and must be investigated before a transaction is sent.
-for file in .docker/zk_verifier_signer_deploy.json .docker/governed_factory_deploy.json; do
-  [ ! -f "$file" ] && ok "$file is absent" \
-    || bad "$file exists; determine whether it is live or a rehearsal, then remove or resume it"
-done
+# Every scratch artifact either has to agree with a recorded live address or be absent. An artifact
+# for a still-null family could be a fork rehearsal or a partial prior run; guessing which would
+# let local JSON steer a public continuation.
 for item in \
   ".docker/eas_deploy.json:schema_registrar:schemaRegistrar" \
   ".docker/zk_verifier_deploy.json:zk_verifier:rootVerifier" \
   ".docker/instance_registry_deploy.json:instance_registry:instanceRegistry" \
   ".docker/proving_vault_deploy.json:proving_vault:provingVault" \
-  ".docker/factory_deploy.json:factory:trustgraphsFactory"; do
+  ".docker/factory_deploy.json:factory:trustgraphsFactory" \
+  ".docker/zk_verifier_signer_deploy.json:zk_verifier:signerVerifier" \
+  ".docker/governed_factory_deploy.json:governed_factory:governedTrustgraphsFactory" \
+  ".docker/zk_verifier_weighted_deploy.json:zk_verifier:weightedVerifier" \
+  ".docker/weighted_factory_deploy.json:weighted_factory:weightedTrustgraphsFactory" \
+  ".docker/governed_weighted_factory_deploy.json:governed_weighted_factory:governedWeightedTrustgraphsFactory" \
+  ".docker/zk_verifier_composition_deploy.json:zk_verifier:compositionVerifier" \
+  ".docker/trust_compose_factory_deploy.json:trust_compose_factory:trustComposeFactory" \
+  ".docker/governed_compose_factory_deploy.json:governed_compose_factory:governedTrustComposeFactory" \
+  ".docker/contributions_factory_deploy.json:zk_verifier:contributionsVerifier" \
+  ".docker/contributions_factory_deploy.json:contributions_factory:contributionsFactory"; do
   file=${item%%:*}; rest=${item#*:}; field=${rest%%:*}; key=${rest##*:}
   [ -f "$file" ] || { note "$file absent (the manifest remains authoritative)"; continue; }
   have=$(jq -r --arg field "$field" '.[$field] // empty' "$file")
   want=$(jq -r --arg key "$key" '.contracts[$key].address // empty' deployments/sepolia.json)
-  [ "$(echo "$have" | tr 'A-Z' 'a-z')" = "$(echo "$want" | tr 'A-Z' 'a-z')" ] \
-    && ok "$file agrees with manifest.contracts.$key" \
-    || bad "$file disagrees with manifest.contracts.$key (the continuation will ignore it)"
+  if [ -z "$want" ]; then
+    bad "$file exists while manifest.contracts.$key is null; determine whether it is live or a rehearsal"
+  elif [ "$(echo "$have" | tr 'A-Z' 'a-z')" = "$(echo "$want" | tr 'A-Z' 'a-z')" ]; then
+    ok "$file agrees with manifest.contracts.$key"
+  else
+    bad "$file disagrees with manifest.contracts.$key (the continuation will ignore it)"
+  fi
 done
 
 echo "=== 4. .env.sepolia points at the chain we mean ==="

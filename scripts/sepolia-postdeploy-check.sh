@@ -34,6 +34,7 @@ note() { echo "        $1"; }
 same() { [ "$(echo "$1" | tr 'A-Z' 'a-z')" = "$(echo "$2" | tr 'A-Z' 'a-z')" ]; }
 
 call() { cast call "$1" "$2" $R "$U" 2>/dev/null | head -1; }
+numeric() { call "$1" "$2" | sed 's/\[.*//' | tr -d ' '; }
 
 addr() { jq -r --arg k "$1" '.contracts[$k].address // empty' "$MANIFEST"; }
 ext()  { jq -r --arg k "$1" '.external[$k] // empty' "$MANIFEST"; }
@@ -48,6 +49,14 @@ GOVERNED_FACTORY=$(addr governedTrustgraphsFactory)
 SIGNER_DEPLOYER=$(addr signerSyncModuleDeployer)
 SAFE_SINGLETON=$(addr safeSingleton)
 SAFE_FACTORY=$(addr safeProxyFactory)
+WEIGHTED_VERIFIER=$(addr weightedVerifier)
+WEIGHTED_FACTORY=$(addr weightedTrustgraphsFactory)
+GOVERNED_WEIGHTED_FACTORY=$(addr governedWeightedTrustgraphsFactory)
+COMPOSITION_VERIFIER=$(addr compositionVerifier)
+COMPOSITION_FACTORY=$(addr trustComposeFactory)
+GOVERNED_COMPOSITION_FACTORY=$(addr governedTrustComposeFactory)
+CONTRIBUTIONS_VERIFIER=$(addr contributionsVerifier)
+CONTRIBUTIONS_FACTORY=$(addr contributionsFactory)
 ADMIN="${INSTANCE_REGISTRY_ADMIN:-}"
 DEPLOYER=$(cast wallet address --private-key "${FUNDED_KEY:-}" 2>/dev/null || echo unknown)
 
@@ -97,6 +106,86 @@ GSPVK=$(call "$GOVERNED_FACTORY" "SIGNER_SYNC_PROGRAM_VKEY()(bytes32)")
 same "$GSPVK" "${SP1_SIGNER_PROGRAM_VKEY:-}" && ok "governed factory pins the released signer vkey" \
   || bad "governed factory signer vkey is $GSPVK, expected ${SP1_SIGNER_PROGRAM_VKEY:-unset}"
 
+echo "=== every factory-backed hosted program is deployed and correctly bound ==="
+if [ -z "$WEIGHTED_VERIFIER" ] || [ -z "$WEIGHTED_FACTORY" ] || [ -z "$GOVERNED_WEIGHTED_FACTORY" ]; then
+  bad "weighted deployment family is incomplete"
+else
+  W_VKEY=$(call "$WEIGHTED_VERIFIER" "programVKey()(bytes32)")
+  same "$W_VKEY" "${SP1_WEIGHTED_PROGRAM_VKEY:-}" && ok "weighted verifier pins its released vkey" \
+    || bad "weighted verifier vkey is $W_VKEY, expected ${SP1_WEIGHTED_PROGRAM_VKEY:-unset}"
+  same "$(call "$WEIGHTED_VERIFIER" "gateway()(address)")" "$(ext sp1Gateway)" \
+    && ok "weighted verifier delegates to the canonical SP1 gateway" \
+    || bad "weighted verifier gateway is wrong"
+  for pair in "VERIFIER()(address):$WEIGHTED_VERIFIER" "INSTANCE_REGISTRY()(address):$REGISTRY" \
+              "EAS()(address):$(ext eas)" "SCHEMA_REGISTRAR()(address):$REGISTRAR" \
+              "VAULT()(address):$VAULT"; do
+    sig=${pair%%:*}; want=${pair##*:}; got=$(call "$WEIGHTED_FACTORY" "$sig")
+    same "$got" "$want" && ok "weighted factory ${sig%%(*} is $want" \
+      || bad "weighted factory ${sig%%(*} is $got, expected $want"
+  done
+  same "$(call "$GOVERNED_WEIGHTED_FACTORY" "FACTORY()(address)")" "$WEIGHTED_FACTORY" \
+    && ok "governed weighted wrapper points at the weighted factory" \
+    || bad "governed weighted wrapper points at the wrong factory"
+  W_FLOOR=$(numeric "$WEIGHTED_FACTORY" "EPOCH_FLOOR()(uint64)")
+  [ "$W_FLOOR" = "${FACTORY_EPOCH_FLOOR:-}" ] && ok "weighted factory EPOCH_FLOOR is $W_FLOOR" \
+    || bad "weighted factory EPOCH_FLOOR is $W_FLOOR, expected ${FACTORY_EPOCH_FLOOR:-unset}"
+  W_DELAY=$(numeric "$WEIGHTED_FACTORY" "PRIOR_ACTIVATION_DELAY()(uint48)")
+  [ "$W_DELAY" = "${WEIGHTED_PRIOR_ACTIVATION_DELAY:-86400}" ] && ok "weighted prior delay is $W_DELAY seconds" \
+    || bad "weighted prior delay is $W_DELAY, expected ${WEIGHTED_PRIOR_ACTIVATION_DELAY:-86400}"
+fi
+
+if [ -z "$COMPOSITION_VERIFIER" ] || [ -z "$COMPOSITION_FACTORY" ] || [ -z "$GOVERNED_COMPOSITION_FACTORY" ]; then
+  bad "composition deployment family is incomplete"
+else
+  C_VKEY=$(call "$COMPOSITION_VERIFIER" "programVKey()(bytes32)")
+  same "$C_VKEY" "${SP1_COMPOSITION_PROGRAM_VKEY:-}" && ok "composition verifier pins its released vkey" \
+    || bad "composition verifier vkey is $C_VKEY, expected ${SP1_COMPOSITION_PROGRAM_VKEY:-unset}"
+  same "$(call "$COMPOSITION_VERIFIER" "gateway()(address)")" "$(ext sp1Gateway)" \
+    && ok "composition verifier delegates to the canonical SP1 gateway" \
+    || bad "composition verifier gateway is wrong"
+  for pair in "VERIFIER()(address):$COMPOSITION_VERIFIER" "INSTANCE_REGISTRY()(address):$REGISTRY" \
+              "VAULT()(address):$VAULT"; do
+    sig=${pair%%:*}; want=${pair##*:}; got=$(call "$COMPOSITION_FACTORY" "$sig")
+    same "$got" "$want" && ok "composition factory ${sig%%(*} is $want" \
+      || bad "composition factory ${sig%%(*} is $got, expected $want"
+  done
+  same "$(call "$GOVERNED_COMPOSITION_FACTORY" "FACTORY()(address)")" "$COMPOSITION_FACTORY" \
+    && ok "governed composition wrapper points at the composition factory" \
+    || bad "governed composition wrapper points at the wrong factory"
+  same "$(call "$COMPOSITION_FACTORY" "PROGRAM_VKEY()(bytes32)")" "${SP1_COMPOSITION_PROGRAM_VKEY:-}" \
+    && ok "composition factory pins its released vkey" \
+    || bad "composition factory PROGRAM_VKEY is wrong"
+  C_FLOOR=$(numeric "$COMPOSITION_FACTORY" "EPOCH_FLOOR()(uint64)")
+  [ "$C_FLOOR" = "${FACTORY_EPOCH_FLOOR:-}" ] && ok "composition factory EPOCH_FLOOR is $C_FLOOR" \
+    || bad "composition factory EPOCH_FLOOR is $C_FLOOR, expected ${FACTORY_EPOCH_FLOOR:-unset}"
+  C_DELAY=$(numeric "$COMPOSITION_FACTORY" "POLICY_ACTIVATION_DELAY()(uint48)")
+  [ "$C_DELAY" = "${COMPOSE_POLICY_ACTIVATION_DELAY:-86400}" ] && ok "composition policy delay is $C_DELAY seconds" \
+    || bad "composition policy delay is $C_DELAY, expected ${COMPOSE_POLICY_ACTIVATION_DELAY:-86400}"
+fi
+
+if [ -z "$CONTRIBUTIONS_VERIFIER" ] || [ -z "$CONTRIBUTIONS_FACTORY" ]; then
+  bad "contributions deployment family is incomplete"
+else
+  K_VKEY=$(call "$CONTRIBUTIONS_VERIFIER" "programVKey()(bytes32)")
+  same "$K_VKEY" "${CONTRIBUTIONS_PROGRAM_VKEY:-}" && ok "contributions verifier pins its released vkey" \
+    || bad "contributions verifier vkey is $K_VKEY, expected ${CONTRIBUTIONS_PROGRAM_VKEY:-unset}"
+  same "$(call "$CONTRIBUTIONS_VERIFIER" "gateway()(address)")" "$(ext sp1Gateway)" \
+    && ok "contributions verifier delegates to the canonical SP1 gateway" \
+    || bad "contributions verifier gateway is wrong"
+  for pair in "VERIFIER()(address):$CONTRIBUTIONS_VERIFIER" "INSTANCE_REGISTRY()(address):$REGISTRY" \
+              "EAS()(address):$(ext eas)" "SCHEMA_REGISTRAR()(address):$REGISTRAR"; do
+    sig=${pair%%:*}; want=${pair##*:}; got=$(call "$CONTRIBUTIONS_FACTORY" "$sig")
+    same "$got" "$want" && ok "contributions factory ${sig%%(*} is $want" \
+      || bad "contributions factory ${sig%%(*} is $got, expected $want"
+  done
+  same "$(call "$CONTRIBUTIONS_FACTORY" "PROGRAM_VKEY()(bytes32)")" "${CONTRIBUTIONS_PROGRAM_VKEY:-}" \
+    && ok "contributions factory pins its released vkey" \
+    || bad "contributions factory PROGRAM_VKEY is wrong"
+  K_FLOOR=$(numeric "$CONTRIBUTIONS_FACTORY" "EPOCH_FLOOR()(uint64)")
+  [ "$K_FLOOR" = "${FACTORY_EPOCH_FLOOR:-}" ] && ok "contributions factory EPOCH_FLOOR is $K_FLOOR" \
+    || bad "contributions factory EPOCH_FLOOR is $K_FLOOR, expected ${FACTORY_EPOCH_FLOOR:-unset}"
+fi
+
 echo "=== the factory points at the contracts we just deployed ==="
 for pair in "VERIFIER()(address):$VERIFIER" "VAULT()(address):$VAULT" \
             "INSTANCE_REGISTRY()(address):$REGISTRY" "EAS()(address):$(ext eas)" \
@@ -128,6 +217,17 @@ OP=$(cast call "$REGISTRY" "hasRole(bytes32,address)(bool)" "$OPERATOR_ROLE" "$F
 # append its own, so this must stay false for as long as the registry exists.
 [ "$OP" = "false" ] && ok "factory does not hold OPERATOR_ROLE (it must not)" \
   || bad "factory HOLDS OPERATOR_ROLE: it could rewrite records it did not create"
+for pair in "weighted:$WEIGHTED_FACTORY" "composition:$COMPOSITION_FACTORY" \
+            "contributions:$CONTRIBUTIONS_FACTORY"; do
+  label=${pair%%:*}; factory=${pair##*:}
+  [ -n "$factory" ] || continue
+  HAS=$(cast call "$REGISTRY" "hasRole(bytes32,address)(bool)" "$REGISTRAR_ROLE" "$factory" $R "$U" 2>/dev/null)
+  [ "$HAS" = "true" ] && ok "$label factory holds REGISTRAR_ROLE" \
+    || bad "$label factory does NOT hold REGISTRAR_ROLE: creation will revert"
+  OP=$(cast call "$REGISTRY" "hasRole(bytes32,address)(bool)" "$OPERATOR_ROLE" "$factory" $R "$U" 2>/dev/null)
+  [ "$OP" = "false" ] && ok "$label factory does not hold OPERATOR_ROLE" \
+    || bad "$label factory HOLDS OPERATOR_ROLE and can rewrite registry rows"
+done
 RA=$(cast call "$REGISTRY" "hasRole(bytes32,address)(bool)" "$DEFAULT_ADMIN_ROLE" "$ADMIN" $R "$U" 2>/dev/null)
 [ "$RA" = "true" ] && ok "registry admin is the admin EOA" || bad "admin EOA does not hold registry DEFAULT_ADMIN_ROLE"
 

@@ -11,6 +11,24 @@ export type DeploymentRecord = {
   txHash: Hex | null
 }
 
+export const RELEASE_PROGRAMS = [
+  ['trustGraph', 'trust-graph'],
+  ['weighted', 'trust-graph-weighted'],
+  ['composition', 'trust-compose'],
+  ['signer', 'signer-sync'],
+  ['contributions', 'contributions'],
+  ['hypercerts', 'hypercerts'],
+  ['nostrWorkspace', 'nostr-workspace'],
+] as const
+
+export type ReleaseProgramKey = (typeof RELEASE_PROGRAMS)[number][0]
+
+export type ReleaseProgramIdentity = {
+  sp1Version: string
+  elfSha256: Hex | null
+  vkey: Hex | null
+}
+
 export type ReleaseManifest = {
   $schema: string
   version: 1
@@ -38,19 +56,16 @@ export type ReleaseManifest = {
     signerSyncModuleDeployer: DeploymentRecord
     safeSingleton: DeploymentRecord
     safeProxyFactory: DeploymentRecord
+    weightedVerifier: DeploymentRecord
+    weightedTrustgraphsFactory: DeploymentRecord
+    governedWeightedTrustgraphsFactory: DeploymentRecord
+    compositionVerifier: DeploymentRecord
+    trustComposeFactory: DeploymentRecord
+    governedTrustComposeFactory: DeploymentRecord
+    contributionsVerifier: DeploymentRecord
+    contributionsFactory: DeploymentRecord
   }
-  programs: {
-    trustGraph: {
-      sp1Version: string
-      elfSha256: Hex | null
-      vkey: Hex | null
-    }
-    signer: {
-      sp1Version: string
-      elfSha256: Hex | null
-      vkey: Hex | null
-    }
-  }
+  programs: Record<ReleaseProgramKey, ReleaseProgramIdentity>
   instances: Array<{
     instanceId: Hex
     name: string
@@ -243,6 +258,7 @@ export const validateReleaseManifest = (
   assertAddress(value.external.usdc, 'manifest.external.usdc', true)
 
   assertObject(value.contracts, 'manifest.contracts')
+  const manifestContracts = value.contracts
   assertKeys(
     value.contracts,
     [
@@ -256,6 +272,14 @@ export const validateReleaseManifest = (
       'signerSyncModuleDeployer',
       'safeSingleton',
       'safeProxyFactory',
+      'weightedVerifier',
+      'weightedTrustgraphsFactory',
+      'governedWeightedTrustgraphsFactory',
+      'compositionVerifier',
+      'trustComposeFactory',
+      'governedTrustComposeFactory',
+      'contributionsVerifier',
+      'contributionsFactory',
     ],
     'manifest.contracts'
   )
@@ -332,12 +356,58 @@ export const validateReleaseManifest = (
     )
   }
 
-  assertObject(value.programs, 'manifest.programs')
-  assertKeys(value.programs, ['trustGraph', 'signer'], 'manifest.programs')
-  for (const [key, label] of [
-    ['trustGraph', 'trust-graph'],
-    ['signer', 'signer'],
+  // These program families are additive to the already-live trust-graph deployment. A finalized
+  // Sepolia manifest may legitimately carry an all-null family while its continuation has not
+  // landed yet, but it may never advertise half a family as usable. Every non-null record is
+  // complete (address + block + transaction) even though the family itself is optional.
+  for (const [family, keys] of [
+    [
+      'weighted',
+      [
+        'weightedVerifier',
+        'weightedTrustgraphsFactory',
+        'governedWeightedTrustgraphsFactory',
+      ],
+    ],
+    [
+      'composition',
+      [
+        'compositionVerifier',
+        'trustComposeFactory',
+        'governedTrustComposeFactory',
+      ],
+    ],
+    ['contributions', ['contributionsVerifier', 'contributionsFactory']],
   ] as const) {
+    const records = keys.map((key) => {
+      const record = manifestContracts[key]
+      assertObject(record, `manifest.contracts.${key}`)
+      return record
+    })
+    for (let index = 0; index < records.length; index += 1) {
+      const key = keys[index]!
+      const record = records[index]!
+      validateRecord(
+        record,
+        `manifest.contracts.${key}`,
+        record.address !== null
+      )
+    }
+    const present = records.filter((record) => record.address !== null).length
+    if (present !== 0 && present !== records.length) {
+      throw new Error(
+        `manifest ${family} deployment must record all of ${keys.join(', ')} together`
+      )
+    }
+  }
+
+  assertObject(value.programs, 'manifest.programs')
+  assertKeys(
+    value.programs,
+    RELEASE_PROGRAMS.map(([key]) => key),
+    'manifest.programs'
+  )
+  for (const [key, label] of RELEASE_PROGRAMS) {
     const program = value.programs[key]
     assertObject(program, `manifest.programs.${key}`)
     assertKeys(
@@ -456,8 +526,12 @@ export const readBroadcastDeployments = (
         visit(file)
         continue
       }
+      // A single Forge script can be invoked more than once in one release. Sepolia does exactly
+      // that for the weighted and composition verifier adapters, and each invocation replaces
+      // `run-latest.json`. The timestamped receipts are therefore release evidence: reading only
+      // the latest file loses the first verifier's block/tx and prevents finalization.
       if (
-        entry.name !== 'run-latest.json' ||
+        !/^run-(?:latest|\d+)\.json$/.test(entry.name) ||
         !file.includes(`${path.sep}${chainId}${path.sep}`)
       ) {
         continue
@@ -517,6 +591,10 @@ export const deploymentRecord = (
 export const releaseManifestToDeploymentSummary = (
   manifest: ReleaseManifest
 ) => {
+  const deployed = <T extends Record<string, unknown>>(
+    address: Hex | null,
+    value: T
+  ): T | undefined => (address ? value : undefined)
   const governedFactory =
     manifest.contracts.governedTrustgraphsFactory.address &&
     manifest.contracts.signerSyncModuleDeployer.address
@@ -533,6 +611,44 @@ export const releaseManifestToDeploymentSummary = (
         program_vkey: manifest.programs.signer.vkey,
       }
     : undefined
+  const weightedFactory = deployed(
+    manifest.contracts.weightedTrustgraphsFactory.address,
+    {
+      weighted_factory: manifest.contracts.weightedTrustgraphsFactory.address,
+      zk_verifier: manifest.contracts.weightedVerifier.address,
+      program_vkey: manifest.programs.weighted.vkey,
+    }
+  )
+  const governedWeightedFactory = deployed(
+    manifest.contracts.governedWeightedTrustgraphsFactory.address,
+    {
+      governed_weighted_factory:
+        manifest.contracts.governedWeightedTrustgraphsFactory.address,
+    }
+  )
+  const trustComposeFactory = deployed(
+    manifest.contracts.trustComposeFactory.address,
+    {
+      trust_compose_factory: manifest.contracts.trustComposeFactory.address,
+      zk_verifier: manifest.contracts.compositionVerifier.address,
+      program_vkey: manifest.programs.composition.vkey,
+    }
+  )
+  const governedComposeFactory = deployed(
+    manifest.contracts.governedTrustComposeFactory.address,
+    {
+      governed_compose_factory:
+        manifest.contracts.governedTrustComposeFactory.address,
+    }
+  )
+  const contributionsFactory = deployed(
+    manifest.contracts.contributionsFactory.address,
+    {
+      contributions_factory: manifest.contracts.contributionsFactory.address,
+      zk_verifier: manifest.contracts.contributionsVerifier.address,
+      program_vkey: manifest.programs.contributions.vkey,
+    }
+  )
 
   return {
     eas: {
@@ -547,6 +663,11 @@ export const releaseManifestToDeploymentSummary = (
     provingVault: manifest.contracts.provingVault.address,
     governedFactory,
     signerVerifier,
+    weightedFactory,
+    governedWeightedFactory,
+    trustComposeFactory,
+    governedComposeFactory,
+    contributionsFactory,
     networks: manifest.instances.map((instance) => ({
       id: instance.instanceId,
       name: instance.name,

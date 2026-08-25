@@ -4,7 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { resolveDeploymentProfile } from './deployment-profile.mjs'
+import {
+  manifestDeploymentSummary,
+  resolveDeploymentProfile,
+} from './deployment-profile.mjs'
 
 test('stage and target resolve independently', () => {
   const local = resolveDeploymentProfile({}, '/repo')
@@ -45,4 +48,31 @@ test('Sepolia consumer refuses a planned manifest', () => {
     /finalized/
   )
   fs.rmSync(repo, { recursive: true })
+})
+
+test('deployment summary exposes every deployed factory family', () => {
+  const address = '0x1111111111111111111111111111111111111111'
+  const summary = manifestDeploymentSummary({
+    external: { eas: address, schemaRegistry: address },
+    contracts: {
+      schemaRegistrar: { address },
+      instanceRegistry: { address },
+      provingVault: { address },
+      trustgraphsFactory: { address },
+      weightedTrustgraphsFactory: { address },
+      governedWeightedTrustgraphsFactory: { address },
+      trustComposeFactory: { address },
+      governedTrustComposeFactory: { address },
+      contributionsFactory: { address },
+    },
+    instances: [],
+  })
+  assert.equal(summary.weightedFactory.weighted_factory, address)
+  assert.equal(
+    summary.governedWeightedFactory.governed_weighted_factory,
+    address
+  )
+  assert.equal(summary.trustComposeFactory.trust_compose_factory, address)
+  assert.equal(summary.governedComposeFactory.governed_compose_factory, address)
+  assert.equal(summary.contributionsFactory.contributions_factory, address)
 })

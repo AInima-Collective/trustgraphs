@@ -44,16 +44,26 @@ export function loadFinalizedSepoliaManifest(repoDir) {
   ) {
     throw new Error('Sepolia manifest deploymentCommit is missing or invalid')
   }
-  for (const [label, value] of [
-    ['trust-graph ELF digest', manifest.programs?.trustGraph?.elfSha256],
-    ['trust-graph vkey', manifest.programs?.trustGraph?.vkey],
+  for (const [key, label] of [
+    ['trustGraph', 'trust-graph'],
+    ['weighted', 'trust-graph-weighted'],
+    ['composition', 'trust-compose'],
+    ['signer', 'signer-sync'],
+    ['contributions', 'contributions'],
+    ['hypercerts', 'hypercerts'],
+    ['nostrWorkspace', 'nostr-workspace'],
   ]) {
-    if (
-      typeof value !== 'string' ||
-      !BYTES32.test(value) ||
-      /^0x0{64}$/i.test(value)
-    ) {
-      throw new Error(`Sepolia ${label} is missing or invalid`)
+    for (const [field, value] of [
+      ['ELF digest', manifest.programs?.[key]?.elfSha256],
+      ['vkey', manifest.programs?.[key]?.vkey],
+    ]) {
+      if (
+        typeof value !== 'string' ||
+        !BYTES32.test(value) ||
+        /^0x0{64}$/i.test(value)
+      ) {
+        throw new Error(`Sepolia ${label} ${field} is missing or invalid`)
+      }
     }
   }
   nonzeroAddress(manifest.external?.sp1Gateway, 'Sepolia SP1 gateway')
@@ -69,10 +79,48 @@ export function loadFinalizedSepoliaManifest(repoDir) {
       throw new Error(`Sepolia ${name} deployment block is missing or invalid`)
     }
   }
+  for (const [family, names] of [
+    [
+      'weighted',
+      [
+        'weightedVerifier',
+        'weightedTrustgraphsFactory',
+        'governedWeightedTrustgraphsFactory',
+      ],
+    ],
+    [
+      'composition',
+      [
+        'compositionVerifier',
+        'trustComposeFactory',
+        'governedTrustComposeFactory',
+      ],
+    ],
+    ['contributions', ['contributionsVerifier', 'contributionsFactory']],
+  ]) {
+    const records = names.map((name) => manifest.contracts?.[name])
+    const deployed = records.filter((record) => record?.address).length
+    if (deployed !== 0 && deployed !== records.length) {
+      throw new Error(`Sepolia ${family} deployment is incomplete`)
+    }
+    if (deployed === records.length) {
+      for (let index = 0; index < records.length; index += 1) {
+        const record = records[index]
+        const name = names[index]
+        nonzeroAddress(record.address, `Sepolia ${name}`)
+        if (!Number.isSafeInteger(record.block) || record.block < 0) {
+          throw new Error(
+            `Sepolia ${name} deployment block is missing or invalid`
+          )
+        }
+      }
+    }
+  }
   return { file, manifest }
 }
 
 export function manifestDeploymentSummary(manifest) {
+  const optional = (address, value) => (address ? value : {})
   return {
     eas: {
       eas: manifest.external.eas,
@@ -84,6 +132,36 @@ export function manifestDeploymentSummary(manifest) {
       instance_registry: manifest.contracts.instanceRegistry.address,
     },
     provingVault: manifest.contracts.provingVault.address,
+    ...optional(manifest.contracts.weightedTrustgraphsFactory?.address, {
+      weightedFactory: {
+        weighted_factory: manifest.contracts.weightedTrustgraphsFactory.address,
+      },
+    }),
+    ...optional(
+      manifest.contracts.governedWeightedTrustgraphsFactory?.address,
+      {
+        governedWeightedFactory: {
+          governed_weighted_factory:
+            manifest.contracts.governedWeightedTrustgraphsFactory.address,
+        },
+      }
+    ),
+    ...optional(manifest.contracts.trustComposeFactory?.address, {
+      trustComposeFactory: {
+        trust_compose_factory: manifest.contracts.trustComposeFactory.address,
+      },
+    }),
+    ...optional(manifest.contracts.governedTrustComposeFactory?.address, {
+      governedComposeFactory: {
+        governed_compose_factory:
+          manifest.contracts.governedTrustComposeFactory.address,
+      },
+    }),
+    ...optional(manifest.contracts.contributionsFactory?.address, {
+      contributionsFactory: {
+        contributions_factory: manifest.contracts.contributionsFactory.address,
+      },
+    }),
     networks: manifest.instances ?? [],
   }
 }

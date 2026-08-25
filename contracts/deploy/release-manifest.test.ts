@@ -15,9 +15,14 @@ import {
 
 const MANIFEST = 'deployments/sepolia.json'
 const ADDRESS = '0x1111111111111111111111111111111111111111'
+const ADDRESS_2 = '0x2222222222222222222222222222222222222222'
 const TX_HASH = `0x${'22'.repeat(32)}` as `0x${string}`
+const TX_HASH_2 = `0x${'44'.repeat(32)}` as `0x${string}`
 const BYTES32 = `0x${'33'.repeat(32)}` as `0x${string}`
 const SIGNER_BYTES32 = `0x${'55'.repeat(32)}` as `0x${string}`
+const WEIGHTED_BYTES32 = `0x${'77'.repeat(32)}` as `0x${string}`
+const COMPOSITION_BYTES32 = `0x${'88'.repeat(32)}` as `0x${string}`
+const CONTRIBUTIONS_BYTES32 = `0x${'99'.repeat(32)}` as `0x${string}`
 
 test('tracked Sepolia manifest is sanitized, chain-bound, and complete for its status', () => {
   const manifest = loadReleaseManifest(MANIFEST)
@@ -94,6 +99,30 @@ test('manifest validator rejects half-recorded governed deployments', () => {
   )
 })
 
+test('manifest validator never exposes a partially deployed program family', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+  for (const key of [
+    'weightedVerifier',
+    'weightedTrustgraphsFactory',
+    'governedWeightedTrustgraphsFactory',
+  ]) {
+    manifest.contracts[key] = {
+      address: null,
+      block: null,
+      txHash: null,
+    }
+  }
+  manifest.contracts.weightedVerifier = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  assert.throws(
+    () => validateReleaseManifest(manifest),
+    /weighted deployment must record all/
+  )
+})
+
 test('stage and target resolve independently', () => {
   assert.deepEqual(
     resolveDeploymentSelection({ stage: 'production', target: 'sepolia' }),
@@ -115,7 +144,7 @@ test('stage and target resolve independently', () => {
   )
 })
 
-test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
+test('Sepolia plan deploys every factory-backed hosted program and reuses canonical EAS', () => {
   const previous = { ...process.env }
   // `validateDeployment` refuses to plan a public-chain deploy whose vkeys are not the ones a
   // release published, so the fixture stands in for `guest-manifest.json` here.
@@ -139,6 +168,21 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
           vkey: SIGNER_BYTES32,
           elf_sha256: '66'.repeat(32),
         },
+        {
+          program: 'trust-graph-weighted',
+          vkey: WEIGHTED_BYTES32,
+          elf_sha256: '77'.repeat(32),
+        },
+        {
+          program: 'trust-compose',
+          vkey: COMPOSITION_BYTES32,
+          elf_sha256: '88'.repeat(32),
+        },
+        {
+          program: 'contributions',
+          vkey: CONTRIBUTIONS_BYTES32,
+          elf_sha256: '99'.repeat(32),
+        },
       ],
     })
   )
@@ -146,6 +190,9 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
     SP1_VERIFIER_GATEWAY: ADDRESS,
     SP1_PROGRAM_VKEY: BYTES32,
     SP1_SIGNER_PROGRAM_VKEY: SIGNER_BYTES32,
+    SP1_WEIGHTED_PROGRAM_VKEY: WEIGHTED_BYTES32,
+    SP1_COMPOSITION_PROGRAM_VKEY: COMPOSITION_BYTES32,
+    CONTRIBUTIONS_PROGRAM_VKEY: CONTRIBUTIONS_BYTES32,
     INSTANCE_REGISTRY_ADMIN: ADDRESS,
     FACTORY_EPOCH_FLOOR: '7200',
     DEPLOYMENT_COMMIT: 'aa'.repeat(20),
@@ -172,12 +219,46 @@ test('Sepolia plan is trust-graph only and reuses canonical EAS', () => {
         'Trustgraphs Factory',
         'Signer ZK Verifier',
         'Governed Factory',
+        'Weighted ZK Verifier',
+        'Weighted Factory',
+        'Governed Weighted Factory',
+        'Composition ZK Verifier',
+        'Trust Compose Factory',
+        'Governed Compose Factory',
+        'Contributions Factory',
       ]
     )
-    assert.doesNotMatch(
-      JSON.stringify(env.deployContracts),
-      /compose|weighted/i
+    const continuation = {
+      options: { continueExisting: true },
+    } as never
+    const contracts = loadReleaseManifest(MANIFEST).contracts
+    assert.deepEqual(
+      env.deployContracts.map((step) => step.skip?.(continuation) ?? false),
+      [
+        contracts.schemaRegistrar.address !== null,
+        contracts.rootVerifier.address !== null,
+        contracts.instanceRegistry.address !== null,
+        contracts.provingVault.address !== null,
+        contracts.trustgraphsFactory.address !== null,
+        contracts.signerVerifier.address !== null,
+        contracts.governedTrustgraphsFactory.address !== null &&
+          contracts.signerSyncModuleDeployer.address !== null,
+        contracts.weightedVerifier.address !== null,
+        contracts.weightedTrustgraphsFactory.address !== null,
+        contracts.governedWeightedTrustgraphsFactory.address !== null,
+        contracts.compositionVerifier.address !== null,
+        contracts.trustComposeFactory.address !== null,
+        contracts.governedTrustComposeFactory.address !== null,
+        contracts.contributionsFactory.address !== null,
+      ]
     )
+    assert.equal(env.deployContracts[9]?.sig, 'run(string,string)')
+    assert.equal(env.deployContracts[12]?.sig, 'run(string,string)')
+    assert.equal(
+      env.deployContracts[13]?.sig,
+      'run(string,string,string,string,string,uint64)'
+    )
+    assert.doesNotMatch(JSON.stringify(env.deployContracts), /hypercert|nostr/i)
   } finally {
     process.env = previous
   }
@@ -204,6 +285,21 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
           vkey: SIGNER_BYTES32,
           elf_sha256: '66'.repeat(32),
         },
+        {
+          program: 'trust-graph-weighted',
+          vkey: WEIGHTED_BYTES32,
+          elf_sha256: '77'.repeat(32),
+        },
+        {
+          program: 'trust-compose',
+          vkey: COMPOSITION_BYTES32,
+          elf_sha256: '88'.repeat(32),
+        },
+        {
+          program: 'contributions',
+          vkey: CONTRIBUTIONS_BYTES32,
+          elf_sha256: '99'.repeat(32),
+        },
       ],
     })
   )
@@ -211,6 +307,9 @@ test('Sepolia planning refuses vkeys that are not in the release', () => {
     SP1_VERIFIER_GATEWAY: ADDRESS,
     SP1_PROGRAM_VKEY: BYTES32,
     SP1_SIGNER_PROGRAM_VKEY: SIGNER_BYTES32,
+    SP1_WEIGHTED_PROGRAM_VKEY: WEIGHTED_BYTES32,
+    SP1_COMPOSITION_PROGRAM_VKEY: COMPOSITION_BYTES32,
+    CONTRIBUTIONS_PROGRAM_VKEY: CONTRIBUTIONS_BYTES32,
     INSTANCE_REGISTRY_ADMIN: ADDRESS,
     FACTORY_EPOCH_FLOOR: '7200',
     DEPLOYMENT_COMMIT: 'aa'.repeat(20),
@@ -267,12 +366,34 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
       ],
     })
   )
+  // DeployZkVerifier is invoked once per program. Forge overwrites `run-latest.json`, so the
+  // earlier timestamped receipt must also be read or the first program cannot be finalized.
+  fs.writeFileSync(
+    path.join(runDir, 'run-123456789.json'),
+    JSON.stringify({
+      transactions: [{ hash: TX_HASH_2, contractAddress: ADDRESS_2 }],
+      receipts: [
+        {
+          transactionHash: TX_HASH_2,
+          blockNumber: '0x7a',
+          contractAddress: ADDRESS_2,
+        },
+      ],
+    })
+  )
 
   assert.deepEqual(
     readBroadcastDeployments(root, 11155111).get(ADDRESS.toLowerCase()),
     {
       block: 123,
       txHash: TX_HASH,
+    }
+  )
+  assert.deepEqual(
+    readBroadcastDeployments(root, 11155111).get(ADDRESS_2.toLowerCase()),
+    {
+      block: 122,
+      txHash: TX_HASH_2,
     }
   )
 
@@ -293,6 +414,34 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
         block: 123,
         txHash: TX_HASH,
       },
+      weightedVerifier: { address: ADDRESS, block: 123, txHash: TX_HASH },
+      weightedTrustgraphsFactory: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
+      governedWeightedTrustgraphsFactory: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
+      compositionVerifier: { address: ADDRESS, block: 123, txHash: TX_HASH },
+      trustComposeFactory: { address: ADDRESS, block: 123, txHash: TX_HASH },
+      governedTrustComposeFactory: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
+      contributionsVerifier: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
+      contributionsFactory: {
+        address: ADDRESS,
+        block: 123,
+        txHash: TX_HASH,
+      },
     },
   })
   assert.equal(summary.factory.instance_registry, ADDRESS)
@@ -303,4 +452,15 @@ test('broadcast receipts populate the consumer adapter without RPC access', () =
     summary.signerVerifier?.program_vkey,
     planned.programs.signer.vkey
   )
+  assert.equal(summary.weightedFactory?.weighted_factory, ADDRESS)
+  assert.equal(
+    summary.governedWeightedFactory?.governed_weighted_factory,
+    ADDRESS
+  )
+  assert.equal(summary.trustComposeFactory?.trust_compose_factory, ADDRESS)
+  assert.equal(
+    summary.governedComposeFactory?.governed_compose_factory,
+    ADDRESS
+  )
+  assert.equal(summary.contributionsFactory?.contributions_factory, ADDRESS)
 })

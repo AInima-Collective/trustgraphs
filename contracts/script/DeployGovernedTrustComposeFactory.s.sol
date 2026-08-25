@@ -7,6 +7,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 
 import {Common} from "script/Common.s.sol";
 import {GovernedTrustComposeFactory} from "src/factory/GovernedTrustComposeFactory.sol";
+import {GovernedTrustgraphsFactory} from "src/factory/GovernedTrustgraphsFactory.sol";
 import {TrustComposeFactory} from "src/factory/TrustComposeFactory.sol";
 import {IZkVerifier} from "interfaces/merkle/IZkVerifier.sol";
 import {
@@ -29,14 +30,47 @@ contract DeployGovernedTrustComposeFactory is Common {
 
     function run(string calldata trustComposeFactoryAddr) public returns (address governedComposeFactory) {
         string memory governedJson = vm.readFile(governed_input_path);
-        address safeSingleton = governedJson.readAddress(".safe_singleton");
-        address safeFactory = governedJson.readAddress(".safe_factory");
-        address authorityDeployer = governedJson.readAddress(".authority_deployer");
-        address signerSyncDeployer = governedJson.readAddress(".signer_sync_deployer");
-        address signerSyncVerifier = governedJson.readAddress(".signer_sync_verifier");
-        bytes32 signerSyncProgramVKey = governedJson.readBytes32(".signer_sync_program_vkey");
-        address govModuleDeployer = governedJson.readAddress(".gov_module_deployer");
+        return _deploy(
+            trustComposeFactoryAddr,
+            governedJson.readAddress(".safe_singleton"),
+            governedJson.readAddress(".safe_factory"),
+            governedJson.readAddress(".authority_deployer"),
+            governedJson.readAddress(".signer_sync_deployer"),
+            governedJson.readAddress(".signer_sync_verifier"),
+            governedJson.readBytes32(".signer_sync_program_vkey"),
+            governedJson.readAddress(".gov_module_deployer")
+        );
+    }
 
+    /// @notice Public-chain continuation entry point. The live governed trust-graph factory is
+    ///         the authority for the shared Safe/helper addresses; local scratch JSON is not.
+    function run(string calldata trustComposeFactoryAddr, string calldata governedFactoryAddr)
+        public
+        returns (address governedComposeFactory)
+    {
+        GovernedTrustgraphsFactory source = GovernedTrustgraphsFactory(vm.parseAddress(governedFactoryAddr));
+        return _deploy(
+            trustComposeFactoryAddr,
+            source.SAFE_SINGLETON(),
+            address(source.SAFE_FACTORY()),
+            address(source.AUTHORITY_DEPLOYER()),
+            address(source.SIGNER_SYNC_DEPLOYER()),
+            address(source.SIGNER_SYNC_VERIFIER()),
+            source.SIGNER_SYNC_PROGRAM_VKEY(),
+            address(source.GOV_MODULE_DEPLOYER())
+        );
+    }
+
+    function _deploy(
+        string calldata trustComposeFactoryAddr,
+        address safeSingleton,
+        address safeFactory,
+        address authorityDeployer,
+        address signerSyncDeployer,
+        address signerSyncVerifier,
+        bytes32 signerSyncProgramVKey,
+        address govModuleDeployer
+    ) internal returns (address governedComposeFactory) {
         _startBroadcast();
         GovernedTrustComposeFactory governed = new GovernedTrustComposeFactory(
             TrustComposeFactory(vm.parseAddress(trustComposeFactoryAddr)),

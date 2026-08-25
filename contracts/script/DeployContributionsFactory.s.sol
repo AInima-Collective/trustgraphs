@@ -9,6 +9,7 @@ import {IEAS} from "@ethereum-attestation-service/eas-contracts/contracts/IEAS.s
 
 import {SchemaRegistrar} from "src/eas/SchemaRegistrar.sol";
 import {ContributionsFactory} from "src/factory/ContributionsFactory.sol";
+import {TrustgraphsFactory} from "src/factory/TrustgraphsFactory.sol";
 import {ContributionsParamsControllerDeployer} from "src/factory/ContributionsInstanceDeployers.sol";
 import {MerkleSnapshotDeployer, MerkleFundDistributorDeployer} from "src/factory/InstanceDeployers.sol";
 import {SP1JournalVerifier} from "src/merkle/SP1JournalVerifier.sol";
@@ -70,6 +71,46 @@ contract DeployContributionsFactory is Common {
         address snapshotDeployer = vm.parseAddress(snapshotDeployerAddr);
         address distributorDeployer = vm.parseAddress(distributorDeployerAddr);
 
+        address gateway =
+            bytes(sp1GatewayAddr).length == 0 ? vm.envAddress("SP1_VERIFIER_GATEWAY") : vm.parseAddress(sp1GatewayAddr);
+        return
+            _deploy(eas, schemaRegistrar, gateway, instanceRegistry, snapshotDeployer, distributorDeployer, epochFloor);
+    }
+
+    /// @notice Public-chain continuation entry point. Reuses the child deployers exposed by the
+    ///         already-deployed base factory, avoiding `.docker/factory_deploy.json` (which is
+    ///         intentionally untrusted across local and public-chain runs).
+    function run(
+        string calldata easAddr,
+        string calldata schemaRegistrarAddr,
+        string calldata sp1GatewayAddr,
+        string calldata instanceRegistryAddr,
+        string calldata trustgraphsFactoryAddr,
+        uint64 epochFloor
+    ) public returns (address factory) {
+        TrustgraphsFactory base = TrustgraphsFactory(vm.parseAddress(trustgraphsFactoryAddr));
+        address gateway =
+            bytes(sp1GatewayAddr).length == 0 ? vm.envAddress("SP1_VERIFIER_GATEWAY") : vm.parseAddress(sp1GatewayAddr);
+        return _deploy(
+            vm.parseAddress(easAddr),
+            vm.parseAddress(schemaRegistrarAddr),
+            gateway,
+            vm.parseAddress(instanceRegistryAddr),
+            address(base.SNAPSHOT_DEPLOYER()),
+            address(base.DISTRIBUTOR_DEPLOYER()),
+            epochFloor
+        );
+    }
+
+    function _deploy(
+        address eas,
+        address schemaRegistrar,
+        address gateway,
+        address instanceRegistry,
+        address snapshotDeployer,
+        address distributorDeployer,
+        uint64 epochFloor
+    ) internal returns (address factory) {
         require(eas != address(0), "DeployContributionsFactory: eas is zero");
         require(schemaRegistrar != address(0), "DeployContributionsFactory: schemaRegistrar is zero");
         require(instanceRegistry != address(0), "DeployContributionsFactory: instanceRegistry is zero");
@@ -83,8 +124,6 @@ contract DeployContributionsFactory is Common {
             "DeployContributionsFactory: epochFloor too low for a non-dev chain (>= ~1 day of blocks)"
         );
 
-        address gateway =
-            bytes(sp1GatewayAddr).length == 0 ? vm.envAddress("SP1_VERIFIER_GATEWAY") : vm.parseAddress(sp1GatewayAddr);
         require(gateway != address(0), "DeployContributionsFactory: gateway is zero");
 
         bytes32 vkey = vm.envOr("CONTRIBUTIONS_PROGRAM_VKEY", bytes32(0));

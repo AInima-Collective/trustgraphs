@@ -83,6 +83,11 @@ Ruled by the operator on 2026-08-23, at the top of this program:
   `budget.global_usd_per_day` drops 250 to **15** and `per_instance` 25 to **2**, capping the
   worst case near $450/month instead of $7,500. Full reasoning and the cost table are in
   [JAKE_HARTNELL_TODO.md](JAKE_HARTNELL_TODO.md#part-25-the-economics-decided).
+- **D6 — Supersede the trust-graph-only testnet scope.** On 2026-08-25 we identified the
+  narrower scope as an oversight. Sepolia should expose every factory-backed program the hosted
+  operator can serve: trust graph, weighted trust graph, composition, contributions, and signer
+  sync. Hypercerts remains blocked by the operator's explicit scope fence, while Nostr remains a
+  separately parameterized pilot requiring real community and witness-archive inputs.
 
 ### What D2 costs, specifically
 
@@ -101,9 +106,9 @@ that answers it. Three facts, each verified:
    (`contracts/script/DeployGovernedTrustgraphsFactory.s.sol:24-48`). So D2 also pulls
    `SP1_SIGNER_PROGRAM_VKEY` and a second `DeployZkVerifier` run into the release.
 
-D2 does **not** pull in weighted or compose. Those factories stay undeployed and their
-wizard entry points stay hidden, per the audit closure's compose gate and
-`research/operations/sepolia.md`. First public release is trust-graph only, governed.
+The paragraph that previously kept weighted, compose, and contributions undeployed is superseded
+by D6. The release identities already exist; the additive continuation deploys their verifier and
+factory families without changing the five original contract addresses.
 
 ---
 
@@ -148,12 +153,11 @@ The largest lane, and the one D2 created.
       keep the self-deploying behaviour for local only.
 - [ ] Point `generate-config.ts` at the manifest instead of the empty-string literal, and
       make it fail closed on a `planned` manifest.
-- [ ] Confirm the weighted and compose entry points stay hidden. `generate-config.ts:112-133`
-      already falls back to an empty address for both, since the manifest carries no such
-      key, so this should be a verification in the browser rather than a change. Prove it,
-      because D2 puts real visitors on the create page.
-- [ ] Update `contracts/deploy/release-manifest.test.ts`'s "Sepolia plan is trust-graph only
-      and reuses canonical EAS" case, which currently pins the five-step shape.
+- [x] Deploy the weighted, composition, and contributions factory families added by D6.
+- [ ] Complete their registry-admin grants and verify the creation routes rather than asserting
+      that they remain hidden.
+- [x] Update `contracts/deploy/release-manifest.test.ts` to pin the expanded additive plan and
+      canonical EAS reuse.
 
 **Exit:** a dry-run prints the full governed plan; a fork rehearsal creates a network
 through the wizard's exact code path and the resulting Safe is a canonical-singleton proxy.

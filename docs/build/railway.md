@@ -14,9 +14,11 @@ gateway. The operator journal is different: losing `/data/journal.jsonl` can rep
 the `operator-state` volume is mandatory.
 
 Railway bills actual consumption rather than a reserved machine size. Each application service has
-one replica capped at Railway's current minimum of 0.5 vCPU and 512 MB RAM. Git watch paths prevent
-unrelated monorepo changes from rebuilding these services. Start at those limits and raise only the
-service that shows a measured OOM or sustained CPU cap. Replica limits bound the worst case; they do
+one replica capped at 0.5 vCPU, with 512 MB of RAM for the operator and 1 GB for the indexer. Git
+watch paths prevent unrelated monorepo changes from rebuilding these services. Start at those limits
+and raise only the service that shows a measured OOM or sustained CPU cap. The indexer already has:
+Ponder's start path runs three Node processes at once and Node sizes its heap from the host's RAM
+rather than the container limit, so 512 MB left it killed before it logged anything. Replica limits bound the worst case; they do
 not reduce the cost of memory or CPU the process actually consumes.
 
 Railway's current project-level configuration is
@@ -47,6 +49,15 @@ operator image digest. It copies the public Sepolia policy and release manifest 
 to bind-mount. It does not rebuild the operator or any guest. Railway builds from the configured
 GitHub branch, so this Dockerfile must exist in the pushed `sepolia` commit; a local-only file is
 not present in Railway's code archive.
+
+The `v0.0.5` guest release already contains the trust-graph, weighted, composition, signer-sync,
+contributions, and Nostr workspace programs. Expanding the Sepolia contract surface therefore does
+not change their vkeys. After the weighted, composition, and contributions continuation is
+finalized in `deployments/sepolia.json`, restart both application services once: the indexer reads
+factory sources from that manifest at startup, and the operator checks each discovered instance's
+verifier against the matching guest embedded in the image. Hypercerts remains outside the hosted
+operator; Nostr needs a separately reviewed instance manifest rather than a generic factory
+deployment.
 
 The indexer Dockerfile relies on its lockfile dependency layer rather than a BuildKit cache mount.
 Railway requires cache-mount IDs to contain the Railway service ID, which does not belong in this
@@ -102,6 +113,11 @@ private `DATABASE_URL` through Railway's service reference. This first testnet i
 no alert webhook or dedicated monitor; inspect the operator and indexer logs during the initial
 soak.
 
+The operator is intentionally fail-closed while `deployments/sepolia.json` has zero instances:
+`curated.single_release_instance = true` requires exactly one browser-created showcase network.
+Deploying more factory types does not fabricate that network. Bring up the indexer first, create
+and record the showcase network through the frontend, then deploy or restart the operator.
+
 ## 4. Review and apply the Railway plan
 
 Use the current Railway CLI from the linked production environment:
@@ -126,8 +142,9 @@ journal.
 
 ## 5. Enforce the post-apply cost controls
 
-The IaC caps `indexer` and `operator` at one replica with 0.5 vCPU and 512 MB RAM. Verify those
-values in each service's **Settings -> Deploy -> Replica Limits** after the first apply.
+The IaC caps both services at one replica and 0.5 vCPU, the `operator` at 512 MB of RAM and the
+`indexer` at 1 GB. Verify those values in each service's **Settings -> Deploy -> Replica Limits**
+after the first apply.
 
 Railway's managed-Postgres IaC helper supports placement but does not expose its CPU/RAM limit.
 Set the `Postgres` service to the same minimum 0.5 vCPU and 512 MB in the dashboard, then rerun
