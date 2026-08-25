@@ -1,7 +1,7 @@
 - ~~Tag release~~ **done: v0.0.4**
 - ~~Generate vkeys and elf digest~~ **done: published in the release**
 - ~~Admin EOA~~ **done: `0x45CbC00e0618880bfB2dBDdEAed1ef1411dd5eeE`**
-- Deployer key: **address given, `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`** — still needs Sepolia ETH
+- ~~Fresh deployer key (with Sepolia ETH)~~ **done: `0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30`, 0.5 ETH**
 - Sepolia RPC endpoint
 - NETWORK_PRIVATE_KEY (needs a topup of $PROVE)
 - SUBMITTER_PRIVATE_KEY (doesn't need funds)
@@ -156,7 +156,7 @@ works and makes the handoff step a no-op. Tell me which.
 
 **Send me:** the admin address.
 
-### 1.3 The deployer key — GIVEN, still needs funding
+### 1.3 The deployer key — DONE
 
 ```
 0x57cFdD9115da5DfB1C5Fc1E8Fe622C030E67bD30
@@ -170,10 +170,24 @@ The private key goes in `FUNDED_KEY` in your environment. `.env` is gitignored a
 `.env.example` is tracked, so that path is safe — worth stating in a repo that has leaked a
 key before.
 
-**Still open: fund it.** Balance is currently 0. I will give you a measured number after the
-fork rehearsal; until then budget generously, since the run deploys a schema registrar, two
-verifiers, a registry, a vault, a factory, a governed factory, the registry timelock, and the
-seeded instance.
+**Funded: 0.5 ETH, from a faucet.** The admin key's balance is unchanged, so it stayed cold.
+
+The budget, measured rather than guessed. I summed the gas from prior broadcast receipts of
+the same scripts: **54.1M gas** for the full set (EAS schema registrar 3.9M, ZK verifier 0.2M,
+registry 0.9M, vault 4.6M, factory 14.8M, governed factory 13.0M, timelocks 8.7M, seeded
+instance 8.0M). I plan against **62M**, because Sepolia drops two local-only costs (we register
+schemas against canonical EAS instead of deploying it, and use the real feed and USDC instead
+of mocks) but adds the signer verifier and the platform registry timelock.
+
+Sepolia base fee was **1.05 gwei** when this was written, stable and with negligible tips, so
+0.5 ETH is roughly eight full runs. **The number to watch is 8 gwei:** above that, 0.5 stops
+covering a single complete run. Sepolia spikes harder than mainnet because no real fee market
+disciplines it, so if a rehearsal coincides with a busy period, top up before broadcasting
+rather than during.
+
+Running dry mid-broadcast is the failure worth avoiding: it leaves a half-deployed stack with
+the deployer still holding bootstrap roles and nothing renounced, and the resume logic
+currently trusts local artifacts rather than on-chain state (a known gap, SEPOLIA_GOAL M4).
 
 This key is hot: it signs a long broadcast session and renounces its roles at the end. It
 stays separate from the admin, which is why we generated a new one rather than reusing 1.2.
