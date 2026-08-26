@@ -103,11 +103,13 @@ Railway, not in this repository or the IaC file.
 | `SUBMITTER_PRIVATE_KEY` | Gas-only Sepolia transaction key                             |
 | `NETWORK_PRIVATE_KEY`   | Separate Succinct prover-network key                         |
 
-The indexer's failover pool (`PONDER_RPC_URLS_11155111`) is deliberately NOT a shared variable:
-it is pinned in the IaC to the two independent public endpoints (publicnode + Tenderly), and the
-indexer launcher refuses to start when the pool has no host independent of the metered primary —
-a variable edit once collapsed the pool onto the primary and silently removed all failover
-(2026-08-26).
+The indexer's RPC list (`PONDER_RPC_URLS_11155111`) is deliberately NOT its own shared variable:
+the IaC pins it to `${{shared.RPC_URL_11155111_0}}` (the metered primary, resolved by the
+platform) followed by the two independent public fallbacks (publicnode + Tenderly). The list is
+written alchemy-first so the near-identical `PONDER_RPC_URL_11155111` / `PONDER_RPC_URLS_11155111`
+names cannot be "corrected" into a pool with no independent failover — a variable edit did
+exactly that twice on 2026-08-26, and the indexer launcher now refuses to start when the list has
+no host independent of the primary.
 
 In the Railway dashboard, open **Project Settings → Shared Variables**, select the linked
 environment, and add the five names above. Seal every credential-bearing value, including paid

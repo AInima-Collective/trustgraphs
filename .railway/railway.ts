@@ -121,12 +121,14 @@ export default defineRailway((input) => {
       PONDER_VIEWS_SCHEMA: 'trust-graph',
       PONDER_PORT: '65421',
       PONDER_RPC_URL_11155111: ctx.shared.RPC_URL_11155111_0,
-      // The failover pool is pinned here, not routed through a shared variable: it must stay
-      // independent of the metered primary above, and a variable edit once collapsed it onto the
-      // primary's host (2026-08-26 — the launcher now refuses to start in that state). Both
-      // endpoints are public and keyless, the same pair .env.sepolia records.
+      // The complete ordered RPC list: the metered primary first (as a ${{shared.*}} template the
+      // platform resolves, keeping the paid URL out of this file), then the two independent
+      // public fallbacks. ponder.config prepends the primary and dedupes, so repeating it here is
+      // harmless — but the list reading alchemy-first is what stopped the near-identical
+      // PONDER_RPC_URL / PONDER_RPC_URLS names from being "corrected" into a pool with no
+      // independent failover (2026-08-26, twice; the launcher now refuses to start that way).
       PONDER_RPC_URLS_11155111:
-        'https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co',
+        '${{shared.RPC_URL_11155111_0}},https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co',
       PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111: '10',
       IPFS_GATEWAY: ctx.shared.IPFS_GATEWAY,
       EAS_OFFCHAIN_GATEWAYS: ctx.shared.IPFS_GATEWAY,

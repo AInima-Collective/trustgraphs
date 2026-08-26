@@ -42,9 +42,10 @@ for (const required of [
   "RAILWAY_RUN_UID: '0'",
   "FRONTEND_URL: 'https://trustgraphs.xyz'",
   'ctx.shared.RPC_URL_11155111_0',
-  // The indexer failover pool is pinned to the two independent public endpoints; a pool that
-  // routes back to the metered primary is exactly the regression the launcher fails closed on.
-  "'https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co'",
+  // The indexer RPC list is pinned alchemy-first (as a resolved shared template) with the two
+  // independent public fallbacks; a pool without a host independent of the metered primary is
+  // exactly the regression the launcher fails closed on.
+  "'${{shared.RPC_URL_11155111_0}},https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co'",
   'ctx.shared.IPFS_GATEWAY',
   'ctx.shared.IPFS_PIN_API_KEY',
   'ctx.shared.SUBMITTER_PRIVATE_KEY',
