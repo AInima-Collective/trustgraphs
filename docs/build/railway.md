@@ -98,14 +98,19 @@ Railway, not in this repository or the IaC file.
 | Variable                | Purpose                                                      |
 | ----------------------- | ------------------------------------------------------------ |
 | `RPC_URL_11155111_0`    | Primary private Sepolia RPC used by the indexer and operator |
-| `RPC_URL_11155111_1`    | Independent indexer failover RPC                             |
 | `IPFS_GATEWAY`          | Server-side gateway ending in `/ipfs/`                       |
 | `IPFS_PIN_API_KEY`      | Pinata bearer JWT                                            |
 | `SUBMITTER_PRIVATE_KEY` | Gas-only Sepolia transaction key                             |
 | `NETWORK_PRIVATE_KEY`   | Separate Succinct prover-network key                         |
 
+The indexer's failover pool (`PONDER_RPC_URLS_11155111`) is deliberately NOT a shared variable:
+it is pinned in the IaC to the two independent public endpoints (publicnode + Tenderly), and the
+indexer launcher refuses to start when the pool has no host independent of the metered primary —
+a variable edit once collapsed the pool onto the primary and silently removed all failover
+(2026-08-26).
+
 In the Railway dashboard, open **Project Settings → Shared Variables**, select the linked
-environment, and add the six names above. Seal every credential-bearing value, including paid
+environment, and add the five names above. Seal every credential-bearing value, including paid
 RPC URLs, private keys, and the Pinata token. Do not commit `.env` to make Railway discover it.
 
 The IaC references these variables but does not create or reveal them. Postgres supplies its own

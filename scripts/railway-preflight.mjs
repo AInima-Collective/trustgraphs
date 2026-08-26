@@ -42,7 +42,9 @@ for (const required of [
   "RAILWAY_RUN_UID: '0'",
   "FRONTEND_URL: 'https://trustgraphs.xyz'",
   'ctx.shared.RPC_URL_11155111_0',
-  'ctx.shared.RPC_URL_11155111_1',
+  // The indexer failover pool is pinned to the two independent public endpoints; a pool that
+  // routes back to the metered primary is exactly the regression the launcher fails closed on.
+  "'https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co'",
   'ctx.shared.IPFS_GATEWAY',
   'ctx.shared.IPFS_PIN_API_KEY',
   'ctx.shared.SUBMITTER_PRIVATE_KEY',
@@ -64,7 +66,7 @@ assert.equal(
 )
 assert.ok(
   iac.includes('deploy: { limitOverride: operatorCompute }'),
-  "the operator must use its reviewed 2 GB ceiling; SP1 vkey setup OOM-loops at the platform minimum before the health listener binds"
+  'the operator must use its reviewed 2 GB ceiling; SP1 vkey setup OOM-loops at the platform minimum before the health listener binds'
 )
 assert.ok(
   iac.includes('deploy: { limitOverride: indexerCompute }'),

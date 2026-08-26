@@ -121,7 +121,12 @@ export default defineRailway((input) => {
       PONDER_VIEWS_SCHEMA: 'trust-graph',
       PONDER_PORT: '65421',
       PONDER_RPC_URL_11155111: ctx.shared.RPC_URL_11155111_0,
-      PONDER_RPC_URLS_11155111: ctx.shared.RPC_URL_11155111_1,
+      // The failover pool is pinned here, not routed through a shared variable: it must stay
+      // independent of the metered primary above, and a variable edit once collapsed it onto the
+      // primary's host (2026-08-26 — the launcher now refuses to start in that state). Both
+      // endpoints are public and keyless, the same pair .env.sepolia records.
+      PONDER_RPC_URLS_11155111:
+        'https://ethereum-sepolia-rpc.publicnode.com,https://sepolia.gateway.tenderly.co',
       PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111: '10',
       IPFS_GATEWAY: ctx.shared.IPFS_GATEWAY,
       EAS_OFFCHAIN_GATEWAYS: ctx.shared.IPFS_GATEWAY,

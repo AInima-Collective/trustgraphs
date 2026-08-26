@@ -88,6 +88,24 @@ for (const value of rpcUrls) {
   }
 }
 
+// Fail closed on a pool that repeats the primary. The dedupe above makes that state silent —
+// the indexer runs on a single metered endpoint with no independent failover and a cold
+// backfill rate-limits into a crawl (a staged Railway variable edit shipped exactly this on
+// 2026-08-26). Throwing here fails the deploy healthcheck instead, so the previous synced
+// writer keeps serving while the variables get fixed.
+if (production) {
+  const primaryHost = new URL(primaryRpcUrl).host
+  const hasIndependentFallback = rpcUrls.some(
+    (value) => new URL(value).host !== primaryHost
+  )
+  if (!hasIndependentFallback) {
+    throw new Error(
+      `${fallbackRpcEnv} must include at least one fallback RPC on a different host than the ` +
+        `primary (${primaryHost}); the pool exists to be independent of the metered primary`
+    )
+  }
+}
+
 const expectedChainId = deploymentProfile.chainId
 const startBlock = parseStartBlock(
   process.env[deploymentProfile.startBlockEnv],
