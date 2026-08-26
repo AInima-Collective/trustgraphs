@@ -9,37 +9,28 @@ import { ButtonLink } from './Button'
 import { ThemeToggle } from './ThemeToggle'
 
 /**
- * The nav is a single hairline with things sitting on it. No fill, no
- * elevation, no pill — the rule under it is the only chrome, and it is the
- * same rule that separates every other section on the page.
+ * The nav is drawn with hairlines. No fill, no elevation, no pill — the rules
+ * are the same separators used by every other section on the page.
  *
  * TWO LINKS THAT MUST NOT BE CONFUSED. `Networks` goes to the directory,
- * `Create a network` starts one, and they now sit side by side. The create
- * control used to render "Create a&nbsp;" + "Network", which gave a phone the
- * word "NETWORK" on its own (meaningless next to "NETWORKS") and gave a desktop
- * a hard space that mono tracking stretched into a gap wide enough to read as
- * two separate links. It is one label now, shortened to the verb on small
- * screens: "CREATE" can only be one thing.
- *
- * FITTING 320px. Five things is more than a 320px viewport holds at full size,
- * so below `xs` (410px) the wordmark drops and the mark carries the brand on
- * its own — the home link keeps its accessible name either way. That is the
- * only element here that is decoration rather than a destination.
+ * `Create a network` starts one. On a phone they get their own full-width row:
+ * that leaves the wordmark intact, keeps both destinations available, and
+ * gives another primary destination somewhere honest to go in future. At `md`
+ * the same elements return to the single hairline used on wider screens; the
+ * extra tablet-width runway also survives longer translated labels.
  */
 export const Nav = () => {
   return (
     <nav
       aria-label="Main"
-      className="flex flex-row items-center justify-between border-b border-border pb-3 sm:pb-4 [@media(max-height:480px)]:pb-2"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border md:flex md:flex-row md:pb-4 md:[@media(max-height:480px)]:pb-2"
     >
       <Link
         href="/"
         prefetch={false}
-        // `justify-start` at every width. `min-w-11` buys the 44px tap target
-        // by extending the box to the RIGHT; centring the mark inside it instead
-        // pushed the 24px mark 10px in from the frame, so below 410px the same
-        // mark sat at x=18 in the nav and x=8 in the footer, on one screen, with
-        // the eyebrow and the h1 on the footer's edge.
+        // `justify-start` at every width. The brand owns the flexible mobile
+        // column, while the wallet and theme controls keep their fixed targets.
+        // This is why the wordmark can stay visible even at 320px.
         // The focus treatment is spelled out because leaving it off does not
         // mean "inherit the app's ring", it means Chromium paints its own.
         // The global fallback resolves to `outline-style: auto`, and `auto`
@@ -48,16 +39,16 @@ export const Nav = () => {
         // pixels on the first tab stop of every page: 1px at 1px offset,
         // measured 1.06:1 against the page in light theme, where the other
         // twenty-seven stops carry 2px at 2px offset and measure 18.40:1.
-        className="flex h-11 min-w-11 shrink-0 items-center justify-start gap-2.5 transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink xs:min-w-0"
+        className="order-1 flex h-11 min-w-0 items-center justify-start gap-2.5 transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         aria-label="Trustgraphs, home"
       >
         <BrandMark size="md" className="text-text" />
-        <span className="hidden text-base tracking-tight text-text xs:inline">
+        <span className="truncate text-base tracking-tight text-text">
           Trustgraphs
         </span>
       </Link>
 
-      {/* `h-11` overrides the button's default `h-9`. Every control on this row
+      {/* `h-11` overrides the button's default `h-9`. Every control in the nav
        * is a touch target on a phone, and 36px is under the 44px floor this
        * program is gated on. tailwind-merge resolves the conflict in favour of
        * the class passed here.
@@ -76,12 +67,12 @@ export const Nav = () => {
        * whose whole argument is that it is cheap to read, that is the right way
        * round: nobody arriving at the questions page has asked for the create
        * wizard. */}
-      <div className="flex flex-row items-center gap-1 md:gap-2">
+      <div className="relative order-3 col-span-2 grid grid-cols-2 border-t border-border before:absolute before:inset-y-0 before:left-1/2 before:w-px before:bg-border md:order-2 md:ml-auto md:flex md:gap-2 md:border-t-0 md:before:hidden">
         <ButtonLink
           href="/networks"
           variant="ghost"
           prefetch={false}
-          className="h-11 px-2 md:px-4"
+          className="h-11 w-full px-2 md:w-auto md:px-4"
         >
           Networks
         </ButtonLink>
@@ -90,12 +81,14 @@ export const Nav = () => {
           href="/create"
           variant="ghost"
           prefetch={false}
-          className="h-11 px-2 md:px-4"
+          className="h-11 w-full px-2 md:w-auto md:px-4"
         >
           <span className="sm:hidden">Create</span>
           <span className="hidden sm:inline">Create a network</span>
         </ButtonLink>
+      </div>
 
+      <div className="order-2 flex flex-row items-center gap-1 md:order-3 md:ml-2 md:gap-2">
         <WalletConnectionButton />
 
         <ThemeToggle />

@@ -7,9 +7,10 @@ import { GitHubIcon } from './icons/GitHubIcon'
 import { XIcon } from './icons/XIcon'
 
 /**
- * The footer earns its rule by carrying something: the mark, the colophon, and
- * the outbound links. Previously it was a bare hairline with two icons pinned
- * to the right, which read as an accident.
+ * The footer earns its rule by carrying something: the wordmark and the
+ * outbound links. Previously it also repeated the landing-page tagline, which
+ * forced the links onto a second line on phones without adding navigation or
+ * context.
  *
  * The link row is FAQ · Docs · GitHub · X, per the copy doc. FAQ leads because
  * the questions page is the only place the caveats live, so the footer is the
@@ -23,8 +24,7 @@ import { XIcon } from './icons/XIcon'
 // `min-w-11` is the same trick as `Nav.tsx`: it buys the 44px floor by growing
 // the box to the RIGHT, so the ink stays where it was. Without it, "FAQ" is
 // short enough that `px-2` leaves the target 37px wide below `sm` — a three-
-// letter word was the only thing setting the width. There is 131px of unused
-// room on that row at 320px, so nothing is being squeezed to afford it.
+// letter word was the only thing setting the width.
 const LINK =
   'inline-flex h-11 min-w-11 items-center justify-center transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink'
 
@@ -32,17 +32,13 @@ const ICON_LINK = `${LINK} w-11`
 
 export const Footer = () => {
   return (
-    <footer className="mt-12 flex flex-col gap-1 border-t border-border py-2 text-xs text-text-subtle sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-h-11 items-center gap-2.5">
+    <footer className="mt-12 flex flex-row items-center justify-between gap-1 border-t border-border py-2 text-xs text-text-subtle">
+      <div className="flex min-h-11 shrink-0 items-center gap-2">
         <BrandMark size="xs" className="text-text-subtle" />
-        {/* `trustgraphs` is a generic term rather than a brand, so this
-         * mid-line label stays lowercase. */}
-        <span className="tracking-wider">trustgraphs</span>
-        <span aria-hidden="true">·</span>
-        <span>Trust, made legible</span>
+        <span className="text-base tracking-tight text-text">Trustgraphs</span>
       </div>
 
-      <div className="-ml-2 flex flex-row items-center gap-1 sm:-mr-3.5 sm:ml-0">
+      <div className="flex shrink-0 flex-row items-center sm:-mr-3.5 sm:gap-1">
         {/* No prefetch. The footer is on every page including /faq itself,
          * where the default prefetch made the page fetch 77.5 KB of its own RSC
          * payload after load. A one-line footer link does not need to be warm. */}
