@@ -33,12 +33,14 @@ import {
   getAccountIdentifierErrorMessage,
 } from '@/lib/ens-query'
 import {
+  ETHEREUM_TRANSACTION_GAS_CAP,
+  bufferedEthereumGasLimit,
+} from '@/lib/ethereum-gas'
+import {
   conservativeRefreshEstimate,
   initialPolicyForCreation,
 } from '@/lib/proving-prepay'
 import { priceFeedReadAbi, provingVaultReadAbi } from '@/lib/settings-contracts'
-import {
-} from '@/lib/trust-share'
 import { txToast } from '@/lib/tx'
 
 import {
@@ -177,6 +179,7 @@ export const ReviewStep = ({
     abi: governedTrustgraphsFactoryAbi,
     functionName: createFunction,
     args: createFunctionArgs as any,
+    gas: ETHEREUM_TRANSACTION_GAS_CAP,
     ...(prepay > 0n ? { value: prepay } : {}),
     query: {
       enabled:
@@ -188,6 +191,10 @@ export const ReviewStep = ({
     setFailure(null)
     setCreating(true)
     try {
+      if (!preflightPassed) {
+        setFailure('Wait for the network preflight to pass before creating.')
+        return
+      }
       if (!authorityProfileValid) {
         setFailure(
           'Creation is disabled because the configured governed factory does not expose the sealed authority profile. Redeploy or select the current factory before creating a network.'
@@ -231,7 +238,10 @@ export const ReviewStep = ({
         }
       }
 
-      let gas: bigint | undefined
+      // Sepolia enforces EIP-7825's 2^24 per-transaction gas cap. The capped preflight above
+      // proves the call fits; keep a provider-independent margin without submitting an invalid
+      // gas limit when an RPC has already padded its estimate.
+      let gas = ETHEREUM_TRANSACTION_GAS_CAP
       try {
         const estimate = await publicClient?.estimateContractGas({
           address: GOVERNED_FACTORY_ADDRESS,
@@ -240,9 +250,9 @@ export const ReviewStep = ({
           args: createFunctionArgs as any,
           ...(prepay > 0n ? { value: prepay } : {}),
         })
-        gas = estimate ? (estimate * 125n) / 100n : undefined
+        gas = estimate ? bufferedEthereumGasLimit(estimate) : gas
       } catch {
-        // Fall back to the wallet's own estimate.
+        // The capped preflight already proved that using the protocol maximum is sufficient.
       }
 
       const [receipt] = await txToast({
@@ -251,7 +261,7 @@ export const ReviewStep = ({
           abi: governedTrustgraphsFactoryAbi,
           functionName: createFunction,
           args: createFunctionArgs,
-          ...(gas ? { gas } : {}),
+          gas,
           ...(prepay > 0n ? { value: prepay } : {}),
         } as any,
         successMessage: 'Your network is live!',
@@ -577,7 +587,13 @@ export const ReviewStep = ({
         <Button
           type="button"
           onClick={create}
-          disabled={creating || !!preflightError || !authorityProfileValid}
+          disabled={
+            creating ||
+            preflighting ||
+            !preflightPassed ||
+            !!preflightError ||
+            !authorityProfileValid
+          }
         >
           {creating && <LoaderCircle className="h-4 w-4 animate-spin" />}
           {creating ? 'Creating your network...' : 'Create network'}
