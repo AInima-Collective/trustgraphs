@@ -97,13 +97,13 @@ function HeroGraphFigure() {
           inspector
           cameraControls={false}
           guide={{
-            heading: 'One trustgraph',
+            heading: 'Example Network',
             description:
               'This live example turns community vouches into reputation. It is one trustgraph among many.',
             actions: [
               {
                 href: `/networks/${network.id}`,
-                label: `Open ${network.name}`,
+                label: 'Open Network',
               },
               {
                 href: '#what-is-a-trustgraph',
