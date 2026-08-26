@@ -1392,7 +1392,7 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
     }
 
     #[test]
-    fn tracked_sepolia_profile_refuses_to_subsidize_until_one_instance_is_recorded() {
+    fn tracked_sepolia_profile_subsidizes_exactly_the_recorded_showcase_instance() {
         let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let directory = std::env::temp_dir()
             .join(format!("trustgraphs-operator-sepolia-profile-{}", std::process::id()));
@@ -1404,12 +1404,38 @@ registry = "0x8D08973774F1Da59728e5a0f66453113A3E35A0F"
             .replace("env:RPC_URL", "https://rpc.invalid")
             .replace("env:IPFS_PIN_API", "https://uploads.pinata.cloud/v3/files")
             .replace("env:IPFS_GATEWAY", "https://gateway.invalid/ipfs/")
-            .replace("env:OPERATOR_ALERT_WEBHOOK", "https://alerts.invalid");
+            .replace("env:OPERATOR_ALERT_WEBHOOK", "https://alerts.invalid")
+            .replace("\"/data", &format!("\"{}", directory.display()));
         let config_path = directory.join("operator.sepolia.toml");
         std::fs::write(&config_path, profile).unwrap();
 
-        let error = Config::load(&config_path).unwrap_err().to_string();
-        assert!(error.contains("exactly one tracked release instance, found 0"), "{error}");
+        // The tracked manifest has two honest states, exactly like the release-manifest test on
+        // the deploy side: before the browser-created showcase network is recorded (`instances`
+        // empty) the profile must fail closed, and after it is recorded the profile must fund
+        // exactly that instance. Anything else recorded is a release error, not a config state.
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(repository.join("deployments/sepolia.json")).unwrap(),
+        )
+        .unwrap();
+        let recorded = manifest["instances"].as_array().map_or(0, Vec::len);
+        match recorded {
+            0 => {
+                let error = Config::load(&config_path).unwrap_err().to_string();
+                assert!(
+                    error.contains("exactly one tracked release instance, found 0"),
+                    "{error}"
+                );
+            }
+            1 => {
+                let expected: B256 =
+                    manifest["instances"][0]["instanceId"].as_str().unwrap().parse().unwrap();
+                let cfg = Config::load(&config_path).unwrap();
+                assert_eq!(cfg.curated.instances, vec![expected]);
+            }
+            n => panic!(
+                "the subsidized profile tracks at most one showcase instance, manifest records {n}"
+            ),
+        }
         std::fs::remove_dir_all(directory).unwrap();
     }
 

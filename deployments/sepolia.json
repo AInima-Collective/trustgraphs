@@ -143,5 +143,17 @@
       "vkey": "0x003a7984610aa854a8daa012d2d78846ba663781c8fe3aa74fed99be047b6566"
     }
   },
-  "instances": []
+  "instances": [
+    {
+      "instanceId": "0xf1f7c3a5a5b6fdc529fd33f63faa901ca690ab00ded2383fd0d5ea762ee13c35",
+      "name": "First Trustgraph",
+      "contracts": {
+        "merkleSnapshot": "0x0e13C13D77598542514c6e17D7f8aCF13D2c5093",
+        "easIndexerResolver": "0x3D1CA83AbafB39D26374C9C602a7c228556F8787",
+        "merkleFundDistributor": "0x6Ed34316a523Ca0429269Fe8d81F46bbD1570B6d",
+        "paramsController": "0x70c42113BaE9aFc67775BD8D25268fb5c4281b43"
+      },
+      "schemaUid": "0x80766c9893e4fc006a425f4dfb44b55ac13b4e1a0ee7cfb7864a5b9af4ea03f3"
+    }
+  ]
 }
