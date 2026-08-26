@@ -154,3 +154,5 @@ without regenerated golden vectors in the same PR is a CI failure.
 Many people have worked on trust graphs over the years; the idea is part of a wider
 scenius. We don't claim to be the first or to have any ownership over the term. We are
 grateful to all who came before for the work they've done.
+
+Special thanks to Gitcoin for sponsoring this work.
