@@ -30,7 +30,7 @@ for (const required of [
   "project('trustgraphs-sepolia'",
   "github('AInima-Collective/trustgraphs', { branch: 'main' })",
   "'/.dockerignore'",
-  "postgres('Postgres', { region })",
+  "postgres('Postgres', { region: databaseRegion })",
   "service('indexer'",
   "service('operator'",
   "healthcheck: '/health'",
@@ -63,8 +63,8 @@ assert.equal(
   'every application service must declare a reviewed compute ceiling'
 )
 assert.ok(
-  iac.includes('deploy: { limitOverride: minimumCompute }'),
-  'the operator must stay on the minimum testnet compute ceiling'
+  iac.includes('deploy: { limitOverride: operatorCompute }'),
+  "the operator must use its reviewed 2 GB ceiling; SP1 vkey setup OOM-loops at the platform minimum before the health listener binds"
 )
 assert.ok(
   iac.includes('deploy: { limitOverride: indexerCompute }'),

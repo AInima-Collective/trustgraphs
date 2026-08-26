@@ -51,8 +51,12 @@ export type ReleaseManifest = {
     instanceRegistry: DeploymentRecord
     provingVault: DeploymentRecord
     trustgraphsFactory: DeploymentRecord
+    /** Second factory generation with `EPOCH_FLOOR = 1` (testnet-fast epochs). Optional: absent
+     *  on manifests predating it, and always recorded together with its governed wrapper. */
+    trustgraphsFactoryFast?: DeploymentRecord
     signerVerifier: DeploymentRecord
     governedTrustgraphsFactory: DeploymentRecord
+    governedTrustgraphsFactoryFast?: DeploymentRecord
     signerSyncModuleDeployer: DeploymentRecord
     safeSingleton: DeploymentRecord
     safeProxyFactory: DeploymentRecord
@@ -267,8 +271,10 @@ export const validateReleaseManifest = (
       'instanceRegistry',
       'provingVault',
       'trustgraphsFactory',
+      'trustgraphsFactoryFast',
       'signerVerifier',
       'governedTrustgraphsFactory',
+      'governedTrustgraphsFactoryFast',
       'signerSyncModuleDeployer',
       'safeSingleton',
       'safeProxyFactory',
@@ -353,6 +359,27 @@ export const validateReleaseManifest = (
   if (governedAddress !== null && signerVerifier.address === null) {
     throw new Error(
       'manifest signerVerifier is required when governedTrustgraphsFactory is deployed'
+    )
+  }
+
+  // The fast (EPOCH_FLOOR = 1) factory generation. Optional as a pair — older manifests simply
+  // lack the keys — but a manifest may never advertise half of it: a fast plain factory without
+  // its governed wrapper (or vice versa) is not a usable creation path.
+  const fastRecords = (
+    ['trustgraphsFactoryFast', 'governedTrustgraphsFactoryFast'] as const
+  ).map((key) => {
+    const record = manifestContracts[key]
+    if (record === undefined) return null
+    assertObject(record, `manifest.contracts.${key}`)
+    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
+    return record
+  })
+  const fastDeployed = fastRecords.filter(
+    (record) => record !== null && record.address !== null
+  ).length
+  if (fastDeployed !== 0 && fastDeployed !== fastRecords.length) {
+    throw new Error(
+      'manifest fast deployment must record trustgraphsFactoryFast and governedTrustgraphsFactoryFast together'
     )
   }
 
@@ -605,6 +632,16 @@ export const releaseManifestToDeploymentSummary = (
             manifest.contracts.signerSyncModuleDeployer.address,
         }
       : undefined
+  const factoryFast = manifest.contracts.trustgraphsFactoryFast?.address
+    ? { factory: manifest.contracts.trustgraphsFactoryFast.address }
+    : undefined
+  const governedFactoryFast = manifest.contracts.governedTrustgraphsFactoryFast
+    ?.address
+    ? {
+        governed_factory:
+          manifest.contracts.governedTrustgraphsFactoryFast.address,
+      }
+    : undefined
   const signerVerifier = manifest.contracts.signerVerifier.address
     ? {
         zk_verifier: manifest.contracts.signerVerifier.address,
@@ -662,6 +699,8 @@ export const releaseManifestToDeploymentSummary = (
     },
     provingVault: manifest.contracts.provingVault.address,
     governedFactory,
+    factoryFast,
+    governedFactoryFast,
     signerVerifier,
     weightedFactory,
     governedWeightedFactory,

@@ -58,6 +58,56 @@ test('Sepolia consumer refuses a planned manifest', () => {
   fs.rmSync(repo, { recursive: true })
 })
 
+test('Sepolia consumer refuses half a fast factory generation and indexes a whole one', () => {
+  const repoManifest = JSON.parse(
+    fs.readFileSync(
+      path.join(import.meta.dirname, '../../../deployments/sepolia.json'),
+      'utf8'
+    )
+  )
+  const fastFactory = '0x5555555555555555555555555555555555555555'
+  const fastGoverned = '0x6666666666666666666666666666666666666666'
+  const writeManifest = (mutate) => {
+    const manifest = structuredClone(repoManifest)
+    manifest.contracts.trustgraphsFactoryFast = {
+      address: fastFactory,
+      block: 123,
+      txHash: `0x${'55'.repeat(32)}`,
+    }
+    manifest.contracts.governedTrustgraphsFactoryFast = {
+      address: fastGoverned,
+      block: 124,
+      txHash: `0x${'66'.repeat(32)}`,
+    }
+    mutate?.(manifest)
+    const repo = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'trustgraphs-indexer-fast-')
+    )
+    fs.mkdirSync(path.join(repo, 'deployments'))
+    fs.writeFileSync(
+      path.join(repo, 'deployments', 'sepolia.json'),
+      JSON.stringify(manifest)
+    )
+    return repo
+  }
+  const environment = { DEPLOY_STAGE: 'production', DEPLOY_TARGET: 'sepolia' }
+
+  const whole = writeManifest()
+  const profile = resolveDeploymentProfile(environment, whole)
+  assert.ok(profile.requiredCodeAddresses.includes(fastFactory))
+  assert.ok(profile.requiredCodeAddresses.includes(fastGoverned))
+  fs.rmSync(whole, { recursive: true })
+
+  const half = writeManifest((manifest) => {
+    delete manifest.contracts.governedTrustgraphsFactoryFast
+  })
+  assert.throws(
+    () => resolveDeploymentProfile(environment, half),
+    /fast deployment is incomplete/
+  )
+  fs.rmSync(half, { recursive: true })
+})
+
 test('Sepolia startup checks every recorded contract with deployed code', () => {
   const first = '0x1111111111111111111111111111111111111111'
   const second = '0x2222222222222222222222222222222222222222'

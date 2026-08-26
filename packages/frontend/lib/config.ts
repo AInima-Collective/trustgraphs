@@ -1,10 +1,6 @@
 import CONFIG from '../config.json'
 import networks from '../networks.json'
-import {
-  AnyNetwork,
-  HypercertsNetwork,
-  Network,
-} from './types'
+import { AnyNetwork, HypercertsNetwork, Network } from './types'
 
 const ALL_NETWORKS = networks as AnyNetwork[]
 
@@ -73,6 +69,14 @@ export const SIGNER_SYNC_CONFIG = (
     signerSync?: { verifier?: string; programVKey?: string }
   }
 ).signerSync
+// The fast (EPOCH_FLOOR = 1) trust-graph factory generation. When both addresses are present the
+// create wizard writes through this pair so new networks can run testnet-fast epochs; absent or
+// empty means only the original generation exists and the wizard keeps using that.
+export const FAST_FACTORY_CONFIG = (
+  CONFIG as {
+    fastFactory?: { factory?: string; governedFactory?: string }
+  }
+).fastFactory
 
 /**
  * The chain's shared `ProvingVault`, or undefined on a deployment without one.

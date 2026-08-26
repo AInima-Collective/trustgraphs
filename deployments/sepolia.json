@@ -40,6 +40,11 @@
       "block": 11565430,
       "txHash": "0x607feb7f84c4eafe1b7146f516ed1adeb62e3c5681e0876d3edd84a1d62e159e"
     },
+    "trustgraphsFactoryFast": {
+      "address": "0x2bff0484b59315FC2Ba576BFE0E592145c46b515",
+      "block": 11569185,
+      "txHash": "0x9bab97e39a3028de7d0c53b26709044b108e3c15229440d4cb806747906fef07"
+    },
     "signerVerifier": {
       "address": "0xF99e2c06018f2Aa8078859854ecb1fC3C7368b63",
       "block": 11565969,
@@ -49,6 +54,11 @@
       "address": "0xFd0ee86105bF67C5c74653b8268c74120C485b6b",
       "block": 11565975,
       "txHash": "0xa7b7795853b9e060812ea38db575efd6f49616bf81d0d13268f07921eb40dccb"
+    },
+    "governedTrustgraphsFactoryFast": {
+      "address": "0x4FA8EC1D003FbdE75ffFd2790e9Ab63A78d3c381",
+      "block": 11569186,
+      "txHash": "0x4af213fcc9ab72255d6fe0782328ecc90ce6dc2fd6d621631c6ddf5a1ea482b8"
     },
     "signerSyncModuleDeployer": {
       "address": "0x71CaAe36fF68b329422283bD14Eb88c1D90952c9",

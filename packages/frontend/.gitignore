@@ -32,5 +32,6 @@ next-env.d.ts
 
 # active config
 config.development.json
+config.sepolia.json
 config.json
 networks.json

@@ -74,6 +74,11 @@ type DeploymentSummary = {
     governed_factory?: string
     signer_sync_deployer?: string
   }
+  /** The fast (EPOCH_FLOOR = 1) factory generation. Same contracts and event surface as
+   *  `factory` / `governedFactory`, so both generations ride the same sources as address
+   *  arrays; only present once the fast pair is recorded in the release manifest. */
+  factoryFast?: { factory?: string }
+  governedFactoryFast?: { governed_factory?: string }
   /** Governed wrappers for the weighted / compose programs. They share the governed factory's
    *  Safe singletons and helper deployers and emit the SAME `GovernedInstanceCreated` signature,
    *  so their children ride the existing governed child sources. */
@@ -251,9 +256,21 @@ const TRUSTGRAPHS_FACTORY = deploymentSummary.factory?.factory as
 const INSTANCE_REGISTRY = deploymentSummary.factory?.instance_registry as
   | Hex
   | undefined
+const TRUSTGRAPHS_FACTORY_FAST = deploymentSummary.factoryFast?.factory as
+  | Hex
+  | undefined
+/** Both trust-graph factory generations. Every factory-sourced discovery (InstanceCreated,
+ *  ParamsControllerCreated, OffchainEasLaneCreated, DistributorAttached) listens to the whole
+ *  array so networks minted by either generation are indexed identically. */
+const TRUSTGRAPHS_FACTORIES = [
+  TRUSTGRAPHS_FACTORY,
+  TRUSTGRAPHS_FACTORY_FAST,
+].filter((address): address is Hex => address !== undefined)
 const GOVERNED_FACTORY = deploymentSummary.governedFactory?.governed_factory as
   | Hex
   | undefined
+const GOVERNED_FACTORY_FAST = deploymentSummary.governedFactoryFast
+  ?.governed_factory as Hex | undefined
 const GOVERNED_WEIGHTED_FACTORY = deploymentSummary.governedWeightedFactory
   ?.governed_weighted_factory as Hex | undefined
 const GOVERNED_COMPOSE_FACTORY = deploymentSummary.governedComposeFactory
@@ -266,8 +283,14 @@ const GOVERNED_COMPOSE_FACTORY = deploymentSummary.governedComposeFactory
  */
 const GOVERNED_WRAPPERS = [
   GOVERNED_FACTORY,
+  GOVERNED_FACTORY_FAST,
   GOVERNED_WEIGHTED_FACTORY,
   GOVERNED_COMPOSE_FACTORY,
+].filter((address): address is Hex => address !== undefined)
+/** Both governed trust-graph wrapper generations, one source: same ABI, same handlers. */
+const GOVERNED_TRUSTGRAPHS_FACTORIES = [
+  GOVERNED_FACTORY,
+  GOVERNED_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 const SIGNER_SYNC_DEPLOYER = deploymentSummary.governedFactory
   ?.signer_sync_deployer as Hex | undefined
@@ -360,7 +383,7 @@ const CONTRIBUTIONS_INSTANCE_CREATED = getAbiItem({
  */
 const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
   factory({
-    address: TRUSTGRAPHS_FACTORY!,
+    address: TRUSTGRAPHS_FACTORIES,
     event: INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -368,7 +391,7 @@ const instanceChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
 
 const paramsControllers = () =>
   factory({
-    address: TRUSTGRAPHS_FACTORY!,
+    address: TRUSTGRAPHS_FACTORIES,
     event: PARAMS_CONTROLLER_CREATED,
     parameter: 'controller',
     startBlock: CORE_START_BLOCK,
@@ -376,7 +399,7 @@ const paramsControllers = () =>
 
 const easOffchainRegistries = () =>
   factory({
-    address: TRUSTGRAPHS_FACTORY!,
+    address: TRUSTGRAPHS_FACTORIES,
     event: OFFCHAIN_EAS_LANE_CREATED,
     parameter: 'registry',
     startBlock: CORE_START_BLOCK,
@@ -431,7 +454,7 @@ const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
  * construction, and `factory()` takes an address array.
  */
 const BASE_FACTORIES = [
-  TRUSTGRAPHS_FACTORY,
+  ...TRUSTGRAPHS_FACTORIES,
   WEIGHTED_FACTORY,
   COMPOSITION_FACTORY,
 ].filter((address): address is Hex => address !== undefined)
@@ -588,7 +611,7 @@ export default createConfig({
       abi: trustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
       chain: FACTORY_DISCOVERY
-        ? { [CORE_CHAIN]: { address: TRUSTGRAPHS_FACTORY! } }
+        ? { [CORE_CHAIN]: { address: TRUSTGRAPHS_FACTORIES } }
         : {},
     },
     weightedTrustgraphsFactory: {
@@ -654,9 +677,10 @@ export default createConfig({
     governedTrustgraphsFactory: {
       abi: governedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
-      chain: GOVERNED_FACTORY
-        ? { [CORE_CHAIN]: { address: GOVERNED_FACTORY } }
-        : {},
+      chain:
+        GOVERNED_TRUSTGRAPHS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: GOVERNED_TRUSTGRAPHS_FACTORIES } }
+          : {},
     },
     // The weighted/compose governed wrappers. Same event surface as the trust-graph wrapper by
     // construction (`GovernedInstanceCreated` / `GovernedAuthorityInstalled` are byte-identical

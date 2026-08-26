@@ -1,6 +1,11 @@
 import { Hex, isAddress, isHex, zeroAddress } from 'viem'
 
-import { CHAIN, CONTRACT_CONFIG, SIGNER_SYNC_CONFIG } from '@/lib/config'
+import {
+  CHAIN,
+  CONTRACT_CONFIG,
+  FAST_FACTORY_CONFIG,
+  SIGNER_SYNC_CONFIG,
+} from '@/lib/config'
 import { parseAccountIdentifier } from '@/lib/ens'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
@@ -20,11 +25,28 @@ import { FULL_SEED_TRUST_SHARE_PCT } from '@/lib/trust-share'
  *     happens here, once.
  */
 
+/**
+ * The wizard prefers the fast (EPOCH_FLOOR = 1) factory generation, and only as a whole pair:
+ * mixing generations would read the floor from one factory and create through a wrapper that
+ * enforces another. Every flow outside this wizard keeps using the original generation, whose
+ * factories remain the parents of the already-created networks.
+ */
+const FAST_FACTORY = (FAST_FACTORY_CONFIG?.factory || '') as Hex
+const FAST_GOVERNED_FACTORY = (FAST_FACTORY_CONFIG?.governedFactory ||
+  '') as Hex
+const USE_FAST_GENERATION =
+  FAST_FACTORY.length === 42 && FAST_GOVERNED_FACTORY.length === 42
+
 /** The factory address for this chain, or empty when no factory is deployed here. */
-export const FACTORY_ADDRESS = (CONTRACT_CONFIG.TrustgraphsFactory || '') as Hex
+export const FACTORY_ADDRESS = (
+  USE_FAST_GENERATION ? FAST_FACTORY : CONTRACT_CONFIG.TrustgraphsFactory || ''
+) as Hex
 /** Governed wrapper used by the wizard; absent means this deployment cannot safely create DAOs. */
-export const GOVERNED_FACTORY_ADDRESS =
-  (CONTRACT_CONFIG.GovernedTrustgraphsFactory || '') as Hex
+export const GOVERNED_FACTORY_ADDRESS = (
+  USE_FAST_GENERATION
+    ? FAST_GOVERNED_FACTORY
+    : CONTRACT_CONFIG.GovernedTrustgraphsFactory || ''
+) as Hex
 
 export const isFactoryAvailable = () =>
   FACTORY_ADDRESS.length === 42 && GOVERNED_FACTORY_ADDRESS.length === 42
@@ -98,7 +120,13 @@ export const FIXED_PARAMS = {
   chainId: 0n,
 } as const
 
-export type Cadence = 'monthly' | 'weekly' | 'daily' | 'fastest'
+export type Cadence =
+  | 'monthly'
+  | 'weekly'
+  | 'daily'
+  | 'hourly'
+  | 'tenMinutes'
+  | 'fastest'
 
 /** Twelve-second blocks: the assumption behind every duration this wizard quotes. */
 const SECONDS_PER_BLOCK = 12
@@ -106,12 +134,18 @@ const CADENCE_BLOCKS: Record<Exclude<Cadence, 'fastest'>, bigint> = {
   monthly: BigInt(Math.round((30 * 24 * 60 * 60) / SECONDS_PER_BLOCK)),
   weekly: BigInt(Math.round((7 * 24 * 60 * 60) / SECONDS_PER_BLOCK)),
   daily: BigInt(Math.round((24 * 60 * 60) / SECONDS_PER_BLOCK)),
+  // Testnet-fast schedules. Below the original factory generation's floor (7200), so on a
+  // deployment without the fast factories they clamp to the floor and the wizard says so.
+  hourly: BigInt(Math.round((60 * 60) / SECONDS_PER_BLOCK)),
+  tenMinutes: BigInt(Math.round((10 * 60) / SECONDS_PER_BLOCK)),
 }
 
 export const CADENCE_OPTIONS: { value: Cadence; label: string }[] = [
   { value: 'monthly', label: 'About once a month' },
   { value: 'weekly', label: 'About once a week' },
   { value: 'daily', label: 'About once a day' },
+  { value: 'hourly', label: 'Hourly (testnet)' },
+  { value: 'tenMinutes', label: 'Every 10 minutes (testnet)' },
   { value: 'fastest', label: 'As often as this chain allows' },
 ]
 
@@ -284,8 +318,13 @@ export const describeBlocks = (blocks: bigint): string => {
     const rounded = Math.round(days)
     return rounded <= 1 ? 'about once a day' : `about every ${rounded} days`
   }
-  const hours = Math.max(1, Math.round(seconds / 3_600))
-  return hours <= 1 ? 'about once an hour' : `about every ${hours} hours`
+  const hours = seconds / 3_600
+  if (hours >= 0.9) {
+    const rounded = Math.max(1, Math.round(hours))
+    return rounded <= 1 ? 'about once an hour' : `about every ${rounded} hours`
+  }
+  const minutes = Math.max(1, Math.round(seconds / 60))
+  return minutes <= 1 ? 'about once a minute' : `about every ${minutes} minutes`
 }
 
 /*//////////////////////////////////////////////////////////////

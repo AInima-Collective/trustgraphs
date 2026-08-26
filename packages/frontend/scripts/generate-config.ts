@@ -172,6 +172,20 @@ try {
     deployment.governedWeightedFactory?.governed_weighted_factory ||
     process.env.GOVERNED_WEIGHTED_FACTORY_ADDRESS ||
     ''
+  // The fast (EPOCH_FLOOR = 1) trust-graph factory generation. Additive like the weighted lane:
+  // absent addresses leave the create wizard on the original generation. Kept outside
+  // `configOutput.contracts` because that map drives ABI/wagmi generation and this pair reuses
+  // the TrustgraphsFactory / GovernedTrustgraphsFactory ABIs verbatim.
+  configOutput.fastFactory = {
+    factory:
+      deployment.factoryFast?.factory ||
+      process.env.TRUSTGRAPHS_FACTORY_FAST_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedFactoryFast?.governed_factory ||
+      process.env.GOVERNED_TRUSTGRAPHS_FACTORY_FAST_ADDRESS ||
+      '',
+  }
   // trust-compose is additive and may roll out after the existing factory/indexer. An absent
   // address keeps the workspace in explicit read-only preview mode. The governed wrapper follows
   // the same rule for the composition workspace's "create with governance" choice.

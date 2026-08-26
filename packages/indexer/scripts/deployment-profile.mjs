@@ -134,6 +134,8 @@ export function loadFinalizedSepoliaManifest(repoDir) {
       ],
     ],
     ['contributions', ['contributionsVerifier', 'contributionsFactory']],
+    // The fast (EPOCH_FLOOR = 1) factory generation: optional as a pair, never half-recorded.
+    ['fast', ['trustgraphsFactoryFast', 'governedTrustgraphsFactoryFast']],
   ]) {
     const records = names.map((name) => manifest.contracts?.[name])
     const deployed = records.filter((record) => record?.address).length

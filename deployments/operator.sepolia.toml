@@ -23,10 +23,10 @@ recipient = "0xf6161E3c1e83EF8297690153120462633570B8D1"
 
 [cadence]
 tick_seconds = 60
-# TEMPORARY fast-track for the first showcase proof (2026-08-26): lowered from 7200 alongside a
-# creator setEpochLength(600) on the showcase snapshot, so the first epoch closes ~2h after
-# creation instead of ~24h. Restore both to 7200 once the first root is proven and settled.
-subsidy_min_blocks = 600
+# The operator's own spend cadence for the curated instance. With a fast-epoch network recorded
+# as the curated instance, this is what actually rates-limits subsidized proving — keep it at
+# most the curated network's epoch length, and restore to 7200 for a daily-epoch showcase.
+subsidy_min_blocks = 300
 max_concurrent = 1
 max_per_instance = 1
 

@@ -99,6 +99,51 @@ test('manifest validator rejects half-recorded governed deployments', () => {
   )
 })
 
+test('manifest validator accepts, pairs, and rejects the fast factory generation', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+
+  // Absent keys are legal: manifests predating the fast generation stay valid.
+  assert.doesNotThrow(() => validateReleaseManifest(manifest))
+
+  // A fully recorded fast pair is legal and survives requireComplete.
+  const paired = structuredClone(manifest)
+  paired.contracts.trustgraphsFactoryFast = {
+    address: ADDRESS,
+    block: 123,
+    txHash: TX_HASH,
+  }
+  paired.contracts.governedTrustgraphsFactoryFast = {
+    address: ADDRESS_2,
+    block: 124,
+    txHash: TX_HASH_2,
+  }
+  const validated = validateReleaseManifest(paired)
+  assert.equal(validated.contracts.trustgraphsFactoryFast?.address, ADDRESS)
+  const summary = releaseManifestToDeploymentSummary(validated)
+  assert.equal(summary.factoryFast?.factory, ADDRESS)
+  assert.equal(summary.governedFactoryFast?.governed_factory, ADDRESS_2)
+
+  // Half a fast generation is never advertised, whether the other half is null or absent.
+  const halfNull = structuredClone(paired)
+  halfNull.contracts.governedTrustgraphsFactoryFast = {
+    address: null,
+    block: null,
+    txHash: null,
+  }
+  assert.throws(() => validateReleaseManifest(halfNull), /fast deployment/)
+  const halfAbsent = structuredClone(paired)
+  delete halfAbsent.contracts.governedTrustgraphsFactoryFast
+  assert.throws(() => validateReleaseManifest(halfAbsent), /fast deployment/)
+
+  // A present fast record is complete: address without block/tx is rejected.
+  const incomplete = structuredClone(paired)
+  incomplete.contracts.trustgraphsFactoryFast.txHash = null
+  assert.throws(
+    () => validateReleaseManifest(incomplete),
+    /trustgraphsFactoryFast\.txHash/
+  )
+})
+
 test('manifest validator never exposes a partially deployed program family', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
   for (const key of [
