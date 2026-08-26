@@ -94,6 +94,15 @@ test('permissionless network detail renders instances created after the producti
   assert.match(page, /await getNetwork\(id\)/)
 })
 
+test('permissionless network settings renders instances created after the production build', async () => {
+  const page = await source('../app/networks/[id]/settings/page.tsx')
+  assert.match(page, /export const dynamic = 'force-dynamic'/)
+  assert.doesNotMatch(page, /generateStaticParams/)
+  assert.doesNotMatch(page, /export const revalidate/)
+  assert.match(page, /await searchParams/)
+  assert.match(page, /await getNetwork\(id\)/)
+})
+
 test('browser recompute independently checks exact CIDs, signatures, prefixes and commit time', async () => {
   const [audit, context] = await Promise.all([
     source('./eas-offchain.ts'),
