@@ -38,11 +38,11 @@ import { HeroGraphUnavailable } from './HeroGraphUnavailable'
 export const revalidate = 10
 
 /**
- * The slug of the demo network in `config/networks.<env>.json`. The landing
- * graph resolves this id specifically rather than grabbing whichever network
- * the catalog happens to list first.
+ * The landing graph resolves one configured catalog entry rather than grabbing
+ * whichever network happens to be listed first. Production should set an
+ * immutable instance id; the local demo keeps its familiar slug by default.
  */
-const DEMO_NETWORK_ID = 'demo-co-op'
+const DEFAULT_FEATURED_NETWORK_ID = 'demo-co-op'
 
 /**
  * The one site description, used for search results and share cards on every
@@ -126,16 +126,20 @@ export const metadata: Metadata = {
 
 export default async function LandingPage() {
   // `getCatalog` never throws: an unreachable indexer degrades to the shipped
-  // seed with an error set, so this read cannot take the page down. If the demo
-  // is missing either way, the hero renders its honest unavailable state.
+  // seed with an error set, so this read cannot take the page down. If the
+  // featured network is missing either way, the hero renders its honest
+  // unavailable state.
   const { networks, error } = await getCatalog()
-  const demo = resolveNetwork(networks, DEMO_NETWORK_ID)
+  const featuredNetworkId =
+    process.env.FEATURED_NETWORK_ID?.trim() || DEFAULT_FEATURED_NETWORK_ID
+  const featured = resolveNetwork(networks, featuredNetworkId)
+  const featuredName = featured?.name ?? 'Featured network'
 
   // If the catalog read failed, the indexer is unreachable, and the graph reads
   // from the same indexer. Rendering the island anyway downloads 156 KB of
   // sigma and WebGL to draw a spinner that resolves to "not reachable" six
   // seconds later. The server already knows the answer, so it gives it.
-  const graphReachable = demo !== undefined && !error
+  const graphReachable = featured !== undefined && !error
 
   // Social proof for the repository CTA. `null` whenever GitHub cannot be read,
   // and deliberately hidden while the number is small enough to argue against
@@ -150,7 +154,7 @@ export default async function LandingPage() {
       <section aria-label="Live trust graph" className="relative">
         <div className="pointer-events-none absolute left-3 top-3 z-20 max-w-[calc(100%-1.5rem)] border-l-2 border-ink bg-surface/90 px-3 py-2.5 backdrop-blur-md sm:max-w-[34rem] sm:px-4 sm:py-3">
           <p className="text-[9px] uppercase tracking-wider text-text-subtle">
-            {graphReachable ? 'Live example' : 'Example'} · Demo Co-op
+            {graphReachable ? 'Live example' : 'Example'} · {featuredName}
           </p>
           <h1 className="mt-1 max-w-[22ch] text-xl leading-[1.05] text-text text-balance sm:text-3xl">
             Your community already knows who to trust.
@@ -161,7 +165,7 @@ export default async function LandingPage() {
          * names its figure as a direct child, and "live" is a claim about data
          * that has arrived, which only the client knows. */}
         {graphReachable ? (
-          <HeroGraph network={demo} className={HERO_FIGURE} />
+          <HeroGraph network={featured} className={HERO_FIGURE} />
         ) : (
           <figure className={HERO_FIGURE}>
             <HeroGraphUnavailable />
@@ -205,8 +209,8 @@ export default async function LandingPage() {
         heading="One example: a web of trust."
         standfirst={
           <p className="max-w-[72ch] text-lg text-text-muted">
-            Demo Co-op asks who its community trusts, then turns the answer into
-            something other apps can use.
+            {featured?.name ?? 'A community'} asks who its community trusts,
+            then turns the answer into something other apps can use.
           </p>
         }
       >

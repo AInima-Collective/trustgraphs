@@ -2,12 +2,20 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import environmentLoader from '../../../scripts/load-env.cjs'
+
 const frontendDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const repoDir = path.dirname(path.dirname(frontendDir))
 const kind = process.argv[2]
-const target =
-  process.env.DEPLOY_TARGET ||
-  (process.env.NODE_ENV === 'production' ? 'sepolia' : 'local')
+const { loadTargetEnvironment } = environmentLoader
+const { target } = loadTargetEnvironment({
+  repositoryRoot: repoDir,
+  target: process.env.DEPLOY_TARGET,
+  higherPriorityFiles: [path.join(frontendDir, '.env.local')],
+  createBaseFrom: '.env.example',
+  requireTargetOverlay: false,
+  fromProcess: process.env.VERCEL === '1',
+})
 const suffix = target === 'sepolia' ? 'sepolia' : 'development'
 
 if (!['config', 'networks'].includes(kind)) {

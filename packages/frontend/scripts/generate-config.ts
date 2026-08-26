@@ -13,12 +13,14 @@ import { loadTargetEnvironment } from '../../../scripts/load-env.cjs'
 
 const repositoryRoot = path.join(__dirname, '../../..')
 const env = process.env.NODE_ENV || 'development'
-const requestedTarget =
-  process.env.DEPLOY_TARGET || (env === 'development' ? 'local' : 'sepolia')
 const { target } = loadTargetEnvironment({
   repositoryRoot,
-  target: requestedTarget,
+  target: process.env.DEPLOY_TARGET,
+  higherPriorityFiles: [path.join(__dirname, '../.env.local')],
   createBaseFrom: '.env.example',
+  // A frontend-only .env.local is enough to run against a public deployment;
+  // it should not require the deployer's secret-bearing repository overlay.
+  requireTargetOverlay: false,
   // Vercel injects the build environment directly and has no ignored target overlay.
   fromProcess: process.env.VERCEL === '1',
 })

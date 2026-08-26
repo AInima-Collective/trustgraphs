@@ -337,21 +337,42 @@ export const ReviewStep = ({
   }
 
   const fundSummary = !data.withFund
-    ? 'No'
+    ? 'Not added'
     : data.fundToken === 'eth'
-      ? 'Yes, set up to pay out ETH'
-      : `Yes, set up to pay out the token at ${shortAddress(data.fundTokenAddress.trim())}`
+      ? 'Added, with ETH as the default payout asset'
+      : `Added, with ${shortAddress(data.fundTokenAddress.trim())} as the default payout asset`
 
   return (
     <div className="space-y-6">
       <StepHeader
-        title="Check it over, then sign once"
-        lead="One transaction creates the vouch registry, scoreboard, DAO Safe, voting, and delayed recovery. The Safe graduates to module-only execution before the transaction returns."
+        title="Review and create"
+        lead="Check the network, scoring, and governance settings below. One wallet transaction creates everything."
       />
 
       <Card type="outline" size="md">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <h3 className="text-sm font-medium">Network</h3>
+          <div className="flex flex-wrap gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onJumpTo('description')}
+            >
+              Edit details
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onJumpTo('accounts')}
+            >
+              Edit accounts
+            </Button>
+          </div>
+        </div>
         <SummaryRow label="Name">{args.name}</SummaryRow>
-        <SummaryRow label="What it is for">
+        <SummaryRow label="Purpose">
           {data.description.trim() || (
             <span className="text-muted-foreground">Left blank</span>
           )}
@@ -376,79 +397,54 @@ export const ReviewStep = ({
             ))}
           </div>
         </SummaryRow>
-        <SummaryRow label="Scores published">
+        <SummaryRow label="Description storage">
+          {metadataUri ? (
+            <span className="font-mono text-xs break-all">{metadataUri}</span>
+          ) : (
+            <span className="text-muted-foreground">
+              Not saved. The network will show its name only.
+            </span>
+          )}
+        </SummaryRow>
+      </Card>
+
+      <Card type="outline" size="md">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <h3 className="text-sm font-medium">Scoring and publication</h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onJumpTo('scoring')}
+          >
+            Edit scoring
+          </Button>
+        </div>
+        <SummaryRow label="Score schedule">
           {describeBlocks(effective)}
+        </SummaryRow>
+        <SummaryRow label="Vouch influence">
+          {data.tuning.vouchWeightPct}%
         </SummaryRow>
         <SummaryRow label="Starting-account share">
           {data.tuning.headStartPct}%
         </SummaryRow>
-        <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
-        <SummaryRow label="Score-selected Safe signers">
-          {data.withSignerSync
-            ? `Yes — top ${data.signerTopN}, ${data.signerTargetThresholdPct}% target threshold, minimum ${data.signerMinThreshold}`
-            : 'No'}
+        <SummaryRow label="Weight kept per step">
+          {data.tuning.headStartKeptPct}%
         </SummaryRow>
-        <SummaryRow label="Gasless off-chain vouches">
-          {data.withOffchainVouches
-            ? 'Yes — strict retained EAS v2, alongside on-chain vouches'
-            : 'No — on-chain EAS only (the default)'}
+        <SummaryRow label="Total score points">
+          {data.tuning.totalPoints.toLocaleString()}
         </SummaryRow>
-        {data.withOffchainVouches && (
-          <>
-            <SummaryRow label="Relay and storage boundary">
-              Relayers validate the owner&apos;s two signatures, retain and read
-              back the exact public payload from independent storage, then pay
-              to anchor its SHA-256 commitment. They cannot alter a signed vouch
-              or head. Availability still depends on retained exact bytes; the
-              indexer and prover fetch and verify them independently rather than
-              trusting relay claims.
-            </SummaryRow>
-            <SummaryRow label="Immutable work cap">
-              {data.offchainMaxTotalInputs.toLocaleString()} combined work
-              units. On-chain leaves, anchor records, and four units per
-              off-chain log entry share this cap; it cannot be raised after
-              creation.
-            </SummaryRow>
-            <SummaryRow label="Initial relayer set">
-              <div className="space-y-1">
-                {offchain.initialRelayers.map((relayer) => (
-                  <div key={relayer} className="font-mono text-xs break-all">
-                    {relayer}
-                  </div>
-                ))}
-              </div>
-            </SummaryRow>
-            <SummaryRow label="Signer boundary">
-              EOAs only. Contract wallets and account-abstraction signers are
-              blocked because the frozen profile verifies ECDSA recovery, not
-              ERC-1271.
-            </SummaryRow>
-            <SummaryRow label="History and revocation">
-              Every signed vouch remains in a public, retained append-only
-              payload. Revocation appends a signed head entry naming that UID;
-              it does not delete history or fall back to an older vouch.
-            </SummaryRow>
-            <SummaryRow label="Unavailable add-ons">
-              Score-selected Safe signer sync and contribution rounds are
-              blocked for hybrid networks. Weighted starting shares and composed
-              scoreboards remain separate creation paths and cannot be combined
-              here.
-            </SummaryRow>
-          </>
-        )}
-        <SummaryRow label="Refresh prepayment">
+        <SummaryRow label="Proof funding">
           {prepay > 0n
-            ? `${data.prepayEth.trim()} ETH`
-            : 'None — unpaid/curated policy'}
+            ? `${data.prepayEth.trim()} ETH prepaid for score refreshes`
+            : 'No prepayment. Anyone may produce and publish a valid proof.'}
         </SummaryRow>
         {prepay > 0n && (
           <>
-            <SummaryRow label="Paid refresh cadence">
-              {describeBlocks(initialPolicy.minPaidIntervalBlocks)}
-            </SummaryRow>
             <SummaryRow label="Maximum per refresh">
-              ${formatUnits(initialPolicy.maxPerRootUsd, 8)} USD, including the
-              proving fee and gas reimbursement
+              ${formatUnits(initialPolicy.maxPerRootUsd, 8)} USD for the proof
+              and gas
             </SummaryRow>
             <SummaryRow label="Initial fee band">
               {initialBandFee > 0n ? (
@@ -462,83 +458,66 @@ export const ReviewStep = ({
             </SummaryRow>
             <SummaryRow label="Estimated refreshes">
               {refreshEstimate === null
-                ? 'Waiting for the deployment’s ETH/USD feed'
+                ? 'Waiting for the ETH/USD price feed'
                 : refreshEstimate === 0n
-                  ? 'Less than one at the current ETH price and full per-refresh cap'
-                  : `At least ${refreshEstimate.toLocaleString()} at the current ETH price if every refresh spends the full cap`}
+                  ? 'Less than one at the current price and maximum payment'
+                  : `At least ${refreshEstimate.toLocaleString()} at the current price if every refresh uses the maximum payment`}
             </SummaryRow>
             <SummaryRow label="Unused prepayment">
-              The DAO Safe may request a withdrawal, then execute it after{' '}
+              Governance can withdraw it after{' '}
               {withdrawalNotice > 0n
                 ? `${Number(withdrawalNotice) / 86_400} days`
                 : 'the vault’s configured notice period'}
-              . The app does not bypass that delay.
+              .
             </SummaryRow>
           </>
         )}
-        <SummaryRow label="In charge afterwards">
-          Members through delayed Merkle voting. Your connected wallet is the
-          visible recovery proposer, not an immediate administrator.
-        </SummaryRow>
-        <SummaryRow label="Graduation">
-          Atomic at creation. A permanently sealed guard disables every
-          owner-signed Safe transaction, including settings, withdrawals,
-          upgrades, delegatecalls, and batches.
-        </SummaryRow>
-        <SummaryRow label="Safe owners and threshold">
-          The DAO Safe is a shared onchain account; it, not any wallet, owns the
-          network contracts and the fund. Your connected wallet starts as the
-          Safe&apos;s only recorded owner (1 of 1), but the owner execution
-          route is disabled. Owners cannot remove the guard or add a bypass
-          module directly.
-        </SummaryRow>
-        <SummaryRow label="Member governance delay">
-          {authorityProfileValid
-            ? `${describeBlocks(memberVotingDelay ?? 0n)} before voting, then ${describeBlocks(memberVotingPeriod ?? 0n)} to vote and ${describeBlocks(memberExecutionDelay ?? 0n)} before execution.`
-            : 'Unavailable — creation is disabled.'}
-        </SummaryRow>
-        <SummaryRow label="Recovery delay">
-          {authorityProfileValid
-            ? `${Number(recoveryDelay) / 86_400} days. Your wallet may publish one exact Safe action, but cannot execute it early; anyone may execute after the deadline and the member-governed Safe may cancel or rotate the proposer.`
-            : 'Unavailable — creation is disabled.'}
-        </SummaryRow>
-        <SummaryRow label="Description saved at">
-          {metadataUri ? (
-            <span className="font-mono text-xs break-all">{metadataUri}</span>
-          ) : (
-            <span className="text-muted-foreground">
-              Not saved. Your network will show its name only.
-            </span>
-          )}
-        </SummaryRow>
       </Card>
 
-      <div className="flex flex-row flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onJumpTo('description')}
-        >
-          Edit the description
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onJumpTo('accounts')}
-        >
-          Edit the starting accounts
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onJumpTo('scoring')}
-        >
-          Edit scoring
-        </Button>
-      </div>
+      <Card type="outline" size="md">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <h3 className="text-sm font-medium">Governance and extras</h3>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onJumpTo('extras')}
+          >
+            Edit extras
+          </Button>
+        </div>
+        <SummaryRow label="Governance">
+          Included. Members control the network through delayed, trust-weighted
+          voting.
+        </SummaryRow>
+        <SummaryRow label="Voting timeline">
+          {authorityProfileValid
+            ? `${describeBlocks(memberVotingDelay ?? 0n)} before voting, ${describeBlocks(memberVotingPeriod ?? 0n)} to vote, then ${describeBlocks(memberExecutionDelay ?? 0n)} before execution.`
+            : 'Unavailable — creation is disabled.'}
+        </SummaryRow>
+        <SummaryRow label="Your wallet">
+          Recovery proposer with a{' '}
+          {authorityProfileValid
+            ? `${Number(recoveryDelay) / 86_400}-day delay`
+            : 'recovery delay that could not be read'}
+          ; not an immediate administrator.
+        </SummaryRow>
+        <SummaryRow label="Shared fund">{fundSummary}</SummaryRow>
+        <SummaryRow label="Vouches">
+          {data.withOffchainVouches
+            ? 'On-chain EAS plus gasless off-chain vouches'
+            : 'On-chain EAS. Gasless off-chain vouches are coming soon.'}
+        </SummaryRow>
+        <SummaryRow label="Score-selected Safe signers">
+          {data.withSignerSync
+            ? `Top ${data.signerTopN}, ${data.signerTargetThresholdPct}% target threshold, minimum ${data.signerMinThreshold}`
+            : 'Not added'}
+        </SummaryRow>
+        <SummaryRow label="Safe execution">
+          Owner-signed transactions are disabled. Passed governance proposals
+          execute through the Safe after their delay.
+        </SummaryRow>
+      </Card>
 
       {preflighting && (
         <div className="flex flex-row items-center gap-2 text-sm text-muted-foreground">

@@ -1,8 +1,8 @@
 import { BrandMark } from '@/components/BrandMark'
 
 /**
- * What the hero shows when there is no demo network to show, or when reading it
- * failed.
+ * What the hero shows when there is no featured network to show, or when
+ * reading it failed.
  *
  * Either way the honest answer is that this one thing is unreachable, not that
  * Trustgraphs is empty, so the panel says so and does not get a caption
@@ -19,7 +19,7 @@ export function HeroGraphUnavailable() {
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-border p-6 text-center">
       <BrandMark size="lg" className="text-text-subtle/40" />
       <p className="max-w-[40ch] text-text-muted">
-        The demo graph is temporarily unavailable. You can still browse
+        The featured graph is temporarily unavailable. You can still browse
         published networks.
       </p>
     </div>

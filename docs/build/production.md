@@ -100,6 +100,9 @@ provider outage does not stop ingestion. The frontend host must receive `PONDER_
 `IPFS_GATEWAY_PUBLIC`, `RPC_URL_1` for ENS reads, and both `RPC_URL_11155111_0` and
 `RPC_URL_11155111_1`; the two browser RPC upstreams must also be independent. Public frontend
 config generation rejects missing, placeholder, non-HTTP, or duplicate endpoints.
+Set `FEATURED_NETWORK_ID` on the frontend host to the catalog instance id, configured slug, or
+Merkle snapshot address of the network the homepage should feature. Prefer the immutable instance
+id for Sepolia; changing it takes effect on the next deployment.
 
 After the frontend is deployed, exercise its clean-browser, read-only launch surface before using
 a funded wallet:
@@ -109,9 +112,9 @@ SEPOLIA_FRONTEND_URL=https://testnet.example.org \
   pnpm --filter trustgraphs-frontend smoke:sepolia
 ```
 
-This checks the persistent testnet warning and the standard, weighted, and composition creation
-entries backed by the tracked factories. It does not submit a transaction; the clean-wallet
-creation remains a separate release check.
+This checks the standard, weighted, and composition creation entries backed by the tracked
+factories. It does not submit a transaction; the clean-wallet creation remains a separate release
+check.
 
 On a preview deployment where transport 0 is deliberately pointed at an unreachable endpoint,
 the same smoke command can prove the browser actually continues through transport 1:

@@ -70,6 +70,28 @@ test('a named public target fails closed without its overlay', (t) => {
   )
 })
 
+test('a self-contained service env can opt out of the public overlay', (t) => {
+  const repositoryRoot = fixture({
+    '.env': 'DEPLOY_STAGE=development\nDEPLOY_TARGET=local\n',
+    'frontend.env':
+      'DEPLOY_STAGE=production\nDEPLOY_TARGET=sepolia\nPONDER_URL=https://indexer.example\n',
+  })
+  t.after(() => fs.rmSync(repositoryRoot, { recursive: true, force: true }))
+  const environment: NodeJS.ProcessEnv = {}
+
+  const loaded = loadTargetEnvironment({
+    repositoryRoot,
+    environment,
+    higherPriorityFiles: [path.join(repositoryRoot, 'frontend.env')],
+    requireTargetOverlay: false,
+  })
+
+  assert.equal(loaded.target, 'sepolia')
+  assert.equal(environment.DEPLOY_STAGE, 'production')
+  assert.equal(environment.PONDER_URL, 'https://indexer.example')
+  assert.ok(!loaded.files.includes(path.join(repositoryRoot, '.env.sepolia')))
+})
+
 test('a caller-owned local file fills values absent from the target overlay', (t) => {
   const repositoryRoot = fixture({
     '.env': 'DEPLOY_TARGET=local\nDATABASE_URL=postgresql:\/\/root\n',

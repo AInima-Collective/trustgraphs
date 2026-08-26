@@ -24,20 +24,12 @@ const NetworkGraph = dynamic(
   { ssr: false }
 )
 
-const CAPTION_LIVE = 'Demo Co-op, live. Each line is a vouch. Size is score.'
-const CAPTION_PENDING = 'Demo Co-op. Each line is a vouch. Size is score.'
-
 /**
  * The canvas's own name, deliberately NOT the caption.
  *
- * They were the same string, so a screen reader in browse mode announced
- * "image, Demo Co-op, live. Each line is a vouch. Size is score." and then read
- * the identical sentence again as the caption. The name says what the thing is;
- * the caption explains how to read it, which is the division of labour a
- * `<figcaption>` exists for.
+ * The name says what the thing is; the caption explains how to read it, which
+ * is the division of labour a `<figcaption>` exists for.
  */
-const GRAPH_LABEL = 'Demo Co-op vouching graph'
-
 export default function HeroGraphLive({ network }: { network: Network }) {
   return (
     <NetworkProvider network={network}>
@@ -51,11 +43,10 @@ function HeroGraphFigure() {
   // the Gnosis Safe read, which this page never displays and which retries four
   // times against an indexer that is not answering: measured, the graph's own
   // data settled at 7.7s and the figure stayed "loading" until 18.4s because of
-  // a number nobody here shows. It held the caption on "Demo Co-op." instead of
-  // "Demo Co-op, live.", and it kept `data-settling` set — the attribute the
-  // screenshot harness waits on — so the review matrix was shooting a hero that
-  // had been ready for eleven seconds. The polling itself is a shared-code
-  // problem and has its own issue.
+  // a number nobody here shows. It held the caption in its pending state and
+  // kept `data-settling` set — the attribute the screenshot harness waits on —
+  // so the review matrix was shooting a hero that had been ready for eleven
+  // seconds. The polling itself is a shared-code problem and has its own issue.
   const { network, graphLoading, error, accountData } = useNetwork()
   const settled = !graphLoading && !error
 
@@ -80,7 +71,7 @@ function HeroGraphFigure() {
     return <HeroGraphUnavailable />
   }
 
-  const caption = live ? CAPTION_LIVE : CAPTION_PENDING
+  const caption = `${network.name}${live ? ', live' : ''}. Each line is a vouch. Size is score.`
 
   return (
     <>
@@ -96,7 +87,7 @@ function HeroGraphFigure() {
       <div
         className="min-h-0 flex-1"
         role="group"
-        aria-label={GRAPH_LABEL}
+        aria-label={`${network.name} vouching graph`}
         data-settling={graphLoading ? 'true' : undefined}
       >
         <NetworkGraph
@@ -112,7 +103,7 @@ function HeroGraphFigure() {
             actions: [
               {
                 href: `/networks/${network.id}`,
-                label: 'Open Demo Co-op',
+                label: `Open ${network.name}`,
               },
               {
                 href: '#what-is-a-trustgraph',

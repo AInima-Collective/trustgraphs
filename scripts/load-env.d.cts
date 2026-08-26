@@ -5,6 +5,7 @@ export interface LoadTargetEnvironmentOptions {
   target?: string
   createBaseFrom?: string
   fromProcess?: boolean
+  requireTargetOverlay?: boolean
 }
 
 export interface LoadedTargetEnvironment {

@@ -1238,6 +1238,7 @@ export const WeightedPriorWorkspace = ({
               <Input
                 id="prior-file"
                 type="file"
+                className="mt-1"
                 accept=".csv,.json,text/csv,application/json"
                 onChange={async (event) => {
                   const file = event.target.files?.[0]

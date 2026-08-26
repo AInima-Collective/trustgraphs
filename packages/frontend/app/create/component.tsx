@@ -9,11 +9,8 @@ import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
+import { TRUST_COMPOSE_CONFIG, WEIGHTED_FACTORY } from '@/lib/config'
 import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
-import {
-  TRUST_COMPOSE_CONFIG,
-  WEIGHTED_FACTORY,
-} from '@/lib/config'
 import { cn } from '@/lib/utils'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
 
@@ -214,10 +211,12 @@ export const CreateNetworkWizard = () => {
     if (id === 'accounts') {
       return data.seeds.length ? null : 'Add at least one starting account.'
     }
+    if (id === 'scoring') {
+      return vaultAvailable ? prepayProblem(data) : null
+    }
     if (id === 'extras') {
       return (
         fundTokenProblem(data) ||
-        (vaultAvailable ? prepayProblem(data) : null) ||
         offchainVouchesProblem(data) ||
         signerSyncProblem(data)
       )
@@ -360,16 +359,16 @@ export const CreateNetworkWizard = () => {
         <SeedsStep data={data} onChange={onChange} showErrors={showErrors} />
       )}
       {stepId === 'scoring' && (
-        <TuningStep data={data} onChange={onChange} epochFloor={epochFloor} />
-      )}
-      {stepId === 'extras' && (
-        <AddOnsStep
+        <TuningStep
           data={data}
           onChange={onChange}
-          showErrors={showErrors}
           epochFloor={epochFloor}
+          showErrors={showErrors}
           vaultAvailable={vaultAvailable}
         />
+      )}
+      {stepId === 'extras' && (
+        <AddOnsStep data={data} onChange={onChange} showErrors={showErrors} />
       )}
       {stepId === 'review' && (
         <ReviewStep

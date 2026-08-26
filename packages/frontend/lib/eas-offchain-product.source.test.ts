@@ -5,7 +5,7 @@ import test from 'node:test'
 const source = (path: string) =>
   readFile(new URL(path, import.meta.url), 'utf8')
 
-test('standard creation is on-chain by default and dispatches hybrid only when opted in', async () => {
+test('standard creation keeps gasless off-chain vouches disabled while retaining hybrid plumbing', async () => {
   const [model, addOns, review] = await Promise.all([
     source('../app/create/model.ts'),
     source('../app/create/steps/AddOnsStep.tsx'),
@@ -15,18 +15,46 @@ test('standard creation is on-chain by default and dispatches hybrid only when o
   assert.match(model, /MAX_OFFCHAIN_TOTAL_INPUTS = 200_000/)
   assert.match(model, /OFFCHAIN_INITIAL_RELAYERS/)
   assert.match(addOns, /Gasless off-chain vouches/)
-  assert.match(addOns, /withSignerSync: false/)
+  assert.match(addOns, /Coming soon/)
+  assert.match(addOns, /enabled=\{false\} readOnly/)
+  assert.doesNotMatch(addOns, /withOffchainVouches:/)
   assert.match(review, /createGovernedHybridInstance/)
   assert.match(review, /createGovernedInstance/)
-  for (const disclosure of [
-    'Relay and storage boundary',
-    'Immutable work cap',
-    'Initial relayer set',
-    'Signer boundary',
-    'History and revocation',
-    'Unavailable add-ons',
+  assert.match(review, /Gasless off-chain vouches are coming soon/)
+})
+
+test('standard creation presents scoring and governance decisions in their intended hierarchy', async () => {
+  const [tuning, addOns, review] = await Promise.all([
+    source('../app/create/steps/TuningStep.tsx'),
+    source('../app/create/steps/AddOnsStep.tsx'),
+    source('../app/create/steps/ReviewStep.tsx'),
+  ])
+
+  const scoringAdvanced = tuning.indexOf('Advanced settings')
+  assert.ok(
+    tuning.indexOf('How often scores can be recalculated') < scoringAdvanced
+  )
+  assert.ok(tuning.indexOf('How much scores lean on vouches') < scoringAdvanced)
+  assert.match(tuning, /Pay for score refreshes up front\?/)
+  assert.match(tuning, /\/docs\/build\/run-a-prover/)
+  assert.doesNotMatch(addOns, /Pay for score refreshes up front\?/)
+
+  const extrasAdvanced = addOns.indexOf('Advanced settings')
+  assert.ok(
+    addOns.indexOf('Member governance is included') <
+      addOns.indexOf('Add a shared fund')
+  )
+  assert.ok(
+    addOns.indexOf('Keep Safe signers aligned with scores') > extrasAdvanced
+  )
+
+  for (const section of [
+    'Network',
+    'Scoring and publication',
+    'Governance and extras',
+    'Edit extras',
   ]) {
-    assert.ok(review.includes(disclosure), `missing ${disclosure}`)
+    assert.ok(review.includes(section), `missing review section: ${section}`)
   }
 })
 

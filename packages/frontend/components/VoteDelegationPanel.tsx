@@ -28,11 +28,10 @@ interface VoteDelegationPanelProps {
 }
 
 /**
- * The setup form for agent voting. Rare, deliberate, and gated on confirming a
- * notification channel — so it lives in a modal rather than above the proposals
- * it would otherwise crowd out. Whether an agent is currently active is a fact
- * about every proposal on the page, so that part stays visible outside this
- * form: see `VoteDelegationStatus`.
+ * The setup form for agent voting. It lives in a modal rather than above the
+ * proposals it would otherwise crowd out. Whether an agent is currently active
+ * is a fact about every proposal on the page, so that part stays visible outside
+ * this form: see `VoteDelegationStatus`.
  */
 export function VoteDelegationPanel({
   networkId,
@@ -45,7 +44,6 @@ export function VoteDelegationPanel({
 }: VoteDelegationPanelProps) {
   const [delegate, setDelegate] = useState('')
   const [channelLabel, setChannelLabel] = useState('')
-  const [notificationConfirmed, setNotificationConfirmed] = useState(false)
   const active = currentDelegate !== zeroAddress
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export function VoteDelegationPanel({
     const matches =
       saved && active && isAddressEqual(saved.delegate, currentDelegate)
     setChannelLabel(matches ? saved.channelLabel : '')
-    setNotificationConfirmed(!!matches)
   }, [active, currentDelegate, module, networkId, principal])
 
   const configure = async () => {
@@ -73,8 +70,8 @@ export function VoteDelegationPanel({
       toast.error('You cannot delegate voting to yourself')
       return
     }
-    if (channelLabel.trim().length < 3 || !notificationConfirmed) {
-      toast.error('Confirm a tested notification channel before delegating')
+    if (channelLabel.trim().length < 3) {
+      toast.error('Enter a notification channel before delegating')
       return
     }
 
@@ -106,7 +103,6 @@ export function VoteDelegationPanel({
       clearAgentNotificationConfirmation(networkId, module, principal)
       setDelegate('')
       setChannelLabel('')
-      setNotificationConfirmed(false)
       onDone?.()
     } catch (error) {
       toast.error(parseErrorMessage(error))
@@ -143,10 +139,7 @@ export function VoteDelegationPanel({
           <Input
             id="vote-delegate"
             value={delegate}
-            onChange={(event) => {
-              setDelegate(event.target.value)
-              setNotificationConfirmed(false)
-            }}
+            onChange={(event) => setDelegate(event.target.value)}
             placeholder="0x…"
             spellCheck={false}
           />
@@ -156,35 +149,17 @@ export function VoteDelegationPanel({
           <Input
             id="vote-notification"
             value={channelLabel}
-            onChange={(event) => {
-              setChannelLabel(event.target.value)
-              setNotificationConfirmed(false)
-            }}
+            onChange={(event) => setChannelLabel(event.target.value)}
             placeholder="e.g. Signal from my agent runner"
           />
         </div>
       </div>
 
-      <label className="flex items-start gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={notificationConfirmed}
-          onChange={(event) => setNotificationConfirmed(event.target.checked)}
-        />
-        I received a test alert with the agent's analysis and intended vote.
-        Delegation stays disabled until this is confirmed.
-      </label>
-
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           onClick={configure}
-          disabled={
-            isLoading ||
-            !notificationConfirmed ||
-            channelLabel.trim().length < 3
-          }
+          disabled={isLoading || channelLabel.trim().length < 3}
         >
           {active ? 'Change delegate' : 'Set delegate'}
         </Button>
@@ -199,11 +174,6 @@ export function VoteDelegationPanel({
           </Button>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground">
-        The notification confirmation is stored only in this browser; the
-        delegation and every vote receipt are public on-chain. Keep your agent
-        runner's notification configuration separately backed up.
-      </p>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 import { Button } from '@/components/Button'
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/Select'
+
 import {
   CADENCE_OPTIONS,
   Cadence,
@@ -21,6 +23,7 @@ import {
   WizardData,
   describeBlocks,
   effectiveBlocks,
+  prepayProblem,
   requestedBlocks,
 } from '../model'
 import { Field, Note, PercentSetting, StepHeader } from '../ui'
@@ -29,10 +32,14 @@ export const TuningStep = ({
   data,
   onChange,
   epochFloor,
+  showErrors,
+  vaultAvailable,
 }: {
   data: WizardData
   onChange: (patch: Partial<WizardData>) => void
   epochFloor: bigint
+  showErrors: boolean
+  vaultAvailable: boolean
 }) => {
   const [open, setOpen] = useState(false)
   const tuning = data.tuning
@@ -42,27 +49,138 @@ export const TuningStep = ({
   const requested = requestedBlocks(tuning.cadence, epochFloor)
   const effective = effectiveBlocks(tuning.cadence, epochFloor)
   const raised = requested < effective
+  const prepayError = showErrors ? prepayProblem(data) : null
 
-  const changed = (Object.keys(DEFAULT_TUNING) as (keyof Tuning)[]).filter(
+  const advancedKeys: (keyof Tuning)[] = [
+    'headStartPct',
+    'headStartKeptPct',
+    'totalPoints',
+  ]
+  const advancedChanged = advancedKeys.filter(
     (key) => tuning[key] !== DEFAULT_TUNING[key]
   )
 
   return (
     <div className="space-y-6">
       <StepHeader
-        title="How scores are worked out"
-        lead="The defaults keep score anchored to your starting accounts. Most communities change nothing here."
+        title="Set up scoring"
+        lead="Choose how strongly vouches shape scores and how often the scoreboard can be refreshed."
       />
 
-      <Card type="outline" size="md" className="space-y-2">
-        <div className="text-sm">
-          Scores are published {describeBlocks(effective)}.
-        </div>
-        <Note>
-          Between publications people can vouch as much as they like. The
-          numbers only move when the new scores are published.
+      <Field
+        label="How often scores can be recalculated"
+        hint="New vouches appear immediately, but scores change only after someone publishes a new proof. Faster schedules respond sooner and cost more to maintain."
+      >
+        <Select
+          value={tuning.cadence}
+          onValueChange={(value) => setTuning({ cadence: value as Cadence })}
+        >
+          <SelectTrigger className="max-w-md">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CADENCE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      {raised && (
+        <Note tone="warning">
+          This chain limits score updates to {describeBlocks(effective)}, so
+          that is the schedule your network will use.
         </Note>
-      </Card>
+      )}
+
+      <PercentSetting
+        label="How much scores lean on vouches"
+        value={tuning.vouchWeightPct}
+        min={1}
+        max={99}
+        onChange={(value) => setTuning({ vouchWeightPct: value })}
+        description="Higher values make the network's vouches more influential. Lower values keep scores closer to the starting accounts."
+      />
+
+      {vaultAvailable && (
+        <Card type="outline" size="md">
+          <Field
+            label="Pay for score refreshes up front?"
+            hint={
+              <>
+                Publishing scores requires a proof and an onchain transaction.
+                Add ETH to pay approved provers for early refreshes, or leave
+                this blank and produce proofs independently.{' '}
+                <Link
+                  href="/docs/build/run-a-prover"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  Learn how to run a prover.
+                </Link>
+              </>
+            }
+            error={prepayError}
+          >
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                  inputMode="decimal"
+                  placeholder="0.5"
+                  value={data.prepayEth}
+                  onChange={(event) =>
+                    onChange({ prepayEth: event.target.value })
+                  }
+                />
+                <span className="text-sm opacity-60">ETH (optional)</span>
+              </div>
+
+              {data.prepayEth.trim() && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Maximum paid per refresh
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm opacity-60">$</span>
+                      <input
+                        className="w-32 rounded border border-border bg-transparent px-2 py-1 text-sm"
+                        inputMode="decimal"
+                        value={data.maxPerRootUsd}
+                        onChange={(event) =>
+                          onChange({ maxPerRootUsd: event.target.value })
+                        }
+                      />
+                      <span className="text-sm opacity-60">USD</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Includes the proving fee and gas reimbursement.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">
+                      Paid refresh schedule
+                    </div>
+                    <div className="text-sm">{describeBlocks(effective)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Starts with the score schedule and can be changed later by
+                      governance.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Field>
+          {data.prepayEth.trim() && (
+            <Note className="mt-3">
+              You can top up later. Any withdrawal follows the proving
+              vault&apos;s notice period.
+            </Note>
+          )}
+        </Card>
+      )}
 
       <Button
         type="button"
@@ -77,54 +195,15 @@ export const TuningStep = ({
           <ChevronRight className="h-4 w-4" />
         )}
         Advanced settings
-        {!open && changed.length > 0 && (
+        {!open && advancedChanged.length > 0 && (
           <span className="text-xs text-muted-foreground">
-            ({changed.length} changed)
+            ({advancedChanged.length} changed)
           </span>
         )}
       </Button>
 
       {open && (
         <div className="space-y-8 border-l border-border pl-4 sm:pl-6">
-          <Field
-            label="How often scores are published"
-            hint="Publishing costs real money to run, so a slower cadence is cheaper and steadier. A faster one reacts sooner to new vouches."
-          >
-            <Select
-              value={tuning.cadence}
-              onValueChange={(value) =>
-                setTuning({ cadence: value as Cadence })
-              }
-            >
-              <SelectTrigger className="max-w-md">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CADENCE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          {raised && (
-            <Note tone="warning" className="-mt-6">
-              This chain will not publish more often than{' '}
-              {describeBlocks(effective)}, so that is what your network gets.
-            </Note>
-          )}
-
-          <PercentSetting
-            label="How much scores lean on vouches"
-            value={tuning.vouchWeightPct}
-            min={1}
-            max={99}
-            onChange={(value) => setTuning({ vouchWeightPct: value })}
-            description="Higher: almost all of someone's score comes from who vouched for them, and trust carries further across the network. Lower: more of the score is fixed by where everyone starts, and vouches barely move it."
-          />
-
           <PercentSetting
             label="Head start for your starting accounts"
             value={tuning.headStartPct}
@@ -203,17 +282,22 @@ export const TuningStep = ({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => onChange({ tuning: DEFAULT_TUNING })}
-              disabled={!changed.length}
+              onClick={() =>
+                setTuning({
+                  headStartPct: DEFAULT_TUNING.headStartPct,
+                  headStartKeptPct: DEFAULT_TUNING.headStartKeptPct,
+                  totalPoints: DEFAULT_TUNING.totalPoints,
+                })
+              }
+              disabled={!advancedChanged.length}
             >
-              Back to the defaults
+              Reset advanced settings
             </Button>
           </div>
 
           <Note>
-            A few more settings, like how precise the arithmetic is and how many
-            rounds it runs, are the same for every network here and cannot be
-            changed. They are what the proof of the scores is checked against.
+            Arithmetic precision and iteration count are fixed because score
+            proofs are verified against those values.
           </Note>
         </div>
       )}

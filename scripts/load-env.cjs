@@ -49,6 +49,7 @@ function loadTargetEnvironment({
   target: requestedTarget,
   createBaseFrom,
   fromProcess = false,
+  requireTargetOverlay = true,
 } = {}) {
   if (!repositoryRoot) throw new Error('repositoryRoot is required')
 
@@ -91,7 +92,9 @@ function loadTargetEnvironment({
   )
   const overlayFile =
     target === 'local' ? undefined : path.join(repositoryRoot, `.env.${target}`)
-  const overlay = overlayFile ? parseFile(overlayFile, { required: true }) : {}
+  const overlay = overlayFile
+    ? parseFile(overlayFile, { required: requireTargetOverlay })
+    : {}
   const resolved = {
     ...base,
     ...higherPriority,
@@ -118,7 +121,7 @@ function loadTargetEnvironment({
     target,
     files: [
       baseFile,
-      ...(overlayFile ? [overlayFile] : []),
+      ...(overlayFile && fs.existsSync(overlayFile) ? [overlayFile] : []),
       ...higherPriorityFiles,
     ],
   }
