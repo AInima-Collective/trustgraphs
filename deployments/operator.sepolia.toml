@@ -23,10 +23,11 @@ recipient = "0xf6161E3c1e83EF8297690153120462633570B8D1"
 
 [cadence]
 tick_seconds = 60
-# The operator's own spend cadence for the curated instance. With a fast-epoch network recorded
-# as the curated instance, this is what actually rates-limits subsidized proving — keep it at
-# most the curated network's epoch length, and restore to 7200 for a daily-epoch showcase.
-subsidy_min_blocks = 300
+# The operator's own spend cadence for the curated instance. The curated showcase network has
+# epochLength 1 (fast factory, "as often as this chain allows"), so this is the ONLY rate limit
+# on subsidized proving: 50 blocks = at most one proof every ~10 minutes while the graph is
+# changing. Quiet graphs cost nothing regardless. Restore to 7200 for a daily-epoch showcase.
+subsidy_min_blocks = 50
 max_concurrent = 1
 max_per_instance = 1
 

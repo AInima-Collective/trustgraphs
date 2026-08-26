@@ -155,15 +155,15 @@
   },
   "instances": [
     {
-      "instanceId": "0xf1f7c3a5a5b6fdc529fd33f63faa901ca690ab00ded2383fd0d5ea762ee13c35",
-      "name": "First Trustgraph",
+      "instanceId": "0x046572477e5aee2d22f9923bca07b2cbc78f2b5fed73a82a69bcc7479194e71c",
+      "name": "Ethereum Extituional",
       "contracts": {
-        "merkleSnapshot": "0x0e13C13D77598542514c6e17D7f8aCF13D2c5093",
-        "easIndexerResolver": "0x3D1CA83AbafB39D26374C9C602a7c228556F8787",
-        "merkleFundDistributor": "0x6Ed34316a523Ca0429269Fe8d81F46bbD1570B6d",
-        "paramsController": "0x70c42113BaE9aFc67775BD8D25268fb5c4281b43"
+        "merkleSnapshot": "0xf2adb473b1a37b0530d50e9CeB0062090b169Bf6",
+        "easIndexerResolver": "0x241Bab6b370e252f600f2A179d6CBEda41c74e18",
+        "merkleFundDistributor": "0x8F0112Da1591fF6811b2966eFfA79B21b84ffAe8",
+        "paramsController": "0x54a58a241De98e97C1C07d87eFea3cbBad4C1116"
       },
-      "schemaUid": "0x80766c9893e4fc006a425f4dfb44b55ac13b4e1a0ee7cfb7864a5b9af4ea03f3"
+      "schemaUid": "0xa56c67d2de9940b54c44d31ee898ef4a00bbf1d0b2b716442675a44a1121b36d"
     }
   ]
 }
