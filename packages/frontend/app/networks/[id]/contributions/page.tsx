@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 
 import { CatalogUnavailable } from '@/components/CatalogUnavailable'
 import { getNetwork } from '@/lib/catalog.server'
-import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
 import { loadContributionsCatalog } from '@/lib/contributions-catalog'
 import { socialCard } from '@/lib/metadata'
 import {
@@ -13,11 +12,10 @@ import {
 
 import { ContributionsNetworkPage } from '../contributions'
 
-export const revalidate = 10
-
-export async function generateStaticParams() {
-  return VISIBLE_SEED_NETWORKS.map((network) => ({ id: network.id }))
-}
+// Permissionless networks and rounds can be created after the production build, and `?round=` is
+// request-specific. The catalog fetches keep their own bounded caches, so the route itself must be
+// request-time rather than an on-demand static render.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({
   params,

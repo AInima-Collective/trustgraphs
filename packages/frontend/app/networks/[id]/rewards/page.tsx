@@ -6,7 +6,6 @@ import { NetworkProvider } from '@/contexts/NetworkContext'
 import { getNetwork } from '@/lib/catalog.server'
 import { compositionAsNetwork } from '@/lib/composition/network'
 import { getCompositionInstance } from '@/lib/composition.server'
-import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
 import { getContributionsCatalog } from '@/lib/contributions-catalog.server'
 import { socialCard } from '@/lib/metadata'
 import {
@@ -17,11 +16,10 @@ import {
 
 import { RewardsPage } from '../claims/component'
 
-export const revalidate = 10
-
-export async function generateStaticParams() {
-  return VISIBLE_SEED_NETWORKS.map((network) => ({ id: network.id }))
-}
+// Permissionless instances can be created after the production build, and `?fund=` controls the
+// request's initial UI. Keep the route request-time while its catalog reads retain their own
+// bounded caches.
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({
   params,

@@ -25,3 +25,20 @@ test('runtime schemas are registered before server-side network attestation pref
     'network attestations can be decoded before their runtime schema is registered'
   )
 })
+
+test('request-specific permissionless network subpages stay dynamic', async () => {
+  const routes = [
+    '../app/networks/[id]/settings/page.tsx',
+    '../app/networks/[id]/rewards/page.tsx',
+    '../app/networks/[id]/contributions/page.tsx',
+  ]
+
+  for (const route of routes) {
+    const page = await readFile(new URL(route, import.meta.url), 'utf8')
+    assert.match(page, /export const dynamic = 'force-dynamic'/, route)
+    assert.doesNotMatch(page, /generateStaticParams/, route)
+    assert.doesNotMatch(page, /export const revalidate/, route)
+    assert.match(page, /await searchParams/, route)
+    assert.match(page, /await getNetwork\(id\)/, route)
+  }
+})

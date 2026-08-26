@@ -100,8 +100,20 @@ export async function POST(
       )
     }
 
-    // Parse the request body
-    const body = await request.json()
+    // Malformed JSON is a client error, not a failed proxy invocation. Keep it out of the outer
+    // error path so empty or truncated requests do not become noisy 500s or trigger RPC failover.
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        return NextResponse.json(
+          { error: 'Invalid JSON request body' },
+          { status: 400 }
+        )
+      }
+      throw error
+    }
 
     // Validate that it's a proper JSON-RPC request
     if (!body || typeof body !== 'object') {
