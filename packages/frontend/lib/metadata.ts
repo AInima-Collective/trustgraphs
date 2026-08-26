@@ -1,5 +1,11 @@
 import type { Metadata } from 'next'
 
+// Social crawlers cache image URLs for much longer than the page metadata.
+// Keep this path content-specific: when the card changes, publish it under a
+// new name so an old crawler cache cannot keep the previous card alive.
+export const SOCIAL_CARD_IMAGE =
+  '/images/trustgraphs-social-card-trust-made-legible.png'
+
 /**
  * The share card for one public route.
  *
@@ -11,9 +17,9 @@ import type { Metadata } from 'next'
  * entirely, because those live in the object that was replaced. Both of those
  * were mine, one round apart, which is what a helper is for.
  *
- * The image paths are the file-convention routes Next generates from
- * `app/opengraph-image.png` and `app/twitter-image.png`. They are named here
- * rather than inherited for the same reason as everything else in the object.
+ * The image has a content-specific public path rather than the stable Next
+ * file-convention route. It is named here rather than inherited for the same
+ * reason as everything else in the object.
  */
 export const socialCard = ({
   title,
@@ -32,7 +38,7 @@ export const socialCard = ({
     title,
     description,
     url: path,
-    images: ['/opengraph-image.png'],
+    images: [SOCIAL_CARD_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
@@ -40,7 +46,7 @@ export const socialCard = ({
     creator: '@trustgraphs',
     title,
     description,
-    images: ['/twitter-image.png'],
+    images: [SOCIAL_CARD_IMAGE],
   },
   alternates: { canonical: path },
 })

@@ -20,6 +20,8 @@
  *   app/apple-icon.png        180x180 touch icon
  *   app/opengraph-image.png   1200x630 share card
  *   app/twitter-image.png     byte-identical copy of the share card
+ *   public/images/trustgraphs-social-card-trust-made-legible.png
+ *                              cache-safe public copy of the share card
  *   public/images/icon-192.png, icon-512.png   PWA manifest icons
  */
 import { readFile, writeFile } from 'node:fs/promises'
@@ -227,11 +229,19 @@ const main = async () => {
   await writeFile(join(ROOT, 'public/images/icon-192.png'), pwa192)
   await writeFile(join(ROOT, 'public/images/icon-512.png'), pwa512)
 
-  // One card, two filenames: Next serves opengraph-image for og:image and
-  // twitter-image for twitter:image, and there is no reason for them to differ.
+  // One card, three filenames. The Next file-convention routes remain useful
+  // defaults, while metadata points crawlers at the content-specific public
+  // path so their old image caches cannot survive a card change.
   const card = await shareCard(font)
   await writeFile(join(ROOT, 'app/opengraph-image.png'), card)
   await writeFile(join(ROOT, 'app/twitter-image.png'), card)
+  await writeFile(
+    join(
+      ROOT,
+      'public/images/trustgraphs-social-card-trust-made-legible.png'
+    ),
+    card
+  )
 
   console.log('brand assets written')
 }

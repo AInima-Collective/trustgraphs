@@ -10,6 +10,7 @@ import { Footer } from '@/components/Footer'
 import { Nav } from '@/components/Nav'
 import { Providers } from '@/components/providers'
 import { getCatalog } from '@/lib/catalog.server'
+import { SOCIAL_CARD_IMAGE } from '@/lib/metadata'
 
 // Two families ship, and that is the whole type system. PaperMono carries
 // every label, control, and number; Instrument Serif carries the display voice
@@ -40,9 +41,9 @@ const DESCRIPTION =
 // No `icons` key on purpose. Next picks up app/icon.svg, app/apple-icon.png and
 // app/favicon.ico from the file conventions, and a manual `icons` array
 // silently replaces all three — which is how the old blue asterisk PNGs
-// outlived the mark they were drawn from. Same for `openGraph.images`:
-// app/opengraph-image.png and app/twitter-image.png are wired automatically.
-// Regenerate every one of them with `pnpm run brand:assets`.
+// outlived the mark they were drawn from. The social image is explicit because
+// crawlers cache its URL; `pnpm run brand:assets` writes that content-specific
+// public path along with Next's file-convention images.
 export const metadata: Metadata = {
   metadataBase: new URL('https://trustgraphs.xyz'),
   title: {
@@ -57,6 +58,7 @@ export const metadata: Metadata = {
     siteName: 'Trustgraphs',
     title: 'Trustgraphs',
     description: DESCRIPTION,
+    images: [SOCIAL_CARD_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
@@ -64,6 +66,7 @@ export const metadata: Metadata = {
     creator: '@trustgraphs',
     title: 'Trustgraphs',
     description: DESCRIPTION,
+    images: [SOCIAL_CARD_IMAGE],
   },
 }
 
