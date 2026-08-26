@@ -289,7 +289,6 @@ export async function POST(request: NextRequest) {
   if (apiKey) {
     formData.append('network', 'public')
     formData.append('name', `trustgraph-network-${Date.now()}.json`)
-    formData.append('cid_version', '1')
   }
 
   try {

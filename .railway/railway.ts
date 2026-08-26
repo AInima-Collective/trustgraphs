@@ -10,7 +10,7 @@ import {
 } from 'railway/iac'
 
 const repository = () =>
-  github('AInima-Collective/trustgraphs', { branch: 'sepolia' })
+  github('AInima-Collective/trustgraphs', { branch: 'main' })
 
 // Keep stateful services together. Change this once, before the first apply, if the Railway
 // workspace has a different preferred region; moving an attached volume later is destructive.

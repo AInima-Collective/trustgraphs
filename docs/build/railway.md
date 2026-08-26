@@ -47,7 +47,7 @@ this repository's installed dependencies. If `config plan` reports `ERR_MODULE_N
 The operator service uses `.railway/operator.Dockerfile`, a two-file layer on top of the reviewed
 operator image digest. It copies the public Sepolia policy and release manifest that Compose used
 to bind-mount. It does not rebuild the operator or any guest. Railway builds from the configured
-GitHub branch, so this Dockerfile must exist in the pushed `sepolia` commit; a local-only file is
+GitHub branch, so this Dockerfile must exist in the pushed `main` commit; a local-only file is
 not present in Railway's code archive.
 
 The `v0.0.5` guest release already contains the trust-graph, weighted, composition, signer-sync,
@@ -63,7 +63,7 @@ The indexer Dockerfile relies on its lockfile dependency layer rather than a Bui
 Railway requires cache-mount IDs to contain the Railway service ID, which does not belong in this
 portable project definition.
 
-The Railway services follow the `sepolia` branch. Push one reviewed, locally green commit only
+The Railway services follow the `main` branch. Push one reviewed, locally green commit only
 after the checks above; applying before that push would make Railway build an older tree without
 the Railway files.
 

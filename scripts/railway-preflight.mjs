@@ -28,7 +28,7 @@ for (const required of [
   'createRailwayContext',
   'const ctx = createRailwayContext(input)',
   "project('trustgraphs-sepolia'",
-  "github('AInima-Collective/trustgraphs', { branch: 'sepolia' })",
+  "github('AInima-Collective/trustgraphs', { branch: 'main' })",
   "'/.dockerignore'",
   "postgres('Postgres', { region })",
   "service('indexer'",

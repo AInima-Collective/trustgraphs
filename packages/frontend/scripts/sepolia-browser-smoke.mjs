@@ -29,7 +29,7 @@ try {
   const hrefs = await page
     .locator('a')
     .evaluateAll((links) => links.map((link) => link.getAttribute('href')))
-  assert.match(body, /Ethereum Sepolia · Testnet assets have no value/i)
+  assert.doesNotMatch(body, /Testnet assets have no value/i)
   assert.match(body, /Start a standard network/i)
   assert.match(body, /Weighted starting shares/i)
   assert.match(body, /Compose proved scoreboards/i)
@@ -61,7 +61,7 @@ try {
     JSON.stringify({
       url: createUrl,
       title: await page.title(),
-      testnetBanner: true,
+      testnetBanner: false,
       standardCreationOffered: true,
       programCreationEntriesAvailable: true,
       cleanWalletContext: true,
