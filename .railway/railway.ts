@@ -113,10 +113,11 @@ export default defineRailway((input) => {
       DEPLOY_STAGE: 'production',
       DEPLOY_TARGET: 'sepolia',
       DATABASE_URL: database.env.DATABASE_URL,
-      // v3: the fast-factory generation changed ponder.config's contract sources, and Ponder
-      // refuses to reuse a schema written by a different app build. Each indexer config change
-      // ships with a schema bump; the views schema below stays stable across writers.
-      PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v3',
+      // v4: the weighted/compose/contributions fast generations changed ponder.config's contract
+      // sources (address arrays over both generations), and Ponder refuses to reuse a schema
+      // written by a different app build. Each indexer config change ships with a schema bump;
+      // the views schema below stays stable across writers.
+      PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v4',
       PONDER_VIEWS_SCHEMA: 'trust-graph',
       PONDER_PORT: '65421',
       PONDER_RPC_URL_11155111: ctx.shared.RPC_URL_11155111_0,
