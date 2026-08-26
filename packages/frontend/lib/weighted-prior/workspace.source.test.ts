@@ -74,6 +74,11 @@ assert.match(source, /artifacts\.manifestSha256/)
 assert.match(source, /artifacts\.metadataDigest/)
 assert.match(source, /transactionPayload/)
 assert.match(source, /gasEstimate/)
+assert.match(source, /gas: ETHEREUM_TRANSACTION_GAS_CAP/)
+assert.match(
+  source,
+  /gas: bufferedEthereumGasLimit\(\s*gasEstimate \?\? ETHEREUM_TRANSACTION_GAS_CAP\s*\)/
+)
 assert.match(source, /recheckWeightedSource/)
 assert.match(source, /WeightedEnsResolutionChangedError/)
 for (const setter of [

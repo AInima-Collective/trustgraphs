@@ -44,6 +44,10 @@ import { useNetworks } from '@/contexts/CatalogContext'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
 import { getEnsCoinType } from '@/lib/ens-query'
+import {
+  ETHEREUM_TRANSACTION_GAS_CAP,
+  bufferedEthereumGasLimit,
+} from '@/lib/ethereum-gas'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
@@ -740,6 +744,10 @@ export const WeightedPriorWorkspace = ({
           abi: governedWeightedTrustgraphsFactoryAbi,
           functionName: 'createGovernedInstance',
           args: [args, initialPolicy, DISABLED_SIGNER_SYNC],
+          // Ethereum rejects any transaction above EIP-7825's 2^24 gas cap. Passing the cap to
+          // simulation both proves this atomic factory call fits and prevents an RPC from testing
+          // it under the block's much larger gas limit.
+          gas: ETHEREUM_TRANSACTION_GAS_CAP,
           ...(prepayWei > 0n ? { value: prepayWei } : {}),
         } as const
         await publicClient.simulateContract(governedCall)
@@ -878,6 +886,12 @@ export const WeightedPriorWorkspace = ({
                   initialPolicy!,
                   DISABLED_SIGNER_SYNC,
                 ],
+                // Some wallets add their own 50% estimate margin, which made this Sepolia call
+                // exceed the protocol cap before execution. Submit the reviewed estimate with a
+                // bounded margin explicitly instead.
+                gas: bufferedEthereumGasLimit(
+                  gasEstimate ?? ETHEREUM_TRANSACTION_GAS_CAP
+                ),
                 ...(prepayWei > 0n ? { value: prepayWei } : {}),
               } as any)
             : {
