@@ -128,18 +128,48 @@ assert.match(source, /DISABLED_SIGNER_SYNC/)
 // Weighted creation offers the same plain-language scoring cadence as standard creation, starts
 // at the factory floor, and submits the derived block count rather than asking for a raw number.
 assert.match(source, /useState<Cadence>\('fastest'\)/)
-assert.match(source, /How often scores can be recalculated/)
-assert.match(source, /CADENCE_OPTIONS\.map/)
+assert.match(source, /<CadenceField/)
 assert.match(source, /epochLength: requestedEpoch/)
 assert.doesNotMatch(source, /Scoring round length \(blocks\)/)
-assert.ok(
-  source.indexOf('How often scores can be recalculated') <
-    source.indexOf('id="source-heading"'),
-  'weighted cadence must be visible before the starting-share import is built'
+assert.match(
+  source,
+  /Starting weights replace the standard network&apos;s\s+advanced/
+)
+assert.doesNotMatch(source, /Paid no more often than/)
+assert.doesNotMatch(source, /priced the weighted proving band/)
+
+// Creation is presented as seven honest sections. Scoring cadence and prepayment share one card,
+// prepayment is always rendered rather than nested under the governance switch, and entering an
+// amount enables the governed wrapper that can install the paid policy atomically.
+const creationSections = [
+  '1. Network settings',
+  '2. Add starting accounts and weights',
+  '3. Check how the weights are shared',
+  '4. Save and verify what will go onchain',
+  '5. Scores and refresh payments',
+  '6. Additional features',
+  '7. Preview the transaction, then sign',
+]
+for (let index = 1; index < creationSections.length; index += 1) {
+  assert.ok(
+    source.indexOf(creationSections[index - 1]) <
+      source.indexOf(creationSections[index]),
+    `${creationSections[index]} must follow ${creationSections[index - 1]}`
+  )
+}
+const scoresStart = source.indexOf('5. Scores and refresh payments')
+const featuresStart = source.indexOf('6. Additional features')
+const scoresSection = source.slice(scoresStart, featuresStart)
+assert.match(scoresSection, /<CadenceField/)
+assert.match(scoresSection, /Pay for score refreshes up front\?/)
+assert.equal(
+  source.match(/Pay for score refreshes up front\?/g)?.length,
+  1,
+  'refresh prepayment should render once in Scores, not conditionally under governance'
 )
 assert.match(
   source,
-  /Starting weights replace the standard network&apos;s advanced/
+  /setPrepayEth\(next\)[\s\S]{0,160}setWithGovernance\(true\)/
 )
 
 // Weighted creation exposes the standard public network profile, pins it only when populated,

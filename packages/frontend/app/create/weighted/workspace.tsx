@@ -37,13 +37,6 @@ import { Button, ButtonLink } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { CopyableText } from '@/components/CopyableText'
 import { Input } from '@/components/Input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/Select'
 import { Switch } from '@/components/Switch'
 import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
@@ -113,11 +106,10 @@ import type {
 } from '@/lib/weighted-prior/preview.worker'
 import { BINARY_REDEPLOYMENT_NOTICE } from '@/lib/weighted-prior/workflow'
 
+import { CadenceField } from '../CadenceField'
 import {
-  CADENCE_OPTIONS,
   type Cadence,
   type NetworkMetadata,
-  describeBlocks,
   effectiveBlocks,
   metadataFingerprint,
   nameProblem,
@@ -131,6 +123,7 @@ import {
   networkProfileProblem,
 } from '../NetworkProfileFields'
 import { pinMetadata } from '../pin'
+import { Field, Note } from '../ui'
 
 type Mode = 'create' | 'rotate' | 'redeploy'
 type Format = 'csv' | 'json'
@@ -370,12 +363,18 @@ export const WeightedPriorWorkspace = ({
             : null
         : null
 
-  // The optional refresh prepayment (governed creations only: it rides as transaction value and
-  // the wrapper installs the paid policy on the new network's proving tank atomically).
+  // Refresh prepayment is always presented with scoring. A non-empty amount turns governance on:
+  // the base factory can deposit ETH, but only the governed wrapper can also install the paid
+  // policy atomically, which is what makes that deposit usable for automatic prover payments.
   const prepayIssue: string | null = (() => {
-    if (!withGovernance) return null
     const trimmed = prepayEth.trim()
     if (!trimmed) return null
+    if (!GOVERNED_AVAILABLE) {
+      return 'Refresh prepayment is not available on this deployment.'
+    }
+    if (!withGovernance) {
+      return 'Refresh prepayment requires Create with governance.'
+    }
     if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
       return 'Enter an amount like 0.5, or leave it blank.'
     }
@@ -385,13 +384,10 @@ export const WeightedPriorWorkspace = ({
     return initialPolicyProblem(prepayEth, maxPerRootUsd)
   })()
   const prepayWei =
-    withGovernance && prepayEth.trim() && !prepayIssue
-      ? parseEther(prepayEth.trim())
-      : 0n
+    prepayEth.trim() && !prepayIssue ? parseEther(prepayEth.trim()) : 0n
   const factoryEpochFloor = (epochFloor as bigint | undefined) ?? 0n
   const requestedEpoch = requestedBlocks(cadence, factoryEpochFloor)
   const effectiveEpoch = effectiveBlocks(cadence, factoryEpochFloor)
-  const cadenceRaised = requestedEpoch < effectiveEpoch
   const initialPolicy = useMemo<InitialProvingPolicy | null>(() => {
     try {
       return initialPolicyForCreation(prepayWei, effectiveEpoch, maxPerRootUsd)
@@ -1219,10 +1215,10 @@ export const WeightedPriorWorkspace = ({
           aria-labelledby="weighted-network-settings-heading"
         >
           <h2 id="weighted-network-settings-heading" className="text-lg">
-            Network settings
+            1. Network settings
           </h2>
-          <Card type="outline" size="md" className="grid gap-3 sm:grid-cols-2">
-            <div>
+          <Card type="outline" size="md" className="space-y-4">
+            <div className="max-w-md">
               <label htmlFor="weighted-name" className="text-sm font-medium">
                 Network name
               </label>
@@ -1241,56 +1237,6 @@ export const WeightedPriorWorkspace = ({
               )}
             </div>
             <div className="space-y-2">
-              <label htmlFor="weighted-cadence" className="text-sm font-medium">
-                How often scores can be recalculated
-              </label>
-              <Select
-                value={cadence}
-                onValueChange={(value) => {
-                  setCadence(value as Cadence)
-                  setSimulatedPayload(null)
-                  setGasEstimate(null)
-                }}
-              >
-                <SelectTrigger id="weighted-cadence">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CADENCE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                New vouches appear immediately, but scores change only after
-                someone publishes a new proof. Faster schedules respond sooner
-                and cost more to maintain.
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-2">
-              {cadenceRaised ? (
-                <>
-                  This chain limits score updates to{' '}
-                  {describeBlocks(effectiveEpoch)}, so that is the schedule your
-                  network will use.
-                </>
-              ) : epochFloor === undefined ? (
-                <>Loading this chain&apos;s schedule limit.</>
-              ) : (
-                <>
-                  The factory minimum is {factoryEpochFloor.toLocaleString()}{' '}
-                  blocks.
-                </>
-              )}
-            </p>
-            <p className="text-xs text-muted-foreground sm:col-span-2">
-              Starting weights replace the standard network&apos;s advanced
-              head-start controls. Score scale, proof precision, and iteration
-              count are fixed for weighted networks.
-            </p>
-            <div className="space-y-2 sm:col-span-2">
               <NetworkProfileFields
                 idPrefix="weighted-profile"
                 value={profile}
@@ -1310,7 +1256,7 @@ export const WeightedPriorWorkspace = ({
         <h2 id="source-heading" className="text-lg">
           {administrative
             ? '1. Enter replacement shares'
-            : '1. Add starting accounts and weights'}
+            : '2. Add starting accounts and weights'}
         </h2>
         <Card type="outline" size="md" className="space-y-4">
           {prefilled !== null && (
@@ -1463,7 +1409,9 @@ export const WeightedPriorWorkspace = ({
         <>
           <section className="space-y-4" aria-labelledby="preview-heading">
             <h2 id="preview-heading" className="text-lg">
-              2. Check how the weights are shared
+              {administrative
+                ? '2. Check how the weights are shared'
+                : '3. Check how the weights are shared'}
             </h2>
             <div className="grid gap-4 sm:grid-cols-4">
               <Card type="outline" size="md">
@@ -1611,7 +1559,9 @@ export const WeightedPriorWorkspace = ({
 
           <section className="space-y-4" aria-labelledby="commitment-heading">
             <h2 id="commitment-heading" className="text-lg">
-              3. Save and verify what will go onchain
+              {administrative
+                ? '3. Save and verify what will go onchain'
+                : '4. Save and verify what will go onchain'}
             </h2>
             <Card type="outline" size="md" className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -1690,199 +1640,75 @@ export const WeightedPriorWorkspace = ({
             </Card>
           </section>
 
-          <section className="space-y-4" aria-labelledby="sign-heading">
-            <h2 id="sign-heading" className="text-lg">
-              4. Preview the transaction, then sign
-            </h2>
-            {mode !== 'rotate' && (
-              <Card type="outline" size="md" className="space-y-4">
-                <div className="flex flex-row items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">Add a shared fund</p>
-                    <p className="text-xs text-muted-foreground max-w-xl">
-                      A shared fund lets your community put money in one place
-                      and split it by trust score. Anyone can top it up, and
-                      each member claims their own share. Skip this if your
-                      community only wants scores.
-                    </p>
-                  </div>
-                  <Switch
-                    size="md"
-                    enabled={withFund}
-                    readOnly={!GOVERNED_AVAILABLE}
-                    onClick={() => {
-                      if (!GOVERNED_AVAILABLE) return
-                      const next = !withFund
-                      setWithFund(next)
-                      if (next) {
-                        // Community funds may only be owned by an initialized Safe. The governed
-                        // wrapper creates that Safe atomically; a direct EOA-owned creation would
-                        // revert InvalidDistributorSafe.
-                        setWithGovernance(true)
-                        setPrepayEth('')
-                        setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+          {mode !== 'rotate' && (
+            <>
+              <section
+                className="space-y-4"
+                aria-labelledby="weighted-scoring-heading"
+              >
+                <h2 id="weighted-scoring-heading" className="text-lg">
+                  5. Scores and refresh payments
+                </h2>
+                <Card type="outline" size="md" className="space-y-6">
+                  <CadenceField
+                    id="weighted-cadence"
+                    value={cadence}
+                    epochFloor={factoryEpochFloor}
+                    onChange={(next) => {
+                      setCadence(next)
+                      setSimulatedPayload(null)
+                      setGasEstimate(null)
+                    }}
+                  />
+                  <div className="space-y-4 border-t border-border pt-4">
+                    <Field
+                      label="Pay for score refreshes up front?"
+                      hint={
+                        <>
+                          Publishing scores requires a proof and an onchain
+                          transaction. Add ETH to pay approved provers for early
+                          refreshes, or leave this blank and produce proofs
+                          independently.{' '}
+                          <Link
+                            href="/docs/build/run-a-prover"
+                            className="underline underline-offset-4 hover:text-foreground"
+                          >
+                            Learn how to run a prover.
+                          </Link>
+                        </>
                       }
-                      setSimulatedPayload(null)
-                      setGasEstimate(null)
-                    }}
-                  />
-                </div>
-                {!GOVERNED_AVAILABLE && (
-                  <p className="text-xs text-muted-foreground">
-                    A shared fund requires the governed factory to create its
-                    Safe owner, and governance is not available on this
-                    deployment.
-                  </p>
-                )}
-                {withFund && (
-                  <div className="space-y-3 border-t border-border pt-3">
-                    <p className="text-sm">What do you expect to pay out?</p>
-                    <div className="flex flex-row flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant={fundToken === 'eth' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          setFundToken('eth')
-                          setSimulatedPayload(null)
-                        }}
-                      >
-                        ETH
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={fundToken === 'other' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          setFundToken('other')
-                          setSimulatedPayload(null)
-                        }}
-                      >
-                        Another token
-                      </Button>
-                    </div>
-                    {fundToken === 'other' && (
-                      <Input
-                        aria-label="Token address"
-                        placeholder="0x..."
-                        className="max-w-md font-mono text-xs"
-                        value={fundTokenAddress}
-                        onChange={(e) => {
-                          setFundTokenAddress(e.target.value)
-                          setSimulatedPayload(null)
-                        }}
-                      />
-                    )}
-                    {fundIssue && (
-                      <p className="text-xs text-destructive" role="alert">
-                        {fundIssue}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      This only decides what the payout screen shows first. The
-                      fund holds anything and can pay out something else later.
-                      The new DAO Safe owns the fund, so payouts happen through
-                      member governance.
-                    </p>
-                  </div>
-                )}
-                {!withFund && (
-                  <p className="text-xs text-muted-foreground">
-                    Skipping this closes no doors: the network&apos;s authority
-                    can attach a fund later with the factory&apos;s
-                    attachDistributor call, though this workspace does not offer
-                    that button yet.
-                  </p>
-                )}
-              </Card>
-            )}
-
-            {mode !== 'rotate' && (
-              <Card type="outline" size="md" className="space-y-4">
-                <div className="flex flex-row items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      Create with governance
-                    </p>
-                    <p className="text-xs text-muted-foreground max-w-xl">
-                      Hand the new network to a DAO Safe instead of your wallet.
-                      A Safe is a shared onchain account; one is created for you
-                      in the same transaction and owns the network from the
-                      first block. Your wallet becomes the Safe&apos;s only
-                      recorded owner, but a permanently sealed guard disables
-                      owner-signed transactions: members direct the Safe through
-                      delayed trust-weighted voting, and your wallet keeps only
-                      a slow, visible recovery role.
-                    </p>
-                  </div>
-                  <Switch
-                    size="md"
-                    enabled={withGovernance}
-                    readOnly={!GOVERNED_AVAILABLE || withFund}
-                    onClick={() => {
-                      if (!GOVERNED_AVAILABLE || withFund) return
-                      setWithGovernance(!withGovernance)
-                      setPrepayEth('')
-                      setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
-                      setSimulatedPayload(null)
-                      setGasEstimate(null)
-                    }}
-                  />
-                </div>
-                {withFund && (
-                  <p className="text-xs text-muted-foreground">
-                    Governance is required while a shared fund is selected: the
-                    fund&apos;s owner must be an initialized Safe.
-                  </p>
-                )}
-                {!GOVERNED_AVAILABLE && (
-                  <p className="text-xs text-muted-foreground">
-                    Create with governance is not available on this deployment,
-                    so a network created here is owned by your wallet.
-                  </p>
-                )}
-                {withGovernance && !authority.loading && !authority.valid && (
-                  <p className="text-xs text-destructive" role="alert">
-                    {governanceIssue}
-                  </p>
-                )}
-                {withGovernance && (
-                  <div className="space-y-3 border-t border-border pt-3 text-sm">
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium">
-                        Pay for score refreshes up front?
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Scores only refresh if somebody does the work, and that
-                        costs gas and proving time. Put ETH in during creation
-                        to fund the first refreshes, or leave it blank. The ETH
-                        lands in the new network&apos;s proving tank, and the
-                        DAO Safe controls it afterwards.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          className="w-32"
-                          inputMode="decimal"
-                          placeholder="0.5"
-                          aria-label="Refresh prepayment in ETH"
-                          value={prepayEth}
-                          onChange={(e) => {
-                            setPrepayEth(e.target.value)
-                            setSimulatedPayload(null)
-                          }}
-                        />
-                        <span className="text-sm opacity-60">
-                          ETH (optional)
-                        </span>
-                      </div>
-                      {prepayEth.trim() && (
-                        <div className="grid gap-3 sm:grid-cols-2">
+                      error={prepayIssue}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className="w-32"
+                            inputMode="decimal"
+                            placeholder="0.5"
+                            aria-label="Refresh prepayment in ETH"
+                            value={prepayEth}
+                            disabled={!GOVERNED_AVAILABLE}
+                            onChange={(event) => {
+                              const next = event.target.value
+                              setPrepayEth(next)
+                              if (next.trim() && GOVERNED_AVAILABLE) {
+                                setWithGovernance(true)
+                              }
+                              setSimulatedPayload(null)
+                              setGasEstimate(null)
+                            }}
+                          />
+                          <span className="text-sm opacity-60">
+                            ETH (optional)
+                          </span>
+                        </div>
+                        {prepayEth.trim() && (
                           <div className="space-y-1">
                             <label
                               className="text-xs text-muted-foreground"
                               htmlFor="weighted-max-refresh"
                             >
-                              Maximum per refresh
+                              Maximum paid per refresh
                             </label>
                             <div className="flex items-center gap-2">
                               <span className="text-sm opacity-60">$</span>
@@ -1891,52 +1717,214 @@ export const WeightedPriorWorkspace = ({
                                 className="w-32"
                                 inputMode="decimal"
                                 value={maxPerRootUsd}
-                                onChange={(e) => {
-                                  setMaxPerRootUsd(e.target.value)
+                                onChange={(event) => {
+                                  setMaxPerRootUsd(event.target.value)
                                   setSimulatedPayload(null)
+                                  setGasEstimate(null)
                                 }}
                               />
                               <span className="text-sm opacity-60">USD</span>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              Covers the proving fee and gas together; creation
-                              is capped at $10,000.
+                              Includes the proving fee and gas reimbursement.
                             </p>
                           </div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">
-                              Paid no more often than
-                            </div>
-                            <div className="text-sm">
-                              every {effectiveEpoch.toLocaleString()} blocks,
-                              the scoring round length
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              This starts equal to the score schedule. The DAO
-                              Safe can change it later.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {prepayIssue && (
-                        <p className="text-xs text-destructive" role="alert">
-                          {prepayIssue}
-                        </p>
-                      )}
-                      {prepayEth.trim() && !prepayIssue && (
-                        <p className="text-xs text-muted-foreground">
-                          Before anything is sent, the simulation checks that
-                          this chain has priced the weighted proving band and
-                          that your cap covers that fee. Creation is atomic: the
-                          ETH and the paid policy either both land or neither
-                          does.
-                        </p>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    </Field>
+                    {!GOVERNED_AVAILABLE && (
+                      <Note>
+                        Refresh prepayment is not available on this deployment.
+                      </Note>
+                    )}
+                    {prepayEth.trim() && (
+                      <Note>
+                        Refresh prepayment includes governance so the network
+                        can install its prover-payment policy during creation.
+                        You can top up later.
+                      </Note>
+                    )}
                   </div>
-                )}
-              </Card>
-            )}
+                  <Note>
+                    Starting weights replace the standard network&apos;s
+                    advanced head-start controls. Score scale, proof precision,
+                    and iteration count are fixed for weighted networks.
+                  </Note>
+                </Card>
+              </section>
+
+              <section
+                className="space-y-4"
+                aria-labelledby="additional-features-heading"
+              >
+                <h2 id="additional-features-heading" className="text-lg">
+                  6. Additional features
+                </h2>
+                <Card type="outline" size="md" className="space-y-4">
+                  <div className="flex flex-row items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Add a shared fund</p>
+                      <p className="text-xs text-muted-foreground max-w-xl">
+                        A shared fund lets your community put money in one place
+                        and split it by trust score. Anyone can top it up, and
+                        each member claims their own share. Skip this if your
+                        community only wants scores.
+                      </p>
+                    </div>
+                    <Switch
+                      size="md"
+                      enabled={withFund}
+                      readOnly={!GOVERNED_AVAILABLE}
+                      onClick={() => {
+                        if (!GOVERNED_AVAILABLE) return
+                        const next = !withFund
+                        setWithFund(next)
+                        if (next) {
+                          // Community funds may only be owned by an initialized Safe. The governed
+                          // wrapper creates that Safe atomically; a direct EOA-owned creation would
+                          // revert InvalidDistributorSafe.
+                          setWithGovernance(true)
+                        }
+                        setSimulatedPayload(null)
+                        setGasEstimate(null)
+                      }}
+                    />
+                  </div>
+                  {!GOVERNED_AVAILABLE && (
+                    <p className="text-xs text-muted-foreground">
+                      A shared fund requires the governed factory to create its
+                      Safe owner, and governance is not available on this
+                      deployment.
+                    </p>
+                  )}
+                  {withFund && (
+                    <div className="space-y-3 border-t border-border pt-3">
+                      <p className="text-sm">What do you expect to pay out?</p>
+                      <div className="flex flex-row flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={fundToken === 'eth' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setFundToken('eth')
+                            setSimulatedPayload(null)
+                          }}
+                        >
+                          ETH
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={
+                            fundToken === 'other' ? 'default' : 'outline'
+                          }
+                          size="sm"
+                          onClick={() => {
+                            setFundToken('other')
+                            setSimulatedPayload(null)
+                          }}
+                        >
+                          Another token
+                        </Button>
+                      </div>
+                      {fundToken === 'other' && (
+                        <Input
+                          aria-label="Token address"
+                          placeholder="0x..."
+                          className="max-w-md font-mono text-xs"
+                          value={fundTokenAddress}
+                          onChange={(e) => {
+                            setFundTokenAddress(e.target.value)
+                            setSimulatedPayload(null)
+                          }}
+                        />
+                      )}
+                      {fundIssue && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {fundIssue}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This only decides what the payout screen shows first.
+                        The fund holds anything and can pay out something else
+                        later. The new DAO Safe owns the fund, so payouts happen
+                        through member governance.
+                      </p>
+                    </div>
+                  )}
+                  {!withFund && (
+                    <p className="text-xs text-muted-foreground">
+                      Skipping this closes no doors: the network&apos;s
+                      authority can attach a fund later with the factory&apos;s
+                      attachDistributor call, though this workspace does not
+                      offer that button yet.
+                    </p>
+                  )}
+                </Card>
+
+                <Card type="outline" size="md" className="space-y-4">
+                  <div className="flex flex-row items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">
+                        Create with governance
+                      </p>
+                      <p className="text-xs text-muted-foreground max-w-xl">
+                        Hand the new network to a DAO Safe instead of your
+                        wallet. A Safe is a shared onchain account; one is
+                        created for you in the same transaction and owns the
+                        network from the first block. Your wallet becomes the
+                        Safe&apos;s only recorded owner, but a permanently
+                        sealed guard disables owner-signed transactions: members
+                        direct the Safe through delayed trust-weighted voting,
+                        and your wallet keeps only a slow, visible recovery
+                        role.
+                      </p>
+                    </div>
+                    <Switch
+                      size="md"
+                      enabled={withGovernance}
+                      readOnly={!GOVERNED_AVAILABLE || withFund}
+                      onClick={() => {
+                        if (!GOVERNED_AVAILABLE || withFund) return
+                        const next = !withGovernance
+                        setWithGovernance(next)
+                        if (!next) {
+                          setPrepayEth('')
+                          setMaxPerRootUsd(DEFAULT_MAX_PER_ROOT_USD)
+                        }
+                        setSimulatedPayload(null)
+                        setGasEstimate(null)
+                      }}
+                    />
+                  </div>
+                  {withFund && (
+                    <p className="text-xs text-muted-foreground">
+                      Governance is required while a shared fund is selected:
+                      the fund&apos;s owner must be an initialized Safe.
+                    </p>
+                  )}
+                  {!GOVERNED_AVAILABLE && (
+                    <p className="text-xs text-muted-foreground">
+                      Create with governance is not available on this
+                      deployment, so a network created here is owned by your
+                      wallet.
+                    </p>
+                  )}
+                  {withGovernance && !authority.loading && !authority.valid && (
+                    <p className="text-xs text-destructive" role="alert">
+                      {governanceIssue}
+                    </p>
+                  )}
+                </Card>
+              </section>
+            </>
+          )}
+
+          <section className="space-y-4" aria-labelledby="sign-heading">
+            <h2 id="sign-heading" className="text-lg">
+              {administrative
+                ? '4. Preview the transaction, then sign'
+                : '7. Preview the transaction, then sign'}
+            </h2>
             {!isConnected && <WalletConnectionButton />}
             {!FACTORY_AVAILABLE && mode !== 'rotate' && (
               <p className="text-sm text-warning">

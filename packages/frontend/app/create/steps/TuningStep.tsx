@@ -7,24 +7,15 @@ import { useState } from 'react'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Input } from '@/components/Input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/Select'
 
+import { CadenceField } from '../CadenceField'
 import {
-  CADENCE_OPTIONS,
-  Cadence,
   DEFAULT_TUNING,
   Tuning,
   WizardData,
   describeBlocks,
   effectiveBlocks,
   prepayProblem,
-  requestedBlocks,
 } from '../model'
 import { Field, Note, PercentSetting, StepHeader } from '../ui'
 
@@ -46,9 +37,7 @@ export const TuningStep = ({
   const setTuning = (patch: Partial<Tuning>) =>
     onChange({ tuning: { ...tuning, ...patch } })
 
-  const requested = requestedBlocks(tuning.cadence, epochFloor)
   const effective = effectiveBlocks(tuning.cadence, epochFloor)
-  const raised = requested < effective
   const prepayError = showErrors ? prepayProblem(data) : null
 
   const advancedKeys: (keyof Tuning)[] = [
@@ -67,33 +56,12 @@ export const TuningStep = ({
         lead="Choose how strongly vouches shape scores and how often the scoreboard can be refreshed."
       />
 
-      <Field
-        label="How often scores can be recalculated"
-        hint="New vouches appear immediately, but scores change only after someone publishes a new proof. Faster schedules respond sooner and cost more to maintain."
-      >
-        <Select
-          value={tuning.cadence}
-          onValueChange={(value) => setTuning({ cadence: value as Cadence })}
-        >
-          <SelectTrigger className="max-w-md">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CADENCE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      {raised && (
-        <Note tone="warning">
-          This chain limits score updates to {describeBlocks(effective)}, so
-          that is the schedule your network will use.
-        </Note>
-      )}
+      <CadenceField
+        id="standard-cadence"
+        value={tuning.cadence}
+        epochFloor={epochFloor}
+        onChange={(cadence) => setTuning({ cadence })}
+      />
 
       <PercentSetting
         label="How much scores lean on vouches"
