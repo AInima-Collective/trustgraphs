@@ -42,6 +42,7 @@ const indexerCompute = {
 // GitHub sources autodeploy by default. Restrict each service to files that can change its image
 // so an unrelated monorepo commit does not spend Railway build credits twice.
 const indexerWatchPaths = [
+  '/.dockerignore',
   '/.env.example',
   '/packages/indexer/**',
   '/packages/eas-offchain-client/**',

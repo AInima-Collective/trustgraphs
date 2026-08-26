@@ -42,6 +42,10 @@ packages
 packages/*
 !packages/indexer/
 !packages/indexer/**
+# Ponder executes every TypeScript file under the indexer's src directory. Keep unit tests out of
+# the image at the build-context boundary: deleting them in a later Docker layer relies on OCI
+# whiteouts, which Railway Runtime V2 can expose again when it materializes the container.
+packages/indexer/src/**/*.test.ts
 !packages/eas-offchain-client/
 !packages/eas-offchain-client/**
 !packages/frontend/

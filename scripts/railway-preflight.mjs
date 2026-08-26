@@ -8,6 +8,7 @@ const read = (relative) =>
   fs.readFileSync(path.join(repository, relative), 'utf8')
 
 const iac = read('.railway/railway.ts')
+const dockerignore = read('.dockerignore')
 const indexerDockerfile = read('packages/indexer/Dockerfile')
 const operatorDockerfile = read('.railway/operator.Dockerfile')
 const operatorProfile = read('deployments/operator.sepolia.toml')
@@ -28,6 +29,7 @@ for (const required of [
   'const ctx = createRailwayContext(input)',
   "project('trustgraphs-sepolia'",
   "github('AInima-Collective/trustgraphs', { branch: 'sepolia' })",
+  "'/.dockerignore'",
   "postgres('Postgres', { region })",
   "service('indexer'",
   "service('operator'",
@@ -85,6 +87,21 @@ assert.doesNotMatch(
   indexerDockerfile,
   /--mount=type=cache/,
   'Railway cache mounts require a service-ID prefix; use the dependency layer cache instead'
+)
+assert.match(
+  dockerignore,
+  /^packages\/indexer\/src\/\*\*\/\*\.test\.ts$/m,
+  'indexer tests must be excluded before Docker COPY so Railway never has to apply deletion whiteouts'
+)
+assert.doesNotMatch(
+  indexerDockerfile,
+  /find packages\/indexer\/src -name '\*\.test\.ts' -exec/,
+  'do not delete copied indexer tests in a later image layer; Railway Runtime V2 can expose whiteouted files'
+)
+assert.match(
+  indexerDockerfile,
+  /remaining="\$\(find packages\/indexer\/src -name '\*\.test\.ts'\)"/,
+  'the image build must assert that the Docker context did not carry indexer tests'
 )
 
 assert.ok(

@@ -47,12 +47,12 @@ COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 # tests read golden vectors from repository paths this image deliberately does not carry, so a test
 # file left in the tree fails the indexing build over a fixture the indexer never needs to run.
 #
-# `-exec ... ';'` rather than `+`, because BusyBox find does not always carry the batching variant,
-# and the removal is asserted here so that a strip which quietly matches nothing fails this build
-# instead of crash-looping the container at startup.
+# `.dockerignore` excludes those tests before `COPY`. Do not delete them in this layer: that records
+# OCI whiteouts over the earlier copy layer, and Railway Runtime V2 can expose whiteouted files when
+# it materializes the container. Keep the assertion so an ignore-rule regression fails the image
+# build instead of crash-looping the service at startup.
 RUN rm -f packages/indexer/networks.json \
     && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
-    && find packages/indexer/src -name '*.test.ts' -exec rm -f {} ';' \
     && remaining="$(find packages/indexer/src -name '*.test.ts')" \
     && if [ -n "$remaining" ]; then \
          echo "image still carries indexer test files:" >&2; echo "$remaining" >&2; exit 1; \
