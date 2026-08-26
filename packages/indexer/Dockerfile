@@ -46,9 +46,17 @@ COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 # directory, and this repository keeps unit tests beside the modules they cover. Several of those
 # tests read golden vectors from repository paths this image deliberately does not carry, so a test
 # file left in the tree fails the indexing build over a fixture the indexer never needs to run.
+#
+# `-exec ... ';'` rather than `+`, because BusyBox find does not always carry the batching variant,
+# and the removal is asserted here so that a strip which quietly matches nothing fails this build
+# instead of crash-looping the container at startup.
 RUN rm -f packages/indexer/networks.json \
     && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
-    && find packages/indexer/src -name '*.test.ts' -exec rm -f {} + \
+    && find packages/indexer/src -name '*.test.ts' -exec rm -f {} ';' \
+    && remaining="$(find packages/indexer/src -name '*.test.ts')" \
+    && if [ -n "$remaining" ]; then \
+         echo "image still carries indexer test files:" >&2; echo "$remaining" >&2; exit 1; \
+       fi \
     && chown -R node:node /app
 
 USER node
