@@ -38,8 +38,10 @@ replacement_after_s = 300
 simulate_before_send = true
 
 [finality]
-# Two Ethereum epochs: spend only after the checkpoint is beyond ordinary short reorg depth.
-confirmations = 64
+# Testnet setting: Sepolia reorgs deeper than a couple of blocks are rare, and a wasted testnet
+# proof is cheap. Mainnet should return to 64 (two Ethereum epochs) so a proof is only bought
+# for a checkpoint beyond ordinary short reorg depth.
+confirmations = 5
 track_block_hash = true
 
 [prover]
@@ -57,7 +59,8 @@ eth_usd = 5000
 
 [signer_sync]
 enabled = true
-confirmations = 64
+# Testnet: matches [finality] confirmations; restore 64 for mainnet.
+confirmations = 5
 track_block_hash = true
 per_instance_usd_per_day = 1
 global_usd_per_day = 5
