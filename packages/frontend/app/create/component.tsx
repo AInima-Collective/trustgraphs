@@ -1,15 +1,15 @@
 'use client'
 
 import { ArrowLeft, ArrowRight, LoaderCircle } from 'lucide-react'
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { Hex, isAddress, zeroAddress } from 'viem'
+import { Hex, zeroAddress } from 'viem'
 import { useAccount, useChainId, useReadContract } from 'wagmi'
 
-import { Button, ButtonLink } from '@/components/Button'
+import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useWalletConnectionContext } from '@/components/WalletConnectionProvider'
-import { TRUST_COMPOSE_CONFIG, WEIGHTED_FACTORY } from '@/lib/config'
 import { trustgraphsFactoryAbi } from '@/lib/contract-abis'
 import { cn } from '@/lib/utils'
 import { getTargetChainConfig, getTargetChainId } from '@/lib/wagmi'
@@ -41,108 +41,11 @@ import { SuccessStep } from './steps/SuccessStep'
 import { TuningStep } from './steps/TuningStep'
 import { Note } from './ui'
 
-const publicFactoryAvailable = (value: string | undefined): boolean =>
-  Boolean(
-    value &&
-      value.toLowerCase() !== zeroAddress &&
-      isAddress(value, { strict: false })
-  )
-const WEIGHTED_PATH_AVAILABLE = publicFactoryAvailable(WEIGHTED_FACTORY)
-const COMPOSITION_PATH_AVAILABLE = publicFactoryAvailable(
-  TRUST_COMPOSE_CONFIG?.factory
-)
-
-/**
- * The three ways to create, offered BEFORE any wizard state exists. The first wizard screen's
- * Continue pins metadata to IPFS, so someone who actually wants weighted shares or a composition
- * must be able to turn off here, before anything is saved or sent anywhere.
- */
-const PathChooser = ({ onStandard }: { onStandard: () => void }) => (
-  <div className="space-y-8 max-w-3xl">
-    <div className="space-y-2">
-      <h1 className="text-2xl">Create a network</h1>
-      <p className="text-sm text-muted-foreground max-w-2xl">
-        Choose from the network types available on this deployment. Nothing is
-        saved or sent while you choose.
-      </p>
-    </div>
-
-    <div className="space-y-4">
-      <Card type="accent" size="md" className="space-y-3">
-        <div className="space-y-1">
-          <h2 className="tg-label-strong">Standard network</h2>
-          <p className="text-sm text-muted-foreground">
-            Members vouch for each other and scores follow; every starting
-            account you list counts equally.
-          </p>
-        </div>
-        {isFactoryAvailable() ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={onStandard}
-            className="h-auto min-h-11 w-full justify-between whitespace-normal py-2 text-left leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:justify-center sm:whitespace-nowrap sm:py-0 sm:text-center sm:leading-normal"
-          >
-            Start a standard network
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        ) : (
-          <p className="text-sm">
-            Standard networks cannot be created on {getTargetChainConfig().name}{' '}
-            yet.
-          </p>
-        )}
-      </Card>
-
-      {WEIGHTED_PATH_AVAILABLE && (
-        <Card type="accent" size="md" className="space-y-3">
-          <div className="space-y-1">
-            <h2 className="tg-label-strong">Weighted starting shares</h2>
-            <p className="text-sm text-muted-foreground">
-              Give each starting account its own size of head start; vouches
-              still decide the final scores.
-            </p>
-          </div>
-          <ButtonLink
-            href="/create/weighted"
-            variant="outline"
-            size="sm"
-            className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
-          >
-            Choose weighted shares
-          </ButtonLink>
-        </Card>
-      )}
-
-      {COMPOSITION_PATH_AVAILABLE && (
-        <Card type="accent" size="md" className="space-y-3">
-          <div className="space-y-1">
-            <h2 className="tg-label-strong">Compose proved scoreboards</h2>
-            <p className="text-sm text-muted-foreground">
-              Blend the proven scoreboards of existing networks into one, at
-              exact percentages you choose.
-            </p>
-          </div>
-          <ButtonLink
-            href="/create/composition"
-            variant="outline"
-            size="sm"
-            className="h-auto min-h-11 w-full whitespace-normal py-2 text-center leading-relaxed sm:h-8 sm:min-h-0 sm:w-auto sm:whitespace-nowrap sm:py-0 sm:leading-normal"
-          >
-            Open the composition workspace
-          </ButtonLink>
-        </Card>
-      )}
-    </div>
-  </div>
-)
-
 export const CreateNetworkWizard = () => {
   const { isConnected } = useAccount()
   const chainId = useChainId()
   const { switchToTarget, switchingTarget } = useWalletConnectionContext()
 
-  const [path, setPath] = useState<'standard' | null>(null)
   const [step, setStep] = useState(0)
   const [showErrors, setShowErrors] = useState(false)
   const [data, setData] = useState<WizardData>(EMPTY_WIZARD_DATA)
@@ -272,13 +175,6 @@ export const CreateNetworkWizard = () => {
     return <SuccessStep created={created} />
   }
 
-  // The chooser also covers the no-factory case: the standard path explains why it is closed while
-  // the weighted and composition paths stay reachable. `path` can only become 'standard' through
-  // the chooser's button, which is not rendered when the factory is missing.
-  if (path === null || !isFactoryAvailable()) {
-    return <PathChooser onStandard={() => setPath('standard')} />
-  }
-
   const wrongChain = isConnected && chainId !== getTargetChainId()
   const stepId = WIZARD_STEPS[step]?.id
 
@@ -287,13 +183,12 @@ export const CreateNetworkWizard = () => {
       <div className="space-y-4">
         <div className="space-y-1">
           <h1 className="text-2xl">Create a standard network</h1>
-          <button
-            type="button"
-            onClick={() => setPath(null)}
+          <Link
+            href="/create"
             className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
             Choose a different kind of network
-          </button>
+          </Link>
         </div>
 
         <div className="flex flex-row flex-wrap gap-x-4 gap-y-1">

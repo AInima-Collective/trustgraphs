@@ -100,15 +100,20 @@ const sourceHeading = source.indexOf('id="source-heading"')
 assert.ok(firstTgwp > sourceHeading && sourceHeading > 0)
 
 // Governance and the shared fund are explicit creation-time choices with
-// plain-words copy, the voting profile is read live from the wrapper factory, the compounded
-// activation delay is stated, and signer-sync is honestly not offered.
+// plain-words copy and the voting profile is still validated against the wrapper factory.
 assert.match(source, /Create with governance/)
 assert.match(source, /A Safe is a shared onchain account/)
 assert.match(source, /useAuthorityProfile/)
-assert.match(source, /read live from the governed factory/)
-assert.match(source, /activation delay of/)
-assert.match(source, /PRIOR_ACTIVATION_DELAY/)
-assert.match(source, /Score-selected Safe signers are not offered/)
+assert.doesNotMatch(
+  source,
+  /Member voting, read live from the governed factory/
+)
+assert.doesNotMatch(
+  source,
+  /Recovery: your wallet may publish one exact Safe action/
+)
+assert.doesNotMatch(source, /Updates to the starting shares take longer/)
+assert.doesNotMatch(source, /Score-selected Safe signers are not offered/)
 assert.match(source, /Add a shared fund/)
 assert.match(source, /withDistributor: withFund/)
 assert.match(source, /setWithGovernance\(true\)/)
@@ -127,6 +132,15 @@ assert.match(source, /How often scores can be recalculated/)
 assert.match(source, /CADENCE_OPTIONS\.map/)
 assert.match(source, /epochLength: requestedEpoch/)
 assert.doesNotMatch(source, /Scoring round length \(blocks\)/)
+assert.ok(
+  source.indexOf('How often scores can be recalculated') <
+    source.indexOf('id="source-heading"'),
+  'weighted cadence must be visible before the starting-share import is built'
+)
+assert.match(
+  source,
+  /Starting weights replace the standard network&apos;s advanced/
+)
 
 // Weighted creation exposes the standard public network profile, pins it only when populated,
 // and puts that exact metadata URI into the simulated create payload.

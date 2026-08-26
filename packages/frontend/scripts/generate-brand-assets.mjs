@@ -186,7 +186,7 @@ const shareCard = async (font) =>
             type: 'div',
             props: {
               style: { marginTop: '44px', fontSize: 38, color: MUTED },
-              children: 'Reputation you can’t buy.',
+              children: 'Trust, made legible.',
             },
           },
         ],

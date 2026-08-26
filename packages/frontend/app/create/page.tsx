@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { CreateNetworkWizard } from './component'
+import { CreateNetworkChooser } from './chooser'
 
 export const metadata: Metadata = {
   title: 'Create a network',
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 }
 
 export default function CreateNetworkPage() {
-  return <CreateNetworkWizard />
+  return <CreateNetworkChooser />
 }

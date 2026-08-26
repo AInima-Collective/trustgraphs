@@ -60,6 +60,27 @@ test('standard creation presents scoring and governance decisions in their inten
   }
 })
 
+test('each network creation type has a stable route and the nav returns to the chooser', async () => {
+  const [chooser, chooserPage, standardPage, standardWizard, nav] =
+    await Promise.all([
+      source('../app/create/chooser.tsx'),
+      source('../app/create/page.tsx'),
+      source('../app/create/standard/page.tsx'),
+      source('../app/create/component.tsx'),
+      source('../components/Nav.tsx'),
+    ])
+
+  assert.match(chooser, /href="\/create\/standard"/)
+  assert.match(chooser, /href="\/create\/weighted"/)
+  assert.match(chooser, /href="\/create\/composition"/)
+  assert.match(chooserPage, /<CreateNetworkChooser/)
+  assert.doesNotMatch(chooserPage, /<CreateNetworkWizard/)
+  assert.match(standardPage, /<CreateNetworkWizard/)
+  assert.match(standardWizard, /href="\/create"/)
+  assert.doesNotMatch(standardWizard, /setPath|PathChooser/)
+  assert.match(nav, /href="\/create"[\s\S]*Create a network/)
+})
+
 test('vouch surface reviews both typed messages and gates success on final indexed verification', async () => {
   const [modal, hook] = await Promise.all([
     source('../components/CreateAttestationModal.tsx'),

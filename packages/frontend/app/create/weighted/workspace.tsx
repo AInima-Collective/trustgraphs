@@ -56,7 +56,7 @@ import {
   bufferedEthereumGasLimit,
 } from '@/lib/ethereum-gas'
 import { saveGovernancePrefill } from '@/lib/governance-prefill'
-import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
+import { DISABLED_SIGNER_SYNC } from '@/lib/governed-wrapper'
 import {
   DEFAULT_MAX_PER_ROOT_USD,
   type InitialProvingPolicy,
@@ -317,14 +317,6 @@ export const WeightedPriorWorkspace = ({
     address: FACTORY_AVAILABLE ? WEIGHTED_FACTORY_ADDRESS : zeroAddress,
     abi: weightedTrustgraphsFactoryAbi,
     functionName: 'EPOCH_FLOOR',
-    query: { enabled: FACTORY_AVAILABLE },
-  })
-  // The delay the base factory installs on every prior update, for the compounded-delay copy in
-  // the governance section: under governance an update waits through voting, execution, AND this.
-  const { data: priorActivationDelay } = useReadContract({
-    address: FACTORY_AVAILABLE ? WEIGHTED_FACTORY_ADDRESS : zeroAddress,
-    abi: weightedTrustgraphsFactoryAbi,
-    functionName: 'PRIOR_ACTIVATION_DELAY',
     query: { enabled: FACTORY_AVAILABLE },
   })
   // The wrapper's live governance profile, checked the way the main wizard's review screen checks
@@ -1221,6 +1213,99 @@ export const WeightedPriorWorkspace = ({
         </Card>
       )}
 
+      {mode !== 'rotate' && (
+        <section
+          className="space-y-4"
+          aria-labelledby="weighted-network-settings-heading"
+        >
+          <h2 id="weighted-network-settings-heading" className="text-lg">
+            Network settings
+          </h2>
+          <Card type="outline" size="md" className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="weighted-name" className="text-sm font-medium">
+                Network name
+              </label>
+              <Input
+                id="weighted-name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setSimulatedPayload(null)
+                }}
+              />
+              {nameProblem(name) && (
+                <p className="mt-1 text-xs text-destructive">
+                  {nameProblem(name)}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="weighted-cadence" className="text-sm font-medium">
+                How often scores can be recalculated
+              </label>
+              <Select
+                value={cadence}
+                onValueChange={(value) => {
+                  setCadence(value as Cadence)
+                  setSimulatedPayload(null)
+                  setGasEstimate(null)
+                }}
+              >
+                <SelectTrigger id="weighted-cadence">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CADENCE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                New vouches appear immediately, but scores change only after
+                someone publishes a new proof. Faster schedules respond sooner
+                and cost more to maintain.
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              {cadenceRaised ? (
+                <>
+                  This chain limits score updates to{' '}
+                  {describeBlocks(effectiveEpoch)}, so that is the schedule your
+                  network will use.
+                </>
+              ) : epochFloor === undefined ? (
+                <>Loading this chain&apos;s schedule limit.</>
+              ) : (
+                <>
+                  The factory minimum is {factoryEpochFloor.toLocaleString()}{' '}
+                  blocks.
+                </>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Starting weights replace the standard network&apos;s advanced
+              head-start controls. Score scale, proof precision, and iteration
+              count are fixed for weighted networks.
+            </p>
+            <div className="space-y-2 sm:col-span-2">
+              <NetworkProfileFields
+                idPrefix="weighted-profile"
+                value={profile}
+                onChange={updateProfile}
+              />
+              {metadataURI && (
+                <p className="break-all text-xs text-emerald-700">
+                  Profile saved as {metadataURI}
+                </p>
+              )}
+            </div>
+          </Card>
+        </section>
+      )}
+
       <section className="space-y-4" aria-labelledby="source-heading">
         <h2 id="source-heading" className="text-lg">
           {administrative
@@ -1610,96 +1695,6 @@ export const WeightedPriorWorkspace = ({
               4. Preview the transaction, then sign
             </h2>
             {mode !== 'rotate' && (
-              <Card
-                type="outline"
-                size="md"
-                className="grid gap-3 sm:grid-cols-2"
-              >
-                <div>
-                  <label
-                    htmlFor="weighted-name"
-                    className="text-sm font-medium"
-                  >
-                    Network name
-                  </label>
-                  <Input
-                    id="weighted-name"
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value)
-                      setSimulatedPayload(null)
-                    }}
-                  />
-                  {nameProblem(name) && (
-                    <p className="mt-1 text-xs text-destructive">
-                      {nameProblem(name)}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="weighted-cadence"
-                    className="text-sm font-medium"
-                  >
-                    How often scores can be recalculated
-                  </label>
-                  <Select
-                    value={cadence}
-                    onValueChange={(value) => {
-                      setCadence(value as Cadence)
-                      setSimulatedPayload(null)
-                      setGasEstimate(null)
-                    }}
-                  >
-                    <SelectTrigger id="weighted-cadence">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CADENCE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    New vouches appear immediately, but scores change only after
-                    someone publishes a new proof. Faster schedules respond
-                    sooner and cost more to maintain.
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground sm:col-span-2">
-                  {cadenceRaised ? (
-                    <>
-                      This chain limits score updates to{' '}
-                      {describeBlocks(effectiveEpoch)}, so that is the schedule
-                      your network will use.
-                    </>
-                  ) : epochFloor === undefined ? (
-                    <>Loading this chain&apos;s schedule limit.</>
-                  ) : (
-                    <>
-                      The factory minimum is{' '}
-                      {factoryEpochFloor.toLocaleString()} blocks.
-                    </>
-                  )}
-                </p>
-                <div className="space-y-2 sm:col-span-2">
-                  <NetworkProfileFields
-                    idPrefix="weighted-profile"
-                    value={profile}
-                    onChange={updateProfile}
-                  />
-                  {metadataURI && (
-                    <p className="break-all text-xs text-emerald-700">
-                      Profile saved as {metadataURI}
-                    </p>
-                  )}
-                </div>
-              </Card>
-            )}
-
-            {mode !== 'rotate' && (
               <Card type="outline" size="md" className="space-y-4">
                 <div className="flex flex-row items-start justify-between gap-4">
                   <div className="space-y-1">
@@ -1846,53 +1841,14 @@ export const WeightedPriorWorkspace = ({
                     so a network created here is owned by your wallet.
                   </p>
                 )}
+                {withGovernance && !authority.loading && !authority.valid && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {governanceIssue}
+                  </p>
+                )}
                 {withGovernance && (
                   <div className="space-y-3 border-t border-border pt-3 text-sm">
-                    {authority.valid ? (
-                      <>
-                        <p>
-                          Member voting, read live from the governed factory:{' '}
-                          {describeBlocks(authority.memberVotingDelay ?? 0n)}{' '}
-                          before voting starts, then{' '}
-                          {describeBlocks(authority.memberVotingPeriod ?? 0n)}{' '}
-                          to vote and{' '}
-                          {describeBlocks(authority.memberExecutionDelay ?? 0n)}{' '}
-                          before the Safe executes a passed proposal.
-                        </p>
-                        <p>
-                          Recovery: your wallet may publish one exact Safe
-                          action but cannot execute it early. Anyone may execute
-                          it after {describeSeconds(authority.recoveryDelay)},
-                          and the member-governed Safe can cancel it or replace
-                          the proposer.
-                        </p>
-                        <p>
-                          Updates to the starting shares take longer under
-                          governance: a proposed update must first pass a member
-                          vote (the delays above), and the network&apos;s own
-                          activation delay of{' '}
-                          {describeSeconds(
-                            priorActivationDelay as number | undefined
-                          )}{' '}
-                          runs after that before the new shares apply.
-                        </p>
-                      </>
-                    ) : authority.loading ? (
-                      <p className="text-muted-foreground">
-                        Reading the live voting profile…
-                      </p>
-                    ) : (
-                      <p className="text-destructive" role="alert">
-                        {governanceIssue}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Score-selected Safe signers are not offered for weighted
-                      networks: the only signer verifier today proves the
-                      standard trust-graph pipeline.
-                    </p>
-
-                    <div className="space-y-3 border-t border-border pt-3">
+                    <div className="space-y-3">
                       <p className="text-sm font-medium">
                         Pay for score refreshes up front?
                       </p>
