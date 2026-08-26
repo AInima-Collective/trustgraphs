@@ -25,6 +25,7 @@ assert.equal(normalizeEnsName(' Alice.ETH '), 'alice.eth')
 assert.equal(normalizeEnsName('a..eth'), null)
 assert.equal(normalizeEnsName('not-a-name'), null)
 assert.equal(getEnsCoinType(1), ENS_MAINNET_COIN_TYPE)
+assert.equal(getEnsCoinType(11155111), ENS_MAINNET_COIN_TYPE)
 assert.equal(getEnsCoinType(31337), ENS_MAINNET_COIN_TYPE)
 assert.equal(getEnsCoinType(10), 2147483658n)
 

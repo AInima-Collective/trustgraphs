@@ -20,11 +20,11 @@ const main = async () => {
   const resolved = await resolveEnsNameNow(
     config,
     ' Alice.ETH ',
-    10,
+    11155111,
     async (name, coinType) => {
       lookupCount++
       assert.equal(name, 'alice.eth')
-      assert.equal(coinType, 2147483658n)
+      assert.equal(coinType, 60n)
       return original
     }
   )

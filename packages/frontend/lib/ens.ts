@@ -2,10 +2,17 @@ import { normalize, toCoinType } from 'viem/ens'
 
 export const ENS_REGISTRY_CHAIN_ID = 1
 export const ENS_MAINNET_COIN_TYPE = 60n
+const ENS_ETHEREUM_L1_CHAIN_IDS = new Set([
+  ENS_REGISTRY_CHAIN_ID,
+  11155111, // Sepolia
+  31337, // Local fixtures resolve through the mainnet ENS client.
+])
 
 /** Return the ENSIP-11 coin type for the application account chain. */
 export const getEnsCoinType = (targetChainId: number): bigint => {
-  if (targetChainId === ENS_REGISTRY_CHAIN_ID || targetChainId === 31337) {
+  // Ethereum L1 testnets share the ordinary ETH address record. Asking ENS for
+  // a Sepolia-specific multichain record makes established names look empty.
+  if (ENS_ETHEREUM_L1_CHAIN_IDS.has(targetChainId)) {
     return ENS_MAINNET_COIN_TYPE
   }
   return toCoinType(targetChainId)
