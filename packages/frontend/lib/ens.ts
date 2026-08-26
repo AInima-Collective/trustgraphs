@@ -18,6 +18,23 @@ export const getEnsCoinType = (targetChainId: number): bigint => {
   return toCoinType(targetChainId)
 }
 
+/**
+ * Return the optional coin type for a forward ENS address lookup.
+ *
+ * Ethereum's canonical address record is the legacy `addr(bytes32)` resolver
+ * function. Passing coin type 60 explicitly selects the newer
+ * `addr(bytes32,uint256)` overload instead, which is not implemented by every
+ * resolver even when the name has a perfectly valid Ethereum address. Sepolia
+ * accounts use that same Ethereum address, so L1 testnets must omit the coin
+ * type as well. Non-Ethereum chains continue to request their ENSIP-11 record.
+ */
+export const getEnsAddressCoinType = (
+  targetChainId: number
+): bigint | undefined =>
+  ENS_ETHEREUM_L1_CHAIN_IDS.has(targetChainId)
+    ? undefined
+    : toCoinType(targetChainId)
+
 export type AccountIdentifier =
   | { kind: 'empty'; input: string }
   | { kind: 'address'; input: string; address: `0x${string}` }

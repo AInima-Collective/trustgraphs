@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import {
   ENS_MAINNET_COIN_TYPE,
+  getEnsAddressCoinType,
   getEnsCoinType,
   isPotentialEnsName,
   normalizeEnsName,
@@ -28,6 +29,10 @@ assert.equal(getEnsCoinType(1), ENS_MAINNET_COIN_TYPE)
 assert.equal(getEnsCoinType(11155111), ENS_MAINNET_COIN_TYPE)
 assert.equal(getEnsCoinType(31337), ENS_MAINNET_COIN_TYPE)
 assert.equal(getEnsCoinType(10), 2147483658n)
+assert.equal(getEnsAddressCoinType(1), undefined)
+assert.equal(getEnsAddressCoinType(11155111), undefined)
+assert.equal(getEnsAddressCoinType(31337), undefined)
+assert.equal(getEnsAddressCoinType(10), 2147483658n)
 
 assert.deepEqual(parseAccountIdentifier(''), { kind: 'empty', input: '' })
 assert.deepEqual(

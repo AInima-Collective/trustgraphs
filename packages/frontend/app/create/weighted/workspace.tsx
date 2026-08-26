@@ -43,7 +43,7 @@ import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
 import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
-import { getEnsCoinType } from '@/lib/ens-query'
+import { getEnsAddressCoinType } from '@/lib/ens-query'
 import {
   ETHEREUM_TRANSACTION_GAS_CAP,
   bufferedEthereumGasLimit,
@@ -527,7 +527,7 @@ export const WeightedPriorWorkspace = ({
       resolve: async (ensName: string, at: ResolutionAnchor) =>
         client.getEnsAddress({
           name: ensName,
-          coinType: getEnsCoinType(targetChainId),
+          coinType: getEnsAddressCoinType(targetChainId),
           blockNumber: at.blockNumber,
         }),
     }

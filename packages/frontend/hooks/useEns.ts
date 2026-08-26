@@ -10,6 +10,7 @@ import { normalizeEnsName } from '@/lib/ens'
 import {
   ENS_REGISTRY_CHAIN_ID,
   EnsResolutionChangedError,
+  getEnsAddressCoinType,
   getEnsCoinType,
   resolveAccountIdentifierNow,
 } from '@/lib/ens-query'
@@ -124,7 +125,7 @@ export function useResolveEnsName(
   const query = useEnsAddress({
     name: debouncedName || undefined,
     chainId: ENS_REGISTRY_CHAIN_ID,
-    coinType: getEnsCoinType(targetChainId),
+    coinType: getEnsAddressCoinType(targetChainId),
     query: {
       enabled: Boolean(
         !REVIEW_FIXTURES_ENABLED && enabled && debouncedName && !isDebouncing
@@ -191,7 +192,7 @@ export function useEnsResolver() {
         if (error instanceof EnsResolutionChangedError) {
           const options = getEnsAddressQueryOptions(config, {
             chainId: ENS_REGISTRY_CHAIN_ID,
-            coinType: getEnsCoinType(targetChainId),
+            coinType: getEnsAddressCoinType(targetChainId),
             name: error.ensName,
           })
           queryClient.setQueryData(options.queryKey, error.currentAddress)

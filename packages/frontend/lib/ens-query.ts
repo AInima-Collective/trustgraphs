@@ -4,12 +4,13 @@ import { type Address, getAddress, isAddressEqual, zeroAddress } from 'viem'
 
 import {
   ENS_REGISTRY_CHAIN_ID,
+  getEnsAddressCoinType,
   getEnsCoinType,
   normalizeEnsName,
   parseAccountIdentifier,
 } from './ens'
 
-export { ENS_REGISTRY_CHAIN_ID, getEnsCoinType }
+export { ENS_REGISTRY_CHAIN_ID, getEnsAddressCoinType, getEnsCoinType }
 
 export class InvalidAccountIdentifierError extends Error {
   constructor(public readonly input: string) {
@@ -46,7 +47,7 @@ export interface ResolvedAccountIdentifier {
 
 export type EnsAddressLookup = (
   name: string,
-  coinType: bigint
+  coinType: bigint | undefined
 ) => Promise<Address | null>
 
 /**
@@ -62,7 +63,7 @@ export const resolveEnsNameNow = async (
   const name = normalizeEnsName(input)
   if (!name) throw new InvalidAccountIdentifierError(input)
 
-  const coinType = getEnsCoinType(targetChainId)
+  const coinType = getEnsAddressCoinType(targetChainId)
   const address = lookup
     ? await lookup(name, coinType)
     : await getEnsAddress(config, {

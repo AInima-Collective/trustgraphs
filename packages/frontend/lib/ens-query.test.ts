@@ -24,7 +24,9 @@ const main = async () => {
     async (name, coinType) => {
       lookupCount++
       assert.equal(name, 'alice.eth')
-      assert.equal(coinType, 60n)
+      // Sepolia accepts the ordinary Ethereum address. Omitting the coin type
+      // selects the broadly supported addr(bytes32) resolver function.
+      assert.equal(coinType, undefined)
       return original
     }
   )
