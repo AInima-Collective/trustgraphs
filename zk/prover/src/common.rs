@@ -150,7 +150,7 @@ pub fn execute_values_untraced_rejected<T: Serialize>(elf: Elf, input: &T) -> Re
 /// Run the guest and byte-assert it against `native_pub`, returning the result instead of printing
 /// it.
 ///
-/// This assertion is the operator's submit precondition (GOAL ground rule 4): it is free, and it
+/// This assertion is the operator's submit precondition: it is free, and it
 /// is the same check `execute` has always made. A caller that skips it is submitting bytes it has
 /// not verified are the bytes it computed.
 pub fn execute_values<T: Serialize>(elf: Elf, input: &T, native_pub: &[u8]) -> Result<Execution> {

@@ -84,7 +84,7 @@ export const SECTION_META: Record<
     // the same set as both the network roster and the live vouch count.
     scoredLabel: 'Scored accounts',
   },
-  // The persistent surface for weighted instances (GOAL M2): before this section a created
+  // The persistent surface for weighted instances: before this section a created
   // weighted network's id appeared once, in a toast, and was unfindable after a reload.
   'trust-graph-weighted': {
     title: 'Weighted networks',

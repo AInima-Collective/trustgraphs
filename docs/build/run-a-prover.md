@@ -42,10 +42,10 @@ carries the daemon and the binaries it shells out to, and it is anonymously pull
 ## Minimal configuration
 
 ```toml
-rpc = "https://rpc.example"
-registry = "0x..."
-chain_id = 10
-registry_from_block = 123456789
+rpc = "https://sepolia-rpc.example"
+registry = "0x4369ad64D4E378BEc45eE1081394cCD8A0052904"
+chain_id = 11155111
+registry_from_block = 11565416
 # Every helper RPC call has its own deadline; it is never allowed to wait forever.
 rpc_timeout_seconds = 30
 

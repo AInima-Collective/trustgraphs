@@ -30,6 +30,9 @@ jobs:
       - name: Install deps
         run: task --yes setup
 
+      - name: Test deployment tooling
+        run: pnpm test:deploy
+
       - name: Check Solidity formatting
         run: forge fmt --check
 

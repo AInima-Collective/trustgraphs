@@ -43,9 +43,10 @@ COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 # application tree.
 #
 # Ponder executes every file under `src/` when it builds indexing functions, ignoring only the API
-# directory, and this repository keeps unit tests beside the modules they cover. Several of those
-# tests read golden vectors from repository paths this image deliberately does not carry, so a test
-# file left in the tree fails the indexing build over a fixture the indexer never needs to run.
+# directory, and this repository keeps unit tests beside the modules they cover. The other copied
+# source trees also contain test fixtures and assertions no production path imports. Several tests
+# read golden vectors from repository paths this image deliberately does not carry, so a test file
+# left in the tree can fail startup over a fixture the indexer never needs to run.
 #
 # `.dockerignore` excludes those tests before `COPY`. Do not delete them in this layer: that records
 # OCI whiteouts over the earlier copy layer, and Railway Runtime V2 can expose whiteouted files when
@@ -53,9 +54,10 @@ COPY scripts/redact-secrets.cjs ./scripts/redact-secrets.cjs
 # build instead of crash-looping the service at startup.
 RUN rm -f packages/indexer/networks.json \
     && ln -s ../../config/networks.sepolia.json packages/indexer/networks.json \
-    && remaining="$(find packages/indexer/src -name '*.test.ts')" \
+    && remaining="$(find packages/indexer packages/eas-offchain-client packages/frontend/lib contracts/deploy \
+         -type f -name '*.test.*')" \
     && if [ -n "$remaining" ]; then \
-         echo "image still carries indexer test files:" >&2; echo "$remaining" >&2; exit 1; \
+         echo "image still carries test files:" >&2; echo "$remaining" >&2; exit 1; \
        fi \
     && chown -R node:node /app
 

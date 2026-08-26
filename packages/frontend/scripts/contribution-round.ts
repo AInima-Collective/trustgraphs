@@ -1,5 +1,5 @@
 /**
- * Contribution-round seed driver (GOAL.md M5) — the 6-persona worked example
+ * Contribution-round seed driver — the 6-persona worked example
  * (`crates/contributions-core/src/testutil.rs::fixture()`) reproduced on a local anvil
  * through the EXACT code paths the frontend screens use:
  *

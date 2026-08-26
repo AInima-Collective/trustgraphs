@@ -73,6 +73,17 @@ const requiredPublicUrl = (
   return value
 }
 
+if (isPublic) {
+  const primaryRpc = requiredPublicUrl('RPC_URL_11155111_0')
+  const fallbackRpc = requiredPublicUrl('RPC_URL_11155111_1')
+  requiredPublicUrl('RPC_URL_1')
+  if (primaryRpc === fallbackRpc) {
+    throw new Error(
+      'RPC_URL_11155111_0 and RPC_URL_11155111_1 must use independent endpoints'
+    )
+  }
+}
+
 // Path to deployment summary and config files
 const deploymentSummaryFile = path.join(
   __dirname,

@@ -1,55 +1,19 @@
-# Deploy to production (advanced)
+# Public program operations (advanced)
 
-> Internal deployment reference retained from the original public guide.
+> Internal operations reference. This page is not part of the public product documentation.
 
-> **Pre-testnet status:** no trustgraphs contracts are deployed on any public chain. The first
-> planned public release is the core `trust-graph` path on Ethereum Sepolia (chain 11155111),
-> following the gates in [`sepolia.md`](./sepolia.md). Ethereum mainnet is a later production
-> target. The repository's existing chain-10 “production” profile is legacy configuration, not a
-> current deployment or the go-forward chain story. Treat this page as post-testnet production
-> preparation until the Sepolia release is complete.
+> Ethereum Sepolia (chain 11155111) is the only supported public target. Start with
+> [`docs/build/production.md`](../../docs/build/production.md) and
+> [`docs/build/railway.md`](../../docs/build/railway.md); the procedures below cover deeper
+> program-specific operations.
 
-### Deploy new network
-
-Create `config/networks.production.json` (copy the development template) with the new
-network's metadata set, but leave the contracts and schemas blank — they are filled in by
-the deployment script.
-
-Set the ZK deployment parameters in your environment (see `contracts/deploy/env.ts` and `.env.example`):
-
-- `SP1_PROGRAM_VKEY` — the guest program verification key (`cargo run -p trustgraph-prover -- trust-graph vkey`)
-- `SP1_SIGNER_PROGRAM_VKEY` — the signer-sync vkey (the five selection/liveness fields are stored
-  individually and hashed by the deployed module; see the
-  [signer-sync runbook](./signer-sync/runbook.md))
-- `SP1_VERIFIER_GATEWAY` — the canonical SP1 verifier gateway on the target chain
-- `NETWORK_EPOCH_LENGTH` — a nonzero block count between score checkpoints for each network
-  created through the legacy production deploy path (for example, `1296000` is about 30 days on
-  Optimism). The deploy fails closed when this is missing or zero.
-- `DISTRIBUTOR_SAFE` — an initialized Safe when the legacy `DeployNetwork` distributor flag is
-  enabled. The script and all base factories reject an EOA distributor owner.
-
-There is **no `PARAMS_HASH` env var**: `DeployNetwork` computes the params hash on-chain from
-`params.json` (the same file the prover feeds the guest) right after it registers the schema —
-see the note in `.env.example`.
-
-Then deploy the contracts, which will deploy and fill in the missing values:
-
-```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=optimism pnpm deploy:contracts
-```
-
-This deploys EAS + resolvers, the `SP1JournalVerifier`, `MerkleSnapshot` (with the accumulator and
-the two-tier governance timelocks), the Zodiac `MerkleGovModule` Safe, and the reward distributor.
-
-### Prepare weighted and compose factories after the core testnet
+### Weighted and compose factories
 
 The `/create/weighted` and `/create/composition` workspaces transact against two isolated
 factories: `WeightedTrustgraphsFactory` (`trust-graph-weighted`) and `TrustComposeFactory`
-(`trust-compose`). The dev pipeline deploys both automatically as part of `pnpm deploy:contracts`.
-These development deployments do not put either program in the first public release.
-`trust-compose` is explicitly outside the first Sepolia testnet and requires its own later release
-gate and coverage. The public-chain commands below are post-gate reference only; do not broadcast
-the compose scripts as part of the first Sepolia deployment.
+(`trust-compose`). Both families are live on Sepolia and recorded in
+`deployments/sepolia.json`. The dev pipeline also deploys both automatically as part of
+`pnpm deploy:contracts`.
 
 Each factory needs its own verifier, pinned to its own guest program. Compute the vkeys from the
 exact prover build you will operate:
@@ -71,7 +35,7 @@ forge script contracts/script/DeployZkVerifier.s.sol:DeployZkVerifier \
   --rpc-url "$RPC_URL" --private-key "$FUNDED_KEY" --broadcast --slow
 ```
 
-Then the factories. Both take an epoch floor in blocks (a mainnet block is ~12 s, so 216000 is
+Then the factories. Both take an epoch floor in blocks (a Sepolia block is ~12 s, so 216000 is
 about 30 days) and an activation delay in seconds: the immutable review window between proposing a
 new prior or policy and the earliest activation, during which proving operators re-verify the
 proposed bytes. The scripts refuse an epoch floor under ~1 day of blocks or a delay under 1 day on
@@ -102,10 +66,11 @@ the instance registry, which needs the registry's admin key: at
 bootstrap that is the deployer, and once registry admin has moved to the operational timelock, set
 `GRANT_REGISTRAR=false` and make the grant a governance action instead.
 
-Finally, wire the consumers. The indexer reads `weightedFactory.weighted_factory` and
-`trustComposeFactory.trust_compose_factory` from `.docker/deployment_summary.json`, or the explicit
-`WEIGHTED_FACTORY_ADDRESS_10` / `TRUST_COMPOSE_FACTORY_ADDRESS_10` environment variables in
-production. The frontend picks both up from the same summary keys during `config:generate`
+Finally, wire the consumers. On Sepolia the indexer derives `weightedFactory.weighted_factory` and
+`trustComposeFactory.trust_compose_factory` in memory from `deployments/sepolia.json`; the
+`WEIGHTED_FACTORY_ADDRESS_11155111` / `TRUST_COMPOSE_FACTORY_ADDRESS_11155111` variables are
+explicit emergency overrides. The frontend picks both up from the same manifest-derived summary
+keys during `config:generate`
 (`WEIGHTED_FACTORY_ADDRESS` / `TRUST_COMPOSE_FACTORY_ADDRESS` are the env overrides). The indexer
 reads the summary once at startup, so restart it after the factories land.
 
@@ -208,10 +173,8 @@ The exact ceremony and rollback checks are in
 The indexer has two production processes: a versioned writer and a stable read server. Set:
 
 ```bash
-PONDER_RPC_URL_<chainId>=https://your-archive-capable-rpc   # the legacy production profile is
-                                        # pinned to chain 10; do not reuse it for the planned
-                                        # Sepolia testnet (11155111) or future mainnet (1)
-PONDER_START_BLOCK_<chainId>=<earliest configured contract deployment block>
+PONDER_RPC_URL_11155111=https://your-archive-capable-rpc
+PONDER_START_BLOCK_11155111=<earliest configured contract deployment block>
 PONDER_DATABASE_SCHEMA=trustgraph_v1   # change for every indexing-code release
 PONDER_VIEWS_SCHEMA=trust-graph         # stable; the frontend reads this
 DATABASE_URL=postgresql://...
@@ -226,7 +189,7 @@ read schema away.
 
 Startup refuses three unsafe states before Ponder runs: the wrong chain id, deployment-record
 addresses with no code, or an RPC that cannot answer historical state at the start block. Sepolia
-uses the tracked finalized manifest; legacy/local profiles use the machine-local summary. It also
+uses the tracked finalized manifest; local development uses the machine-local summary. It also
 records a finalized block hash in Postgres. A later production identity mismatch is never reset
 automatically—verify the RPC/database and deploy to a new versioned schema. Use
 `pnpm --dir packages/indexer preflight` for the same checks without starting Ponder.

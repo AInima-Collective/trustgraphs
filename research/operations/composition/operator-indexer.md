@@ -33,13 +33,13 @@ cargo run --manifest-path zk/operator/Cargo.toml -- republish \
 
 ## Indexer boundary
 
-Configure the factory with `TRUST_COMPOSE_FACTORY_ADDRESS_10` on Optimism or
-`TRUST_COMPOSE_FACTORY_ADDRESS_31337` locally; a generated
-`deployment_summary.trustComposeFactory.trust_compose_factory` (written by the
-`DeployTrustComposeFactory` pipeline step) is also accepted. Ponder discovers each controller,
-accumulator, and snapshot from factory events. Policy manifests and adapter lists are recovered from their creation
-or proposal transaction calldata; adapter identities and nonzero deployment-provenance digests are
-recorded as governance-admitted provenance.
+On Sepolia, the indexer derives `deployment_summary.trustComposeFactory.trust_compose_factory` in
+memory from `deployments/sepolia.json`. For local development, set
+`TRUST_COMPOSE_FACTORY_ADDRESS_31337`; a summary written by the
+`DeployTrustComposeFactory` pipeline step is also accepted. Ponder discovers each
+controller, accumulator, and snapshot from factory events. Policy manifests and adapter lists are
+recovered from their creation or proposal transaction calldata; adapter identities and nonzero
+deployment-provenance digests are recorded as governance-admitted provenance.
 
 A composition root is not served unless the indexer independently reproduces:
 

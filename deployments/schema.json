@@ -23,7 +23,7 @@
     "version": { "const": 1 },
     "status": { "enum": ["planned", "deployed"] },
     "stage": { "const": "production" },
-    "chain": { "enum": ["sepolia", "mainnet", "optimism"] },
+    "chain": { "enum": ["sepolia"] },
     "chainId": { "type": "integer", "minimum": 1 },
     "deploymentCommit": {
       "oneOf": [

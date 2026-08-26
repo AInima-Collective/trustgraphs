@@ -66,7 +66,7 @@ export const AccountProfilePage = ({
 }) => {
   const router = useRouter()
 
-  // The runtime trust-graph catalog (GOAL.md M3): this page attributes scores and attestations to
+  // The runtime trust-graph catalog: this page attributes scores and attestations to
   // networks, and both lookups have to know about instances created since the last deploy.
   const networks = useNetworks()
   const schemaToNetwork = useMemo(() => {

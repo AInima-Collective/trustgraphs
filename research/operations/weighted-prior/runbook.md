@@ -157,9 +157,10 @@ manifest-bearing transaction. The current version is never substituted for a sup
 
 ## Indexer and API
 
-Set `WEIGHTED_FACTORY_ADDRESS_10` in production or
-`WEIGHTED_FACTORY_ADDRESS_31337` locally (a generated
-`deployment_summary.weightedFactory.weighted_factory` is also accepted). Ponder then discovers the
+On Sepolia, the indexer derives `deployment_summary.weightedFactory.weighted_factory` in memory
+from `deployments/sepolia.json`. For local development, set
+`WEIGHTED_FACTORY_ADDRESS_31337`; a summary written by the deploy pipeline is also accepted. Ponder
+then discovers the
 factory's controller, resolver, and snapshot children and replays proposal, cancellation,
 activation, checkpoint, and normalized-entry history. Deterministic `(instance, version)` and
 `(instance, version, position)` keys make a reorg rollback/reapply duplicate-free.

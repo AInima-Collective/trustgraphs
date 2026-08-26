@@ -209,7 +209,7 @@ type CompositionListPage = {
 /**
  * Weighted networks, from the indexer's own list (`GET /weighted-priors`).
  *
- * This is the persistent surface a created weighted instance gets (GOAL M2): without it the
+ * This is the persistent surface a created weighted instance gets: without it the
  * instance id appears once, in a toast, and is unfindable after a reload. Weighted instances have
  * no seed-file fallback (they postdate the shipped seed), so an unreachable indexer degrades to an
  * absent section plus the shared catalog warning; a 404 means the route is not deployed on this

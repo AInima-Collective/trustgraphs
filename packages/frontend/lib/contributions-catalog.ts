@@ -1,4 +1,4 @@
-//! The runtime contributions-round catalog (network-creation GOAL M7).
+//! The runtime contributions-round catalog.
 //!
 //! Contribution rounds used to be a build-time list: a `program: "contributions"` entry in
 //! `config/networks.<env>.json`, filled in by the deploy pipeline. `ContributionsFactory` makes

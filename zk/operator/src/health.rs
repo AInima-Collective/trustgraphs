@@ -5,7 +5,7 @@
 //! A container healthcheck cannot read it, an uptime check cannot read it, and the frontend's
 //! `OPERATOR_STATUS_URL` mode — already written, already sanitizing — had no server to point at.
 //!
-//! Three properties, all deliberate (GOAL D3):
+//! Three properties, all deliberate:
 //!
 //! - **Off by default.** No `[ops] listen`, no socket.
 //! - **Read-only.** Three routes, all GET. There is no way to trigger, halt, resolve or configure

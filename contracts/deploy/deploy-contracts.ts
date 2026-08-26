@@ -29,7 +29,7 @@ const program = new Command('deploy-contracts')
   )
   .option(
     '--chain <target>',
-    'Chain target: local, optimism, or sepolia (default: $DEPLOY_TARGET)'
+    'Chain target: local or sepolia (default: $DEPLOY_TARGET)'
   )
   .option(
     // Don't pass FUNDED_KEY as default here so it does not appear in the help

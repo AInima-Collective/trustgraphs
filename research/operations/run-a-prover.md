@@ -847,9 +847,9 @@ rarely; resolve promptly.
 **Still not run: `RequestOutcomeUnknown` against the live prover network.** The hold above is
 produced and handled locally; what is measured from the SDK source in §3 rather than executed is
 the RESOLUTION — matching `public_values_hash` through `get_filtered_proof_requests` against the
-real network. That needs a funded Succinct key, which is the same key
-[`SEPOLIA_GOAL`](../../SEPOLIA_GOAL.md) needs, and the rehearsal belongs in the session that first
-funds one.
+real network. That needs a funded Succinct key, which is also required by the
+[Sepolia operator deployment](../../docs/build/railway.md#3-create-the-shared-variables), and the
+rehearsal belongs in the session that first funds one.
 
 **Still not run unattended in a rehearsal a runner can execute: a Contributions round.** The
 daemon-side gap is smaller than it was — `task demo` has scheduled a Contributions round through

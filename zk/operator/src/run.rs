@@ -173,7 +173,7 @@ pub fn run(cfg: Config, once: bool, dry_run: bool) -> Result<()> {
     // already been said so a healthy tick is one line, not one line per instance per lane.
     let mut narration = Narration::default();
 
-    // Off unless asked for (GOAL D3). Bound HERE, before the first tick, so a bad address or an
+    // Off unless asked for. Bound HERE, before the first tick, so a bad address or an
     // occupied port is a startup failure rather than something discovered when a probe first
     // fails hours later.
     let health = Health::new(cfg.health_budgets());

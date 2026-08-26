@@ -13,7 +13,7 @@ export type ContractDeployment = {
 
 export type EnvName = 'dev' | 'prod'
 export type DeploymentStage = 'development' | 'production'
-export type ChainTarget = 'local' | 'optimism' | 'sepolia' | 'mainnet'
+export type ChainTarget = 'local' | 'sepolia' | 'mainnet'
 
 export type ChainProfile = {
   target: ChainTarget

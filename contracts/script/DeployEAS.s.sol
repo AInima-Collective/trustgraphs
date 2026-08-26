@@ -38,9 +38,8 @@ contract DeployEAS is Common {
 
         uint256 chainId = block.chainid;
         bool isBase = (chainId == 8453 || chainId == 84532); // Base Mainnet (8453) or Base Sepolia (84532)
-        bool isOptimism = (chainId == 10);
 
-        if (isBase || isOptimism) {
+        if (isBase) {
             _requireCode(BASE_EAS);
             _requireCode(BASE_SCHEMA_REGISTRY);
             _deployRegistrar(EAS(BASE_EAS), SchemaRegistry(BASE_SCHEMA_REGISTRY));

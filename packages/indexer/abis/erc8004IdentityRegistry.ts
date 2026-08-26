@@ -173,23 +173,3 @@ export const erc8004IdentityRegistryAbi = [
     type: 'function',
   },
 ] as const
-
-/** Live Optimism provenance observed at block 155,542,614 on 2026-08-13. */
-export const OPTIMISM_ERC8004_IDENTITY_REGISTRY = {
-  chainId: 10,
-  proxy: '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432',
-  sourceBlock: 147_514_947,
-  deploymentTransaction:
-    '0x8239a11f367b65e4e6644cdc5fd9710846a0e07336274cc94b7b9f71bf2764a8',
-  initialImplementation: '0xcb7af40c0be4fb92e183942b6dbb6b14a888f067',
-  initialVersion: '1.0.0',
-  currentImplementation: '0x7274e874ca62410a93bd8bf61c69d8045e399c02',
-  currentVersion: '2.0.0',
-  currentImplementationBlock: 147_514_960,
-  currentImplementationTransaction:
-    '0x36d10ecdf9b408620aa6cb111f26264267cde3f5898397db19bd91251184848b',
-  expectedOwner: '0x547289319C3e6aedB179C0b8e8aF0B5ACd062603',
-  upstreamCommit: '68fc6765761a10fb26f0692df21c8a6f9d12b1be',
-  fullAbiSha256:
-    'cdb8e30f41a56ed53421126dab87551ff2a178b8463646f69f75bc5dc9620564',
-} as const

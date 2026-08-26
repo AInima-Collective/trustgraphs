@@ -94,7 +94,7 @@ const firstTgwp = source.indexOf('TGWP')
 const sourceHeading = source.indexOf('id="source-heading"')
 assert.ok(firstTgwp > sourceHeading && sourceHeading > 0)
 
-// Creation-time features (GOAL M4/M5): governance and the shared fund are explicit choices with
+// Governance and the shared fund are explicit creation-time choices with
 // plain-words copy, the voting profile is read live from the wrapper factory, the compounded
 // activation delay is stated, and signer-sync is honestly not offered.
 assert.match(source, /Create with governance/)

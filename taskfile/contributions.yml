@@ -1,6 +1,6 @@
 version: '3'
 
-# Contribution-funding round lifecycle on local anvil (GOAL.md M5).
+# Contribution-funding round lifecycle on local Anvil.
 #
 # The user-side actions (vouch / claim / respond / rate / claim payout) run through
 # packages/frontend/scripts/contribution-round.ts — the exact SchemaManager → EAS.attest and

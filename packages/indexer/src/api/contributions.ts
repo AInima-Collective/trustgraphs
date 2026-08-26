@@ -1,5 +1,5 @@
 /**
- * Contributions-program API (GOAL.md M3; research/CONTRIBUTION_FUNDING.md §3, §5).
+ * Contributions-program API (`research/CONTRIBUTION_FUNDING.md` §3, §5).
  *
  * Serves the round view, claims-with-scores, per-claim score detail, per-account payout bundles
  * (`{value, proof[]}` — the merkleEntry shape the claim UI consumes), and the honest-UI audit view

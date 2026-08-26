@@ -51,7 +51,6 @@ services:
     environment:
       <<: *indexer-environment
       PONDER_PORT: 65422
-      PONDER_HEALTH_PORT: 65422
     expose: [65422]
     healthcheck:
       test: [CMD-SHELL, wget -q --spider http://127.0.0.1:65422/ready]
@@ -66,7 +65,6 @@ services:
     environment:
       <<: *indexer-environment
       PONDER_HTTP_PORT: 65421
-      PONDER_HEALTH_PORT: 65421
     ports:
       - ${PONDER_PUBLIC_BIND:-127.0.0.1:65421}:65421
     healthcheck:
@@ -79,8 +77,8 @@ services:
     # service template already waits for Postgres; writer readiness is intentionally independent.
 
   operator:
-    # Tags are rejected by ops/production-preflight.sh. Record the multi-arch digest produced by
-    # the release workflow and deploy the exact artifact that was reviewed.
+    # Record the multi-arch digest produced by the release workflow and deploy the exact artifact
+    # that was reviewed.
     image: ${OPERATOR_IMAGE:?Set ghcr.io/.../trustgraphs-operator@sha256:<64 hex>}
     init: true
     command: [--config, /etc/trustgraph/deployments/operator.sepolia.toml]
@@ -103,28 +101,6 @@ services:
       start_period: 15m
     restart: unless-stopped
     stop_grace_period: 10m
-
-  monitor:
-    <<: *indexer-service
-    entrypoint: [node, /app/ops/monitor-production.mjs]
-    command: []
-    environment:
-      MONITOR_INDEXER_URL: http://ponder-server:65421
-      MONITOR_OPERATOR_URL: http://operator:8080
-      MONITOR_RPC_URL: ${RPC_URL_11155111}
-      MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-60}
-      MONITOR_INDEXER_MAX_LAG_BLOCKS: ${MONITOR_INDEXER_MAX_LAG_BLOCKS:-20}
-      MONITOR_OPERATOR_MAX_STALE_SECONDS: ${MONITOR_OPERATOR_MAX_STALE_SECONDS:-300}
-      MONITOR_STALE_ROOT_BLOCKS: ${MONITOR_STALE_ROOT_BLOCKS:-7200}
-      MONITOR_MIN_VAULT_ETH_WEI: ${MONITOR_MIN_VAULT_ETH_WEI:-0}
-      MONITOR_MIN_VAULT_USDC: ${MONITOR_MIN_VAULT_USDC:-0}
-      MONITOR_REQUIRE_ROOT: ${MONITOR_REQUIRE_ROOT:-true}
-    depends_on:
-      ponder-server:
-        condition: service_started
-      operator:
-        condition: service_started
-    restart: unless-stopped
 
 volumes:
   ponder-db-data:

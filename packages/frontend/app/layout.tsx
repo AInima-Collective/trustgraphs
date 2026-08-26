@@ -83,7 +83,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode
 }>) {
-  // The trust-graph directory is a RUNTIME read now (GOAL.md M3): networks are created by
+  // The trust-graph directory is a RUNTIME read: networks are created by
   // `TrustgraphsFactory` at any moment, so the app asks the indexer which ones exist rather than
   // shipping a list. Reading it once here means every screen — client and server — shares one
   // fetch per request and renders the same set. `getCatalog` never throws; on an indexer failure

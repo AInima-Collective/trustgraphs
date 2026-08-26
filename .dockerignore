@@ -42,16 +42,21 @@ packages
 packages/*
 !packages/indexer/
 !packages/indexer/**
-# Ponder executes every TypeScript file under the indexer's src directory. Keep unit tests out of
-# the image at the build-context boundary: deleting them in a later Docker layer relies on OCI
-# whiteouts, which Railway Runtime V2 can expose again when it materializes the container.
-packages/indexer/src/**/*.test.ts
 !packages/eas-offchain-client/
 !packages/eas-offchain-client/**
 !packages/frontend/
 packages/frontend/*
 !packages/frontend/lib/
 !packages/frontend/lib/**
+
+# Keep tests out of the production indexer image at the build-context boundary. Ponder executes
+# every TypeScript file under indexer/src, and the other copied trees contain fixtures and source
+# assertions that no runtime path uses. Deleting them in a later Docker layer would rely on OCI
+# whiteouts, which Railway Runtime V2 can expose again when it materializes the container.
+packages/indexer/**/*.test.*
+packages/eas-offchain-client/**/*.test.*
+packages/frontend/lib/**/*.test.*
+contracts/deploy/**/*.test.*
 
 # NOT excluded, however tempting: `research/`. `zk/prover` has two dev-dependencies with paths into
 # it, and cargo resolves dev-dependencies even for a plain `cargo build` — a missing path

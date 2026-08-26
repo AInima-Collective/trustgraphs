@@ -14,10 +14,7 @@ import {
   erc8004AgentKey,
   erc8004RegistryKey,
 } from './erc8004-shared'
-import {
-  OPTIMISM_ERC8004_IDENTITY_REGISTRY,
-  erc8004IdentityRegistryAbi,
-} from '../abis/erc8004IdentityRegistry'
+import { erc8004IdentityRegistryAbi } from '../abis/erc8004IdentityRegistry'
 
 const position = (event: {
   block: { number: bigint; timestamp: bigint }
@@ -50,18 +47,6 @@ ponder.on('erc8004IdentityRegistry:Upgraded', async ({ event, context }) => {
   } catch (error) {
     console.warn(`erc8004: getVersion failed at ${event.id}:`, error)
   }
-  if (
-    context.chain.id === OPTIMISM_ERC8004_IDENTITY_REGISTRY.chainId &&
-    event.block.number >
-      BigInt(OPTIMISM_ERC8004_IDENTITY_REGISTRY.currentImplementationBlock) &&
-    event.args.implementation.toLowerCase() !==
-      OPTIMISM_ERC8004_IDENTITY_REGISTRY.currentImplementation
-  ) {
-    console.error(
-      `erc8004: unreviewed Optimism implementation ${event.args.implementation} at block ${event.block.number}`
-    )
-  }
-
   await context.db
     .insert(erc8004Registry)
     .values({
@@ -100,15 +85,6 @@ ponder.on(
   'erc8004IdentityRegistry:OwnershipTransferred',
   async ({ event, context }) => {
     const registryId = registryIdFor(context.chain.id, event.log.address)
-    if (
-      context.chain.id === OPTIMISM_ERC8004_IDENTITY_REGISTRY.chainId &&
-      event.args.newOwner.toLowerCase() !==
-        OPTIMISM_ERC8004_IDENTITY_REGISTRY.expectedOwner.toLowerCase()
-    ) {
-      console.error(
-        `erc8004: Optimism registry owner changed to ${event.args.newOwner} at block ${event.block.number}`
-      )
-    }
     // M0 hazard sweep: the registry row is born from `Upgraded`. An ownership transfer whose
     // `Upgraded` predates the start block has no row, and the row is not reconstructible here
     // (`implementation` is notNull and not in this event) — log and skip the row update, but keep

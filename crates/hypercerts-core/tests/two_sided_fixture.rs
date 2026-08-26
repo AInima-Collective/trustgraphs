@@ -1,4 +1,4 @@
-//! Two-sided (multi-repo) pipeline over the REAL seeded-PDS fixture (GOAL M4 exit).
+//! Two-sided (multi-repo) pipeline over the real seeded-PDS fixture.
 //!
 //! Loads BOTH alice.car (`hypercerts.car`) and bob.car with an anchor + envelope-1 witness
 //! each, and asserts the cross-repo semantics that a single repo can't reach:

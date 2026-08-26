@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import {
-  manifestDeploymentSummary,
+  manifestContractAddresses,
   resolveDeploymentProfile,
 } from './deployment-profile.mjs'
 
@@ -21,6 +21,14 @@ test('stage and target resolve independently', () => {
   assert.throws(
     () => resolveDeploymentProfile({ DEPLOY_STAGE: 'staging' }, '/repo'),
     /development or production/
+  )
+  assert.throws(
+    () =>
+      resolveDeploymentProfile(
+        { DEPLOY_STAGE: 'production', DEPLOY_TARGET: 'optimism' },
+        '/repo'
+      ),
+    /local or sepolia/
   )
 })
 
@@ -50,29 +58,24 @@ test('Sepolia consumer refuses a planned manifest', () => {
   fs.rmSync(repo, { recursive: true })
 })
 
-test('deployment summary exposes every deployed factory family', () => {
-  const address = '0x1111111111111111111111111111111111111111'
-  const summary = manifestDeploymentSummary({
-    external: { eas: address, schemaRegistry: address },
-    contracts: {
-      schemaRegistrar: { address },
-      instanceRegistry: { address },
-      provingVault: { address },
-      trustgraphsFactory: { address },
-      weightedTrustgraphsFactory: { address },
-      governedWeightedTrustgraphsFactory: { address },
-      trustComposeFactory: { address },
-      governedTrustComposeFactory: { address },
-      contributionsFactory: { address },
-    },
-    instances: [],
-  })
-  assert.equal(summary.weightedFactory.weighted_factory, address)
-  assert.equal(
-    summary.governedWeightedFactory.governed_weighted_factory,
-    address
+test('Sepolia startup checks every recorded contract with deployed code', () => {
+  const first = '0x1111111111111111111111111111111111111111'
+  const second = '0x2222222222222222222222222222222222222222'
+  const child = '0x3333333333333333333333333333333333333333'
+  assert.deepEqual(
+    manifestContractAddresses({
+      contracts: {
+        rootVerifier: { address: first },
+        newlyAddedFactory: { address: second },
+        notDeployed: { address: null },
+      },
+      instances: [
+        {
+          instanceId: `0x${'44'.repeat(32)}`,
+          contracts: { merkleSnapshot: child },
+        },
+      ],
+    }),
+    [first, second, child]
   )
-  assert.equal(summary.trustComposeFactory.trust_compose_factory, address)
-  assert.equal(summary.governedComposeFactory.governed_compose_factory, address)
-  assert.equal(summary.contributionsFactory.contributions_factory, address)
 })

@@ -23,7 +23,7 @@ identical.
   exercises the "named-but-no-node" path — she is attributed but never acks, so her E4 share
   stays unboosted.
 
-## Repo contents (GOAL M4)
+## Repo contents
 
 **alice.test** — a **bound** actor (verified `link.evm`), so her edges carry full authority:
 

@@ -206,4 +206,4 @@ operator image base digest
 Restart the `indexer` and confirm it returns to head. Then restart the `operator` without detaching
 `operator-state`; confirm `/ready` returns, the journal checksum and prior records are unchanged,
 and a new tick is appended without repeating a request. Finally leave both application services
-running for the goal's one-week soak and inspect their Railway logs and metrics at least daily.
+running for the one-week soak and inspect their Railway logs and metrics at least daily.

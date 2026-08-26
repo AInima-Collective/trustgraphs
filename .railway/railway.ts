@@ -43,7 +43,6 @@ const indexerCompute = {
 // so an unrelated monorepo commit does not spend Railway build credits twice.
 const indexerWatchPaths = [
   '/.dockerignore',
-  '/.env.example',
   '/packages/indexer/**',
   '/packages/eas-offchain-client/**',
   '/packages/frontend/lib/**',
@@ -100,7 +99,6 @@ export default defineRailway((input) => {
       PONDER_DATABASE_SCHEMA: 'trustgraph_sepolia_v2',
       PONDER_VIEWS_SCHEMA: 'trust-graph',
       PONDER_PORT: '65421',
-      PONDER_HEALTH_PORT: '65421',
       PONDER_RPC_URL_11155111: ctx.shared.RPC_URL_11155111_0,
       PONDER_RPC_URLS_11155111: ctx.shared.RPC_URL_11155111_1,
       PONDER_ETH_GET_LOGS_BLOCK_RANGE_11155111: '10',

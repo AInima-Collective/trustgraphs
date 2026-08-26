@@ -1,4 +1,4 @@
-# Deploy to a public chain
+# Deploy to Sepolia
 
 A public Trustgraphs deployment combines contracts whose program identity must remain stable with
 indexing, proving, and publication services that must remain available. Treat it as a
@@ -6,16 +6,14 @@ security-sensitive release, not a copy of the local demo.
 
 ## Supported deployment profiles
 
-The repository currently exposes two production-stage targets with different contract sets:
+The repository exposes one supported public deployment target:
 
 | Target | Current profile |
 | --- | --- |
-| `sepolia` | Modern registry, `trust-graph` and signer verifiers, base and governed factories, canonical Safe integration, signer-sync module deployer, and proving vault. Weighted prior, composition, and contributions remain disabled. |
-| `optimism` | Legacy configuration-driven deployment of named standard networks, signer verifier, Safes, and timelocks. It is not the modern self-service factory profile. |
+| `sepolia` | Modern registry; verifiers for trust-graph, signer-sync, weighted-prior, trust-compose, and contributions; base and governed factories for trust-graph, weighted, and composition; a contributions factory; canonical Safe integration; signer-sync module deployer; and proving vault. |
 
 The `mainnet` target is intentionally disabled because the repository has no authorized Ethereum
-mainnet deployment profile. Do not infer feature support on one target from code deployed by the
-other.
+mainnet deployment profile.
 
 ## Before deployment
 
@@ -32,16 +30,14 @@ Never deploy a verifier with a key derived from a different guest build.
 
 ## Deploy the contracts
 
-Choose an implemented target explicitly. For example:
+Choose an implemented target explicitly. The current Sepolia deployment is additive: run its
+read-only release preflight, continue from the tracked live manifest, then assert the on-chain end
+state:
 
 ```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=sepolia pnpm deploy:contracts
-```
-
-or, for the legacy Optimism profile:
-
-```bash
-DEPLOY_STAGE=production DEPLOY_TARGET=optimism pnpm deploy:contracts
+pnpm deploy:sepolia:preflight
+pnpm deploy:sepolia:continue
+pnpm deploy:sepolia:postcheck
 ```
 
 The deployment code validates profile-specific environment variables before sending transactions.
@@ -73,23 +69,22 @@ runbook are in [Run the Sepolia services on Railway](./railway.md). The Compose 
 remains the portable reference implementation and local recovery-drill path.
 
 `docker-compose.prod.yml` is the production package, not a developer convenience stack. The
-writer, serving API, and monitor run from `packages/indexer/Dockerfile`; none installs dependencies
-into or bind-mounts the checkout. Postgres and the operator state use explicitly named volumes.
-Only the small tracked `deployments/` directory is mounted read-only so the operator can consume
-the finalized manifest and policy.
+writer and serving API run from `packages/indexer/Dockerfile`; neither installs dependencies into
+or bind-mounts the checkout. Postgres and the operator state use explicitly named volumes. Only
+the small tracked `deployments/` directory is mounted read-only so the operator can consume the
+finalized manifest and policy.
 
-Set the variables required by `ops/production-preflight.sh`, then run:
+Set the variables required by the Compose file, then run:
 
 ```bash
-ops/production-preflight.sh
-docker compose -f docker-compose.prod.yml build ponder ponder-server monitor
+docker compose -f docker-compose.prod.yml build ponder ponder-server
 docker compose -f docker-compose.prod.yml up -d
 ```
 
 `OPERATOR_IMAGE` must be the release workflow's complete
-`ghcr.io/.../trustgraphs-operator@sha256:...` reference. The preflight rejects a tag. On startup,
-the operator also refuses unless its embedded trust-graph and signer ELF digests and vkeys match
-the tracked release manifest. The Sepolia candidate built from commit `22bbf4a` by
+`ghcr.io/.../trustgraphs-operator@sha256:...` reference. On startup, the operator refuses unless
+its embedded trust-graph and signer ELF digests and vkeys match the tracked release manifest. The
+Sepolia candidate built from commit `22bbf4a` by
 [release run 32892667547](https://github.com/AInima-Collective/trustgraphs/actions/runs/32892667547)
 is:
 
@@ -102,9 +97,9 @@ attested it, pulled it anonymously, and re-derived the embedded vkeys. The write
 new versioned name for each indexer release; the views schema stays stable. The
 primary Sepolia RPC and `PONDER_RPC_URLS_11155111` must name different providers so a single
 provider outage does not stop ingestion. The frontend host must receive `PONDER_URL`,
-`IPFS_GATEWAY_PUBLIC`, and both `RPC_URL_11155111_0` and `RPC_URL_11155111_1`; the two browser RPC
-upstreams must also be independent. The preflight requires these frontend values even though the
-frontend itself may be deployed by a separate hosting platform.
+`IPFS_GATEWAY_PUBLIC`, `RPC_URL_1` for ENS reads, and both `RPC_URL_11155111_0` and
+`RPC_URL_11155111_1`; the two browser RPC upstreams must also be independent. Public frontend
+config generation rejects missing, placeholder, non-HTTP, or duplicate endpoints.
 
 After the frontend is deployed, exercise its clean-browser, read-only launch surface before using
 a funded wallet:
@@ -114,9 +109,9 @@ SEPOLIA_FRONTEND_URL=https://testnet.example.org \
   pnpm --filter trustgraphs-frontend smoke:sepolia
 ```
 
-This checks the persistent testnet warning, offers the standard governed path, and refuses to
-expose weighted or composition creation when their factories are absent. It does not submit a
-transaction; M4 still requires the clean-wallet creation itself.
+This checks the persistent testnet warning and the standard, weighted, and composition creation
+entries backed by the tracked factories. It does not submit a transaction; the clean-wallet
+creation remains a separate release check.
 
 On a preview deployment where transport 0 is deliberately pointed at an unreachable endpoint,
 the same smoke command can prove the browser actually continues through transport 1:
@@ -130,46 +125,9 @@ SEPOLIA_EXPECT_RPC_FAILOVER=true \
 The assertion requires a 5xx response from `id=0` followed by a 200 response from `id=1`; do not
 use it during an ordinary healthy smoke run.
 
-Back up Postgres from the consistent server-side snapshot emitted by `pg_dump`:
-
-```bash
-BACKUP_DIR=/durable/backups ops/postgres-backup.sh
-```
-
-The scripts default to the Compose database. For managed Postgres, provide the live connection URL
-and PostgreSQL client tools of the same major version as the server:
-
-```bash
-DATABASE_URL="$DATABASE_URL" BACKUP_DIR=/durable/backups ops/postgres-backup.sh
-```
-
-Every dump receives a SHA-256 sidecar. A backup is not accepted until it has been restored into an
-isolated database and found to contain application tables:
-
-```bash
-RESTORE_DATABASE=ponder_restore_20260825 \
-  ops/postgres-restore-drill.sh /durable/backups/ponder-20260825T000000Z.dump
-```
-
-For managed Postgres, `RESTORE_DATABASE_URL` must point at that exact throwaway database. The
-script connects and checks `current_database()` before restoring anything:
-
-```bash
-DATABASE_URL="$DATABASE_URL" \
-RESTORE_DATABASE=ponder_restore_20260825 \
-RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
-  ops/postgres-restore-drill.sh /durable/backups/ponder-20260825T000000Z.dump
-```
-
-The restore script refuses production database names and refuses to replace an existing drill
-database unless `REPLACE_RESTORE_DATABASE=1` is explicit. Record the dump path, checksum, restored
-database, table count, and time in the deployment log.
-
-The monitor checks the indexer and operator `/ready` routes, operator heartbeat age, root age,
-publication holds, per-instance vault balances/unpaid roots, and Ponder lag against the live
-Sepolia head. Defaults are in the compose file and every threshold has a `MONITOR_*` override. It
-logs findings and recovery transitions; webhook delivery remains an optional monitor capability
-but is not configured for the first testnet.
+Use the database host's backup and restore facilities. Verify a backup by restoring it into an
+isolated database, then record the backup identifier, checksum, restored database, table count,
+and time in the deployment log.
 
 For the restart drill, record the writer's sync block, the operator journal checksum, and the
 latest backup checksum; stop both application services, recreate them from their exact image

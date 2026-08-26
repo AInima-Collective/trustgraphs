@@ -1,7 +1,7 @@
 //! The operator's configuration file, exactly as `docs/build/run-a-prover.md` §2 documents it.
 //!
 //! Every key has a default except `rpc` and `registry`. That is deliberate: a missing key should
-//! be a recorded decision, not a stall (GOAL ground rule 12). What is NOT configurable is also
+//! be a recorded decision, not a stall. What is NOT configurable is also
 //! deliberate — anything absent from here, the operator does not do.
 
 use alloy_primitives::{keccak256, Address, B256};

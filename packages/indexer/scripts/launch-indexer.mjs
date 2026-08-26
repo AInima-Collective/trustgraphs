@@ -205,6 +205,9 @@ function deploymentAddresses() {
   add(summary.provingVault)
   add(summary.factory?.factory)
   add(summary.factory?.instance_registry)
+  for (const address of deploymentProfile.requiredCodeAddresses ?? []) {
+    add(address)
+  }
   for (const network of summary.networks ?? []) {
     const contracts = network.contracts ?? {}
     for (const key of [

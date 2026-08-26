@@ -88,11 +88,17 @@ assert.doesNotMatch(
   /--mount=type=cache/,
   'Railway cache mounts require a service-ID prefix; use the dependency layer cache instead'
 )
-assert.match(
-  dockerignore,
-  /^packages\/indexer\/src\/\*\*\/\*\.test\.ts$/m,
-  'indexer tests must be excluded before Docker COPY so Railway never has to apply deletion whiteouts'
-)
+for (const pattern of [
+  'packages/indexer/**/*.test.*',
+  'packages/eas-offchain-client/**/*.test.*',
+  'packages/frontend/lib/**/*.test.*',
+  'contracts/deploy/**/*.test.*',
+]) {
+  assert.ok(
+    dockerignore.split('\n').includes(pattern),
+    `${pattern} must be excluded before Docker COPY so Railway never has to apply deletion whiteouts`
+  )
+}
 assert.doesNotMatch(
   indexerDockerfile,
   /find packages\/indexer\/src -name '\*\.test\.ts' -exec/,
@@ -100,8 +106,8 @@ assert.doesNotMatch(
 )
 assert.match(
   indexerDockerfile,
-  /remaining="\$\(find packages\/indexer\/src -name '\*\.test\.ts'\)"/,
-  'the image build must assert that the Docker context did not carry indexer tests'
+  /find packages\/indexer packages\/eas-offchain-client packages\/frontend\/lib contracts\/deploy/,
+  'the image build must assert that the Docker context did not carry tests in any copied source tree'
 )
 
 assert.ok(

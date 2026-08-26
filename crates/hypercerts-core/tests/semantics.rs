@@ -1,4 +1,4 @@
-//! Edge-semantics + anti-gaming battery (HYPERCERTS_ATPROTO_PLAN §3, GOAL M4 exit):
+//! Edge-semantics + anti-gaming battery (`research/HYPERCERTS_ATPROTO_PLAN.md` §3):
 //! synthetic records through `semantics::derive` — self-evaluation inert, padded
 //! contributor lists dilute, non-allowlisted issuers skip, satellite discount applies,
 //! ack gating is two-sided, duplicates collapse last-write-wins.

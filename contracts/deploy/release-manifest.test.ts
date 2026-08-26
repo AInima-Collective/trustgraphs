@@ -142,6 +142,11 @@ test('stage and target resolve independently', () => {
       resolveDeploymentSelection({ stage: 'development', target: 'sepolia' }),
     /cannot target public chain/
   )
+  assert.throws(
+    () =>
+      resolveDeploymentSelection({ stage: 'production', target: 'optimism' }),
+    /Invalid chain target/
+  )
 })
 
 test('Sepolia plan deploys every factory-backed hosted program and reuses canonical EAS', () => {

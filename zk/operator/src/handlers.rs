@@ -359,7 +359,7 @@ pub fn build_input(
             run_tool(cfg, Tool::ProverNostr, args)?;
         }
         Program::Hypercerts => {
-            bail!("hypercerts is out of scope for this operator (GOAL scope fence)")
+            bail!("hypercerts is outside this operator's release scope")
         }
     }
 

@@ -71,8 +71,7 @@ pub struct Policy {
     pub curated: bool,
     /// Whether a vault must cover this instance before we prove it.
     ///
-    /// This is a separate flag from `curated` because there are THREE states, not two, and
-    /// collapsing them broke the one the GOAL calls out by name. A curated instance is proven on
+    /// This is a separate flag from `curated` because there are THREE states, not two. A curated instance is proven on
     /// us. A funded instance draws a vault. And an operator run with `[paid]` off — a community
     /// self-proving with its own keys, which the hosted service is explicitly not supposed to gate
     /// — pays for everything itself and has no vault to consult. Overloading `curated` for that

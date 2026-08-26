@@ -1,5 +1,5 @@
 //! Contribution-record reconciliation: the folded record log (accumulator B) → the live sets
-//! stage 2 scores over (CONTRIBUTION_FUNDING.md §2, GOAL.md M1).
+//! stage 2 scores over (`research/CONTRIBUTION_FUNDING.md` §2).
 //!
 //! Rules (all mirroring lane-1 trust-edge reconciliation):
 //! - revocation excludes: any revoke kind for a `uid` excludes that attestation entirely,

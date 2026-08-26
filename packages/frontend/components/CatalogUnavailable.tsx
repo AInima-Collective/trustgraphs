@@ -4,7 +4,7 @@ import { Card } from '@/components/Card'
 /**
  * What a page shows when the network directory could not be read.
  *
- * The trust-graph directory is a runtime read from the indexer (GOAL.md M3). When that read
+ * The trust-graph directory is a runtime read from the indexer. When that read
  * fails, the honest answer for an unrecognised network id is "we cannot tell you right now",
  * not "this network does not exist" — a 404 there would report a live community as nonexistent
  * on the strength of a failed HTTP request.

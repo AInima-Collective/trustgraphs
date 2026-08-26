@@ -143,8 +143,7 @@ pub struct ComputeResult {
     /// Bound-actor address per nodeId (drives the extra v1 address leaves).
     pub bindings: BTreeMap<B256, Address>,
     /// The skippedDigest PREIMAGE (canonically sorted skip entries) — published alongside
-    /// the proof so watchers audit rule-Φ/record skips without recomputing the epoch
-    /// (GOAL "Done when" #3).
+    /// the proof so watchers audit rule-Φ/record skips without recomputing the epoch.
     pub skips: Vec<SkipEntry>,
     pub blob: Vec<u8>,
     pub cid: String,

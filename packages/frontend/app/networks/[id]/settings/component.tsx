@@ -356,7 +356,7 @@ const explainAttachFundError = (error: unknown): string => {
 }
 
 /**
- * The attach-a-fund action for a network created without one (GOAL M5): a permissionless
+ * The attach-a-fund action for a network created without one: a permissionless
  * `attachDistributor` call on the network's base factory. The owner must hold the instance's
  * constitutional role RIGHT NOW (the contract checks), so it defaults to the current authority.
  */
@@ -1869,9 +1869,8 @@ export const SettingsPage = ({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Launching a new contribution cycle will appear here once the
-                  parameter bundle can be published to the prover and indexer as
-                  one coordinated operation.
+                  Start a contribution round from the Features tab when this
+                  deployment and network type support it.
                 </p>
               </div>
             </section>

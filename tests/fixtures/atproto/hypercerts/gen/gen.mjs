@@ -1,4 +1,4 @@
-// Hypercerts atproto fixture generator (GOAL.md M4 exit — TWO-SIDED, multi-repo).
+// Hypercerts atproto fixture generator (two-sided, multi-repo).
 //
 // Stands up an in-process atproto network (@atproto/dev-env TestNetworkNoAppView:
 // a real did:plc PLC server + a SQLite PDS), creates two accounts (alice + bob),
@@ -10,7 +10,7 @@
 // key (alice's binding), then exports BOTH repos: CAR + PLC audit log + commit
 // metadata + a ground-truth {key -> valueCID} table per repo into ../fixtures/.
 //
-// Repo contents (GOAL M4):
+// Repo contents:
 //   alice.test (primary, BOUND actor via link.evm):
 //     - graph.follow(bob)
 //     - badge.award(subject=bob)                      -> alice→bob badge (bob accepts in HIS repo)

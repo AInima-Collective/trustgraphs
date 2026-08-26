@@ -1,4 +1,4 @@
-//! The surface every governed wrapper factory shares (network-creation GOAL M4).
+//! The surface every governed wrapper factory shares.
 //!
 //! `GovernedTrustgraphsFactory`, `GovernedWeightedTrustgraphsFactory`, and
 //! `GovernedTrustComposeFactory` deliberately expose the SAME governance profile constants, the
@@ -48,7 +48,7 @@ export const GOVERNED_WRAPPER_ERRORS = [
 ] as const
 
 /**
- * The explicit "not offered" signer-sync config (GOAL clarification 8): the wrappers accept the
+ * The explicit "not offered" signer-sync config: the wrappers accept the
  * struct, but the only signer guest today proves the standard trust-graph selection pipeline, so
  * the weighted and composition paths always pass this disabled value.
  */

@@ -1,6 +1,5 @@
 /**
- * Discovery — the trust-graph catalog, built from the chain (GOAL.md M2;
- * research/INSTANCE_FACTORY.md §3).
+ * Discovery — the trust-graph catalog, built from the chain (`research/INSTANCE_FACTORY.md` §3).
  *
  * `TrustgraphsFactory.InstanceCreated` is the frozen interface every consumer reconstructs an
  * instance from: the hosted prover (registry → addresses, event → params), third parties auditing

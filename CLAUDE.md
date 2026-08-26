@@ -84,7 +84,7 @@ the SP1 zkVM and committed on-chain via `MerkleSnapshot.submitProof`, verified b
 ### Environment Variables
 - Copy `.env.example` to `.env` before development
 - `DEPLOY_STAGE`: `development` or `production` (validation strictness)
-- `DEPLOY_TARGET`: `local`, `sepolia`, or `optimism` (which chain)
+- `DEPLOY_TARGET`: `local` or `sepolia` (which chain; Sepolia is the only supported public target)
 - `RPC_URL`: RPC URL for the chain
 - `FUNDED_KEY`: Private key with funds for contract deployment
 - `PARAMS_HASH`, `SP1_PROGRAM_VKEY`, `SP1_VERIFIER_GATEWAY`: ZK deployment parameters (see `contracts/deploy/env.ts`)

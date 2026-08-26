@@ -14,7 +14,7 @@ import { VISIBLE_SEED_NETWORKS } from '@/lib/config'
 import { Network } from '@/lib/types'
 
 /**
- * The runtime trust-graph catalog, client side (GOAL.md M3).
+ * The runtime trust-graph catalog, client side.
  *
  * The list of trust-graph networks is no longer a build-time import — it is read from the
  * indexer's `/instances` route. The root layout does that read on the server and hands the result

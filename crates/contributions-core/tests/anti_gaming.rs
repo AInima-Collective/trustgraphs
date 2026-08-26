@@ -1,4 +1,4 @@
-//! The §5 anti-gaming vector suite (GOAL.md M6): each attack from
+//! The §5 anti-gaming vector suite: each attack from
 //! CONTRIBUTION_FUNDING.md §5 exercised as a concrete scenario and shown provably inert or
 //! discounted. Complements tests/properties.rs (randomized) with named, attack-shaped cases.
 

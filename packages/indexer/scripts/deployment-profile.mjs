@@ -16,6 +16,43 @@ const nonzeroAddress = (value, label) => {
   return value
 }
 
+export function manifestContractAddresses(manifest) {
+  const addresses = Object.entries(manifest.contracts ?? {}).flatMap(
+    ([name, record]) =>
+      record?.address ? [nonzeroAddress(record.address, `Sepolia ${name}`)] : []
+  )
+  for (const instance of manifest.instances ?? []) {
+    const contracts = instance.contracts ?? {}
+    for (const key of [
+      'merkleSnapshot',
+      'easIndexerResolver',
+      'merkleFundDistributor',
+      'merkleGovModule',
+      'anchorRegistry',
+      'contributionResolver',
+      'poolToken',
+    ]) {
+      if (contracts[key]) {
+        addresses.push(
+          nonzeroAddress(
+            contracts[key],
+            `Sepolia instance ${instance.instanceId ?? '<unknown>'} ${key}`
+          )
+        )
+      }
+    }
+    if (contracts.safe?.proxy) {
+      addresses.push(
+        nonzeroAddress(
+          contracts.safe.proxy,
+          `Sepolia instance ${instance.instanceId ?? '<unknown>'} safe proxy`
+        )
+      )
+    }
+  }
+  return addresses
+}
+
 export function loadFinalizedSepoliaManifest(repoDir) {
   const file = path.join(repoDir, 'deployments', 'sepolia.json')
   const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -119,53 +156,6 @@ export function loadFinalizedSepoliaManifest(repoDir) {
   return { file, manifest }
 }
 
-export function manifestDeploymentSummary(manifest) {
-  const optional = (address, value) => (address ? value : {})
-  return {
-    eas: {
-      eas: manifest.external.eas,
-      schema_registry: manifest.external.schemaRegistry,
-      schema_registrar: manifest.contracts.schemaRegistrar.address,
-    },
-    factory: {
-      factory: manifest.contracts.trustgraphsFactory.address,
-      instance_registry: manifest.contracts.instanceRegistry.address,
-    },
-    provingVault: manifest.contracts.provingVault.address,
-    ...optional(manifest.contracts.weightedTrustgraphsFactory?.address, {
-      weightedFactory: {
-        weighted_factory: manifest.contracts.weightedTrustgraphsFactory.address,
-      },
-    }),
-    ...optional(
-      manifest.contracts.governedWeightedTrustgraphsFactory?.address,
-      {
-        governedWeightedFactory: {
-          governed_weighted_factory:
-            manifest.contracts.governedWeightedTrustgraphsFactory.address,
-        },
-      }
-    ),
-    ...optional(manifest.contracts.trustComposeFactory?.address, {
-      trustComposeFactory: {
-        trust_compose_factory: manifest.contracts.trustComposeFactory.address,
-      },
-    }),
-    ...optional(manifest.contracts.governedTrustComposeFactory?.address, {
-      governedComposeFactory: {
-        governed_compose_factory:
-          manifest.contracts.governedTrustComposeFactory.address,
-      },
-    }),
-    ...optional(manifest.contracts.contributionsFactory?.address, {
-      contributionsFactory: {
-        contributions_factory: manifest.contracts.contributionsFactory.address,
-      },
-    }),
-    networks: manifest.instances ?? [],
-  }
-}
-
 export function resolveDeploymentProfile(environment, repoDir) {
   let stage = environment.DEPLOY_STAGE?.trim().toLowerCase()
   let target = environment.DEPLOY_TARGET?.trim().toLowerCase()
@@ -182,8 +172,8 @@ export function resolveDeploymentProfile(environment, repoDir) {
   if (!['development', 'production'].includes(stage)) {
     throw new Error('DEPLOY_STAGE must be development or production')
   }
-  if (!['local', 'optimism', 'sepolia'].includes(target)) {
-    throw new Error('DEPLOY_TARGET must be local, optimism, or sepolia')
+  if (!['local', 'sepolia'].includes(target)) {
+    throw new Error('DEPLOY_TARGET must be local or sepolia')
   }
   if ((stage === 'development') !== (target === 'local')) {
     throw new Error(`Invalid deployment profile ${stage}/${target}`)
@@ -200,20 +190,18 @@ export function resolveDeploymentProfile(environment, repoDir) {
       startBlockEnv: 'PONDER_START_BLOCK_11155111',
       defaultStartBlock: manifest.firstDeploymentBlock,
       deploymentFile: file,
-      deploymentSummary: manifestDeploymentSummary(manifest),
+      requiredCodeAddresses: manifestContractAddresses(manifest),
     }
   }
 
   return {
     stage,
     target,
-    production: stage === 'production',
-    chainId: target === 'optimism' ? 10 : 31337,
-    rpcEnv:
-      target === 'optimism' ? 'PONDER_RPC_URL_10' : 'PONDER_RPC_URL_31337',
-    startBlockEnv:
-      target === 'optimism' ? 'PONDER_START_BLOCK_10' : 'PONDER_START_BLOCK',
-    defaultStartBlock: target === 'optimism' ? 142_786_328 : 1,
+    production: false,
+    chainId: 31337,
+    rpcEnv: 'PONDER_RPC_URL_31337',
+    startBlockEnv: 'PONDER_START_BLOCK',
+    defaultStartBlock: 1,
     deploymentFile: path.join(repoDir, '.docker', 'deployment_summary.json'),
   }
 }

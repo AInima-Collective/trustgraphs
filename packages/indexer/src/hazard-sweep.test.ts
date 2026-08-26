@@ -1,5 +1,5 @@
 /**
- * M0 invariant (GOAL "Non-negotiable invariants" #1): a valid chain never wedges the indexer.
+ * Hazard-sweep invariant: a valid chain never wedges the indexer.
  * Every subscribed event either updates an existing row, materializes it via an ensure, or
  * logs-and-skips with a warning. No bare `.update()` on a row a factory child (or a start-block
  * window) might not have; no silent catch; no silent skip.
@@ -58,9 +58,7 @@ test('signer-sync: unobserved modules log-and-skip, never silently and never via
   assert.doesNotMatch(source, /if \(!row\) return\n/)
   assert.ok([...source.matchAll(/console\.warn/g)].length >= 2)
   // The pause handler finds before it updates.
-  const pause = source.match(
-    /SignerSyncPausedUpdated[\s\S]*$/
-  )?.[0] as string
+  const pause = source.match(/SignerSyncPausedUpdated[\s\S]*$/)?.[0] as string
   assert.ok(pause)
   assert.ok(
     pause.indexOf('db.find(signerSyncModule') <
@@ -81,12 +79,6 @@ test('erc8004: registry/agent/feedback events for pre-start-block state do not w
   assert.match(reputation, /response references unobserved/)
   assert.doesNotMatch(reputation, /revocation references unknown/)
   assert.doesNotMatch(reputation, /response references unknown/)
-  // The pinned-owner drift check screams; it must not throw (a valid chain event cannot wedge us).
-  assert.doesNotMatch(
-    reputation,
-    /throw new Error\(\s*`erc8004 reputation: Optimism owner changed/
-  )
-  assert.match(reputation, /console\.error\(\s*`erc8004 reputation: Optimism owner changed/)
 })
 
 test('score-program-binding: pre-start-block registrations log-and-skip', () => {

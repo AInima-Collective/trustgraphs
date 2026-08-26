@@ -122,7 +122,7 @@ tasks:
         # demo no longer follows DEPLOY_TARGET, but FUNDED_KEY, RPC_URL and the vkeys still come
         # from that file, so a release-shaped `.env` is worth saying out loud before a demo runs
         # against it.
-        if [ -f .env ] && grep -qiE '^DEPLOY_TARGET=(sepolia|mainnet|optimism)' .env; then
+        if [ -f .env ] && grep -qiE '^DEPLOY_TARGET=(sepolia|mainnet)' .env; then
           echo "  note: .env has DEPLOY_TARGET=$(grep -iE '^DEPLOY_TARGET=' .env | cut -d= -f2)."
           echo "        The demo ignores it and deploys to {{.RPC}} (chain 31337) regardless."
         fi
