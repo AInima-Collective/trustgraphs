@@ -15,7 +15,9 @@ const epoch = read(
 const policy = read(
   'app/compositions/[instanceId]/policies/[version]/policy.tsx'
 )
-const create = read('app/create/component.tsx')
+// The chooser owns the program links since the create flow reorganization split the wizard
+// from program selection.
+const create = read('app/create/chooser.tsx')
 const truthCopy = read('lib/composition/preflight.ts')
 const errorCopy = read('lib/error.ts')
 const contracts = read('lib/composition/contracts.ts')

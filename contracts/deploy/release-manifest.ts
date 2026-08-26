@@ -62,12 +62,21 @@ export type ReleaseManifest = {
     safeProxyFactory: DeploymentRecord
     weightedVerifier: DeploymentRecord
     weightedTrustgraphsFactory: DeploymentRecord
+    /** Fast (`EPOCH_FLOOR = 1`) generations of the weighted / compose / contributions factories,
+     *  the `trustgraphsFactoryFast` pattern applied per program family: optional on manifests
+     *  predating them, governed pairs always recorded together, verifiers and helper deployers
+     *  reused from the original generation. */
+    weightedTrustgraphsFactoryFast?: DeploymentRecord
     governedWeightedTrustgraphsFactory: DeploymentRecord
+    governedWeightedTrustgraphsFactoryFast?: DeploymentRecord
     compositionVerifier: DeploymentRecord
     trustComposeFactory: DeploymentRecord
+    trustComposeFactoryFast?: DeploymentRecord
     governedTrustComposeFactory: DeploymentRecord
+    governedTrustComposeFactoryFast?: DeploymentRecord
     contributionsVerifier: DeploymentRecord
     contributionsFactory: DeploymentRecord
+    contributionsFactoryFast?: DeploymentRecord
   }
   programs: Record<ReleaseProgramKey, ReleaseProgramIdentity>
   instances: Array<{
@@ -280,12 +289,17 @@ export const validateReleaseManifest = (
       'safeProxyFactory',
       'weightedVerifier',
       'weightedTrustgraphsFactory',
+      'weightedTrustgraphsFactoryFast',
       'governedWeightedTrustgraphsFactory',
+      'governedWeightedTrustgraphsFactoryFast',
       'compositionVerifier',
       'trustComposeFactory',
+      'trustComposeFactoryFast',
       'governedTrustComposeFactory',
+      'governedTrustComposeFactoryFast',
       'contributionsVerifier',
       'contributionsFactory',
+      'contributionsFactoryFast',
     ],
     'manifest.contracts'
   )
@@ -362,27 +376,6 @@ export const validateReleaseManifest = (
     )
   }
 
-  // The fast (EPOCH_FLOOR = 1) factory generation. Optional as a pair — older manifests simply
-  // lack the keys — but a manifest may never advertise half of it: a fast plain factory without
-  // its governed wrapper (or vice versa) is not a usable creation path.
-  const fastRecords = (
-    ['trustgraphsFactoryFast', 'governedTrustgraphsFactoryFast'] as const
-  ).map((key) => {
-    const record = manifestContracts[key]
-    if (record === undefined) return null
-    assertObject(record, `manifest.contracts.${key}`)
-    validateRecord(record, `manifest.contracts.${key}`, record.address !== null)
-    return record
-  })
-  const fastDeployed = fastRecords.filter(
-    (record) => record !== null && record.address !== null
-  ).length
-  if (fastDeployed !== 0 && fastDeployed !== fastRecords.length) {
-    throw new Error(
-      'manifest fast deployment must record trustgraphsFactoryFast and governedTrustgraphsFactoryFast together'
-    )
-  }
-
   // These program families are additive to the already-live trust-graph deployment. A finalized
   // Sepolia manifest may legitimately carry an all-null family while its continuation has not
   // landed yet, but it may never advertise half a family as usable. Every non-null record is
@@ -424,6 +417,60 @@ export const validateReleaseManifest = (
     if (present !== 0 && present !== records.length) {
       throw new Error(
         `manifest ${family} deployment must record all of ${keys.join(', ')} together`
+      )
+    }
+  }
+
+  // The fast (EPOCH_FLOOR = 1) factory generations, one per program family. Optional — older
+  // manifests simply lack the keys — but a manifest may never advertise half a governed pair (a
+  // fast plain factory without its governed wrapper, or vice versa, is not a usable creation
+  // path), and a fast generation without its original family has no verifier or helper deployers
+  // to reuse. Checked after the family loop above so a half-recorded ORIGINAL family keeps its
+  // own, more specific error.
+  for (const [fastKeys, originalKey] of [
+    [
+      ['trustgraphsFactoryFast', 'governedTrustgraphsFactoryFast'],
+      'trustgraphsFactory',
+    ],
+    [
+      [
+        'weightedTrustgraphsFactoryFast',
+        'governedWeightedTrustgraphsFactoryFast',
+      ],
+      'weightedTrustgraphsFactory',
+    ],
+    [
+      ['trustComposeFactoryFast', 'governedTrustComposeFactoryFast'],
+      'trustComposeFactory',
+    ],
+    [['contributionsFactoryFast'], 'contributionsFactory'],
+  ] as const) {
+    const fastRecords = fastKeys.map((key) => {
+      const record = manifestContracts[key]
+      if (record === undefined) return null
+      assertObject(record, `manifest.contracts.${key}`)
+      validateRecord(
+        record,
+        `manifest.contracts.${key}`,
+        record.address !== null
+      )
+      return record
+    })
+    const fastDeployed = fastRecords.filter(
+      (record) => record !== null && record.address !== null
+    ).length
+    if (fastDeployed === 0) continue
+    if (fastDeployed !== fastRecords.length) {
+      throw new Error(
+        `manifest fast deployment must record ${fastKeys.join(' and ')} together`
+      )
+    }
+    const originalRecord = manifestContracts[originalKey] as
+      | DeploymentRecord
+      | undefined
+    if (originalRecord?.address == null) {
+      throw new Error(
+        `manifest fast deployment requires ${originalKey} to be deployed`
       )
     }
   }
@@ -686,6 +733,44 @@ export const releaseManifestToDeploymentSummary = (
       program_vkey: manifest.programs.contributions.vkey,
     }
   )
+  // The fast generations mirror their originals' summary shapes, so consumers treat both
+  // generations uniformly (the indexer rides both as address arrays; the create flows prefer
+  // fast when present).
+  const weightedFactoryFast = manifest.contracts.weightedTrustgraphsFactoryFast
+    ?.address
+    ? {
+        weighted_factory:
+          manifest.contracts.weightedTrustgraphsFactoryFast.address,
+      }
+    : undefined
+  const governedWeightedFactoryFast = manifest.contracts
+    .governedWeightedTrustgraphsFactoryFast?.address
+    ? {
+        governed_weighted_factory:
+          manifest.contracts.governedWeightedTrustgraphsFactoryFast.address,
+      }
+    : undefined
+  const trustComposeFactoryFast = manifest.contracts.trustComposeFactoryFast
+    ?.address
+    ? {
+        trust_compose_factory:
+          manifest.contracts.trustComposeFactoryFast.address,
+      }
+    : undefined
+  const governedComposeFactoryFast = manifest.contracts
+    .governedTrustComposeFactoryFast?.address
+    ? {
+        governed_compose_factory:
+          manifest.contracts.governedTrustComposeFactoryFast.address,
+      }
+    : undefined
+  const contributionsFactoryFast = manifest.contracts.contributionsFactoryFast
+    ?.address
+    ? {
+        contributions_factory:
+          manifest.contracts.contributionsFactoryFast.address,
+      }
+    : undefined
 
   return {
     eas: {
@@ -704,9 +789,14 @@ export const releaseManifestToDeploymentSummary = (
     signerVerifier,
     weightedFactory,
     governedWeightedFactory,
+    weightedFactoryFast,
+    governedWeightedFactoryFast,
     trustComposeFactory,
     governedComposeFactory,
+    trustComposeFactoryFast,
+    governedComposeFactoryFast,
     contributionsFactory,
+    contributionsFactoryFast,
     networks: manifest.instances.map((instance) => ({
       id: instance.instanceId,
       name: instance.name,

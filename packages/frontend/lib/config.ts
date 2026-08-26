@@ -97,6 +97,24 @@ export const FAST_FACTORY_CONFIG = (
     fastFactory?: { factory?: string; governedFactory?: string }
   }
 ).fastFactory
+// The fast weighted / compose / contributions generations, `fastFactory`'s rules applied per
+// program family: creation flows prefer them when recorded; every flow reading an EXISTING
+// network keeps using the network's own recorded parent.
+export const FAST_WEIGHTED_FACTORY_CONFIG = (
+  CONFIG as {
+    fastWeightedFactory?: { factory?: string; governedFactory?: string }
+  }
+).fastWeightedFactory
+export const FAST_TRUST_COMPOSE_CONFIG = (
+  CONFIG as {
+    fastTrustCompose?: { factory?: string; governedFactory?: string }
+  }
+).fastTrustCompose as
+  | { factory?: `0x${string}` | ''; governedFactory?: `0x${string}` | '' }
+  | undefined
+export const FAST_CONTRIBUTIONS_FACTORY = (
+  CONFIG as { fastContributionsFactory?: string }
+).fastContributionsFactory as `0x${string}` | '' | undefined
 
 /**
  * The chain's shared `ProvingVault`, or undefined on a deployment without one.

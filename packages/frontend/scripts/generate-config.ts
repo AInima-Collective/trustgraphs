@@ -186,6 +186,19 @@ try {
       process.env.GOVERNED_TRUSTGRAPHS_FACTORY_FAST_ADDRESS ||
       '',
   }
+  // The fast (EPOCH_FLOOR = 1) weighted factory generation, `fastFactory`'s pattern applied to
+  // the weighted lane: when both addresses are present the weighted workspace creates through
+  // this pair; absent or empty keeps it on the original generation.
+  configOutput.fastWeightedFactory = {
+    factory:
+      deployment.weightedFactoryFast?.weighted_factory ||
+      process.env.WEIGHTED_FACTORY_FAST_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedWeightedFactoryFast?.governed_weighted_factory ||
+      process.env.GOVERNED_WEIGHTED_FACTORY_FAST_ADDRESS ||
+      '',
+  }
   // trust-compose is additive and may roll out after the existing factory/indexer. An absent
   // address keeps the workspace in explicit read-only preview mode. The governed wrapper follows
   // the same rule for the composition workspace's "create with governance" choice.
@@ -199,11 +212,27 @@ try {
       process.env.GOVERNED_COMPOSE_FACTORY_ADDRESS ||
       '',
   }
+  // The fast trust-compose generation, same rules as `fastWeightedFactory`.
+  configOutput.fastTrustCompose = {
+    factory:
+      deployment.trustComposeFactoryFast?.trust_compose_factory ||
+      process.env.TRUST_COMPOSE_FACTORY_FAST_ADDRESS ||
+      '',
+    governedFactory:
+      deployment.governedComposeFactoryFast?.governed_compose_factory ||
+      process.env.GOVERNED_COMPOSE_FACTORY_FAST_ADDRESS ||
+      '',
+  }
   // The contributions round factory. Additive like trust-compose: an absent address keeps the
   // "start a contribution round" flow in explicit not-available mode.
   configOutput.contributionsFactory =
     deployment.contributionsFactory?.contributions_factory ||
     process.env.CONTRIBUTIONS_FACTORY_ADDRESS ||
+    ''
+  // The fast contributions generation (no governed wrapper exists for contributions rounds).
+  configOutput.fastContributionsFactory =
+    deployment.contributionsFactoryFast?.contributions_factory ||
+    process.env.CONTRIBUTIONS_FACTORY_FAST_ADDRESS ||
     ''
   // The graph-of-graphs registry is a separate advisory plane. Rolling deployments may omit it;
   // the provenance route then reports the feature as unavailable without affecting score pages.

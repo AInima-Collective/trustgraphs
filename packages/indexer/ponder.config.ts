@@ -79,6 +79,14 @@ type DeploymentSummary = {
    *  arrays; only present once the fast pair is recorded in the release manifest. */
   factoryFast?: { factory?: string }
   governedFactoryFast?: { governed_factory?: string }
+  /** Fast (EPOCH_FLOOR = 1) generations of the weighted / compose / contributions factories.
+   *  Same contracts and event surfaces as their originals, so each pair rides its family's
+   *  sources as an address array, exactly like `factoryFast`. */
+  weightedFactoryFast?: { weighted_factory?: string }
+  governedWeightedFactoryFast?: { governed_weighted_factory?: string }
+  trustComposeFactoryFast?: { trust_compose_factory?: string }
+  governedComposeFactoryFast?: { governed_compose_factory?: string }
+  contributionsFactoryFast?: { contributions_factory?: string }
   /** Governed wrappers for the weighted / compose programs. They share the governed factory's
    *  Safe singletons and helper deployers and emit the SAME `GovernedInstanceCreated` signature,
    *  so their children ride the existing governed child sources. */
@@ -273,10 +281,14 @@ const GOVERNED_FACTORY_FAST = deploymentSummary.governedFactoryFast
   ?.governed_factory as Hex | undefined
 const GOVERNED_WEIGHTED_FACTORY = deploymentSummary.governedWeightedFactory
   ?.governed_weighted_factory as Hex | undefined
+const GOVERNED_WEIGHTED_FACTORY_FAST = deploymentSummary
+  .governedWeightedFactoryFast?.governed_weighted_factory as Hex | undefined
 const GOVERNED_COMPOSE_FACTORY = deploymentSummary.governedComposeFactory
   ?.governed_compose_factory as Hex | undefined
+const GOVERNED_COMPOSE_FACTORY_FAST = deploymentSummary
+  .governedComposeFactoryFast?.governed_compose_factory as Hex | undefined
 /**
- * Every governed wrapper on this chain. All three emit the same
+ * Every governed wrapper on this chain, both generations of each. All emit the same
  * `GovernedInstanceCreated(instanceId, creator, safe, merkleGovModule, snapshot)` signature, so
  * one `factory()` source with an address ARRAY discovers every wrapper's Safe and gov module and
  * `gov.ts`/`safe.ts` handlers apply unchanged.
@@ -285,7 +297,9 @@ const GOVERNED_WRAPPERS = [
   GOVERNED_FACTORY,
   GOVERNED_FACTORY_FAST,
   GOVERNED_WEIGHTED_FACTORY,
+  GOVERNED_WEIGHTED_FACTORY_FAST,
   GOVERNED_COMPOSE_FACTORY,
+  GOVERNED_COMPOSE_FACTORY_FAST,
 ].filter((address): address is Hex => address !== undefined)
 /** Both governed trust-graph wrapper generations, one source: same ABI, same handlers. */
 const GOVERNED_TRUSTGRAPHS_FACTORIES = [
@@ -300,6 +314,12 @@ const WEIGHTED_FACTORY =
     | Hex
     | undefined) ??
   (deploymentSummary.weightedFactory?.weighted_factory as Hex | undefined)
+const WEIGHTED_FACTORY_FAST = deploymentSummary.weightedFactoryFast
+  ?.weighted_factory as Hex | undefined
+/** Both weighted factory generations; every weighted factory-sourced discovery rides the array. */
+const WEIGHTED_FACTORIES = [WEIGHTED_FACTORY, WEIGHTED_FACTORY_FAST].filter(
+  (address): address is Hex => address !== undefined
+)
 const COMPOSITION_FACTORY =
   (process.env[`TRUST_COMPOSE_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
     | Hex
@@ -307,6 +327,12 @@ const COMPOSITION_FACTORY =
   (deploymentSummary.trustComposeFactory?.trust_compose_factory as
     | Hex
     | undefined)
+const COMPOSITION_FACTORY_FAST = deploymentSummary.trustComposeFactoryFast
+  ?.trust_compose_factory as Hex | undefined
+const COMPOSITION_FACTORIES = [
+  COMPOSITION_FACTORY,
+  COMPOSITION_FACTORY_FAST,
+].filter((address): address is Hex => address !== undefined)
 const CONTRIBUTIONS_FACTORY =
   (process.env[`CONTRIBUTIONS_FACTORY_ADDRESS_${CHAIN_ID}`]?.trim() as
     | Hex
@@ -314,6 +340,12 @@ const CONTRIBUTIONS_FACTORY =
   (deploymentSummary.contributionsFactory?.contributions_factory as
     | Hex
     | undefined)
+const CONTRIBUTIONS_FACTORY_FAST = deploymentSummary.contributionsFactoryFast
+  ?.contributions_factory as Hex | undefined
+const CONTRIBUTIONS_FACTORIES = [
+  CONTRIBUTIONS_FACTORY,
+  CONTRIBUTIONS_FACTORY_FAST,
+].filter((address): address is Hex => address !== undefined)
 const GRAPH_LINEAGE_REGISTRY =
   (process.env[`GRAPH_LINEAGE_REGISTRY_ADDRESS_${CHAIN_ID}`]?.trim() as
     | Hex
@@ -433,7 +465,7 @@ const governedSignerModules = () =>
 
 const weightedParamsControllers = () =>
   factory({
-    address: WEIGHTED_FACTORY!,
+    address: WEIGHTED_FACTORIES,
     event: WEIGHTED_PARAMS_CONTROLLER_CREATED,
     parameter: 'controller',
     startBlock: CORE_START_BLOCK,
@@ -441,7 +473,7 @@ const weightedParamsControllers = () =>
 
 const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
   factory({
-    address: WEIGHTED_FACTORY!,
+    address: WEIGHTED_FACTORIES,
     event: WEIGHTED_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -455,8 +487,8 @@ const weightedChildren = (parameter: 'snapshot' | 'resolver' | 'distributor') =>
  */
 const BASE_FACTORIES = [
   ...TRUSTGRAPHS_FACTORIES,
-  WEIGHTED_FACTORY,
-  COMPOSITION_FACTORY,
+  ...WEIGHTED_FACTORIES,
+  ...COMPOSITION_FACTORIES,
 ].filter((address): address is Hex => address !== undefined)
 
 const attachedDistributors = () =>
@@ -472,7 +504,7 @@ const attachedDistributors = () =>
 
 const compositionControllers = () =>
   factory({
-    address: COMPOSITION_FACTORY!,
+    address: COMPOSITION_FACTORIES,
     event: COMPOSITION_CONTROLLER_CREATED,
     parameter: 'controller',
     startBlock: CORE_START_BLOCK,
@@ -482,7 +514,7 @@ const compositionChildren = (
   parameter: 'snapshot' | 'accumulator' | 'distributor'
 ) =>
   factory({
-    address: COMPOSITION_FACTORY!,
+    address: COMPOSITION_FACTORIES,
     event: COMPOSITION_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -492,7 +524,7 @@ const contributionsChildren = (
   parameter: 'resolver' | 'snapshot' | 'distributor'
 ) =>
   factory({
-    address: CONTRIBUTIONS_FACTORY!,
+    address: CONTRIBUTIONS_FACTORIES,
     event: CONTRIBUTIONS_INSTANCE_CREATED,
     parameter,
     startBlock: CORE_START_BLOCK,
@@ -617,62 +649,70 @@ export default createConfig({
     weightedTrustgraphsFactory: {
       abi: weightedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
-      chain: WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: WEIGHTED_FACTORY } }
-        : {},
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: WEIGHTED_FACTORIES } }
+          : {},
     },
     weightedPriorParamsController: {
       abi: weightedPriorParamsControllerAbi,
       startBlock: CORE_START_BLOCK,
-      chain: WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
-        : {},
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedParamsControllers() } }
+          : {},
     },
     weightedEasIndexerResolver: {
       abi: easIndexerResolverAbi,
       startBlock: CORE_START_BLOCK,
-      chain: WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: weightedChildren('resolver') } }
-        : {},
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedChildren('resolver') } }
+          : {},
     },
     weightedMerkleSnapshot: {
       abi: merkleSnapshotAbi,
       startBlock: CORE_START_BLOCK,
-      chain: WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: weightedChildren('snapshot') } }
-        : {},
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedChildren('snapshot') } }
+          : {},
     },
     trustComposeFactory: {
       abi: trustComposeFactoryAbi,
       startBlock: CORE_START_BLOCK,
-      chain: COMPOSITION_FACTORY
-        ? { [CORE_CHAIN]: { address: COMPOSITION_FACTORY } }
-        : {},
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: COMPOSITION_FACTORIES } }
+          : {},
     },
     trustComposeParamsController: {
       abi: trustComposeParamsControllerAbi,
       startBlock: CORE_START_BLOCK,
-      chain: COMPOSITION_FACTORY
-        ? { [CORE_CHAIN]: { address: compositionControllers() } }
-        : {},
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionControllers() } }
+          : {},
     },
     compositionAccumulator: {
       abi: compositionAccumulatorAbi,
       startBlock: CORE_START_BLOCK,
-      chain: COMPOSITION_FACTORY
-        ? {
-            [CORE_CHAIN]: {
-              address: compositionChildren('accumulator'),
-            },
-          }
-        : {},
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? {
+              [CORE_CHAIN]: {
+                address: compositionChildren('accumulator'),
+              },
+            }
+          : {},
     },
     compositionMerkleSnapshot: {
       abi: merkleSnapshotAbi,
       startBlock: CORE_START_BLOCK,
-      chain: COMPOSITION_FACTORY
-        ? { [CORE_CHAIN]: { address: compositionChildren('snapshot') } }
-        : {},
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionChildren('snapshot') } }
+          : {},
     },
     governedTrustgraphsFactory: {
       abi: governedTrustgraphsFactoryAbi,
@@ -682,21 +722,36 @@ export default createConfig({
           ? { [CORE_CHAIN]: { address: GOVERNED_TRUSTGRAPHS_FACTORIES } }
           : {},
     },
-    // The weighted/compose governed wrappers. Same event surface as the trust-graph wrapper by
-    // construction (`GovernedInstanceCreated` / `GovernedAuthorityInstalled` are byte-identical
-    // signatures), so they reuse its ABI and `governed.ts` registers ONE handler for all three.
+    // The weighted/compose governed wrappers, both generations of each. Same event surface as
+    // the trust-graph wrapper by construction (`GovernedInstanceCreated` /
+    // `GovernedAuthorityInstalled` are byte-identical signatures), so they reuse its ABI and
+    // `governed.ts` registers ONE handler for all of them.
     governedWeightedTrustgraphsFactory: {
       abi: governedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
       chain: GOVERNED_WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: GOVERNED_WEIGHTED_FACTORY } }
+        ? {
+            [CORE_CHAIN]: {
+              address: [
+                GOVERNED_WEIGHTED_FACTORY,
+                GOVERNED_WEIGHTED_FACTORY_FAST,
+              ].filter((address): address is Hex => address !== undefined),
+            },
+          }
         : {},
     },
     governedTrustComposeFactory: {
       abi: governedTrustgraphsFactoryAbi,
       startBlock: CORE_START_BLOCK,
       chain: GOVERNED_COMPOSE_FACTORY
-        ? { [CORE_CHAIN]: { address: GOVERNED_COMPOSE_FACTORY } }
+        ? {
+            [CORE_CHAIN]: {
+              address: [
+                GOVERNED_COMPOSE_FACTORY,
+                GOVERNED_COMPOSE_FACTORY_FAST,
+              ].filter((address): address is Hex => address !== undefined),
+            },
+          }
         : {},
     },
     signerSyncModuleDeployer: {
@@ -778,16 +833,18 @@ export default createConfig({
     weightedMerkleFundDistributor: {
       abi: merkleFundDistributorAbi,
       startBlock: CORE_START_BLOCK,
-      chain: WEIGHTED_FACTORY
-        ? { [CORE_CHAIN]: { address: weightedChildren('distributor') } }
-        : {},
+      chain:
+        WEIGHTED_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: weightedChildren('distributor') } }
+          : {},
     },
     compositionMerkleFundDistributor: {
       abi: merkleFundDistributorAbi,
       startBlock: CORE_START_BLOCK,
-      chain: COMPOSITION_FACTORY
-        ? { [CORE_CHAIN]: { address: compositionChildren('distributor') } }
-        : {},
+      chain:
+        COMPOSITION_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: compositionChildren('distributor') } }
+          : {},
     },
     attachedMerkleFundDistributor: {
       abi: merkleFundDistributorAbi,
@@ -877,9 +934,10 @@ export default createConfig({
     contributionsFactory: {
       abi: contributionsFactoryAbi,
       startBlock: CORE_START_BLOCK,
-      chain: CONTRIBUTIONS_FACTORY
-        ? { [CORE_CHAIN]: { address: CONTRIBUTIONS_FACTORY } }
-        : {},
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: CONTRIBUTIONS_FACTORIES } }
+          : {},
     },
     // Factory-discovered round children. Same ABIs and same handlers as their static siblings
     // above (`contributionResolver`, `programSnapshot`, `programFundDistributor`) — separate
@@ -887,23 +945,26 @@ export default createConfig({
     factoryContributionResolver: {
       abi: contributionResolverAbi,
       startBlock: CORE_START_BLOCK,
-      chain: CONTRIBUTIONS_FACTORY
-        ? { [CORE_CHAIN]: { address: contributionsChildren('resolver') } }
-        : {},
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsChildren('resolver') } }
+          : {},
     },
     contributionsMerkleSnapshot: {
       abi: merkleSnapshotAbi,
       startBlock: CORE_START_BLOCK,
-      chain: CONTRIBUTIONS_FACTORY
-        ? { [CORE_CHAIN]: { address: contributionsChildren('snapshot') } }
-        : {},
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsChildren('snapshot') } }
+          : {},
     },
     contributionsFundDistributor: {
       abi: merkleFundDistributorAbi,
       startBlock: CORE_START_BLOCK,
-      chain: CONTRIBUTIONS_FACTORY
-        ? { [CORE_CHAIN]: { address: contributionsChildren('distributor') } }
-        : {},
+      chain:
+        CONTRIBUTIONS_FACTORIES.length > 0
+          ? { [CORE_CHAIN]: { address: contributionsChildren('distributor') } }
+          : {},
     },
     merkleGovModule: {
       abi: merkleGovModuleAbi,

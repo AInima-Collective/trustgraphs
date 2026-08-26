@@ -81,7 +81,11 @@ import {
   compositionPreflight,
 } from '@/lib/composition/preflight'
 import { anchorCompositionPreview } from '@/lib/composition/workflow'
-import { APIS, TRUST_COMPOSE_CONFIG } from '@/lib/config'
+import {
+  APIS,
+  FAST_TRUST_COMPOSE_CONFIG,
+  TRUST_COMPOSE_CONFIG,
+} from '@/lib/config'
 import { parseErrorMessage } from '@/lib/error'
 import { DISABLED_SIGNER_SYNC, describeSeconds } from '@/lib/governed-wrapper'
 import {
@@ -111,9 +115,26 @@ import { pinMetadata } from '../pin'
 
 type Mode = 'create' | 'rotate'
 
-const factory = (TRUST_COMPOSE_CONFIG?.factory || '') as Address
+/**
+ * The workspace prefers the fast (EPOCH_FLOOR = 1) compose generation, only as a whole pair —
+ * mixing generations would read the floor from one factory and create through a wrapper that
+ * enforces another. Rotation stays instance-scoped, so existing compositions are untouched.
+ */
+const fastFactory = (FAST_TRUST_COMPOSE_CONFIG?.factory || '') as Address
+const fastGovernedFactory = (FAST_TRUST_COMPOSE_CONFIG?.governedFactory ||
+  '') as Address
+const useFastGeneration =
+  isAddress(fastFactory, { strict: false }) &&
+  isAddress(fastGovernedFactory, { strict: false })
+const factory = (
+  useFastGeneration ? fastFactory : TRUST_COMPOSE_CONFIG?.factory || ''
+) as Address
 const factoryAvailable = isAddress(factory, { strict: false })
-const governedFactory = (TRUST_COMPOSE_CONFIG?.governedFactory || '') as Address
+const governedFactory = (
+  useFastGeneration
+    ? fastGovernedFactory
+    : TRUST_COMPOSE_CONFIG?.governedFactory || ''
+) as Address
 const governedAvailable = isAddress(governedFactory, { strict: false })
 const short = (value: string) => `${value.slice(0, 10)}…${value.slice(-8)}`
 const randomWord = (): Hex => {

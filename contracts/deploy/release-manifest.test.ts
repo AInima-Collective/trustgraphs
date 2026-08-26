@@ -144,6 +144,61 @@ test('manifest validator accepts, pairs, and rejects the fast factory generation
   )
 })
 
+test('manifest validator pairs the weighted / compose / contributions fast generations', () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
+
+  // The tracked Sepolia manifest records all three fast families; the summary must carry each
+  // one under its original family's shape so consumers treat the generations uniformly.
+  const validated = validateReleaseManifest(manifest)
+  const summary = releaseManifestToDeploymentSummary(validated)
+  assert.equal(
+    summary.weightedFactoryFast?.weighted_factory,
+    manifest.contracts.weightedTrustgraphsFactoryFast.address
+  )
+  assert.equal(
+    summary.governedWeightedFactoryFast?.governed_weighted_factory,
+    manifest.contracts.governedWeightedTrustgraphsFactoryFast.address
+  )
+  assert.equal(
+    summary.trustComposeFactoryFast?.trust_compose_factory,
+    manifest.contracts.trustComposeFactoryFast.address
+  )
+  assert.equal(
+    summary.governedComposeFactoryFast?.governed_compose_factory,
+    manifest.contracts.governedTrustComposeFactoryFast.address
+  )
+  assert.equal(
+    summary.contributionsFactoryFast?.contributions_factory,
+    manifest.contracts.contributionsFactoryFast.address
+  )
+
+  // Half a governed fast pair is never advertised, whether nulled or absent.
+  const halfNull = structuredClone(manifest)
+  halfNull.contracts.governedWeightedTrustgraphsFactoryFast = {
+    address: null,
+    block: null,
+    txHash: null,
+  }
+  assert.throws(() => validateReleaseManifest(halfNull), /fast deployment/)
+  const halfAbsent = structuredClone(manifest)
+  delete halfAbsent.contracts.trustComposeFactoryFast
+  assert.throws(() => validateReleaseManifest(halfAbsent), /fast deployment/)
+
+  // A fast generation without its original family has nothing to reuse and is rejected.
+  const orphaned = structuredClone(manifest)
+  for (const key of [
+    'weightedVerifier',
+    'weightedTrustgraphsFactory',
+    'governedWeightedTrustgraphsFactory',
+  ]) {
+    orphaned.contracts[key] = { address: null, block: null, txHash: null }
+  }
+  assert.throws(
+    () => validateReleaseManifest(orphaned),
+    /fast deployment requires weightedTrustgraphsFactory/
+  )
+})
+
 test('manifest validator never exposes a partially deployed program family', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'))
   for (const key of [

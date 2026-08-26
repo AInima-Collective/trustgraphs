@@ -84,12 +84,19 @@
         "safeProxyFactory": { "$ref": "#/$defs/deployment" },
         "weightedVerifier": { "$ref": "#/$defs/deployment" },
         "weightedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "weightedTrustgraphsFactoryFast": { "$ref": "#/$defs/deployment" },
         "governedWeightedTrustgraphsFactory": { "$ref": "#/$defs/deployment" },
+        "governedWeightedTrustgraphsFactoryFast": {
+          "$ref": "#/$defs/deployment"
+        },
         "compositionVerifier": { "$ref": "#/$defs/deployment" },
         "trustComposeFactory": { "$ref": "#/$defs/deployment" },
+        "trustComposeFactoryFast": { "$ref": "#/$defs/deployment" },
         "governedTrustComposeFactory": { "$ref": "#/$defs/deployment" },
+        "governedTrustComposeFactoryFast": { "$ref": "#/$defs/deployment" },
         "contributionsVerifier": { "$ref": "#/$defs/deployment" },
-        "contributionsFactory": { "$ref": "#/$defs/deployment" }
+        "contributionsFactory": { "$ref": "#/$defs/deployment" },
+        "contributionsFactoryFast": { "$ref": "#/$defs/deployment" }
       }
     },
     "programs": {

@@ -42,7 +42,12 @@ import { Textarea } from '@/components/Textarea'
 import { WalletConnectionButton } from '@/components/WalletConnectionButton'
 import { useNetworks } from '@/contexts/CatalogContext'
 import { useAuthorityProfile } from '@/hooks/useAuthorityProfile'
-import { APIS, GOVERNED_WEIGHTED_FACTORY, WEIGHTED_FACTORY } from '@/lib/config'
+import {
+  APIS,
+  FAST_WEIGHTED_FACTORY_CONFIG,
+  GOVERNED_WEIGHTED_FACTORY,
+  WEIGHTED_FACTORY,
+} from '@/lib/config'
 import { getEnsAddressCoinType } from '@/lib/ens-query'
 import {
   ETHEREUM_TRANSACTION_GAS_CAP,
@@ -128,12 +133,31 @@ import { Field, Note } from '../ui'
 type Mode = 'create' | 'rotate' | 'redeploy'
 type Format = 'csv' | 'json'
 
-const WEIGHTED_FACTORY_ADDRESS = (WEIGHTED_FACTORY || '') as Address
+/**
+ * This workspace prefers the fast (EPOCH_FLOOR = 1) weighted generation, and only as a whole
+ * pair: mixing generations would read the floor from one factory and create through a wrapper
+ * that enforces another. Rotation and activation stay instance-scoped (the network's own params
+ * controller), so existing networks are untouched by the preference.
+ */
+const FAST_WEIGHTED_FACTORY = (FAST_WEIGHTED_FACTORY_CONFIG?.factory ||
+  '') as Address
+const FAST_GOVERNED_WEIGHTED_FACTORY =
+  (FAST_WEIGHTED_FACTORY_CONFIG?.governedFactory || '') as Address
+const USE_FAST_GENERATION =
+  isAddress(FAST_WEIGHTED_FACTORY, { strict: false }) &&
+  isAddress(FAST_GOVERNED_WEIGHTED_FACTORY, { strict: false })
+
+const WEIGHTED_FACTORY_ADDRESS = (
+  USE_FAST_GENERATION ? FAST_WEIGHTED_FACTORY : WEIGHTED_FACTORY || ''
+) as Address
 const FACTORY_AVAILABLE = isAddress(WEIGHTED_FACTORY_ADDRESS, {
   strict: false,
 })
-const GOVERNED_WEIGHTED_FACTORY_ADDRESS = (GOVERNED_WEIGHTED_FACTORY ||
-  '') as Address
+const GOVERNED_WEIGHTED_FACTORY_ADDRESS = (
+  USE_FAST_GENERATION
+    ? FAST_GOVERNED_WEIGHTED_FACTORY
+    : GOVERNED_WEIGHTED_FACTORY || ''
+) as Address
 const GOVERNED_AVAILABLE = isAddress(GOVERNED_WEIGHTED_FACTORY_ADDRESS, {
   strict: false,
 })

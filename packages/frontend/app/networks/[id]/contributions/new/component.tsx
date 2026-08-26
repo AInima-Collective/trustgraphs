@@ -12,7 +12,11 @@ import { Input } from '@/components/Input'
 import { Label } from '@/components/Label'
 import { NetworkHeader } from '@/components/NetworkHeader'
 import { type InstanceRow } from '@/lib/catalog'
-import { APIS, CONTRIBUTIONS_FACTORY } from '@/lib/config'
+import {
+  APIS,
+  CONTRIBUTIONS_FACTORY,
+  FAST_CONTRIBUTIONS_FACTORY,
+} from '@/lib/config'
 import {
   PARENT_AUTHORITY_ROLE,
   contributionsCreateArgs,
@@ -34,6 +38,11 @@ const merkleSnapshotHasRoleAbi = [
     outputs: [{ type: 'bool' }],
   },
 ] as const
+
+// Round creation prefers the fast (EPOCH_FLOOR = 1) contributions generation when the
+// deployment records one; existing rounds are untouched (they are read via the indexer's
+// round catalog, never through this address).
+const ROUND_FACTORY = FAST_CONTRIBUTIONS_FACTORY || CONTRIBUTIONS_FACTORY
 
 /** Local datetime-local value → unix seconds, or null when empty/invalid. */
 const toUnixSeconds = (value: string): bigint | null => {
@@ -136,7 +145,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
       !connectedAddress ||
       !network.instanceId ||
       !parent ||
-      !CONTRIBUTIONS_FACTORY ||
+      !ROUND_FACTORY ||
       network.offchainLane ||
       problem !== null
     ) {
@@ -162,7 +171,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
         }
       )
       const gasEstimate = await publicClient.estimateContractGas({
-        address: CONTRIBUTIONS_FACTORY as Address,
+        address: ROUND_FACTORY as Address,
         abi: contributionsFactoryAbi,
         functionName: 'createInstance',
         args: [args],
@@ -170,7 +179,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
       })
       const [receipt] = await txToast({
         tx: {
-          address: CONTRIBUTIONS_FACTORY as Address,
+          address: ROUND_FACTORY as Address,
           abi: contributionsFactoryAbi,
           functionName: 'createInstance',
           args: [args],
@@ -222,7 +231,7 @@ export const NewContributionRoundPage = ({ network }: { network: Network }) => {
               graph.
             </p>
           </div>
-        ) : !CONTRIBUTIONS_FACTORY ? (
+        ) : !ROUND_FACTORY ? (
           <p className="text-sm text-warn">
             This deployment has no contribution-round factory yet, so rounds
             cannot be started from the app here.

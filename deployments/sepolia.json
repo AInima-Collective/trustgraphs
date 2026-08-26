@@ -85,10 +85,20 @@
       "block": 11567214,
       "txHash": "0x4cc80032f17f977bfe82a3110c9f524134d3e42b9da2dae79244b43f4bb8300b"
     },
+    "weightedTrustgraphsFactoryFast": {
+      "address": "0x4B264A50171D495f5D91E4E3b90BE2089639A4BE",
+      "block": 11572851,
+      "txHash": "0xdbe60bc6bc2a20c9eaa936f77df2fd7c658e45b1fa3089876768a79383616213"
+    },
     "governedWeightedTrustgraphsFactory": {
       "address": "0x182CE62522DB88d20794eC2d32b9fF723c9e732D",
       "block": 11567216,
       "txHash": "0x397e41c6d3b6c1a47efd042f1bda19144bfae51aca7dbca7086f8b3a2548d8d9"
+    },
+    "governedWeightedTrustgraphsFactoryFast": {
+      "address": "0x478E1CE29375928C16Df4A92d7cA0D5F7D679D98",
+      "block": 11572857,
+      "txHash": "0x9ca9e96e738db18464068fc3314b32f4674753df414cd69df1b34c41ab4e5794"
     },
     "compositionVerifier": {
       "address": "0xd6d94310025EFe103284D195F1E7D1F215E13707",
@@ -100,10 +110,20 @@
       "block": 11567226,
       "txHash": "0x3ad2b76ce79880e76c177c996d128b02bfee7354298cca9412456dd7b648c5da"
     },
+    "trustComposeFactoryFast": {
+      "address": "0xdEb7Bff8BFb59d2F7Fe58bB6640fb10100E546A9",
+      "block": 11572862,
+      "txHash": "0x6a3216c8908c09f30de4ee920f52711bee1c7f702551d1c05892df521fa72261"
+    },
     "governedTrustComposeFactory": {
       "address": "0x5654ed69EC94bCB312d867dc9408F029038F0337",
       "block": 11567227,
       "txHash": "0x87c1a2c6a37a80ff24cdefa989add3537ee26b0cd06d59257b720ed86052b587"
+    },
+    "governedTrustComposeFactoryFast": {
+      "address": "0x125a2B9aF7d3AEe3670CE5FE6eBc88363E0FE64a",
+      "block": 11572870,
+      "txHash": "0x7fb69559e59e31407246f373801ab19acbd3cd17baec98fd883716fe8aa57376"
     },
     "contributionsVerifier": {
       "address": "0x099Fb1c2C2d41A426b459f7f516CB070e7bC9e12",
@@ -114,6 +134,11 @@
       "address": "0xa93F50d42b7491b4A01Be7449e8c9CCf1591933e",
       "block": 11567231,
       "txHash": "0x3d4143f4f30516d1b8238fa92f343ec2beae94460d56c1a9b14da404775c194f"
+    },
+    "contributionsFactoryFast": {
+      "address": "0xaa240Fac629dDcBcDc91d360FBf4eb8a8109F7Bb",
+      "block": 11572876,
+      "txHash": "0x8b4479398e7da8664829f0437f814ddac287becb69c885f44d1af8d21ac9f907"
     }
   },
   "programs": {
