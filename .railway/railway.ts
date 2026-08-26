@@ -12,9 +12,13 @@ import {
 const repository = () =>
   github('AInima-Collective/trustgraphs', { branch: 'main' })
 
-// Keep stateful services together. Change this once, before the first apply, if the Railway
-// workspace has a different preferred region; moving an attached volume later is destructive.
-const region = 'us-west2'
+// These constants record where the first production applies actually landed, not a preference:
+// Postgres in us-west2, the operator volume and indexer replica in us-east4. Moving either
+// stateful side is destructive (`config apply` would recreate the volume or the database), so a
+// clean plan requires describing the split as it exists. Reunify regions only as a deliberate
+// migration, not by editing a constant.
+const region = 'us-east4-eqdc4a'
+const databaseRegion = 'us-west2'
 const indexerDockerfile = 'packages/indexer/Dockerfile'
 const operatorDockerfile = '.railway/operator.Dockerfile'
 
@@ -36,6 +40,19 @@ const indexerCompute = {
   containers: {
     cpu: 0.5,
     memoryBytes: 1024 * 1024 * 1024,
+  },
+}
+
+// The operator proved it needs more the same way: startup derives the vkey for every compiled-in
+// SP1 guest once (zk/operator/src/run.rs), and that setup peaks past 512 MB. Railway metrics show
+// memory pinned at exactly the 512 MB ceiling with the container OOM-killed and restarted every
+// ~25 seconds, before the health listener (which binds after vkey derivation) ever comes up.
+const operatorCompute = {
+  containers: {
+    cpu: 0.5,
+    // 2 decimal GB, exactly what serviceInstanceLimitsUpdate(memoryGB: 2.0) set live; a GiB value
+    // here would leave `config plan` forever proposing a 147 MB no-op change.
+    memoryBytes: 2_000_000_000,
   },
 }
 
@@ -66,7 +83,7 @@ export default defineRailway((input) => {
   // it through the SDK before using helpers such as ctx.shared and ctx.isEnvironment.
   const ctx = createRailwayContext(input)
 
-  const database = postgres('Postgres', { region })
+  const database = postgres('Postgres', { region: databaseRegion })
   const operatorState = volume('operator-state', {
     region,
     sizeMB: 512,
@@ -111,7 +128,7 @@ export default defineRailway((input) => {
   const operator = service('operator', {
     source: repository(),
     build: { watchPatterns: operatorWatchPaths },
-    deploy: { limitOverride: minimumCompute },
+    deploy: { limitOverride: operatorCompute },
     // Gate deployment on a bound, responsive daemon rather than a completed tick. A first tick can
     // include a paid network proof, so deployment activation must not time out and repeat it.
     healthcheck: '/health',
