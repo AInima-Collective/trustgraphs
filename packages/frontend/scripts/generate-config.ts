@@ -243,14 +243,18 @@ try {
         __dirname,
         `../../../out/${sourceFile}.sol/${name}.json`
       )
-      const abiExists = fs.existsSync(abiPath)
-      if (!abiExists) {
+      const frontendAbiPath = path.join(__dirname, `../abis/${name}.json`)
+
+      // Foundry's out/ directory is intentionally gitignored and is not present in a
+      // Vercel checkout. Refresh the committed frontend ABI when a local artifact is
+      // available; otherwise use the committed copy that ships with the frontend.
+      if (fs.existsSync(abiPath)) {
+        fs.copyFileSync(abiPath, frontendAbiPath)
+      } else if (!fs.existsSync(frontendAbiPath)) {
         throw new Error(
-          `Could not find ABI for ${name} at ${abiPath}. Please ensure the contract name and file name match.`
+          `Could not find ABI for ${name}. Looked for a Foundry artifact at ${abiPath} and a committed frontend ABI at ${frontendAbiPath}.`
         )
       }
-
-      fs.copyFileSync(abiPath, path.join(__dirname, `../abis/${name}.json`))
     })
 
   fs.writeFileSync(configOutputFile, JSON.stringify(configOutput, null, 2))
